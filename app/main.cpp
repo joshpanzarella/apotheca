@@ -23,7 +23,8 @@
 //                  fx-mod-stepper, fx-mod-new, fx-mod-full, fx-sends-mod-held (X held on an FX setting or a send)
 //                  mod, mod-lfo, mod-steps, mod-target, mod-off, mod-drums, mod-deleting, mod-12 (the MOD tab; with
 //                  --hold-a on mod-target and mod-drums, the list of targets)
-//                  help, volume (the SET page, on VOLUME), update-ready, update-ready-drums,
+//                  help (the card, with how hard the program works: 43, 88 and 37%), help-load (its longest line),
+//                  volume (the SET page, on VOLUME), update-ready, update-ready-drums,
 //                  update-accepted (an update accepted: the bar, and the notice), nomenu and help-nomenu
 //                  (a handheld with no MENU button: its hint, and its help card)
 //                  picker, picker-in, picker-deep, picker-deleting, picker-new, picker-typing, picker-carrying, picker-folder-deleting, sampler-picker (with --samples: the list
@@ -1185,8 +1186,11 @@ int main(int argc, char** argv) {
         } else {
             app.fm6().goTo(0, SynthScreen::kFirstMacro + 1);
         }
-    } else if (std::strcmp(view, "help") == 0) {
+    } else if (std::strcmp(view, "help") == 0 || std::strcmp(view, "help-load") == 0) {
         pushKey(SDLK_TAB, true); // MENU, held
+        // How hard the program works, above the battery: the owner's example, or (help-load) the longest it can say.
+        if (std::strcmp(view, "help") == 0) app.pretendLoad(43, 88, 37);
+        else app.pretendLoad(100, 999, 100);
     } else if (std::strncmp(view, "next-scene", 10) == 0) {
         // NEXT SCENE (SELECT + Y) just pressed: on the drum grid, on the piano roll ("next-scene-notes"),
         // and with every scene of the song used ("next-scene-full").

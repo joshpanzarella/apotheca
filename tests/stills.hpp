@@ -42,7 +42,7 @@ inline const char* const kViews[] = {
     "phazed", "page0", "page1", "page2", "page3", "page4", "page5", "page6", "page7", "page8", "page9", "jaxep", "jaxep0", "jaxep1", "jaxep2", "jaxep3", "jaxep4", "jaxep5", "jaxep-bank", "jaxep-held",
     "kit", "slices", "slices-32", "slices-name", "slices-name-feel", "slices-throw", "starts", "picker", "picker-in", "picker-deep", "picker-deleting", "picker-new", "picker-typing", "picker-carrying", "picker-folder-deleting", "sampler-picker",
     "feel", "feel-held", "feel-off-held", "feel-same-held", "feel-said",
-    "setup", "buttons", "typing", "help",
+    "setup", "buttons", "typing", "help", "help-load",
     "fm6", "fm6-1", "fm6-2", "fm6-3", "fm6-4", "fm6-5", "fm6-6", "fm6-7", "fm6-8", "fm6-long", "fm6-fixed", "fm6-off",
     "next-scene", "next-scene-notes", "next-scene-full", "volume", "update-ready", "update-ready-drums", "update-accepted", "nomenu", "help-nomenu", "kit-old",
     "", " --dice", " --paint", " --paint-random", " --on-name", " --on-tempo", " --hold-a", " --hold-y",

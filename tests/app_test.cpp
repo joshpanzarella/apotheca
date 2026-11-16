@@ -2307,6 +2307,65 @@ void testTheHelpCardDrawsSel() {
         for (Uint32 px : canvas.part(583, top - 3, 15, 17)) CHECK(px == Canvas::colour(ui::kPanel));
 }
 
+// Above the battery the card says how hard the program works (owner, 2026-11-15): the sound's share
+// of its own time over the last second, its worst call, and the whole program's share of the
+// processor (read from /proc/self/stat; here a made-up one). Only while the card is up.
+void testTheHelpCardSaysTheLoad() {
+    const int none[3] = {-1, -1, -1}, all[3] = {43, 88, 37}, sound[3] = {43, 88, -1}, program[3] = {-1, -1, 37};
+    CHECK(App::loadWords(none).empty());
+    CHECK(App::loadWords(all) == "SOUND 43%  WORST 88%  CPU 37%");
+    CHECK(App::loadWords(sound) == "SOUND 43%  WORST 88%");
+    CHECK(App::loadWords(program) == "CPU 37%");
+    char pattern[] = "/tmp/apotheca-cpu-XXXXXX";
+    const std::string folder = mkdtemp(pattern), stat = folder + "/stat";
+    const auto ticks = [&](long utime) {
+        std::FILE* f = std::fopen(stat.c_str(), "w");
+        std::fprintf(f, "9 (apotheca) S 1 2 3 4 5 6 7 8 9 10 %ld 0 0 0\n", utime);
+        std::fclose(f);
+    };
+    Rig rig;
+    rig.app.useCpuFile(stat, 100.0, 4);
+    rig.app.session().view = View::Pattern;
+    ticks(1000);
+    rig.frames(2);
+    CHECK(rig.app.loadShown()[0] == -1 && rig.app.loadShown()[2] == -1); // shut: nothing read
+    rig.key(SDLK_TAB, true); // MENU held: the card
+    rig.frames(1);
+    CHECK(rig.app.loadShown()[0] == -1 && rig.app.loadShown()[2] == -1); // no second of sound yet; the program's first reading
+    rig.render(48000 * 11 / 10);
+    ticks(1100); // a whole core of four for the next second
+    rig.frames(30);
+    CHECK(rig.app.loadShown()[0] >= 0 && rig.app.loadShown()[1] >= rig.app.loadShown()[0] && rig.app.loadShown()[2] == -1);
+    rig.frames(33); // a second after it opened
+    CHECK(rig.app.loadShown()[2] == 25);
+    // Shut and opened again: the program's share is read afresh, a second later.
+    rig.key(SDLK_TAB, false);
+    rig.frames(1);
+    CHECK(rig.app.loadShown()[0] == -1 && rig.app.loadShown()[2] == -1);
+    rig.key(SDLK_TAB, true);
+    rig.frames(1);
+    CHECK(rig.app.loadShown()[0] >= 0 && rig.app.loadShown()[2] == -1);
+    // As drawn: right of the card's words, above where the battery stands, inside the card's margin.
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (canvas.ok) {
+        rig.app.pretendLoad(43, 88, 37);
+        rig.frames(1);
+        rig.app.draw(canvas.r, *canvas.fonts);
+        const char* words = "SOUND 43%  WORST 88%  CPU 37%";
+        const int x = (ui::kScreenW - 560) / 2, y = ui::kTopBarH + 4, w = 560, h = 440;
+        const int right = x + w - 18, top = y + h - 64, wide = static_cast<int>(canvas.fonts->small.width(words)) + 2;
+        Canvas plain;
+        ui::fill(plain.r, right - wide, top - 3, wide + 2, 17, ui::kPanel);
+        plain.fonts->small.drawRight(plain.r, static_cast<float>(right), static_cast<float>(top), words, ui::kText);
+        CHECK(canvas.part(right - wide, top - 3, wide + 2, 17) == plain.part(right - wide, top - 3, wide + 2, 17));
+        CHECK(right - wide > x + 150 + static_cast<int>(canvas.fonts->small.width("quit Apotheca")) + 8); // clear of the line to its left
+    }
+    rig.key(SDLK_TAB, false);
+    std::remove(stat.c_str());
+    rmdir(folder.c_str());
+}
+
 void testTheHelpCard() {
     const SDL_Keycode MENU = SDLK_TAB;
     Rig rig;
@@ -9439,6 +9498,7 @@ int main(int argc, char** argv) {
     testChoicesClick();
     testTheHelpCard();
     testTheHelpCardDrawsSel();
+    testTheHelpCardSaysTheLoad();
     testUndoAndRedo();
     testHoldBErasesDrumHits();
     testFm6OnATrack();

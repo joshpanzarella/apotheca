@@ -86,7 +86,19 @@ and the stick shapes the thing under the cursor:
 on every screen (X hears what is under the cursor, on SONG it solos the track; the stick and D-pad
 move, A, B, START, L2 / R2, what SELECT does with other buttons, how to
 stop all sound), and the **battery**. Let go and it closes. On a handheld whose firmware keeps MENU for
-itself, holding SELECT for a moment does it instead. The bar at the bottom of each screen lists
+itself, holding SELECT for a moment does it instead.
+
+**Above the battery the card says how hard the handheld is working**, a new
+reading each second while it is open:
+
+| Word | Means |
+| --- | --- |
+| SOUND 43% | Over the last second, making the sound took 43% of the time that sound lasts. At 100% or over it cannot keep up, and the sound stutters |
+| WORST 88% | The one slice of that second (about 5 ms of sound) that took the most of its own time. Over 100%: that slice was late, a click or a gap |
+| CPU 37% | The whole program (the sound, its helpers, the screen, the WiFi page) as a share of the whole processor, all its cores together. 25% on a four-core handheld is one core kept busy. Shown from a second after the card opens |
+
+Measuring costs nothing you could notice: two looks at the clock for each
+slice of sound (about 50 billionths of a second, 0.001% of a slice). The bar at the bottom of each screen lists
 only what is particular to where the cursor is. A direction that either the
 stick or the D-pad gives is written as the direction alone (UP / DOWN); the
 two are named only where they do different things. The bar never runs off

@@ -52,6 +52,7 @@
 #include "apotheca/feel_rule.hpp"
 #include "apotheca/mod_rule.hpp"
 #include "apotheca/glide_rule.hpp"
+#include "apotheca/load_meter.hpp"
 #include "apotheca/instrument.hpp"
 #include "apotheca/phazed.hpp"
 #include "apotheca/sampler.hpp"
@@ -373,6 +374,13 @@ public:
 
     // From the audio thread. Writes `frames` interleaved stereo frames (L R L R ...).
     void render(float* interleaved, int frames);
+
+    // How hard render() works (load_meter.hpp; the help card shows it): over the last second of
+    // sound, the share of the sound's time its calls took, and the most one call took of its own.
+    // Below 0: not a second of sound yet. `loadSeconds` moves when they are new.
+    float soundShare() const { return load_.share(); }
+    float soundWorst() const { return load_.worst(); }
+    unsigned loadSeconds() const { return load_.windows(); }
 
     // Read-outs for the screen. Safe from any thread.
     bool busAwake(int bus) const { return bus >= 0 && bus < kBuses && busAwake_[bus].load(std::memory_order_relaxed); } // false: at rest, costing nothing
@@ -767,6 +775,7 @@ private:
     int wakeups_ = 0;          // chunks the helpers have been called to and not yet come for
     std::atomic<bool> quitWorkers_{false};
     std::atomic<bool> flush_{false};
+    LoadMeter load_; // every render() timed (the audio thread writes, any thread reads its atomics)
 
     float sampleRate_ = 48000.f;
     Track tracks_[kNumTracks];

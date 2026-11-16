@@ -33,6 +33,7 @@
 #include "song_screen.hpp"
 #include "screen.hpp"
 #include "ui.hpp"
+#include "cpu_use.hpp"
 
 namespace apotheca {
 
@@ -50,6 +51,16 @@ public:
     void readouts(struct Readouts& out) const;
     // Read the battery from another folder (the stills and the tests have no battery of their own).
     void useBatteryFolder(const std::string& folder) { batteryRoot_ = folder; batteryReadAt_ = 0; }
+    // Read the program's own time from another file than /proc/self/stat (the tests: a made-up one).
+    void useCpuFile(const std::string& path, double ticksPerSecond = 100.0, int cores = 4) { cpu_.usePath(path); cpu_.pretend(ticksPerSecond, cores); }
+    // The help card's line: "SOUND 43%  WORST 88%  CPU 37%", the parts known ("": none yet). SOUND is
+    // the sound's share of its own time, WORST its worst call in that second, CPU the whole program's
+    // share of the processor (all its threads, over every core).
+    static std::string loadWords(const int load[3]);
+    static constexpr float kLoadClear = 10.f; // its room on the help card ends this far right of the words to its left
+    const int* loadShown() const { return load_; }
+    // For the stills and the tests: the line says these numbers, whatever is measured (-1: none).
+    void pretendLoad(int sound, int worst, int all) { pretend_[0] = sound, pretend_[1] = worst, pretend_[2] = all, pretending_ = true; }
 
     Project& project() { return *project_; }
     Session& session() { return session_; }
@@ -115,6 +126,13 @@ private:
     int resyncsSeen_ = 0;
     Uint32 undoSaidUntil_ = 0;
     bool help_ = false;
+    // The help card's line of how hard the program works (cpu_use.hpp, Engine::soundShare): read
+    // while it is open, kept here so a pass draws what the redraw compared (Readouts::load).
+    ProgramCpu cpu_;
+    int load_[3] = {-1, -1, -1}; // SOUND, WORST, CPU in percent; -1: not known (or the card is shut)
+    bool helpWas_ = false;
+    int pretend_[3] = {-1, -1, -1};
+    bool pretending_ = false;
     Uint32 selectHeldSince_ = 0; // 0: not held
     bool selectAlone_ = false; // SELECT is down and nothing else has been pressed since
     bool nextSceneY_ = false;  // Y is down from SELECT + Y (next scene): letting it go is not a tap of Y
