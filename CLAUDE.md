@@ -1612,7 +1612,7 @@ effect in those two groups and fails one that does not.
     not taken. **In undo by `soundMark` / `restoreSounds`**, as FEEL.
   - **Set on the KIT page's third column** (`KitScreen::kChoke`, between FIT TO and the recording,
     `kChokeX`/`kChokeW` in kit_screen.hpp): hold A + UP / DOWN NONE, 1, 2 (the ends stop), B none;
-    left / right go round the three columns. The recording's column is narrower for it, so its
+    left / right go round the columns (four since EDIT). The recording's column is narrower for it, so its
     missing line is two short ones (FILE NOT FOUND. / THE DRUM PLAYS.), and what is said for a
     moment (a catch, a recording) is drawn over the three heads from FIT TO on.
   - **The mark** (`drawChokeMark`, both views, `kChokeMark...` in pattern_layout.hpp): brass, at

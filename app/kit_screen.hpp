@@ -7,7 +7,7 @@
 // whatever the tempo is.
 //
 //   the stick or D-pad moves: up / down through the lanes, left / right
-//   between SOUND, FIT and CHOKE.
+//   between SOUND, FIT, CHOKE and EDIT (round the ends).
 //   SOUND   tap A: the list of recordings (sample_picker.hpp), to pick one
 //           quickly. Or hold A + up / down: the built-in drum, then each
 //           recording, one at a time. B: the drum back.
