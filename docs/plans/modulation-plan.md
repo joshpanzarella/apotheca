@@ -1144,9 +1144,10 @@ second: under five a cycle at 20 Hz, a staircase). The nine effects that glide a
 a time keep of a SINE's swing (`testANewerEffectSoftensAFastMod --measure`, 20 / 30 ms glides):
 1 Hz 99 / 98%, 2 Hz 97 / 93%, 5 Hz 84 / 72%, 10 Hz 61 / 46%, 20 Hz 36 / 25%.
 
-**Cost** (desk, `bench`'s MOD rows, the six engines timed in turns): 24 LFOs FREE against the same
-24 in time on twelve silent drum tracks: see CLAUDE.md's Measured table. Nothing that shows: a
-multiply in place of a divide, and one add a chunk. A song with no FREE MOD: `effects_test --print`
+**Cost** (desk, `bench`'s MOD rows, the six engines timed in turns, three runs, load 5 to 12): 24
+LFOs FREE against the same 24 in time on twelve silent drum tracks, on the sends: **-0.002 to
+-0.005%** of a core (the 24 in time: +0.074 to +0.090% over none). Nothing that shows: a multiply
+in place of a divide, and one add a chunk. Not run on the handheld. A song with no FREE MOD: `effects_test --print`
 the same before and after (no MOD: the same bits).
 
 **Tests**: `mod_test` `testTheFreeRule` (by hand: seconds, no PHASE, the clicks, the ends, the log
@@ -1163,6 +1164,20 @@ FREE, undo and redo heard in the engine, a turn reaching the engine); `modtab_te
 drawn with SPEED and its Hz and its bar, RATE's 13 pieces, the dot where seconds put it) and
 `testTheHintsFit` (a free LFO: 0 over everywhere); `modknob_test` `testFreeOnTheKnob`; stills
 `mod-free`, `device-mod-free` in `kViews` (`textviews`, `themeviews`).
+
+**Mutants**: 34 made, 34 killed (the engine's clock: Play not resetting it, never counting, the
+wrong count playing or stopped, the steps' clock in its place, the position not switched; the rule:
+SPEED or PHASE in the cycles, the way back, `modFree` for a STEPPER, a click from between, the field
+not set or not read, not held; `modHeldFor`'s 1 BAR; RATE's ends both ways; the knob's L1 / R1, its
+dice, SPEED's name and text, both moved places; the tab's click, stick, `amount()`, B, the row as
+choices, RATE's pieces, the list's line; the file written always or never, not read, a missing
+ninth number not 1 Hz).
+
+**Joined with `main` at 0.565** (FM-6 in QMOD's place): one conflict, CLAUDE.md's list of stills.
+Under a load of 10 to 18 from other builds, the full `ctest -j3` timed out `effects1`, `effects2`,
+`app`, `nextscene` and `idle1` to `idle3`, and `themeviews` failed on `effects-held` and `starts`
+(a flat colour at 218,321 in all six themes): each passed run alone, and `themeviews` passed whole
+at load 8, as on `main`. Neither still is touched here.
 
 **Not heard by anyone.** Looked at by eye: `mod-free` and `device-mod-free` at LARGE and XL, in
 BROWN and PAPER.

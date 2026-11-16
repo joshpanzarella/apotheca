@@ -2153,6 +2153,7 @@ effect in those two groups and fails one that does not.
 | ...chunks a second: no MOD / 1 MOD / 24 MODs | 1030 / 1285 / 1287 |
 | MODs worked out, twelve silent drum tracks (the same six runs, the engines timed in turns): 1 MOD / 24 on the sends / **24 on LEVEL and PAN** (batch 8's moving level and pan loop), over none (0.171 to 0.174%) | +0.030 to +0.033% / +0.093 to +0.098% / +0.123 to +0.126% |
 | ...a macro changed, a call: Phazed / QMOD / JAX-EP (the same runs) | 0.36 / 0.92 / 0.11 us; 24 MODs on QMOD's macros run: +0.27% of a core |
+| 24 LFOs FREE against the same 24 in time, twelve silent drum tracks, on the sends (2026-11-16, three `bench` runs, the six engines timed in turns, load 5 to 12; the 24 in time +0.074 to +0.090% over none) | -0.002 to -0.005%: nothing that shows |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo (bench: twelve tracks, an edit to one) | 20 ms; 21 to 31 before undo took sounds, 22 after (2026-11-14, a busy desk) |
