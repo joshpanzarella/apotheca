@@ -37,9 +37,17 @@ namespace apotheca {
 void appendNumber(std::string& out, double v, char conversion, int precision);
 
 std::string songText(const Project& project);
+// The song's own lines as the song file writes them (songText is these, then its tracks).
+std::string songHeadText(const ProjectHead& head);
 // One track as the song file writes it (songText is these, after the song's own lines).
 std::string trackText(const TrackData& track);
+// A track's patterns as trackText writes them, and nothing else: its `auto` lines, then its scenes
+// (each as its kind writes them). Two tracks of one kind whose sounds and settings are the same
+// have the same trackText exactly when these are the same: the parts between are the same, and
+// no line of theirs begins as an `auto` or a `scene` line does.
+std::string patternText(const TrackData& track);
 
+struct TextUsed;
 // songText, made a track at a time and remembered. A track whose bytes are as they were when its
 // text was made is not written again, so asking for the text of a song nothing has changed in costs
 // a compare of its tracks' memory, not the writing of it (a 2.5 MB song: 1 ms against 70 on the
@@ -47,6 +55,8 @@ std::string trackText(const TrackData& track);
 // The kept copies take a track's size each (about 1 MB) for the tracks the song has.
 class SongTextCache {
 public:
+    SongTextCache();
+    ~SongTextCache();
     const std::string& text(const Project& project);
     // Track t's part of the last text(): from its "track" line to the next one's. Empty past the song's last track.
     const std::string& track(int t) const;
@@ -54,6 +64,7 @@ public:
 private:
     struct Part {
         std::unique_ptr<TrackData> seen; // the track as it was when `text` was made
+        std::unique_ptr<TextUsed> used;  // ...its bars and lanes that had something in them then
         std::string text;
     };
     Part parts_[kNumTracks];

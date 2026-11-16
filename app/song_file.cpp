@@ -371,16 +371,47 @@ SoundLine readSoundLine(const std::string& word, std::istream& in, const SoundPa
     return readSoundLineIn(word, in, to, oldSound);
 }
 
+// What of a track its text was made from, beyond its bytes: which bars had something in them and
+// which lanes of automation had a step written (SongTextCache::Part). A bar with nothing in it is
+// written as nothing whatever its other numbers are (putDrumScenes and putNoteScenes skip it; the
+// scene's own line asks only whether it is empty), and so is a lane with no step at 0 or over.
+struct TextUsed {
+    bool bar[kMaxScenes][kMaxBars];
+    bool lane[kMaxScenes][kAutoLanes];
+};
+
 namespace {
 
+// (Each first asks whether its piece is exactly as nothing written leaves it, a compare the library
+// does many bytes at a time; only a piece that is not is looked at number by number.)
+bool laneEmpty(const float* steps) { // as putAutomation reads a lane: a step under 0 is not written
+    static const struct None { float v[kAutoSteps]; None() { for (float& x : v) x = kAutoNone; } } none;
+    static_assert(kAutoNone < 0.f, "an unwritten step is under 0");
+    if (std::memcmp(steps, none.v, sizeof none.v) == 0) return true;
+    for (int i = 0; i < kAutoSteps; ++i)
+        if (!(steps[i] < 0.f)) return false;
+    return true;
+}
+bool levelsEmpty(const DrumPattern& p) { // DrumPattern::empty, over the levels alone
+    static const float none[kDrumLanes][kSteps] = {};
+    if (std::memcmp(p.level, none, sizeof none) == 0) return true;
+    for (const auto& lane : p.level)
+        for (float v : lane)
+            if (v > 0.f) return false;
+    return true;
+}
+bool notesEmpty(const NotePattern& p) { // NotePattern::empty
+    static const NotePattern* const none = new NotePattern();
+    return std::memcmp(&p, none, sizeof p) == 0 || p.empty();
+}
+
 // One track of a song file: from its "track" line to the next one's.
-void putTrack(std::string& out, const TrackData& track) {
-    ++gTracksWritten;
-    out += std::string("track ") + instrument(track.kind)->word + "\n";
-    if (track.name[0]) out += std::string("name ") + track.name + "\n";
+// The patterns' own lines of a track (putTrack writes them among its others): its automation...
+void putAutomation(std::string& out, const TrackData& track) {
     // auto SCENE LANE then pairs INDEX VALUE: the steps of a lane of automation that have something on them.
     for (int scene = 0; scene < kMaxScenes; ++scene)
         for (int lane = 0; lane < kAutoLanes; ++lane) {
+            if (laneEmpty(track.automation[scene][lane])) continue;
             std::string line;
             for (int i = 0; i < kAutoSteps; ++i) {
                 const float v = track.automation[scene][lane][i];
@@ -393,6 +424,124 @@ void putTrack(std::string& out, const TrackData& track) {
             put(out, " %.0f", lane);
             out += line + "\n";
         }
+}
+
+// ...a drum track's scenes...
+void putDrumScenes(std::string& out, const TrackData& track) {
+    // scene N, then "bars B" if the cell is longer than one, then each
+    // bar's hits; "bar K" comes before those of the second bar on.
+    // Then the bars the cell hides (made shorter: they come back as they were if it is made
+    // longer again), each after its "bar K" past the cell's end. A program from before
+    // reads no line for a bar the cell does not have, so it skips them.
+    for (int scene = 0; scene < kMaxScenes; ++scene) {
+        if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene)) continue;
+        put(out, "scene %.0f\n", scene + 1);
+        if (track.bars[scene] > 1) put(out, "bars %.0f\n", track.bars[scene]);
+        for (int bar = 0; bar < kMaxBars; ++bar) {
+            const DrumPattern& p = track.drums[scene][bar];
+            if (p.empty()) continue;
+            if (bar > 0) put(out, "bar %.0f\n", bar + 1);
+            out += "seeds";
+            for (std::uint32_t seed : p.diceSeed) put(out, " %.0f", seed);
+            out += "\n";
+            for (int lane = 0; lane < kDrumLanes; ++lane) {
+                for (int step = 0; step < kSteps; ++step) {
+                    if (p.level[lane][step] <= 0.f) continue;
+                    put(out, "hit %.0f", lane + 1);
+                    put(out, " %.0f", step + 1);
+                    put(out, " %.6g", p.level[lane][step]);
+                    put(out, " %.6g", p.nudge[lane][step]);
+                    put(out, " %.6g", p.chance[lane][step]);
+                    out += p.fromDice[lane][step] ? " 1" : " 0";
+                    if (p.start[lane][step] > 0.f) put(out, " %.6g", p.start[lane][step]); // where in the sound it begins
+                    out += "\n";
+                    // stepfx LANE STEP PITCH RATCHET BACKWARDS CUT [THROW]: the hit's step effects, if it has any.
+                    // THROW (1 ECHO, 2 SPACE, 3 both) is left off when it is 0, as every older song has it.
+                    // ("fx" is taken: it is an effect in a slot.)
+                    if (const StepFx& fx = p.fx[lane][step]; fx.any()) {
+                        put(out, "stepfx %.0f", lane + 1);
+                        put(out, " %.0f", step + 1);
+                        put(out, " %.0f", fx.pitch);
+                        put(out, " %.0f", fx.hits());
+                        put(out, " %.0f", fx.reverse ? 1 : 0);
+                        put(out, " %.0f", fx.cut);
+                        if (fx.throwTo) put(out, " %.0f", fx.throwTo);
+                        out += "\n";
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ...and a synth track's.
+void putNoteScenes(std::string& out, const TrackData& track) {
+    for (int scene = 0; scene < kMaxScenes; ++scene) { // (and the hidden bars, as a drum track's)
+        if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene)) continue;
+        put(out, "scene %.0f\n", scene + 1);
+        if (track.bars[scene] > 1) put(out, "bars %.0f\n", track.bars[scene]);
+        for (int bar = 0; bar < kMaxBars; ++bar) {
+            const NotePattern& p = track.notes[scene][bar];
+            if (p.empty()) continue;
+            if (bar > 0) put(out, "bar %.0f\n", bar + 1);
+            for (const NoteEvent& n : p.notes) {
+                if (n.velocity <= 0.f) continue;
+                put(out, "note %.0f", n.step + 1);
+                put(out, " %.0f", n.pitch);
+                put(out, " %.6g", n.length);
+                put(out, " %.6g", n.velocity);
+                // early or late, in steps; and then its THROW (1 ECHO, 2 SPACE, 3 both), which
+                // has the nudge written before it even at 0, so that it is the sixth number
+                if (n.nudge != 0.f || n.throwTo) put(out, " %.6g", n.nudge);
+                if (n.throwTo) put(out, " %.0f", n.throwTo);
+                out += "\n";
+                // notefx STEP KEY RATCHET GLIDE: what the note does besides play, if anything
+                if (n.ratchet >= 2 || n.glide) {
+                    put(out, "notefx %.0f", n.step + 1);
+                    put(out, " %.0f", n.pitch);
+                    put(out, " %.0f", n.ratchet >= 2 ? n.ratchet : 1);
+                    put(out, " %.0f\n", glideKind(n.glide)); // (1, "on" in an old song, is half a step)
+                }
+            }
+            // chord STEP LENGTH LEVEL INVERSION ROOT NAME then its notes above the root
+            for (const ChordEvent& c : p.chords) {
+                if (c.velocity <= 0.f) continue;
+                put(out, "chord %.0f", c.step + 1);
+                put(out, " %.6g", c.length);
+                put(out, " %.6g", c.velocity);
+                put(out, " %.0f", c.inversion);
+                put(out, " %.0f ", c.root);
+                out += c.name[0] ? c.name : "?";
+                for (int i = 0; i < c.count; ++i) put(out, " %.0f", c.intervals[i]);
+                if (c.nudge != 0.f) put(out, " nudge %.6g", c.nudge);
+                out += "\n";
+                if (c.ratchet >= 2 || c.throwTo) { // chordfx STEP RATCHET [THROW]: THROW is left off at 0
+                    put(out, "chordfx %.0f", c.step + 1);
+                    put(out, " %.0f", c.ratchet >= 2 ? c.ratchet : 1);
+                    if (c.throwTo) put(out, " %.0f", c.throwTo);
+                    out += "\n";
+                }
+                // chordplay STEP STRUM ORDER TIME LEVEL LENGTHS: the chord effects (chord_rule.hpp).
+                // A line of its own, left out when none is set: a chord that has none is written
+                // as it always was, and a program from before them skips the line whole.
+                if (c.play.strum || c.play.order || c.play.time || c.play.level || c.play.lengths) {
+                    put(out, "chordplay %.0f", c.step + 1);
+                    put(out, " %.0f", c.play.strum);
+                    put(out, " %.0f", c.play.order);
+                    put(out, " %.0f", c.play.time);
+                    put(out, " %.0f", c.play.level);
+                    put(out, " %.0f\n", c.play.lengths);
+                }
+            }
+        }
+    }
+}
+
+void putTrack(std::string& out, const TrackData& track) {
+    ++gTracksWritten;
+    out += std::string("track ") + instrument(track.kind)->word + "\n";
+    if (track.name[0]) out += std::string("name ") + track.name + "\n";
+    putAutomation(out, track);
     if (track.muted) out += "muted\n";
     // mix DB PAN: the track's level on the mixer, in dB from its usual, and its pan (-50 left .. 50 right). Left out at 0 0.
     if (track.mixDb != 0 || track.mixPan != 0) {
@@ -450,50 +599,7 @@ void putTrack(std::string& out, const TrackData& track) {
             put(out, "choke %.0f", lane + 1);
             put(out, " %.0f\n", track.laneChoke[lane]);
         }
-        // scene N, then "bars B" if the cell is longer than one, then each
-        // bar's hits; "bar K" comes before those of the second bar on.
-        // Then the bars the cell hides (made shorter: they come back as they were if it is made
-        // longer again), each after its "bar K" past the cell's end. A program from before
-        // reads no line for a bar the cell does not have, so it skips them.
-        for (int scene = 0; scene < kMaxScenes; ++scene) {
-            if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene)) continue;
-            put(out, "scene %.0f\n", scene + 1);
-            if (track.bars[scene] > 1) put(out, "bars %.0f\n", track.bars[scene]);
-            for (int bar = 0; bar < kMaxBars; ++bar) {
-                const DrumPattern& p = track.drums[scene][bar];
-                if (p.empty()) continue;
-                if (bar > 0) put(out, "bar %.0f\n", bar + 1);
-                out += "seeds";
-                for (std::uint32_t seed : p.diceSeed) put(out, " %.0f", seed);
-                out += "\n";
-                for (int lane = 0; lane < kDrumLanes; ++lane) {
-                    for (int step = 0; step < kSteps; ++step) {
-                        if (p.level[lane][step] <= 0.f) continue;
-                        put(out, "hit %.0f", lane + 1);
-                        put(out, " %.0f", step + 1);
-                        put(out, " %.6g", p.level[lane][step]);
-                        put(out, " %.6g", p.nudge[lane][step]);
-                        put(out, " %.6g", p.chance[lane][step]);
-                        out += p.fromDice[lane][step] ? " 1" : " 0";
-                        if (p.start[lane][step] > 0.f) put(out, " %.6g", p.start[lane][step]); // where in the sound it begins
-                        out += "\n";
-                        // stepfx LANE STEP PITCH RATCHET BACKWARDS CUT [THROW]: the hit's step effects, if it has any.
-                        // THROW (1 ECHO, 2 SPACE, 3 both) is left off when it is 0, as every older song has it.
-                        // ("fx" is taken: it is an effect in a slot.)
-                        if (const StepFx& fx = p.fx[lane][step]; fx.any()) {
-                            put(out, "stepfx %.0f", lane + 1);
-                            put(out, " %.0f", step + 1);
-                            put(out, " %.0f", fx.pitch);
-                            put(out, " %.0f", fx.hits());
-                            put(out, " %.0f", fx.reverse ? 1 : 0);
-                            put(out, " %.0f", fx.cut);
-                            if (fx.throwTo) put(out, " %.0f", fx.throwTo);
-                            out += "\n";
-                        }
-                    }
-                }
-            }
-        }
+        putDrumScenes(out, track);
     } else {
         if (track.kind == TrackKind::Sampler) {
             // sound NAME: its recording. sampler: root tune start attack release loop level [end]. END is
@@ -512,70 +618,12 @@ void putTrack(std::string& out, const TrackData& track) {
             for (int i = 0; i < settingCount(track.kind); ++i) put(out, " %.0f", values[i]);
             out += "\n";
         }
-        for (int scene = 0; scene < kMaxScenes; ++scene) { // (and the hidden bars, as a drum track's)
-            if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene)) continue;
-            put(out, "scene %.0f\n", scene + 1);
-            if (track.bars[scene] > 1) put(out, "bars %.0f\n", track.bars[scene]);
-            for (int bar = 0; bar < kMaxBars; ++bar) {
-                const NotePattern& p = track.notes[scene][bar];
-                if (p.empty()) continue;
-                if (bar > 0) put(out, "bar %.0f\n", bar + 1);
-                for (const NoteEvent& n : p.notes) {
-                    if (n.velocity <= 0.f) continue;
-                    put(out, "note %.0f", n.step + 1);
-                    put(out, " %.0f", n.pitch);
-                    put(out, " %.6g", n.length);
-                    put(out, " %.6g", n.velocity);
-                    // early or late, in steps; and then its THROW (1 ECHO, 2 SPACE, 3 both), which
-                    // has the nudge written before it even at 0, so that it is the sixth number
-                    if (n.nudge != 0.f || n.throwTo) put(out, " %.6g", n.nudge);
-                    if (n.throwTo) put(out, " %.0f", n.throwTo);
-                    out += "\n";
-                    // notefx STEP KEY RATCHET GLIDE: what the note does besides play, if anything
-                    if (n.ratchet >= 2 || n.glide) {
-                        put(out, "notefx %.0f", n.step + 1);
-                        put(out, " %.0f", n.pitch);
-                        put(out, " %.0f", n.ratchet >= 2 ? n.ratchet : 1);
-                        put(out, " %.0f\n", glideKind(n.glide)); // (1, "on" in an old song, is half a step)
-                    }
-                }
-                // chord STEP LENGTH LEVEL INVERSION ROOT NAME then its notes above the root
-                for (const ChordEvent& c : p.chords) {
-                    if (c.velocity <= 0.f) continue;
-                    put(out, "chord %.0f", c.step + 1);
-                    put(out, " %.6g", c.length);
-                    put(out, " %.6g", c.velocity);
-                    put(out, " %.0f", c.inversion);
-                    put(out, " %.0f ", c.root);
-                    out += c.name[0] ? c.name : "?";
-                    for (int i = 0; i < c.count; ++i) put(out, " %.0f", c.intervals[i]);
-                    if (c.nudge != 0.f) put(out, " nudge %.6g", c.nudge);
-                    out += "\n";
-                    if (c.ratchet >= 2 || c.throwTo) { // chordfx STEP RATCHET [THROW]: THROW is left off at 0
-                        put(out, "chordfx %.0f", c.step + 1);
-                        put(out, " %.0f", c.ratchet >= 2 ? c.ratchet : 1);
-                        if (c.throwTo) put(out, " %.0f", c.throwTo);
-                        out += "\n";
-                    }
-                    // chordplay STEP STRUM ORDER TIME LEVEL LENGTHS: the chord effects (chord_rule.hpp).
-                    // A line of its own, left out when none is set: a chord that has none is written
-                    // as it always was, and a program from before them skips the line whole.
-                    if (c.play.strum || c.play.order || c.play.time || c.play.level || c.play.lengths) {
-                        put(out, "chordplay %.0f", c.step + 1);
-                        put(out, " %.0f", c.play.strum);
-                        put(out, " %.0f", c.play.order);
-                        put(out, " %.0f", c.play.time);
-                        put(out, " %.0f", c.play.level);
-                        put(out, " %.0f\n", c.play.lengths);
-                    }
-                }
-            }
-        }
+        putNoteScenes(out, track);
     }
 }
 
 // The song's own lines, before its tracks.
-void putHead(std::string& out, const Project& project) {
+void putHead(std::string& out, const ProjectHead& project) {
     out += "apotheca-song 1\n";
     put(out, "tempo %.6g\n", project.tempo);
     out += "repeats";
@@ -610,27 +658,69 @@ void putHead(std::string& out, const Project& project) {
     }
 }
 
-// Are the two tracks the same, in every byte their text is made from? (The drum patterns of a
-// synth track, and the notes of a drum track, are not written: a difference there is not one.)
-// Whole bytes: two that differ in a byte the text does not show only make it written again.
-bool sameForText(const TrackData& a, const TrackData& b) {
+void markUsed(const TrackData& track, TextUsed& used) {
+    for (int scene = 0; scene < kMaxScenes; ++scene) {
+        for (int bar = 0; bar < kMaxBars; ++bar)
+            used.bar[scene][bar] = track.kind == TrackKind::Drums ? !levelsEmpty(track.drums[scene][bar]) : !notesEmpty(track.notes[scene][bar]);
+        for (int lane = 0; lane < kAutoLanes; ++lane) used.lane[scene][lane] = !laneEmpty(track.automation[scene][lane]);
+    }
+}
+
+// Would `now` be written as `seen` was (whose bars and lanes in use are `used`)? Everything outside
+// the patterns byte for byte; a bar or a lane that had something in it byte for byte; one that had
+// nothing only looked at to see it still has nothing (one side read, a quarter of a drum bar). The
+// drum patterns of a synth track, and the notes of a drum track, are not written: not looked at.
+// Whole bytes where they are compared: a difference the text does not show only makes it written again.
+bool sameForText(const TrackData& seen, const TextUsed& used, const TrackData& now) {
     static_assert(std::is_trivially_copyable<TrackData>::value, "a track is kept and compared as bytes");
-    const char* x = reinterpret_cast<const char*>(&a);
-    const char* y = reinterpret_cast<const char*>(&b);
-    const std::size_t drums = static_cast<std::size_t>(reinterpret_cast<const char*>(&a.drums) - x);
-    const std::size_t notes = static_cast<std::size_t>(reinterpret_cast<const char*>(&a.notes) - x);
-    const std::size_t after = static_cast<std::size_t>(reinterpret_cast<const char*>(&a.bars) - x);
-    if (notes != drums + sizeof a.drums || after != notes + sizeof a.notes) return false; // (laid out otherwise: never the same)
-    if (std::memcmp(x, y, drums) != 0) return false; // what comes before the patterns: the kind
-    if (std::memcmp(x + after, y + after, sizeof(TrackData) - after) != 0) return false; // everything after them
-    return a.kind == TrackKind::Drums ? std::memcmp(x + drums, y + drums, sizeof a.drums) == 0 : std::memcmp(x + notes, y + notes, sizeof a.notes) == 0;
+    const char* x = reinterpret_cast<const char*>(&seen);
+    const char* y = reinterpret_cast<const char*>(&now);
+    const std::size_t drums = static_cast<std::size_t>(reinterpret_cast<const char*>(&seen.drums) - x);
+    const std::size_t notes = static_cast<std::size_t>(reinterpret_cast<const char*>(&seen.notes) - x);
+    const std::size_t after = static_cast<std::size_t>(reinterpret_cast<const char*>(&seen.bars) - x);
+    const std::size_t automation = static_cast<std::size_t>(reinterpret_cast<const char*>(&seen.automation) - x);
+    const std::size_t afterAutomation = automation + sizeof seen.automation;
+    if (notes != drums + sizeof seen.drums || after != notes + sizeof seen.notes || automation < after) return false; // (laid out otherwise: never the same)
+    if (std::memcmp(x, y, drums) != 0) return false;                                                  // the kind
+    if (std::memcmp(x + after, y + after, automation - after) != 0) return false;                     // the bars, the sound, the settings
+    if (std::memcmp(x + afterAutomation, y + afterAutomation, sizeof(TrackData) - afterAutomation) != 0) return false; // the name, the sampler...
+    const bool kit = seen.kind == TrackKind::Drums;
+    for (int scene = 0; scene < kMaxScenes; ++scene)
+        for (int bar = 0; bar < kMaxBars; ++bar) {
+            if (used.bar[scene][bar]) {
+                if (kit ? std::memcmp(&seen.drums[scene][bar], &now.drums[scene][bar], sizeof(DrumPattern)) != 0
+                        : std::memcmp(&seen.notes[scene][bar], &now.notes[scene][bar], sizeof(NotePattern)) != 0) return false;
+            } else if (kit ? !levelsEmpty(now.drums[scene][bar]) : !notesEmpty(now.notes[scene][bar])) {
+                return false;
+            }
+        }
+    for (int scene = 0; scene < kMaxScenes; ++scene)
+        for (int lane = 0; lane < kAutoLanes; ++lane) {
+            if (used.lane[scene][lane] ? std::memcmp(seen.automation[scene][lane], now.automation[scene][lane], sizeof seen.automation[scene][lane]) != 0
+                                       : !laneEmpty(now.automation[scene][lane])) return false;
+        }
+    return true;
 }
 
 } // namespace
 
+std::string patternText(const TrackData& track) {
+    std::string out;
+    putAutomation(out, track);
+    if (track.kind == TrackKind::Drums) putDrumScenes(out, track);
+    else if (isSynth(track.kind)) putNoteScenes(out, track);
+    return out;
+}
+
 std::string trackText(const TrackData& track) {
     std::string out;
     putTrack(out, track);
+    return out;
+}
+
+std::string songHeadText(const ProjectHead& head) {
+    std::string out;
+    putHead(out, head);
     return out;
 }
 
@@ -641,6 +731,9 @@ std::string songText(const Project& project) {
     return out;
 }
 
+SongTextCache::SongTextCache() = default;
+SongTextCache::~SongTextCache() = default;
+
 const std::string& SongTextCache::text(const Project& project) {
     std::string head;
     putHead(head, project);
@@ -649,15 +742,17 @@ const std::string& SongTextCache::text(const Project& project) {
     for (int t = 0; t < count; ++t) {
         Part& part = parts_[t];
         const TrackData& now = project.tracks[t];
-        if (part.seen && sameForText(*part.seen, now)) continue;
-        if (!part.seen) part.seen.reset(new TrackData);
+        if (part.seen && sameForText(*part.seen, *part.used, now)) continue;
+        if (!part.seen) part.seen.reset(new TrackData), part.used.reset(new TextUsed);
         std::memcpy(static_cast<void*>(part.seen.get()), &now, sizeof now); // byte for byte, what lies between the fields too
+        markUsed(now, *part.used);
         part.text.clear();
         putTrack(part.text, now);
         changed = true;
     }
     for (int t = count; t < kNumTracks; ++t) { // a track taken away: its copy goes too
         parts_[t].seen.reset();
+        parts_[t].used.reset();
         parts_[t].text.clear();
     }
     if (changed) {
