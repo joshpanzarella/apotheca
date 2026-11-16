@@ -125,7 +125,14 @@ plays the recording as it was made; an octave up, twice as fast.
 | On | Hold A + up / down | B |
 | --- | --- | --- |
 | SOUND | **Tap A: the list of recordings.** Or hold A + up / down: one at a time | None |
-| PITCH, TUNE, START, ATTACK, RELEASE, LOOP, LEVEL | The stick turns it; the D-pad moves it by one | Its usual value |
+| PITCH, TUNE, START, END, ATTACK, RELEASE, LOOP, LEVEL | The stick turns it; the D-pad moves it by one | Its usual value |
+
+**START and END are where a note begins and ends in the recording**, in
+percent of it: a note plays from START to END and stops, and with LOOP on it
+goes round between the two. END is beside START and starts at 100% (the
+recording's end). **They never cross**: turned toward each other, each stops a
+percent short of the other. The recording's picture marks both in purple and
+lights only what a note plays.
 
 **PITCH is semitones up or down, and up is higher.** (It used to be ROOT, a
 key, which ran the other way. Old songs open as they were.) **X hears it at

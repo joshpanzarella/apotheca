@@ -28,6 +28,7 @@
 //                  (a handheld with no MENU button: its hint, and its help card)
 //                  picker, picker-in, picker-deep, picker-deleting, picker-new, picker-typing, picker-carrying, picker-folder-deleting, sampler-picker (with --samples: the list
 //                  of recordings in its columns: on SAMPLES, in a folder, two folders down, B held, the sampler's)
+//                  sampler, sampler-end (with --samples: a sampler track, START 12% and END 80%, the cursor on START / END)
 //   --hold-a, --hold-y, --on-name, --on-tempo, --dice, --paint, --paint-random
 //                  with --demo: a gesture held on the drum grid
 //   --no-menu      with --shot: any view as on a handheld with no MENU button (the bar's
@@ -674,13 +675,14 @@ int main(int argc, char** argv) {
         tapKey(SDLK_BACKSPACE); // SELECT: the list of songs
     } else if (std::strncmp(view, "sampler", 7) == 0) {
         // With --samples: a sampler track playing the first recording.
-        app.session().addTrack(TrackKind::Sampler);
+        if (!app.session().addTrack(TrackKind::Sampler)) app.session().setTrackKind(app.project().trackCount() - 1, TrackKind::Sampler); // (the demo has all twelve: the last becomes one)
         app.project().track = app.project().trackCount() - 1;
         const std::vector<std::string> names = app.session().sampleNames();
         if (!names.empty()) app.session().setTrackSample(app.project().track, names[0]);
         app.session().setSamplerSetting(app.project().track, sampler::Start, 12);
+        app.session().setSamplerSetting(app.project().track, sampler::End, 80); // (its mark too)
         app.session().view = View::Device;
-        app.sampler().goTo(3);
+        app.sampler().goTo(std::strcmp(view, "sampler-end") == 0 ? 4 : 3); // START; sampler-end: END, beside it
         if (std::strcmp(view, "sampler-picker") == 0) { // its list of recordings, open on the one that is on
             app.sampler().goTo(0);
             tapKey(SDLK_x);

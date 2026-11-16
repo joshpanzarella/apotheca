@@ -949,6 +949,118 @@ void testTheSamplersPictureIsTall() {
     CHECK(lowest < SamplerScreen::kSoundY + SamplerScreen::kSoundH - 6); // inside its box, clear of its edge
 }
 
+// END (owner, 2026-11-15: "an END parameter in the SAMPLER to complement the START"): beside START,
+// read the same way; turned, it never comes within a percent of START (nor START of it); a note
+// stops there; the song file keeps it only where it is not 100%; undo puts it back; the picture
+// marks it as it marks START, and lights only what a note plays.
+void testTheSamplersEnd() {
+    const SDL_Keycode SELECT = SDLK_BACKSPACE;
+    const std::string folder = tempFolder();
+    writeWav(folder + "/alpha.wav", tone(1.f, 0.9f), 48000);
+    Rig rig(folder);
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Sampler));
+    TrackData& track = rig.project().tracks[1];
+    CHECK(track.sampler[sampler::End] == 100 && sampler::settingDefault(sampler::End) == 100);
+    rig.project().track = 1;
+    session.view = View::Device;
+    session.setTrackSample(1, "alpha");
+    session.setSamplerSetting(1, sampler::Release, 0);
+    session.setSamplerSetting(1, sampler::Attack, 0);
+    SamplerScreen& screen = rig.app.sampler();
+    // Its place: right of START, in the first row (PITCH, TUNE, START, END); ATTACK begins the second.
+    CHECK(SamplerScreen::settingAt(2) == sampler::Start && SamplerScreen::settingAt(3) == sampler::End && SamplerScreen::settingAt(4) == sampler::Attack);
+    screen.goTo(0);
+    rig.tap(DOWN);
+    rig.tap(RIGHT, 3);
+    CHECK(screen.cursor() == 4);
+    rig.frames(2);
+    // Hold A: the D-pad turns it a percent, as START. Down to 40%.
+    rig.key(A, true);
+    rig.tap(DOWN, 60);
+    rig.key(A, false);
+    CHECK(track.sampler[sampler::End] == 40);
+    char shown[24];
+    samplerSettingText(sampler::End, 40, shown, sizeof shown);
+    CHECK(std::string(shown) == "40%"); // as START reads
+    // A note stops there: 40% of a second.
+    rig.frames(60);
+    rig.render(100000);
+    session.audition(1, 60, 1.f);
+    rig.frames(1);
+    CHECK(std::abs(Rig::sounding(rig.render(48000)) - 19200) <= 2);
+    rig.frames(60);
+    rig.render(100000);
+    // START held under END: turned up, it stops a percent short; END turned down stops a percent over it.
+    rig.tap(LEFT); // START
+    rig.key(A, true);
+    rig.tap(UP, 70);
+    rig.key(A, false);
+    CHECK(track.sampler[sampler::Start] == 39);
+    rig.tap(RIGHT); // END
+    rig.key(A, true);
+    rig.tap(DOWN, 10);
+    rig.key(A, false);
+    CHECK(track.sampler[sampler::End] == 40);
+    rig.key(A, true); // the stick, all the way down for a second: held there too
+    rig.key(STICK_DOWN, true);
+    rig.frames(70);
+    rig.key(STICK_DOWN, false);
+    rig.key(A, false);
+    CHECK(track.sampler[sampler::End] == 40 && track.sampler[sampler::Start] == 39);
+    // B: its usual value, the recording's end.
+    rig.tap(B);
+    CHECK(track.sampler[sampler::End] == 100);
+    rig.tap(LEFT);
+    rig.tap(B);
+    CHECK(track.sampler[sampler::Start] == 0);
+    rig.frames(120);
+
+    // The song file: left out at 100% (the line as it always was), written after LEVEL otherwise.
+    CHECK(songText(rig.project()).find("sampler 60 0 0 0 0 0 80\n") != std::string::npos);
+    session.setSamplerSetting(1, sampler::Start, 10);
+    session.setSamplerSetting(1, sampler::End, 65);
+    const std::string text = songText(rig.project());
+    CHECK(text.find("sampler 60 0 10 0 0 0 80 65\n") != std::string::npos);
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back) && back->tracks[1].sampler[sampler::End] == 65 && songText(*back) == text);
+    // An older line has no END: the recording's end. One that puts END before START is held after it.
+    CHECK(parseSong("apotheca-song 1\ntrack sampler\nsampler 60 0 30 0 0 0 80\n", *back) && back->tracks[0].sampler[sampler::End] == 100);
+    CHECK(parseSong("apotheca-song 1\ntrack sampler\nsampler 60 0 30 0 0 0 80 12\n", *back) && back->tracks[0].sampler[sampler::End] == 31);
+    CHECK(parseSong("apotheca-song 1\ntrack sampler\nsampler 60 0 100 0 0 0 80 1e300\n", *back) && back->tracks[0].sampler[sampler::End] == 100);
+
+    // Undo: the END before the turn comes back (a sampler's settings are in soundMark).
+    rig.frames(120);
+    session.setSamplerSetting(1, sampler::End, 20);
+    rig.frames(120);
+    rig.key(SELECT, true);
+    rig.tap(B);
+    rig.key(SELECT, false);
+    rig.frames(2);
+    CHECK(track.sampler[sampler::End] == 65);
+
+    // The picture: START's mark and END's, purple, and only the part a note plays lit.
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    screen.goTo(0);
+    rig.frames(2);
+    rig.app.draw(canvas.r, *canvas.fonts);
+    const int wx = 15, ww = 624 - 14, mid = SamplerScreen::kWaveY + SamplerScreen::kWaveH / 2;
+    const int startX = wx + static_cast<int>(0.10f * ww), endX = wx + SamplerScreen::endMarkX(0.65f, ww);
+    CHECK(canvas.is(startX, mid, ui::kPurple) && canvas.is(endX, mid, ui::kPurple) && canvas.is(endX + 1, mid, ui::kPurple));
+    int purple = 0;
+    for (int x = wx; x < wx + ww; ++x) purple += canvas.is(x, mid, ui::kPurple);
+    CHECK(purple == 4); // the two marks, two wide each
+    CHECK(canvas.is(wx + static_cast<int>(0.4f * ww), mid, ui::kText));  // played: lit
+    CHECK(canvas.is(wx + static_cast<int>(0.8f * ww), mid, ui::kLine));  // past END: not
+    CHECK(canvas.is(wx + static_cast<int>(0.05f * ww), mid, ui::kLine)); // before START: not
+    // The line across it while it is heard ends at END.
+    rig.tap(X);
+    rig.frames(2);
+    CHECK(screen.playhead().to == 0.65f && std::fabs(screen.playhead().wholeLength() - 0.55f) < 1e-3f);
+}
+
 void testTheSamplerTrack() {
     const std::string folder = tempFolder();
     writeWav(folder + "/alpha.wav", tone(0.5f, 0.25f), 48000);
@@ -1058,12 +1170,16 @@ void testTheSamplerTrack() {
     rig.tap(RIGHT, 3);
     CHECK(screen.cursor() == 4);
     rig.tap(DOWN);
-    CHECK(screen.cursor() == 7); // LEVEL is under ATTACK; there is no eighth
+    CHECK(screen.cursor() == 8); // LEVEL is under END (two rows of four)
     rig.tap(LEFT, 2);
-    CHECK(screen.cursor() == 5);
+    CHECK(screen.cursor() == 6);
     rig.tap(DOWN);
-    CHECK(screen.cursor() == 5);
+    CHECK(screen.cursor() == 6);
     rig.tap(UP);
+    CHECK(screen.cursor() == 2);
+    rig.tap(UP);
+    CHECK(screen.cursor() == 0);
+    rig.tap(DOWN);
     CHECK(screen.cursor() == 1);
     rig.tap(UP);
     CHECK(screen.cursor() == 0);
@@ -2405,6 +2521,7 @@ int main(int, char**) {
     testCatch();
     testTheSamplerTrack();
     testTheSamplersPictureIsTall();
+    testTheSamplersEnd();
     testTheRecorder();
     testRecordingOntoALane();
     if (failures) {
