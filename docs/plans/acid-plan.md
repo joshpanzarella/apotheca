@@ -249,3 +249,21 @@ constant or one row.
 | 11 | A one-press ACCENT gesture | **None**: hold A + RIGHT is one click; the roll marks a 100% note on an ACID track |
 | 12 | Y on MAIN | **Nothing** (no ROLL) |
 | 13 | Presets | **32 in five folders** (CLASSIC, SQUELCH, DEEP, DISTORTED, MOVING); preset 0 Classic Saw |
+
+## 8. As built
+
+### Batch 0, the rule (2026-11-16)
+
+`engine/include/apotheca/acid_rule.hpp`: the settings table (14 ids, room 20, ranges, usual
+values), the macros lane by lane, `macroBent` (the house rule), `kAccentAt` and `accented`, the tie
+(`kTieMs`, `slides`), SLIDE's time and shape (`slideSeconds`, `slideLeft`: an RC of three time
+constants bent to land exactly, `slideStep`, `slideSamples`), and every dial's reading (CUTOFF in
+HZ, the two decays, ENV MOD, ACCENT's dB and octaves, the sweep's time and its one-accent peak,
+RESONANCE's share of the edge, DRIVE's gain). `tests/acid_test.cpp` holds it (`testSettings`,
+`testRule`, `testSlideShape`, `testReadings`).
+
+- **No source was opened**: every figure is SELF, including what the plan remembers from RW. Said
+  at the top of the header.
+- **AMP DECAY's usual is 80, not 70**: on the scale 0.2 S to 6 S, 80 reads 3.0 S (the plan's guess
+  for the original); 70 reads 2.2 S.
+- Both decays read as the time to fall to a tenth (-20 dB).
