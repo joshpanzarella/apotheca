@@ -405,6 +405,21 @@ void theSession(Rig& rig, const std::string& samples) {
     rig.press(B); // closed
     rig.run(500);
 
+    rig.part = "the kit: a lane's EDIT, heard, normalized, its edits deleted";
+    rig.press(RIGHT), rig.press(RIGHT), rig.press(RIGHT); // the sound's picture: EDIT
+    rig.press(A);
+    rig.run(300);
+    rig.press(X); // its line runs over the file's picture
+    rig.run(2500);
+    rig.press(DOWN); // GAIN
+    rig.press(Y);    // NORMALIZED: said for a moment
+    rig.run(3000);
+    rig.hold(B, 1200); // the bar fills, every edit goes
+    rig.run(500);
+    rig.press(B); // (GAIN at its usual value: back to the kit)
+    rig.press(RIGHT); // SOUND again
+    rig.run(500);
+
     rig.part = "the sampler: a recording heard";
     rig.byHand([&] {
         s.addTrack(TrackKind::Sampler);

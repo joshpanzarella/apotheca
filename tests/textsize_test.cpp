@@ -1473,6 +1473,54 @@ void testTheOtherScreens() {
     CHECK(ui::gHintsOver == 0);
     rig.key(SDLK_x, false);
     rig.frames(1);
+    // EDIT: the column, then the view on the long name in the long folder with every row at its
+    // widest, A held, what is said, the bar filling, a built-in drum and a recording gone.
+    {
+        LaneEdit wide;
+        wide.start = 99999;
+        wide.end = kEditUnits;
+        wide.gain = -kGainMost;
+        wide.fadeIn = 1500;
+        wide.fadeOut = 750;
+        wide.reverse = 1;
+        wide.pitch = -kPitchMost;
+        wide.fine = -kFineMost;
+        session.setLaneEdit(0, 2, wide);
+        rig.app.kit().goTo(2, KitScreen::kEdit);
+        rig.frames(2);
+        holds(rig, "the kit, on EDIT");
+        CHECK(ui::gHintsOver == 0);
+        rig.app.kit().openEdit(kEditGain);
+        rig.frames(2);
+        CHECK(holds(rig, "a lane's EDIT, every row at its widest") > 8);
+        CHECK(drew("FADE OUT") && drew("-24.0 DB") && drew("-50 CENTS") && drew("REVERSE"));
+        CHECK(ui::gHintsOver == 0);
+        rig.key(SDLK_x, true); // A held
+        rig.frames(1);
+        holds(rig, "a lane's EDIT, A held");
+        rig.key(SDLK_x, false);
+        rig.frames(1);
+        rig.tap(SDLK_a); // NORMALIZED: GAIN ..., said in the heading
+        holds(rig, "a lane's EDIT, NORMALIZED said");
+        rig.key(SDLK_z, true); // B held: the bar fills
+        rig.frames(30);
+        holds(rig, "a lane's EDIT, its edits being deleted");
+        rig.key(SDLK_z, false);
+        rig.frames(2);
+        rig.tap(SDLK_z); // back to the kit
+        rig.app.kit().goTo(4, KitScreen::kEdit);
+        rig.app.kit().openEdit(kEditStart);
+        rig.frames(2);
+        holds(rig, "a lane's EDIT, its recording gone");
+        rig.tap(SDLK_z);
+        rig.app.kit().goTo(7, KitScreen::kEdit);
+        rig.app.kit().openEdit(kEditEnd);
+        rig.frames(2);
+        holds(rig, "a lane's EDIT, a built-in drum");
+        rig.tap(SDLK_z);
+        CHECK(!rig.app.kit().editing());
+        session.setLaneEdit(0, 2, LaneEdit());
+    }
     rig.app.kit().goTo(2, KitScreen::kSound);
     // The list, in columns: in the long folder, on the long name; then every place it can be, and
     // the hints bar holding all it says at each.

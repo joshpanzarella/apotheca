@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "apotheca/engine.hpp"
+#include "apotheca/fm6.hpp"
 #include "app.hpp"
 #include "instruments.hpp"
 #include "mods.hpp"
@@ -1046,6 +1047,180 @@ void testJaxepPresetsAsHeard(bool measure) {
     }
 }
 
+// ---- FM-6's added presets, heard through their whole sound ------------------------------------------
+// (docs/plans/fm6-plan.md, section 11.) The same way as PHYSIC's, with a phrase of its own, and one more
+// thing held: each MOD is HEARD, not only moving (the phrase played again with that MOD off must differ).
+
+struct Fm6Heard {
+    double loudestDb = -200.0; // the loudest tenth of a second, RMS of the louder side, dB of full scale
+    float peak = 0.f;          // the largest sample, anywhere, the tail too
+    double tail = 0.0;         // seconds from Stop to the last tenth over -80 dB
+    bool ended = false;        // silent for 12 s before the cap
+    bool numbers = true;       // every sample a number
+    float modSwing[kModsPerTrack] = {}; // how far what each MOD adds moved while playing (0: did not move)
+    double modHeardDb[kModsPerTrack] = {-200.0, -200.0}; // the phrase with that MOD off, against with it: the
+                                                         // difference's RMS over the sound's, in dB
+    double cost = 0.0;         // the engine's time over the sound's while it played: a share of a core (this machine)
+};
+
+// A bass is played low and as one line; anything else plays keys.
+bool fm6IsBass(int preset) { return std::strcmp(specFor(TrackKind::Fm6)->presetCategory(preset), "BASS") == 0; }
+
+// The phrase, a bar at 120 BPM played round twice (4 s), then Stop and the tail. Keys: a low note held
+// the whole bar under four notes up, a four-key chord held six steps (loose notes: one moment), a high
+// note. A bass: a line around C1 and C2 with one long note. All at the level a note is placed at.
+// `without` is a MOD put OFF after the pick (-1: none); `out`, when given, keeps the 4 s played.
+Fm6Heard hearFm6Preset(int preset, int without = -1, std::vector<float>* out = nullptr) {
+    Fm6Heard h;
+    Rig rig;
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Fm6));
+    const int track = rig.project().trackCount() - 1;
+    session.chooseSynthPreset(track, preset);
+    rig.settle();
+    if (without >= 0) {
+        CHECK(session.setMod(track, without, ModSettings()));
+        rig.settle();
+    }
+    NotePattern& bar = rig.project().tracks[track].notes[0][0];
+    const int keys[][3] = {{0, 48, 16}, {0, 60, 2}, {2, 67, 2}, {4, 64, 2}, {6, 72, 2}, {8, 55, 6}, {8, 60, 6}, {8, 64, 6}, {8, 71, 6}, {14, 79, 2}};
+    const int bass[][3] = {{0, 36, 2}, {2, 43, 1}, {3, 36, 1}, {4, 40, 2}, {6, 48, 2}, {8, 31, 6}, {14, 43, 2}};
+    int slot = 0;
+    if (fm6IsBass(preset))
+        for (const auto& n : bass) bar.notes[slot++] = NoteEvent{n[0], n[1], static_cast<float>(n[2]), 0.f, kPlacedLevel};
+    else
+        for (const auto& n : keys) bar.notes[slot++] = NoteEvent{n[0], n[1], static_cast<float>(n[2]), 0.f, kPlacedLevel};
+    session.sendNotePattern(track, 0);
+    rig.settle();
+    rig.render(48000 * 3); // anything the pick sounded, gone by (FM bells ring)
+    const int window = 4800;
+    std::vector<float> block(2 * 768);
+    double sumL = 0.0, sumR = 0.0;
+    int inWindow = 0;
+    long frame = 0, lastLoud = 0, stopAt = -1;
+    float least[kModsPerTrack], most[kModsPerTrack];
+    for (int m = 0; m < kModsPerTrack; ++m) least[m] = 1e9f, most[m] = -1e9f;
+    double busy = 0.0;
+    const long playFrames = 4 * 48000, cap = playFrames + 120L * 48000;
+    session.togglePlay(false);
+    rig.frames(1);
+    while (frame < cap) {
+        if (frame >= playFrames && stopAt < 0) {
+            session.togglePlay(false);
+            stopAt = frame;
+            if (out) break; // a take of the phrase only
+        }
+        const auto start = std::chrono::steady_clock::now();
+        rig.engine->render(block.data(), 768);
+        if (stopAt < 0) busy += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        rig.frames(1);
+        if (out) out->insert(out->end(), block.begin(), block.end());
+        for (int i = 0; i < 768; ++i) {
+            const float l = block[2 * i], r = block[2 * i + 1];
+            h.numbers = h.numbers && std::isfinite(l) && std::isfinite(r);
+            h.peak = std::max(h.peak, std::max(std::fabs(l), std::fabs(r)));
+            sumL += static_cast<double>(l) * l, sumR += static_cast<double>(r) * r;
+            if (++inWindow == window) {
+                const double rms = std::sqrt(std::max(sumL, sumR) / window);
+                h.loudestDb = std::max(h.loudestDb, 20.0 * std::log10(rms + 1e-12));
+                if (rms > 1e-4) lastLoud = frame + i + 1;
+                sumL = sumR = 0.0, inWindow = 0;
+            }
+        }
+        frame += 768;
+        if (stopAt < 0)
+            for (int m = 0; m < kModsPerTrack; ++m) {
+                const float shown = rig.engine->modShown(track, m);
+                if (std::isfinite(shown)) least[m] = std::min(least[m], shown), most[m] = std::max(most[m], shown);
+            }
+        if (stopAt >= 0 && frame - lastLoud > 12L * 48000) {
+            h.ended = true;
+            break;
+        }
+    }
+    for (int m = 0; m < kModsPerTrack; ++m) h.modSwing[m] = most[m] > least[m] ? most[m] - least[m] : 0.f;
+    h.tail = (lastLoud > stopAt ? lastLoud - stopAt : 0) / 48000.0;
+    h.cost = busy / (playFrames / 48000.0);
+    return h;
+}
+
+// Every MOD of a preset, heard: the phrase with it off against the phrase with both on, sample for sample
+// (the engine is fresh both times, so with nothing changed the two are the same to the bit).
+void hearFm6Mods(int preset, Fm6Heard& h) {
+    const TrackSound* sound = presetSound(TrackKind::Fm6, preset);
+    if (!sound) return;
+    std::vector<float> all;
+    hearFm6Preset(preset, -1, &all);
+    double signal = 0.0;
+    for (float v : all) signal += static_cast<double>(v) * v;
+    for (int m = 0; m < kModsPerTrack; ++m) {
+        if (sound->mods[m].kind == kModOff) continue;
+        std::vector<float> without;
+        hearFm6Preset(preset, m, &without);
+        double apart = 0.0;
+        for (std::size_t i = 0; i < all.size() && i < without.size(); ++i) apart += (static_cast<double>(all[i]) - without[i]) * (static_cast<double>(all[i]) - without[i]);
+        h.modHeardDb[m] = 10.0 * std::log10((apart + 1e-30) / (signal + 1e-30));
+    }
+}
+
+// The limits every added FM-6 preset is held to. The window is the engine's own 160 played the same
+// way (measured 2026-11-16, fm6-plan.md section 11), with room either side. Nothing is pinned by
+// checksum: the owner tunes them by ear.
+constexpr double kFm6QuietestDb = -26.0, kFm6LoudestDb = -10.0;
+constexpr float kFm6PeakMost = 0.9f;
+constexpr double kFm6TailMost = 60.0;
+constexpr double kFm6ModHeardDb = -40.0; // a MOD turned off changes the phrase by at least 1% of its RMS
+
+void testFm6PresetsAsHeard(bool measure) {
+    const TrackKind kind = TrackKind::Fm6;
+    const SynthSpec& spec = *specFor(kind);
+    const int first = measure ? 0 : enginePresets(kind);
+    if (measure) std::printf("  %-3s %-14s %-20s %8s %6s %6s %7s  %s\n", "", "folder", "name", "loudest", "peak", "tail", "cost", "MODs swing / heard");
+    for (int i = first; i < builtInPresets(kind); ++i) {
+        Fm6Heard h = hearFm6Preset(i);
+        hearFm6Mods(i, h);
+        const TrackSound* sound = presetSound(kind, i);
+        bool modsMove = true;
+        char swing[96] = "";
+        for (int m = 0; m < kModsPerTrack; ++m) {
+            if (!sound || sound->mods[m].kind == kModOff) continue;
+            modsMove = modsMove && h.modSwing[m] > 0.005f && h.modHeardDb[m] >= kFm6ModHeardDb;
+            char one[40];
+            std::snprintf(one, sizeof one, " %d:%.2f/%.0fdB", m + 1, h.modSwing[m], h.modHeardDb[m]);
+            std::strcat(swing, one);
+        }
+        if (measure)
+            std::printf("  %-3d %-14s %-20s %6.1f dB %6.3f %5.1fs %6.2f%% %s\n", i + 1, spec.presetCategory(i), spec.presetName(i), h.loudestDb, h.peak, h.tail, h.cost * 100.0, swing);
+        if (i < enginePresets(kind)) continue;
+        const bool fine = h.numbers && h.loudestDb >= kFm6QuietestDb && h.loudestDb <= kFm6LoudestDb && h.peak < kFm6PeakMost && h.ended && h.tail <= kFm6TailMost && modsMove;
+        if (!fine) std::printf("  FM-6 %d %s / %s: loudest %.1f dB, peak %.3f, tail %.1f s%s%s, MODs%s\n", i + 1, spec.presetCategory(i), spec.presetName(i), h.loudestDb, h.peak, h.tail, h.ended ? "" : " (not ended)", h.numbers ? "" : ", NOT A NUMBER", swing);
+        CHECK(h.numbers);
+        CHECK(h.loudestDb >= kFm6QuietestDb && h.loudestDb <= kFm6LoudestDb);
+        CHECK(h.peak < kFm6PeakMost);
+        CHECK(h.ended && h.tail <= kFm6TailMost);
+        CHECK(modsMove);
+    }
+}
+
+// FM-6's `op N` line: one operator's 21 settings in order, refused for another synth or cut short.
+void testFm6sOpLine() {
+    const std::string text =
+        "new MINE / Op\n"
+        "op 2 1 2 3 4 5 6 7 8 9 10 11 1 2 3 1 4 50 1 3 9 6\n" // 2 (fine)
+        "op 7 1 2 3\n"                                      // 3 no operator 7
+        "op 1 1 2 3\n"                                      // 4 cut short
+        "op 1 1 2 3 4 5 6 7 8 9 10 11 1 2 3 1 4 50 1 3 9 6 7\n"; // 5 one too many
+    const PresetData data = readPresetData(TrackKind::Fm6, text);
+    CHECK(data.problems.size() == 3u);
+    CHECK(data.added.size() == 1u);
+    if (data.added.size() == 1u) {
+        const std::vector<int>& v = data.added[0].values;
+        CHECK(v[fm6::opSetting(2, fm6::OpR1)] == 1 && v[fm6::opSetting(2, fm6::OpL4)] == 8 && v[fm6::opSetting(2, fm6::OpLevel)] == 50);
+        CHECK(v[fm6::opSetting(2, fm6::OpCoarse)] == 3 && v[fm6::opSetting(2, fm6::OpFine)] == 9 && v[fm6::opSetting(2, fm6::OpDetune)] == 6);
+    }
+    CHECK(readPresetData(TrackKind::Jx3p, "new MINE / Op\nop 1 1 2 3 4 5 6 7 8 9 10 11 1 2 3 1 4 50 1 3 9 6\n").problems.size() == 1u);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1062,6 +1237,13 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[a], "--heard") == 0 || std::strcmp(argv[a], "--measure") == 0) {
             testPhysicPresetsAsHeard(std::strcmp(argv[a], "--measure") == 0);
             std::printf(failures ? "%d check(s) failed\n" : "PHYSIC's presets as heard: passed\n", failures);
+            return failures ? 1 : 0;
+        }
+        // --heard-fm6: FM-6's added presets the same way, each MOD heard too (ctest presets_heard_fm6).
+        // --measure-fm6: every FM-6 built-in's figures, printed.
+        if (std::strcmp(argv[a], "--heard-fm6") == 0 || std::strcmp(argv[a], "--measure-fm6") == 0) {
+            testFm6PresetsAsHeard(std::strcmp(argv[a], "--measure-fm6") == 0);
+            std::printf(failures ? "%d check(s) failed\n" : "FM-6's presets as heard: passed\n", failures);
             return failures ? 1 : 0;
         }
         // --heard-jaxep: JAX-EP's added presets the same way, the VCA's clip counted too (its own ctest
@@ -1082,6 +1264,7 @@ int main(int argc, char** argv) {
     testABuiltInWithItsSound();
     testBrowsingMany();
     testTheSongFileIsAsItWas();
+    testFm6sOpLine();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

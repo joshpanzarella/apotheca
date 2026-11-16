@@ -112,7 +112,7 @@ void KitScreen::press(Button b) {
         stepped_ = true;
         if (column_ == kSound) stepSound(b == Button::Up ? 1 : -1);
         else if (column_ == kFit) stepFit(b == Button::Up ? 1 : -1);
-        else stepChoke(b == Button::Up ? 1 : -1);
+        else if (column_ == kChoke) stepChoke(b == Button::Up ? 1 : -1);
         return;
     }
     if (b == Button::Up) lane_ = (lane_ + kDrumLanes - 1) % kDrumLanes;
@@ -128,9 +128,16 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
         else picker_.onButton(event, project_.playing);
         return;
     }
+    if (editing_) return editButton(event, input);
     if (b == Button::A) {
-        // Held, with up / down: one at a time. A plain tap on SOUND: the list.
+        // Held, with up / down: one at a time. A plain tap on SOUND: the list; on the picture: EDIT.
         if (!event.down && holding_ && !stepped_ && column_ == kSound) openPicker();
+        if (!event.down && holding_ && !stepped_ && column_ == kEdit) {
+            openEdit(editRow_);
+            holding_ = false;
+            repeating_ = Button::None;
+            return;
+        }
         holding_ = event.down;
         saved_ = 0.f;
         if (event.down) names_ = session_.sampleNames(), stepped_ = false;
@@ -147,7 +154,7 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
     } else if (b == Button::B && !holding_) {
         if (column_ == kSound) session_.setLaneSample(project_.track, lane_, "");
         else if (column_ == kFit) session_.setLaneFit(project_.track, lane_, 0);
-        else session_.setLaneChoke(project_.track, lane_, kChokeNone);
+        else if (column_ == kChoke) session_.setLaneChoke(project_.track, lane_, kChokeNone);
     } else if (b == Button::Y && !holding_) {
         const std::string name = session_.catchLastBar(project_.track, lane_);
         said_ = name.empty() ? "NOTHING TO CATCH: PLAY SOMETHING FIRST" : "CAUGHT THE LAST BAR AS \"" + name + "\"";
@@ -191,6 +198,10 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
     }
     picker_.update(input, nowMs, project_.playing);
     if (picker_.isOpen()) return;
+    if (editing_) {
+        if (!said_.empty() && nowMs >= saidUntil_) said_.clear();
+        return editUpdate(input, nowMs, dt);
+    }
     // While recording, the line says how it is going.
     const Session::Rec rec = session_.recording();
     if (rec == Session::Rec::Waiting || rec == Session::Rec::Recording) {
@@ -232,9 +243,231 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
     }
 }
 
+// ---- EDIT ------------------------------------------------------------------------------
+
+namespace {
+constexpr float kEditMovesPerSecond = 14.f; // the stick among the boxes, as on the sampler's page
+// How far along its bar a box stands (below 0: no bar), and whether the bar grows from the middle.
+float editPart(const LaneEdit& e, int row) {
+    const int v = laneEditValue(e, row);
+    switch (row) {
+    case kEditStart: case kEditEnd: return static_cast<float>(v) / kEditUnits;
+    case kEditFadeIn: case kEditFadeOut: return static_cast<float>(fadeStopPlace(v)) / (kFadeStopCount - 1);
+    case kEditGain: return static_cast<float>(v + kGainMost) / (2 * kGainMost);
+    case kEditPitch: return static_cast<float>(v + kPitchMost) / (2 * kPitchMost);
+    case kEditFine: return static_cast<float>(v + kFineMost) / (2 * kFineMost);
+    default: return -1.f;
+    }
+}
+bool editFromMiddle(int row) { return row == kEditGain || row == kEditPitch || row == kEditFine; }
+}
+
+void KitScreen::setEdit(const LaneEdit& edit) {
+    const LaneEdit before = trk().laneEdit[lane_];
+    session_.setLaneEdit(project_.track, lane_, edit);
+    if (trk().laneEdit[lane_] == before || project_.playing || lastMs_ - heardAt_ < kHearEveryMs) return;
+    heardAt_ = lastMs_;
+    hear();
+}
+
+void KitScreen::editPress(Button b) {
+    if (!holding_) {
+        // Two rows of four: left / right along a row, up / down between the rows. The ends stop.
+        if (b == Button::Left && editRow_ % 4 > 0) --editRow_;
+        if (b == Button::Right && editRow_ % 4 < 3) ++editRow_;
+        if (b == Button::Up && editRow_ >= 4) editRow_ -= 4;
+        if (b == Button::Down && editRow_ < 4) editRow_ += 4;
+        return;
+    }
+    if (b != Button::Up && b != Button::Down) return;
+    setEdit(laneEditStepped(trk().laneEdit[lane_], editRow_, b == Button::Up ? 1 : -1, session_.laneSound(project_.track, lane_).sourceSeconds));
+}
+
+void KitScreen::editButton(const ButtonEvent& event, const Input& input) {
+    const Button b = event.button;
+    if (b == Button::A) {
+        holding_ = event.down;
+        turned_ = 0.f;
+        saved_ = 0.f;
+        stickWas_ = reversePushed_ = false;
+        return;
+    }
+    if (event.down && b != Button::B) deleting_ = bBack_ = false; // any other button calls a held B off
+    if (!event.down) {
+        if (b == Button::B) {
+            if (deleting_ && bBack_) editing_ = false; // a tap on a box at its usual value: back to the kit
+            deleting_ = bBack_ = false;
+        }
+        if (b == repeating_) repeating_ = Button::None;
+        return;
+    }
+    const LaneEdit& e = trk().laneEdit[lane_];
+    if (isDirection(b)) {
+        editPress(b);
+        repeating_ = b;
+        repeatAt_ = 0;
+    } else if (b == Button::B && !holding_) {
+        // The box to its usual value at once; held on, the bar fills and every edit goes (update).
+        const int usual = laneEditValue(LaneEdit(), editRow_);
+        bBack_ = laneEditValue(e, editRow_) == usual;
+        if (!bBack_) setEdit(laneEditWith(e, editRow_, usual));
+        deleting_ = true;
+        deleteTimed_ = false;
+        deletePart_ = 0.f;
+    } else if (b == Button::Y && !holding_) {
+        char text[64];
+        if (editRow_ == kEditStart || editRow_ == kEditEnd) {
+            if (session_.trimLaneSilence(project_.track, lane_)) said_ = "START AND END ON THE FIRST AND LAST SOUND";
+            else said_ = "NOTHING TO TRIM TO: IT IS SILENT";
+        } else if (session_.normalizeLane(project_.track, lane_)) {
+            laneEditText(trk().laneEdit[lane_], kEditGain, 0.f, text, sizeof text);
+            said_ = std::string("NORMALIZED: GAIN ") + text;
+        } else {
+            said_ = "NOTHING TO NORMALIZE: IT IS SILENT";
+        }
+        saidUntil_ = lastMs_ + 2500;
+        if (!project_.playing) hear();
+    } else if (b == Button::X) {
+        hear(true);
+    } else if (b == Button::Start && !input.held(Button::Select)) {
+        session_.togglePlay(false);
+    }
+}
+
+void KitScreen::editUpdate(const Input& input, Uint32 nowMs, float dt) {
+    // B held: the bar fills for a second, then every edit of the lane goes (undo brings them back).
+    if (!input.held(Button::B) || holding_) deleting_ = bBack_ = false;
+    if (!deleting_) {
+        deletePart_ = 0.f;
+    } else {
+        if (!deleteTimed_) deleteTimed_ = true, deleteSince_ = nowMs;
+        deletePart_ = static_cast<float>(nowMs - deleteSince_) / static_cast<float>(kDeleteHoldMs);
+        if (deletePart_ >= 1.f) {
+            deleting_ = bBack_ = false; // (let go now, B does not go back)
+            deletePart_ = 0.f;
+            setEdit(LaneEdit());
+        }
+    }
+    const float x = input.stickX(), y = input.stickY();
+    const float seconds = session_.laneSound(project_.track, lane_).sourceSeconds;
+    if (holding_) {
+        // A box: the stick turns it through its whole range in about a second, by the square of the push.
+        const LaneEdit& e = trk().laneEdit[lane_];
+        if (editRow_ == kEditReverse) { // a choice: once a push
+            if (std::fabs(y) > 0.5f && !reversePushed_) setEdit(laneEditWith(e, kEditReverse, y < 0.f ? 1 : 0));
+            reversePushed_ = std::fabs(y) > 0.5f;
+        } else {
+            turned_ += -y * std::fabs(y) * static_cast<float>(laneEditRange(editRow_)) * dt;
+            const int whole = static_cast<int>(turned_);
+            if (whole != 0) {
+                turned_ -= static_cast<float>(whole);
+                const int v = laneEditValue(e, editRow_);
+                if (editRow_ == kEditFadeIn || editRow_ == kEditFadeOut) {
+                    int place = fadeStopPlace(v) + whole;
+                    place = place < 0 ? 0 : (place >= kFadeStopCount ? kFadeStopCount - 1 : place);
+                    setEdit(laneEditWith(e, editRow_, kFadeStops[place]));
+                } else {
+                    setEdit(laneEditHeld(laneEditWith(e, editRow_, v + whole), seconds));
+                }
+            }
+            if (y == 0.f) turned_ = 0.f;
+        }
+    } else {
+        const bool sideways = std::fabs(x) > std::fabs(y);
+        const float push = sideways ? x : y;
+        if (push == 0.f) {
+            saved_ = 0.f;
+            stickWas_ = false;
+        } else {
+            saved_ += stickWas_ ? std::fabs(push) * kEditMovesPerSecond * dt : 1.f;
+            stickWas_ = true;
+            for (; saved_ >= 1.f; saved_ -= 1.f) {
+                deleting_ = bBack_ = false;
+                editPress(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
+            }
+        }
+    }
+    if (repeating_ != Button::None && repeatAt_ == 0) {
+        repeatAt_ = nowMs + ui::kCursorDelayMs;
+    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
+        repeatAt_ = nowMs + ui::kCursorEveryMs;
+        editPress(repeating_);
+    }
+}
+
+void KitScreen::drawEdit(SDL_Renderer* r, const Fonts& fonts) const {
+    char text[80];
+    const TrackData& t = trk();
+    const LaneEdit& e = t.laneEdit[lane_];
+    const Session::LaneSound& sound = session_.laneSound(project_.track, lane_);
+
+    // ---- the sound ----------------------------------------------------------------
+    const int sx = 8, sy = kEditY, sw = 624, sh = kEditH;
+    box(r, sx, sy, sw, sh, kPanel, kLine);
+    if (deletePart_ > 0.f) {
+        fill(r, sx + 1, sy + sh - 6, static_cast<int>((sw - 2) * (deletePart_ > 1.f ? 1.f : deletePart_)), 5, faded(kStop, 150));
+        fonts.within(&Fonts::small, kDeletingWords, sw - 120.f).draw(r, sx + 7.f, sy + 7.f, kDeletingWords, kText);
+    } else if (!said_.empty()) {
+        fonts.within(&Fonts::small, said_.c_str(), sw - 120.f).draw(r, sx + 7.f, sy + 7.f, said_.c_str(), kBrass);
+    } else {
+        std::snprintf(text, sizeof text, "LANE %d. THE FILE ITSELF IS NEVER CHANGED", lane_ + 1);
+        fonts.within(&Fonts::small, text, sw - 120.f).draw(r, sx + 7.f, sy + 7.f, text, kDim);
+    }
+    const char* file = t.laneSample[lane_];
+    if (!file[0]) std::snprintf(text, sizeof text, "%s, BUILT IN", DrumKit::laneName(lane_));
+    else if (sampleFolderOf(file).empty()) std::snprintf(text, sizeof text, "%s", file);
+    else std::snprintf(text, sizeof text, "%s  /  %s", sampleFolderOf(file).c_str(), sampleLabel(file).c_str());
+    for (char* c = text; *c; ++c) *c = static_cast<char>(*c >= 'a' && *c <= 'z' ? *c - 32 : *c);
+    fonts.within(&Fonts::large, text, sw - 14.f).draw(r, sx + 7.f, sy + 23.f, text, sound.missing ? kDim : kText);
+    const float wordsY = kEditWaveY + (kEditWaveH - fonts.small.capHeight()) / 2.f;
+    if (sound.missing) {
+        fonts.small.draw(r, sx + 7.f, wordsY, "NOT IN THE SAMPLES FOLDER. THE DRUM PLAYS, AS IT IS.", kBrass);
+    } else if (!sound.sourcePeaks.empty()) {
+        const int wx = sx + 7, wy = kEditWaveY, ww = sw - 14, wh = kEditWaveH;
+        // The whole file, the part played lit, each point as loud as GAIN and the fades make it.
+        std::vector<float> lit(sound.sourcePeaks.size());
+        const int count = static_cast<int>(lit.size());
+        for (int i = 0; i < count; ++i)
+            lit[static_cast<std::size_t>(i)] = guarded(sound.sourcePeaks[static_cast<std::size_t>(i)] * laneEditLevelAt(e, static_cast<float>(i) / count, sound.sourceSeconds));
+        wavePicture(r, sound.sourcePeaks, wx, wy, ww, wh, static_cast<float>(e.start) / kEditUnits, static_cast<float>(e.end) / kEditUnits, &lit);
+        // The line while it is heard, through the part played (backwards with REVERSE).
+        const float at = headLane_ == lane_ ? head_.at(lastMs_) : -1.f;
+        if (at >= 0.f) fill(r, wx + static_cast<int>(laneEditPlaceOf(e, at > 1.f ? 1.f : at) * static_cast<float>(ww - 2)), wy - 2, 2, wh + 4, kBrass);
+        if (sound.shaping) std::snprintf(text, sizeof text, "MAKING IT...");
+        else std::snprintf(text, sizeof text, "PLAYS %.2f S", static_cast<double>(sound.seconds));
+        fonts.small.drawRight(r, sx + sw - 8.f, sy + 7.f, text, sound.shaping ? kBrass : e.atRest() ? kDim : kPurple);
+    }
+
+    // ---- the boxes ----------------------------------------------------------------
+    for (int row = 0; row < kEditRows; ++row) {
+        const int x = kEditBoxX + (row % 4) * kEditBoxStep, y = kEditRowY + (row / 4) * (kEditRowH + kEditRowGap);
+        laneEditText(e, row, sound.sourceSeconds, text, sizeof text);
+        valueBox(r, fonts, x, y, kEditBoxW, kEditRowH, laneEditName(row), text, editPart(e, row), row == editRow_, holding_, editFromMiddle(row));
+    }
+}
+
 void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char text[64], name[24];
     trackName(project_, project_.track, name, sizeof name);
+    if (editing_) {
+        std::snprintf(text, sizeof text, "%s / LANE %d EDIT", name, lane_ + 1);
+        topBar(r, fonts, View::Device, text, project_);
+        drawEdit(r, fonts);
+        scopeStrip(r, fonts, session_.engine);
+        Hint list[6];
+        int count = 0;
+        const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
+        if (holding_) {
+            hint("UP / DOWN", editRow_ == kEditReverse ? "on / off" : "turn it");
+        } else {
+            hint("HOLD A", "turn");
+            hint("B", laneEditValue(trk().laneEdit[lane_], editRow_) == laneEditValue(LaneEdit(), editRow_) ? "back" : "default");
+            hint("Y", editRow_ == kEditStart || editRow_ == kEditEnd ? "trim silence" : "normalize");
+            hint("START", project_.playing ? "stop" : "play");
+        }
+        hints(r, fonts, list, count);
+        return;
+    }
     std::snprintf(text, sizeof text, "%s / KIT", name);
     topBar(r, fonts, View::Device, text, project_);
     const SDL_Color cursorColor = holding_ ? kBrass : kTeal;
@@ -307,21 +540,29 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 fill(r, waveX + ww * i / count, y + (h - ph) / 2, 1, ph, here ? kText : kDim);
             }
             if (lane == headLane_) drawPlayhead(r, head_, lastMs_, waveX, y + 1, ww, h - 2);
-            if (sound.waiting) std::snprintf(text, sizeof text, "FITTING");
+            if (sound.shaping) std::snprintf(text, sizeof text, "MAKING");
+            else if (sound.waiting) std::snprintf(text, sizeof text, "FITTING");
             else std::snprintf(text, sizeof text, "%.1f S", sound.seconds);
-            fonts.small.drawRight(r, waveX + waveW - 2.f, y + (h - fonts.small.capHeight()) / 2.f, text, sound.waiting ? kBrass : kDim);
-        }
+            const bool edited = !trk().laneEdit[lane].atRest(); // (its seconds purple, as a FIT that is on)
+            fonts.small.drawRight(r, waveX + waveW - 2.f, y + (h - fonts.small.capHeight()) / 2.f, text, sound.waiting ? kBrass : edited ? kPurple : kDim);
+        }    if (here && column_ == kEdit) outline(r, waveX - 1, y - 1, waveW + 2, h + 2, cursorColor, 2);
     }
     scopeStrip(r, fonts, session_.engine);
 
     Hint list[8];
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
-    if (holding_) {
+    if (holding_ && column_ == kEdit) {
+        hint("A", "edit"); // (opens when it is let go)
+    } else if (holding_) {
         hint("UP / DOWN", column_ == kSound ? "next / previous sound" : column_ == kFit ? "longer / shorter" : "next / previous group");
+    } else if (column_ == kEdit) {
+        hint("A", "edit");
     } else {
         hint(column_ == kSound ? "A" : "HOLD A", column_ == kSound ? "pick from list" : column_ == kFit ? "fit to steps" : "choke group");
         hint("B", column_ == kSound ? "default drum" : column_ == kFit ? "fit off" : "no choke");
+    }
+    if (!holding_) {
         hint("Y", "catch");
         hint("R1", "record");
         if (trk().laneSample[lane_][0]) hint("L1", "slices");
