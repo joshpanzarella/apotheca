@@ -1354,14 +1354,60 @@ move to a step and press up or down until it plays the slice you want.
 
 A row for each lane. Each lane plays its built-in drum or a **recording**: a
 WAV file from the `samples` folder beside the program. A kit can mix the two.
-Left / right moves between the columns, SOUND, FIT TO and CHOKE (round the
-ends).
+Left / right moves between the columns, SOUND, FIT TO, CHOKE and the sound's
+picture, EDIT (round the ends).
 
 | On | Hold A + stick up / down | B |
 | --- | --- | --- |
 | SOUND | The built-in drum, then each recording by name. Heard as it changes. | The drum back |
 | FIT TO | Off, 1, 2, 4, 8 steps, 1 bar, 2 bars, 4 bars | Off |
 | CHOKE | None, 1, 2 | None |
+| EDIT | (A opens the lane's EDIT view, below) | |
+
+**EDIT: cut, turn round, pitch and level a lane's sound, without touching
+the file.** A on the sound's picture opens the lane's EDIT view: the whole
+file drawn large, the part played lit between two purple marks, as loud as
+the edits make it, and eight boxes laid out as the sampler's.
+
+| Box | What it does | D-pad step |
+| --- | --- | --- |
+| START, END | The part of the file played. Never closer than 5 ms. | 1 ms of the file |
+| FADE IN, FADE OUT | A straight fade at each end of what is heard (0 ms to 2 s) | The next stop: 0, 1, 2, 3, 5, 10 ... 2000 ms |
+| GAIN | -24 to +24 dB | Half a dB |
+| PITCH, FINE | Played faster or slower (and so shorter or longer): two octaves either way, then up to half a semitone in cents | A semitone, a cent |
+| REVERSE | The whole of the part played, end first | On / off |
+
+- **Hold A + up / down turns a box**; the stick turns it through its whole
+  range in about a second (gently with a little push). A box turned is heard,
+  with the song stopped. **X hears the lane as edited** (held: to its end).
+- **B gives a box its usual value; B on a box already there goes back to the
+  kit. Hold B: every edit of the lane back to none**, as the bar fills. Undo
+  brings them back.
+- **Y on START or END: TRIM SILENCE** (START a millisecond before the first
+  sound, END after the last: under 40 dB below its loudest is silence).
+  **Y anywhere else: NORMALIZE**: GAIN so the part played peaks at about
+  -1 dB, never over it. Both only set the boxes, and are undone like any edit.
+- **The file on the card is never written.** The lane plays a copy made from
+  it whenever an edit changes, so FIT stretches the edited sound, slices cut
+  it (a trimmed break slices into its trimmed part), and slices in order still
+  carry on without a seam. Catch and a bounce take it as heard. The hit's own
+  step effects (pitch, reverse, cut) go on top.
+- **The built-in drums take the same edits.**
+- **Full scale is never passed.** From -0.9 dB up a sample is rounded softly
+  into full scale, so GAIN past full flattens the peaks instead of clipping
+  hard. (On any edited lane, so a sound already peaking over -0.9 dB is
+  rounded a hair even at GAIN 0.)
+- A cut edge always fades over 1 ms, so a trim never clicks; an edge that is
+  the file's own start or end is left as it is.
+- **A long sound pitched is made in the background**: the box reads the new
+  value at once, the lane plays what it had for a moment, and the picture says
+  MAKING IT... (a 10 s file two octaves down is a tenth of a second on a desk
+  computer, about a second or two on the handheld). Short sounds are made at
+  once.
+- **Another recording on the lane puts START and END back to the whole of
+  it**; the rest of the edits stay. On the kit page an edited lane's seconds
+  are purple.
+- Kept with the song (`laneedit` lines), and undone like a sound is.
 
 **CHOKE: a hit cuts the other lanes of its group.** Each lane is in no
 group, CHOKE 1 or CHOKE 2. A hit on a lane in a group fades out every other
