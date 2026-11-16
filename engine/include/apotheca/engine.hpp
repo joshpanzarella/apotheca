@@ -55,7 +55,7 @@
 #include "apotheca/instrument.hpp"
 #include "apotheca/phazed.hpp"
 #include "apotheca/sampler.hpp"
-#include "apotheca/qmod.hpp"
+#include "apotheca/fm6.hpp"
 #include "apotheca/jx3p.hpp"
 #include "apotheca/spsc_queue.hpp"
 

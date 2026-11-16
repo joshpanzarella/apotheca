@@ -51,13 +51,13 @@ struct Rig {
     App app{*engine};
     Uint32 clock = 1000;
     Canvas canvas, scratch;
-    int phazed = -1, qmod = -1;
+    int phazed = -1, fm6 = -1;
 
     Rig() {
         CHECK(app.session().addTrack(TrackKind::Phazed));
         phazed = app.project().trackCount() - 1;
-        CHECK(app.session().addTrack(TrackKind::Qmod));
-        qmod = app.project().trackCount() - 1;
+        CHECK(app.session().addTrack(TrackKind::Fm6));
+        fm6 = app.project().trackCount() - 1;
         frames(2);
     }
     Session& session() { return app.session(); }
@@ -85,7 +85,7 @@ struct Rig {
         project().track = track;
         session().view = View::Device;
         frames(1);
-        SynthScreen& s = project().tracks[track].kind == TrackKind::Qmod ? app.qmod() : app.phazed();
+        SynthScreen& s = project().tracks[track].kind == TrackKind::Fm6 ? app.fm6() : app.phazed();
         s.goTo(0, SynthScreen::kFirstMacro + m);
         frames(1);
         return s;
@@ -479,32 +479,32 @@ void testFullAndChoices() {
     rig.frames(1);
 }
 
-// The order of the checks (plan, section 7): with X held, Y is the dice, not QMOD's ROLL; pressed
-// before X, Y still rolls. The stick does not move the cursor while X is held.
+// The order of the checks (plan, section 7): with X held, Y is the dice. Y alone does nothing on a
+// synth's DEVICE screen (it was QMOD's ROLL until QMOD went), pressed before X or not. The stick does
+// not move the cursor while X is held.
 void testTheOrderOnDevice() {
     Rig rig;
-    const int t = rig.qmod;
+    const int t = rig.fm6;
     SynthScreen& screen = rig.device(t, 0);
-    const SynthSpec& spec = *specFor(TrackKind::Qmod);
+    const SynthSpec& spec = *specFor(TrackKind::Fm6);
     const auto sound = [&]() {
         const int* v = spec.values(rig.project().tracks[t]);
-        return std::vector<int>(v, v + settingCount(TrackKind::Qmod));
+        return std::vector<int>(v, v + settingCount(TrackKind::Fm6));
     };
     const std::vector<int> first = sound();
-    rig.tap(Y); // Y alone: ROLL
-    const std::vector<int> rolled = sound();
-    CHECK(rolled != first);
-    // Y held before X, X pressed after: Y rolled when it went down, and X is the MOD's hold from then.
+    rig.tap(Y); // Y alone: nothing
+    CHECK(sound() == first);
+    // Y held before X, X pressed after: X is the MOD's hold from then.
     rig.key(Y, true);
     rig.frames(1);
     const std::vector<int> rolledAgain = sound();
-    CHECK(rolledAgain != rolled);
+    CHECK(rolledAgain == first);
     rig.key(X, true);
     rig.frames(1);
     rig.key(Y, false);
     rig.frames(1);
     CHECK(sound() == rolledAgain); // (letting go of Y rolls nothing)
-    // X held: Y is the dice (no MOD yet: nothing), never ROLL.
+    // X held: Y is the dice (no MOD yet: nothing).
     rig.tap(Y);
     CHECK(sound() == rolledAgain);
     rig.tap(SDLK_UP);
@@ -754,7 +754,7 @@ void testTrackChangedWhileHeld() {
     for (int device = 0; device < 2; ++device) {
         Rig rig;
         CHECK(rig.session().addTrack(TrackKind::Phazed));
-        const int a = rig.phazed, b = device ? rig.project().trackCount() - 1 : rig.qmod; // DEVICE: two Phazed tracks, one screen
+        const int a = rig.phazed, b = device ? rig.project().trackCount() - 1 : rig.fm6; // DEVICE: two Phazed tracks, one screen
         const int target = device ? kModFirstMacro : kModFirstEffect;
         rig.session().setEffect(a, 0, EffectKind::Filter);
         rig.session().setEffect(b, 0, EffectKind::Filter);
@@ -793,7 +793,7 @@ void testTrackChangedWhileHeld() {
 // screens let go first now, so no gesture reaches this; it stays as the second guard.)
 void testHeardOnlyForTheTrackShown() {
     Rig rig;
-    const int a = rig.phazed, b = rig.qmod;
+    const int a = rig.phazed, b = rig.fm6;
     CHECK(rig.session().setMod(a, 0, lfoOn(kModFirstMacro, 0.6f)));
     int owner = 0;
     rig.project().track = a;
@@ -969,11 +969,11 @@ void testDrawnOnDevice() {
     rig.draw();
     CHECK(rig.chips().empty() && rig.drawn(p.lead, p.leadY + kModValueDrop, "MODS FULL", true, ui::kText) && rig.drawn(p.depth, p.fieldsY + kModValueDrop + 1.f, ModKnob::kFullWords));
     rig.key(X, false);
-    rig.device(rig.qmod, 0);
+    rig.device(rig.fm6, 0);
     rig.draw();
-    // QMOD's bar has ROLL too, and no room for HOLD X: MOD (owner's call G: the help card says it).
-    const ui::Hint qmod[] = {{"HOLD A", "turn"}, {"B", "back to the middle"}, {"Y", "roll a new sound"}, {"START", "play"}};
-    CHECK(rig.plainBar(qmod, 4) && ui::gHintsOver == 0.f);
+    // FM-6's bar says HOLD X: MOD on every macro (each is an amount), and it fits.
+    const ui::Hint fm6[] = {{"HOLD A", "turn"}, {"B", "back to the middle"}, {"HOLD X", "mod"}, {"START", "play"}};
+    CHECK(rig.plainBar(fm6, 4) && ui::gHintsOver == 0.f);
     // A choice (Phazed CHORUS) takes no MOD: not said there.
     rig.device(t, 6);
     rig.draw();

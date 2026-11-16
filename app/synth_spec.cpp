@@ -2,7 +2,6 @@
 
 #include <cmath>
 
-#include "apotheca/envelope.hpp"
 #include <cstdio>
 #include <cstring>
 
@@ -11,8 +10,8 @@ namespace apotheca {
 namespace {
 
 std::vector<UserPreset>& userList(TrackKind kind) {
-    static std::vector<UserPreset> phazedOnes, jx3pOnes, qmodOnes;
-    return kind == TrackKind::Jx3p ? jx3pOnes : kind == TrackKind::Qmod ? qmodOnes : phazedOnes;
+    static std::vector<UserPreset> phazedOnes, jx3pOnes, fm6Ones;
+    return kind == TrackKind::Jx3p ? jx3pOnes : kind == TrackKind::Fm6 ? fm6Ones : phazedOnes;
 }
 
 // The preset functions every spec uses: the built-in presets first, then the
@@ -203,66 +202,149 @@ void item(int page, int index, int& id, const char*& name) {
 }
 } // namespace jx
 
-// ---- QMOD -----------------------------------------------------------------------------
+// ---- FM-6 ------------------------------------------------------------------------------
+// The plan: docs/plans/fm6-plan.md. Every one of the original's 145 voice settings, in its own
+// numbering, and which operators are on.
 
-namespace qm {
-using namespace qmod;
-const char* const kPages[4] = {"MAIN", "SOUND", "CHARACTER", "ENVELOPE"};
-const int kSoundItems[] = {Sound, Variation, Mutation, Entangle, Family, Octave};
-const char* const kSoundNames[] = {"SOUND NUMBER", "VARIATION", "MUTATION", "ENTANGLE", "FAMILY", "OCTAVE"};
-const int kCharacterItems[] = {Tension, Evolve, Affinity, Symmetry, Width};
-const char* const kCharacterNames[] = {"TENSION", "EVOLVE", "AFFINITY", "SYMMETRY", "WIDTH"};
-const int kEnvelopeItems[] = {Attack, Decay, Sustain, Release, Level};
-const char* const kEnvelopeNames[] = {"ATTACK", "DECAY", "SUSTAIN", "RELEASE", "LEVEL"};
+namespace fm {
+using namespace fm6;
+
+// One page for the voice as a whole and its LFO, one a operator, and the pitch envelope last (the
+// least used). An operator's page is all of its 21 settings and its ON, so one operator is worked
+// on without turning a page: its tuning and level on the first two rows, its envelope on the next
+// two (the four rates over the four levels they reach), how it follows the keys on the last two.
+const char* const kPages[9] = {"MAIN", "VOICE AND LFO", "OPERATOR 1", "OPERATOR 2", "OPERATOR 3",
+                               "OPERATOR 4", "OPERATOR 5", "OPERATOR 6", "PITCH ENVELOPE"};
+constexpr int kFirstOpPage = 2, kPitchPage = 8;
+struct Item { int id; const char* name; };
+const Item kVoice[] = {{Algorithm, "ALGORITHM"}, {Feedback, "FEEDBACK"}, {Transpose, "TRANSPOSE"}, {KeySync, "KEY SYNC"},
+                       {LfoWave, "LFO WAVE"}, {LfoSpeed, "LFO SPEED"}, {LfoDelay, "LFO DELAY"}, {LfoSync, "LFO SYNC"},
+                       {LfoPmd, "PITCH DEPTH"}, {LfoAmd, "LEVEL DEPTH"}, {Pms, "PITCH SENS"}};
+constexpr int kVoiceItems = static_cast<int>(sizeof kVoice / sizeof kVoice[0]);
+const Item kPitch[] = {{PitchR1, "RATE 1"}, {PitchR2, "RATE 2"}, {PitchR3, "RATE 3"}, {PitchR4, "RATE 4"},
+                       {PitchL1, "LEVEL 1"}, {PitchL2, "LEVEL 2"}, {PitchL3, "LEVEL 3"}, {PitchL4, "LEVEL 4"}};
+constexpr int kPitchItems = 8;
+// An operator's page, by its own setting (kOpOn: its ON, a bit of OPERATORS ON: opOnId below).
+constexpr int kOpOn = -1;
+const Item kOp[] = {{kOpOn, "ON"}, {OpLevel, "OUTPUT LEVEL"}, {OpCoarse, "COARSE"}, {OpFine, "FINE"},
+                    {OpMode, "MODE"}, {OpDetune, "DETUNE"}, {OpVelocity, "VELOCITY"}, {OpAms, "LEVEL SENS"},
+                    {OpR1, "RATE 1"}, {OpR2, "RATE 2"}, {OpR3, "RATE 3"}, {OpR4, "RATE 4"},
+                    {OpL1, "LEVEL 1"}, {OpL2, "LEVEL 2"}, {OpL3, "LEVEL 3"}, {OpL4, "LEVEL 4"},
+                    {OpRateScaling, "RATE SCALING"}, {OpBreakPoint, "BREAK POINT"}, {OpLeftDepth, "LEFT DEPTH"}, {OpRightDepth, "RIGHT DEPTH"},
+                    {OpLeftCurve, "LEFT CURVE"}, {OpRightCurve, "RIGHT CURVE"}};
+constexpr int kOpItems = static_cast<int>(sizeof kOp / sizeof kOp[0]);
+static_assert(kOpItems == kOpSettings + 1, "every setting of an operator, and its ON");
+static_assert(kVoiceItems + kPitchItems + 6 * kOpSettings + 1 == kSettings, "every setting is on one page (OPERATORS ON as six ONs)");
+
+// OPERATOR n ON: shown on its page as a setting of its own, past the synth's (kSettings + n - 1).
+// The engine has one, OPERATORS ON, a bit an operator (bit 6 - n).
+constexpr int opOnId(int op) { return kSettings + op - 1; }
+constexpr int kShownSettings = kSettings + 6;
+bool bitOf(int id, int& whole, int& bit) {
+    if (id < kSettings || id >= kShownSettings) return false;
+    whole = OpsOn;
+    bit = 6 - (id - kSettings + 1);
+    return true;
+}
+int shownMin(int id) { return id >= kSettings ? 0 : settingMin(id); }
+int shownMax(int id) { return id >= kSettings ? (id < kShownSettings ? 1 : 0) : settingMax(id); }
 
 void loadPreset(TrackData& t, int index) {
-    if (const std::vector<int>* own = Presets<Qmod, TrackKind::Qmod>::own(index)) {
-        for (int id = 0; id < kSettings && id < static_cast<int>(own->size()); ++id) {
+    if (const std::vector<int>* own = Presets<Fm6, TrackKind::Fm6>::own(index)) {
+        for (int id = 0; id < kPatchSettings && id < static_cast<int>(own->size()); ++id) {
             const int v = (*own)[id];
-            t.qmod.value[id] = v < settingMin(id) ? settingMin(id) : (v > settingMax(id) ? settingMax(id) : v);
+            t.fm6.value[id] = v < settingMin(id) ? settingMin(id) : (v > settingMax(id) ? settingMax(id) : v);
         }
     } else {
-        t.qmod = Qmod::presetPatch(index);
+        t.fm6 = Fm6::presetPatch(index);
     }
 }
-int* values(TrackData& t) { return t.qmod.value; }
+int* values(TrackData& t) { return t.fm6.value; }
+
+// Which operator's setting `id` is, and which of its 21; false for the voice's own.
+bool opOf(int id, int& op, int& s) {
+    if (id < 0 || id >= 6 * kOpSettings) return false;
+    op = 6 - id / kOpSettings;
+    s = id % kOpSettings;
+    return true;
+}
+
+// A ratio: COARSE 0 is a half, then 1 to 31. With FINE: up to nearly twice that.
+void ratioText(int coarse, int fine, char* out, std::size_t n) {
+    const double ratio = (coarse == 0 ? 0.5 : static_cast<double>(coarse)) * (1.0 + fine / 100.0);
+    std::snprintf(out, n, "%.2f", ratio);
+}
+// A fixed pitch: 1, 10, 100 or 1000 Hz by COARSE (its last two bits), times up to nearly ten by FINE.
+void fixedText(int coarse, int fine, char* out, std::size_t n) {
+    const double hz = std::pow(10.0, ((coarse & 3) * 100 + fine) / 100.0);
+    if (hz < 9.995) std::snprintf(out, n, "%.2f HZ", hz);
+    else if (hz < 99.95) std::snprintf(out, n, "%.1f HZ", hz);
+    else std::snprintf(out, n, "%.0f HZ", hz);
+}
+
 void settingText(int id, int value, char* out, int size) {
     const std::size_t n = static_cast<std::size_t>(size);
+    const auto one = [&](const char* const* names, int count) { std::snprintf(out, n, "%s", names[value < 0 ? 0 : (value >= count ? count - 1 : value)]); };
+    static const char* const onOff[2] = {"OFF", "ON"};
+    static const char* const modes[2] = {"RATIO", "FIXED"};
+    static const char* const curves[4] = {"-LIN", "-EXP", "+EXP", "+LIN"};
+    static const char* const waves[6] = {"TRIANGLE", "SAW DOWN", "SAW UP", "SQUARE", "SINE", "RANDOM"};
+    static const char* const notes[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    if (id >= kSettings) return one(onOff, 2); // an operator's ON
+    int op = 0, s = 0;
+    if (opOf(id, op, s)) {
+        switch (s) {
+        case OpMode: return one(modes, 2);
+        case OpLeftCurve: case OpRightCurve: return one(curves, 4);
+        case OpCoarse: return ratioText(value, 0, out, n); // (alone it reads as a ratio: the device reads it with MODE)
+        case OpDetune: std::snprintf(out, n, "%+d", value - 7); return;
+        case OpBreakPoint: {
+            // 0 is A-1 and 99 C8: 39 is C3, as the original names its keys.
+            const int key = (value < 0 ? 0 : value > 99 ? 99 : value) + 9;
+            std::snprintf(out, n, "%s%d", notes[key % 12], key / 12 - 1);
+            return;
+        }
+        default: std::snprintf(out, n, "%d", value); return;
+        }
+    }
     switch (id) {
-    case Sound: case Variation: std::snprintf(out, n, "%d", value); break;
-    case Family: std::snprintf(out, n, "%s", value == 0 ? "AUTO" : familyName(value)); break;
-    case Octave: std::snprintf(out, n, "%+d", value); break;
-    case Attack: case Decay: case Release: {
-        const float seconds = id == Attack ? envelope::attackSeconds(static_cast<float>(value)) : envelope::fallSeconds(static_cast<float>(value));
-        if (seconds < 1.f) std::snprintf(out, n, "%d MS", static_cast<int>(std::round(seconds * 1000.f)));
-        else std::snprintf(out, n, "%.1f S", seconds);
-        break;
-    }
-    case Level: std::snprintf(out, n, "%+d dB", value); break;
-    default: std::snprintf(out, n, "%d%%", value); break;
+    case Algorithm: std::snprintf(out, n, "%d", value + 1); return;
+    case KeySync: case LfoSync: return one(onOff, 2);
+    case LfoWave: return one(waves, 6);
+    case Transpose: std::snprintf(out, n, "%+d", value - 24); return; // in semitones, 0 as the key is played
+    default: std::snprintf(out, n, "%d", value); return;
     }
 }
-void macroText(int macro, float v, char* out, int size) {
-    if (macro == MacroOctave) std::snprintf(out, static_cast<std::size_t>(size), "%s", v < 0.25f ? "DOWN" : v > 0.75f ? "UP" : "AS PRESET");
-    else if (macro == MacroVariation) std::snprintf(out, static_cast<std::size_t>(size), "%+d", static_cast<int>(std::lround((v - 0.5f) * 32.f)));
-    else plusMinus(v, out, size);
+
+// COARSE and FINE read with the rest of their operator: a ratio of the key ("1.41"), or under MODE
+// FIXED a pitch ("141 HZ"). COARSE says its own part, FINE where the two land together.
+void readingIn(const int* values, int id, int value, char* out, int size) {
+    const std::size_t n = static_cast<std::size_t>(size);
+    int op = 0, s = 0;
+    if (!opOf(id, op, s) || (s != OpCoarse && s != OpFine)) return settingText(id, value, out, size);
+    const int coarse = s == OpCoarse ? value : values[opSetting(op, OpCoarse)];
+    const int fine = s == OpFine ? value : 0;
+    if (values[opSetting(op, OpMode)] != 0) fixedText(coarse, fine, out, n);
+    else ratioText(coarse, fine, out, n);
 }
+
+void macroText(int, float v, char* out, int size) { plusMinus(v, out, size); }
 bool envelopePage(int) { return false; }
-int itemCount(int page) { return page == 1 ? 6 : 5; }
+int itemCount(int page) {
+    if (page == 1) return kVoiceItems;
+    if (page >= kFirstOpPage && page < kFirstOpPage + 6) return kOpItems;
+    if (page == kPitchPage) return kPitchItems;
+    return 0;
+}
 void item(int page, int index, int& id, const char*& name) {
-    if (page == 1) { id = kSoundItems[index]; name = kSoundNames[index]; }
-    else if (page == 2) { id = kCharacterItems[index]; name = kCharacterNames[index]; }
-    else { id = kEnvelopeItems[index]; name = kEnvelopeNames[index]; }
+    if (page == 1) { id = kVoice[index].id; name = kVoice[index].name; return; }
+    if (page == kPitchPage) { id = kPitch[index].id; name = kPitch[index].name; return; }
+    const int op = page - kFirstOpPage + 1;
+    const Item& it = kOp[index];
+    id = it.id == kOpOn ? opOnId(op) : opSetting(op, it.id);
+    name = it.name;
 }
-// ROLL: a new sound number and a new cousin. Everything else (how bright, the envelope) is left as it is set.
-void roll(TrackData& t, unsigned seed) {
-    seed = seed * 1664525u + 1013904223u;
-    t.qmod.value[Sound] = 1 + static_cast<int>((seed >> 8) % 9999u);
-    seed = seed * 1664525u + 1013904223u;
-    t.qmod.value[Variation] = static_cast<int>((seed >> 8) % 100u);
-    t.qmod.value[Family] = 0;
-}
-} // namespace qm
+} // namespace fm
 
 } // namespace
 
@@ -274,7 +356,7 @@ const SynthSpec& phazedSpec() {
     static const SynthSpec spec = {"PHAZED", Presets<Phazed, TrackKind::Phazed>::count, Presets<Phazed, TrackKind::Phazed>::name, Presets<Phazed, TrackKind::Phazed>::category, pz::loadPreset, pz::values,
                                    phazed::settingMin, phazed::settingMax, pz::settingText,
                                    {"TONE", "MOTION", "ATTACK", "RELEASE", "DETUNE", "VIBRATO", "CHORUS", "OCTAVE"}, pz::macroText,
-                                   10, pz::kPages, pz::itemCount, pz::item, pz::envelopePage, nullptr, nullptr, false};
+                                   10, pz::kPages, pz::itemCount, pz::item, pz::envelopePage, nullptr, false, nullptr, nullptr};
     return spec;
 }
 
@@ -282,32 +364,55 @@ const SynthSpec& jx3pSpec() {
     static const SynthSpec spec = {"JAX-EP", Presets<Jx3p, TrackKind::Jx3p>::count, Presets<Jx3p, TrackKind::Jx3p>::name, Presets<Jx3p, TrackKind::Jx3p>::category, jx::loadPreset, jx::values,
                                    jx3p::settingMin, jx3p::settingMax, jx::settingText,
                                    {"CUTOFF", "RESO", "ENV", "TUNE", "MIX", "LFO", "ATTACK", "RELEASE"}, jx::macroText,
-                                   6, jx::kPages, jx::itemCount, jx::item, jx::envelopePage, nullptr, jx::folderNote, true};
+                                   6, jx::kPages, jx::itemCount, jx::item, jx::envelopePage, jx::folderNote, true, nullptr, nullptr};
     return spec;
 }
 
 void setUserPresets(TrackKind kind, std::vector<UserPreset> presets) { userList(kind) = std::move(presets); }
 const std::vector<UserPreset>& userPresets(TrackKind kind) { return userList(kind); }
 int builtInPresets(TrackKind kind) {
-    return kind == TrackKind::Jx3p ? Jx3p::presetCount() : kind == TrackKind::Phazed ? Phazed::presetCount() : kind == TrackKind::Qmod ? Qmod::presetCount() : 0;
+    return kind == TrackKind::Jx3p ? Jx3p::presetCount() : kind == TrackKind::Phazed ? Phazed::presetCount() : kind == TrackKind::Fm6 ? Fm6::presetCount() : 0;
 }
 int settingCount(TrackKind kind) {
-    return kind == TrackKind::Jx3p ? static_cast<int>(jx3p::kSettings) : kind == TrackKind::Phazed ? static_cast<int>(phazed::kSettings) : kind == TrackKind::Qmod ? static_cast<int>(qmod::kSettings) : 0;
+    return kind == TrackKind::Jx3p ? static_cast<int>(jx3p::kSettings) : kind == TrackKind::Phazed ? static_cast<int>(phazed::kSettings) : kind == TrackKind::Fm6 ? static_cast<int>(fm6::kSettings) : 0;
+}
+int shownSettingCount(TrackKind kind) { return kind == TrackKind::Fm6 ? fm::kShownSettings : settingCount(kind); }
+
+int settingValue(const SynthSpec& spec, const int* values, int id) {
+    int whole = 0, bit = 0;
+    if (spec.bitOf && spec.bitOf(id, whole, bit)) return (values[whole] >> bit) & 1;
+    return values[id];
+}
+void settingWrite(const SynthSpec& spec, const int* values, int id, int value, int& realId, int& realValue) {
+    value = value < spec.settingMin(id) ? spec.settingMin(id) : (value > spec.settingMax(id) ? spec.settingMax(id) : value);
+    int whole = 0, bit = 0;
+    if (spec.bitOf && spec.bitOf(id, whole, bit)) {
+        realId = whole;
+        realValue = (values[whole] & ~(1 << bit)) | (value << bit);
+        return;
+    }
+    realId = id;
+    realValue = value;
+}
+void settingReading(const SynthSpec& spec, const int* values, int id, char* out, int size) {
+    const int value = settingValue(spec, values, id);
+    if (spec.readingIn) spec.readingIn(values, id, value, out, size);
+    else spec.settingText(id, value, out, size);
 }
 int presetSettingCount(TrackKind kind) {
     return kind == TrackKind::Jx3p ? static_cast<int>(jx3p::kPatchSettings) : settingCount(kind);
 }
 
-const SynthSpec& qmodSpec() {
-    static const SynthSpec spec = {"QMOD", Presets<Qmod, TrackKind::Qmod>::count, Presets<Qmod, TrackKind::Qmod>::name, Presets<Qmod, TrackKind::Qmod>::category, qm::loadPreset, qm::values,
-                                   qmod::settingMin, qmod::settingMax, qm::settingText,
-                                   {"ENTANGLE", "TENSION", "EVOLVE", "VARIATION", "ATTACK", "RELEASE", "WIDTH", "OCTAVE"}, qm::macroText,
-                                   4, qm::kPages, qm::itemCount, qm::item, qm::envelopePage, qm::roll, nullptr, false};
+const SynthSpec& fm6Spec() {
+    static const SynthSpec spec = {"FM-6", Presets<Fm6, TrackKind::Fm6>::count, Presets<Fm6, TrackKind::Fm6>::name, Presets<Fm6, TrackKind::Fm6>::category, fm::loadPreset, fm::values,
+                                   fm::shownMin, fm::shownMax, fm::settingText,
+                                   {"BRIGHT", "FEEDBACK", "ATTACK", "DECAY", "RELEASE", "DETUNE", "LFO", "PITCH ENV"}, fm::macroText,
+                                   9, fm::kPages, fm::itemCount, fm::item, fm::envelopePage, nullptr, false, fm::bitOf, fm::readingIn};
     return spec;
 }
 
 const SynthSpec* specFor(TrackKind kind) {
-    return kind == TrackKind::Phazed ? &phazedSpec() : kind == TrackKind::Jx3p ? &jx3pSpec() : kind == TrackKind::Qmod ? &qmodSpec() : nullptr;
+    return kind == TrackKind::Phazed ? &phazedSpec() : kind == TrackKind::Jx3p ? &jx3pSpec() : kind == TrackKind::Fm6 ? &fm6Spec() : nullptr;
 }
 
 } // namespace apotheca

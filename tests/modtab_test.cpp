@@ -50,13 +50,13 @@ struct Rig {
     App app{*engine};
     Uint32 clock = 1000;
     Canvas canvas;
-    int phazed = -1, qmod = -1;
+    int phazed = -1, fm6 = -1;
 
     Rig() {
         CHECK(app.session().addTrack(TrackKind::Phazed));
         phazed = app.project().trackCount() - 1;
-        CHECK(app.session().addTrack(TrackKind::Qmod));
-        qmod = app.project().trackCount() - 1;
+        CHECK(app.session().addTrack(TrackKind::Fm6));
+        fm6 = app.project().trackCount() - 1;
         frames(2);
     }
     Session& session() { return app.session(); }
@@ -355,11 +355,11 @@ void testTheListOfTargets() {
     rig.at(t, 0, 0);
     rig.key(A, true), rig.frames(1);
     CHECK(rig.tab().picking());
-    rig.project().track = rig.qmod;
+    rig.project().track = rig.fm6;
     rig.frames(1);
     CHECK(!rig.tab().picking());
     rig.key(A, false), rig.frames(1);
-    CHECK(rig.mod(rig.qmod, 0).kind == kModOff);
+    CHECK(rig.mod(rig.fm6, 0).kind == kModOff);
     // The drum track: no macros, so the list opens on the sends.
     rig.at(0, 2, S::kTarget);
     rig.key(A, true), rig.frames(1);
@@ -535,9 +535,9 @@ void testL1R1AndX() {
     const int t = rig.phazed;
     ModScreen& tab = rig.at(t, 2, S::kTarget);
     rig.tap(R1);
-    CHECK(rig.project().track == rig.qmod && tab.cursorRow() == 2);
+    CHECK(rig.project().track == rig.fm6 && tab.cursorRow() == 2);
     rig.tap(R1);
-    CHECK(rig.project().track == rig.qmod); // the last stops
+    CHECK(rig.project().track == rig.fm6); // the last stops
     rig.tap(L1, 5);
     CHECK(rig.project().track == 0);
     // X held on a MOD's line while stopped: that MOD runs (and only it); let go, it stops.
@@ -575,7 +575,7 @@ void testL1R1AndX() {
 
 void testTheHintsFit() {
     Rig rig;
-    for (int t : {0, rig.phazed, rig.qmod}) {
+    for (int t : {0, rig.phazed, rig.fm6}) {
         rig.session().setEffect(t, 0, EffectKind::Filter);
         for (int on = 0; on < 4; ++on) {
             ModSettings free = lfo(kModFirstSend);

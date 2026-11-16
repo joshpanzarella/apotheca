@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "apotheca/engine.hpp"
@@ -27,19 +28,21 @@ static int failures = 0;
 
 namespace {
 
-// The song, then `presets` chosen on the two JAX-EP tracks (6 and 7; -1: left as the song has
-// them), then a second of it. Engines are 1.4 MB each: on the heap.
-std::vector<float> aSecond(int preset, Engine** kept = nullptr) {
+// The song, then `preset` chosen on the two JAX-EP tracks (6 and 7) and `fm6` on the two FM-6
+// tracks (8 and 9; -1: left as the song has them), then a second of it. Engines are 1.4 MB each:
+// on the heap.
+std::vector<float> aSecond(int preset, Engine** kept = nullptr, int fm6 = -1) {
     Engine* engine = new Engine;
     sendBusiestSong(*engine);
-    if (preset >= 0)
-        for (int track : {6, 7}) {
-            Command c;
-            c.type = Command::SelectPreset;
-            c.track = track;
-            c.a = preset;
-            CHECK(engine->send(c));
-        }
+    for (int track : {6, 7, 8, 9}) {
+        const int which = track < 8 ? preset : fm6;
+        if (which < 0) continue;
+        Command c;
+        c.type = Command::SelectPreset;
+        c.track = track;
+        c.a = which;
+        CHECK(engine->send(c));
+    }
     std::vector<float> out(2 * 48000), block(512);
     for (int at = 0; at + 256 <= 48000; at += 256) {
         engine->render(block.data(), 256);
@@ -58,7 +61,8 @@ float apart(const std::vector<float>& a, const std::vector<float>& b) {
     return most;
 }
 
-// The two JAX-EP tracks are on A1, as a new track in the program is: choosing A1 on them once
+// The two JAX-EP tracks are on A1, as a new track in the program is (and the two FM-6 on E.PIANO 1):
+// choosing A1 on them once
 // more changes nothing, to the bit. (The engine makes the synth on its start patch, which is not
 // a preset: a song that forgot to choose would be timing a plain saw.) And the song is what the
 // comment over it, README and CLAUDE.md say: twelve tracks, three effects each, the buses, the
@@ -98,6 +102,12 @@ void testTheSongIsWhatItSays() {
     const float onAnother = apart(song, aSecond(5)); // (the check can see: another preset is another sound)
     CHECK(onAnother > 1e-3f);
     std::printf("  A1 chosen again: %.3g apart; another preset: %.3g apart\n", onA1, onAnother);
+    // The two FM-6 tracks (where QMOD's were until 2026-11-15) are on E.PIANO 1, the same way.
+    CHECK(kBusiestFm6Preset == 10 && std::string(Fm6::presetName(kBusiestFm6Preset)) == "E.PIANO 1");
+    const float onEpiano = apart(song, aSecond(-1, nullptr, kBusiestFm6Preset));
+    const float fm6Another = apart(song, aSecond(-1, nullptr, 3));
+    CHECK(onEpiano == 0.f && fm6Another > 1e-3f);
+    std::printf("  E.PIANO 1 chosen again: %.3g apart; another: %.3g apart\n", onEpiano, fm6Another);
 }
 
 // The real-time rows: the blocks asked for are the blocks timed, it was playing, and the

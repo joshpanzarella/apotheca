@@ -453,7 +453,7 @@ struct Given {
 };
 struct SpySynth : Instrument {
     std::vector<Given>* log;
-    float now[8]; // each macro as the synth has it: a preset puts them back to the middle, as Phazed's and QMOD's do
+    float now[8]; // each macro as the synth has it: a preset puts them back to the middle, as Phazed's and FM-6's do
     explicit SpySynth(std::vector<Given>* to) : log(to) {
         for (float& m : now) m = 0.5f;
     }

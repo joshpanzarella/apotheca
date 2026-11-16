@@ -31,10 +31,12 @@ extern const int kInstrumentCount;
 const InstrumentInfo* instrument(TrackKind kind);
 // "phazed" -> TrackKind::Phazed. A word this version does not know is None.
 // `old` is set when the word is one no song is written with any more: "twin", Twin Analog's, which
-// is read as a JAX-EP track (jx3p-plan.md, section 5). Such a track's sound was another synth's: its
-// preset, settings, macros and the macros' automation mean nothing here and are not read.
+// is read as a JAX-EP track (jx3p-plan.md, section 5), and "qmod", QMOD's, read as an FM-6 track
+// (fm6-plan.md). Such a track's sound was another synth's: its preset, settings, macros and the
+// macros' automation mean nothing here and are not read.
 TrackKind trackKindFromWord(const char* word, bool* old = nullptr);
 constexpr const char* kOldTwinWord = "twin";
+constexpr const char* kOldQmodWord = "qmod";
 // "DRUMS", "PHAZED"... and "" for None.
 const char* instrumentName(TrackKind kind);
 

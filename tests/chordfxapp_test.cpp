@@ -92,7 +92,7 @@ struct Rig {
     NotePattern& pattern(int scene = 0, int bar = 0) { return project().tracks[1].notes[scene][bar]; }
     // A synth track (track 2) with the piano roll showing.
     void roll() {
-        CHECK(app.session().addTrack(TrackKind::Qmod));
+        CHECK(app.session().addTrack(TrackKind::Fm6));
         project().track = 1;
         app.session().view = View::Pattern;
         frames(2);
@@ -585,7 +585,7 @@ int count(const std::string& text, const std::string& word) {
 
 void testTheSongFile() {
     std::unique_ptr<Project> song(new Project);
-    song->tracks[1].kind = TrackKind::Qmod;
+    song->tracks[1].kind = TrackKind::Fm6;
     NotePattern& p = song->tracks[1].notes[0][0];
     p.chords[0] = makeChord(builtInPack().chords[0], 60, 2, 3.f, 0.7f, 0);
     p.chords[1] = makeChord(builtInPack().chords[1], 62, 8, 3.f, 0.7f, 0);
@@ -669,7 +669,7 @@ void testTheSongFile() {
     // A loose note takes none (the line is a chord's).
     {
         std::unique_ptr<Project> notes(new Project);
-        notes->tracks[1].kind = TrackKind::Qmod;
+        notes->tracks[1].kind = TrackKind::Fm6;
         notes->tracks[1].notes[0][0].notes[0] = NoteEvent{8, 62, 1.f, 0.f, 0.8f};
         std::string with = songText(*notes);
         with += "chordplay 9 1 1 10 10 10\n";

@@ -24,6 +24,8 @@ WholeSongTimes timeWholeSong(int helpers, double seconds, int mods = 0);
 // which holds what the song is: nothing else in ctest runs the timings.
 class Engine;
 void sendBusiestSong(Engine& engine);
+// Its two FM-6 tracks (8 and 9) are on this preset: E.PIANO 1. The two JAX-EP tracks (6 and 7) are on A1.
+constexpr int kBusiestFm6Preset = 10;
 // Its MODs, as the timing rows run them: 1 (on the first drum track's ECHO send) or 24 (two a
 // track, every kind of target, the DEPTH lanes written). For bench_test, as the song.
 void sendBusiestMods(Engine& engine, int mods);
