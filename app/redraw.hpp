@@ -18,6 +18,7 @@
 //     update's answer;
 //   - the Session at work by itself: a recording being fitted to the tempo, a recording being
 //     made, a bounce, WiFi on (files, an update, the designer page arrive from another thread);
+//   - the help card's line of how hard the program works (a new second's numbers);
 //   - the screen up says it changes by itself (Screen::stirring): a line said for a moment, a
 //     line running over a recording, the list of recordings about to put on the row rested on,
 //     the button test closing by itself.
@@ -65,6 +66,7 @@ enum Stir : unsigned {
     kStirAfter = 1u << 20,       // something above was so on the pass before
     kStirMargin = 1u << 21,      // within kKeepDrawingMs of a stir
     kStirFirst = 1u << 22,       // the first pass, or the picture was asked for again (forget)
+    kStirLoad = 1u << 23,        // the help card's line of how hard the program works moved (a second at a time)
 };
 // The name of a stir, for a test's report.
 const char* stirName(unsigned bit);
@@ -76,6 +78,7 @@ struct Readouts {
     std::vector<float> scope;  // the LIVE OUTPUT line's samples
     std::vector<float> meters; // every effect meter there is
     int midi[2] = {};          // MIDI notes seen, keyboards plugged in
+    int load[3] = {};          // the help card's SOUND, WORST and ALL, as drawn (App::loadShown)
 };
 
 class Redraw {

@@ -101,12 +101,13 @@ Nothing here has run on the handheld; the owner has not seen or heard it. Tests 
 
 | Choice | Why |
 | --- | --- |
-| The cursor's column is ALWAYS the middle one; on SAMPLES the left column is empty | The cursor never jumps sideways. (The plan's words allow the cursor in the first column on SAMPLES.) |
+| ~~The cursor's column is ALWAYS the middle one; on SAMPLES the left column is empty~~ **Changed (owner, 2026-11-15)**: on SAMPLES the cursor is in the first column, the folder under it in the second and the preview's box open in the third, so going in moves only the cursor | The owner: "start out with the sound preview open to the right of the 2 levels ... that way it doesn't need to expand". Before, going into a folder slid every column left and the preview appeared |
+| The preview (2026-11-15): a recording arrived on, the song stopped, plays half of what it plays, stopped as soon as the cursor moves on; X while it plays: on to its end; X with nothing playing: held, as before | The owner's words. The kit's list played the whole recording before, the sampler's a 0.35 s tap |
 | With no folders at all, SAMPLES lists the recordings themselves (no UNSORTED to go into) | One press fewer for a card with no folders: the list as it always was |
 | Rows going by faster than one every 90 ms (`kAtOnceMs`) are not each put on; the one rested on is | Each is a file read from the card. A press, and the held D-pad's first pace, are still at once |
 | Going into a folder puts its first recording on (as arriving on any row does); a folder under the cursor puts nothing on | "What is under the cursor is on" |
 | A row shows a folder's count (its inner folders' too), not a recording's length | A length for each row is a file opened for each row. The length is by the picture |
-| "Where it is used": ALSO IN THIS SONG: N PLACES, under the picture, for the open song only | Saved songs would mean reading every song file as the cursor moves |
+| "Where it is used": ALSO IN THIS SONG: / N PLACES (two lines since 2026-11-15: one ran past the panel), under the picture, for the open song only | Saved songs would mean reading every song file as the cursor moves |
 | Deleting a folder's last recording leaves the folder, empty | The plan: a folder is deleted by itself, only when empty. (The WiFi page still drops a folder with its last recording.) |
 | The hints bar does not say UP / DOWN | It was 16 pixels over with it. The help card says the D-pad and the stick move |
 | A lane on the KIT page says the inner folder of two; the SAMPLER says `DRUMS/KICKS  /  808` | The lane's room is 70 pixels |

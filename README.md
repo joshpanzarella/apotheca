@@ -87,7 +87,19 @@ and the stick shapes the thing under the cursor:
 on every screen (X hears what is under the cursor, on SONG it solos the track; the stick and D-pad
 move, A, B, START, L2 / R2, what SELECT does with other buttons, how to
 stop all sound), and the **battery**. Let go and it closes. On a handheld whose firmware keeps MENU for
-itself, holding SELECT for a moment does it instead. The bar at the bottom of each screen lists
+itself, holding SELECT for a moment does it instead.
+
+**Above the battery the card says how hard the handheld is working**, a new
+reading each second while it is open:
+
+| Word | Means |
+| --- | --- |
+| SOUND 43% | Over the last second, making the sound took 43% of the time that sound lasts. At 100% or over it cannot keep up, and the sound stutters |
+| WORST 88% | The one slice of that second (about 5 ms of sound) that took the most of its own time. Over 100%: that slice was late, a click or a gap |
+| CPU 37% | The whole program (the sound, its helpers, the screen, the WiFi page) as a share of the whole processor, all its cores together. 25% on a four-core handheld is one core kept busy. Shown from a second after the card opens |
+
+Measuring costs nothing you could notice: two looks at the clock for each
+slice of sound (about 50 billionths of a second, 0.001% of a slice). The bar at the bottom of each screen lists
 only what is particular to where the cursor is. A direction that either the
 stick or the D-pad gives is written as the direction alone (UP / DOWN); the
 two are named only where they do different things. The bar never runs off
@@ -126,7 +138,14 @@ plays the recording as it was made; an octave up, twice as fast.
 | On | Hold A + up / down | B |
 | --- | --- | --- |
 | SOUND | **Tap A: the list of recordings.** Or hold A + up / down: one at a time | None |
-| PITCH, TUNE, START, ATTACK, RELEASE, LOOP, LEVEL | The stick turns it; the D-pad moves it by one | Its usual value |
+| PITCH, TUNE, START, END, ATTACK, RELEASE, LOOP, LEVEL | The stick turns it; the D-pad moves it by one | Its usual value |
+
+**START and END are where a note begins and ends in the recording**, in
+percent of it: a note plays from START to END and stops, and with LOOP on it
+goes round between the two. END is beside START and starts at 100% (the
+recording's end). **They never cross**: turned toward each other, each stops a
+percent short of the other. The recording's picture marks both in purple and
+lights only what a note plays.
 
 **PITCH is semitones up or down, and up is higher.** (It used to be ROOT, a
 key, which ran the other way. Old songs open as they were.) **X hears it at
@@ -144,19 +163,22 @@ recording. Eight notes at a time.
 **Tap A on SOUND** (a kit lane, or the sampler) and the recordings come up
 in **three columns**: the folder this one is in, this folder with the cursor
 in it, and what is under the cursor (a folder's contents, or a recording's
-waveform and length). The cursor's column is always the middle one. It opens
-in the folder of the recording that is on, on it.
+waveform and length). **The columns stand still**: on SAMPLES the cursor is in
+the first column, the folder under it is shown in the second and the
+recording's picture is already open in the third, so going into a folder only
+moves the cursor one column right. Inside a folder the cursor is in the middle
+column. It opens in the folder of the recording that is on, on it.
 
 | Button | Does |
 | --- | --- |
-| Up / down | The next in the column. A recording goes on **at once**: with the song playing you hear it in the beat; stopped, it plays once. Held: a steady pace, faster after a second and a half |
+| Up / down | The next in the column. A recording goes on **at once**: with the song playing you hear it in the beat; stopped, **half of it plays** (from where it plays from: the sampler's START), and it stops as soon as the cursor moves on. Held: a steady pace, faster after a second and a half |
 | The stick | Big moves: up to fifteen rows a second pushed all the way. Going by that fast, the one you stop on goes on, not each one passed |
 | Left / right | Out to the folder this one is in / into the folder under the cursor |
 | **L1 / R1** | A page up / down |
 | **Hold R1** | On a recording: **carry it**. Keep R1 down and steer (D-pad, stick, L1) to a folder, or into one; let go and it is there. The top line says where it would go. Let go on a row of SAMPLES that is no folder: out of every folder. **B with R1 held calls it off** |
 | A | On a recording: keep it. On a folder: into it. On **+ NEW FOLDER**: type its name (A types, Y deletes a letter, **B makes the folder and leaves**, as START does; with nothing typed B leaves and makes none) |
 | B | A tap: put back what was there before the list opened |
-| X | Hear it again. **Held: it plays until you let go**, or to its end; a tap plays a moment |
+| X | **While it is still playing: it plays on to its end.** Nothing playing: hear it again; **held, it plays until you let go**, or to its end; a tap plays a moment |
 | **Hold B** | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. Or an **empty folder**: one with anything in it is never deleted |
 | START | Play / stop, with the list still open |
 
@@ -1135,7 +1157,9 @@ to again.
 | Hold Y, stick up / down | Chance | Fades toward a ghost |
 | Hold Y, stick left / right | Start: where in the drum's sound the hit begins | A mark slides under it, and it is heard as it moves |
 
-The stick does one of those per push. A places a hit. Y places a "maybe"
+The stick does one of those per push. A places a hit, at 90% (a note or a
+chord on the piano roll starts there too, and X or A hears a sound at that level
+on every screen). Y places a "maybe"
 (50%), or steps a hit's chance 100, 75, 50, 25. B deletes. X hears the lane:
 on its name or an empty step, held, for as long as you hold it (a tap: a
 moment). On a hit X is heard as the pattern plays it, whole.
@@ -1143,7 +1167,7 @@ moment). On a hit X is heard as the pattern plays it, whole.
 Hold **B** and drag to delete every hit the cursor crosses.
 
 Hold **R1** and drag to paint hits at one level (the level of the hit you
-started on, or 80%). **Add R2 while R1 is held** and the brush paints
+started on, or 90%). **Add R2 while R1 is held** and the brush paints
 random levels for as long as R2 is down. R2 by itself is "next screen", at
 once.
 
@@ -1234,7 +1258,7 @@ the drum), and:
 - It adds to what each hit has: its own nudge, its own level. A ratchet's
   hits move together and share one level.
 - A hit written at full level can only get quieter (nothing is louder than
-  full). At 80%, where A places them, it goes both ways.
+  full). At 90%, where A places them, it goes both ways (up to full).
 - **Play from the top is the same performance again**, and a bounce is what
   was heard: the moves are worked out from where each hit is and which time
   round it is, not from luck at the moment.

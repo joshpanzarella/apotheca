@@ -178,7 +178,7 @@ private:
     void carryFree(float steps);        // the stick: any distance in time, off the grid
     bool erasing_ = false;  // B is held: the cursor deletes what it crosses
     void eraseHere();
-    float brush_ = 0.8f;
+    float brush_ = kPlacedLevel;
 
     Button repeating_ = Button::None;
     Uint32 repeatAt_ = 0;

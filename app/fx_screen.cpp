@@ -309,17 +309,17 @@ void FxScreen::meterWords(EffectKind kind, float dB, char* out, int size) {
 void FxScreen::hear(bool held) {
     const TrackKind kind = project_.current().kind;
     if (held && kind == TrackKind::Drums) {
-        session_.hearLaneHeld(project_.track, 0, 0.8f, this);
+        session_.hearLaneHeld(project_.track, 0, kPlacedLevel, this);
     } else if (held && kind == TrackKind::Sampler) {
-        session_.auditionHeld(project_.track, 60, 0.8f, this);
+        session_.auditionHeld(project_.track, 60, kPlacedLevel, this);
     } else if (kind == TrackKind::Drums) {
         Command c;
         c.type = Command::Trigger;
         c.track = project_.track;
-        c.value = 0.8f;
+        c.value = kPlacedLevel;
         session_.engine.send(c);
     } else if (isSynth(kind)) {
-        session_.audition(project_.track, 60, 0.8f);
+        session_.audition(project_.track, 60, kPlacedLevel);
     }
 }
 
@@ -440,7 +440,7 @@ void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         const bool knob = !holding_ && knobHere() >= 0 && modKnob_.hold(project_.track, knobHere(), input);
         if (knob) repeating_ = Button::None;
-        if (knob && isSynth(project_.current().kind) && !project_.playing) session_.auditionHeld(project_.track, 60, 0.8f, this); // heard as long as X is
+        if (knob && isSynth(project_.current().kind) && !project_.playing) session_.auditionHeld(project_.track, 60, kPlacedLevel, this); // heard as long as X is
         else hear(true);
         return;
     }

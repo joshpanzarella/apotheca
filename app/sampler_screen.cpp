@@ -13,8 +13,12 @@ using namespace ui;
 namespace {
 constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs;
 constexpr float kMovesPerSecond = 14.f, kSoundsPerSecond = 8.f;
-const char* const kNames[sampler::kSettings] = {"PITCH", "TUNE", "START", "ATTACK", "RELEASE", "LOOP", "LEVEL"};
+const char* const kNames[sampler::kSettings] = {"PITCH", "TUNE", "START", "ATTACK", "RELEASE", "LOOP", "LEVEL", "END"};
+// The order the page shows them in: END beside START (it is the last id: ids are appended).
+const int kShown[sampler::kSettings] = {sampler::Root, sampler::Tune, sampler::Start, sampler::End, sampler::Attack, sampler::Release, sampler::Loop, sampler::Level};
 }
+
+int SamplerScreen::settingAt(int place) { return place >= 0 && place < sampler::kSettings ? kShown[place] : -1; }
 
 void samplerSettingText(int id, int value, char* out, int size) {
     const std::size_t n = static_cast<std::size_t>(size);
@@ -55,14 +59,38 @@ void SamplerScreen::hear(bool held) {
     headHeld_ = held || (headHeld_ && session_.hearingHeld());
     head_.start(lastMs_, session_.trackSound(project_.track).seconds, static_cast<float>(t.sampler[sampler::Start]) / 100.f, speed,
                 headHeld_ ? 0.f : static_cast<float>(Session::kAuditionMs) / 1000.f + release_); // held: until it is let go (update)
-    if (held) session_.auditionHeld(project_.track, kHearKey, 0.8f, this);
-    else session_.audition(project_.track, kHearKey, 0.8f);
+    head_.to = endPart(t);
+    if (held) session_.auditionHeld(project_.track, kHearKey, kPlacedLevel, this);
+    else session_.audition(project_.track, kHearKey, kPlacedLevel);
+}
+
+// The list of recordings: the preview, half of what a note plays at least (START to END at middle
+// C), stopped as soon as the cursor moves on; X on it plays on to the end (to END: with LOOP on,
+// once round).
+void SamplerScreen::hearFromList(SamplePicker::Hear how) {
+    if (how == SamplePicker::Hear::Held) return hear(true);
+    if (how == SamplePicker::Hear::Quiet) {
+        session_.stopHeard(this);
+        head_.since = 0; // its line goes with it
+        headHeld_ = false;
+        return;
+    }
+    if (how == SamplePicker::Hear::Preview) hear(true); // begun as X begins it, and let go at once (below)
+    const float whole = head_.wholeLength();
+    const Uint32 ms = static_cast<Uint32>(1000.f * (how == SamplePicker::Hear::Preview ? whole / 2.f : whole));
+    const Uint32 lasts = ms > Session::kAuditionMs ? ms : Session::kAuditionMs;
+    session_.hearFor(lasts);
+    headHeld_ = false;
+    head_.lasts = how == SamplePicker::Hear::Preview ? static_cast<float>(lasts) / 1000.f + release_ : 0.f; // (Rest: to END)
 }
 
 // A setting, changed: kept, and heard if the song is not playing. Not more
 // often than a few times a second, however fast the stick turns it.
 void SamplerScreen::setSetting(int id, int value) {
     const int before = trk().sampler[id];
+    // START and END never cross: each stops kLeastSpan short of the other.
+    if (id == sampler::Start && value > trk().sampler[sampler::End] - sampler::kLeastSpan) value = trk().sampler[sampler::End] - sampler::kLeastSpan;
+    if (id == sampler::End && value < trk().sampler[sampler::Start] + sampler::kLeastSpan) value = trk().sampler[sampler::Start] + sampler::kLeastSpan;
     session_.setSamplerSetting(project_.track, id, value);
     if (trk().sampler[id] == before || project_.playing || lastMs_ - heardAt_ < kHearEveryMs) return;
     heardAt_ = lastMs_;
@@ -82,7 +110,7 @@ void SamplerScreen::stepSound(int by) {
 
 void SamplerScreen::press(Button b) {
     if (!holding_) {
-        // SOUND on top; the settings in a row of four and a row of three under it.
+        // SOUND on top; the settings in two rows of four under it.
         if (b == Button::Left) goTo(stop_ - 1);
         if (b == Button::Right) goTo(stop_ + 1);
         if (b == Button::Up) goTo(stop_ == 0 ? 0 : (stop_ <= 4 ? 0 : stop_ - 4));
@@ -92,15 +120,17 @@ void SamplerScreen::press(Button b) {
     if (b != Button::Up && b != Button::Down) return;
     stepped_ = true;
     const int by = b == Button::Up ? 1 : -1;
+    const int id = settingAt(stop_ - 1);
     if (stop_ == 0) stepSound(by);
-    else setSetting(stop_ - 1, trk().sampler[stop_ - 1] + (stop_ - 1 == sampler::Root ? -by : by)); // PITCH up is the root key down
+    else setSetting(id, trk().sampler[id] + (id == sampler::Root ? -by : by)); // PITCH up is the root key down
 }
 
 void SamplerScreen::openPicker() {
     const int track = project_.track;
     SamplePicker::Jobs jobs;
     jobs.use = [this, track](const std::string& name) { session_.setTrackSample(track, name); };
-    jobs.hear = [this](bool held) { hear(held); };
+    jobs.hear = [this](SamplePicker::Hear how) { hearFromList(how); };
+    jobs.sounding = [this] { return session_.hearingOn(this) && head_.at(lastMs_) >= 0.f; }; // (its line still running: not ended by itself)
     jobs.playhead = [this] { return &head_; };
     jobs.sound = [this, track] { return &session_.trackSound(track); };
     jobs.remove = [this](const std::string& name) { return session_.deleteSample(name); };
@@ -139,7 +169,7 @@ void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
         repeatAt_ = 0;
     } else if (b == Button::B && !holding_) {
         if (stop_ == 0) session_.setTrackSample(project_.track, "");
-        else setSetting(stop_ - 1, sampler::settingDefault(stop_ - 1));
+        else setSetting(settingAt(stop_ - 1), sampler::settingDefault(settingAt(stop_ - 1)));
     } else if (b == Button::Y && !holding_) {
         const std::string name = session_.catchLastBar(project_.track, 0);
         said_ = name.empty() ? "NOTHING TO CATCH: PLAY SOMETHING FIRST" : "CAUGHT THE LAST BAR AS \"" + name + "\"";
@@ -198,7 +228,7 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
 
     if (holding_ && stop_ > 0) {
         // A setting: the stick turns it through its whole range in about a second.
-        const int id = stop_ - 1;
+        const int id = settingAt(stop_ - 1);
         const float range = static_cast<float>(sampler::settingMax(id) - sampler::settingMin(id));
         turned_ += -y * std::fabs(y) * range * dt;
         const int whole = static_cast<int>(turned_);
@@ -258,12 +288,14 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else if (!sound.peaks.empty()) {
         const int wx = sx + 7, wy = kWaveY, ww = sw - 14, wh = kWaveH;
         const int count = static_cast<int>(sound.peaks.size());
-        const float start = static_cast<float>(t.sampler[sampler::Start]) / 100.f;
+        const float start = static_cast<float>(t.sampler[sampler::Start]) / 100.f, end = endPart(t);
         for (int i = 0; i < count; ++i) {
             const int ph = 1 + static_cast<int>(sound.peaks[static_cast<std::size_t>(i)] * (wh - 1));
-            fill(r, wx + ww * i / count, wy + (wh - ph) / 2, ww / count, ph, static_cast<float>(i) / count >= start ? kText : kLine);
+            const float at = static_cast<float>(i) / count;
+            fill(r, wx + ww * i / count, wy + (wh - ph) / 2, ww / count, ph, at >= start && at < end ? kText : kLine); // what a note plays, lit
         }
-        fill(r, wx + static_cast<int>(start * ww), wy - 2, 2, wh + 4, kPurple); // where a note begins
+        fill(r, wx + static_cast<int>(start * ww), wy - 2, 2, wh + 4, kPurple);   // where a note begins
+        fill(r, wx + endMarkX(end, ww), wy - 2, 2, wh + 4, kPurple);              // and where it ends
         drawPlayhead(r, head_, lastMs_, wx, wy - 2, ww, wh + 4);
         std::snprintf(text, sizeof text, "%.1f S", sound.seconds);
         fonts.small.drawRight(r, sx + sw - 8.f, sy + 7.f, text, kDim);
@@ -271,11 +303,12 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (stop_ == 0) outline(r, sx - 1, sy - 1, sw + 2, sh + 2, accent, 2);
 
     // ---- the settings -------------------------------------------------------------
-    for (int id = 0; id < sampler::kSettings; ++id) {
-        const int x = 8 + (id % 4) * 157, y = kSettingY + (id / 4) * (kSettingH + kSettingGap);
+    for (int place = 0; place < sampler::kSettings; ++place) {
+        const int id = settingAt(place);
+        const int x = 8 + (place % 4) * 157, y = kSettingY + (place / 4) * (kSettingH + kSettingGap);
         samplerSettingText(id, t.sampler[id], text, sizeof text);
         const float range = static_cast<float>(sampler::settingMax(id) - sampler::settingMin(id));
-        valueBox(r, fonts, x, y, 153, kSettingH, kNames[id], text, (id == sampler::Root ? static_cast<float>(sampler::settingMax(id) - t.sampler[id]) : static_cast<float>(t.sampler[id] - sampler::settingMin(id))) / range, stop_ == id + 1,
+        valueBox(r, fonts, x, y, 153, kSettingH, kNames[id], text, (id == sampler::Root ? static_cast<float>(sampler::settingMax(id) - t.sampler[id]) : static_cast<float>(t.sampler[id] - sampler::settingMin(id))) / range, stop_ == place + 1,
                  holding_, id == sampler::Tune);
     }
     scopeStrip(r, fonts, session_.engine);
