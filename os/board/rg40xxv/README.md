@@ -29,7 +29,8 @@ licence; its branding is CC BY-NC-SA 4.0 (**none of the branding is here**).
 | `firmware/panels/anbernic,rg40xx-panel.panel`, `...rg40xx-v2-panel.panel` | `projects/ROCKNIX/packages/linux-firmware/kernel-firmware/extra-firmware/panels/` | GPL-2.0 as ROCKNIX's own work (the files carry no header). **Data, not code**: the panel's start-up commands and timings in the format of the generic MIPI panel driver (patch 0110; https://kikuchan.github.io/panel-firmware-generator/) |
 | `linux-rocknix-h700.config` | `projects/ROCKNIX/devices/H700/linux/linux.aarch64.conf` (ROCKNIX's whole H700 kernel config, for Linux 7.2.0) | GPL-2.0 (part of Linux's build) |
 | `patches/uboot/0001`, `0002` | `projects/ROCKNIX/devices/H700/packages/u-boot-DDR4/patches/` (the DDR3 folder has the same two) | GPL-2.0+: changes to U-Boot. Philippe Simons; Kailash |
-| `uboot.fragment`, `uboot-lpddr3.fragment` | ours: the lines where ROCKNIX's `anbernic_rg35xx_h700_lpddr4_defconfig` and `..._lpddr3_defconfig` differ from mainline U-Boot's `anbernic_rg35xx_h700_defconfig` | GPL-2.0+ (U-Boot config) |
+| `patches/uboot/0003-apotheca-sunxi-spl-early-led.patch` | **ours** (2026-11-17): the SPL lights a LED (`CONFIG_SPL_EARLY_LED_GPIO`) before it sets up the PMIC and the DRAM | GPL-2.0+, as U-Boot |
+| `uboot.fragment`, `uboot-lpddr3.fragment` | ours: the lines where ROCKNIX's `anbernic_rg35xx_h700_lpddr4_defconfig` and `..._lpddr3_defconfig` differ from mainline U-Boot's `anbernic_rg35xx_h700_defconfig`, **less `CONFIG_AXP_DISABLE_BOOT_ON_POWERON`** (so ROCKNIX's patch 0002 is applied but does nothing: plan, section 15), plus our own `CONFIG_SPL_EARLY_LED_GPIO` and `CONFIG_PREBOOT` | GPL-2.0+ (U-Boot config) |
 | `patches/uboot/uboot.hash` | ours | - |
 
 Everything else in `os/` (the scripts, the init, `genimage.cfg`, the

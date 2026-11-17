@@ -23,11 +23,24 @@
  *       Not on a charger, and at or under the low percent (5) or under
  *       3.25 V, on two reads in a row: poweroff. (The AXP717's own cut-off,
  *       later, saves nothing.)
+ *   The screen (firmware plan, section 15): never running behind a dark one
+ *       Nothing here can see the picture, so the owner's hands say it: a
+ *       device tree (a screen's kind) counts as SEEN WORKING once a joypad
+ *       button is pressed while it runs, and its name is kept in
+ *       /data/apotheca/screen-seen. Until then, screen-check seconds (300)
+ *       after the start with no button: poweroff. And 60 s after the start
+ *       with no backlight or no display at all in /sys: poweroff.
+ *       Only where the device tree names itself (rocknix-dt-id: the
+ *       handheld, not qemu).
+ *   The green light: Linux blinks it from the start (the device tree's
+ *       heartbeat); it is made steady here once the screen counts as seen.
  *
  * The config, /data/apotheca/power.txt, lines "WORD VALUE", read at the
  * start and at every battery read (a missing file is the defaults):
  *   low-battery PERCENT     0 to 50; 0: never off for the battery
  *   power-key screen|sleep  what a short press does (screen)
+ *   screen-check SECONDS    0 to 3600; 0: never off for a screen not yet
+ *                           seen working (300)
  * (Its idle-off MINUTES line is Apotheca's own: /usr/libexec/apotheca/run
  * hands it to the program.)
  *
@@ -45,6 +58,10 @@
  *   --poll S       seconds between battery reads (default 20)
  *   --long-ms MS   a long press (default 2000)
  *   --console FILE where the important lines also go (default /dev/console)
+ *   --tree FILE    the device tree's own name (default
+ *                  /proc/device-tree/rocknix-dt-id)
+ *   --seen FILE    the tree last seen working (default /data/apotheca/screen-seen)
+ *   --find-screen-s S  when to look for a backlight and a display (default 60)
  */
 #include <dirent.h>
 #include <errno.h>
@@ -77,6 +94,10 @@ static long longMs = 2000;
 /* The config */
 static int lowPercent = 5;
 static int keySleeps = 0;
+static int screenCheckSeconds = 300;
+static const char* treeFile = "/proc/device-tree/rocknix-dt-id";
+static const char* seenFile = "/data/apotheca/screen-seen";
+static int findScreenSeconds = 60;
 static const long kLowMicrovolts = 3250000; /* a backstop under the gauge (guess: not measured) */
 
 /* ---- saying what happens ---------------------------------------------- */
@@ -143,6 +164,7 @@ static int writeText(const char* path, const char* text) {
 static void readConfig(void) {
     lowPercent = 5;
     keySleeps = 0;
+    screenCheckSeconds = 300;
     FILE* f = fopen(configFile, "r");
     if (!f) return;
     char line[128];
@@ -155,6 +177,10 @@ static void readConfig(void) {
             if (end != value && *end == 0 && v >= 0 && v <= 50) lowPercent = (int)v;
         } else if (strcmp(word, "power-key") == 0) {
             keySleeps = strcmp(value, "sleep") == 0;
+        } else if (strcmp(word, "screen-check") == 0) {
+            char* end = NULL;
+            const long v = strtol(value, &end, 10);
+            if (end != value && *end == 0 && v >= 0 && v <= 3600) screenCheckSeconds = (int)v;
         }
     }
     fclose(f);
@@ -264,6 +290,61 @@ static void setScreen(int off) {
     for (int i = 0; i < deviceCount; ++i)
         if (devices[i].pad) grab(&devices[i], off);
     say(1, off ? "the screen off, the buttons held (a short press of the power key: back)" : "the screen on");
+}
+
+/* ---- the screen seen working, and the green light ---------------------- */
+
+static char treeId[128] = ""; /* empty: not the handheld, nothing is checked */
+static int screenSeen = 0;
+
+/* A file's first line without the NUL a device-tree string ends with. */
+static void readTree(void) {
+    treeId[0] = 0;
+    FILE* f = fopen(treeFile, "r");
+    if (!f) return;
+    const size_t got = fread(treeId, 1, sizeof treeId - 1, f);
+    fclose(f);
+    treeId[got] = 0;
+    treeId[strcspn(treeId, "\r\n")] = 0;
+}
+
+/* The power light steady (no trigger, full): Linux has it blinking until now. */
+static void steadyLight(void) {
+    char path[512];
+    snprintf(path, sizeof path, "%s/class/leds", sysDir);
+    DIR* dir = opendir(path);
+    if (!dir) return;
+    struct dirent* e;
+    while ((e = readdir(dir)) != NULL) {
+        if (!strstr(e->d_name, "power")) continue;
+        snprintf(path, sizeof path, "%s/class/leds/%s/trigger", sysDir, e->d_name);
+        writeText(path, "none\n");
+        snprintf(path, sizeof path, "%s/class/leds/%s/brightness", sysDir, e->d_name);
+        writeText(path, "1\n");
+    }
+    closedir(dir);
+}
+
+static void screenWasSeen(const char* how) {
+    screenSeen = 1;
+    steadyLight();
+    char text[160];
+    snprintf(text, sizeof text, "%s\n", treeId);
+    const int kept = writeText(seenFile, text);
+    say(1, "the screen counts as seen working (%s) with %s%s", how, treeId, kept ? "" : "; that could not be kept on the card");
+}
+
+static int anyEntry(const char* folder, const char* with) {
+    char path[512];
+    snprintf(path, sizeof path, "%s/class/%s", sysDir, folder);
+    DIR* dir = opendir(path);
+    if (!dir) return 0;
+    int found = 0;
+    struct dirent* e;
+    while ((e = readdir(dir)) != NULL)
+        if (e->d_name[0] != '.' && (!with || strstr(e->d_name, with))) found = 1;
+    closedir(dir);
+    return found;
 }
 
 /* ---- off and sleep ----------------------------------------------------- */
@@ -380,6 +461,9 @@ int main(int argc, char** argv) {
         else if (strcmp(a, "--console") == 0) consoleFile = v;
         else if (strcmp(a, "--poll") == 0) pollSeconds = atoi(v) > 0 ? atoi(v) : 20;
         else if (strcmp(a, "--long-ms") == 0) longMs = atol(v) > 0 ? atol(v) : 2000;
+        else if (strcmp(a, "--tree") == 0) treeFile = v;
+        else if (strcmp(a, "--seen") == 0) seenFile = v;
+        else if (strcmp(a, "--find-screen-s") == 0) findScreenSeconds = atoi(v) > 0 ? atoi(v) : 60;
         else { fprintf(stderr, "apotheca-power: unknown option %s\n", a); return 2; }
         ++i;
     }
@@ -398,6 +482,25 @@ int main(int argc, char** argv) {
     say(0, "started: a short press %s, held %ld ms turns off; off at %d%% on the battery%s",
         keySleeps ? "sleeps (untried)" : "turns the screen off", longMs, lowPercent, lowPercent ? "" : " (never)");
     backlight(1); /* whatever an earlier run left: the screen on */
+
+    /* Has this screen (this device tree) been seen working? */
+    readTree();
+    const long startedAt = nowMs();
+    long checkAt = 0, findScreenAt = 0;
+    if (treeId[0]) {
+        char seen[128] = "";
+        readLine(seenFile, seen, sizeof seen);
+        screenSeen = strcmp(seen, treeId) == 0;
+        if (screenSeen) {
+            steadyLight();
+            say(0, "the screen: %s, seen working before", treeId);
+        } else {
+            say(1, "the screen: %s, not yet seen working (before: %s). Any button says it is%s", treeId, seen[0] ? seen : "none",
+                screenCheckSeconds ? "; with none, off" : "");
+            if (screenCheckSeconds) checkAt = startedAt + screenCheckSeconds * 1000L;
+        }
+        findScreenAt = startedAt + findScreenSeconds * 1000L;
+    }
 
     /* New input devices: watched in /dev/input, and /dev/input watched for
      * from its parent, since the kernel makes it only with the first device
@@ -427,6 +530,8 @@ int main(int argc, char** argv) {
         long wait = nextRead - now;
         if (keyDown && !longDone && pressedAt + longMs - now < wait) wait = pressedAt + longMs - now;
         if (findAt && findAt - now < wait) wait = findAt - now;
+        if (checkAt && !screenSeen && checkAt - now < wait) wait = checkAt - now;
+        if (findScreenAt && findScreenAt - now < wait) wait = findScreenAt - now;
         if (wait < 0) wait = 0;
         poll(fds, (nfds_t)n, (int)wait);
         now = nowMs();
@@ -442,7 +547,15 @@ int main(int argc, char** argv) {
                 const ssize_t got = read(devices[i].fd, ev, sizeof ev);
                 if (got < 0 && errno == ENODEV) { forget(i); break; }
                 if (got <= 0) break;
-                if (!devices[i].power) continue; /* a joypad's events: read only to keep its queue empty */
+                if (devices[i].pad && treeId[0] && !screenSeen && !screenOff && !offAsked) {
+                    /* A button pressed (not the stick's readings): somebody sees the screen */
+                    for (int k = 0; k < (int)(got / (ssize_t)sizeof ev[0]); ++k)
+                        if (ev[k].type == EV_KEY && ev[k].value == 1 && ev[k].code >= BTN_MISC) {
+                            screenWasSeen("a button was pressed");
+                            break;
+                        }
+                }
+                if (!devices[i].power) continue; /* a joypad's other events: read only to keep its queue empty */
                 for (int k = 0; k < (int)(got / (ssize_t)sizeof ev[0]); ++k) {
                     if (ev[k].type != EV_KEY || ev[k].code != KEY_POWER) continue;
                     if (ev[k].value == 1 && !keyDown) {
@@ -462,6 +575,22 @@ int main(int argc, char** argv) {
             longDone = 1;
             turnOff("power key held");
         }
+        if (findScreenAt && now >= findScreenAt) {
+            findScreenAt = 0;
+            const int light = anyEntry("backlight", NULL), display = anyEntry("drm", "-");
+            if (!light || !display) {
+                say(1, "no screen to show anything on (backlight: %s, display: %s)", light ? "yes" : "none", display ? "yes" : "none");
+                turnOff("no screen found");
+                if (!offAsked) findScreenAt = now + 60000L;
+            }
+        }
+        if (checkAt && !screenSeen && now >= checkAt) {
+            char why[200];
+            snprintf(why, sizeof why, "no button in %d s with a screen not yet seen working (%s)", screenCheckSeconds, treeId);
+            checkAt = 0;
+            turnOff(why);
+            if (!offAsked) checkAt = now + 60000L;
+        }
         if (findAt && now >= findAt) {
             findAt = 0;
             if (!watching && watch >= 0) watching = inotify_add_watch(watch, devDir, IN_CREATE | IN_ATTRIB) >= 0;
@@ -469,7 +598,10 @@ int main(int argc, char** argv) {
         }
         if (now >= nextRead) {
             if (!watching && watch >= 0) watching = inotify_add_watch(watch, devDir, IN_CREATE | IN_ATTRIB) >= 0;
+            const int before = screenCheckSeconds;
             readConfig();
+            if (screenCheckSeconds != before && treeId[0] && !screenSeen)
+                checkAt = screenCheckSeconds ? startedAt + screenCheckSeconds * 1000L : 0;
             readBattery();
             findDevices();
             nextRead = now + pollSeconds * 1000L;

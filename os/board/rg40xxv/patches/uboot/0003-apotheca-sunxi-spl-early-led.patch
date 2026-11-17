@@ -1,0 +1,40 @@
+From: Apotheca <noreply@apotheca.invalid>
+Subject: [PATCH] sunxi: spl: light a LED as soon as the SPL runs
+
+A board with no serial console at hand says nothing when the SPL stops in
+the PMIC or DRAM set-up. With CONFIG_SPL_EARLY_LED_GPIO set, the SPL drives
+that pin high right after gpio_init(), before the console, the PMIC and the
+DRAM: the LED says the boot ROM found the SPL and ran it.
+---
+--- a/arch/arm/mach-sunxi/Kconfig
++++ b/arch/arm/mach-sunxi/Kconfig
+@@ -952,6 +952,15 @@
+ 	---help---
+ 	Say Y here to enable support for the gpio pins of the axp PMIC ICs.
+ 
++config SPL_EARLY_LED_GPIO
++	int "GPIO number of a LED the SPL lights as soon as it runs"
++	default -1
++	---help---
++	  A LED (active high) lit by the SPL before it sets up the console,
++	  the PMIC and the DRAM, so a board that stops in any of those still
++	  shows that the boot ROM found and ran the SPL. The number is
++	  32 * port + pin (PI12 is 268). -1 for none.
++
+ config AXP_DISABLE_BOOT_ON_POWERON
+ 	bool "Disable device boot on power plug-in"
+ 	depends on AXP209_POWER || AXP221_POWER || AXP809_POWER || AXP818_POWER || AXP717_POWER
+--- a/arch/arm/mach-sunxi/board.c
++++ b/arch/arm/mach-sunxi/board.c
+@@ -480,6 +480,11 @@
+ 	clock_init();
+ 	gpio_init();
+ 
++#if CONFIG_SPL_EARLY_LED_GPIO >= 0
++	/* The first sign of life: before the console, the PMIC and the DRAM */
++	gpio_direction_output(CONFIG_SPL_EARLY_LED_GPIO, 1);
++#endif
++
+ 	spl_init();
+ 	preloader_console_init();
+ 

@@ -8,11 +8,16 @@ U-Boot, so this builds mainline U-Boot v2026.01 (the same release) for qemu's
 the card's disk is "virtio 0:1" here, not "mmc 0:1"; the gpio set and clear
 commands only echo; and "gpio input PE6" is "test -e virtio 0:1 pe6-low", so a
 file on the boot partition stands in for the pin being low. Then it boots the
-card's own boot partition three ways and reads which tree U-Boot loaded:
+card's own boot partition five ways and reads which tree U-Boot loaded, the
+order of the gpio commands, and the uboot-report.txt it wrote to the card:
 
   no dtb.img, PE6 "low"    device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb
   no dtb.img, PE6 "high"   device_trees/sun50i-h700-anbernic-rg40xx-v.dtb
-  dtb.img there            dtb.img, whatever PE6 says
+  screen-first.txt there   the first screen's tree, whatever PE6 says
+  screen-v2.txt there      the newer screen's tree, whatever PE6 says
+  dtb.img there            dtb.img, whatever PE6 or a screen-*.txt says
+
+and that the boot partition is still a sound FAT after U-Boot's five writes.
 
 What it cannot show: that PE6 on the H700 reads as the stock boot loader's
 code says (low on the newer screen), that the reset pulse before the read is
@@ -127,26 +132,70 @@ def main():
         open(os.path.join(work, "flag"), "w").write("PE6 low, for this test\n")
         v2 = "device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb"
         first = "device_trees/sun50i-h700-anbernic-rg40xx-v.dtb"
-        cases = [("no dtb.img, PE6 low", ["pe6-low"], [], "/" + v2, "v2"),
-                 ("no dtb.img, PE6 high", [], ["pe6-low"], "/" + first, "first"),
-                 ("dtb.img copied there (the first screen's), PE6 low", ["pe6-low", "dtb.img"], [], "/dtb.img", "v2")]
-        for n, (what, add, remove, want, screen) in enumerate(cases):
+        cases = [("no dtb.img, PE6 low", ["pe6-low"], "/" + v2, "v2", "low", "PE6"),
+                 ("no dtb.img, PE6 high", [], "/" + first, "first", "high", "PE6"),
+                 ("screen-first.txt there, PE6 low", ["pe6-low", "screen-first.txt"], "/" + first, "v2", "low", "screen-first.txt"),
+                 ("screen-v2.txt there, PE6 high", ["screen-v2.txt"], "/" + v2, "first", "high", "screen-v2.txt"),
+                 ("dtb.img copied there (the first screen's), PE6 low, screen-v2.txt too",
+                  ["pe6-low", "dtb.img", "screen-v2.txt"], "/dtb.img", "v2", "low", "dtb.img")]
+        mt("mdel", "-i", fat, "::uboot-report.txt")
+        for n, (what, add, want, screen, pin, why) in enumerate(cases):
             for name in add:
-                src = os.path.join(work, "flag") if name == "pe6-low" else None
+                src = os.path.join(work, "flag")
                 if name == "dtb.img":
                     src = os.path.join(work, "first.dtb")
                     open(src, "wb").write(mt("mtype", "-i", fat, "::" + first).stdout)
                 mt("mcopy", "-o", "-i", fat, src, "::" + name)
-            for name in remove:
-                mt("mdel", "-i", fat, "::" + name)
             out = boot(uboot, image, os.path.join(work, "uboot%d.log" % n))
             got = re.findall(r"Retrieving file: (\S+\.(?:dtb|img))", out)
             dtbs = [g for g in got if g != "/Image"]
             check(dtbs == [want] and "Starting kernel" in out,
                   "%s: U-Boot loads %s and starts the kernel (%s)" % (what, want, ", ".join(dtbs) or "no tree"))
-            check("apotheca: PE6 says the %s screen" % screen in out, "and says the %s screen" % screen)
+            check("apotheca: PE6 says the %s screen" % screen in out, "and says PE6 reads as the %s screen" % screen)
+            # The lights and the backlight: green first of all, the backlight
+            # off for the reset pulse and on again after the panel is off.
+            gp = re.findall(r"^gpio (?:set|clear) P[A-Z][0-9]+", out, re.M)
+            check(gp[:2] == ["gpio set PI12", "gpio clear PD28"] and gp[-3:] == ["gpio clear PI14", "gpio clear PI15", "gpio set PD28"],
+                  "the green light first, the backlight off for the pulse, on again after it (%s)" % ", ".join(gp))
+            # The report U-Boot leaves on the boot partition
+            report = mt("mtype", "-i", fat, "::uboot-report.txt").stdout.decode("utf-8", "replace")
+            said = dict(l.split("=", 1) for l in report.splitlines() if "=" in l)
+            check(said.get("apotheca_starts") == "%x" % (n + 1) and said.get("apotheca_pe6") == pin
+                  and said.get("apotheca_why") == why and said.get("fdtfile") == want[1:]
+                  and said.get("apotheca_note", "").startswith("U-Boot ran"),
+                  "uboot-report.txt: start %d, PE6 %s, the tree %s by %s (%s)"
+                  % (n + 1, pin, want[1:], why, " | ".join(report.split("\n"))[:300]))
             for name in add:
                 mt("mdel", "-i", fat, "::" + name)
+        # The FAT after five writes by U-Boot: still sound, and the files the
+        # card was made with still read as they were.
+        part = os.path.join(work, "boot.fat")
+        with open(image, "rb") as f:
+            f.seek(boot_start)
+            open(part, "wb").write(f.read(64 << 20))
+        fsck = shutil.which("fsck.vfat") or shutil.which("fsck.fat") or os.path.join(host_bin, "..", "sbin", "fsck.fat")
+        # U-Boot's FAT code does not keep the "free clusters" note in the
+        # FSInfo sector (a hint for a quick "space left"; mtools, Linux and
+        # Windows work the count out themselves when it is off), so fsck may
+        # say that one thing and nothing else.
+        r = subprocess.run([fsck, "-n", part], capture_output=True)
+        said = [l for l in r.stdout.decode("utf-8", "replace").splitlines()[1:]
+                if l.strip() and not l.startswith((os.path.basename(part), part))
+                and "Auto-correcting" not in l and "Leaving filesystem unchanged" not in l]
+        check(all(l.startswith("Free cluster summary wrong") for l in said) and len(said) <= 1,
+              "the boot partition is sound after U-Boot's writes (fsck.fat -n says: %s)" % (said or "nothing"))
+        subprocess.run([fsck, "-a", part], capture_output=True)
+        r = subprocess.run([fsck, "-n", part], capture_output=True)
+        check(r.returncode == 0, "and with that note put right, fsck.fat finds nothing at all")
+        with gzip.open(args[0], "rb") as src:
+            src.seek(boot_start)
+            open(os.path.join(work, "boot0.fat"), "wb").write(src.read(64 << 20))
+        same = True
+        for name in ["Image", "extlinux/extlinux.conf", first, v2]:
+            a = mt("mtype", "-i", part, "::" + name).stdout
+            b = mt("mtype", "-i", os.path.join(work, "boot0.fat"), "::" + name).stdout
+            same = same and len(a) > 0 and a == b
+        check(same, "and its Image, extlinux.conf and trees read as they were made")
     finally:
         if "--keep" in sys.argv:
             print("work folder kept: %s" % work)

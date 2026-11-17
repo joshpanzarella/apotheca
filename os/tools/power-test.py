@@ -21,6 +21,11 @@ kernel's input_event records), with its "off" a command that writes a file.
   no folder    with no /dev/input at the start, it and its first device are
                found when they appear
   stop         TERM: it says so and ends
+  screen       a device tree not yet seen working: off after screen-check
+               seconds with no button; a button keeps it as seen and makes
+               the green light steady; another tree is checked again; no
+               backlight or no display in /sys: off; none of it where the
+               tree does not name itself (qemu)
 
 What it cannot show: EVIOCGRAB (a FIFO cannot be held; the qemu test holds a
 real uinput joypad), and the real AXP717 (only the handheld).
@@ -56,6 +61,9 @@ class Rig:
         self.log = os.path.join(root, "power.log")
         self.offs = os.path.join(root, "offs")
         self.config = os.path.join(root, "power.txt")
+        self.tree = os.path.join(root, "rocknix-dt-id")   # absent: not the handheld, no screen check
+        self.seen = os.path.join(root, "screen-seen")
+        self.find = 60
         os.makedirs(self.dev)
         os.makedirs(os.path.join(self.sys, "power"))
         open(os.path.join(self.sys, "power", "state"), "w").write("freeze mem\n")
@@ -89,7 +97,8 @@ class Rig:
             os.remove(self.offs)
         self.p = subprocess.Popen(
             [self.program, "--sys", self.sys, "--dev", self.dev, "--config", self.config, "--log", self.log,
-             "--off", "echo off >> %s" % self.offs, "--poll", str(poll), "--console", os.devnull],
+             "--off", "echo off >> %s" % self.offs, "--poll", str(poll), "--console", os.devnull,
+             "--tree", self.tree, "--seen", self.seen, "--find-screen-s", str(self.find)],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(0.5)
 
@@ -252,6 +261,94 @@ def main():
               "with no input folder at the start: the folder and its first device are found at once")
         r.press(0.3)
         check(r.backlight() == "4", "and its key works")
+        check(r.stop() == 0, "stops")
+
+        # The screen: never running behind a dark one (firmware plan, section 15)
+        r = Rig(program, os.path.join(work, "c"))
+        r.device(0, "axp20x-pek", [KEY_POWER])
+        r.device(1, "H700 Gamepad", list(range(BTN_SOUTH, BTN_SOUTH + 15)) + [BTN_DPAD_UP, BTN_DPAD_UP + 1])
+        r.supply("battery", type="Battery", capacity=60, status="Discharging")
+        os.makedirs(os.path.join(r.sys, "class", "drm", "card0-DSI-1"))
+        os.makedirs(os.path.join(r.sys, "class", "drm", "card0"))
+        led = os.path.join(r.sys, "class", "leds", "green:power")
+        os.makedirs(led)
+        open(os.path.join(led, "trigger"), "w").write("heartbeat\n")
+        open(os.path.join(led, "brightness"), "w").write("0\n")
+        ledNow = lambda: (open(os.path.join(led, "trigger")).read().strip(), open(os.path.join(led, "brightness")).read().strip())
+        r.find = 1
+        r.start(poll=60)                      # no tree name: qemu, the desk
+        time.sleep(2)
+        check(r.offCount() == 0 and "the screen:" not in r.logged() and ledNow() == ("heartbeat", "0"),
+              "where the device tree does not name itself (qemu): no screen check, the light left alone")
+        r.stop()
+        open(r.tree, "wb").write(b"sun50i-h700-anbernic-rg40xx-v\0")
+        open(r.config, "w").write("screen-check 3\n")
+        r.start(poll=60)
+        check("the screen: sun50i-h700-anbernic-rg40xx-v, not yet seen working" in r.logged() and ledNow()[0] == "heartbeat",
+              "a tree not seen working before: said, the light still blinking")
+        time.sleep(1.5)
+        check(r.offCount() == 0, "1.5 s of the 3: not yet off")
+        time.sleep(2.2)
+        check(r.offCount() == 1 and "no button in 3 s with a screen not yet seen working" in r.logged() and r.backlight() == "4",
+              "no button in 3 s: off")
+        check(not os.path.exists(r.seen), "and nothing is kept as seen")
+        r.stop()
+        r.start(poll=60)
+        # The stick's readings (EV_ABS) and a button let go are not a press
+        os.write(r.fifos[1], struct.pack("llHHi", 0, 0, 3, 0, 1234) + struct.pack("llHHi", 0, 0, EV_SYN, 0, 0))
+        r.key(1, BTN_SOUTH, 0)
+        time.sleep(0.4)
+        check(ledNow()[0] == "heartbeat" and not os.path.exists(r.seen), "the stick moving, or a button let go, is not a press")
+        r.key(1, BTN_SOUTH, 1)
+        time.sleep(0.4)
+        check(os.path.exists(r.seen) and open(r.seen).read() == "sun50i-h700-anbernic-rg40xx-v\n" and ledNow() == ("none", "1"),
+              "a button pressed: the tree is kept as seen working, the light steady")
+        time.sleep(3.5)
+        check(r.offCount() == 0, "and it is not turned off")
+        r.stop()
+        open(os.path.join(led, "trigger"), "w").write("heartbeat\n")
+        r.start(poll=60)
+        time.sleep(3.6)
+        check(r.offCount() == 0 and "seen working before" in r.logged() and ledNow() == ("none", "1"),
+              "the next start with the same tree: seen before, the light steady at once, never off")
+        r.stop()
+        open(r.tree, "wb").write(b"sun50i-h700-anbernic-rg40xx-v-v2-panel\0")
+        r.start(poll=60)
+        time.sleep(3.6)
+        check(r.offCount() == 1 and "(before: sun50i-h700-anbernic-rg40xx-v)" in r.logged(),
+              "another tree (the card moved to the other handheld, or a tree put there by hand): checked again, off")
+        r.stop()
+        # The power key's screen-off holds the buttons: a press then is not "seen"
+        r.start(poll=60)
+        r.press(0.2)
+        r.key(1, BTN_SOUTH, 1)
+        time.sleep(0.4)
+        check(not open(r.seen).read().startswith("sun50i-h700-anbernic-rg40xx-v-v2"), "a button with the screen turned off by the power key does not count")
+        r.stop()
+        open(r.config, "w").write("screen-check 0\n")
+        r.start(poll=60)
+        time.sleep(3.6)
+        check(r.offCount() == 0, "screen-check 0: never off for it")
+        r.stop()
+        # Nothing to show on at all: off after the look
+        open(r.config, "w").write("screen-check 0\n")
+        os.rmdir(os.path.join(r.sys, "class", "drm", "card0-DSI-1"))
+        r.start(poll=60)
+        time.sleep(0.5)
+        check(r.offCount() == 0, "no display in /sys, before the look: on")
+        time.sleep(1.2)
+        check(r.offCount() == 1 and "no screen to show anything on (backlight: yes, display: none)" in r.logged(), "no display 1 s in: off")
+        r.stop()
+        os.makedirs(os.path.join(r.sys, "class", "drm", "card0-DSI-1"))
+        os.rename(os.path.join(r.sys, "class", "backlight", "backlight"), os.path.join(r.root, "bl-away"))
+        r.start(poll=60)
+        time.sleep(1.7)
+        check(r.offCount() == 1 and "(backlight: none, display: yes)" in r.logged(), "no backlight: off")
+        r.stop()
+        os.rename(os.path.join(r.root, "bl-away"), os.path.join(r.sys, "class", "backlight", "backlight"))
+        r.start(poll=60)
+        time.sleep(1.7)
+        check(r.offCount() == 0, "both there: on")
         check(r.stop() == 0, "stops")
     finally:
         if r and r.p and r.p.poll() is None:

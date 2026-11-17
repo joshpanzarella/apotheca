@@ -1,7 +1,7 @@
 #!/bin/sh
 # Writes what this boot found to the card's DATA partition, so the owner can
 # send it back: /data/apotheca/logs/boot-NNNN.txt (the newest also as
-# boot-latest.txt). A second look 20 s later catches drivers that come late.
+# boot-latest.txt, and as linux-report.txt on the BOOT partition). A second look 20 s later catches drivers that come late.
 # The last 20 boots are kept.
 
 . /usr/lib/apotheca/common.sh
@@ -18,6 +18,8 @@ report() {
     section "device tree"
     tr -d '\0' < /proc/device-tree/model 2>/dev/null; echo
     tr -d '\0' < /proc/device-tree/rocknix-dt-id 2>/dev/null; echo
+    section "what U-Boot left on the boot partition (uboot-report.txt)"
+    cat "$APOTHECA_RUN/uboot-report.txt" 2>/dev/null
     section "uptime (s) and memory"; cat /proc/uptime; free -k
     section "cpu"
     grep -E '^(processor|BogoMIPS|CPU part)' /proc/cpuinfo
@@ -79,9 +81,44 @@ report() {
     section "dmesg"; dmesg
 }
 
+# to_boot FILE: a copy of the log on the card's BOOT partition (the first,
+# FAT, the one with README.txt) as linux-report.txt, beside U-Boot's own
+# uboot-report.txt: one place to look on a card taken out of a handheld that
+# showed nothing, and a log even when DATA could not be made or mounted. The
+# partition is mounted only for the copy.
+to_boot() {
+    root=$(root_partition) || return 1
+    boot=$(partition_of "$(disk_of "$root")" 1) || return 1
+    mkdir -p "$APOTHECA_RUN/boot"
+    mount -t vfat -o rw,noatime "/dev/$boot" "$APOTHECA_RUN/boot" 2>/dev/null || return 1
+    cp "$1" "$APOTHECA_RUN/boot/linux-report.txt" 2>/dev/null
+    code=$?
+    sync
+    umount "$APOTHECA_RUN/boot"
+    return $code
+}
+
+# U-Boot's own report of this start, for the log.
+from_boot() {
+    root=$(root_partition) || return 1
+    boot=$(partition_of "$(disk_of "$root")" 1) || return 1
+    mkdir -p "$APOTHECA_RUN/boot"
+    mount -t vfat -o ro "/dev/$boot" "$APOTHECA_RUN/boot" 2>/dev/null || return 1
+    cp "$APOTHECA_RUN/boot/uboot-report.txt" "$APOTHECA_RUN/uboot-report.txt" 2>/dev/null
+    umount "$APOTHECA_RUN/boot"
+}
+
 start() {
+    from_boot
     if ! mountpoint -q /data; then
-        say "boot log: /data is not mounted, the log stays in $APOTHECA_BOOTLOG"
+        say "boot log: /data is not mounted, the log goes to the boot partition only"
+        report > "$APOTHECA_RUN/linux-report.txt" 2>&1
+        to_boot "$APOTHECA_RUN/linux-report.txt" && say "boot log: linux-report.txt on the boot partition"
+        (
+            sleep 20
+            { echo; echo "##### 20 seconds later"; report; } >> "$APOTHECA_RUN/linux-report.txt" 2>&1
+            to_boot "$APOTHECA_RUN/linux-report.txt"
+        ) < /dev/null > /dev/null 2>&1 &
         return 0
     fi
     mkdir -p "$LOGS"
@@ -94,6 +131,7 @@ start() {
     cp "$file" "$LOGS/boot-latest.txt"
     sync
     say "boot log: $file"
+    to_boot "$file" || say "boot log: could not copy it to the boot partition"
 
     # Keep the last $KEEP
     ls "$LOGS"/boot-[0-9]*.txt 2>/dev/null | sort \
@@ -106,6 +144,7 @@ start() {
         { echo; echo "##### 20 seconds later"; report; } >> "$file" 2>&1
         cp "$file" "$LOGS/boot-latest.txt"
         sync
+        to_boot "$file"
     ) < /dev/null > /dev/null 2>&1 &
 }
 

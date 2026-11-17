@@ -21,6 +21,13 @@ rm -rf "$images/boot"
 mkdir -p "$images/boot/device_trees"
 cp "$images/Image" "$images/boot/Image"
 cp "$images"/allwinner/sun50i-h700-anbernic-rg40xx-v*.dtb "$images/boot/device_trees/"
+# Every tree: the green power light blinks (the kernel's heartbeat) from the
+# moment Linux has the LEDs, about a second into the kernel, so a handheld
+# with a dark screen still says Linux runs. apotheca-power makes it steady
+# once a button has been pressed with this screen (firmware plan, section 15).
+for t in "$images"/boot/device_trees/*.dtb; do
+    "$HOST_DIR/bin/fdtput" -t s "$t" /leds/led-0 linux,default-trigger heartbeat
+done
 cp -r "$board/boot-files/extlinux" "$images/boot/"
 cp "$board/boot-files/README.txt" "$images/boot/README.txt"
 genimage_cfg="$BUILD_DIR/genimage-apotheca.cfg"

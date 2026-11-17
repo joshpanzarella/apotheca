@@ -96,20 +96,33 @@ end = fit + fitsize
 check(end <= parts[0][2], "U-Boot ends at %d KiB, before p1 at %d KiB" % (end // 1024, parts[0][2] // 1024))
 fitdata = read(fit, fitsize)
 check(b'bl31' in fitdata or b'atf' in fitdata, "U-Boot's FIT holds Trusted Firmware (BL31)")
-# U-Boot's start (uboot.fragment's CONFIG_PREBOOT): the backlight off first,
-# dtb.img when there is one, else the tree by PE6, then the panel off.
+# U-Boot's start (uboot.fragment's CONFIG_PREBOOT): the green light, the
+# backlight off for the reset pulse, PE6, the panel off and the backlight ON,
+# then the tree (dtb.img, else screen-first.txt / screen-v2.txt, else PE6)
+# and the report written to the boot partition.
 uboot = read(8 * 1024, 4088 * 1024)
-pre = re.search(rb'gpio clear PD28;[^\0]*gpio clear PI15', uboot)
+pre = re.search(rb'gpio set PI12; gpio clear PD28;[^\0]*fatwrite mmc 0:1 [^\0]*', uboot)
 pre = pre.group(0).decode() if pre else ''
-check(pre.startswith('gpio clear PD28;') and pre.endswith('gpio clear PI14; gpio clear PI15'),
-      "U-Boot turns the backlight off first and the panel off last")
+check(pre.startswith('gpio set PI12; gpio clear PD28;'),
+      "U-Boot lights the green light first, and turns the backlight off for the reset pulse")
 check('if test -e mmc 0:1 dtb.img; then setenv fdtfile dtb.img;' in pre,
       "U-Boot takes dtb.img when the boot partition has one")
-check('if gpio input PE6; then setenv apotheca_screen v2;' in pre
+check('if gpio input PE6; then setenv apotheca_pe6 low; setenv apotheca_screen v2;' in pre
       and 'setenv fdtfile device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb' in pre
       and 'setenv fdtfile device_trees/sun50i-h700-anbernic-rg40xx-v.dtb' in pre
-      and pre.index('gpio set PI14; sleep 0.1;') < pre.index('gpio input PE6'),
+      and 0 < pre.find('gpio set PI14; sleep 0.1;') < pre.find('gpio input PE6'),
       "else it reads PE6 after the panel's reset pulse: low the v2 tree, high the first")
+check('gpio clear PI14; gpio clear PI15; gpio set PD28;' in pre
+      and pre.find('gpio input PE6') < pre.find('gpio clear PI15; gpio set PD28;'),
+      "after the read: the panel off and the backlight ON (a lit, empty screen until Linux)")
+check('test -e mmc 0:1 screen-first.txt' in pre and 'test -e mmc 0:1 screen-v2.txt' in pre
+      and 0 < pre.find('if test ${apotheca_why} = PE6; then') < pre.find('screen-first.txt'),
+      "screen-first.txt or screen-v2.txt on the boot partition overrides the pin (dtb.img overrides both)")
+check(pre.endswith('fatwrite mmc 0:1 ${scriptaddr} uboot-report.txt ${filesize}')
+      and pre.find('setenv fdtfile device_trees') < pre.find('env export -t'),
+      "last of all it writes uboot-report.txt to the boot partition")
+check(b'Power on by plug-in' not in uboot,
+      "the SPL does not turn the power off for a start by the charger (AXP_DISABLE_BOOT_ON_POWERON is off)")
 
 # --- p1: FAT boot partition
 off = parts[0][2]
@@ -142,6 +155,19 @@ if shutil.which('mdir') and shutil.which('mtype'):
         named = subprocess.run(['mtype', '-i', spec, '::device_trees/' + inuse], capture_output=True, env=env)
         check(inuse.endswith('.dtb') and named.returncode == 0 and named.stdout == r.stdout,
               "dtb.img is device_trees/%s, as dtb-in-use.txt says" % inuse)
+    # Every tree blinks the green light from the moment Linux has the LEDs
+    # (the heartbeat post-image.sh puts in): the sign that Linux runs.
+    blink = True
+    for f in ['device_trees/sun50i-h700-anbernic-rg40xx-v.dtb', 'device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb',
+              'device_trees/sun50i-h700-anbernic-rg40xx-v-v2-stock-panel.dtb'] + \
+             ['device_trees/try/%s/dtb.img' % t for t in ['1-pins-40ma', '2-backlight-50khz', '3-dither', '4-all-as-stock']] + \
+             ([] if auto else ['dtb.img']):
+        d = subprocess.run(['mtype', '-i', spec, '::' + f], capture_output=True, env=env).stdout
+        blink = blink and b'linux,default-trigger\0' in d and b'heartbeat\0' in d
+    check(blink, "every device tree on p1 blinks the power light once Linux runs (heartbeat)")
+    readme = mt('mtype', '-i', spec, '::README.txt').stdout
+    check('screen-first.txt' in readme and 'uboot-report.txt' in readme and 'linux-report.txt' in readme,
+          "README.txt tells of screen-first.txt, uboot-report.txt and linux-report.txt")
     tries = {}
     for t in ['1-pins-40ma', '2-backlight-50khz', '3-dither', '4-all-as-stock']:
         tries[t] = subprocess.run(['mtype', '-i', spec, '::device_trees/try/%s/dtb.img' % t],
@@ -210,6 +236,9 @@ if unsquashfs:
                   '/etc/init.d/S95apotheca', '/usr/libexec/apotheca/run', '/usr/libexec/apotheca/fakepad']:
             check(mode(f).startswith('-rwx'), "p2 holds %s, executable (%s)" % (f, mode(f) or "missing"))
         inittab = cat('/etc/inittab').decode('utf-8', 'replace')
+        check(b'screen-seen' in cat('/usr/sbin/apotheca-power') and b'no screen found' in cat('/usr/sbin/apotheca-power'),
+              "apotheca-power turns off a screen nobody has seen working, and one that is not there")
+        check(b'linux-report.txt' in cat('/etc/init.d/S90bootlog'), "S90bootlog copies the boot log to the boot partition (linux-report.txt)")
         check('::respawn:/usr/sbin/apotheca-power' in inittab, "inittab starts apotheca-power (and again if it stops)")
         check('::respawn:/usr/sbin/apotheca-keep apotheca /usr/libexec/apotheca/run' in inittab,
               "inittab starts Apotheca under apotheca-keep")

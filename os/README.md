@@ -54,29 +54,30 @@ handheld as before.** Keep the stock card in a drawer and use a spare one.
 1. Handheld off. Stock card out (into the drawer), our card into the
    **first slot** (TF1, the one the system starts from).
 2. Press the power key.
-3. **What you should see**, in order:
-   - **The light** by the screen comes on within a second or two: the boot
-     loader (U-Boot) is running.
-   - **A black screen**, perhaps after a moment of **coloured vertical
-     stripes**: this is normal. The screen shows stripes when it is powered
-     with no start-up commands; U-Boot cannot drive this screen, so it turns
-     the screen off within about a second and Linux turns it on with its
-     start-up commands a few seconds later. (Cards made before 2026-11-17
-     showed the stripes for 5 to 10 seconds.) **Wait.** Do not switch off in
-     this time, above all on the first start (a boot switched off here
-     writes no log).
-   - **Text scrolls on the screen** when the stripes go: the Linux kernel
-     starting.
-   - The first start only: a line `apotheca: DATA: first boot, growing ...`.
-     It makes the APOTHECA part of the card, filling the rest of the card.
-     It happens once.
-   - **Apotheca's screen** comes up, a few seconds after the text. The
-     first time it starts a new song.
+3. **What you should see**, in order. The lights say how far it got, even
+   when the screen shows nothing:
+
+   | Step | You see | It means |
+   | --- | --- | --- |
+   | 1 | **the power light, green**, within a second of the power key | the card's first small program (the SPL) ran |
+   | 2 | **a second light or colour** (red; with the green it may look orange), and **the screen lit but empty** | the boot loader (U-Boot) ran: the memory works. It wrote `uboot-report.txt` on APOTHBOOT |
+   | 3 | the red goes out, **the green light blinks**; the screen is dark for a moment, then **text scrolls**, then **Apotheca** | Linux is running |
+   | 4 | you press any button: **the green light stops blinking and stays on** | this screen now counts as seen working |
+
+   - **Wait 30 seconds** on the first start: it makes the APOTHECA part of
+     the card then (a line `apotheca: DATA: first boot, growing ...`), once.
+     Do not switch off in this time.
+   - A moment of **coloured vertical stripes** on the newer screen is
+     normal (the screen powered with no start-up commands yet).
+   - **The handheld never stays on behind a dark screen.** Until a button
+     has been pressed once with this screen, it turns itself off after
+     **5 minutes** with no button (the green light blinks all that time).
+     If Linux finds no screen at all, after one minute. (`screen-check 0`
+     in `apotheca/power.txt` turns the 5-minute rule off.)
    - **The buttons are set up already** (no "press A" setup). If they do
      the wrong things, delete `apotheca/controls.txt` on the APOTHECA drive:
-     the next start asks for each button, as on the stock card. (Cards made
-     before 2026-11-17 had **X and Y the wrong way round**; the new system
-     puts them right by itself if `controls.txt` is still the one it wrote.)
+     the next start asks for each button, as on the stock card.
+   - **None of the lights' steps has been seen on a handheld** (2026-11-17).
 4. To turn it off: see the next section.
 
 ## Turning it off, the power key, the battery
@@ -93,9 +94,11 @@ handheld off**. Every way off saves the song first.
 | The battery at **5%**, not on a charger | it saves and turns itself off. **There is no warning on screen yet** |
 | Hold the power key about 10 seconds | the power chip cuts the power by itself, whatever the system is doing (the last resort, as on stock: songs are saved as you go, but the last couple of seconds may be lost) |
 
-To turn it on again: press the power key. **Plugged in while off, it
-charges and stays off** (no charging picture on the screen yet; the power
-chip charges by itself).
+To turn it on again: press the power key. **A charger plugged in while it
+is off starts it** (since 2026-11-17: the rule that kept it off was the one
+place in the start-up that cuts the power before any light, and it was
+taken out while one unit would not start; plan, section 15). Turned off
+again it should go on charging (**not tried**).
 
 **Settings**, if you want other numbers: a text file `apotheca/power.txt`
 on the APOTHECA drive, one setting a line (any you leave out keep their
@@ -130,12 +133,15 @@ Whatever you see is useful. Send:
 
 1. **A photo of the screen**, whatever is on it (black, garbage, text,
    sideways text).
-2. **The boot log**, if it got far enough to write one. Put the card in the
-   computer, open the **APOTHECA** drive: `apotheca/logs/boot-latest.txt`
-   (the newest; `boot-0001.txt` is the first start). It holds everything
-   the system found: the screen, the buttons, the sound chip, the battery,
-   and the kernel's own messages. **If there is no `apotheca` folder at
-   all, the system did not get that far**: the photo is then the clue.
+2. **Every `.txt` file from the top of the APOTHBOOT drive**, above all
+   `uboot-report.txt` (U-Boot writes it at every start: what it read and
+   which tree it chose; `apotheca_starts` counts the starts, in
+   hexadecimal) and `linux-report.txt` (Linux's boot log: the screen, the
+   buttons, the sound chip, the battery, the kernel's own messages). **No
+   `uboot-report.txt`, or a count that did not go up: U-Boot did not run.
+   That file but no `linux-report.txt`: Linux did not get as far as its
+   own programs.** The same log, and the ones before it, are on the
+   **APOTHECA** drive: `apotheca/logs/boot-latest.txt`, `boot-0001.txt` ...
 3. **What the light did** (on, off, blinking) and whether text appeared.
 4. If Apotheca came up: **does it draw right** (compare with the stock
    card), **is there sound** from the speaker and the headphones, **do the
@@ -167,9 +173,11 @@ U-Boot reads pin PE6, the way Anbernic's own boot loader tells the screens
 apart (low: the newer screen), and loads the matching tree from
 `device_trees/`. **A `dtb.img` at the top of APOTHBOOT overrides it** (used
 whatever the screen); a new card has none (`dtb-in-use.txt` says `auto`).
-The owner has one unit of each. **Not yet tried on either**: which way PE6
-reads on each is from the stock boot loader's code, not seen. The boot log's
-"screen:" line gives PE6 and the tree U-Boot chose.
+The owner has one unit of each. The unit with the newer screen starts
+right with it; **the unit with the first screen has not started with any of
+our cards yet** (plan, section 15), so that PE6 reads high there is still
+from the stock boot loader's code, not seen. `uboot-report.txt` on APOTHBOOT
+and the boot log's "screen:" line give PE6 and the tree U-Boot chose.
 
 | Tree | Screen | Units |
 | --- | --- | --- |
@@ -177,17 +185,26 @@ reads on each is from the stock boot loader's code, not seen. The boot log's
 | `sun50i-h700-anbernic-rg40xx-v.dtb` | the first screen (PE6 high) | earlier units |
 | `sun50i-h700-anbernic-rg40xx-v-v2-stock-panel.dtb` | the newer screen, with the pixel clock edge and the timings Anbernic's own system uses | never chosen by itself: to compare |
 
-**First wait 30 seconds.** If the screen stays black or striped, the card
-may have guessed wrong; give it the other tree by hand:
+**First wait 30 seconds.** If the screen stays dark, striped or garbage
+while **the green light blinks** (Linux is running), the card has the
+screen's kind wrong. Tell it:
 
 1. Card into the computer, open **APOTHBOOT**.
-2. Copy `device_trees/sun50i-h700-anbernic-rg40xx-v.dtb` (or the v2 one) to
-   the top of APOTHBOOT, and rename the copy to **`dtb.img`**. (On a Mac:
-   check with **Get Info** that the name is exactly `dtb.img`, with no
-   ending added.)
+2. Make an empty text file at the top of it named **`screen-first.txt`**
+   (the first screen) or **`screen-v2.txt`** (the newer one). Anything or
+   nothing in it; only the name counts. (Check the name has no second
+   ending, like `screen-first.txt.txt`.)
 3. Card back in, power on, and wait 30 seconds.
 
-To go back to the card's own choice, delete `dtb.img`. A card can be built
+Delete the file to go back to the card's own choice. `uboot-report.txt`
+says what was read and used: `apotheca_pe6` (the pin), `apotheca_why` (PE6,
+the file's name, or dtb.img) and `fdtfile` (the tree).
+
+A whole tree by hand still works and wins over both: copy one from
+`device_trees/` to the top of APOTHBOOT and rename the copy to
+**`dtb.img`**.
+
+To go back, delete `dtb.img`. A card can be built
 with a `dtb.img` already in place: `scripts/build-image.sh --dtb rg40xx-v`
 (or `rg40xx-v-v2-panel`, `rg40xx-v-v2-stock-panel`).
 

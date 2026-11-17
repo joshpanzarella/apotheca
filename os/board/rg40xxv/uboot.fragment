@@ -1,12 +1,25 @@
 # ROCKNIX's changes over mainline's anbernic_rg35xx_h700_defconfig (LPDDR4),
 # from ROCKNIX's anbernic_rg35xx_h700_lpddr4_defconfig.
-# Power on only with the power key, not when a charger is plugged in
-# (with ROCKNIX's patch 0002 for the AXP717).
-CONFIG_AXP_DISABLE_BOOT_ON_POWERON=y
+# NOT taken from ROCKNIX since 2026-11-17 (firmware plan, section 15):
+# CONFIG_AXP_DISABLE_BOOT_ON_POWERON=y, which with ROCKNIX's patch 0002 has
+# the SPL cut the power at once when the AXP717 says the start came from a
+# charger being plugged in. It is the one place in the chain that turns the
+# handheld off before any light, and a unit that would not start had been on
+# a charger. Left off: plugging a charger into a handheld that is off starts
+# Apotheca (which turns itself off after 15 idle minutes).
+# CONFIG_AXP_DISABLE_BOOT_ON_POWERON is not set
 # No EFI and no wait: straight to extlinux.conf.
 # CONFIG_EFI_LOADER is not set
 CONFIG_BOOTDELAY=0
-# The status LED on as soon as U-Boot runs: the first sign of life.
+# The lights say how far the start got (firmware plan, section 15):
+#   green (PI12)  lit by the SPL as its first act (our patch 0003), before
+#                 the PMIC and the memory are set up;
+#   red (PI11)    U-Boot's status LED: lit when U-Boot itself runs, so the
+#                 memory works and Trusted Firmware was passed;
+#   Linux turns the red one off and blinks the green one (the device
+#   tree's heartbeat, put in by post-image.sh), and apotheca-power makes
+#   it steady.
+CONFIG_SPL_EARLY_LED_GPIO=268
 CONFIG_LED_STATUS=y
 CONFIG_LED_STATUS_GPIO=y
 CONFIG_LED_STATUS0=y
@@ -14,20 +27,30 @@ CONFIG_LED_STATUS_BIT=267
 CONFIG_LED_STATUS_STATE=2
 # Ours, not ROCKNIX's (2026-11-17), as soon as U-Boot runs:
 #
-# 1. The screen's kind, as Anbernic's own boot loader tells it (decoded from
+# 1. The green light on (again: the SPL lit it), and the backlight off
+#    (PD28) so the reset pulse below shows nothing.
+# 2. The screen's kind, as Anbernic's own boot loader tells it (decoded from
 #    the u-boot.fex muOS ships, commit a55cdbe): the panel powered (PI15)
 #    and taken through a reset pulse (PI14: high 15 ms, low 50 ms, high
 #    100 ms), then pin PE6 read. PE6 LOW is the newer screen (the stock code
 #    runs the v2 start-up commands when lcd_type = !PE6 is 1), HIGH the first.
-#    The device tree to use is set in fdtfile: dtb.img on the boot partition
-#    when there is one (a tree copied there by hand always wins), else the
-#    matching tree in device_trees/. extlinux.conf's FDTDIR / reads it. If
-#    the read goes wrong (gpio input fails) it counts as HIGH.
-# 2. Then the backlight off (PD28), the panel held in reset (PI14) and its
-#    power off (PI15), so the panel is not left lit and powered with no
-#    picture and no start-up commands (the coloured stripes) until Linux's
-#    panel driver powers it up properly, about 3 s into the kernel. The pins
-#    are the device tree's (backlight, the panel's reset-gpios, vdd-lcd);
-#    low is the state Linux keeps them in with the panel off. The backlight
-#    goes off first of all, so the reset pulse shows nothing.
-CONFIG_PREBOOT="gpio clear PD28; if test -e mmc 0:1 dtb.img; then setenv fdtfile dtb.img; echo apotheca: dtb.img chosen by hand; fi; gpio set PI15; gpio set PI14; sleep 0.015; gpio clear PI14; sleep 0.05; gpio set PI14; sleep 0.1; if gpio input PE6; then setenv apotheca_screen v2; else setenv apotheca_screen first; fi; echo apotheca: PE6 says the ${apotheca_screen} screen; if test ${fdtfile} != dtb.img; then if test ${apotheca_screen} = v2; then setenv fdtfile device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb; else setenv fdtfile device_trees/sun50i-h700-anbernic-rg40xx-v.dtb; fi; fi; echo apotheca: device tree ${fdtfile}; gpio clear PI14; gpio clear PI15"
+#    If the read goes wrong (gpio input fails) it counts as HIGH.
+# 3. The panel held in reset (PI14) and its power off (PI15), so it is not
+#    left powered with no start-up commands (the coloured stripes) until
+#    Linux's panel driver powers it up, about 3 s into the kernel; and THE
+#    BACKLIGHT ON (PD28): a lit, empty screen says U-Boot ran, and a start
+#    that stops later is never a dark screen. (It was turned off here until
+#    section 15.) Linux takes the backlight over: dark for a moment when its
+#    driver starts, lit again with the picture.
+# 4. The device tree, in fdtfile (extlinux.conf's FDTDIR / reads it):
+#      dtb.img on the boot partition, when there is one: a whole tree put
+#        there by hand always wins;
+#      else screen-first.txt or screen-v2.txt there (any content; v2 wins
+#        if both): the owner's word on which screen, over the pin's;
+#      else by PE6.
+# 5. uboot-report.txt written to the boot partition (FAT): what was read and
+#    chosen, and a count of starts (read back from the last report). A card
+#    taken out of a handheld that showed nothing says by this file whether
+#    U-Boot ran there. It is written last: the tree is chosen whatever the
+#    write does.
+CONFIG_PREBOOT="gpio set PI12; gpio clear PD28; setenv apotheca_why PE6; if test -e mmc 0:1 dtb.img; then setenv fdtfile dtb.img; setenv apotheca_why dtb.img; echo apotheca: dtb.img chosen by hand; fi; gpio set PI15; gpio set PI14; sleep 0.015; gpio clear PI14; sleep 0.05; gpio set PI14; sleep 0.1; if gpio input PE6; then setenv apotheca_pe6 low; setenv apotheca_screen v2; else setenv apotheca_pe6 high; setenv apotheca_screen first; fi; echo apotheca: PE6 says the ${apotheca_screen} screen; gpio clear PI14; gpio clear PI15; gpio set PD28; if test ${apotheca_why} = PE6; then if test -e mmc 0:1 screen-first.txt; then setenv apotheca_screen first; setenv apotheca_why screen-first.txt; fi; if test -e mmc 0:1 screen-v2.txt; then setenv apotheca_screen v2; setenv apotheca_why screen-v2.txt; fi; if test ${apotheca_screen} = v2; then setenv fdtfile device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb; else setenv fdtfile device_trees/sun50i-h700-anbernic-rg40xx-v.dtb; fi; fi; echo apotheca: device tree ${fdtfile} by ${apotheca_why}; if fatload mmc 0:1 ${scriptaddr} uboot-report.txt; then env import -t ${scriptaddr} ${filesize} apotheca_starts; fi; if test -n ${apotheca_starts}; then setexpr apotheca_starts ${apotheca_starts} + 1; else setenv apotheca_starts 1; fi; setenv apotheca_note U-Boot ran and wrote this as it started. apotheca_starts counts every start, in hexadecimal; env export -t ${scriptaddr} apotheca_note apotheca_starts apotheca_pe6 apotheca_screen apotheca_why fdtfile; fatwrite mmc 0:1 ${scriptaddr} uboot-report.txt ${filesize}"
