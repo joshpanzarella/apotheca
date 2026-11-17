@@ -6,11 +6,12 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 ## Status
 
 A small song machine that runs, at 48 kHz. Up to twelve tracks, each a drum
-kit, a sampler, or one of five synths: Phazed (phase distortion, 65 presets), JAX-EP
+kit, a sampler, or one of six synths: Phazed (phase distortion, 65 presets), JAX-EP
 (a virtual analog synth modeled after a popular DCO synth, 142 presets), FM-6 (six-operator
 FM, after a classic 80s synth, 209 presets), PHYSIC (plucked and struck sounds that ring by
-themselves: strings, mallets, bells, 96 presets) or ACID (a mono bass with accent and slide,
-after a classic bass line box, 32 presets). Up to sixteen scenes of
+themselves: strings, mallets, bells, 96 presets), ACID (a mono bass with accent and slide,
+after a classic bass line box, 32 presets) or CLOUD (clouds of grains from your recordings,
+24 presets). Up to sixteen scenes of
 one to eight bars, each with its own repeat count. Four screens:
 
 - **SONG**: tracks across, scenes down. Add tracks, set how many times each
@@ -19,7 +20,7 @@ one to eight bars, each with its own repeat count. Four screens:
   a synth, a piano roll on its side (keys across, time down) with chords
   from chord packs.
 - **DEVICE**: for a synth, a main panel of folder, preset and eight macros,
-  with advanced pages behind it (nine for Phazed, five for JAX-EP, eight for FM-6, five for PHYSIC).
+  with advanced pages behind it (nine for Phazed, five for JAX-EP, eight for FM-6, five for PHYSIC, three for CLOUD).
   For drums, the kit: each lane plays its built-in drum or a recording.
 - **FX**: three effects on each track, two on the master, and two shared ones (ECHO and SPACE) that every track can send to.
 
@@ -1030,6 +1031,99 @@ have seen it, and every claim about its sound is a measurement against the
 plan's own guesses (no recording of the original was measured). Its cost on the
 desk is about 0.13% of one core for a busy line; the handheld is about 13 to
 17 times slower (not run there). The plan: `docs/plans/acid-plan.md`.
+
+### CLOUD
+
+**Clouds of grains from your recordings.** A grain is a short piece of a
+recording (5 MS to 1 S) with a soft fade in and out. A key held on CLOUD plays
+many of them at once, each from a slightly different place, at the key's
+pitch: a drum loop becomes a hum, a voice a choir, a chord a pad. With no
+recording it plays a built-in TONE (a soft note about middle C), so a new
+track makes a sound at once.
+
+- **Pick its recording on SOURCE, the first page**: the first stop is
+  RECORDING. A opens the list of recordings (the same list as the sampler's:
+  folders, a preview as you go, X to hear); **hold A + UP / DOWN** steps to the
+  next one, heard at once. **R1 there records** a new one (as the sampler's
+  R1; elsewhere R1 turns the page). **Y on SOURCE is CATCH**: the last bar the
+  song played becomes this track's recording. B in the list leaves the
+  recording as it was. "THE BUILT-IN TONE" at the top of the list is none.
+- **MAIN shows the recording**, between PRESET and the macros: its outline,
+  the part the grains come from lit (POSITION give or take SPRAY), POSITION a
+  brass line, and a teal tick at the top and bottom for each grain sounding.
+  The recording has no ends: a grain that runs past one comes in from the
+  other, and the lit part goes round too.
+- **Six keys sound at once.** A seventh lets go of the oldest key already let
+  go, else the oldest. The same key struck again keeps its grains going.
+  At most 24 grains sound in the track at once (12 a key); past that the cloud
+  thins, it never clicks. STOP lets keys ring out under their RELEASE; PLAY
+  and the panic fade them in 5 MS.
+- **Every grain's place, pitch, side and direction is a roll by where and
+  when** (the key's start and the grain's count), not dice thrown as it plays:
+  Play from the top is the same cloud again, and a bounce is what you heard.
+- **Y on MAIN rolls a new cloud**: SPRAY, SIZE, DENSITY, SCATTER, SHAPE, PITCH
+  SPRAY, PITCH STEPS, REVERSE and STEREO. It never changes the recording,
+  POSITION, SCAN, ROOT, TUNE, the envelope or the levels. One step of undo.
+- **24 presets in four folders**: STILL (one place, held: Soft Cloud, Glass
+  Hold, Breath Pad, Frozen Shimmer, Still Water, Halo), DRIFT (the place moves:
+  Slow Tide, Backwards River, Wander, Tape Scrub, Drifting Choir, Pendulum),
+  DUST (short grains, sparse: Dust, Crackle, Rain on Glass, Embers, Static
+  Specks, Step Dust) and CHOIR (pitched on octaves and fifths: Fifths Choir,
+  Octave Ghosts, Cathedral, Low Choir, Bloom Choir, Choir Sweep). **A new
+  CLOUD track starts on Soft Cloud, on the TONE.** Six carry a MOD, eight an
+  effect or a send. A preset picked keeps the track's recording; **a preset of
+  your own saved on CLOUD keeps its recording's name**, and picked again puts
+  that recording back (by its name, else the one recording of the same name in
+  another folder, else it says RECORDING NOT FOUND and keeps the track's).
+
+The macros. Each at +0 is the patch as it is; a preset puts all eight back.
+Below the middle a macro slides its setting down to the least, above it up to
+the most. None is a choice, so each takes a MOD (hold X on it).
+
+| Macro | Moves |
+| --- | --- |
+| POSITION | where in the recording the grains come from |
+| SPRAY | how far each grain's place is scattered about it |
+| SIZE | each grain's length |
+| DENSITY | grains a second |
+| SCAN | the place moving on by itself, forwards or back |
+| PITCH | PITCH SPRAY |
+| SHAPE | each grain's fade: PLUCK, SMOOTH, SWELL |
+| REVERSE | the share of grains played backwards |
+
+ADVANCED is three pages. L1 and R1 turn them.
+
+| Page | Setting | Reads |
+| --- | --- | --- |
+| SOURCE | RECORDING | its name, TONE, or NOT FOUND (the TONE plays) |
+| | POSITION | 0% to 100% of the way into the recording |
+| | SPRAY | OFF to +-50%: how far a grain's place is rolled, as a share of the recording |
+| | SCAN | -2.00X to +2.00X: the place moves on at that speed (+1.00X is the speed it was made); FREEZE in the middle |
+| | ROOT | the key that plays the recording at its own pitch (C4 usually) |
+| | TUNE | -100 to +100 CENTS |
+| GRAINS | SIZE | 5.0 MS to 1.00 S |
+| | DENSITY | 1.00 HZ to 200 HZ, grains a second for each key |
+| | SCATTER | 0%: grains evenly spaced; 100%: at random times (the same number a second) |
+| | SHAPE | PLUCK (a fast rise), SMOOTH, SWELL (a slow rise) |
+| | REVERSE | OFF, or the chance a grain plays backwards |
+| | STEREO | how far each grain is placed left or right |
+| PLAY | PITCH SPRAY | OFF to +-1200 CENTS: how far each grain's pitch is rolled |
+| | PITCH STEPS | FREE, OCTAVES or FIFTHS: the rolled pitch held to that grid |
+| | ATTACK | 1.0 MS to 8.0 S |
+| | RELEASE | 2.0 MS to 20.0 S, after the key is let go |
+| | LEVEL | -40.0 DB to 0.00 DB, OFF at 0 |
+| | VELOCITY | OFF: every key one level; 100%: a key's level is its velocity |
+
+- The cloud keeps about one level at any DENSITY and SIZE (more grains, each
+  quieter).
+- Every click of the D-pad reads another way: the readings carry as many
+  figures as it takes (SPRAY 1 reads +-0.005%).
+
+**Nobody has heard it**, on the desk or the handheld: the tests and the stills
+have seen it, and every figure is the plan's own choice. Its cost on the desk:
+one key about 0.05% of one core, the 24 grains all sounding about 0.55%; the
+handheld is about 13 to 17 times slower (not run there). The plan:
+`docs/plans/granular-plan.md`.
 
 ### The envelope
 

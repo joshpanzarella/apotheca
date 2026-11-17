@@ -460,3 +460,44 @@ recordings is read on the app thread while the page looks, as for a sampler (`se
 - **Tried in a browser** (Playwright and Chromium, 2026-11-17): the list offered THE BUILT-IN TONE and
   the test's recording, picking it put it on the track, a click at 30% of the picture set POSITION 30,
   ROLL changed SPRAY and kept POSITION, no error in the page. The page's script has no test in `ctest`.
+
+## As built: batch 5, the review (2026-11-17, branch `cloud`)
+
+The whole of CLOUD read again, engine and app. **The engine: nothing found to mend** (the piece and
+onset order, the key and pool slots, the 32.32 reads and their stretches, the steal, the TONE, a new
+recording ending every grain). Four things in the app were wrong and are mended:
+
+| What | Before | Now | Held by |
+| --- | --- | --- | --- |
+| A folder's name typed in CLOUD's list of recordings | L2 / R2 turned the tab and MENU's help came up over the keys (`App::typingAFolder` knew the kit's and the sampler's lists only) | the list's, as theirs | `picker_test` (R2 alone: L2 then R2 had landed back on DEVICE and hid it) |
+| Readings | SPRAY 1 to 3 read +-0.0% (as if off), PITCH SPRAY 2 read +-0 CENTS; 19 neighbouring SPRAY values, 11 SIZE, 6 DENSITY, 19 ATTACK and RELEASE and LEVEL 95 / 96 read alike | as many figures as it takes for every click to read another way (SPRAY 1 +-0.005%, SIZE 5.0 MS, DENSITY 1.00 HZ, ATTACK 2.1 MS, LEVEL -0.45 DB) | `app_test` `testCloudOnATrack` walks every setting |
+| A CLOUD given another instrument | kept its recording's name, unseen, and it came back when the track went back to CLOUD (the song file had dropped it meanwhile) | an instrument with no recording lets it go (`setTrackKind`); a sampler and a CLOUD still pass theirs to each other | `app_test` |
+| Nothing to mend, but untested | RECORDING's stops, the list's preview and rest, R1 and Y off RECORDING, MAIN's band round both ends and on the TONE, RECORD onto a CLOUD and what it says, a missing recording found by its base name, a rename followed in saved songs | tested | `app_test`, `sample_test` `testRecordingOntoACloud`, `transfer_test` |
+
+**Mutants on the app side** (`synth_screen.cpp`, `session_samples.cpp`, `song_file.cpp`, `session.cpp`,
+`redraw.cpp`, with batch 4's in `session_synth.cpp`): 15 of the first 15 in `synth_screen.cpp` survived
+`app_test --cloud` before the tests above; after them all are killed but one, `+ 0.5f / count` in MAIN's
+band, which lights the band's edge column: at SPRAY 0 that one column is always under POSITION's brass
+line, so it cannot be seen there (kept). Every `holdsRecording` call site taken to the sampler alone is
+killed (two only after `sample_test` and `transfer_test` gained their parts), and the grains' stir in the
+redraw by `idle_test --quick`.
+
+`bench` again (2026-11-17, two runs, load 4 to 6; Phazed 8 notes 0.9% in them): **one key 0.05%, the
+pool full 0.54 to 0.58% (23.9 grains)**; `cloud_test --measure cost`: one key 0.054%, a 4-key chord
+0.192%, the pool full 0.536%.
+
+### The owner's three open questions, with what I would answer
+
+1. **The pool is 24 grains, not the plan's 32.** Keep 24. The pool full costs 0.54 to 0.58% of a desk
+   core against the plan's 0.7% ceiling; 32 would be about 0.75%, over it. The handheld is 13 to 17
+   times slower, so 24 grains there are already 7 to 10% of a core. A cloud past 24 thins; it never
+   clicks.
+2. **R1 records only on RECORDING; elsewhere on SOURCE it turns the page.** Keep it. R1 turns the pages
+   on every synth, and RECORDING is SOURCE's first stop, so RECORD is LEFT and R1 from anywhere on the
+   page. (The sampler's R1 is RECORD everywhere, but the sampler has no pages.)
+3. **A recording changed (picked, stepped, a preset's) is not a step of undo.** Keep it, as the
+   sampler's and the kit's are not: B in the list puts back the one it opened on, and DOWN with A held
+   steps back. Undo putting a recording back would read a file from the card inside undo, which on the
+   handheld is the slow part.
+
+Left: the handheld build and a run there (SPEED TEST); the owner's ears.

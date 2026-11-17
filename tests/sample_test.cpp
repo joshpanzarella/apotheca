@@ -1396,6 +1396,37 @@ struct FakeInput : AudioInput {
     void add(const std::vector<float>& v) { coming.insert(coming.end(), v.begin(), v.end()); }
 };
 
+// CLOUD records onto its one recording (R1 on SOURCE's RECORDING), says how it goes as the kit
+// does, and a missing recording of its is found by its base name (the review, batch 5).
+void testRecordingOntoACloud() {
+    const std::string folder = tempFolder("samples-cloud");
+    Rig rig(folder);
+    Session& session = rig.session();
+    FakeInput input;
+    session.useAudioInput(&input);
+    CHECK(session.addTrack(TrackKind::Cloud));
+    rig.project().track = 1;
+    TrackData& track = rig.project().tracks[1];
+    session.view = View::Device;
+    rig.frames(2);
+    SynthScreen& screen = rig.app.cloud();
+    screen.goTo(1, 0);
+    CHECK(screen.onRecording());
+    rig.tap(R1);
+    rig.frames(2);
+    CHECK(session.recording() == Session::Rec::Waiting && screen.said().find("WAITING") == 0);
+    input.add(tone(0.5f, 0.25f));
+    rig.frames(5);
+    CHECK(session.recording() == Session::Rec::Recording && screen.said().find("RECORDING") == 0);
+    rig.tap(R1);
+    rig.frames(2);
+    CHECK(session.recording() == Session::Rec::Idle && std::string(track.sample) == "recorded/rec 1" && session.trackSound(1).seconds > 0.4f);
+    CHECK(screen.said() == "RECORDED AS \"RECORDED/REC 1\"");
+    // A name that is gone: found where exactly one recording has its base name.
+    session.setTrackSample(1, "old/rec 1");
+    CHECK(session.trackSound(1).missing && session.findMissing("rec 1") == 1 && std::string(track.sample) == "recorded/rec 1" && !session.trackSound(1).missing);
+}
+
 void testRecordingOntoALane() {
     const std::string folder = tempFolder("samples");
     Rig rig(folder);
@@ -2589,6 +2620,7 @@ int main(int, char**) {
     testTheSamplersEnd();
     testTheRecorder();
     testRecordingOntoALane();
+    testRecordingOntoACloud();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

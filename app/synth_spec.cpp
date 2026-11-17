@@ -615,8 +615,9 @@ void loadPreset(TrackData& t, int index) {
 }
 int* values(TrackData& t) { return t.cloud.value; }
 
-void secondsText(double s, char* out, std::size_t n) { // "120 MS", "1.0 S"
-    if (s < 0.9995) std::snprintf(out, n, "%.0f MS", s * 1000.0);
+void secondsText(double s, char* out, std::size_t n) { // "2.4 MS", "120 MS", "1.0 S": each click its own reading
+    if (s < 0.09995) std::snprintf(out, n, "%.1f MS", s * 1000.0);
+    else if (s < 0.9995) std::snprintf(out, n, "%.0f MS", s * 1000.0);
     else std::snprintf(out, n, "%.1f S", s);
 }
 const char* const kNoteNames[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
@@ -625,14 +626,22 @@ void settingText(int id, int value, char* out, int size) {
     switch (id) {
     case Spray: { // a share of the recording either way (its length is the track's, not the setting's)
         const double p = 100.0 * sprayShare(value);
+        // (As many figures as it takes for every click of the D-pad to read another way: the dial is
+        // squared, and +-0.0% at SPRAY 1 to 3 read as off while it was not.)
         if (value <= 0) std::snprintf(out, n, "OFF");
-        else std::snprintf(out, n, p < 9.95 ? "+-%.1f%%" : "+-%.0f%%", p);
+        else std::snprintf(out, n, p < 0.0995 ? "+-%.3f%%" : (p < 9.995 ? "+-%.2f%%" : "+-%.1f%%"), p);
         return;
     }
-    case Size: return secondsText(sizeSeconds(value), out, n);
+    case Size: { // (each click its own reading, as SPRAY's)
+        const double s = sizeSeconds(value);
+        if (s < 0.09995) std::snprintf(out, n, "%.1f MS", s * 1000.0);
+        else if (s < 0.9995) std::snprintf(out, n, "%.0f MS", s * 1000.0);
+        else std::snprintf(out, n, "%.2f S", s);
+        return;
+    }
     case Density: {
         const double hz = densityHz(value);
-        std::snprintf(out, n, hz < 9.95 ? "%.1f HZ" : "%.0f HZ", hz);
+        std::snprintf(out, n, hz < 9.995 ? "%.2f HZ" : (hz < 99.95 ? "%.1f HZ" : "%.0f HZ"), hz);
         return;
     }
     case Shape:
@@ -643,7 +652,7 @@ void settingText(int id, int value, char* out, int size) {
         return;
     case PitchSpray:
         if (value <= 0) std::snprintf(out, n, "OFF");
-        else std::snprintf(out, n, "+-%.0f CENTS", pitchSprayCents(value));
+        else std::snprintf(out, n, pitchSprayCents(value) < 9.95 ? "+-%.1f CENTS" : "+-%.0f CENTS", pitchSprayCents(value));
         return;
     case PitchSteps: std::snprintf(out, n, "%s", stepsName(value)); return;
     case Reverse: case Velocity:
@@ -660,7 +669,7 @@ void settingText(int id, int value, char* out, int size) {
     case Release: return secondsText(envelope::fallSeconds(static_cast<float>(value)), out, n);
     case Level:
         if (value <= 0) std::snprintf(out, n, "OFF");
-        else std::snprintf(out, n, "%.1f DB", levelDb(value));
+        else std::snprintf(out, n, levelDb(value) > -0.995 ? "%.2f DB" : "%.1f DB", levelDb(value));
         return;
     default: std::snprintf(out, n, "%d%%", value); return; // POSITION, SCATTER, STEREO
     }

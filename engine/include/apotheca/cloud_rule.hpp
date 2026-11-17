@@ -56,7 +56,7 @@ inline int settingMax(int id) {
     }
 }
 // The usual value of each (the plan's section 1), on the dials below: SIZE 60 reads 120 MS,
-// DENSITY 52 reads 16 HZ, ATTACK 8 reads 2 MS, RELEASE 54 reads 290 MS.
+// DENSITY 52 reads 15.7 HZ, ATTACK 8 reads 2.1 MS, RELEASE 54 reads 289 MS.
 inline int settingUsual(int id) {
     static const int usual[kSettings] = {25, 10, 60, 52, 50, 50, 0, kStepsFree, 0, 40, 50, 60, 0, 8, 54, 80, 50};
     return id < 0 || id >= kSettings ? 0 : usual[id];
