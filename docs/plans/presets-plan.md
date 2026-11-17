@@ -275,6 +275,7 @@ window.
 | --- | --- | --- | --- |
 | PHAZED | 65 + 0 | 48, every one a whole sound | STAGE KEYS, DEEP BASS, LEADS, PADS, PLUCKS, BELLS, DRONES, TEXTURES (six each) |
 | ACID | 8 + 24 (32) | 32: 64 now | CLEAN, LEADS (an octave up), DUB, HARD (eight each) |
+| CLOUD | 6 + 18 (24) | 24: 48 now | PADS, DRONES, PLUCKS, RHYTHM (six each; RHYTHM's are a STEPPER or an effect in time). None names a recording |
 
 PHAZED's engine folders are the CZ bank's own words (Keys, Bass...), so the added ones are other words
 (DEEP BASS, not BASS): the folder step and the list would show two folders that read alike.

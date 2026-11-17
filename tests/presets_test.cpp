@@ -1656,10 +1656,10 @@ void testCloudPresetsAsHeard(bool measure) {
         if (measure) std::printf("  on %s: %.1f to %.1f dB\n", which ? "the recording" : "the TONE", lo[which], hi[which]);
         CHECK(hi[which] - lo[which] <= kCloudSpreadDb);
     }
-    CHECK(builtInPresets(kind) == 24 && Cloud::presetCount() == 6);
-    // Four folders of six, each a run of its own (the folder step walks them).
-    const char* const folders[4] = {"STILL", "DRIFT", "DUST", "CHOIR"};
-    for (int i = 0; i < 24; ++i) CHECK(std::strcmp(spec.presetCategory(i), folders[i / 6]) == 0);
+    CHECK(builtInPresets(kind) == 48 && Cloud::presetCount() == 6);
+    // Eight folders of six, each a run of its own (the folder step walks them).
+    const char* const folders[8] = {"STILL", "DRIFT", "DUST", "CHOIR", "PADS", "DRONES", "PLUCKS", "RHYTHM"};
+    for (int i = 0; i < 48; ++i) CHECK(std::strcmp(spec.presetCategory(i), folders[i / 6]) == 0);
 }
 
 // A player's own CLOUD preset keeps its recording: written with it, read back, and picked it puts it
