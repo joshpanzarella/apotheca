@@ -31,6 +31,17 @@ report() {
     for m in /sys/class/drm/*/modes; do [ -s "$m" ] && echo "$m: $(tr '\n' ' ' < "$m")"; done
     cat /proc/fb 2>/dev/null
     for b in /sys/class/backlight/*; do [ -d "$b" ] && echo "$b: $(cat $b/brightness)/$(cat $b/max_brightness)"; done
+    section "lights (the LEDs, and the serial lines: the stick's ring is behind UART5, 5001400.serial)"
+    for l in /sys/class/leds/*; do
+        [ -d "$l" ] || continue
+        line="$l: brightness $(cat "$l/brightness" 2>/dev/null) of $(cat "$l/max_brightness" 2>/dev/null)"
+        line="$line, trigger [$(sed 's/.*\[\(.*\)\].*/\1/' "$l/trigger" 2>/dev/null)]"
+        [ -e "$l/multi_intensity" ] && line="$line, multi_intensity $(cat "$l/multi_intensity") ($(cat "$l/multi_index" 2>/dev/null))"
+        echo "$line"
+    done
+    for t in /sys/class/tty/ttyS*; do
+        [ -e "$t/device" ] && echo "${t##*/}: $(readlink -f "$t/device")"
+    done
     section "input"; cat /proc/bus/input/devices 2>/dev/null
     section "sound"; cat /proc/asound/cards 2>/dev/null
     for c in /proc/asound/card[0-9]*; do

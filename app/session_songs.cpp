@@ -291,7 +291,25 @@ void Session::keepSettings() const {
     if (programFolder_.empty()) return;
     writeTextFile(programFolder_ + "/settings.txt", "stick " + std::to_string(static_cast<int>(std::round(ui::gStickSpeed * 100.f))) + "\noctaves " +
                                                         std::to_string(octaves_) + "\nmidirec " + (midiRecord_ ? "1" : "0") + "\ntext " + std::to_string(textSize_) +
-                                                        "\ntheme " + std::to_string(theme_) + "\n");
+                                                        "\ntheme " + std::to_string(theme_) + "\nbrightness " + std::to_string(brightness_) +
+                                                        "\nlight " + std::to_string(stickLight_) + "\n");
+}
+
+void Session::setBrightness(int percent) {
+    percent = (percent / kBrightStep) * kBrightStep; // in fives
+    brightness_ = percent < kBrightLeast ? kBrightLeast : (percent > kBrightMost ? kBrightMost : percent);
+    keepSettings();
+}
+
+void Session::setStickLight(int mode) {
+    stickLight_ = mode < 0 ? 0 : (mode >= kRingModes ? kRingModes - 1 : mode); // a choice with ends, as THEME
+    keepSettings();
+}
+
+RingFrame Session::ringNow() const {
+    const Theme& t = kThemeTable[theme_ >= 0 && theme_ < kThemes ? theme_ : kThemeBrown];
+    const int step = project.playing ? project.playStep : -1;
+    return ringPicture(stickLight_, brightness_, step, fullest(t.teal.r, t.teal.g, t.teal.b), fullest(t.brass.r, t.brass.g, t.brass.b));
 }
 
 void Session::setStickSpeed(float speed) {
@@ -330,6 +348,8 @@ void Session::loadSettings() {
         if (name == "midirec" && (value == 0 || value == 1)) setMidiRecording(value == 1);
         if (name == "text" && value >= 0 && value < kTextSizeCount) setTextSize(value); // (a file from before the setting has no such line: LARGE)
         if (name == "theme" && value >= 0 && value < kThemeCount) setTheme(value); // (none: the look as it was built)
+        if (name == "brightness" && value >= kBrightLeast && value <= kBrightMost) setBrightness(value); // (none: kBrightUsual)
+        if (name == "light" && value >= 0 && value < kRingModes) setStickLight(value); // (none: ON)
     }
     programFolder_ = folder;
 }

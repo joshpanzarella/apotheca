@@ -324,6 +324,8 @@ void Session::update(Uint32 nowMs) {
     // AT END STOP: the engine has stopped the playing it was last sent, by itself, at the song's end.
     if (project.playing && playsSent_ != 0 && engine.songEnded() == playsSent_) project.playing = false;
     project.silenced = engine.silenced();
+    // The screen's brightness and the light round the stick (nothing, where they are not the program's).
+    if (lights_.screenHere() || lights_.ringHere()) lights_.update(nowMs, brightness_, ringNow());
 
     // A full queue loses commands, and then the engine and the song no longer
     // agree (a note on the screen that never plays). It takes the audio thread

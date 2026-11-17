@@ -19,6 +19,7 @@
 #include "transfer.hpp"
 #include "midi.hpp"
 #include "designer.hpp"
+#include "lights.hpp"
 #include "project.hpp"
 
 namespace apotheca {
@@ -409,6 +410,19 @@ public:
     static constexpr int kThemeCount = 6, kThemeAsBuilt = 0;
     int theme() const { return theme_; }
     void setTheme(int theme);
+    // The screen's BRIGHTNESS (a percent, kBrightLeast..100 in fives) and the STICK LIGHT (RingMode),
+    // on our own firmware only (lights.hpp: the system says the files are the program's). Kept in
+    // "settings.txt" everywhere; used only where `lightsHere`. Put to use by update(), once a frame.
+    void useLights(Lights lights) { lights_ = std::move(lights); }
+    const Lights& lights() const { return lights_; }
+    bool screenHere() const { return lights_.screenHere(); }
+    bool ringHere() const { return lights_.ringHere(); }
+    int brightness() const { return brightness_; }
+    void setBrightness(int percent);
+    int stickLight() const { return stickLight_; }
+    void setStickLight(int mode);
+    // What the ring shows now (ringPicture with the song's step and the theme's colours).
+    RingFrame ringNow() const;
     void loadSettings();
 
     // ---- bouncing (bounce.cpp) ---------------------------------------------------------
@@ -682,6 +696,9 @@ private:
     int octaves_ = 2;
     int textSize_ = kTextSizeAsBuilt;
     int theme_ = kThemeAsBuilt;
+    Lights lights_;
+    int brightness_ = kBrightUsual;
+    int stickLight_ = kRingOn;
     struct BounceJob {
         std::unique_ptr<Project> song;
         Bounce what = Bounce::Song;

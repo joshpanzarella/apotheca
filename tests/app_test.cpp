@@ -3365,7 +3365,7 @@ void testTheSetupScreen() {
         CHECK(near(later.app.session().stickSpeed(), 0.8f) && later.app.session().octavesShown() == 1 && later.app.session().midiRecording());
         // Nonsense in the file is not believed.
         std::string kept;
-        CHECK(readTextFile(folder + "/settings.txt", kept) && kept == "stick 80\noctaves 1\nmidirec 1\ntext 1\ntheme 0\n");
+        CHECK(readTextFile(folder + "/settings.txt", kept) && kept == "stick 80\noctaves 1\nmidirec 1\ntext 1\ntheme 0\nbrightness 70\nlight 1\n");
         writeTextFile(folder + "/settings.txt", "stick 900\noctaves 7\nmidirec 5\nrubbish\n");
         later.app.session().loadSettings();
         CHECK(near(later.app.session().stickSpeed(), 0.8f) && later.app.session().octavesShown() == 1 && later.app.session().midiRecording());

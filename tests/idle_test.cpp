@@ -292,6 +292,16 @@ void theSession(Rig& rig, const std::string& samples) {
     rig.key(SELECT, false);
     rig.run(2000);
 
+    rig.part = "the brightness: MENU + a volume key, on our own firmware";
+    rig.byHand([&] { rig.session().useLights(Lights::pretend()); });
+    rig.key(MENU, true);
+    rig.run(300);
+    rig.byHand([&] { rig.app->volumeKey(false, rig.input); }); // (main.cpp: a key of the window)
+    rig.key(MENU, false);
+    rig.run(2000); // the box, then gone by itself
+    rig.byHand([&] { rig.session().useLights(Lights()); });
+    rig.run(300);
+
     rig.part = "a panic, let go";
     rig.key(L1, true), rig.key(L2, true), rig.key(R1, true), rig.key(R2, true);
     rig.run(300);

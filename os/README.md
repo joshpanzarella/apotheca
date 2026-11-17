@@ -103,6 +103,17 @@ power key 10 seconds and take the line out.
 
 What the power key and battery did is written to `apotheca/logs/power.log`.
 
+## The screen's brightness and the light round the stick
+
+On this card nothing but Apotheca sets them, so Apotheca has them: the SET
+tab's **BRIGHTNESS** (10% to 100%) and **STICK LIGHT** (OFF, ON, BEAT, STEPS),
+kept for next time. **MENU + a volume key** changes the brightness from any
+screen. A tap of the power key turns the ring off with the screen. **None of it
+has been seen on a handheld yet**: does the ring light, what colour, and in
+STEPS does the lit LED go round clockwise from the top? (If not, say where it
+starts and which way it goes.) The boot log's "lights" section lists what the
+system found.
+
 ## What to send back
 
 Whatever you see is useful. Send:
