@@ -223,6 +223,14 @@ kind of lane, not just synth ones.
 
 ## 6. The designer page (batch 4)
 
+**As built**: the SOUND choice lists the models in a SYNTH group (`lanesynth L WORD`); a synth lane's
+card has VOICE (its named voices, `lanevoice L N`, TURNED BY HAND when the dials are no voice's) and
+its knobs as sliders with the handheld's readings. **The stride was NOT changed**: a knob is the id
+`kKitKnobs + lane * 8 + place` (128 on), so every id before stayed where it was (`design_test` had them
+as numbers). **A synth lane's picture, length and least gap come in the state, not the spec**, so a knob
+turned does not rebuild the page under the slider. Tried in Chromium with Playwright: no script errors.
+Planned:
+
 The KIT page (`Session::serveKit`, `kitSpec`) gives each lane card a SOUND
 choice that lists the models after the built-in drum; a synth lane's card
 shows its knobs as sliders with the handheld's readings. New `set` fields per

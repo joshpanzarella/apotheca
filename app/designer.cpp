@@ -1,4 +1,6 @@
 #include "designer.hpp"
+
+#include "apotheca/drum_synth.hpp"
 #include "samples.hpp"
 #include "apotheca/drums.hpp"
 
@@ -83,6 +85,12 @@ bool Designer::ask(const std::string& line) {
     } else if (word == "hear") {
         r.kind = DesignRequest::Hear;
         if (!(in >> r.a >> r.b) || r.a < 0 || r.a >= kDrumLanes || (r.b != 0 && r.b != 1)) return false;
+    } else if (word == "lanesynth") {
+        r.kind = DesignRequest::LaneSynth;
+        if (!(in >> r.a >> r.name) || r.a < 0 || r.a >= kDrumLanes || drumsynth::modelFromWord(r.name.c_str()) == drumsynth::kNone) return false;
+    } else if (word == "lanevoice") {
+        r.kind = DesignRequest::LaneVoice;
+        if (!(in >> r.a >> r.b) || r.a < 0 || r.a >= kDrumLanes || r.b < 0) return false;
     } else if (word == "normalize" || word == "trim") {
         r.kind = word == "trim" ? DesignRequest::Trim : DesignRequest::Normalize;
         if (!(in >> r.a) || r.a < 0 || r.a >= kDrumLanes) return false;

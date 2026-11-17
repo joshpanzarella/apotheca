@@ -25,6 +25,9 @@
 //   hear L 1 | 0      a KIT's lane heard while held, as X held on the handheld; 0 lets go
 //   normalize L       a KIT's lane: NORMALIZE (GAIN so what is played peaks at -1 dB)
 //   trim L            a KIT's lane: TRIM SILENCE (START and END at the first and last sound)
+//   lanesynth L WORD  a KIT's lane L: a DRUM SYNTH voice of the model whose song-file word is WORD
+//                     ("kick"), at its usual knobs (drum_synth.hpp)
+//   lanevoice L N     a synth lane's named voice N of its model (drum_voices.hpp: 0 is CLASSIC)
 //
 // What the page is shown says what KIND of page it is ("page": "synth", "sampler" or "kit"), and the
 // page builds itself from that: a synth's pages and presets, a sampler's settings round the picture of
@@ -32,7 +35,7 @@
 //
 // On a KIT, `set ID VALUE` names a lane's setting: ID is lane * kKitStride + a KitField. Fields 0 to 7
 // are the lane's EDIT rows in LaneEditRow's order (lane_edit.hpp); then FIT (steps), CHOKE (group),
-// VOLUME (percent) and FEEL's HUMAN TIME and HUMAN LEVEL (percent).
+// VOLUME (percent) and FEEL's HUMAN TIME and HUMAN LEVEL (percent). A synth lane's knobs: kKitKnobs below.
 
 #include <mutex>
 #include <string>
@@ -45,9 +48,13 @@ namespace apotheca {
 // A KIT's settings: lane * kKitStride + field. The EDIT rows keep LaneEditRow's numbers (0 to 7).
 constexpr int kKitStride = 16;
 enum KitField { kKitFit = 8, kKitChoke, kKitVolume, kKitHumanTime, kKitHumanLevel, kKitFields };
+// DRUM SYNTH: a synth lane's knob P is the id kKitKnobs + lane * 8 + P, after every lane's fields (so the
+// ids above, in pages and tests, stay where they were). Its name and readings hang on the lane's model:
+// the spec's wave gives the names, the state the readings.
+constexpr int kKitKnobs = 8 * kKitStride;
 
 struct DesignRequest {
-    enum Kind { Set, Macro, Preset, Note, Save, Name, Roll, Sample, LaneSample, Hear, Normalize, Trim } kind = Set;
+    enum Kind { Set, Macro, Preset, Note, Save, Name, Roll, Sample, LaneSample, Hear, Normalize, Trim, LaneSynth, LaneVoice } kind = Set;
     int a = 0, b = 0;
     float value = 0.f;
     std::string name;

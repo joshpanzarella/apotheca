@@ -2556,6 +2556,15 @@ effect in those two groups and fails one that does not.
     in the browser, 2026-11-16). So an edit changes no spec; another sound does: the spec is made
     again when any lane's `LaneSound::version` moves (their sum), and its number goes up only when its
     text changes.
+  - **A synth lane on the page (DRUM SYNTH, batch 4)**: the SOUND choice lists the twelve models after the
+    built-in drum (`lanesynth L WORD`), a synth lane's card has its named voices (`lanevoice L N`) and its
+    knobs. **A knob's id is `kKitKnobs + lane * 8 + place`** (designer.hpp: after every lane's fields, so
+    the ids before stayed); its name is in the spec's wave (`"synth"`), its reading in the state. **A synth
+    lane's picture, length and least gap are in the STATE (`lanes[].synth`), not the spec**: a knob turned
+    changes the sound, and with the picture in the spec every turn sent a new spec and the page was built
+    again under the slider being dragged. `design_test` `testKitSynthFromThePage`; the script was tried in
+    Chromium with Playwright (2026-11-17: the choice, a named voice, a knob, a recording made a CLAP, the
+    drum back, no script errors).
   - **PLAY held is `hearLaneHeld` with the Designer as its owner**, and `keepHearing` leaves that one
     to the page (X is not held for it): it is let go by `hear L 0`, by the page going away, or by
     another track on the handheld.
