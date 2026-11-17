@@ -126,6 +126,10 @@ voice rim PING
 set TUNE 100  DECAY 100  TONE 0  SNAP 0  DRIVE 0   # TUNE 3.0 KHZ, DECAY 200 MS, TONE 0%, SNAP 0%, DRIVE 0%
 voice rim CRUNCH
 set TUNE 48  DECAY 54  TONE 60  DRIVE 100  SNAP 90   # TUNE 1.5 KHZ, DECAY 50 MS, TONE 60%, DRIVE 100%, SNAP 90%
+voice rim TIGHT RIM
+set TUNE 65  DECAY 10  TONE 40  SNAP 80   # TUNE 1.9 KHZ, DECAY 13 MS, TONE 40%, SNAP 80%
+voice rim LOW RIM
+set TUNE 0  DECAY 40  TONE 50  SNAP 20  DRIVE 60   # TUNE 800 HZ, DECAY 33 MS, TONE 50%, SNAP 20%, DRIVE 60%
 
 # ---- COWBELL -----------------------------------------------------------------------------------
 voice cowbell SHORT
@@ -138,6 +142,10 @@ voice cowbell AGOGO
 set TUNE 94  DECAY 41  TONE 80  SNAP 60   # TUNE 1.1 KHZ, DECAY 149 MS, TONE 80%, SNAP 60%
 voice cowbell ALARM
 set TUNE 61  DECAY 100  DRIVE 100  SNAP 0   # TUNE 699 HZ, DECAY 1.50 S, DRIVE 100%, SNAP 0%
+voice cowbell BIG BELL
+set TUNE 30  DECAY 85  TONE 60  SNAP 30   # TUNE 455 HZ, DECAY 834 MS, TONE 60%, SNAP 30%
+voice cowbell TIN BELL
+set TUNE 100  DECAY 10  TONE 100  SNAP 100   # TUNE 1.2 KHZ, DECAY 44 MS, TONE 100%, SNAP 100%
 
 # ---- CLAVE -------------------------------------------------------------------------------------
 voice clave WOODBLOCK
@@ -150,6 +158,10 @@ voice clave BLIP
 set TUNE 57  DECAY 0  SNAP 0   # TUNE 2.0 KHZ, DECAY 5.0 MS, SNAP 0%
 voice clave BUZZ
 set TUNE 43  DECAY 78  DRIVE 100  SNAP 50   # TUNE 1.5 KHZ, DECAY 122 MS, DRIVE 100%, SNAP 50%
+voice clave HOLLOW
+set TUNE 18  DECAY 75  SNAP 100  DRIVE 0   # TUNE 879 HZ, DECAY 108 MS, SNAP 100%, DRIVE 0%
+voice clave CLICK
+set TUNE 80  DECAY 35  DRIVE 70  SNAP 100   # TUNE 3.3 KHZ, DECAY 21 MS, DRIVE 70%, SNAP 100%
 
 # ---- ZAP ---------------------------------------------------------------------------------------
 voice zap PEW

@@ -280,6 +280,7 @@ window.
 | MORPH | 8 + 24 (32) | 32: 64 now | KEYS, PLUCKS (six each), BELLS, ARPS, DRONES, FX (five each). All 64 still within 8 dB of each other |
 | PHYSIC | 32 + 64 (96) | 16: 112 now | BASS, KEYS (eight each: PHYSIC had one bass, Plucked Bass) |
 | FM-6 | 160 + 49 (209) | 24: 233 now | ORGANS, BRASS, DRONES, ARPS (six each, each a factory voice given its room). An organ's carriers are most of it, so its MODs move an effect, PAN or LEVEL, not BRIGHT |
+| DRUM SYNTH's named voices | 73 (past each CLASSIC) | 6: 79 now. RIM, COWBELL and CLAVE had five each, seven now (TIGHT RIM, LOW RIM, BIG BELL, TIN BELL, HOLLOW, CLICK) | (no folders: a voice is picked on MODEL) |
 | JAX-EP | 32 + 110 (142) | 16: 158 now | ORGAN (heard with the pad phrase), BELLS (METAL and SYNC rings), eight each. `presets_heard_jaxep` is now two ctest entries (`--part 1/2`, `2/2`) |
 
 PHAZED's engine folders are the CZ bank's own words (Keys, Bass...), so the added ones are other words
