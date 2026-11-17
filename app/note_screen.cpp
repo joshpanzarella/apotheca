@@ -269,12 +269,14 @@ void NoteScreen::setLength(float length) {
             if (other.velocity > 0.f && other.step > start && other.step - start < room) room = other.step - start;
         }
     }
-    // Never shrink it out from under the cursor: some of it stays in the cursor's step.
-    const float least = static_cast<float>(step_ - start) + kShortestLength;
-    length = length < least ? least : (length > static_cast<float>(room) ? static_cast<float>(room) : length);
+    // From anywhere along it (owner, 2026-11-17: "it's kind of a pain to have to go all the way back to
+    // the top left"): shortened past the cursor's step, the cursor comes back with its end.
+    length = length < kShortestLength ? kShortestLength : (length > static_cast<float>(room) ? static_cast<float>(room) : length);
     if (slot < 0) handLength_ = length; // the next chord placed will be this long
     if (length == now) return;
     now = length;
+    const int last = start + static_cast<int>(std::ceil(length)) - 1; // the last step it is in
+    if (step_ > last) step_ = last < start ? start : last;
     resend();
 }
 
@@ -295,7 +297,7 @@ void NoteScreen::nudgeBy(float steps) {
 void NoteScreen::stepLength(int by) {
     const float now = lengthNow();
     const float to = by > 0 ? std::floor(now + 1.0001f) : std::ceil(now - 1.0001f);
-    if (by < 0 && to < static_cast<float>(step_ - (noteHere() ? noteHere()->step : chordHere()->step) + 1)) return; // already as short as whole steps go here
+    if (by < 0 && to < 1.f) return; // already as short as whole steps go
     setLength(to);
 }
 

@@ -653,12 +653,12 @@ void testSteppingTheDiceIsNotATap() {
     CHECK(hitsOn(rig, 3) == placed);
 }
 
-void testTheDiceNeverTakeYourHits() {
+// The dice work on every hit of the lane, the player's too (owner, 2026-11-17: undo puts them back).
+void testTheDiceTakeAnyHits() {
     Rig rig;
-    // Two hits of the player's own.
+    // Two hits of the player's own: draining takes them with the rest.
     rig.screen.setStep(2, 5, 0.33f);
     rig.screen.setStep(2, 0, 0.44f);
-    rig.screen.setNudge(2, 5, 0.2f);
     rig.screen.moveCursorTo(2, -1);
     rig.key(Y, true);
     rig.key(STICK_UP, true);
@@ -666,11 +666,44 @@ void testTheDiceNeverTakeYourHits() {
     rig.key(STICK_UP, false);
     rig.frames(1);
     CHECK(countOf(hitsOn(rig, 2)) == kSteps);
-    CHECK(rig.screen.diceHits(2) == kSteps - 2);
-    CHECK(near(rig.screen.level(2, 5), 0.33f) && near(rig.screen.level(2, 0), 0.44f)); // not overwritten
+    CHECK(near(rig.screen.level(2, 5), 0.33f) && near(rig.screen.level(2, 0), 0.44f)); // filling never writes over one
+    rig.key(STICK_DOWN, true);
+    rig.frames(100);
+    rig.key(STICK_DOWN, false);
+    rig.frames(1);
     rig.key(Y, false);
+    CHECK(hitsOn(rig, 2) == 0u); // the player's two went too
 
-    // Shape one of the dice's hits: now it is the player's too.
+    // Down a step from a lane of the player's own: one of them goes.
+    for (int step = 0; step < kSteps; step += 2) rig.screen.setStep(2, step, 0.6f);
+    rig.key(Y, true);
+    rig.tap(SDLK_DOWN);
+    rig.key(Y, false);
+    CHECK(countOf(hitsOn(rig, 2)) == kSteps / 2 - 1);
+
+    // A roll of a lane of the player's own: as many hits, rolled anew, none of them the player's.
+    for (int step = 0; step < kSteps; step += 2) rig.screen.setStep(2, step, 0.6f);
+    const unsigned mine = hitsOn(rig, 2);
+    CHECK(countOf(mine) == kSteps / 2);
+    bool moved = false;
+    for (int roll = 0; roll < 4 && !moved; ++roll) {
+        rig.tap(Y);
+        CHECK(countOf(hitsOn(rig, 2)) == kSteps / 2 && rig.screen.diceHits(2) == kSteps / 2);
+        moved = hitsOn(rig, 2) != mine;
+    }
+    CHECK(moved);
+
+    // A FULL lane of the player's own, rolled: half of it, so a roll always does something.
+    for (int step = 0; step < kSteps; ++step) rig.screen.setStep(2, step, 0.7f);
+    rig.tap(Y);
+    CHECK(countOf(hitsOn(rig, 2)) == 8 && rig.screen.diceHits(2) == 8);
+    // A dice hit deleted with B is simply gone; the count follows.
+    int doomed = -1;
+    for (int step = 0; step < kSteps && doomed < 0; ++step) if (rig.screen.fromDice(2, step)) doomed = step;
+    rig.screen.moveCursorTo(2, doomed);
+    rig.tap(B);
+    CHECK(rig.screen.diceHits(2) == 7 && rig.screen.level(2, doomed) == 0.f);
+    // Shaped, a dice hit is the player's.
     int adopted = -1;
     for (int step = 0; step < kSteps && adopted < 0; ++step) if (rig.screen.fromDice(2, step)) adopted = step;
     rig.screen.moveCursorTo(2, adopted);
@@ -678,43 +711,6 @@ void testTheDiceNeverTakeYourHits() {
     rig.tap(SDLK_DOWN);
     rig.key(A, false);
     CHECK(!rig.screen.fromDice(2, adopted));
-    const float shaped = rig.screen.level(2, adopted);
-    // So is one given a chance with Y, and one painted over.
-    int diced = -1;
-    for (int step = 0; step < kSteps && diced < 0; ++step) if (rig.screen.fromDice(2, step)) diced = step;
-    rig.screen.moveCursorTo(2, diced);
-    rig.tap(Y);
-    CHECK(!rig.screen.fromDice(2, diced));
-    int painted = -1;
-    for (int step = 0; step < kSteps && painted < 0; ++step) if (rig.screen.fromDice(2, step)) painted = step;
-    rig.screen.moveCursorTo(2, painted);
-    rig.key(R1, true);
-    rig.key(R2, true); // the random brush
-    rig.key(R2, false);
-    rig.key(R1, false);
-    CHECK(!rig.screen.fromDice(2, painted));
-
-    // Drain the dice all the way, then roll: the five that are the player's stay.
-    rig.screen.moveCursorTo(2, -1);
-    rig.key(Y, true);
-    rig.key(STICK_DOWN, true);
-    rig.frames(100);
-    rig.key(STICK_DOWN, false);
-    rig.frames(1);
-    rig.key(Y, false);
-    const unsigned mine = 1u << 5 | 1u << 0 | 1u << adopted | 1u << diced | 1u << painted;
-    CHECK(hitsOn(rig, 2) == mine);
-    CHECK(near(rig.screen.level(2, 5), 0.33f) && near(rig.screen.nudge(2, 5), 0.2f));
-    CHECK(near(rig.screen.level(2, adopted), shaped));
-    rig.tap(Y);
-    CHECK((hitsOn(rig, 2) & mine) == mine);
-    CHECK(rig.screen.diceHits(2) == 4);
-    // A dice hit deleted with B is simply gone; the count follows.
-    int doomed = -1;
-    for (int step = 0; step < kSteps && doomed < 0; ++step) if (rig.screen.fromDice(2, step)) doomed = step;
-    rig.screen.moveCursorTo(2, doomed);
-    rig.tap(B);
-    CHECK(rig.screen.diceHits(2) == 3 && rig.screen.level(2, doomed) == 0.f);
 }
 
 void testTheDiceLeanTowardTheBeat() {
@@ -1586,7 +1582,7 @@ int main(int, char**) {
     testTapYOnALaneNameRollsTheDice();
     testHoldYOnALaneNameFillsAndDrains();
     testSteppingTheDiceIsNotATap();
-    testTheDiceNeverTakeYourHits();
+    testTheDiceTakeAnyHits();
     testTheDiceLeanTowardTheBeat();
     testEachLaneHasItsOwnDice();
     testR1PaintsARowAtOneLevel();

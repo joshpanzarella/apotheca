@@ -130,6 +130,8 @@ private:
     bool panicNote_ = false; // the notice is up
     Uint32 panicNoteUntil_ = 0, now_ = 0;
     View viewBeforeShoulders_ = View::Pattern;
+    View viewBeforeL3_ = View::Song; // where L3 came from, to go back to
+    bool cameByL3_ = false;          // the SONG screen's MASTER was reached by L3 (and nothing has moved since)
     bool slicingBeforeShoulders_ = false;
     int trackBeforeShoulders_ = 0;
     // ...and the copied bar: L1 then R1 on the way to all four is a copy (hold L1, R1), which a panic puts back.

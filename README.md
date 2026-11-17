@@ -1075,7 +1075,7 @@ track makes a sound at once.
   Play from the top is the same cloud again, and a bounce is what you heard.
 - **Y on MAIN rolls a new cloud**: SPRAY, SIZE, DENSITY, SCATTER, SHAPE, PITCH
   SPRAY, PITCH STEPS, REVERSE and STEREO. It never changes the recording,
-  POSITION, SCAN, ROOT, TUNE, the envelope or the levels. One step of undo.
+  POSITION, SCAN, PITCH, TUNE, the envelope or the levels. One step of undo.
 - **24 presets in four folders**: STILL (one place, held: Soft Cloud, Glass
   Hold, Breath Pad, Frozen Shimmer, Still Water, Halo), DRIFT (the place moves:
   Slow Tide, Backwards River, Wander, Tape Scrub, Drifting Choir, Pendulum),
@@ -1111,7 +1111,7 @@ ADVANCED is three pages. L1 and R1 turn them.
 | | POSITION | 0% to 100% of the way into the recording |
 | | SPRAY | OFF to +-50%: how far a grain's place is rolled, as a share of the recording |
 | | SCAN | -2.00X to +2.00X: the place moves on at that speed (+1.00X is the speed it was made); FREEZE in the middle |
-| | ROOT | the key that plays the recording at its own pitch (C4 usually) |
+| | PITCH | semitones up or down, **up is higher**; 0 plays the recording at its own pitch at middle C (it was ROOT, a key, which ran the other way) |
 | | TUNE | -100 to +100 CENTS |
 | GRAINS | SIZE | 5.0 MS to 1.00 S |
 | | DENSITY | 1.00 HZ to 200 HZ, grains a second for each key |
@@ -1584,7 +1584,11 @@ once.
 The cursor can also sit on a lane's name, left of step 1: A plays the drum,
 hold A + stick is its volume, **hold X is its FEEL** (see "FEEL" below), and Y is the **lane dice** (hold Y + stick up
 and hits arrive in a shuffled order that leans toward the beat; down and
-they leave; tap Y to reshuffle). Up from the top lane is the tempo.
+they leave; tap Y to reshuffle). **The dice work on every hit of the lane,
+yours too**: down takes any hit away, a tap rolls the lane's hits anew (as
+many as it has; an empty lane gets four, a full one eight). Undo puts yours
+back. A full lane says THE LANE IS FULL, an empty one THE LANE IS EMPTY.
+Up from the top lane is the tempo.
 
 On a lane's name, hold Y and push **right** to roll a new start for every
 hit on the lane, on the sixteenths of the sound. **Left** puts them all back
@@ -1603,6 +1607,7 @@ A few things mean one thing everywhere:
 | X | Hear it. A recording plays **for as long as X is held** (a tap: a moment). Held on a drum hit: its step effects. Held on a knob: its MOD |
 | Hold R1 | On an empty step: paint as you drag. On a note: carry it. On SONG: copy a bar as you drag |
 | L2 / R2 | The tabs |
+| **L3** (press the stick in) | **The SONG screen with MASTER under the cursor**: hold A + up / down is the output's level at once, whatever the handheld's own volume. L3 again (still on MASTER): back where you were |
 | SELECT + something | Things about the whole song: undo, tempo, volume, WRITE, the scene's length, the next scene |
 
 A held D-pad runs at one of two speeds on every screen: fast for a cursor

@@ -193,7 +193,9 @@ void Cloud::State::startGrain(int k, int t, int pieceLength) {
     g.invFall = 1.f / static_cast<float>(g.length - g.rise);
     const double slide = key.slideLength > 0 && at < key.slideLength ? key.slideFrom * (1.0 - static_cast<double>(at) / static_cast<double>(key.slideLength)) : 0.0;
     const double roll = pitchRoll(pitchSprayCents(eff[PitchSpray]), static_cast<int>(eff[PitchSteps]), grainUnit(seed, n, kGrainPitch));
-    const double ratio = grainRatio(key.note, static_cast<int>(eff[Root]), tuneCents(static_cast<int>(eff[Tune])), slide, roll);
+    // The setting reads as PITCH, up higher (owner, 2026-11-17: as ROOT, a key, it ran the wrong way):
+    // the key that plays the recording at its own pitch is 120 less it, so 60 is middle C both ways.
+    const double ratio = grainRatio(key.note, kPitchRootAt - static_cast<int>(eff[Root]), tuneCents(static_cast<int>(eff[Tune])), slide, roll);
     const bool back = grainUnit(seed, n, kGrainBack) < reverseChance(eff[Reverse]);
     double place = grainPlace(positionShare(eff[Position]), key.scanned, sprayShare(eff[Spray]), grainUnit(seed, n, kGrainPlace), length);
     if (back) place = wrapPlace(place + static_cast<double>(g.length - 1) * ratio, length); // the same stretch, from its far end
