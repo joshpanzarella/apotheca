@@ -1,0 +1,14 @@
+# ROCKNIX's changes over mainline's anbernic_rg35xx_h700_defconfig (LPDDR4),
+# from ROCKNIX's anbernic_rg35xx_h700_lpddr4_defconfig.
+# Power on only with the power key, not when a charger is plugged in
+# (with ROCKNIX's patch 0002 for the AXP717).
+CONFIG_AXP_DISABLE_BOOT_ON_POWERON=y
+# No EFI and no wait: straight to extlinux.conf.
+# CONFIG_EFI_LOADER is not set
+CONFIG_BOOTDELAY=0
+# The status LED on as soon as U-Boot runs: the first sign of life.
+CONFIG_LED_STATUS=y
+CONFIG_LED_STATUS_GPIO=y
+CONFIG_LED_STATUS0=y
+CONFIG_LED_STATUS_BIT=267
+CONFIG_LED_STATUS_STATE=2

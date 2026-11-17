@@ -1,0 +1,19 @@
+#!/bin/sh
+# console TTY: a login shell on /dev/TTY, started again by init when it ends.
+#
+# getty -L treats the port as a local line (no modem carrier to wait for)
+# and makes it the shell's controlling terminal, so Ctrl-C and job control
+# work; -n skips the login name and -l starts our login shell, with no
+# password (batch 1 is for bring-up; later batches close this).
+#
+# If the port is not there, or will not open (no USB gadget, qemu's port on
+# the handheld, a UART the kernel lists but the machine does not have), this
+# sleeps for good instead of failing, so init does not start it again and
+# again. stty opens the port without waiting, so the test cannot hang.
+tty=$1
+if [ ! -c "/dev/$tty" ] || ! stty -F "/dev/$tty" >/dev/null 2>&1; then
+    exec sleep 2147483647
+fi
+# A port that keeps hanging up must not spin.
+sleep 1
+exec /sbin/getty -L -n -l /usr/libexec/apotheca/login 115200 "$tty" vt100

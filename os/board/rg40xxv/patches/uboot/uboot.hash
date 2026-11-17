@@ -1,0 +1,4 @@
+# Taken from the Buildroot mirror (sources.buildroot.net/uboot/; ftp.denx.de
+# did not answer), and checked file by file against the v2026.01 tag of
+# https://source.denx.de/u-boot/u-boot.git (commit 127a42c7257a) on 2026-11-17.
+sha256  b60d5865cefdbc75da8da4156c56c458e00de75a49b80c1a2e58a96e30ad0d54  u-boot-2026.01.tar.bz2

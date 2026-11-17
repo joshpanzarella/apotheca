@@ -1,0 +1,38 @@
+#!/bin/sh
+# The USB-C port as a USB serial device (CDC ACM): plugged into a computer,
+# the handheld shows up as a serial port with a shell on it (ttyGS0 here;
+# /dev/tty.usbmodem* on a Mac, a COM port on Windows, /dev/ttyACM0 on Linux).
+
+. /usr/lib/apotheca/common.sh
+
+G=/sys/kernel/config/usb_gadget/apotheca
+
+start() {
+    [ -d /sys/kernel/config/usb_gadget ] || { say "USB: no gadget support"; return 1; }
+    udc=$(ls /sys/class/udc 2>/dev/null | head -n 1)
+    [ -n "$udc" ] || { say "USB: no device-side USB port found"; return 1; }
+
+    mkdir -p "$G" "$G/strings/0x409" "$G/configs/c.1/strings/0x409" "$G/functions/acm.usb0"
+    echo 0x1d6b > "$G/idVendor"     # Linux Foundation
+    echo 0x0104 > "$G/idProduct"    # multifunction composite gadget
+    echo 0x0100 > "$G/bcdDevice"
+    echo 0x0200 > "$G/bcdUSB"
+    echo "Apotheca" > "$G/strings/0x409/manufacturer"
+    echo "Apotheca RG40XXV" > "$G/strings/0x409/product"
+    echo "apotheca" > "$G/strings/0x409/serialnumber"
+    echo "serial console" > "$G/configs/c.1/strings/0x409/configuration"
+    echo 100 > "$G/configs/c.1/MaxPower"
+    [ -e "$G/configs/c.1/acm.usb0" ] || ln -s "$G/functions/acm.usb0" "$G/configs/c.1/"
+    echo "$udc" > "$G/UDC" && say "USB: serial console on $udc (ttyGS0)"
+}
+
+stop() {
+    [ -e "$G/UDC" ] && echo "" > "$G/UDC" 2>/dev/null
+    true
+}
+
+case "$1" in
+    start) start ;;
+    stop) stop ;;
+    *) echo "usage: $0 start|stop" ;;
+esac

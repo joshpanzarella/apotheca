@@ -1,0 +1,22 @@
+# Apotheca's changes over ROCKNIX's H700 kernel config (linux-rocknix-h700.config).
+# Buildroot merges this on top and runs olddefconfig.
+
+CONFIG_LOCALVERSION="-apotheca"
+# ROCKNIX fills this in with its own initramfs; we boot straight to the root.
+CONFIG_INITRAMFS_SOURCE=""
+
+# The panel's start-up sequence, built in (see external.mk). WiFi and BT
+# firmware come in batch 5.
+CONFIG_EXTRA_FIRMWARE="panels/anbernic,rg40xx-panel.panel panels/anbernic,rg40xx-v2-panel.panel"
+CONFIG_EXTRA_FIRMWARE_DIR="firmware-apotheca"
+
+# A serial console over the USB-C port (the device acts as a USB serial
+# adapter: ttyGS0 on the device, a COM port or /dev/tty.usbmodem on a computer).
+CONFIG_USB_CONFIGFS_ACM=y
+CONFIG_USB_CONFIGFS_SERIAL=y
+
+# So the same kernel also boots in qemu's "virt" machine for the desk test
+# (os/tools/qemu-test.sh). ROCKNIX's config already has the PL011 serial port
+# and virtio-blk; this adds the one missing transport. It never binds on the H700.
+CONFIG_VIRTIO_MENU=y
+CONFIG_VIRTIO_MMIO=y

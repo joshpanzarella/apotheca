@@ -1,0 +1,4 @@
+# The tarball Buildroot makes from the v2.15.0 tag of
+# https://git.trustedfirmware.org/TF-A/trusted-firmware-a.git
+# (tag object 9ad327a8d124, commit da738d5eae93), taken 2026-11-17.
+sha256  b807d8bf190b7c46b4260729b4bbe2f7df83cd1086edcb181d66595ae6598d23  arm-trusted-firmware-v2.15.0-git4.tar.gz

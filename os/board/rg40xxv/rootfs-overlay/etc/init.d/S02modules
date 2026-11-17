@@ -1,0 +1,16 @@
+#!/bin/sh
+# Loads the kernel modules this machine's hardware asks for (most drivers are
+# built into the kernel; ROCKNIX's joypad driver is a module). There is no
+# udev or mdev: this reads every device's "modalias" once, at boot.
+
+. /usr/lib/apotheca/common.sh
+
+case "$1" in
+    start)
+        find /sys/devices -name modalias -type f -exec cat {} + 2>/dev/null \
+            | sort -u | xargs -r modprobe -a -q 2>/dev/null
+        say "modules: $(cut -d' ' -f1 /proc/modules | tr '\n' ' ')"
+        ;;
+    stop) ;;
+    *) echo "usage: $0 start|stop" ;;
+esac
