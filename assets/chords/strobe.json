@@ -1,0 +1,458 @@
+{
+  "schemaVersion": 2,
+  "id": "authored.strobe",
+  "name": "Strobe",
+  "sourceTonic": 0,
+  "scale": {
+    "id": "naturalMinor",
+    "pitchClasses": [
+      0,
+      2,
+      3,
+      5,
+      7,
+      8,
+      10
+    ]
+  },
+  "description": "Deep house stabs in C minor. Close minor sevenths, ninths and elevenths, major sevenths, and the major four for a lift.",
+  "tags": [
+    "house",
+    "minor",
+    "stab",
+    "authored"
+  ],
+  "guidance": {
+    "density": "medium",
+    "chordRegister": {
+      "low": 53,
+      "high": 79
+    },
+    "leadRegister": {
+      "low": 64,
+      "high": 91
+    },
+    "bassRegister": {
+      "low": 24,
+      "high": 43
+    },
+    "melody": {
+      "targets": [
+        0,
+        3,
+        7,
+        10,
+        12,
+        14,
+        15,
+        17,
+        19
+      ],
+      "allowApproach": true,
+      "requireResolution": true
+    }
+  },
+  "chords": [
+    {
+      "id": "strobe.im7",
+      "quality": "m7",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "strobe.im9",
+      "quality": "m9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "strobe.im11",
+      "quality": "m11",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        10,
+        15,
+        17
+      ],
+      "requiredIntervals": [
+        0,
+        10,
+        15,
+        17
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "strobe.iim7b5",
+      "quality": "m7b5",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        6,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        6,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "strobe.bIIImaj7",
+      "quality": "maj7",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "strobe.bIIImaj9",
+      "quality": "maj9",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "strobe.ivm7",
+      "quality": "m7",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "strobe.ivm9",
+      "quality": "m9",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "predominant"
+    },
+    {
+      "id": "strobe.IV9",
+      "quality": "9",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "predominant",
+      "borrowedFrom": "dorian",
+      "outside": [
+        9
+      ]
+    },
+    {
+      "id": "strobe.vm7",
+      "quality": "m7",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "dominant"
+    },
+    {
+      "id": "strobe.vm11",
+      "quality": "m11",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        17
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        17
+      ],
+      "preferredVoices": 5,
+      "function": "dominant"
+    },
+    {
+      "id": "strobe.bVImaj7",
+      "quality": "maj7",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "strobe.bVImaj9",
+      "quality": "maj9",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "predominant"
+    },
+    {
+      "id": "strobe.bVII9",
+      "quality": "9",
+      "root": {
+        "degree": 6,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "dominant"
+    },
+    {
+      "id": "strobe.bVII7sus4",
+      "quality": "7sus4",
+      "root": {
+        "degree": 6,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "dominant"
+    }
+  ],
+  "progressions": [
+    {
+      "id": "strobe.the-stab",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "strobe.im9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "strobe.ivm9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "strobe.lift",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "strobe.bVImaj7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "strobe.bVII9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "strobe.im9",
+          "durationTicks": 7680,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "strobe.organ",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "strobe.im11",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "strobe.bIIImaj9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "strobe.IV9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "strobe.vm11",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    }
+  ]
+}

@@ -1081,7 +1081,7 @@ track makes a sound at once.
   Play from the top is the same cloud again, and a bounce is what you heard.
 - **Y on MAIN rolls a new cloud**: SPRAY, SIZE, DENSITY, SCATTER, SHAPE, PITCH
   SPRAY, PITCH STEPS, REVERSE and STEREO. It never changes the recording,
-  POSITION, SCAN, ROOT, TUNE, the envelope or the levels. One step of undo.
+  POSITION, SCAN, PITCH, TUNE, the envelope or the levels. One step of undo.
 - **48 presets in eight folders**: STILL (one place, held: Soft Cloud, Glass
   Hold, Breath Pad, Frozen Shimmer, Still Water, Halo), DRIFT (the place moves:
   Slow Tide, Backwards River, Wander, Tape Scrub, Drifting Choir, Pendulum),
@@ -1119,7 +1119,7 @@ ADVANCED is three pages. L1 and R1 turn them.
 | | POSITION | 0% to 100% of the way into the recording |
 | | SPRAY | OFF to +-50%: how far a grain's place is rolled, as a share of the recording |
 | | SCAN | -2.00X to +2.00X: the place moves on at that speed (+1.00X is the speed it was made); FREEZE in the middle |
-| | ROOT | the key that plays the recording at its own pitch (C4 usually) |
+| | PITCH | semitones up or down, **up is higher**; 0 plays the recording at its own pitch at middle C (it was ROOT, a key, which ran the other way) |
 | | TUNE | -100 to +100 CENTS |
 | GRAINS | SIZE | 5.0 MS to 1.00 S |
 | | DENSITY | 1.00 HZ to 200 HZ, grains a second for each key |
@@ -1533,8 +1533,8 @@ zip).
 
 One that nobody answers is dropped when WiFi is turned off or Apotheca is
 closed. The first install still goes by SD card. Only the program is
-updated this way: a new launcher script, fonts or chord packs still come
-from the zip.
+updated this way: a new launcher script or fonts still come from the zip
+(the chord packs that ship are inside the program).
 
 The handheld has to be on a WiFi network already (set in the firmware's own
 settings). Making its own hotspot, so no router is needed, is a job for the
@@ -1593,7 +1593,11 @@ once.
 The cursor can also sit on a lane's name, left of step 1: A plays the drum,
 hold A + stick is its volume, **hold X is its FEEL** (see "FEEL" below), and Y is the **lane dice** (hold Y + stick up
 and hits arrive in a shuffled order that leans toward the beat; down and
-they leave; tap Y to reshuffle). Up from the top lane is the tempo.
+they leave; tap Y to reshuffle). **The dice work on every hit of the lane,
+yours too**: down takes any hit away, a tap rolls the lane's hits anew (as
+many as it has; an empty lane gets four, a full one eight). Undo puts yours
+back. A full lane says THE LANE IS FULL, an empty one THE LANE IS EMPTY.
+Up from the top lane is the tempo.
 
 On a lane's name, hold Y and push **right** to roll a new start for every
 hit on the lane, on the sixteenths of the sound. **Left** puts them all back
@@ -1612,6 +1616,7 @@ A few things mean one thing everywhere:
 | X | Hear it. A recording plays **for as long as X is held** (a tap: a moment). Held on a drum hit: its step effects. Held on a knob: its MOD |
 | Hold R1 | On an empty step: paint as you drag. On a note: carry it. On SONG: copy a bar as you drag |
 | L2 / R2 | The tabs |
+| **L3** (press the stick in) | **The SONG screen with MASTER under the cursor**: hold A + up / down is the output's level at once, whatever the handheld's own volume. L3 again (still on MASTER): back where you were |
 | SELECT + something | Things about the whole song: undo, tempo, volume, WRITE, the scene's length, the next scene |
 
 A held D-pad runs at one of two speeds on every screen: fast for a cursor
@@ -1831,6 +1836,8 @@ whole range in about a second); on the model's box it steps the model, and
 then five to eight more, some the classic machines' kind, some odd (BOOM,
 SUB DROP, BREATH, CLICKER, FINGER SNAP, GONG, WASH, ALARM, ROCKET, WIND...).
 The voice's name stands in brass after the model while the knobs are its.
+**The new sound is heard once, when you let go of A** (and it is made), not at every
+step of the turn; X hears it at any time.
 **Y rolls** the knobs (each somewhere in the middle of its range), B puts a
 knob back (B again: back to the kit), **hold B** puts every knob back, L1 /
 R1 go to the synth lane before / after, X hears it.
@@ -1859,8 +1866,8 @@ the edits make it, and eight boxes laid out as the sampler's.
 | REVERSE | The whole of the part played, end first | On / off |
 
 - **Hold A + up / down turns a box**; the stick turns it through its whole
-  range in about a second (gently with a little push). A box turned is heard,
-  with the song stopped. **X hears the lane as edited** (held: to its end).
+  range in about a second (gently with a little push). **A box turned is heard
+  once, when you let go of A** (and the new sound is made), with the song stopped. **X hears the lane as edited** (held: to its end).
 - **B gives a box its usual value; B on a box already there goes back to the
   kit. Hold B: every edit of the lane back to none**, as the bar fills. Undo
   brings them back.
@@ -2072,11 +2079,39 @@ name. Chords never overlap in time.
   place. B while Y is held breaks it into loose notes instead.
 - A new chord is as long as the last one you set.
 
-**Chord packs** are JSON files in the form Shapetaker's Transmutation reads,
-in a `chords` folder beside the program (`assets/chords` in this repository).
-Drop a file in and it shows up. What is read from a pack is listed at the
-top of `app/chords.hpp`. A pack called "Plain C" is built in. A song file
-stores each chord whole, so a song still plays on a device without its pack.
+**Twenty packs come with the program**, all in C (nobody has heard the
+thirteen added on 2026-11-17; their notes are checked by the tests):
+
+| Pack | Chords | For |
+| --- | --- | --- |
+| Plain C | 13 | the plain chords of C major |
+| Afterglow | 12 | warm major, sixths and upper extensions, a few borrowed from minor |
+| Delta | 18 | blues: every chord a seventh, the twelve-bar, 9ths, 13ths, the sharp nine, a minor blues |
+| Elegy | 23 | minor and harmonic minor: the major five, the diminished seventh, the lament, the line cliche |
+| Ember | 17 | phrygian: the flat second over the tonic, the Spanish turn |
+| Glass | 10 | clear pentatonic fragments, mostly three voices |
+| Haze | 15 | ambient: close seconds, suspended stacks, chords over a held C |
+| Hearth | 17 | folk: open triads voiced as a guitar holds them |
+| Hollow | 17 | dark: minor-major sevenths, augmented and diminished, minor chords a tritone away |
+| Horizon | 19 | cinematic: wide fifths, the rising six-three-seven, chords a third away |
+| Luminous | 7 | bright lydian |
+| Moonlit | 7 | dorian minor |
+| Revival | 18 | gospel: walk-ups through diminished chords, the four over the five, the flat six |
+| Skyline | 22 | city pop: the four-five-three-six road, major sevenths, secondary dominants |
+| Smoke | 23 | jazz: two-five-ones with 9ths and 13ths, altered dominants, the tritone substitute |
+| Stone | 15 | fourths: chords stacked in fourths, the modal eleventh |
+| Strobe | 15 | deep house stabs: close minor sevenths, ninths and elevenths |
+| Tidal | 12 | flowing mixolydian |
+| Velvet | 18 | neo-soul: minor ninths and elevenths, lush major sevenths |
+| Weightless | 8 | suspended and quartal |
+
+They are built into the program, so an update over WiFi brings them. More are
+JSON files in the form Shapetaker's Transmutation reads, in a `chords` folder
+beside the program (`assets/chords` in this repository holds the ones that
+ship). Drop a file in and it shows up; one with the name of a pack that ships
+takes its place. What is read from a pack is listed at the top of
+`app/chords.hpp`. A song file stores each chord whole, so a song still plays
+on a device without its pack.
 A bar holds 64 notes, chords' notes included, and 16 chords.
 
 ### Chord effects

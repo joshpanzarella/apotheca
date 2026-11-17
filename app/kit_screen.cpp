@@ -26,6 +26,8 @@ constexpr float kStepsPerSecond = 8.f; // the stick with A held: slow enough to 
 // X held: it sounds until X is let go, or to its end (a tap: Session::kAuditionMs). Otherwise (a
 // sound arrived on, by the list or A held) the whole of it, as a hit.
 void KitScreen::hear(bool held) {
+    hearOwed_ = false; // (whatever is heard now pays what a turn owed)
+    ++hears_;
     // A line runs across the lane's picture while it sounds: for as long as the recording lasts
     // (a fitted one lasts its steps at the tempo), or until X is let go.
     const Session::LaneSound& sound = session_.laneSound(project_.track, lane_);
@@ -217,8 +219,10 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
     }
     picker_.update(input, nowMs, project_.playing);
     if (picker_.isOpen()) return;
+    if (!editing_ && !voicing_) hearOwed_ = false; // (left the view: the turn is not heard)
     if (editing_ || voicing_) {
         if (!said_.empty() && nowMs >= saidUntil_) said_.clear();
+        hearWhenDone(input, nowMs);
         return editing_ ? editUpdate(input, nowMs, dt) : voiceUpdate(input, nowMs, dt);
     }
     // While recording, the line says how it is going.
@@ -281,12 +285,23 @@ float editPart(const LaneEdit& e, int row) {
 bool editFromMiddle(int row) { return row == kEditGain || row == kEditPitch || row == kEditFine; }
 }
 
+void KitScreen::hearWhenDone(const Input& input, Uint32 nowMs) {
+    if (!hearOwed_) return;
+    if (project_.playing) { hearOwed_ = false; return; } // the song is heard instead
+    const bool turning = input.held(Button::A) || input.stickX() != 0.f || input.stickY() != 0.f ||
+                         (repeating_ != Button::None && input.held(repeating_));
+    const Session::LaneSound& sound = session_.laneSound(project_.track, lane_);
+    if (turning || sound.making || sound.shaping || nowMs - changedAt_ < kHearAfterMs) return;
+    hearOwed_ = false;
+    hear();
+}
+
 void KitScreen::setEdit(const LaneEdit& edit) {
     const LaneEdit before = trk().laneEdit[lane_];
     session_.setLaneEdit(project_.track, lane_, edit);
-    if (trk().laneEdit[lane_] == before || project_.playing || lastMs_ - heardAt_ < kHearEveryMs) return;
-    heardAt_ = lastMs_;
-    hear();
+    if (trk().laneEdit[lane_] == before || project_.playing) return;
+    hearOwed_ = true;
+    changedAt_ = lastMs_;
 }
 
 void KitScreen::editPress(Button b) {
@@ -345,7 +360,7 @@ void KitScreen::editButton(const ButtonEvent& event, const Input& input) {
             said_ = "NOTHING TO NORMALIZE: IT IS SILENT";
         }
         saidUntil_ = lastMs_ + 2500;
-        if (!project_.playing) hear();
+        if (!project_.playing) { hearOwed_ = true; changedAt_ = lastMs_ - kHearAfterMs; } // heard once it is made
     } else if (b == Button::X) {
         hear(true);
     } else if (b == Button::Start && !input.held(Button::Select)) {
@@ -482,6 +497,7 @@ void KitScreen::openVoice(int place) {
     session_.readyLane(project_.track, lane_);
     voicing_ = true;
     editing_ = false;
+    hearOwed_ = false;
     const int model = trk().laneSynth[lane_].model, named = voicePlaceOf(trk().laneSynth[lane_]);
     voicePlace_ = drumsynth::shown(model, place) ? place : kVoiceModel;
     voicePicked_ = named >= 0 ? named : 0; // (this lane's: another lane's pick means nothing here)
@@ -493,9 +509,9 @@ void KitScreen::openVoice(int place) {
 void KitScreen::setVoice(const drumsynth::Voice& voice) {
     const drumsynth::Voice before = trk().laneSynth[lane_];
     session_.setLaneSynth(project_.track, lane_, voice);
-    if (trk().laneSynth[lane_] == before || project_.playing || lastMs_ - heardAt_ < kHearEveryMs) return;
-    heardAt_ = lastMs_;
-    hear();
+    if (trk().laneSynth[lane_] == before || project_.playing) return;
+    hearOwed_ = true;
+    changedAt_ = lastMs_;
 }
 
 void KitScreen::voicePress(Button b) {
@@ -598,7 +614,6 @@ void KitScreen::voiceButton(const ButtonEvent& event, const Input& input) {
                     const int dial = kRollLow + static_cast<int>(unit * static_cast<float>(kRollHigh - kRollLow + 1));
                     v.dial[p] = static_cast<std::uint8_t>(dial > kRollHigh ? kRollHigh : dial);
                 }
-        heardAt_ = 0; // (heard at once, however soon after the last)
         setVoice(v);
     } else if ((b == Button::L1 || b == Button::R1) && !holding_ && !input.held(Button::Select)) {
         // The synth lane before / after; the ends stop.

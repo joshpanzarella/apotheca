@@ -1,0 +1,546 @@
+{
+  "schemaVersion": 2,
+  "id": "authored.velvet",
+  "name": "Velvet",
+  "sourceTonic": 0,
+  "scale": {
+    "id": "dorian",
+    "pitchClasses": [
+      0,
+      2,
+      3,
+      5,
+      7,
+      9,
+      10
+    ]
+  },
+  "description": "Neo-soul in C minor. Minor ninths and elevenths, lush major sevenths, a borrowed flat six and the Neapolitan sigh.",
+  "tags": [
+    "neo-soul",
+    "dorian",
+    "extended",
+    "lush",
+    "authored"
+  ],
+  "guidance": {
+    "density": "lush",
+    "chordRegister": {
+      "low": 48,
+      "high": 84
+    },
+    "leadRegister": {
+      "low": 62,
+      "high": 91
+    },
+    "bassRegister": {
+      "low": 28,
+      "high": 50
+    },
+    "melody": {
+      "targets": [
+        0,
+        2,
+        3,
+        5,
+        7,
+        9,
+        10,
+        14,
+        15,
+        17
+      ],
+      "allowApproach": true,
+      "requireResolution": true
+    }
+  },
+  "chords": [
+    {
+      "id": "velvet.im9",
+      "quality": "m9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "velvet.im11",
+      "quality": "m11",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        10,
+        14,
+        17
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        17
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "velvet.im69",
+      "quality": "m6/9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        9,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        9,
+        14
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "velvet.bIImaj7",
+      "quality": "maj7",
+      "root": {
+        "degree": 1,
+        "alteration": -1
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "preferredVoices": 4,
+      "function": "predominant",
+      "legacyName": "Dbmaj7",
+      "borrowedFrom": "Neapolitan",
+      "outside": [
+        1,
+        8
+      ]
+    },
+    {
+      "id": "velvet.iim7",
+      "quality": "m7",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "velvet.iim11",
+      "quality": "m11",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        17
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        17
+      ],
+      "preferredVoices": 5,
+      "function": "predominant"
+    },
+    {
+      "id": "velvet.bIIImaj9",
+      "quality": "maj9",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "velvet.bIIImaj9s11",
+      "quality": "maj9#11",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11,
+        14,
+        18
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11,
+        14,
+        18
+      ],
+      "preferredVoices": 6,
+      "function": "tonic"
+    },
+    {
+      "id": "velvet.IV9",
+      "quality": "9",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "predominant"
+    },
+    {
+      "id": "velvet.IV13",
+      "quality": "13",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        10,
+        14,
+        21
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        21
+      ],
+      "preferredVoices": 5,
+      "function": "predominant"
+    },
+    {
+      "id": "velvet.vm9",
+      "quality": "m9",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "dominant"
+    },
+    {
+      "id": "velvet.vm11",
+      "quality": "m11",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        10,
+        14,
+        17
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        17
+      ],
+      "preferredVoices": 5,
+      "function": "dominant"
+    },
+    {
+      "id": "velvet.V7alt",
+      "quality": "7#9b13",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        10,
+        15,
+        20
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        15,
+        20
+      ],
+      "preferredVoices": 5,
+      "function": "dominant",
+      "borrowedFrom": "altered dominant",
+      "outside": [
+        11
+      ]
+    },
+    {
+      "id": "velvet.vim7b5",
+      "quality": "m7b5",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        6,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        6,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "velvet.bVImaj7",
+      "quality": "maj7",
+      "root": {
+        "degree": 5,
+        "alteration": -1
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "preferredVoices": 4,
+      "function": "predominant",
+      "borrowedFrom": "natural minor bVI",
+      "outside": [
+        8
+      ]
+    },
+    {
+      "id": "velvet.bVImaj9s11",
+      "quality": "maj9#11",
+      "root": {
+        "degree": 5,
+        "alteration": -1
+      },
+      "intervals": [
+        0,
+        4,
+        11,
+        14,
+        18
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11,
+        14,
+        18
+      ],
+      "preferredVoices": 5,
+      "function": "predominant",
+      "borrowedFrom": "natural minor bVI",
+      "outside": [
+        8
+      ]
+    },
+    {
+      "id": "velvet.bVIImaj9",
+      "quality": "maj9",
+      "root": {
+        "degree": 6,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "unknown"
+    },
+    {
+      "id": "velvet.bVII69",
+      "quality": "6/9",
+      "root": {
+        "degree": 6,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        9,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        9,
+        14
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    }
+  ],
+  "progressions": [
+    {
+      "id": "velvet.vamp",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "velvet.im9",
+          "durationTicks": 7680,
+          "weight": 1.0
+        },
+        {
+          "chordId": "velvet.IV13",
+          "durationTicks": 7680,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "velvet.slow-burn",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "velvet.bIIImaj9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "velvet.bVImaj9s11",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "velvet.vm11",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "velvet.im9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "velvet.sigh",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "velvet.bIImaj7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "velvet.im11",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    }
+  ]
+}

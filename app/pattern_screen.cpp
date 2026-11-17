@@ -21,6 +21,7 @@ constexpr float kMinChance = 0.05f;   // likewise
 constexpr float kMaybe = 0.5f;        // the chance of a hit placed with Y
 constexpr float kRandomLow = 0.25f;   // R2 paints levels from here up to full
 constexpr int kFirstRoll = 4;         // hits a tap of Y gives an empty lane
+constexpr int kFullRoll = 8;          // ...and a full one (half the steps)
 constexpr float kDiceHitsPerSecond = 24.f; // stick fully over
 constexpr Uint32 kHearStartEveryMs = 90;  // a sliding start is played this often
 constexpr float kPitchClicksPerSecond = 8.f, kRatchetClicksPerSecond = 4.f; // X held, the stick or D-pad held over
@@ -432,13 +433,15 @@ bool PatternScreen::diceAdd() {
     return false; // the lane is full
 }
 
-// One fewer: the last of the dice's own hits in the order. Never the player's.
+// One fewer: the last hit in the order, the player's too (owner, 2026-11-17: "we should be able to
+// write over user notes because there is an undo function"). On a lane the dice filled it is the
+// last they placed, so turning down retraces turning up.
 bool PatternScreen::diceRemove() {
     int order[kSteps];
     diceOrder(lane_, order);
     for (int i = kSteps - 1; i >= 0; --i) {
-        if (!pat().fromDice[lane_][order[i]]) continue;
-        pat().fromDice[lane_][order[i]] = false; // first, so this can never find the same hit twice
+        if (pat().level[lane_][order[i]] <= 0.f) continue;
+        pat().fromDice[lane_][order[i]] = false;
         setStep(lane_, order[i], 0.f);
         return true;
     }
@@ -449,20 +452,23 @@ void PatternScreen::diceTurn(float hits) {
     diceSaved_ += hits;
     while (diceSaved_ >= 1.f) {
         diceSaved_ -= 1.f;
-        if (!diceAdd()) { diceSaved_ = 0.f; break; } // full: nothing saved up against the stop
+        if (!diceAdd()) { diceSaved_ = 0.f; session_.say("THE LANE IS FULL"); break; } // nothing saved up against the stop
     }
     while (diceSaved_ <= -1.f) {
         diceSaved_ += 1.f;
-        if (!diceRemove()) { diceSaved_ = 0.f; break; }
+        if (!diceRemove()) { diceSaved_ = 0.f; session_.say("THE LANE IS EMPTY"); break; }
     }
 }
 
-// The same number of dice hits, in a new shuffle.
+// The lane's hits, every one of them (the player's too: undo puts them back), as many again in a
+// new shuffle. An empty lane gets kFirstRoll; a full one kFullRoll, or a roll would change nothing.
 void PatternScreen::diceReshuffle() {
-    int count = diceHits(lane_);
+    int count = 0;
+    for (int step = 0; step < kSteps; ++step) count += pat().level[lane_][step] > 0.f ? 1 : 0;
     while (diceRemove()) {}
     pat().diceSeed[lane_] = pat().diceSeed[lane_] * 1664525u + 1013904223u;
     if (count == 0) count = kFirstRoll;
+    if (count == kSteps) count = kFullRoll;
     const bool wasPlaying = project_.playing;
     project_.playing = true; // sound only the last of the new hits, not all of them at once
     for (int i = 0; i < count; ++i) {

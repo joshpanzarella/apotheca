@@ -65,7 +65,7 @@ new CHOIR / Cathedral
 set 0 55  1 25  2 95  3 70  5 70  6 80  7 2  8 20  9 100  13 60  14 85  15 70
 send 2 0.3                       # into SPACE (a new song's HALL)
 new CHOIR / Low Choir
-set 0 30  1 15  2 90  3 60  5 80  6 80  7 1  9 70  11 72  13 50  14 75
+set 0 30  1 15  2 90  3 60  5 80  6 80  7 1  9 70  11 48  13 50  14 75
 new CHOIR / Bloom Choir
 set 0 60  1 30  2 95  3 65  5 90  6 75  7 2  9 90  13 80  14 85  15 70
 send 2 0.45
@@ -98,14 +98,14 @@ send 2 0.5
 
 # ---- DRONES: frozen in one place, long, low -----------------------------------------------------------
 new DRONES / Deep Drone
-set 0 30  1 5  2 95  3 60  5 60  9 60  11 84  13 40  14 80   # ROOT 84: every key an octave lower
+set 0 30  1 5  2 95  3 60  5 60  9 60  11 36  13 40  14 80   # PITCH 36: every key two octaves lower
 new DRONES / Hum Drone
-set 0 50  1 3  2 90  3 75  5 50  6 20  9 40  11 72  13 40  14 80
+set 0 50  1 3  2 90  3 75  5 50  6 20  9 40  11 48  13 40  14 80
 fx 1 eq 0.6 0.45 0.4 0.4               # LOW, MID, MID FREQ, HIGH: warm, the top taken off
 new DRONES / Fifth Drone
 set 0 40  1 10  2 90  3 65  5 70  6 50  7 2  9 70  13 50  14 80
 new DRONES / Dark Drone
-set 0 60  1 10  2 90  3 60  5 60  9 70  11 72  13 45  14 80
+set 0 60  1 10  2 90  3 60  5 60  9 70  11 48  13 45  14 80
 fx 1 filter 0.4 0.4 0.1 1              # CUTOFF, RESONANCE, LOW 12, MIX
 mod 1 1 8 0.75 10 6 0 0                # the filter's CUTOFF, +50%, 4 BARS, DRIFT
 new DRONES / Reverse Drone

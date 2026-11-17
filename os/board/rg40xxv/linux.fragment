@@ -28,3 +28,8 @@ CONFIG_SND_VIRTIO=m
 # (/sys/module/test_power/parameters), for apotheca-power's low-battery
 # turn-off under qemu. A module nothing asks for: never loaded on the H700.
 CONFIG_TEST_POWER=m
+# The desk test of the panel driver (qemu-test.py): a simulated GPIO chip, for
+# a bit-banged SPI bus and two panels that exist only in the test's own
+# device tree. A module that loads only where a device tree asks for
+# "gpio-simulator": never on the H700.
+CONFIG_GPIO_SIM=m
