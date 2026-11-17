@@ -4,7 +4,7 @@
 # getty -L treats the port as a local line (no modem carrier to wait for)
 # and makes it the shell's controlling terminal, so Ctrl-C and job control
 # work; -n skips the login name and -l starts our login shell, with no
-# password (batch 1 is for bring-up; later batches close this).
+# password (for bring-up; kept open until batch 5: owner, 2026-11-17).
 #
 # If the port is not there, or will not open (no USB gadget, qemu's port on
 # the handheld, a UART the kernel lists but the machine does not have), this

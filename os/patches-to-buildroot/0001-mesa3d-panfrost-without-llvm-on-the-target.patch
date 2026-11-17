@@ -1,0 +1,51 @@
+Panfrost without LLVM, clang and OpenCL on the target.
+
+Buildroot 2026.02 makes the panfrost driver depend on Mesa's target LLVM
+support and its precompiled-shader compiler select target OpenCL (target
+clang and libclc) and target SPIRV-LLVM-Translator. Mesa itself needs none
+of them on the target: the target build is already configured with
+-Dmesa-clc=system -Dprecomp-compiler=system, so the shaders are compiled
+by host-mesa3d (built with host LLVM and clang) at build time. This keeps
+the host side and drops the four target LLVM-sized packages.
+
+diff -ru a/package/mesa3d/Config.in b/package/mesa3d/Config.in
+--- a/package/mesa3d/Config.in
++++ b/package/mesa3d/Config.in
+@@ -23,8 +23,6 @@
+ 
+ config BR2_PACKAGE_MESA3D_NEEDS_PRECOMP_COMPILER
+ 	bool
+-	select BR2_PACKAGE_MESA3D_OPENCL
+-	select BR2_PACKAGE_SPIRV_LLVM_TRANSLATOR
+ 	select BR2_PACKAGE_SPIRV_TOOLS
+ 
+ config BR2_PACKAGE_MESA3D_LLVM
+@@ -203,16 +201,12 @@
+ config BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_PANFROST
+ 	bool "Gallium panfrost driver"
+ 	depends on BR2_TOOLCHAIN_HAS_SYNC_4 || !BR2_PACKAGE_XORG7 # libxshmfence
+-	depends on BR2_PACKAGE_MESA3D_LLVM
+ 	select BR2_PACKAGE_MESA3D_GALLIUM_DRIVER
+ 	select BR2_PACKAGE_MESA3D_NEEDS_PRECOMP_COMPILER
+ 	select BR2_PACKAGE_MESA3D_RUSTICL_SUPPORTED_DRIVER
+ 	help
+ 	  Mesa driver for ARM Mali Midgard and Bifrost GPUs.
+ 
+-comment "panfrost driver needs llvm"
+-	depends on !BR2_PACKAGE_MESA3D_LLVM
+-
+ config BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_R300
+ 	bool "Gallium Radeon R300 driver"
+ 	depends on BR2_i386 || BR2_x86_64
+diff -ru a/package/mesa3d/mesa3d.mk b/package/mesa3d/mesa3d.mk
+--- a/package/mesa3d/mesa3d.mk
++++ b/package/mesa3d/mesa3d.mk
+@@ -154,7 +154,7 @@
+ 
+ ifeq ($(BR2_PACKAGE_MESA3D_NEEDS_PRECOMP_COMPILER),y)
+ MESA3D_CONF_OPTS += -Dmesa-clc=system -Dprecomp-compiler=system
+-MESA3D_DEPENDENCIES += host-mesa3d spirv-llvm-translator spirv-tools
++MESA3D_DEPENDENCIES += host-mesa3d spirv-tools
+ endif
+ 
+ ifeq ($(BR2_PACKAGE_MESA3D_VULKAN_DRIVER),)

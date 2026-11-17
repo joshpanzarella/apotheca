@@ -13,8 +13,10 @@
 #            unit needs.
 #   --dram   the memory type U-Boot sets up. Default lpddr4 (ROCKNIX lists
 #            the RG40XX V under its DDR4 image).
-#   --tidy   after the build, delete the kernel's and U-Boot's build folders
-#            (about 2 GB): the next build makes them again from scratch.
+#   --tidy   after the build, delete the biggest build folders (the kernel,
+#            U-Boot, Mesa and the host LLVM and clang that build Mesa's
+#            shaders). The kernel and U-Boot are made again next time; the
+#            others keep their "done" marks and are not.
 #   -- ARGS  passed to Buildroot's make (e.g. -- linux-menuconfig).
 #
 # Buildroot itself is fetched (a pinned release, its sum checked) into
@@ -62,6 +64,16 @@ if [ ! -f "$br/.ready" ]; then
     touch "$br/.ready"
 fi
 
+# Our few changes to Buildroot itself (os/patches-to-buildroot, each saying
+# why), applied once each.
+for p in "$external"/patches-to-buildroot/*.patch; do
+    [ -f "$p" ] || continue
+    mark="$br/.applied-$(basename "$p")"
+    [ -f "$mark" ] && continue
+    patch -d "$br" -p1 -N --no-backup-if-mismatch < "$p"
+    touch "$mark"
+done
+
 export BR2_DL_DIR="$work/dl"
 export APOTHECA_DTB="$dtb"
 APOTHECA_COMMIT=$(git -C "$here" describe --always --dirty 2>/dev/null || echo unknown)
@@ -87,6 +99,13 @@ cp "$out/images/apotheca-rg40xxv.img.gz" "$work/apotheca-rg40xxv.img.gz"
 
 if [ "$tidy" = yes ]; then
     rm -rf "$out"/build/linux-[0-9]* "$out"/build/uboot-[0-9]*
+    # These are kept as done (their stamps stay), so the next build does not
+    # make LLVM and clang again; only their work files go.
+    for d in "$out"/build/host-llvm-[0-9]* "$out"/build/host-clang-[0-9]* \
+             "$out"/build/host-libclc-[0-9]* "$out"/build/host-spirv-llvm-translator-[0-9]* \
+             "$out"/build/host-mesa3d-[0-9]* "$out"/build/mesa3d-[0-9]*; do
+        [ -d "$d" ] && find "$d" -mindepth 1 -maxdepth 1 ! -name '.stamp_*' -exec rm -rf {} +
+    done
 fi
 
 echo

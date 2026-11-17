@@ -14,9 +14,14 @@ null::sysinit:/bin/ln -sf /proc/self/fd/2 /dev/stderr
 ::sysinit:/sbin/ifconfig lo 127.0.0.1 up
 ::sysinit:/etc/init.d/rcS
 
-# Batch 1: a shell on the screen, on USB serial (the USB-C port), on the
-# board's UART pins, and on qemu's serial port for the desk test. Each one
-# starts again when it ends. A console whose port is not there sleeps.
+# Apotheca, started again whenever it stops (apotheca-keep backs off one
+# that cannot start; touch /run/apotheca/apotheca.hold to stop restarts).
+::respawn:/usr/sbin/apotheca-keep apotheca /usr/libexec/apotheca/run
+
+# A shell on the screen (seen when Apotheca is not running), on USB serial
+# (the USB-C port), on the board's UART pins, and on qemu's serial port for
+# the desk test. Each one starts again when it ends. A console whose port is
+# not there sleeps. (Open, with no password, until batch 5: owner, 2026-11-17.)
 tty1::respawn:-/bin/sh
 ::respawn:/usr/libexec/apotheca/console ttyGS0
 ::respawn:/usr/libexec/apotheca/console ttyS0

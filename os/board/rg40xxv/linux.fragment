@@ -20,3 +20,7 @@ CONFIG_USB_CONFIGFS_SERIAL=y
 # and virtio-blk; this adds the one missing transport. It never binds on the H700.
 CONFIG_VIRTIO_MENU=y
 CONFIG_VIRTIO_MMIO=y
+# Batch 2's desk test: qemu's virtual screen and sound card, as modules, so
+# they load only where qemu's devices are (S02modules) and never on the H700.
+CONFIG_DRM_VIRTIO_GPU=m
+CONFIG_SND_VIRTIO=m

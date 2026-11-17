@@ -4,12 +4,15 @@ This folder builds an SD card that starts the handheld on **our own Linux
 system** instead of the stock firmware. The plan and its reasons:
 `docs/plans/firmware-plan.md`.
 
-**Batch 1 is a console only.** It does not run Apotheca yet. It shows
-whether our system starts on your unit: the boot loader, the kernel, the
-screen. Text scrolls on the screen and ends at a `#` prompt. Nothing else.
+**Batch 2 starts Apotheca by itself.** Power on, a few seconds of text,
+then Apotheca's SONG screen: no firmware menu, no Ports. The buttons are
+set up already. Songs, recordings and settings live on the card's APOTHECA
+drive, in its `apotheca` folder.
 
 **Nobody has started it on a handheld yet.** Only the desk tests below have
-run.
+run: the screen, the sound, the buttons and the GPU are the handheld's to
+show. The card writes down everything it finds (the boot log, below), so
+whatever happens can be sent back.
 
 ## The device cannot be bricked by this
 
@@ -55,14 +58,18 @@ handheld as before.** Keep the stock card in a drawer and use a spare one.
    - The first start only: a line `apotheca: DATA: first boot, growing ...`.
      It makes the APOTHECA part of the card, filling the rest of the card.
      It happens once.
-   - It ends with **"Apotheca system, batch 1: a console only."** and a
-     `#` prompt. The buttons do not type: there is nothing more to do on
-     the screen.
+   - **Apotheca's screen** comes up, a few seconds after the text. The
+     first time it starts a new song.
+   - **The buttons are set up already** (no "press A" setup). If they do
+     the wrong things, delete `apotheca/controls.txt` on the APOTHECA drive:
+     the next start asks for each button, as on the stock card.
 4. **To turn it off: hold the power key about 10 seconds.** (There is no
-   menu yet. The card is safe: the system part is read-only.)
+   shutdown in Apotheca yet. Songs are saved as you go; the system part
+   of the card is read-only.) Quitting Apotheca from its help card starts
+   it again at once.
 
-**Do not leave it on for long, and do not let the battery run low with this
-card in.** Batch 1 has no low-battery shutdown; charging should work as
+**Do not let the battery run low with this card in.** There is no
+low-battery shutdown yet (batch 4); charging should work as
 usual (the charger chip does it), but that is not tested.
 
 ## What to send back
@@ -78,6 +85,24 @@ Whatever you see is useful. Send:
    and the kernel's own messages. **If there is no `apotheca` folder at
    all, the system did not get that far**: the photo is then the clue.
 3. **What the light did** (on, off, blinking) and whether text appeared.
+4. If Apotheca came up: **does it draw right** (compare with the stock
+   card), **is there sound** from the speaker and the headphones, **do the
+   buttons and the stick do what they should**. `apotheca/apotheca.log` on
+   the card says which way it draws (`screen: opengles2, accelerated` is the
+   GPU) and how the sound card opened.
+
+## If Apotheca does not come up, or draws wrongly
+
+- **It draws with the GPU** (Mesa's panfrost driver). After two starts in a
+  row that stop within seconds it starts drawing with the CPU instead, by
+  itself. To make it always draw with the CPU, put an empty file named
+  **`gpu-off`** in the `apotheca` folder on the APOTHECA drive.
+- **No sound**: `apotheca/logs/boot-latest.txt` lists the sound cards and
+  every mixer control; send it. A card can be named in a file
+  `apotheca/sound-card` (its id, one word).
+- The shell is still there underneath: from the computer (next section),
+  `touch /run/apotheca/apotheca.hold` and stop Apotheca with
+  `kill $(pidof apotheca)`; it is not started again until the hold file goes.
 
 ## If the screen stays black or shows garbage
 
@@ -114,6 +139,7 @@ Press Enter for a `#` prompt. Useful there:
 | `cat /data/apotheca/logs/boot-latest.txt` | the boot log |
 | `evtest` | pick the gamepad, then press buttons: each press is printed |
 | `speaker-test -t sine -l 1` | a tone from each side (we cannot hear it on the desk) |
+| `/usr/libexec/apotheca/padprobe` | press buttons: prints each as Apotheca's `controls.txt` numbers it |
 | `poweroff` | turns the handheld off cleanly |
 
 If the USB serial port never appears, the handheld also has a serial port on
@@ -141,7 +167,11 @@ python3 -I os/tools/qemu-test.py build-image/apotheca-rg40xxv.img.gz  # boots it
 `os/` is a Buildroot "external tree": `configs/apotheca_rg40xxv_defconfig`
 (what goes in), `board/rg40xxv/` (kernel patches and config, device trees,
 U-Boot settings, the card layout `genimage.cfg`, the files laid over the
-system in `rootfs-overlay/`), `package/` (our own packages). Where every
+system in `rootfs-overlay/`), `package/` (our own packages: Apotheca, the
+joypad driver, padprobe and fakepad), `patches-to-buildroot/` (two changes to
+Buildroot's Mesa package, each saying why). The first build takes about three
+hours on four cores (LLVM and clang, for Mesa's shaders, are most of it) and
+about 13 GB; `--tidy` gives back the biggest part afterwards. Where every
 file we did not write came from, and its licence: `board/rg40xxv/README.md`.
 `scripts/build-image.sh -- legal-info` gathers every source and licence of
 what is on the card.

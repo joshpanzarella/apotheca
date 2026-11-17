@@ -316,8 +316,8 @@ it takes to start.
 
 | # | Question | Recommended answer |
 | --- | --- | --- |
-| 11 | Apotheca's own licence: legal-info marks its source "not to be given out" until one is chosen. Which? | Decide before anyone else gets the image; nothing is needed for the owner's own use |
-| 12 | Batch 1 gives a root shell with no password on USB serial and the UART. Keep it in later batches for bring-up, or close it from batch 2? | **Keep it until batch 5** (WiFi), then close it, or leave it only behind a button held at power on |
+| 11 | Apotheca's own licence: legal-info marks its source "not to be given out" until one is chosen. Which? | **Answered (2026-11-17): the owner's, later.** Nothing is needed for the owner's own use |
+| 12 | Batch 1 gives a root shell with no password on USB serial and the UART. Keep it in later batches for bring-up, or close it from batch 2? | **Answered (2026-11-17): keep it open until batch 5, then close it** |
 
 ## Sources
 

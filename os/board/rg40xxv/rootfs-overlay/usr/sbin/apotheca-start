@@ -38,6 +38,11 @@ if [ ! -x apotheca ] || [ "$(cat system-version 2>/dev/null)" != "$(cat "$system
     sync
 fi
 
+# The buttons, as the RG40XXV's joypad driver numbers them (os/README.md):
+# put there once, so the first start does not ask for each button. Delete
+# controls.txt on the card to be asked instead.
+[ -f controls.txt ] || cp /usr/share/apotheca/controls-rg40xxv.txt controls.txt
+
 if [ -f apotheca.new ]; then
     rm -f apotheca.old
     if mv apotheca apotheca.old && mv apotheca.new apotheca; then
