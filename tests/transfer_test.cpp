@@ -970,6 +970,9 @@ static void testRenamingInSongText() {
     CHECK(renameRecordings(text, one) && text == many + "track sampler\nsound kicks/big boom\n");
     text = thirteen;
     CHECK(!renameRecordings(text, one) && text == thirteen);
+    // A CLOUD's recording is the sampler's line, and follows too; under another synth the word is no recording.
+    text = "apotheca-song 1\ntrack cloud\nsound thud\npreset 3\ntrack phazed\nsound thud\n";
+    CHECK(renameRecordings(text, one) && text == "apotheca-song 1\ntrack cloud\nsound kicks/big boom\npreset 3\ntrack phazed\nsound thud\n");
     // A track of a kind this version does not have takes no place among the twelve.
     text = "apotheca-song 1\ntrack fromthefuture\n" + twelve.substr(16);
     CHECK(renameRecordings(text, one) && text.find("sound kicks/big boom\n") != std::string::npos);

@@ -1090,7 +1090,7 @@ void testCloudFromThePage() {
     CHECK(has(spec, "\"hear\":60,\"waves\":[{\"seconds\":2.000,\"missing\":false,\"tone\":true,\"recording\":\"\",\"marks\":[],\"band\":[0,1],\"peaks\":["));
     std::vector<int> peaks = peaksOf(spec);
     CHECK(peaks.size() == 512 && *std::max_element(peaks.begin(), peaks.end()) == 500); // the TONE's outline: its peak is 0.5
-    CHECK(has(spec, "{\"name\":\"POSITION\",\"id\":0,\"min\":0,\"max\":100,\"texts\":[\"0%\"") && has(spec, "\"FREEZE\"") && has(spec, "\"+-50%\"]"));
+    CHECK(has(spec, "{\"name\":\"POSITION\",\"id\":0,\"min\":0,\"max\":100,\"texts\":[\"0%\"") && has(spec, "\"FREEZE\"") && has(spec, "\"+-50.0%\"]"));
     // Once the page looks, the card's recordings are offered; one picked from the page goes on.
     rig.get("/design/state");
     rig.frames(1);

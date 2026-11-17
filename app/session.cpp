@@ -140,6 +140,7 @@ bool Session::setTrackKind(int track, TrackKind kind) {
             for (float& v : scene[lane]) v = kAutoNone;
     for (ModSettings& m : t.mods) // a MOD on a macro goes with the macros; one on an effect or a send stays
         if (modTargetIsMacro(m.target)) m = ModSettings();
+    if (!holdsRecording(kind)) t.sample[0] = '\0'; // (a sampler and a CLOUD pass theirs to each other; nothing else keeps one)
     if (kind == TrackKind::Drums) chokeTheHats(t); // a new kit (told with the song, next)
     sendSong(); // the engine is given the song afresh, with the new instrument in its place
     // Undo keeps its steps: they put back the other tracks, and pass this one by (it is another kind now).

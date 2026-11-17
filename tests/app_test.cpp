@@ -9978,6 +9978,56 @@ void testCloudOnATrack() {
     CHECK(screen.page() == 1 && screen.onRecording());
     rig.tap(R1);
     CHECK(screen.page() == 1 && screen.said().find("NO INPUT FOUND") == 0);
+    rig.frames(200);
+    // (The review, batch 5.) SOURCE has six stops, TUNE the last.
+    screen.goTo(1, 5);
+    CHECK(screen.settingHere() == cloud::Tune);
+    screen.goTo(1, 0);
+    // Hold A + UP stops at the last recording; the stick with A held steps one at a time.
+    const std::vector<std::string> names = session.sampleNames();
+    CHECK(names.size() >= 2);
+    session.setTrackSample(1, names.back());
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(track.sample == names.back() && !screen.picker().isOpen());
+    session.setTrackSample(1, names.front());
+    rig.key(A, true);
+    rig.key(STICK_UP, true);
+    rig.frames(8);
+    rig.key(STICK_UP, false);
+    rig.key(A, false);
+    CHECK(track.sample == names[1] && !screen.picker().isOpen());
+    // R1 with A held does not record (it turns the page, as on every synth); Y off SOURCE catches nothing.
+    rig.key(A, true);
+    rig.tap(R1);
+    rig.key(A, false);
+    CHECK(screen.page() == 2 && screen.said().empty());
+    rig.tap(Y);
+    CHECK(screen.said().empty() && track.sample == names[1]);
+    // The list's preview: heard for a moment and stopped; X while it plays rests on it, on a while.
+    CHECK(writeWav(folder + "/samples/fizz.wav", wave, 48000));
+    session.setTrackSample(1, "buzz");
+    screen.goTo(1, 0);
+    rig.tap(A);
+    CHECK(screen.picker().isOpen());
+    for (int i = 0; i < 6 && screen.picker().under() && screen.picker().under()->name != "fizz"; ++i) rig.tap(DOWN);
+    CHECK(track.sample == std::string("fizz") && session.hearingOn(&screen));
+    rig.frames(30);
+    CHECK(session.hearingOn(&screen)); // (X is not held: the preview is its own time)
+    rig.frames(80); // 1.76 s in all
+    CHECK(!session.hearingOn(&screen));
+    rig.tap(UP);
+    rig.tap(DOWN);
+    CHECK(session.hearingOn(&screen));
+    rig.tap(X);
+    rig.frames(150); // 2.4 s
+    CHECK(session.hearingOn(&screen));
+    rig.frames(150);
+    CHECK(!session.hearingOn(&screen));
+    rig.tap(B);
+    rig.frames(2);
+    CHECK(!screen.picker().isOpen());
     const SynthSpec& spec = cloudSpec();
     int seen[cloud::kSettings] = {};
     for (int page = 1; page < spec.pages; ++page)
@@ -9997,16 +10047,23 @@ void testCloudOnATrack() {
 
     // Its settings read in their units.
     const auto reads = [&](int id, int value) { spec.settingText(id, value, text, sizeof text); return std::string(text); };
-    CHECK(reads(cloud::Position, 25) == "25%" && reads(cloud::Spray, 0) == "OFF" && reads(cloud::Spray, 10) == "+-0.5%" && reads(cloud::Spray, 100) == "+-50%");
-    CHECK(reads(cloud::Size, 0) == "5 MS" && reads(cloud::Size, 60) == "120 MS" && reads(cloud::Size, 100) == "1.0 S");
-    CHECK(reads(cloud::Density, 0) == "1.0 HZ" && reads(cloud::Density, 52) == "16 HZ" && reads(cloud::Density, 100) == "200 HZ");
+    CHECK(reads(cloud::Position, 25) == "25%" && reads(cloud::Spray, 0) == "OFF" && reads(cloud::Spray, 10) == "+-0.50%" && reads(cloud::Spray, 1) == "+-0.005%" && reads(cloud::Spray, 100) == "+-50.0%");
+    CHECK(reads(cloud::Size, 0) == "5.0 MS" && reads(cloud::Size, 60) == "120 MS" && reads(cloud::Size, 100) == "1.00 S");
+    CHECK(reads(cloud::Density, 0) == "1.00 HZ" && reads(cloud::Density, 52) == "15.7 HZ" && reads(cloud::Density, 100) == "200 HZ");
     CHECK(reads(cloud::Shape, 0) == "PLUCK" && reads(cloud::Shape, 50) == "SMOOTH" && reads(cloud::Shape, 100) == "SWELL" && reads(cloud::Shape, 30) == "PEAK 30%");
-    CHECK(reads(cloud::PitchSpray, 0) == "OFF" && reads(cloud::PitchSpray, 50) == "+-300 CENTS" && reads(cloud::PitchSpray, 100) == "+-1200 CENTS");
+    CHECK(reads(cloud::PitchSpray, 0) == "OFF" && reads(cloud::PitchSpray, 50) == "+-300 CENTS" && reads(cloud::PitchSpray, 2) == "+-0.5 CENTS" && reads(cloud::PitchSpray, 100) == "+-1200 CENTS");
     CHECK(reads(cloud::PitchSteps, 0) == "FREE" && reads(cloud::PitchSteps, 1) == "OCTAVES" && reads(cloud::PitchSteps, 2) == "FIFTHS");
     CHECK(reads(cloud::Scan, 50) == "FREEZE" && reads(cloud::Scan, 75) == "+1.00X" && reads(cloud::Scan, 0) == "-2.00X");
     CHECK(reads(cloud::Root, 60) == "C4" && reads(cloud::Root, 69) == "A4" && reads(cloud::Tune, -100) == "-100 CENTS");
-    CHECK(reads(cloud::Attack, 8) == "2 MS" && reads(cloud::Release, 54) == "289 MS" && reads(cloud::Level, 100) == "0.0 DB" && reads(cloud::Level, 0) == "OFF");
+    CHECK(reads(cloud::Attack, 8) == "2.1 MS" && reads(cloud::Release, 54) == "289 MS" && reads(cloud::Level, 100) == "0.00 DB" && reads(cloud::Level, 80) == "-1.9 DB" && reads(cloud::Level, 0) == "OFF");
     CHECK(reads(cloud::Reverse, 0) == "OFF" && reads(cloud::Velocity, 50) == "50%" && reads(cloud::Stereo, 40) == "40%");
+    // Every click of the D-pad reads another way (SPRAY 1 to 3 read +-0.0%, as if off, until the review).
+    for (int id = 0; id < cloud::kSettings; ++id)
+        for (int v = cloud::settingMin(id) + 1; v <= cloud::settingMax(id); ++v)
+            if (reads(id, v) == reads(id, v - 1)) {
+                std::printf("    CLOUD %d reads %s at %d and %d\n", id, text, v - 1, v);
+                CHECK(false);
+            }
     // The macros: none a choice, each -100 to +100, each takes a MOD.
     for (int m = 0; m < kSynthMacros; ++m) CHECK(!macroIsChoice(TrackKind::Cloud, m) && modTargetFits(track, kModFirstMacro + m));
 
@@ -10050,6 +10107,10 @@ void testCloudOnATrack() {
     // A sampler given the CLOUD keeps the recording, and the other way.
     CHECK(session.setTrackKind(1, TrackKind::Sampler) && std::string(track.sample) == "buzz");
     CHECK(session.setTrackKind(1, TrackKind::Cloud) && std::string(track.sample) == "buzz" && session.trackSound(1).seconds > 0.9f);
+    // Given an instrument with no recording, it lets the recording go (the file would not keep it, and
+    // it came back unseen on the way back to CLOUD: the review, batch 5).
+    CHECK(session.setTrackKind(1, TrackKind::Phazed) && !track.sample[0] && session.sampleUses("buzz") == 0);
+    CHECK(session.setTrackKind(1, TrackKind::Cloud) && !track.sample[0]);
 }
 
 // CLOUD's hints fit the bar at 0 over, on MAIN and its three pages, A held and not, with either help;
@@ -10111,6 +10172,23 @@ void testCloudsHintsFit() {
     drawn();
     for (int x = px; x < px + pw; ++x) ticks += canvas.is(x, y + 4, ui::kTeal) ? 1 : 0;
     CHECK(ticks >= 2);
+    // (The review, batch 5.) The band goes round the recording's ends, and on the TONE it is lit dim:
+    // POSITION 1%, SPRAY 20 (2% either way) lights the last columns too, not the middle.
+    TrackData& t = rig->project().tracks[1];
+    t.cloud.value[cloud::Position] = 1;
+    t.cloud.value[cloud::Spray] = 20;
+    const int ph = SynthScreen::kPictureH - 4 - 2 * SynthScreen::kTickH, midY = y + 2 + SynthScreen::kTickH + (ph - 1) / 2;
+    const auto column = [&](int i) { return px + pw * i / 512; };
+    drawn();
+    CHECK(canvas.is(column(510), midY, ui::kDim) && canvas.is(column(256), midY, ui::kLine));
+    t.cloud.value[cloud::Position] = 99; // ...and the first columns from the far end
+    drawn();
+    CHECK(canvas.is(column(1), midY, ui::kDim) && canvas.is(column(256), midY, ui::kLine));
+    t.cloud.value[cloud::Position] = 1;
+    // A recording that is missing: the TONE's outline all the same, dim.
+    rig->app.session().setTrackSample(1, "nothere");
+    drawn();
+    CHECK(canvas.is(column(510), midY, ui::kDim) && canvas.is(column(256), midY, ui::kLine));
     CHECK(SynthScreen::kPicAdvancedY + SynthScreen::kAdvancedH <= ui::kAboveScope && SynthScreen::kPicMacroH >= 60);
 }
 

@@ -1079,6 +1079,28 @@ void testTheRest() {
     CHECK(rig.app.project().playing);
     rig.tap(START);
     rig.tap(B);
+
+    // CLOUD's list (A on SOURCE's RECORDING): L2 / R2 are the list's while a name is typed, as the others'.
+    CHECK(session.addTrack(TrackKind::Cloud));
+    rig.app.project().track = 2;
+    rig.frames(2);
+    rig.app.cloud().goTo(1, 0);
+    rig.tap(A);
+    SamplePicker& cloudList = rig.app.cloud().picker();
+    CHECK(cloudList.isOpen());
+    rig.tap(L1, 3);
+    for (int i = 0; i < cloudList.count() && !(cloudList.under() && cloudList.under()->kind == Kind::NewFolder); ++i) rig.tap(DOWN);
+    rig.tap(A);
+    rig.type("CL");
+    CHECK(cloudList.typing() && session.view == View::Device);
+    rig.tap(SDLK_2);
+    CHECK(session.view == View::Device);
+    rig.tap(SDLK_1);
+    CHECK(session.view == View::Device && cloudList.typing() && cloudList.typed() == "CL");
+    rig.tap(Y, 2);
+    rig.tap(B);
+    CHECK(!cloudList.typing() && cloudList.isOpen());
+    rig.tap(B);
 }
 
 
