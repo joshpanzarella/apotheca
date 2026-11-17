@@ -241,9 +241,12 @@ struct Command {
         ModAudition,    // stopped, X held on a modulated knob: track, a = which MODs run (bit 0 MOD 1, bit 1 MOD 2),
                         //   counted from now as if Play had just been pressed; a = 0 lets go (the knob is given
                         //   its centre). Not taken while playing (the song's MODs run then); Stop and Panic let go.
-        SetLaneChoke    // CHOKE, a drum lane's group (drums.hpp): track, a = lane, b = kChokeNone, 1 or 2 (a number
+        SetLaneChoke,   // CHOKE, a drum lane's group (drums.hpp): track, a = lane, b = kChokeNone, 1 or 2 (a number
                         //   not known is NONE). A hit on a lane in a group cuts the group's other lanes; it cuts
                         //   nothing by itself. Every lane at NONE: the kit plays as it always did.
+        SetLaneSwing    // SWING, a drum lane's (feel_rule.hpp): track, a = lane, b = 0..100 (held there). Every
+                        //   second sixteenth comes that much of a third of a step late. Live, as FEEL.
+                        //   0: the lane plays as it always did.
     };
     Type type = Trigger;
     int track = 0;
@@ -718,6 +721,7 @@ private:
         // on the lane has been asked for a step ahead because HUMAN TIME may bring it early: that
         // hit is not begun again when its step comes, whatever the lane says by then.
         LaneFeel feel[kDrumLanes];
+        std::uint8_t swing[kDrumLanes] = {}; // SWING: each lane's, 0..100 (feel_rule.hpp)
         long feelAsked[kDrumLanes] = {-1, -1, -1, -1, -1, -1, -1, -1};
         // The lanes hit since the last chunk was worked out: bit 0 is lane 1. A hit
         // always lands on a chunk's first sample (render() ends a chunk where the
@@ -798,7 +802,7 @@ private:
     void glideAutomation(int frames);
     void settleAutomation();
     double autoPhase_ = 0.0; // how far through the present step, 0..1
-    void playHit(Track& track, int lane, float velocity, float start, float part, const StepFx& fx, double delaySamples, bool audition = false, bool whole = false); // audition: a held audition's, which StopAudition fades
+    void playHit(Track& track, int lane, float velocity, float start, float part, const StepFx& fx, double delaySamples, bool audition = false, bool whole = false, double late = 0.0); // audition: a held audition's, which StopAudition fades; late: SWING's, which squeezes a ratchet
     // `bar`: the bar of the cell the hit is in; `stepAt`: its step's number, counted from Play (both for FEEL's
     // rolls); `ahead`: asked a step ahead (a hit whose moment has gone by is then not played).
     // False: asked ahead, and not taken (its moment had gone by).

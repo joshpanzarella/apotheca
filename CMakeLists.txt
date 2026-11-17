@@ -84,6 +84,10 @@ if(APOTHECA_BUILD_TESTS)
   add_executable(feel_test tests/feel_test.cpp)
   target_link_libraries(feel_test PRIVATE apotheca_engine)
   add_test(NAME feel COMMAND feel_test)
+  # SWING (feel_rule.hpp): every second sixteenth of a drum lane late, up to a triplet.
+  add_executable(swing_test tests/swing_test.cpp)
+  target_link_libraries(swing_test PRIVATE apotheca_engine)
+  add_test(NAME swing COMMAND swing_test)
   # CHOKE (drums.hpp, DrumMachine::setLaneChoke): two groups on a drum track, a hit cuts the rest of its group.
   add_executable(choke_test tests/choke_test.cpp)
   target_link_libraries(choke_test PRIVATE apotheca_engine)
@@ -158,7 +162,7 @@ if(APOTHECA_BUILD_TESTS)
   # never followed; and no test source makes one another way (33,000 left behind filled the disk).
   add_executable(temp_test tests/temp_test.cpp)
   add_test(NAME temp COMMAND temp_test ${CMAKE_SOURCE_DIR})
-  set_tests_properties(engine phazed song effects1 effects2 throw feel choke glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets fm6 mod physic acid cloud drumsynth morph load temp PROPERTIES TIMEOUT 120)
+  set_tests_properties(engine phazed song effects1 effects2 throw feel swing choke glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets fm6 mod physic acid cloud drumsynth morph load temp PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.

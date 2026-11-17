@@ -271,8 +271,9 @@ static void effect(const char* name, EffectKind kind, int setting = -1, float va
 // buses (THROW), which is the most throwing a song can do. `ducks`: a DUCK in
 // a slot of every track as well. `feelTime`, `feelLevel`: FEEL, every lane of every kit at that
 // HUMAN TIME and HUMAN LEVEL (so every hit is rolled for, asked a step ahead and set waiting).
+// `swing`: SWING, every lane of every kit at that (half the hits are on the off sixteenths).
 // The best of five runs of ten seconds.
-static std::unique_ptr<Engine> busSongEngine(bool sends, EffectKind echo, EffectKind space, bool throws = false, bool ducks = false, int feelTime = 0, int feelLevel = 0) {
+static std::unique_ptr<Engine> busSongEngine(bool sends, EffectKind echo, EffectKind space, bool throws = false, bool ducks = false, int feelTime = 0, int feelLevel = 0, int swing = 0) {
     std::unique_ptr<Engine> engine(new Engine);
     for (int t = 1; t < kNumTracks; ++t) engine->addDrumTrack(t);
     Command c;
@@ -305,6 +306,12 @@ static std::unique_ptr<Engine> busSongEngine(bool sends, EffectKind echo, Effect
         c.c = feelLevel;
         if (feelTime || feelLevel)
             for (int lane = 0; lane < kDrumLanes; ++lane) c.a = lane, engine->send(c);
+        c = Command();
+        c.type = Command::SetLaneSwing;
+        c.track = t;
+        c.b = swing;
+        if (swing)
+            for (int lane = 0; lane < kDrumLanes; ++lane) c.a = lane, engine->send(c);
     }
     if (ducks)
         for (int t = 0; t < kNumTracks; ++t) engine->setEffect(t, 0, EffectKind::Duck);
@@ -317,8 +324,8 @@ static std::unique_ptr<Engine> busSongEngine(bool sends, EffectKind echo, Effect
     for (int i = 0; i < 400; ++i) engine->render(out.data(), 256);
     return engine;
 }
-static double busSong(bool sends, EffectKind echo, EffectKind space, bool throws = false, bool ducks = false, int feelTime = 0, int feelLevel = 0) {
-    std::unique_ptr<Engine> engine = busSongEngine(sends, echo, space, throws, ducks, feelTime, feelLevel);
+static double busSong(bool sends, EffectKind echo, EffectKind space, bool throws = false, bool ducks = false, int feelTime = 0, int feelLevel = 0, int swing = 0) {
+    std::unique_ptr<Engine> engine = busSongEngine(sends, echo, space, throws, ducks, feelTime, feelLevel, swing);
     std::vector<float> out(512);
     double best = 1e30;
     for (int run = 0; run < 5; ++run) {
@@ -1226,6 +1233,11 @@ int apotheca::runBench() {
         std::printf("  %-28s %6.2f%% of one core\n", "HUMAN TIME and LEVEL 100%", busSong(false, none, none, false, false, 100, 100) - dry);
         std::printf("  %-28s %6.2f%% of one core\n", "HUMAN TIME 100% alone", busSong(false, none, none, false, false, 100, 0) - dry);
         std::printf("  %-28s %6.2f%% of one core\n", "HUMAN LEVEL 100% alone", busSong(false, none, none, false, false, 0, 100) - dry);
+        std::printf("  %-28s %6.2f%% of one core\n", "...the plain song again", busSong(false, none, none) - dry);
+        // SWING: every lane of all twelve kits swung (half the hits come a third of a step late, waiting).
+        std::printf("SWING on every lane of the twelve drum tracks:\n");
+        std::printf("  %-28s %6.2f%% of one core\n", "SWING 100%", busSong(false, none, none, false, false, 0, 0, 100) - dry);
+        std::printf("  %-28s %6.2f%% of one core\n", "...with HUMAN TIME and LEVEL", busSong(false, none, none, false, false, 100, 100, 100) - dry);
         std::printf("  %-28s %6.2f%% of one core\n", "...the plain song again", busSong(false, none, none) - dry);
     }
 

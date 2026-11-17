@@ -1282,6 +1282,9 @@ void Engine::apply(const Command& c) {
     case Command::SetLaneChoke:
         if (validTrack(c.track)) tracks_[c.track].drums.setLaneChoke(c.a, c.b);
         break;
+    case Command::SetLaneSwing:
+        if (validTrack(c.track) && c.a >= 0 && c.a < kDrumLanes) tracks_[c.track].swing[c.a] = laneSwingOf(c.b);
+        break;
     case Command::NoteOn:
         if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->noteOn(c.a, c.value);
         break;
@@ -1414,11 +1417,14 @@ void Engine::clearPending() {
 //
 // FEEL (feel_rule.hpp): a lane with HUMAN TIME or HUMAN LEVEL set moves the hit a little, another
 // way every time it plays, by a roll worked out from where the hit is and which time this is. A
-// lane with neither goes exactly the way it always did.
+// lane with SWING plays every second sixteenth late. A lane with none of them goes exactly the way
+// it always did.
 bool Engine::schedule(Track& track, int lane, const DrumScene& scene, int step, double delaySamples, int bar, long stepAt, bool ahead) {
     const LaneFeel feel = track.feel[lane];
+    const int swing = track.swing[lane];
     bool whole = false;
-    if (feel.time != 0) {
+    double late = 0.0; // SWING's part of the wait
+    if (feel.time != 0 || swing != 0) {
         // The time of the hit its run begins with (a run of slices moves as one, and still
         // carries the sound on), and a whole number of samples: a part of a sample plays a
         // sample sooner or later by how the sound is cut into blocks.
@@ -1427,8 +1433,14 @@ bool Engine::schedule(Track& track, int lane, const DrumScene& scene, int step, 
         const int back = feelRunBack(&scene - bar, bar, lane, step);
         const int headAt = bar * kSteps + step - back; // steps from the cell's top
         const int head = headAt % kSteps;
-        const std::uint32_t seed = feelSeed(static_cast<int>(&track - tracks_), lane, headAt / kSteps, head, stepAt - back);
-        delaySamples = std::ceil(delaySamples + feelSamples(feel.time, head, seed, static_cast<double>(sampleRate_) / 1000.0, samplesPerStep_));
+        double moved = delaySamples;
+        if (feel.time != 0) {
+            const std::uint32_t seed = feelSeed(static_cast<int>(&track - tracks_), lane, headAt / kSteps, head, stepAt - back);
+            moved += feelSamples(feel.time, head, seed, static_cast<double>(sampleRate_) / 1000.0, samplesPerStep_);
+        }
+        // SWING: by the run's first hit too, so a break in order is one sound, swung or not as a whole.
+        late = swingSamples(swing, head, samplesPerStep_);
+        delaySamples = std::ceil(moved + late);
         if (delaySamples < 0.0) {
             if (ahead) return false; // (asked again after a scene move, and its moment has gone by)
             delaySamples = 0.0; // nothing is before the top, and a hit not asked ahead is not before its step
@@ -1442,7 +1454,7 @@ bool Engine::schedule(Track& track, int lane, const DrumScene& scene, int step, 
     }
     float velocity = scene.level[lane][step];
     if (feel.level != 0) velocity = feelLevel(velocity, feel.level, step, feelSeed(static_cast<int>(&track - tracks_), lane, bar, step, stepAt));
-    playHit(track, lane, velocity, scene.start[lane][step], -1.f, scene.fx[lane][step], delaySamples, false, whole);
+    playHit(track, lane, velocity, scene.start[lane][step], -1.f, scene.fx[lane][step], delaySamples, false, whole, late);
     return true;
 }
 
@@ -1450,10 +1462,13 @@ bool Engine::schedule(Track& track, int lane, const DrumScene& scene, int step, 
 // hit several times across the step; each of its hits is cut by the next, and
 // a hit that is CUT stops when its time is up, or when the next of the ratchet
 // comes, whichever is first.
-void Engine::playHit(Track& track, int lane, float velocity, float start, float part, const StepFx& fx, double delaySamples, bool audition, bool whole) {
+void Engine::playHit(Track& track, int lane, float velocity, float start, float part, const StepFx& fx, double delaySamples, bool audition, bool whole, double late) {
     const int hits = fx.hits();
-    // (`whole`, a lane with HUMAN TIME: a ratchet's pieces are whole samples apart, as its wait is.)
-    const double gap = whole && hits > 1 ? (std::floor(samplesPerStep_ / hits) < 1.0 ? 1.0 : std::floor(samplesPerStep_ / hits)) : samplesPerStep_ / hits;
+    // (`whole`, a lane with HUMAN TIME or SWING: a ratchet's pieces are whole samples apart, as its wait
+    // is. A swung one is squeezed into what is left of its step, `late` less: so its last piece ends
+    // on the next step line, as an unswung ratchet's does, and does not cut the next step's hit.)
+    const double span = samplesPerStep_ - late;
+    const double gap = whole && hits > 1 ? (std::floor(span / hits) < 1.0 ? 1.0 : std::floor(span / hits)) : samplesPerStep_ / hits;
     HitPlay how;
     how.audition = audition;
     how.rate = fx.pitch == 0 ? 1.f : std::exp2(static_cast<float>(fx.pitch) / 12.f);
@@ -1581,9 +1596,10 @@ void Engine::askAheadHits(Track& track, const DrumScene& then, int bar, int foll
         if (then.level[lane][following] <= 0.f) continue;
         const bool felt = track.feel[lane].time != 0;
         if (then.nudge[lane][following] < 0.f || felt) {
-            // (A felt hit counts in whole samples from the sample its asking step began on, so asked
-            // again part way through the step it comes on the very sample it would have.)
-            const double wait = (1.0 + then.nudge[lane][following]) * samplesPerStep_ - (felt ? std::floor(elapsed) : elapsed);
+            // (A felt or swung hit counts in whole samples from the sample its asking step began on, so
+            // asked again part way through the step it comes on the very sample it would have.)
+            const bool whole = felt || track.swing[lane] != 0;
+            const double wait = (1.0 + then.nudge[lane][following]) * samplesPerStep_ - (whole ? std::floor(elapsed) : elapsed);
             if (!felt && wait < 0.0) continue;
             // Taken: not begun again on its own step. (Asked again too late for its early moment,
             // it is not taken, and comes on its step with the hits that are not early.)
@@ -1832,6 +1848,7 @@ void Engine::takeAway(int t) {
     if (heardTrack_ == t) heardTrack_ = -1, heardMask_ = 0;
     modsChanged();
     for (LaneFeel& feel : track.feel) feel = LaneFeel(); // the next kit here plays plain until it is told
+    for (std::uint8_t& swing : track.swing) swing = 0;
     for (long& asked : track.feelAsked) asked = -1;
     track.level = track.levelNow = track.levelSet = kUsualTrackLevel; // a track that comes back starts at its usual level and pan
     track.panL = track.panR = track.panLNow = track.panRNow = 1.f;

@@ -79,6 +79,22 @@ inline float feelLevel(float level, int amount, int step, std::uint32_t seed) {
     return static_cast<float>(to > kFeelMostLevel ? kFeelMostLevel : (to < kFeelLeastLevel ? kFeelLeastLevel : to));
 }
 
+// SWING: every second sixteenth of a lane played late, the same every time (no roll). The hits on
+// steps 2, 4, ... 16 of a bar, counted from 1, come SWING percent of a third of a step late. At 100%
+// that is a third of a step: each eighth's two sixteenths are played long and short, 2 to 1, the off
+// one on the third note of an eighth-note triplet. That is "up to a triplet". The main beats are on
+// the other steps, so they are never swung.
+//
+// The six amounts are FEEL's (kAmountAt). Kept in songs. 0: the lane plays as it always did.
+constexpr double kSwingMostOfStep = 1.0 / 3.0; // (written out as `/ 300` below, so 100% of 6000 is 2000 exactly)
+inline bool swingOffStep(int step) { return (step & 1) != 0; } // steps 2, 4, ... 16
+inline std::uint8_t laneSwingOf(int amount) { return static_cast<std::uint8_t>(amount < 0 ? 0 : (amount > 100 ? 100 : amount)); }
+// How late a hit on `step` comes, in samples: not yet whole. (A run of slices asks with its first hit's step.)
+inline double swingSamples(int amount, int step, double samplesPerStep) {
+    if (amount <= 0 || !swingOffStep(step)) return 0.0;
+    return amount * samplesPerStep / 300.0;
+}
+
 // The run a hit belongs to. A hit that starts further into its sound and has a hit on the step
 // before it takes the TIME of the hit its run begins with; any other hit begins its own.
 //
