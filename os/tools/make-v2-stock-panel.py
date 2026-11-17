@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """make-v2-stock-panel.py: writes board/rg40xxv/firmware/panels/anbernic,rg40xx-v2-stock-panel.panel
+(and, from the same two, board/rg40xxv/firmware/panels-to-try/: see the end)
 
 ROCKNIX's v2 panel file (anbernic,rg40xx-v2-panel.panel) with its start-up
 commands untouched and two things set as Anbernic's own system sets them for
@@ -46,3 +47,19 @@ struct.pack_into(">8HII", timing, 0, 640, 82, 20, 26, 480, 26, 4, 11, 24000, PHS
 out = os.path.join(panels, "anbernic,rg40xx-v2-stock-panel.panel")
 open(out, "wb").write(src[:HEADER] + bytes(config) + bytes(timing) + commands)
 print(out)
+
+# Panel files to try, not built into the kernel: post-image.sh puts each into
+# a device tree (apotheca,panel-firmware, patch 0170) under
+# device_trees/try/ on the boot partition. Their pixel format is
+# RGB666_PACKED, an 18-bit bus, for which the display controller dithers, as
+# Anbernic's own system does (lcd_frm 1); patch 0170 reads it.
+RGB666_PACKED = 2
+tries = os.path.join(here, "..", "board", "rg40xxv", "firmware", "panels-to-try")
+os.makedirs(tries, exist_ok=True)
+for name, cfg, tim in (("v2-dither.panel", bytearray(src[HEADER:HEADER + 48]), src[HEADER + 48:HEADER + 48 + 32]),
+                       ("v2-stock-dither.panel", bytearray(config), bytes(timing))):
+    assert struct.unpack(">H", cfg[34:36])[0] == 0            # RGB888 in both
+    struct.pack_into(">H", cfg, 34, RGB666_PACKED)
+    out = os.path.join(tries, name)
+    open(out, "wb").write(src[:HEADER] + bytes(cfg) + bytes(tim) + commands)
+    print(out)

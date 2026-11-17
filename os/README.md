@@ -162,36 +162,51 @@ Whatever you see is useful. Send:
 ## If the screen stays striped, black or shows garbage
 
 The RG40XXV has had **two screens**, and each needs its own device tree.
-**The card starts with the newer one** (`rg40xx-v-v2-panel`), which the
-owner's unit has (it gave a picture with it on 2026-11-17; the other tree
-left only the stripes). Units from before the change need the first one.
+**The card picks the tree by itself** (since 2026-11-17): as it starts,
+U-Boot reads pin PE6, the way Anbernic's own boot loader tells the screens
+apart (low: the newer screen), and loads the matching tree from
+`device_trees/`. **A `dtb.img` at the top of APOTHBOOT overrides it** (used
+whatever the screen); a new card has none (`dtb-in-use.txt` says `auto`).
+The owner has one unit of each. **Not yet tried on either**: which way PE6
+reads on each is from the stock boot loader's code, not seen. The boot log's
+"screen:" line gives PE6 and the tree U-Boot chose.
 
 | Tree | Screen | Units |
 | --- | --- | --- |
-| `sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb` (the card's default) | the newer screen | later units: Knulli and muOS users reported new RG40XXVs with only stripes from November 2025, and ROCKNIX added this tree in April 2026 |
-| `sun50i-h700-anbernic-rg40xx-v-v2-stock-panel.dtb` | the newer screen, with the pixel clock edge and the timings Anbernic's own system uses (ROCKNIX's v2 file's start-up commands, unchanged) | **to compare** on the newer screen: try it if a dark picture shows faint vertical stripes |
-| `sun50i-h700-anbernic-rg40xx-v.dtb` | the first screen | earlier units |
+| `sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb` | the newer screen (PE6 low) | later units: Knulli and muOS users reported new RG40XXVs with only stripes from November 2025, and ROCKNIX added this tree in April 2026 |
+| `sun50i-h700-anbernic-rg40xx-v.dtb` | the first screen (PE6 high) | earlier units |
+| `sun50i-h700-anbernic-rg40xx-v-v2-stock-panel.dtb` | the newer screen, with the pixel clock edge and the timings Anbernic's own system uses | never chosen by itself: to compare |
 
-**First wait 30 seconds**: the stripes before Linux are normal (above). If
-they stay, try the other tree:
+**First wait 30 seconds.** If the screen stays black or striped, the card
+may have guessed wrong; give it the other tree by hand:
 
 1. Card into the computer, open **APOTHBOOT**.
-2. Copy `device_trees/sun50i-h700-anbernic-rg40xx-v.dtb` to the top
-   of APOTHBOOT, and rename the copy to **`dtb.img`**, replacing the one
-   there. (On a Mac: check with **Get Info** that the name is exactly
-   `dtb.img`, with no ending added.)
+2. Copy `device_trees/sun50i-h700-anbernic-rg40xx-v.dtb` (or the v2 one) to
+   the top of APOTHBOOT, and rename the copy to **`dtb.img`**. (On a Mac:
+   check with **Get Info** that the name is exactly `dtb.img`, with no
+   ending added.)
 3. Card back in, power on, and wait 30 seconds.
 
-(`dtb-in-use.txt` says which one the card was made with. To go back, copy
-`sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb` over `dtb.img` the same way.)
-Any of the three is tried the same way. A card can be built with another
-as its default: `scripts/build-image.sh --dtb rg40xx-v` (or
-`rg40xx-v-v2-stock-panel`).
+To go back to the card's own choice, delete `dtb.img`. A card can be built
+with a `dtb.img` already in place: `scripts/build-image.sh --dtb rg40xx-v`
+(or `rg40xx-v-v2-panel`, `rg40xx-v-v2-stock-panel`).
 
-**Faint vertical stripes in a dark picture** (seen on the owner's unit with
-the v2 tree, not fading over 15 minutes): try the `v2-stock-panel` tree and
-compare. Also worth a look: does **the stock card** show the same faint
-stripes in a dark picture? If it does, it is the panel itself.
+**Faint vertical lines in a dark picture** (seen on the owner's unit with
+the v2 tree and with `v2-stock-panel`, not fading over 15 minutes). Four
+things to try, each a whole `dtb.img` in its own folder, so no renaming:
+
+| Folder in `device_trees/try/` | Changes, from the v2 tree, toward Anbernic's own settings |
+| --- | --- |
+| `1-pins-40ma` | the 28 RGB data pins driven at 40 mA (stock: drive 3; ours: the chip's reset value, 20 mA) |
+| `2-backlight-50khz` | the backlight's PWM at 50 kHz (stock `lcd_pwm_freq` 50000; ours 25 kHz) |
+| `3-dither` | an 18-bit bus, the display controller dithering (stock `lcd_frm 1`) |
+| `4-all-as-stock` | all three, with the stock clock edge and timings |
+
+Mac: open **APOTHBOOT**, then `device_trees`, `try`, the folder; drag its
+`dtb.img` to the top of APOTHBOOT, **Replace**. Eject, power on, look at a
+dark picture. Try them one at a time; say which, if any, takes the lines
+away; delete `dtb.img` afterwards to go back to the card's own choice. Also worth a look: does **the stock card** show the same faint lines
+in a dark picture? If it does, it is the panel itself.
 
 ## A shell from the computer (optional)
 
@@ -220,6 +235,49 @@ If the USB serial port never appears, the handheld also has a serial port on
 four small holes inside (the plan's section 6); that needs opening the
 device and a 3.3 V USB serial adapter. Only if needed.
 
+## A new Apotheca without a new card
+
+A fix to Apotheca can come as **one file, `apotheca`** (made by
+`scripts/build-firmware-app.sh` into `dist/firmware/apotheca`). No new card:
+
+1. Handheld off. Card into the Mac.
+2. Open the **APOTHECA** drive, then its **apotheca** folder.
+3. Drag the new **`apotheca`** file into that folder. Finder asks whether to
+   replace the one there: **Replace**.
+4. Eject the card (Finder: the eject arrow beside APOTHECA), card back in,
+   power on.
+
+At the start the card sees the program changed (its sum is not the one it
+put there) and runs it. **If it does not get going twice, the card's own
+Apotheca comes back by itself** and the new one is kept as
+`apotheca.failed`. A file that is not a program for this handheld (cut
+short, the wrong file) is never run. Every step is written to
+`apotheca/logs/apotheca-start.log` (its lines begin `program:`). An update
+over WiFi (the WiFi page's UPDATE) lands in the same folder and follows the
+same rules.
+
+The card's own Apotheca is put back over a copied one only by a newer card
+image, or by the two failed starts.
+
+## A screen change without a new card
+
+The screen's start-up commands and timings (its "panel file") can travel
+inside the device tree, so **a screen change is one file, a new
+`dtb.img`**: copy it to the top of **APOTHBOOT**, replacing the one there
+(as in "If the screen stays striped" above). The kernel's own panel files
+are used whenever the device tree carries none.
+
+(Why not a loose `panels/*.panel` file on APOTHBOOT: the screen is set up
+by a driver inside the kernel, about two seconds into the start, before any
+part of the card is opened as a drive; and a panel file built into the
+kernel always wins over one on a drive. The device tree is read before all
+of that.)
+
+To make one (on the desk): `os/tools/panel-dtb.sh IN.dtb NEW.panel OUT.dtb`
+puts the panel file's bytes into the tree as `apotheca,panel-firmware`.
+The boot log's line `panel-mipi spi0.0: firmware: ...` says which panel data
+ran, with its size and CRC-32.
+
 ## What the card holds
 
 | Part | Name | What |
@@ -235,7 +293,9 @@ device and a 3.3 V USB serial adapter. Only if needed.
 ```
 scripts/build-image.sh                       # build-image/apotheca-rg40xxv.img.gz
 os/tools/check-image.sh build-image/apotheca-rg40xxv.img.gz   # the image's layout
-python3 -I os/tools/qemu-test.py build-image/apotheca-rg40xxv.img.gz  # boots it in qemu (5 boots, about 15 min)
+python3 -I os/tools/qemu-test.py build-image/apotheca-rg40xxv.img.gz  # boots it in qemu (6 boots, about 20 min)
+scripts/build-firmware-app.sh                # Apotheca alone: dist/firmware/apotheca (minutes)
+os/tools/panel-dtb.sh IN.dtb NEW.panel OUT.dtb   # a panel file into a device tree
 python3 -I os/tools/power-test.py           # apotheca-power on the desk, a made-up /sys (about 1 min)
 ```
 
@@ -246,7 +306,10 @@ system in `rootfs-overlay/`), `package/` (our own packages: Apotheca, the
 joypad driver, apotheca-power, padprobe and fakepad), `patches-to-buildroot/` (two changes to
 Buildroot's Mesa package, each saying why). The first build takes about three
 hours on four cores (LLVM and clang, for Mesa's shaders, are most of it) and
-about 13 GB; `--tidy` gives back the biggest part afterwards. Where every
+about 13 GB; `--tidy` gives back the biggest part afterwards and **keeps the
+kernel's and U-Boot's build folders**, so a change to either (a patch, a
+device tree, a panel file) rebuilds in minutes; `--tidy-all` gives those
+back too (about 2 GB more), and the next kernel takes the hour again. Where every
 file we did not write came from, and its licence: `board/rg40xxv/README.md`.
 `scripts/build-image.sh -- legal-info` gathers every source and licence of
 what is on the card.

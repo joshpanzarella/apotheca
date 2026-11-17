@@ -61,12 +61,9 @@ def check(ok, what):
         fails.append(what)
 
 
-class Machine:
-    def __init__(self, image, kernel, log):
-        self.log = open(log, "wb")
-        self.buf = b""
-        self.p = subprocess.Popen(
-            ["qemu-system-aarch64", "-M", "virt", "-cpu", "cortex-a53", "-smp", "4",
+def qemu_args(image, kernel, machine="virt", dtb=None):
+    """qemu's command line for a boot of the card (the QMP socket aside)."""
+    return (["qemu-system-aarch64", "-M", machine, "-cpu", "cortex-a53", "-smp", "4",
              "-m", "1024", "-nographic", "-monitor", "none", "-serial", "stdio",
              "-kernel", kernel,
              "-append", "root=PARTUUID=41504f54-02 rootfstype=squashfs ro rootwait console=ttyAMA0",
@@ -76,9 +73,18 @@ class Machine:
              # both need the modern (1.x) virtio, which virt's MMIO is not by itself
              "-global", "virtio-mmio.force-legacy=false",
              "-device", "virtio-gpu-device,xres=640,yres=480",
-             "-audiodev", "none,id=snd0", "-device", "virtio-sound-device,audiodev=snd0",
-             # (relative, in the work folder: a socket's path must be under 108 bytes)
-             "-qmp", "unix:%s,server=on,wait=off" % self.qmp_name(log)],
+             "-audiodev", "none,id=snd0", "-device", "virtio-sound-device,audiodev=snd0"]
+            + (["-dtb", dtb] if dtb else []))
+
+
+class Machine:
+    def __init__(self, image, kernel, log, dtb=None):
+        self.log = open(log, "wb")
+        self.buf = b""
+        self.p = subprocess.Popen(
+            qemu_args(image, kernel, dtb=dtb) +
+            # (relative, in the work folder: a socket's path must be under 108 bytes)
+            ["-qmp", "unix:%s,server=on,wait=off" % self.qmp_name(log)],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             cwd=os.path.dirname(log))
         self.began = time.time()
@@ -184,6 +190,30 @@ def start_stand_in(m):
     return out
 
 
+def swap_program(m, put):
+    """Stops Apotheca with apotheca-keep held, runs PUT (a shell command that
+    puts something at /data/apotheca/apotheca), then lets it start again."""
+    m.run("touch /run/apotheca/apotheca.hold; kill $(pidof apotheca) 2>/dev/null; "
+          "n=0; while pidof apotheca > /dev/null && [ $n -lt 60 ]; do sleep 1; n=$((n+1)); done", timeout=90)
+    m.run(put)
+    m.run("sync; rm /run/apotheca/apotheca.hold")
+
+
+def wait_log(m, text, seconds=120, log="/data/apotheca/logs/apotheca-start.log"):
+    """Waits until LOG holds TEXT; returns whether it did."""
+    t0 = time.time()
+    while time.time() - t0 < seconds:
+        out, _ = m.run("grep -cF %s %s" % (shell_quote(text), log))
+        if out not in ("", "0"):
+            return True
+        m.run("sleep 3", timeout=30)
+    return False
+
+
+def shell_quote(text):
+    return "'" + text.replace("'", "'\\''") + "'"
+
+
 def wait_running(m, seconds=180):
     t0 = time.time()
     while time.time() - t0 < seconds:
@@ -192,6 +222,102 @@ def wait_running(m, seconds=180):
             return True
         time.sleep(5)
     return False
+
+
+PANELS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "board", "rg40xxv", "firmware", "panels")
+HOST_BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "build-image", "output", "host", "bin")
+
+PANEL_NODES = """
+	gpio-sim {
+		compatible = "gpio-simulator";
+		sim: bank0 {
+			gpio-controller;
+			#gpio-cells = <2>;
+			ngpios = <8>;
+		};
+	};
+	spi-a {
+		compatible = "spi-gpio";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		sck-gpios = <&sim 0 0>;
+		mosi-gpios = <&sim 1 0>;
+		cs-gpios = <&sim 2 0>;
+		num-chipselects = <1>;
+		panel@0 {
+			compatible = "anbernic,rg40xx-v2-panel", "panel-mipi-dpi-spi";
+			reg = <0>;
+			spi-max-frequency = <3125000>;
+			spi-3wire;
+		};
+	};
+	spi-b {
+		compatible = "spi-gpio";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		sck-gpios = <&sim 4 0>;
+		mosi-gpios = <&sim 5 0>;
+		cs-gpios = <&sim 6 0>;
+		num-chipselects = <1>;
+		panel@0 {
+			compatible = "anbernic,rg40xx-v2-panel", "panel-mipi-dpi-spi";
+			reg = <0>;
+			spi-max-frequency = <3125000>;
+			spi-3wire;
+		};
+	};
+"""
+
+
+def panel_boot(work, image, kernel):
+    import zlib
+    dtc = os.path.join(HOST_BIN, "dtc")
+    if not (os.access(dtc, os.X_OK) and os.access(os.path.join(HOST_BIN, "fdtput"), os.X_OK)):
+        print("skip  the panel boot: no dtc and fdtput in build-image/output/host/bin (build the image first)")
+        return
+    virt = os.path.join(work, "virt.dtb")
+    subprocess.run(qemu_args(image, kernel, machine="virt,dumpdtb=" + virt),
+                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    dts = subprocess.run([dtc, "-q", "-I", "dtb", "-O", "dts", virt], check=True,
+                         capture_output=True, text=True).stdout
+    end = dts.rstrip().rfind("};")
+    dts = dts[:end] + PANEL_NODES + dts[end:]
+    with open(os.path.join(work, "panels.dts"), "w") as f:
+        f.write(dts)
+    plain = os.path.join(work, "panels.dtb")
+    subprocess.run([dtc, "-q", "-I", "dts", "-O", "dtb", "-o", plain, os.path.join(work, "panels.dts")], check=True)
+    stock = os.path.join(PANELS, "..", "panels-to-try", "v2-stock-dither.panel")
+    v2 = os.path.join(PANELS, "anbernic,rg40xx-v2-panel.panel")
+    both = os.path.join(work, "panels-b.dtb")
+    tool = os.path.join(os.path.dirname(os.path.abspath(__file__)), "panel-dtb.sh")
+    r = subprocess.run([tool, plain, stock, both, "/spi-b/panel@0"], capture_output=True, text=True)
+    check(r.returncode == 0, "panel-dtb.sh put a panel file into a device tree (%s)"
+          % (r.stdout.strip() or r.stderr.strip()))
+    m = Machine(image, kernel, os.path.join(work, "boot6.log"), dtb=both)
+    m.wait_shell()
+    lines = ""
+    t0 = time.time()
+    while time.time() - t0 < 60:
+        lines, _ = m.run("dmesg | grep 'panel-mipi spi'")
+        if lines.count("Modeline") >= 2:
+            break
+        m.run("sleep 3", timeout=30)
+    print("info  " + lines.replace("\n", "\n      "))
+    crc = lambda path: "%08x" % (zlib.crc32(open(path, "rb").read()) & 0xffffffff)
+    check("firmware: panels/anbernic,rg40xx-v2-panel.panel: loaded successfully (%d bytes, crc32 %s)"
+          % (os.path.getsize(v2), crc(v2)) in lines,
+          "a panel with nothing in its node takes the panel file built into the kernel")
+    check("firmware: the device tree's apotheca,panel-firmware: loaded successfully (%d bytes, crc32 %s)"
+          % (os.path.getsize(stock), crc(stock)) in lines,
+          "a panel with apotheca,panel-firmware takes that instead (try 4's panel file, its CRC-32)")
+    check(lines.count("bus format 0x1009") == 1,
+          "that file's 18-bit pixel format makes its bus RGB666_1X18 (the TCON dithers), and only its")
+    check('Modeline "640x480": 60 27000 640 704 708 750 480 580 584 600' in lines,
+          "the first panel's mode is the built-in v2 file's (27 MHz, 750 x 600)")
+    check('Modeline "640x480": 60 24000 640 722 742 768 480 506 510 521' in lines,
+          "the second's is the file's from the device tree (24 MHz, 768 x 521)")
+    m.send("poweroff")
+    check(m.end(60), "the panel boot powered down")
 
 
 def main():
@@ -411,7 +537,7 @@ def main():
         back = False
         while time.time() - t0 < 120:
             m.run("sleep 5", timeout=30)
-            out, _ = m.run("tail -n 1 /data/apotheca/logs/apotheca-start.log; pidof apotheca || echo none")
+            out, _ = m.run("grep ' start: ' /data/apotheca/logs/apotheca-start.log | tail -n 1; pidof apotheca || echo none")
             if "software drawing" in out and not out.endswith("none"):
                 back = True
                 break
@@ -421,6 +547,53 @@ def main():
         check("screen: " in out and not out.endswith("none"),
               "and keeps running that way (%s)" % out.replace("\n", "; "))
         m.run("rm /data/apotheca/gpu-off")
+
+        # A program copied onto the card by hand (scripts/build-firmware-app.sh,
+        # dist/firmware/apotheca): apotheca-start finds it by its sum.
+        system_md5, _ = m.run("md5sum /usr/lib/apotheca/apotheca | cut -d' ' -f1")
+        out, _ = m.run("cat /data/apotheca/program.md5")
+        check(out == system_md5, "program.md5 holds the sum of the program put in place (the system's)")
+        # 1. A good one: the system's own program with bytes added (another sum,
+        #    the same program). It runs, says it started fine, and stays.
+        swap_program(m, "cp /usr/lib/apotheca/apotheca /tmp/new && echo copied-by-hand >> /tmp/new && "
+                        "cp /tmp/new /data/apotheca/apotheca")
+        new_md5, _ = m.run("md5sum /tmp/new | cut -d' ' -f1")
+        check(wait_log(m, "a program copied onto the card (md5 %s" % new_md5),
+              "a program copied over apotheca is found and run (its md5 in apotheca-start.log)")
+        stayed = False
+        t0 = time.time()
+        while time.time() - t0 < 90:
+            m.run("sleep 5", timeout=30)
+            out, _ = m.run("ls /data/apotheca/update-trying 2>/dev/null || echo gone; pidof apotheca || echo none")
+            if out.startswith("gone") and not out.endswith("none"):
+                stayed = True
+                break
+        out, _ = m.run("md5sum /data/apotheca/apotheca | cut -d' ' -f1; cat /data/apotheca/program.md5")
+        check(stayed and out.split() == [new_md5, new_md5],
+              "it got going (update-trying gone), keeps running, and is the program now")
+        # 2. An arm64 program that stops at once (BusyBox, run as "apotheca"):
+        #    two tries, then the system's program is back, drawing with the GPU.
+        swap_program(m, "cp /bin/busybox /data/apotheca/apotheca")
+        bb_md5, _ = m.run("md5sum /bin/busybox | cut -d' ' -f1")
+        check(wait_log(m, "the new program did not start twice", 120),
+              "a program copied by hand that stops at once: after two tries the one before comes back")
+        out, _ = m.run("grep -c 'try 1 of 2' /data/apotheca/logs/apotheca-start.log")
+        check(out != "0", "its first stop was a try, not yet the end (try 1 of 2)")
+        check(wait_running(m, 60), "Apotheca running again")
+        out, _ = m.run("md5sum /data/apotheca/apotheca /data/apotheca/apotheca.failed | cut -d' ' -f1 | tr '\\n' ' '; "
+                       "cat /data/apotheca/program.md5")
+        check(out.split() == [system_md5, bb_md5, system_md5],
+              "the system's program is the program again, the one that failed kept as apotheca.failed")
+        out, _ = m.run("grep ' start: ' /data/apotheca/logs/apotheca-start.log | tail -n 1")
+        check("gpu drawing" in out and "fails before 2" in out,
+              "after the two failed starts it still draws with the GPU (%s)" % out[out.find("start:"):])
+        # 3. Not a program at all (a file cut short, a wrong file): never run.
+        swap_program(m, "echo 'not a program' > /data/apotheca/apotheca")
+        check(wait_log(m, "is not an arm64 program"), "a file that is not an arm64 program is not run")
+        check(wait_running(m, 60), "the system's program runs instead")
+        out, _ = m.run("md5sum /data/apotheca/apotheca | cut -d' ' -f1; cat /data/apotheca/apotheca.failed")
+        check(out.split("\n") == [system_md5, "not a program"],
+              "it is the system's program, the file kept as apotheca.failed")
 
         # The joypad as SDL sees it, against the controls.txt put on the card:
         # a uinput stand-in declares what the RG40XXV's driver declares and
@@ -566,6 +739,13 @@ def main():
         out = open(os.path.join(work, "boot5.log"), "rb").read().decode("utf-8", "replace")
         check(re.search(r"Apotheca stopped \(in [0-9.]+ s\), its song saved", out) is not None,
               "a shell poweroff stops Apotheca first too")
+
+        # --- sixth boot: the panel driver, on panels that exist only in this
+        # boot's device tree (qemu's own, with a simulated GPIO chip, two
+        # bit-banged SPI buses and a panel on each): one takes the panel file
+        # built into the kernel, the other the one os/tools/panel-dtb.sh put
+        # in the device tree (patch 0170): try 4's, 18-bit, stock timings.
+        panel_boot(work, image, kernel)
     except TimeoutError as e:
         check(False, "timed out: %s" % e)
     finally:

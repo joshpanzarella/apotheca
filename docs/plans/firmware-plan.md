@@ -581,6 +581,132 @@ the panel file, so one card would fit both screens. It needs a unit of each
 kind to try. The display ID cannot do it: the panel's
 SPI is write-only here (`spi-gpio` with no MISO), so it reads `000000`.
 
+### The faint vertical lines remain (owner, 2026-11-17)
+
+**Neither the v2 tree nor `v2-stock-panel` takes them away**, so the clock
+edge and the timings are not it. The owner believes they came with our
+system (not checked on the stock card). Weighed against Anbernic's `lcd0`
+node and pin groups (the muOS boot package):
+
+| Suspect | Stock | Ours | Tried as |
+| --- | --- | --- | --- |
+| RGB pins' drive strength | `rgb24@0`: PD0 to PD27, `allwinner,drive = <3>` (40 mA) | no `drive-strength`: the reset value (20 mA). A weak edge at 24 to 27 MHz can garble low bits column by column | `try/1-pins-40ma` |
+| Backlight PWM | `lcd_pwm_freq` 50000 (50 kHz), `lcd_pwm_pol 1` | `pwms = <&pwm 0 40000 0>`: 25 kHz. A beat would more likely show as horizontal bands; cheap to rule out | `try/2-backlight-50khz` |
+| Dithering, bus depth | `lcd_frm = 1`: dithered to 18 bits on the 24 lines | 24 bits, no dithering (an SPI panel's bus format was never set). If the panel's lowest bits are noisy, dark greys show it most | `try/3-dither` (patch 0170 now reads an SPI panel file's pixel format: RGB666_PACKED gives MEDIA_BUS_FMT_RGB666_1X18, and sun4i's FRM is on) |
+| All of them, and the stock edge and timings | | | `try/4-all-as-stock` |
+| Start-up commands (VCOM, gamma, inversion) | the same as ROCKNIX's v2 file, to the byte (decoded above) | | not a suspect |
+| `lcd_gamma_en`, `lcd_cmap_en` | 0, 0 | none | not a suspect |
+| LCD supply and reset order | `lcd_power`, `lcd_pin_power` and five GPIOs in the stock driver's own order (not decoded) | regulator on, reset 5 ms, wait 20 ms, commands | not tried: a wrong order would rather fail outright |
+
+Each is a whole `dtb.img` in its own folder under `device_trees/try/`, made
+by `post-image.sh` from the v2 tree with `fdtput` and `panel-dtb.sh`. Tries 1
+and 2 also work on the card before this one; 3 and 4 need this card's kernel.
+`check-image.sh` checks all four; `qemu-test.py`'s panel boot uses try 4's
+panel file (its CRC-32, the 24 MHz mode, the 18-bit bus format).
+
+## 12. Changes without a new card (2026-11-17)
+
+The owner: a new card image takes too long. Three things so most fixes are
+one file:
+
+| What | How | Desk test |
+| --- | --- | --- |
+| **A new Apotheca, one file** | `scripts/build-firmware-app.sh` builds the app alone with the image's toolchain (`build-image.sh -- apotheca-reconfigure`, so the version shown is the commit count; stripped) into `dist/firmware/apotheca`. Copied over `apotheca/apotheca` on the APOTHECA drive, `apotheca-start` finds it by its md5 differing from `program.md5` (the sum of what it last put there), checks it is an arm64 ELF (else `apotheca.failed`, the system's runs), and runs it as an update: `update-trying` set, the system's program as `apotheca.old`. **A new program, copied or from WiFi, has two tries** (the port's `Apotheca.sh` keeps one) to take `update-trying` away (the app does, 3 s in); then the one before comes back and `run` does not count those failed starts towards the CPU-drawing fallback (`/run/apotheca/apotheca.rolledback`). The WiFi update already landed where the program runs (`apotheca.new` beside it, `/data/apotheca`) and needed nothing | `qemu-test.py`, first boot: the system's program with bytes added runs and stays; BusyBox copied as `apotheca` has two tries then the system's is back, drawing with the GPU; a text file is never run. `check-image.sh`: the rule is in the image |
+| **A screen change, one file** | **Patch 0170**: the panel driver uses the device tree's `apotheca,panel-firmware` (a whole panel file's bytes) when it is there, before `panels/<compatible>.panel`. A loose panel file on APOTHBOOT could not work: a built-in firmware file always wins over one on a file system (`firmware_request_builtin_buf` first, `drivers/base/firmware_loader/main.c`), and the panel probes about 2 s in, before any file system is mounted; making the driver a module loaded after a mount would delay the screen and risk it, untestable here. So the panel file travels in `dtb.img`. `os/tools/panel-dtb.sh` puts one in (fdtput, read back to the byte). The driver's log line now gives the panel data's size and CRC-32 | `qemu-test.py`, a sixth boot on qemu's own device tree with a simulated GPIO chip (`gpio-sim`, `CONFIG_GPIO_SIM=m`: loaded only where a tree asks for `gpio-simulator`), two bit-banged SPI buses and a panel on each: one takes the built-in v2 file (its CRC-32 and 27 MHz mode), the other the stock-timings file `panel-dtb.sh` put in its node (its CRC-32 and 24 MHz mode). `check-image.sh`: the kernel holds the three panel files byte for byte and the property's name |
+| **Kernel and U-Boot rebuilds in minutes** | `build-image.sh --tidy` keeps their build folders (`--tidy-all` does not); it also clears host-spirv-tools' work files (1.7 GB). After every build, when the kernel's built mark is newer than the joypad module's, the module and the image are made again (a module from before a kernel rebuild is refused: the qemu test caught it once) | timed by hand: see below |
+
+## 13. One card for both screens: the tree picked by PE6 (2026-11-17)
+
+The owner has a second RG40XXV: with the v2 tree the backlight comes on and
+the screen stays black, so it most likely has the first screen. Anbernic's
+own boot loader tells the two apart by pin PE6 (section 11); now ours does.
+
+**How** (uboot.fragment's `CONFIG_PREBOOT`, run as U-Boot starts, before it
+reads extlinux.conf):
+
+1. The backlight off (PD28), so nothing below shows.
+2. `fdtfile` is `dtb.img` if the boot partition has one (`test -e mmc 0:1
+   dtb.img`): **a tree copied there by hand always wins**.
+3. The panel powered (PI15) and taken through the stock code's reset pulse
+   (PI14 high 15 ms, low 50 ms, high 100 ms), then `gpio input PE6`: its exit
+   status is the pin's level, so `if gpio input PE6` is "PE6 low", the newer
+   screen. A failed read counts as high.
+4. Without a `dtb.img`, `fdtfile` becomes
+   `device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb` (low) or
+   `device_trees/sun50i-h700-anbernic-rg40xx-v.dtb` (high).
+5. The panel off (PI14, PI15), as before.
+
+`extlinux.conf` says `FDTDIR /`, so U-Boot loads `/$fdtfile` (pxe_utils:
+FDTDIR plus `$fdtfile`); one label, the kernel loaded once. The image is
+made with no `dtb.img` (`--dtb auto`, the default; `dtb-in-use.txt` says
+`auto`); `--dtb NAME` still puts one there. U-Boot says what it did on its
+console (the UART, not the screen): "apotheca: PE6 says the v2 screen",
+"apotheca: device tree ...". The boot log's "screen:" line reads PE6 again
+from Linux (`devmem`, port E's data register) beside `rocknix-dt-id`.
+
+**Tested on the desk**: `os/tools/uboot-pick-test.py` builds mainline U-Boot
+v2026.01 for qemu with the card's own PREBOOT text (the disk `virtio 0:1`,
+the gpio set and clear only echoed, `gpio input PE6` replaced by a file on
+the boot partition standing for "low") and boots the card's own boot
+partition three ways: no `dtb.img` and "low" loads the v2 tree, "high" the
+first, a `dtb.img` wins. `check-image.sh` reads the PREBOOT in the image's
+U-Boot and the extlinux.conf.
+
+**Only the two handhelds can show**: that PE6 reads low on the newer screen
+and high on the first (from the stock code, not seen), that the reset pulse
+is what the pin needs (PE6 may be driven by the panel only once it is out of
+reset), that `gpio input PE6` reads it on the H700 (U-Boot's sunxi gpio
+names), and that the pulse shows nothing with the backlight off.
+
+## 14. Plan: batch 5's WiFi (2026-11-17; the A/B system update is a later part)
+
+**Why the WiFi page does not work on our card**: the boot log has rtw88's
+8821CS probing and failing on `rtw88/rtw8821c_fw.bin`. ROCKNIX builds that
+file into its kernel (`CONFIG_EXTRA_FIRMWARE`); our `linux.fragment` replaced
+the list with the panel files, so it went. Nothing joins a network either: no
+`wpa_supplicant`, no DHCP running.
+
+| Part | Choice | Why |
+| --- | --- | --- |
+| Firmware | Buildroot's `linux-firmware` (pinned with Buildroot 2026.02.3, sum checked), `BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW88`: `/lib/firmware/rtw88/rtw8821c_fw.bin` on the root. Licence `LICENCE.rtlwifi_firmware.txt` (Realtek: redistributable, binary only), in legal-info by Buildroot and listed in `board/rg40xxv/README.md` | Recorded by Buildroot itself; no file vendored by hand |
+| The driver | rtw88 (`RTW88`, `_SDIO`, `_8821C`, `_8821CS`) **as modules** in `linux.fragment`: S02modules loads them by modalias after the root is mounted, so the firmware is read from `/lib/firmware` (built in, the driver asks before any file system is there) | Also keeps the kernel smaller; the panel files stay built in |
+| Joining | `wpa_supplicant` (nl80211, control socket, `wpa_cli`, WPA2 and WPA3-SAE), no D-Bus. iwd needs D-Bus: more to carry | Small, scriptable |
+| Address | BusyBox `udhcpc` with Buildroot's `default.script` | Already on the card |
+| The glue | `/usr/sbin/apotheca-wifi` (shell, root): `up`, `down`, `scan` (one line a network: signal, security, name), `join NAME` (password on stdin, never on a command line), `forget NAME`, `status` (`off`, `joining NAME`, `joined NAME ADDRESS`, `wrong-password NAME`, `not-found NAME`). Saved networks in `/data/apotheca/wifi/networks.conf` (`wpa_supplicant` format, `update_config=1`): on the APOTHECA drive, so a card moved to a new handheld keeps them, and a Mac can delete the file | One small program the app talks to; testable on its own |
+| When it runs | **Only while the WIFI PAGE is on**: turning it on runs `apotheca-wifi up` (the radio, `wpa_supplicant`, `udhcpc`; it rejoins a saved network by itself), off runs `down` (the radio off). The app runs it on a thread of its own: no frame waits | Battery, and nothing running beside the sound when WiFi is not wanted |
+| `run` | sets `APOTHECA_WIFI=/usr/sbin/apotheca-wifi`. On the port (stock firmware) it is not set and the app is as today | The same program for both |
+
+**On the handheld (app side; the owner's button standards)**: the SET page
+gets a **NETWORK** row under WIFI PAGE, shown only when `APOTHECA_WIFI` is
+set:
+
+- Its value is the network joined, or NONE; its note says JOINING..., WRONG
+  PASSWORD, NOT FOUND, or the address (the WIFI PAGE row keeps its address).
+- **Hold A + UP / DOWN** steps through the networks found (strongest first,
+  a lock mark where one needs a password; scanned when the row is reached
+  and again every 10 s while the page is on). Let go of A: join it. A saved
+  network or an open one joins at once; one that needs a password opens
+  **the keys a track's name is typed with** (Y deletes a letter, B or START
+  keep it and join; B with nothing typed leaves). The keys need upper case,
+  figures and the common signs, and room for 63 letters (a WPA password's
+  most): the typing code gets those as a mode of its own, the track name's
+  keys left as they are.
+- **Hold B** (the bar that fills) forgets the network joined: "what cannot
+  be undone says so".
+- The password is never written to a log, the boot log included
+  (`networks.conf` holds it, as any computer's WiFi settings do).
+
+**Tests**: the app side in `app_test`/`textsize` with a stand-in
+`apotheca-wifi` (a script in the test folder that answers from a file): the
+row, the list, the keys' new mode, the hints at 0 over, every text at XL. The
+system side in `qemu-test.py` with `mac80211_hwsim` (two made-up radios;
+`CONFIG_MAC80211_HWSIM=m`, never loaded on the H700) and `hostapd` on one as
+the access point (WPA2 and an open one): `scan` lists them, `join` with the
+right password gets an address, with the wrong one says so, `forget` and
+`down`, and the WiFi page answers over it. **Only the handheld can show**:
+the 8821CS loading its firmware and joining the owner's network, the
+transfer rate, and whether the radio is heard in the sound.
+
 ## Sources
 
 - Anbernic, RG 40XXV product page (SoC, RAM, screen, battery, WiFi, BT): https://anbernic.com/products/rg-40xxv
