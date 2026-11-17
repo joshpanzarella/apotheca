@@ -399,6 +399,13 @@ else), or it goes by itself after four seconds.
 help card, the WiFi page, and the first line of `apotheca.log`): `0.104`
 and the day it was built. The number goes up by one with every build.
 
+The rows stand under five headings: **SONG** (TEMPO, CHORD PACK, KEY, SCALE,
+TRACK NAME, BOUNCE), **PLAYING** (CLICK, COUNT IN, USB KEYBOARD), **LOOK** (TEXT
+SIZE, THEME, PIANO ROLL), **HANDHELD** (VOLUME, BRIGHTNESS, STICK LIGHT, LIGHT
+COLOUR, STICK SPEED) and **SETUP** (WIFI PAGE, BUTTONS, CONTROLS). The page moves
+a row at a time; a small arrow after a heading says there are rows out of sight
+that way.
+
 | Row | Left / right | A |
 | --- | --- | --- |
 | TEMPO | A beat a minute | **Tap it in time**: from the second tap the tempo is the beat of the last five taps (a pause of two seconds starts again). The box above the bar says TAPPED: 117 BPM |

@@ -1518,12 +1518,20 @@ effect in those two groups and fails one that does not.
     glow lands where the clock puts it, and over a ghost hit it failed now and then); a new
     translucent thing that moves with the clock is added the same way. A still in a theme:
     `--theme paper`.
-- **The SET page shows twelve rows and moves one row at a time**
-  (`SettingsScreen::firstShown`, `rowNowY`): thirteen since THEME, fifteen since
-  CLICK and COUNT IN (easywins batch 2), eighteen on our own firmware (LIGHT COLOUR). A new row costs nothing more than its place in `Row`. **The page
-  counts PLACES, not rows** (`here`, `placeOf`, `rowAt`; `firstShown` is a place):
-  a row that is not on this handheld is passed by. Only rows after VOLUME may be
-  missing, so the HANDHELD gap stays at VOLUME.
+- **The SET page is five groups under headings, and shows as many rows as fit** (owner, 2026-11-17:
+  "enough rows now"; `SettingsScreen::Row`, `groupOf`, `groupName`): SONG (TEMPO, CHORD PACK, KEY,
+  SCALE, TRACK NAME, BOUNCE), PLAYING (CLICK, COUNT IN, USB KEYBOARD), LOOK (TEXT SIZE, THEME, PIANO
+  ROLL), HANDHELD (VOLUME, BRIGHTNESS, STICK LIGHT, LIGHT COLOUR, STICK SPEED), SETUP (WIFI PAGE,
+  BUTTONS, CONTROLS). The heading of the first row in view stands above the rows (`kHeadingY`); every
+  other heading in view takes `kHeadingGap` before its group's first row. So **twelve rows are in
+  view with one heading among them, eleven with two, ten with three** (`placeY`, `fits`, `kPageFoot`;
+  `kRowsShown` 12 is the most). It moves one row at a time, by as little as shows the cursor, and
+  leaves no room empty under the last row. **The page counts PLACES, not rows** (`here`, `placeOf`,
+  `rowAt`; `firstShown` is a place): a row that is not on this handheld is passed by. **A group's
+  first row must always be here** (a heading stands on it): only BRIGHTNESS, STICK LIGHT and LIGHT
+  COLOUR can be missing. A new row costs its place in `Row` (the numbers are kept nowhere: a setting
+  is kept by its word in settings.txt) and its group in `groupOf`. An UP arrow after the top heading
+  and a DOWN arrow after the last heading in view say rows are out of sight.
 - **The METRONOME is added after Catch and before the volume, and never reaches a bounce**
   (easywins batch 2, `docs/plans/easywins-plan.md`; `Command::SetClick`, `Engine::addClick`). Off
   with nothing sounding it adds nothing: the output is as it was, to the bit. Only the live engine

@@ -84,6 +84,17 @@ int SettingsScreen::rowAt(int place) const {
     return last; // past the end: the last
 }
 
+const char* SettingsScreen::groupName(int group) {
+    static const char* const names[kGroups] = {"SONG", "PLAYING", "LOOK", "HANDHELD", "SETUP"};
+    return group >= 0 && group < kGroups ? names[group] : "";
+}
+
+int SettingsScreen::placeY(int place, int first) const {
+    int y = kRowsTop;
+    for (int p = first + 1; p <= place; ++p) y += kRowH + (headsGroup(p) ? kHeadingGap : 0);
+    return y;
+}
+
 void SettingsScreen::goTo(int row) {
     row = row < 0 ? 0 : (row >= kRows ? kRows - 1 : row);
     int to = row;
@@ -93,9 +104,8 @@ void SettingsScreen::goTo(int row) {
     row_ = to;
     const int place = placeOf(row_);
     if (place < first_) first_ = place;
-    if (place >= first_ + kRowsShown) first_ = place - kRowsShown + 1;
-    const int most = places() > kRowsShown ? places() - kRowsShown : 0; // (rows gone: no room left empty)
-    if (first_ > most) first_ = most;
+    while (first_ < place && !fits(place, first_)) ++first_;
+    while (first_ > 0 && fits(places() - 1, first_ - 1)) --first_; // (the last row in view: no room left empty under it)
 }
 
 void SettingsScreen::change(int by) {
@@ -324,20 +334,27 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         return;
     }
 
-    const char* names[kRows] = {"TEMPO", "CHORD PACK", "KEY", "SCALE", "TRACK NAME", "BOUNCE", "VOLUME", "BRIGHTNESS", "STICK LIGHT", "LIGHT COLOUR", "STICK SPEED", "TEXT SIZE", "THEME", "PIANO ROLL", "USB KEYBOARD", "CLICK", "COUNT IN", "WIFI PAGE", "BUTTONS", "CONTROLS"};
+    const char* names[kRows] = {"TEMPO", "CHORD PACK", "KEY", "SCALE", "TRACK NAME", "BOUNCE", "CLICK", "COUNT IN", "USB KEYBOARD", "TEXT SIZE", "THEME", "PIANO ROLL",
+                                "VOLUME", "BRIGHTNESS", "STICK LIGHT", "LIGHT COLOUR", "STICK SPEED", "WIFI PAGE", "BUTTONS", "CONTROLS"};
     const int rowH = kRowH, w = kRowW; // (twelve rows shown: 34 a row, as it was with eleven, would run into the hints bar)
-    fonts.small.draw(r, 16.f, 34.f, "PROJECT", kDim);
-    // A row out of sight above (the page has moved down) or below: an arrow after its section's name.
+    // The heading of the first row in view, above the rows.
+    const char* topHeading = groupName(groupOf(rowAt(first_)));
+    fonts.small.draw(r, 16.f, static_cast<float>(kHeadingY), topHeading, kDim);
+    // A row out of sight above (the page has moved down) or below: an arrow after a heading.
     const auto more = [&](float y, const char* section, const char* way) { drawKey(r, fonts, 16.f + fonts.small.width(section) + 6.f, y, way, kDim); };
-    if (first_ > 0) more(34.f, "PROJECT", "UP");
+    if (first_ > 0) more(static_cast<float>(kHeadingY), topHeading, "UP");
     // Which Apotheca this is.
     std::snprintf(text, sizeof text, "APOTHECA %s   %s", kVersion, kBuilt);
-    fonts.small.drawRight(r, kScreenW - 16.f, 34.f, text, kDim);
-    for (int place = first_; place < first_ + kRowsShown && place < places(); ++place) {
+    fonts.small.drawRight(r, kScreenW - 16.f, static_cast<float>(kHeadingY), text, kDim);
+    float lastHeadingY = static_cast<float>(kHeadingY);
+    const char* lastHeading = topHeading;
+    for (int place = first_; place < places() && fits(place, first_); ++place) {
         // The first four belong to the song; the rest to the handheld.
-        const int row = rowAt(place), y = rowY(place, first_);
-        if (row == kVolume) fonts.small.draw(r, 16.f, y - 18.f, "HANDHELD", kDim);
-        if (row == kVolume && first_ + kRowsShown < places()) more(y - 18.f, "HANDHELD", "DOWN");
+        const int row = rowAt(place), y = placeY(place, first_);
+        if (place > first_ && headsGroup(place)) {
+            fonts.small.draw(r, 16.f, y - static_cast<float>(kHeadingUp), groupName(groupOf(row)), kDim);
+            lastHeadingY = y - static_cast<float>(kHeadingUp), lastHeading = groupName(groupOf(row));
+        }
         const bool here = row == row_;
         float part = -1.f;
         const char* note = "";
@@ -473,12 +490,17 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (here) outline(r, 15, y - 1, w + 2, rowH - 4, holdPart_ > 0.f ? kBrass : kTeal, 2);
         if (here && row == kControls && holdPart_ > 0.f) fill(r, 16, y + rowH - 10, static_cast<int>(w * (holdPart_ > 1.f ? 1.f : holdPart_)), 4, kBrass);
     }
+    // A row out of sight below: an arrow after the last heading in view (after the UP arrow, where that is the top one's too).
+    if (!fits(places() - 1, first_)) {
+        const bool both = first_ > 0 && lastHeadingY == static_cast<float>(kHeadingY);
+        drawKey(r, fonts, 16.f + fonts.small.width(lastHeading) + 6.f + (both ? kArrowsApart : 0.f), lastHeadingY, "DOWN", kDim);
+    }
 
     Hint list[5];
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     hint("UP / DOWN", "choose");
-    if (row_ <= kCountIn) hint("LEFT / RIGHT", "change");
+    if (row_ < kWifi) hint("LEFT / RIGHT", "change");
     if (row_ == kBounce) hint("A", session_.bouncing() ? "(working)" : "bounce");
     if (row_ == kTempo) hint("A", "tap it");
     if (row_ == kTrackName) hint("A", "type a name");

@@ -297,3 +297,36 @@ Tests: `lights_test testTrackColours`: the twelve differ and are the ring's; at 
 BROWN and PAPER: the whole bar in each head's foot and nowhere else in the head, the dim line, the
 mixer's mark still there; none at RED, RAINBOW, the ring OFF or on a handheld with no ring. Mutants:
 the OFF check, the ring-here check, the track's own hue. Stills `song-track-colours`, `-12`.
+
+### C. The SET page under five headings
+
+Twenty rows (seventeen off our own firmware) stood under PROJECT and HANDHELD. Now:
+
+| Heading | Rows |
+| --- | --- |
+| SONG | TEMPO, CHORD PACK, KEY, SCALE, TRACK NAME, BOUNCE |
+| PLAYING | CLICK, COUNT IN, USB KEYBOARD |
+| LOOK | TEXT SIZE, THEME, PIANO ROLL |
+| HANDHELD | VOLUME, BRIGHTNESS, STICK LIGHT, LIGHT COLOUR, STICK SPEED |
+| SETUP | WIFI PAGE, BUTTONS, CONTROLS |
+
+The first row's heading stands above the rows, where PROJECT stood; each other heading in view takes
+the 22-pixel gap HANDHELD's took. **So the page shows twelve rows with one heading among them, eleven
+with two, ten with three**: the rows keep their size and the page still ends where it did. It still
+moves a row at a time, counts places (a row missing on this handheld is passed by), and leaves no
+room empty under the last row. An UP arrow after the top heading and a DOWN arrow after the last
+heading in view say rows are out of sight (both after one heading where it is the only one in view).
+
+| Call | Taken |
+| --- | --- |
+| The groups | **SONG, PLAYING, LOOK, HANDHELD, SETUP** (above) |
+| TEMPO | **SONG** (it is the song's, beside KEY and SCALE); CLICK and COUNT IN lead PLAYING |
+| PIANO ROLL (octaves shown) | **LOOK** |
+| USB KEYBOARD | **PLAYING** (COUNT IN and CLICK's RECORDING hang on it) |
+| Twelve rows in view | **Kept as the most**; a heading in view costs most of a row. The other way (headings with no room of their own) had nowhere to stand without restyling the rows |
+
+Tests: `theme_test testTheRow` (the walk down a row at a time moving by as little as shows the
+cursor, the end with no room left empty, every row in view inside the page, the gaps, the headings'
+words, the arrows at the top and the end), `lights_test testTheSetPage` (with and without the three
+firmware rows), `textsize` (every place the page can stand, at four sizes; the stills), `app_test`
+(each row by name). Stills `setup`, `setup-click`, `setup-scale`, `setup-light`, `setup-light-colour`.

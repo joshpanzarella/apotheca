@@ -303,7 +303,7 @@ void testTheSetPage() {
         setup.goTo(S::kBrightness); // (asked for by number: the next row that is here)
         CHECK(setup.cursorRow() == S::kStick);
         setup.goTo(S::kControls);
-        CHECK(setup.firstShown() == 5 && setup.shown(S::kControls) && !setup.shown(S::kTempo));
+        CHECK(setup.firstShown() > 0 && setup.shown(S::kControls) && !setup.shown(S::kTempo) && setup.shown(S::kVolume) && setup.shown(S::kStick));
     }
     Sys sys;
     Rig rig;
@@ -350,22 +350,25 @@ void testTheSetPage() {
     for (int place = 1; place < setup.places(); ++place) {
         rig.tap(DOWN);
         CHECK(setup.placeOf(setup.cursorRow()) == place && setup.shown(setup.cursorRow()));
-        CHECK(setup.firstShown() == (place < S::kRowsShown ? 0 : place - S::kRowsShown + 1));
+        CHECK(setup.firstShown() == 0 || !setup.fits(place, setup.firstShown() - 1)); // moved by as little as shows the cursor
     }
-    CHECK(setup.cursorRow() == S::kControls && setup.firstShown() == 8);
+    // The last row in view with HANDHELD's five and SETUP's three, and no room left empty under it.
+    CHECK(setup.cursorRow() == S::kControls && setup.shown(S::kVolume) && setup.shown(S::kLightColour) && !setup.fits(setup.places() - 1, setup.firstShown() - 1));
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kControls);
-    for (int place = setup.firstShown(); place < setup.firstShown() + S::kRowsShown; ++place) {
+    for (int place = setup.firstShown(); place < setup.places(); ++place) {
         const int row = setup.rowAt(place);
+        CHECK(setup.fits(place, setup.firstShown()));
         CHECK(setup.rowNowY(row) >= ui::kTopBarH + 8 && setup.rowNowY(row) + S::kRowH - 6 <= ui::kScreenH - ui::kHintsH - 4);
         if (place > setup.firstShown()) CHECK(setup.rowNowY(row) >= setup.rowNowY(setup.rowAt(place - 1)) + S::kRowH - 2);
     }
     // The places and the rows agree both ways.
     for (int row = 0; row < S::kRows; ++row) CHECK(setup.rowAt(setup.placeOf(row)) == row);
     // The lights taken away (they never are on a handheld, but the page must not stay past its end).
+    const int withLights = setup.firstShown();
     rig.session().useLights(Lights());
     setup.goTo(S::kControls);
-    CHECK(setup.firstShown() == 5 && setup.cursorRow() == S::kControls);
+    CHECK(setup.firstShown() < withLights && setup.cursorRow() == S::kControls && !setup.fits(setup.places() - 1, setup.firstShown() - 1));
 }
 
 // ---- kept in settings.txt --------------------------------------------------------------------------

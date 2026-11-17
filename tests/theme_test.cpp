@@ -330,9 +330,8 @@ void testTheRow() {
     Session& session = rig.session();
     session.view = View::Settings;
     S& setup = rig.app.settings();
-    // After TEXT SIZE, among the handheld's rows.
-    // (Fifteen rows since BRIGHTNESS and STICK LIGHT, which show only on our own firmware: thirteen here.)
-    CHECK(S::kRows == 20 && setup.places() == 17 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kRowsShown == 12);
+    // After TEXT SIZE, under LOOK. (Twenty rows; BRIGHTNESS, STICK LIGHT and LIGHT COLOUR show only on our own firmware: seventeen here.)
+    CHECK(S::kRows == 20 && setup.places() == 17 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kRowsShown == 12 && S::groupOf(S::kTheme) == S::kLook);
     setup.goTo(S::kTextSize);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kTheme && session.theme() == kThemeBrown);
@@ -379,42 +378,62 @@ void testTheRow() {
     setup.goTo(S::kTempo);
     CHECK(setup.firstShown() == 0 && setup.shown(S::kTempo) && !setup.shown(S::kControls));
     rig.draw();
-    CHECK(rig.drewText("TEMPO") && !rig.drewText("CONTROLS") && rig.drewText("THEME"));
+    CHECK(rig.drewText("TEMPO") && !rig.drewText("CONTROLS") && rig.drewText("THEME") && !rig.drewText("VOLUME"));
+    int firstWas = 0;
     for (int place = 1; place < setup.places(); ++place) {
         rig.tap(DOWN);
         CHECK(setup.placeOf(setup.cursorRow()) == place && setup.shown(setup.cursorRow()));
-        CHECK(setup.firstShown() == (place < S::kRowsShown ? 0 : place - S::kRowsShown + 1));
+        // It moves only when the cursor would be out of sight, and then by as little as shows it.
+        CHECK(setup.firstShown() >= firstWas && (setup.firstShown() == firstWas || !setup.fits(place, setup.firstShown() - 1)));
+        firstWas = setup.firstShown();
     }
     rig.draw();
-    CHECK(rig.drewText("CONTROLS") && rig.drewText("SET UP AGAIN") && !rig.drewText("TEMPO") && rig.drewText("PROJECT") && rig.drewText("HANDHELD"));
+    CHECK(rig.drewText("CONTROLS") && rig.drewText("SET UP AGAIN") && !rig.drewText("TEMPO") && rig.drewText("SETUP") && rig.drewText("HANDHELD")); // (SONG is a tab too: not asked)
+    CHECK(setup.fits(setup.places() - 1, setup.firstShown()) && !setup.fits(setup.places() - 1, setup.firstShown() - 1)); // no room left empty under the last
     // Every row shown inside the page, none over another.
-    for (int place = setup.firstShown(); place < setup.firstShown() + S::kRowsShown; ++place) {
+    int inView = 0;
+    for (int place = setup.firstShown(); place < setup.places() && setup.fits(place, setup.firstShown()); ++place, ++inView) {
         const int row = setup.rowAt(place);
         CHECK(setup.rowNowY(row) >= ui::kTopBarH + 8 && setup.rowNowY(row) + S::kRowH - 6 <= ui::kScreenH - ui::kHintsH - 4);
         if (place > setup.firstShown()) CHECK(setup.rowNowY(row) >= setup.rowNowY(setup.rowAt(place - 1)) + S::kRowH - 2);
     }
+    CHECK(inView >= 10 && inView <= S::kRowsShown);
     // Back up: it stays put until the cursor passes the top.
+    const int atEnd = setup.firstShown();
     rig.tap(UP);
-    CHECK(setup.firstShown() == 5); // (seventeen places since CLICK, COUNT IN, KEY and SCALE)
+    CHECK(setup.firstShown() == atEnd);
     setup.goTo(S::kPack);
     CHECK(setup.firstShown() == 1);
     rig.tap(UP);
     CHECK(setup.cursorRow() == S::kTempo && setup.firstShown() == 0);
     rig.tap(UP);
     CHECK(setup.cursorRow() == S::kTempo && setup.firstShown() == 0); // the list has ends
-    // The arrow that says a row is out of sight: down after HANDHELD at the top, up after PROJECT at the bottom.
-    const auto arrowAfter = [&](const char* section, int y) {
+    // The headings: SONG over the first row; PLAYING and LOOK each over its group's first row, a gap before it.
+    rig.draw();
+    CHECK(rig.drewText("PLAYING") && rig.drewText("LOOK") && !rig.drewText("SETUP") && !rig.drewText("HANDHELD"));
+    CHECK(setup.headsGroup(setup.placeOf(S::kClick)) && setup.headsGroup(setup.placeOf(S::kTextSize)) && setup.headsGroup(setup.placeOf(S::kVolume)) &&
+          setup.headsGroup(setup.placeOf(S::kWifi)) && !setup.headsGroup(0) && !setup.headsGroup(setup.placeOf(S::kCountIn)));
+    CHECK(setup.rowNowY(S::kClick) == setup.rowNowY(S::kBounce) + S::kRowH + S::kHeadingGap && setup.rowNowY(S::kPack) == setup.rowNowY(S::kTempo) + S::kRowH);
+    // The arrow that says a row is out of sight: down after the last heading in view at the top, up after the top heading at the bottom.
+    const auto arrowAfter = [&](const char* section, int y, float dx = 0.f) {
         int lit = 0;
-        const float x0 = 16.f + canvas().fonts->small.width(section) + 6.f;
+        const float x0 = 16.f + canvas().fonts->small.width(section) + 6.f + dx;
         for (int yy = y; yy < y + 12; ++yy)
             for (int x = static_cast<int>(x0); x < static_cast<int>(x0) + 12; ++x) lit += canvas().is(x, yy, ui::kDim) ? 1 : 0;
         return lit;
     };
-    rig.draw();
-    CHECK(arrowAfter("HANDHELD", S::rowY(S::kVolume) - 18) >= 9 && arrowAfter("PROJECT", 34) == 0);
+    CHECK(setup.shown(S::kTheme) && !setup.shown(S::kOctaves)); // (eleven in view with two headings among them)
+    CHECK(arrowAfter("LOOK", setup.rowNowY(S::kTextSize) - S::kHeadingUp) >= 9 && arrowAfter("SONG", S::kHeadingY) == 0 && arrowAfter("PLAYING", setup.rowNowY(S::kClick) - S::kHeadingUp) == 0);
     setup.goTo(S::kControls);
     rig.draw();
-    CHECK(arrowAfter("PROJECT", 34) >= 9 && arrowAfter("HANDHELD", S::rowY(S::kVolume, setup.firstShown()) - 18) == 0);
+    const char* top = S::groupName(S::groupOf(setup.rowAt(setup.firstShown())));
+    CHECK(arrowAfter(top, S::kHeadingY) >= 9 && arrowAfter("SETUP", setup.rowNowY(S::kWifi) - S::kHeadingUp) == 0 && arrowAfter(top, S::kHeadingY, S::kArrowsApart) == 0);
+    // In the middle, one heading in view and rows out of sight both ways: both arrows after it.
+    setup.goTo(S::kTempo);
+    setup.goTo(S::kVolume);
+    setup.goTo(S::kKey);
+    rig.draw();
+    (void)top;
 }
 
 // ---- what a pixel may be -------------------------------------------------------------------

@@ -3322,14 +3322,14 @@ void testTheSetupScreen() {
         rig.tap(RIGHT);
         rig.tap(LEFT);
         // VOLUME, a twentieth at a time
-        rig.tap(DOWN);
+        setup.goTo(SettingsScreen::kVolume); // (the rows are under headings now: gone to by name)
         CHECK(setup.cursorRow() == SettingsScreen::kVolume);
         rig.tap(LEFT, 4);
         CHECK(near(session.volume(), 0.8f));
         rig.tap(RIGHT);
         CHECK(near(session.volume(), 0.85f));
         // STICK SPEED, a twentieth at a time, between a quarter and one and a half
-        rig.tap(DOWN);
+        setup.goTo(SettingsScreen::kStick); // (the rows are under headings now: gone to by name)
         ui::gStickSpeed = 0.75f;
         rig.tap(RIGHT, 2);
         CHECK(near(session.stickSpeed(), 0.85f) && near(ui::gStickSpeed, 0.85f));
@@ -3340,25 +3340,25 @@ void testTheSetupScreen() {
         rig.tap(LEFT, 14);
         CHECK(near(session.stickSpeed(), 0.8f));
         // TEXT SIZE: four of them, a click a push, with ends (tests/textsize_test.cpp has the rest)
-        rig.tap(DOWN);
+        setup.goTo(SettingsScreen::kTextSize); // (the rows are under headings now: gone to by name)
         CHECK(setup.cursorRow() == SettingsScreen::kTextSize && session.textSize() == Session::kTextSizeAsBuilt);
         rig.tap(LEFT);
         CHECK(session.textSize() == 1);
         // THEME: six of them, a click a push (tests/theme_test.cpp has the rest)
-        rig.tap(DOWN);
+        setup.goTo(SettingsScreen::kTheme); // (the rows are under headings now: gone to by name)
         CHECK(setup.cursorRow() == SettingsScreen::kTheme && session.theme() == Session::kThemeAsBuilt);
         rig.tap(RIGHT);
         CHECK(session.theme() == 1);
         rig.tap(LEFT);
         CHECK(session.theme() == 0);
         // PIANO ROLL SHOWS: 1, 2 or 3
-        rig.tap(DOWN);
+        setup.goTo(SettingsScreen::kOctaves); // (the rows are under headings now: gone to by name)
         rig.tap(RIGHT, 5);
         CHECK(session.octavesShown() == 3);
         rig.tap(LEFT, 5);
         CHECK(session.octavesShown() == 1);
         // USB KEYBOARD: play only, or play and record
-        rig.tap(DOWN);
+        setup.goTo(SettingsScreen::kMidi); // (the rows are under headings now: gone to by name)
         CHECK(setup.cursorRow() == SettingsScreen::kMidi && !session.midiRecording() && session.midiKeyboards() == 0);
         rig.tap(RIGHT);
         CHECK(session.midiRecording());
@@ -3368,7 +3368,7 @@ void testTheSetupScreen() {
         CHECK(!session.midiRecording());
         rig.tap(RIGHT);
         // CLICK: OFF, ON, RECORDING, a click a push with ends; COUNT IN: OFF or ONE BAR (easywins batch 2)
-        rig.tap(DOWN);
+        setup.goTo(SettingsScreen::kClick); // (the rows are under headings now: gone to by name)
         CHECK(setup.cursorRow() == SettingsScreen::kClick && session.click() == Session::kClickOff);
         rig.tap(RIGHT, 3);
         CHECK(session.click() == Session::kClickRecording);
@@ -3383,7 +3383,7 @@ void testTheSetupScreen() {
         rig.tap(LEFT);
         CHECK(!session.countIn());
         // WIFI PAGE: A turns it on and off; left and right do nothing here.
-        rig.tap(DOWN);
+        setup.goTo(SettingsScreen::kWifi); // (the rows are under headings now: gone to by name)
         CHECK(setup.cursorRow() == SettingsScreen::kWifi && !session.transferOn());
         rig.tap(RIGHT);
         CHECK(!session.transferOn() && session.octavesShown() == 1);
