@@ -243,6 +243,7 @@ if(APOTHECA_BUILD_APP)
     add_test(NAME textsize COMMAND textsize_test)
     add_test(NAME textviews COMMAND textsize_test views $<TARGET_FILE:apotheca>)
     set_tests_properties(textsize textviews PROPERTIES TIMEOUT 120)
+    set_tests_properties(textviews PROPERTIES TIMEOUT 300) # 315 stills: 2 min 17 s on a busy desk (2026-11-17)
     # Each by itself: textviews starts the program a hundred times, four at once, and textsize draws
     # some thousands of screens. Beside the others they slow them (effects came to 116 s of its 120).
     set_tests_properties(textsize textviews PROPERTIES RUN_SERIAL TRUE)
@@ -252,6 +253,7 @@ if(APOTHECA_BUILD_APP)
     add_test(NAME theme COMMAND theme_test)
     add_test(NAME themeviews COMMAND theme_test views $<TARGET_FILE:apotheca>)
     set_tests_properties(theme themeviews PROPERTIES TIMEOUT 120)
+    set_tests_properties(themeviews PROPERTIES TIMEOUT 300)
     set_tests_properties(themeviews PROPERTIES RUN_SERIAL TRUE) # (a hundred and more starts of the program, four at once)
     # The handheld's launcher: an update is put in place, or taken back out.
     add_test(NAME launcher COMMAND sh ${CMAKE_SOURCE_DIR}/tests/launcher_test.sh ${CMAKE_SOURCE_DIR}/scripts/Apotheca.sh)
