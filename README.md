@@ -1822,6 +1822,8 @@ whole range in about a second); on the model's box it steps the model, and
 then five to eight more, some the classic machines' kind, some odd (BOOM,
 SUB DROP, BREATH, CLICKER, FINGER SNAP, GONG, WASH, ALARM, ROCKET, WIND...).
 The voice's name stands in brass after the model while the knobs are its.
+**The new sound is heard once, when you let go of A** (and it is made), not at every
+step of the turn; X hears it at any time.
 **Y rolls** the knobs (each somewhere in the middle of its range), B puts a
 knob back (B again: back to the kit), **hold B** puts every knob back, L1 /
 R1 go to the synth lane before / after, X hears it.
@@ -1850,8 +1852,8 @@ the edits make it, and eight boxes laid out as the sampler's.
 | REVERSE | The whole of the part played, end first | On / off |
 
 - **Hold A + up / down turns a box**; the stick turns it through its whole
-  range in about a second (gently with a little push). A box turned is heard,
-  with the song stopped. **X hears the lane as edited** (held: to its end).
+  range in about a second (gently with a little push). **A box turned is heard
+  once, when you let go of A** (and the new sound is made), with the song stopped. **X hears the lane as edited** (held: to its end).
 - **B gives a box its usual value; B on a box already there goes back to the
   kit. Hold B: every edit of the lane back to none**, as the bar fills. Undo
   brings them back.
