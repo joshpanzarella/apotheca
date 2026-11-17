@@ -401,7 +401,7 @@ and the day it was built. The number goes up by one with every build.
 
 | Row | Left / right | A |
 | --- | --- | --- |
-| TEMPO | A beat a minute | |
+| TEMPO | A beat a minute | **Tap it in time**: from the second tap the tempo is the beat of the last five taps (a pause of two seconds starts again). The box above the bar says TAPPED: 117 BPM |
 | CHORD PACK | Another pack | |
 | TRACK NAME | A name for the track being worked on, from a list | **Type one**: a grid of letters and numbers. A types, **Y deletes a letter, B keeps the name and leaves** (with nothing typed B leaves and the name stays as it was), START keeps it too (with nothing typed: the instrument's own name). Ten characters. |
 | VOLUME | A twentieth | |
@@ -412,6 +412,8 @@ and the day it was built. The number goes up by one with every build.
 | THEME | The colours: BROWN, BLUE, GREEN, BLACK, PAPER or GREY, kept for next time | |
 | PIANO ROLL SHOWS | 1, 2 or 3 octaves | |
 | USB KEYBOARD | PLAY ONLY, or PLAY + RECORD | |
+| CLICK | The metronome: OFF, ON (a click on every beat while the song plays, higher on a bar's first), RECORDING (only while it plays with PLAY + RECORD). It is never in a bounce, and CATCH never takes it | |
+| COUNT IN | OFF, or ONE BAR: with PLAY + RECORD, START clicks a bar first (the box above the bar counts 4, 3, 2, 1) and the song starts after it. START again calls it off | |
 | WIFI PAGE | | On / off |
 | BUTTONS | | The button test |
 | CONTROLS | | Hold a second: set the controls up again |
@@ -1588,7 +1590,9 @@ they leave; tap Y to reshuffle). **The dice work on every hit of the lane,
 yours too**: down takes any hit away, a tap rolls the lane's hits anew (as
 many as it has; an empty lane gets four, a full one eight). Undo puts yours
 back. A full lane says THE LANE IS FULL, an empty one THE LANE IS EMPTY.
-Up from the top lane is the tempo.
+Up from the top lane is the tempo: hold A + up / down turns it, and **A tapped in
+time sets it** (from the second tap: the beat of the last five taps; a pause of
+two seconds starts again). SETUP's TEMPO row taps the same way.
 
 On a lane's name, hold Y and push **right** to roll a new start for every
 hit on the lane, on the sixteenths of the sound. **Left** puts them all back

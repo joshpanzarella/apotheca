@@ -291,7 +291,7 @@ void testTheSetPage() {
         // Not ours (the stock firmware): the page as it was, the two rows passed by.
         Rig rig;
         S& setup = rig.setup();
-        CHECK(!setup.here(S::kBrightness) && !setup.here(S::kLight) && setup.places() == 13);
+        CHECK(!setup.here(S::kBrightness) && !setup.here(S::kLight) && setup.places() == 15);
         setup.goTo(S::kVolume);
         rig.tap(DOWN);
         CHECK(setup.cursorRow() == S::kStick);
@@ -300,13 +300,13 @@ void testTheSetPage() {
         setup.goTo(S::kBrightness); // (asked for by number: the next row that is here)
         CHECK(setup.cursorRow() == S::kStick);
         setup.goTo(S::kControls);
-        CHECK(setup.firstShown() == 1 && setup.shown(S::kControls) && !setup.shown(S::kTempo));
+        CHECK(setup.firstShown() == 3 && setup.shown(S::kControls) && !setup.shown(S::kTempo));
     }
     Sys sys;
     Rig rig;
     rig.session().useLights(sys.both());
     S& setup = rig.setup();
-    CHECK(setup.here(S::kBrightness) && setup.here(S::kLight) && setup.places() == 15);
+    CHECK(setup.here(S::kBrightness) && setup.here(S::kLight) && setup.places() == 17);
     // After VOLUME, among the handheld's rows.
     setup.goTo(S::kVolume);
     rig.tap(DOWN);
@@ -333,14 +333,14 @@ void testTheSetPage() {
     CHECK(rig.session().stickLight() == kRingOff && setup.cursorRow() == S::kLight && !setup.testing() && !setup.typing());
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kStick);
-    // Fifteen rows: the page shows twelve, one place at a time.
+    // Seventeen rows (CLICK and COUNT IN since easywins batch 2): the page shows twelve, one place at a time.
     setup.goTo(S::kTempo);
     for (int place = 1; place < setup.places(); ++place) {
         rig.tap(DOWN);
         CHECK(setup.placeOf(setup.cursorRow()) == place && setup.shown(setup.cursorRow()));
         CHECK(setup.firstShown() == (place < S::kRowsShown ? 0 : place - S::kRowsShown + 1));
     }
-    CHECK(setup.cursorRow() == S::kControls && setup.firstShown() == 3);
+    CHECK(setup.cursorRow() == S::kControls && setup.firstShown() == 5);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kControls);
     for (int place = setup.firstShown(); place < setup.firstShown() + S::kRowsShown; ++place) {
@@ -353,7 +353,7 @@ void testTheSetPage() {
     // The lights taken away (they never are on a handheld, but the page must not stay past its end).
     rig.session().useLights(Lights());
     setup.goTo(S::kControls);
-    CHECK(setup.firstShown() == 1 && setup.cursorRow() == S::kControls);
+    CHECK(setup.firstShown() == 3 && setup.cursorRow() == S::kControls);
 }
 
 // ---- kept in settings.txt --------------------------------------------------------------------------

@@ -671,6 +671,19 @@ void Session::setMidiRecording(bool on) {
     keepSettings();
 }
 
+void Session::setClick(int mode) {
+    mode = mode < kClickOff ? kClickOff : (mode >= kClickModes ? kClickModes - 1 : mode); // a choice with ends
+    if (mode == click_) return;
+    click_ = mode;
+    keepSettings();
+}
+
+void Session::setCountIn(bool on) {
+    if (on == countIn_) return;
+    countIn_ = on;
+    keepSettings();
+}
+
 // What the USB keyboard played since the last frame. The sound has already
 // been made (the keyboard's own thread saw to that); this is for the cursor
 // and for recording.

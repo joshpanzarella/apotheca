@@ -1477,11 +1477,19 @@ effect in those two groups and fails one that does not.
     translucent thing that moves with the clock is added the same way. A still in a theme:
     `--theme paper`.
 - **The SET page shows twelve rows and moves one row at a time**
-  (`SettingsScreen::firstShown`, `rowNowY`): thirteen since THEME, fifteen on our
-  own firmware. A new row costs nothing more than its place in `Row`. **The page
+  (`SettingsScreen::firstShown`, `rowNowY`): thirteen since THEME, fifteen since
+  CLICK and COUNT IN (easywins batch 2), seventeen on our own firmware. A new row costs nothing more than its place in `Row`. **The page
   counts PLACES, not rows** (`here`, `placeOf`, `rowAt`; `firstShown` is a place):
   a row that is not on this handheld is passed by. Only rows after VOLUME may be
   missing, so the HANDHELD gap stays at VOLUME.
+- **The METRONOME is added after Catch and before the volume, and never reaches a bounce**
+  (easywins batch 2, `docs/plans/easywins-plan.md`; `Command::SetClick`, `Engine::addClick`). Off
+  with nothing sounding it adds nothing: the output is as it was, to the bit. Only the live engine
+  is told (`Session::syncClick`); a bounce's engine is its own. **The COUNT IN is `Play`'s `d`**:
+  the Play waits aside (`countPlay_`) and `startPlaying` runs where the count's last step ends, on
+  its sample. The Play is counted as taken when it ARRIVES (`playsTaken_`), so a count called off
+  by Stop still agrees with the app's count of Plays (AT END STOP). Anything new that starts the
+  song goes through `startPlaying`; anything that stops it calls the count off (`stopPlaying`, Panic).
 - **BRIGHTNESS and STICK LIGHT are the program's only where the system says so**
   (2026-11-17, `app/lights.hpp`, `docs/plans/lights-plan.md`, `tests/lights_test.cpp`):
   `APOTHECA_OWNS_SCREEN=1` and `APOTHECA_STICK_LIGHT=/dev/ttyS2`, set by our

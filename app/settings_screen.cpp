@@ -119,6 +119,8 @@ void SettingsScreen::change(int by) {
     case kTheme: session_.setTheme(session_.theme() + by); break;       // (so has this; the colours change from the next frame)
     case kOctaves: session_.setOctavesShown(session_.octavesShown() + by); break;
     case kMidi: session_.setMidiRecording(by > 0); break;
+    case kClick: session_.setClick(session_.click() + by); break; // (a choice with ends)
+    case kCountIn: session_.setCountIn(by > 0); break;
     default: break;
     }
 }
@@ -141,6 +143,7 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
         holdPart_ = 0.f;
         if (!event.down) return;
         if (row_ == kBounce && !session_.bouncing()) session_.startBounce(bounceWhat_ == 0 ? Session::Bounce::Song : bounceWhat_ == 1 ? Session::Bounce::EachTrack : Session::Bounce::ThisTrack);
+        if (row_ == kTempo) session_.tapTempo(lastMs_); // TAP TEMPO: A in time
         if (row_ == kTrackName) typing_ = true, typed_ = project_.current().name, key_ = 0;
         if (row_ == kWifi) session_.toggleTransfer(lastMs_ * 2654435761u + 977u);
         if (row_ == kTest) testing_ = true, testTimed_ = false, lastPressed_ = Button::None;
@@ -317,7 +320,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         return;
     }
 
-    const char* names[kRows] = {"TEMPO", "CHORD PACK", "TRACK NAME", "BOUNCE", "VOLUME", "BRIGHTNESS", "STICK LIGHT", "STICK SPEED", "TEXT SIZE", "THEME", "PIANO ROLL", "USB KEYBOARD", "WIFI PAGE", "BUTTONS", "CONTROLS"};
+    const char* names[kRows] = {"TEMPO", "CHORD PACK", "TRACK NAME", "BOUNCE", "VOLUME", "BRIGHTNESS", "STICK LIGHT", "STICK SPEED", "TEXT SIZE", "THEME", "PIANO ROLL", "USB KEYBOARD", "CLICK", "COUNT IN", "WIFI PAGE", "BUTTONS", "CONTROLS"};
     const int rowH = kRowH, w = kRowW; // (twelve rows shown: 34 a row, as it was with eleven, would run into the hints bar)
     fonts.small.draw(r, 16.f, 34.f, "PROJECT", kDim);
     // A row out of sight above (the page has moved down) or below: an arrow after its section's name.
@@ -335,7 +338,10 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         float part = -1.f;
         const char* note = "";
         switch (row) {
-        case kTempo: std::snprintf(text, sizeof text, "%d BPM", static_cast<int>(project_.tempo)); break;
+        case kTempo:
+            std::snprintf(text, sizeof text, "%d BPM", static_cast<int>(project_.tempo));
+            note = "A: tap it in time";
+            break;
         case kPack: std::snprintf(text, sizeof text, "%s", session_.packs[session_.packIndex()].name.c_str()); break;
         case kTrackName: {
             char full[24];
@@ -401,6 +407,18 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             std::snprintf(text, sizeof text, "%s", session_.midiRecording() ? "PLAY + RECORD" : "PLAY ONLY");
             note = session_.midiKeyboards() > 0 ? "a keyboard is plugged in" : "none plugged in just now";
             break;
+        case kClick: {
+            static const char* const what[Session::kClickModes] = {"OFF", "ON", "RECORDING"};
+            static const char* const says[Session::kClickModes] = {"a click on the beat", "on every beat while playing",
+                                                                   "only with PLAY + RECORD"};
+            std::snprintf(text, sizeof text, "%s", what[session_.click()]);
+            note = says[session_.click()];
+            break;
+        }
+        case kCountIn:
+            std::snprintf(text, sizeof text, "%s", session_.countIn() ? "ONE BAR" : "OFF");
+            note = "clicks before PLAY + RECORD";
+            break;
         case kWifi:
             if (session_.transferOn()) std::snprintf(text, sizeof text, "ON   %s", session_.transferAddress().c_str());
             else std::snprintf(text, sizeof text, "OFF");
@@ -440,8 +458,9 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     hint("UP / DOWN", "choose");
-    if (row_ <= kMidi) hint("LEFT / RIGHT", "change");
+    if (row_ <= kCountIn) hint("LEFT / RIGHT", "change");
     if (row_ == kBounce) hint("A", session_.bouncing() ? "(working)" : "bounce");
+    if (row_ == kTempo) hint("A", "tap it");
     if (row_ == kTrackName) hint("A", "type a name");
     if (row_ == kWifi) hint("A", session_.transferOn() ? "turn off" : "turn on");
     if (row_ == kTest) hint("A", "open the test");

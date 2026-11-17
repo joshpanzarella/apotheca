@@ -21,6 +21,7 @@
 #include "designer.hpp"
 #include "lights.hpp"
 #include "project.hpp"
+#include "tap_tempo.hpp"
 
 namespace apotheca {
 
@@ -561,10 +562,25 @@ public:
     int midiKeyboards() const { return midi_.devices(); }
     bool midiRecording() const { return midiRecord_; }
     void setMidiRecording(bool on);
+    // The METRONOME and the COUNT IN (easywins batch 2), the handheld's own (settings.txt). CLICK: OFF,
+    // ON (a click on every beat while the song plays), or RECORDING (only while it plays with USB
+    // KEYBOARD at PLAY + RECORD). COUNT IN: OFF, or ONE BAR of clicks before START plays the song with
+    // PLAY + RECORD on. Never in a bounce (its engine is never told).
+    enum { kClickOff, kClickOn, kClickRecording, kClickModes };
+    int click() const { return click_; }
+    void setClick(int mode);
+    bool countIn() const { return countIn_; }
+    void setCountIn(bool on);
+    bool clickWanted() const { return click_ == kClickOn || (click_ == kClickRecording && midiRecord_ && project.playing); }
+    bool countsIn() const { return countIn_ && midiRecord_; } // START counts in a bar first
+    void syncClick(); // tell the engine what clickWanted() says now, if it has changed (update() does, every frame)
     // The last key played and not yet asked about, or -1. The piano roll's cursor goes to it.
     int takeMidiKey() { const int key = midiKey_; midiKey_ = -1; return key; }
     // The tempo, from anywhere. Held to what the engine can play.
     void setTempo(float bpm);
+    // TAP TEMPO (tap_tempo.hpp): A tapped on a TEMPO row, `ms` the frame's clock. The second tap of a
+    // run on sets the tempo; each from the second says what it did in the App's box (TAPPED: 120 BPM).
+    void tapTempo(Uint32 ms);
 
     // ---- revs -------------------------------------------------------------------------
     // A rev is the song as it was at one moment, kept beside it and never
@@ -674,6 +690,7 @@ private:
     unsigned barCopies_ = 0;
     char saidText_[64] = "";
     unsigned saidCount_ = 0;
+    TapTempo taps_;
     int sentSceneCount_ = 1;
     int sentSongEnd_ = -1;    // what the engine was last told of AT END (-1: nothing yet)
     unsigned playsSent_ = 0;  // Command::Play sent and taken into the queue (Engine::songEnded)
@@ -802,6 +819,9 @@ private:
     void hearMidi();
     MidiInput midi_;
     bool midiRecord_ = false;
+    int click_ = kClickOff;
+    bool countIn_ = false;
+    int sentClick_ = -1; // what the engine was last told (SetClick); -1: nothing yet
     int midiKey_ = -1;
     unsigned midiHeard_ = 0;
     // Notes being recorded: where each was written, until its key is let go.
