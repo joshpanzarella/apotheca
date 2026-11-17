@@ -30,6 +30,19 @@ to the top of this drive, rename the copy to dtb.img (replace the one
 there), put the card back and power on. This is the same choice ROCKNIX
 makes you take. Any of the three is tried the same way.
 
+FAINT VERTICAL LINES ON THE NEWER SCREEN: four things to try, one at a
+time, each already named dtb.img in its own folder under device_trees/try/.
+Copy that dtb.img to the top of this drive (replace), power on, look at a
+dark picture, and note which, if any, takes the lines away:
+
+  1-pins-40ma         the screen's 28 data lines driven harder (as stock)
+  2-backlight-50khz   the backlight's flicker at 50 kHz (as stock; 25 now)
+  3-dither            18-bit colour with dithering (as stock)
+  4-all-as-stock      all three, and the stock clock edge and timings
+
+To go back: copy device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb
+over dtb.img (renaming the copy dtb.img).
+
 A screen change sent to you as a file (a new dtb.img) is put in the same
 way: copy it to the top of this drive over dtb.img. The screen's start-up
 settings can be inside it, so no new card is needed.

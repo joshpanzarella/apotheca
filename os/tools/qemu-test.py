@@ -286,7 +286,7 @@ def panel_boot(work, image, kernel):
         f.write(dts)
     plain = os.path.join(work, "panels.dtb")
     subprocess.run([dtc, "-q", "-I", "dts", "-O", "dtb", "-o", plain, os.path.join(work, "panels.dts")], check=True)
-    stock = os.path.join(PANELS, "anbernic,rg40xx-v2-stock-panel.panel")
+    stock = os.path.join(PANELS, "..", "panels-to-try", "v2-stock-dither.panel")
     v2 = os.path.join(PANELS, "anbernic,rg40xx-v2-panel.panel")
     both = os.path.join(work, "panels-b.dtb")
     tool = os.path.join(os.path.dirname(os.path.abspath(__file__)), "panel-dtb.sh")
@@ -309,7 +309,9 @@ def panel_boot(work, image, kernel):
           "a panel with nothing in its node takes the panel file built into the kernel")
     check("firmware: the device tree's apotheca,panel-firmware: loaded successfully (%d bytes, crc32 %s)"
           % (os.path.getsize(stock), crc(stock)) in lines,
-          "a panel with apotheca,panel-firmware takes that instead (the stock-timings file, its CRC-32)")
+          "a panel with apotheca,panel-firmware takes that instead (try 4's panel file, its CRC-32)")
+    check(lines.count("bus format 0x1009") == 1,
+          "that file's 18-bit pixel format makes its bus RGB666_1X18 (the TCON dithers), and only its")
     check('Modeline "640x480": 60 27000 640 704 708 750 480 580 584 600' in lines,
           "the first panel's mode is the built-in v2 file's (27 MHz, 750 x 600)")
     check('Modeline "640x480": 60 24000 640 722 742 768 480 506 510 521' in lines,
@@ -742,7 +744,7 @@ def main():
         # boot's device tree (qemu's own, with a simulated GPIO chip, two
         # bit-banged SPI buses and a panel on each): one takes the panel file
         # built into the kernel, the other the one os/tools/panel-dtb.sh put
-        # in the device tree (patch 0170).
+        # in the device tree (patch 0170): try 4's, 18-bit, stock timings.
         panel_boot(work, image, kernel)
     except TimeoutError as e:
         check(False, "timed out: %s" % e)

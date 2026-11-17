@@ -12,9 +12,15 @@ probes before any file system is mounted. The log line that says where
 the panel came from now also gives the data's size and CRC-32, so a boot
 log tells which panel file ran.
 
+The panel file's pixel format (its dsi_format, RGB888 in every file so
+far) now also names an SPI panel's RGB bus format when it is not RGB888:
+RGB666_PACKED makes it an 18-bit bus, for which sun4i's TCON dithers, as
+Allwinner's own system does for the RG40XX (lcd_frm 1). RGB888 leaves it
+unset, as before.
+
 ---
 diff --git a/drivers/gpu/drm/panel/panel-mipi.c b/drivers/gpu/drm/panel/panel-mipi.c
-index 98603c7..2b86361 100644
+index 98603c7..e6f1048 100644
 --- a/drivers/gpu/drm/panel/panel-mipi.c
 +++ b/drivers/gpu/drm/panel/panel-mipi.c
 @@ -21,6 +21,7 @@
@@ -112,3 +118,30 @@ index 98603c7..2b86361 100644
  
  	return firmware;
  
+@@ -1094,6 +1115,26 @@ static int panel_mipi_spi_probe(struct spi_device *spi)
+ 	mipi->write_command = panel_mipi_dbi_write;
+ 	mipi->read_command = panel_mipi_dbi_read;
+ 
++	/*
++	 * The panel file's pixel format names the RGB bus's format too, as it
++	 * does a DSI panel's: RGB666_PACKED is an 18-bit panel, for which the
++	 * display controller dithers (Allwinner's lcd_frm). RGB888, the value
++	 * every panel file so far holds, leaves it unset, as before.
++	 */
++	switch (be16_to_cpu(mipi->firmware->config->dsi_format)) {
++	case MIPI_DSI_FMT_RGB666:
++		mipi->bus_format = MEDIA_BUS_FMT_RGB666_1X24_CPADHI;
++		break;
++	case MIPI_DSI_FMT_RGB666_PACKED:
++		mipi->bus_format = MEDIA_BUS_FMT_RGB666_1X18;
++		break;
++	case MIPI_DSI_FMT_RGB565:
++		mipi->bus_format = MEDIA_BUS_FMT_RGB565_1X16;
++		break;
++	}
++	if (mipi->bus_format)
++		dev_info(&spi->dev, "bus format %#x\n", mipi->bus_format);
++
+ 	dc = devm_gpiod_get_optional(&spi->dev, "dc", GPIOD_OUT_LOW);
+ 	if (IS_ERR(dc))
+ 		return dev_err_probe(&spi->dev, PTR_ERR(dc),

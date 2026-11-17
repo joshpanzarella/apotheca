@@ -109,7 +109,9 @@ if shutil.which('mdir') and shutil.which('mtype'):
     for f in ['Image', 'dtb.img', 'extlinux/extlinux.conf', 'README.txt', 'dtb-in-use.txt',
               'device_trees/sun50i-h700-anbernic-rg40xx-v.dtb',
               'device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb',
-              'device_trees/sun50i-h700-anbernic-rg40xx-v-v2-stock-panel.dtb']:
+              'device_trees/sun50i-h700-anbernic-rg40xx-v-v2-stock-panel.dtb',
+              'device_trees/try/1-pins-40ma/dtb.img', 'device_trees/try/2-backlight-50khz/dtb.img',
+              'device_trees/try/3-dither/dtb.img', 'device_trees/try/4-all-as-stock/dtb.img']:
         r = mt('mdir', '-b', '-i', spec, '::' + f)
         check(r.returncode == 0, "p1 holds %s" % f)
     conf = mt('mtype', '-i', spec, '::extlinux/extlinux.conf').stdout
@@ -121,6 +123,21 @@ if shutil.which('mdir') and shutil.which('mtype'):
     named = subprocess.run(['mtype', '-i', spec, '::device_trees/' + inuse], capture_output=True, env=env)
     check(inuse.endswith('.dtb') and named.returncode == 0 and named.stdout == r.stdout,
           "dtb.img is device_trees/%s, as dtb-in-use.txt says" % inuse)
+    tries = {}
+    for t in ['1-pins-40ma', '2-backlight-50khz', '3-dither', '4-all-as-stock']:
+        tries[t] = subprocess.run(['mtype', '-i', spec, '::device_trees/try/%s/dtb.img' % t],
+                                  capture_output=True, env=env).stdout
+    v2 = subprocess.run(['mtype', '-i', spec, '::device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb'],
+                        capture_output=True, env=env).stdout
+    panel_dir = os.path.join(sys.argv[3], 'os', 'board', 'rg40xxv', 'firmware', 'panels-to-try')
+    dither = open(os.path.join(panel_dir, 'v2-dither.panel'), 'rb').read()
+    stock_dither = open(os.path.join(panel_dir, 'v2-stock-dither.panel'), 'rb').read()
+    check(all(d[:4] == b'\xd0\x0d\xfe\xed' and d != v2 for d in tries.values()),
+          "the four trees to try are device trees, each changed from the v2 tree")
+    check(b'drive-strength' in tries['1-pins-40ma'] and b'drive-strength' not in v2,
+          "try 1 sets the RGB pins' drive strength")
+    check(dither in tries['3-dither'] and stock_dither in tries['4-all-as-stock'],
+          "tries 3 and 4 carry their panel files, byte for byte")
     r = subprocess.run(['mtype', '-i', spec, '::Image'], capture_output=True, env=env)
     check(r.stdout[56:60] == b'ARM\x64', "Image is an arm64 kernel")
     check(b'apotheca,panel-firmware' in r.stdout,
