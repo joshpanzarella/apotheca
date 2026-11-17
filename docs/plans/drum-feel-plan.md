@@ -206,3 +206,40 @@ HUMAN LEVEL. Built the way FEEL was, in batches: the plan (this), the engine, th
 6. **A ratchet is squeezed into its swung step; the step before is not stretched.** Recommended.
 7. **The swing restarts every bar** (steps by number), so a scene cut to an odd length starts
    its next bar on an on step. Recommended: it is what a step sequencer does.
+
+### SWING as built (2026-11-17, batches 1 to 3)
+
+| Part | Where |
+| --- | --- |
+| The rule | `feel_rule.hpp`: `kSwingMostOfStep`, `swingOffStep`, `swingSamples`, `laneSwingOf` |
+| The engine | `Track::swing`, `Command::SetLaneSwing`; `schedule` (FEEL's whole-sample path, the run's head), `playHit`'s `late` (the squeeze), `askAheadHits` (`floor(elapsed)` on a swung lane) |
+| The app | `TrackData::laneSwing`, `Session::setLaneSwing`, `swing LANE AMOUNT`, `soundMark` / `restoreSounds`, `sendSong`, the designer page's `kKitSwing` |
+| The gesture | `PatternScreen::swingTurn` (L1 / R1 with X held on a name), `feelToAll` copies it, `drawSwingMark`, `kFeelSwingX` and the `kSwingMark...` places in `pattern_layout.hpp` |
+| Tests | `tests/swing_test.cpp` (12 tests, `--print` the busy drum song's sums), `feelapp_test` `testSwing` and `testSwingKept`, two swung lanes in `nextscene_test`'s `fill`, `design_test`, `textsize` |
+| Stills | `feel-swing`, `feel-swing-held`; `feel`, `feel-held`, `feel-same-held` and `slices-name-feel` swing too |
+
+**Where the hits land** (120 BPM, 48 kHz, a step 6000 samples): at 10, 25, 50, 75 and 100% the off
+sixteenth comes 200, 500, 1000, 1500 and 2000 samples late (4.2 to 41.7 ms), every time round the same.
+At 133 BPM (a step 5413.5 samples) the swing is made whole by rounding up, from the step's first sample.
+
+**Old songs**: `effects_test --print` is the same before and after, and a busy drum song (FEEL,
+nudges, ratchets, chance, throws, a DUCK, three tempo changes, round and once: `swing_test --print`)
+gives the same two sums on `main`'s engine and this one.
+
+**Cost**: nothing that shows. `bench`, every lane of twelve busy kits at SWING 100% (half the hits
+waiting): -0.01% of a core over the plain song; with HUMAN TIME and LEVEL at 100% too, 0.15% (FEEL's
+alone was 0.13 to 0.14% in the same run). Not run on the handheld.
+
+**Mutation testing** (batch 3): 33 mutants of the new code, engine and app. 28 were killed at once; 3
+survived and were mended with a test (a lane number below 0 written into the lane before it, the
+designer page's state not told the swing, a synth track given a swing); 2 are kept:
+- `Session::setLaneSwing`'s return on the same value: without it a click at an end sends a command
+  that changes nothing. Kept as a belt for the queue.
+- `swingTurn`'s "on a lane's name" check: it is only reached with X held on a name, which already
+  says so. Kept as `feelTurn` keeps its own.
+
+### For the owner's ears (SWING)
+
+- Are FEEL's six clicks the right steps for swing, or is something finer wanted between 25 and 75?
+- Does a sliced break on a swung lane want to stay straight (as built), or swing slice by slice?
+- With the copy (X + A) a kit swings as one. Should the hats alone be the usual thing to swing?

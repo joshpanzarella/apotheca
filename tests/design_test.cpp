@@ -896,7 +896,9 @@ void testKitFromThePage() {
     CHECK(rig.tell("set 24 16") && kit.laneFit[1] == 16 && rig.tell("set 25 2") && kit.laneChoke[1] == 2 && rig.tell("set 25 7") && kit.laneChoke[1] == kChokeNone);
     CHECK(rig.tell("set 26 37") && kit.laneLevel[1] == 0.37f && rig.tell("set 27 25") && kit.laneFeel[1].time == 25 && rig.tell("set 28 50") && kit.laneFeel[1].level == 50 && kit.laneFeel[1].time == 25);
     CHECK(rig.tell("set 27 0") && kit.laneFeel[1].time == 0 && kit.laneFeel[1].level == 50);
-    CHECK(rig.tell("set 29 75") && kit.laneSwing[1] == 75 && rig.tell("set 29 400") && kit.laneSwing[1] == 100 && rig.tell("set 29 0") && kit.laneSwing[1] == 0); // SWING (held to 0..100)
+    CHECK(rig.tell("set 29 75") && kit.laneSwing[1] == 75 && rig.tell("set 29 400") && kit.laneSwing[1] == 100); // SWING (held to 0..100)
+    CHECK(rig.tell("set 29 25") && numbersOf(rig.get("/design/state").body)[kitId(1, kKitSwing)] == 25); // ...and the page is told it
+    CHECK(rig.tell("set 29 0") && kit.laneSwing[1] == 0 && numbersOf(rig.get("/design/state").body)[kitId(1, kKitSwing)] == 0);
     CHECK(rig.tell("set 26 400") && kit.laneLevel[1] == 1.f && rig.tell("set 26 -4") && kit.laneLevel[1] == 0.f);
     v = numbersOf(rig.get("/design/state").body);
     CHECK(v.size() == static_cast<std::size_t>(kKitKnobs + kDrumLanes * drumsynth::kPlaces) && v[24] == 16 && v[25] == 0 && v[26] == 0 && v[27] == 0 && v[28] == 50 && v[kitId(2, kKitFit)] == 0);

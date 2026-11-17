@@ -647,6 +647,8 @@ static void testGoneAndLimits() {
     for (Rig* r : {&wide, &full, &below, &rest}) {
         r->clicks(0);
         for (int s = 0; s < kSteps; ++s) r->hit(1, s, 0.6f);
+        for (int s = 0; s < kSteps; ++s) r->hit(7, s, 0.4f); // (a lane 8 to hear a lane -1 written into the memory before it)
+        r->hit(0, 5, 0.5f);                                   // (and a lane 1, for a lane 8 written past it)
     }
     wide.swing(1, 300);
     wide.swing(8, 100);

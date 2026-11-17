@@ -1084,6 +1084,18 @@ void testSwingKept() {
         CHECK(parseSong(two, *none));
         for (int lane = 0; lane < kDrumLanes; ++lane) CHECK(none->tracks[1].laneSwing[lane] == 0 && none->tracks[0].laneSwing[lane] == 0);
     }
+    // Only a drum track has a SWING.
+    CHECK(session.addTrack(TrackKind::Phazed));
+    rig.frames(2);
+    session.setLaneSwing(1, 0, 50);
+    session.setLaneSwing(-1, 0, 50);
+    session.setLaneSwing(0, kDrumLanes, 50);
+    session.setLaneSwing(0, -1, 50);
+    for (int lane = 0; lane < kDrumLanes; ++lane) CHECK(rig.project().tracks[1].laneSwing[lane] == 0 && rig.kit().laneSwing[lane] == 0);
+    CHECK(songText(rig.project()).find("swing") == std::string::npos);
+    rig.app.session().view = View::Pattern;
+    rig.project().track = 0;
+    rig.frames(2);
     // Undo: the clicks of one hold are one step; undo and redo reach the engine.
     rig.settle();
     drums.moveCursorTo(kClickLane, -1);
