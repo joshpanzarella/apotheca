@@ -460,7 +460,7 @@ def main():
         check(not held and seen, "the screen on: the joypad is free, a press reaches a reader")
         m.run("echo 'tap POWER' > /tmp/pad; sleep 1")
         held, seen = grabbed()
-        out, _ = m.run("grep -c 'the screen off' /data/apotheca/logs/power.log")
+        out, _ = m.run("grep -c 'the screen off, the buttons held' /data/apotheca/logs/power.log")
         check(out == "1" and held and not seen,
               "a short press of the power key: the screen off, the joypad held (evtest is told so and sees no press)")
         m.run("echo 'tap POWER' > /tmp/pad; sleep 1")
@@ -524,6 +524,7 @@ def main():
         m.run("P=/sys/module/test_power/parameters; echo 4 > $P/battery_capacity; echo discharging > $P/battery_status")
         m.run("sleep 50", timeout=90)
         out, _ = m.run("cat /data/apotheca/logs/power.log")
+        out = out[out.rfind("started:"):]  # this boot's lines (the log goes on from boot to boot)
         check("battery 4%" in out and "on a charger" in out and "turning off" not in out,
               "4% with the charger plugged in (test_ac online): nothing happens")
         m.send("P=/sys/module/test_power/parameters; echo off > $P/ac_online; echo off > $P/usb_online")
