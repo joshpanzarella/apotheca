@@ -18,7 +18,8 @@
 #            the RG40XX V under its DDR4 image).
 #   --tidy   after the build, delete the biggest build folders (the kernel,
 #            U-Boot, Mesa and the host LLVM and clang that build Mesa's
-#            shaders). The kernel and U-Boot are made again next time; the
+#            shaders), and the joypad module built against the kernel. The
+#            kernel, U-Boot and the module are made again next time; the
 #            others keep their "done" marks and are not.
 #   -- ARGS  passed to Buildroot's make (e.g. -- linux-menuconfig).
 #
@@ -102,6 +103,10 @@ cp "$out/images/apotheca-rg40xxv.img.gz" "$work/apotheca-rg40xxv.img.gz"
 
 if [ "$tidy" = yes ]; then
     rm -rf "$out"/build/linux-[0-9]* "$out"/build/uboot-[0-9]*
+    # A kernel module built outside the kernel must be made again with it:
+    # an old one is refused by the new kernel (its symbol versions), and
+    # Buildroot does not rebuild a package because one it needs was rebuilt.
+    rm -rf "$out"/build/rocknix-joypad-*
     # These are kept as done (their stamps stay), so the next build does not
     # make LLVM and clang again; only their work files go.
     for d in "$out"/build/host-llvm-[0-9]* "$out"/build/host-clang-[0-9]* \
