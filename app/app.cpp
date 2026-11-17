@@ -250,6 +250,22 @@ void App::takeSessionSaid() {
 void App::changeVolume(float by) {
     session_.setVolume(session_.volume() + by);
     volumeShownUntil_ = now_ + 1500;
+    boxIsBrightness_ = false;
+}
+
+void App::changeBrightness(int by) {
+    session_.setBrightness(session_.brightness() + by);
+    volumeShownUntil_ = now_ + 1500;
+    boxIsBrightness_ = true;
+}
+
+void App::volumeKey(bool up, const Input& input) {
+    if (session_.screenHere() && input.held(Button::Menu)) {
+        changeBrightness(up ? kBrightKeyStep : -kBrightKeyStep);
+        menuUsed_ = true; // the card goes from this pass's update: the screen itself is what is judged
+        return;
+    }
+    changeVolume(up ? 0.1f : -0.1f);
 }
 
 void App::update(const Input& input, Uint32 nowMs) {
@@ -268,7 +284,8 @@ void App::update(const Input& input, Uint32 nowMs) {
     ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP";
     ui::gUpdateReady = session_.updateReady();
     if (menu) {
-        help_ = input.held(Button::Menu) && !busy;
+        if (!input.held(Button::Menu)) menuUsed_ = false;
+        help_ = input.held(Button::Menu) && !busy && !menuUsed_;
     } else if (!input.held(Button::Select)) {
         selectHeldSince_ = 0;
         help_ = false;
@@ -377,10 +394,12 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         const int w = 260, h = 46, x = (kScreenW - w) / 2, y = kScreenH - kHintsH - h - 12;
         box(renderer, x, y, w, h, kPanel, kLine);
         char text[32];
-        std::snprintf(text, sizeof text, "VOLUME  %d%%", static_cast<int>(session_.volume() * 100.f + 0.5f));
+        const float part = boxIsBrightness_ ? static_cast<float>(session_.brightness()) / 100.f : session_.volume();
+        if (boxIsBrightness_) std::snprintf(text, sizeof text, "BRIGHTNESS  %d%%", session_.brightness());
+        else std::snprintf(text, sizeof text, "VOLUME  %d%%", static_cast<int>(session_.volume() * 100.f + 0.5f));
         fonts.small.draw(renderer, x + 12.f, y + 9.f, text, kText);
         fill(renderer, x + 12, y + 28, w - 24, 8, kLine);
-        fill(renderer, x + 12, y + 28, static_cast<int>((w - 24) * session_.volume()), 8, kTeal);
+        fill(renderer, x + 12, y + 28, static_cast<int>((w - 24) * part), 8, kTeal);
     }
     if (undoSaid()[0]) {
         using namespace ui;

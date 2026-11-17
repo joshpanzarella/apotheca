@@ -405,6 +405,8 @@ and the day it was built. The number goes up by one with every build.
 | CHORD PACK | Another pack | |
 | TRACK NAME | A name for the track being worked on, from a list | **Type one**: a grid of letters and numbers. A types, **Y deletes a letter, B keeps the name and leaves** (with nothing typed B leaves and the name stays as it was), START keeps it too (with nothing typed: the instrument's own name). Ten characters. |
 | VOLUME | A twentieth | |
+| BRIGHTNESS | The screen, 10% to 100% in fives (also **MENU + the volume keys**, ten at a time). **Only on Apotheca's own system for the RG40XXV** | |
+| STICK LIGHT | The light round the stick: OFF, ON (steady, in the theme's colour), BEAT (a flash on every beat while the song plays), STEPS (the step playing goes round the ring). **Only on Apotheca's own system** | |
 | STICK SPEED | 25% to 150%, kept for next time | |
 | TEXT SIZE | SMALL, MEDIUM, LARGE or XL, kept for next time | |
 | THEME | The colours: BROWN, BLUE, GREEN, BLACK, PAPER or GREY, kept for next time | |
@@ -420,6 +422,14 @@ kept in `settings.txt` and `volume.txt` beside the program.
 The page shows twelve rows. Going down past BUTTONS moves it up a row to show
 CONTROLS; a small arrow after HANDHELD (or PROJECT) says a row is out of sight
 that way.
+
+**BRIGHTNESS and STICK LIGHT** show only on Apotheca's own system for the
+RG40XXV (`os/README.md`), where nothing else looks after the screen's light and
+the ring round the stick. On the stock firmware the firmware keeps them and the
+two rows are not there. The ring dims with BRIGHTNESS. A tap of the power key
+turns the screen off and the ring with it. Hold **MENU** and press a **volume
+key** to change the brightness from any screen (the help card goes while you
+do, so you see the screen itself).
 
 **THEME** changes the colours, and nothing else: every box, word and mark
 stays where it was. It changes at once. Four are dark and two are light:

@@ -4,6 +4,10 @@
 //
 //   up / down (stick or D-pad)   choose a row
 //   left / right                 change it (a choice, such as TEXT SIZE or THEME, clicks once a push)
+//
+// BRIGHTNESS and STICK LIGHT are shown only where the system gives the program the screen's
+// backlight and the light round the stick (our own firmware: lights.hpp). Elsewhere the page is
+// as it was, and the cursor passes them by.
 //   A                            on WIFI PAGE: on / off
 //                                on TRACK NAME: type a name (below)
 //                                on BOUNCE: write the song (or its tracks) out as WAV files
@@ -36,7 +40,7 @@ namespace apotheca {
 
 class SettingsScreen : public Screen {
 public:
-    enum Row { kTempo, kPack, kTrackName, kBounce, kVolume, kStick, kTextSize, kTheme, kOctaves, kMidi, kWifi, kTest, kControls, kRows };
+    enum Row { kTempo, kPack, kTrackName, kBounce, kVolume, kBrightness, kLight, kStick, kTextSize, kTheme, kOctaves, kMidi, kWifi, kTest, kControls, kRows };
 
     explicit SettingsScreen(Session& session) : session_(session), project_(session.project) {}
 
@@ -47,15 +51,22 @@ public:
 
     // Where the rows are drawn, for the tests: a row's box starts at rowY and is kRowH - 6 tall;
     // its name starts at kNameX, its value at kValueX, and what is said about it ends at kNoteRight.
-    // Twelve rows fit between the bars (thirteen since THEME): the page shows twelve and moves
-    // one row at a time when the cursor goes past either end (`first`: the row shown at the top).
+    // Twelve rows fit between the bars (thirteen since THEME, fifteen with BRIGHTNESS and STICK
+    // LIGHT): the page shows twelve and moves one row at a time when the cursor goes past either end.
+    // A row's PLACE is its place among the rows here (a row not here has none: `here`); `rowY` takes
+    // places (`first`: the place shown at the top). The rows that can be missing come after VOLUME,
+    // so VOLUME's place is its number and the HANDHELD gap starts there either way.
     // A small arrow beside PROJECT or HANDHELD says a row is out of sight that way.
     static constexpr int kRowH = 32, kRowsTop = 50, kHandheldGap = 22, kRowX = 16, kRowW = 640 - 32;
     static constexpr int kRowsShown = 12;
     static constexpr float kNameX = 26.f, kValueX = 170.f, kNoteRight = kRowX + kRowW - 10.f;
     static constexpr float kNoteGap = 8.f; // the least there is between a value and what is said about it
     static constexpr int rowY(int row, int first = 0) { return kRowsTop + (row - first) * kRowH + (row >= kVolume ? kHandheldGap : 0); }
-    int rowNowY(int row) const { return rowY(row, first_); } // where it is drawn just now
+    int rowNowY(int row) const { return rowY(placeOf(row), first_); } // where it is drawn just now
+    bool here(int row) const;      // shown on this handheld at all
+    int placeOf(int row) const;    // among the rows here
+    int rowAt(int place) const;    // the row at a place
+    int places() const { return placeOf(kRows); } // how many rows are here
     // A row's bar (VOLUME, STICK, a BOUNCE under way): from kBarX, kBarW long, unless the value drawn
     // `valueW` wide would reach it: then kBarGap after the value, and never closer than kNoteGap to what
     // is said (`noteW` wide, at the right; 0: nothing said).
@@ -66,14 +77,12 @@ public:
         const int room = static_cast<int>(std::floor(limit)) - *x;
         *w = room < kBarW ? (room > 0 ? room : 0) : kBarW;
     }
-    int firstShown() const { return first_; }
-    bool shown(int row) const { return row >= first_ && row < first_ + kRowsShown; }
+    int firstShown() const { return first_; } // the place at the top
+    bool shown(int row) const { return here(row) && placeOf(row) >= first_ && placeOf(row) < first_ + kRowsShown; }
 
-    void goTo(int row) {
-        row_ = row < 0 ? 0 : (row >= kRows ? kRows - 1 : row);
-        if (row_ < first_) first_ = row_;
-        if (row_ >= first_ + kRowsShown) first_ = row_ - kRowsShown + 1;
-    }
+    // To a row; one that is not here gives the next that is (or the one before, at the end).
+    void goTo(int row);
+    void step(int by) { goTo(rowAt(placeOf(row_) + by)); } // up or down a place; the list has ends
     int cursorRow() const { return row_; }
     bool testing() const { return testing_; }
     bool typing() const { return typing_; }

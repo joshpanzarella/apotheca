@@ -1477,8 +1477,21 @@ effect in those two groups and fails one that does not.
     translucent thing that moves with the clock is added the same way. A still in a theme:
     `--theme paper`.
 - **The SET page shows twelve rows and moves one row at a time**
-  (`SettingsScreen::firstShown`, `rowNowY`): thirteen since THEME. A new row
-  costs nothing more than its place in `Row`.
+  (`SettingsScreen::firstShown`, `rowNowY`): thirteen since THEME, fifteen on our
+  own firmware. A new row costs nothing more than its place in `Row`. **The page
+  counts PLACES, not rows** (`here`, `placeOf`, `rowAt`; `firstShown` is a place):
+  a row that is not on this handheld is passed by. Only rows after VOLUME may be
+  missing, so the HANDHELD gap stays at VOLUME.
+- **BRIGHTNESS and STICK LIGHT are the program's only where the system says so**
+  (2026-11-17, `app/lights.hpp`, `docs/plans/lights-plan.md`, `tests/lights_test.cpp`):
+  `APOTHECA_OWNS_SCREEN=1` and `APOTHECA_STICK_LIGHT=/dev/ttyS2`, set by our
+  firmware's `run`, never by the port. Elsewhere nothing is written and the two
+  rows are not shown. **`bl_power` is apotheca-power's, never written here** (the
+  kernel keeps a screen at bl_power 4 dark whatever `brightness` says). The ring is
+  a GPIO switch (`rgb:kbd_backlight`, on/off) plus a controller on UART5 that takes
+  ROCKNIX's 51-byte frame; every file is written only when what it should say
+  changes, on the app thread (`Session::update`). MENU + a volume key is the
+  brightness (`App::volumeKey`). **Nobody has seen the ring light.**
   A row's bar starts after its value's words and ends short of what is said
   at the right, at every text size (`SettingsScreen::barPlace`: BOUNCE's
   WORKING 37% / TAIL 12 S; VOLUME's and STICK's stay at 250, 110 wide).

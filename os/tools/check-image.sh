@@ -158,6 +158,9 @@ if unsquashfs:
         check('::shutdown:/etc/init.d/rcK' in inittab, "inittab runs rcK going down (S95apotheca stops Apotheca)")
         check(b'export APOTHECA_OFF_MARK=/run/apotheca/apotheca.off' in cat('/usr/libexec/apotheca/run'),
               "run hands Apotheca the off mark's place")
+        check(b'export APOTHECA_OWNS_SCREEN=1' in cat('/usr/libexec/apotheca/run') and b'export APOTHECA_STICK_LIGHT=' in cat('/usr/libexec/apotheca/run'),
+              "run gives Apotheca the backlight and the stick's light (app/lights.hpp)")
+        check(b'APOTHECA_STICK_LIGHT' in cat('/usr/lib/apotheca/apotheca'), "the Apotheca on the card knows the stick's light")
         check(b'KEEP_OFF:-poweroff' in cat('/usr/sbin/apotheca-keep'), "apotheca-keep turns the handheld off on the mark")
         check(b'APOTHECA_OFF_MARK' in cat('/usr/lib/apotheca/apotheca'), "the Apotheca on the card knows the off mark")
         check(any(l.endswith('/test_power.ko') for l in listing.splitlines()),

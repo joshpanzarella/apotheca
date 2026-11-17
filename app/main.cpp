@@ -31,7 +31,8 @@
 //                  help (the card, with how hard the program works: 43, 88 and 37%), help-load (its longest line),
 //                  copy-bar, copy-bar-notes, copy-bar-refused (L1 held on the drum grid / the roll after a
 //                  copy: the bar's hints and BAR 1 COPIED; a drum bar pasted on a synth track: refused)
-//                  volume (the SET page, on VOLUME), update-ready, update-ready-drums,
+//                  volume (the SET page, on VOLUME), setup-lights, setup-light (on our own firmware: BRIGHTNESS,
+//                  STICK LIGHT on STEPS), brightness (MENU + a volume key's box, on the drum grid), update-ready, update-ready-drums,
 //                  update-accepted (an update accepted: the bar, and the notice), nomenu and help-nomenu
 //                  (a handheld with no MENU button: its hint, and its help card)
 //                  picker, picker-in, picker-deep, picker-deleting, picker-new, picker-typing, picker-carrying, picker-folder-deleting, sampler-picker (with --samples: the list
@@ -483,6 +484,13 @@ int main(int argc, char** argv) {
         // Not full blast on the handheld's little speaker: two fifths, until it is changed.
         app.session().loadVolume(handheld ? 0.4f : 1.f);
         app.session().loadSettings();
+        // The screen's brightness and the light round the stick: only where the system says they are the
+        // program's (our own firmware; lights.hpp). Not for a still or a check.
+        if (!smoke && !shot) {
+            app.session().useLights(Lights::fromEnvironment());
+            if (app.session().screenHere() || app.session().ringHere())
+                std::printf("lights: screen %s, stick light %s\n", app.session().screenHere() ? "ours" : "not ours", app.session().ringHere() ? "ours" : "not ours");
+        }
         // (With --shot nothing is kept: a still has no program folder. Without it the program runs
         // at that size and it is the setting from then on, written to settings.txt as if set on the SET page.)
         if (textSize >= 0) app.session().setTextSize(textSize);
@@ -1485,6 +1493,15 @@ int main(int argc, char** argv) {
     } else if (std::strcmp(view, "volume") == 0) {
         app.session().view = View::Settings;
         app.settings().goTo(SettingsScreen::kVolume);
+    } else if (std::strcmp(view, "setup-lights") == 0 || std::strcmp(view, "setup-light") == 0 || std::strcmp(view, "brightness") == 0) {
+        // On our own firmware: the SET page's BRIGHTNESS ("setup-lights") and STICK LIGHT on STEPS
+        // ("setup-light"), and the box MENU + a volume key shows, over the drum grid ("brightness": over
+        // the SET page its bar would lie on a row's words). The files pretended.
+        app.session().useLights(Lights::pretend());
+        app.session().view = std::strcmp(view, "brightness") == 0 ? View::Pattern : View::Settings;
+        if (std::strcmp(view, "setup-light") == 0) app.session().setStickLight(kRingSteps);
+        app.settings().goTo(std::strcmp(view, "setup-light") == 0 ? SettingsScreen::kLight : SettingsScreen::kBrightness);
+        if (std::strcmp(view, "brightness") == 0) app.changeBrightness(-kBrightKeyStep);
     } else if (std::strcmp(view, "nomenu") == 0 || std::strcmp(view, "help-nomenu") == 0) {
         // A handheld whose firmware keeps MENU: the hint bar says how the card is opened there.
         input.useMap(&controlMap); // nothing learned: the keyboard stand-ins, and no MENU
@@ -1579,7 +1596,7 @@ int main(int argc, char** argv) {
             if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE) running = false;
             // The handheld's volume buttons, if the firmware passes them on as the usual keys.
             if (event.type == SDL_KEYDOWN && (event.key.keysym.sym == SDLK_VOLUMEUP || event.key.keysym.sym == SDLK_VOLUMEDOWN)) {
-                app.changeVolume(event.key.keysym.sym == SDLK_VOLUMEUP ? 0.1f : -0.1f);
+                app.volumeKey(event.key.keysym.sym == SDLK_VOLUMEUP, input); // (with MENU held, where the screen is ours: BRIGHTNESS)
                 continue;
             }
             if (learning) {

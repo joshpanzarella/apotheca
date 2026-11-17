@@ -89,6 +89,12 @@ public:
     SettingsScreen& settings() { return settings_; }
     // Quieter or louder, and show the volume for a moment.
     void changeVolume(float by);
+    // A volume key (the handheld's own, which SDL hands over as a keyboard's): the volume, or, with MENU
+    // held where the screen is the program's (lights.hpp), the BRIGHTNESS, kBrightKeyStep a press, shown
+    // for a moment in the volume's box. MENU used so is no help card until it is let go.
+    void volumeKey(bool up, const Input& input);
+    void changeBrightness(int by);
+    bool brightnessShowing() const { return now_ < volumeShownUntil_ && boxIsBrightness_; }
     bool volumeShowing() const { return now_ < volumeShownUntil_; }
     // MENU held: a card of what the buttons do everywhere. It goes when MENU is let go.
     // (With no MENU button on the device: SELECT, held for a moment.)
@@ -116,6 +122,8 @@ private:
     PatternScreen drums_;
     bool panicking_ = false; // all four shoulder buttons are down
     Uint32 volumeShownUntil_ = 0;
+    bool boxIsBrightness_ = false; // the volume's box says the BRIGHTNESS
+    bool menuUsed_ = false;        // MENU held for a volume key: no help card until it is let go
     bool updateHeld_ = false;   // A is down on the update notice
     Uint32 updateSince_ = 0, updateSaidUntil_ = 0;
     int updateSaid_ = 0;        // 1: accepted, 2: could not; shown for a few seconds

@@ -659,7 +659,7 @@ void testTheSettingIsKept() {
         for (int size : {kTextXl, kTextSmall, kTextMedium, kTextLarge, kTextXl}) {
             session.setTextSize(size);
             CHECK(session.textSize() == size);
-            CHECK(readTextFile(file, kept) && kept == "stick " + std::to_string(static_cast<int>(std::round(ui::gStickSpeed * 100.f))) + "\noctaves 2\nmidirec 0\ntext " + std::to_string(size) + "\ntheme 0\n");
+            CHECK(readTextFile(file, kept) && kept == "stick " + std::to_string(static_cast<int>(std::round(ui::gStickSpeed * 100.f))) + "\noctaves 2\nmidirec 0\ntext " + std::to_string(size) + "\ntheme 0\nbrightness 70\nlight 1\n");
         }
         // It has ends.
         session.setTextSize(99);
@@ -723,7 +723,7 @@ void testTheRow() {
     session.view = View::Settings;
     S& setup = rig.app.settings();
     // Among the handheld's rows, after STICK SPEED; thirteen rows now, THEME after it (tests/theme_test.cpp).
-    CHECK(S::kRows == 13 && S::kTextSize == S::kStick + 1 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kTextSize > S::kVolume);
+    CHECK(S::kRows == 15 && S::kTextSize == S::kStick + 1 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kTextSize > S::kVolume);
     setup.goTo(S::kStick);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kTextSize && session.textSize() == kTextLarge);
@@ -782,7 +782,7 @@ void testTheRow() {
         const Fonts& fonts = *s.at[size];
         const Drawn drawn = rig.draw(&fonts);
         bool name = false, value = false, hintChange = false;
-        const float boxTop = static_cast<float>(S::rowY(S::kTextSize)), boxBottom = boxTop + S::kRowH - 6;
+        const float boxTop = static_cast<float>(setup.rowNowY(S::kTextSize)), boxBottom = boxTop + S::kRowH - 6;
         for (const textfit::Text& t : drawn.frame.texts) {
             if (t.words == "TEXT SIZE") name = t.x == S::kNameX && t.cap == fonts.small.capHeight() && near(t.y - boxTop, boxBottom - (t.y + t.h)); // in the middle of its row
             if (t.words == kTextSizeNames[size] && t.x == S::kValueX)
@@ -794,7 +794,7 @@ void testTheRow() {
         CHECK(hintChange); // LEFT / RIGHT: change, as on the page's other rows that are changed so
         // The value is lit where the cursor is: teal letters at the value's place.
         int teal = 0;
-        for (int y = S::rowY(S::kTextSize); y < S::rowY(S::kTextSize) + S::kRowH - 6; ++y)
+        for (int y = setup.rowNowY(S::kTextSize); y < setup.rowNowY(S::kTextSize) + S::kRowH - 6; ++y)
             for (int x = static_cast<int>(S::kValueX); x < static_cast<int>(S::kValueX) + 80; ++x) teal += s.canvas.is(x, y, ui::kTeal) ? 1 : 0;
         CHECK(teal > 20);
     }
@@ -2369,6 +2369,32 @@ void testTheBounceBarClearsItsWords() {
                 float volX = 0.f, volW = 0.f;
                 CHECK(barIn(S::kVolume, &volX, &volW) && volX == S::kBarX && volW == S::kBarW);
             }
+    // On our own firmware: BRIGHTNESS's bar between its value and its words, and STICK LIGHT's value
+    // clear of its words, at every size, each value and each choice.
+    rig.session().useLights(Lights::pretend());
+    for (int size = 0; size < kTextSizes; ++size)
+        for (int row : {static_cast<int>(S::kBrightness), static_cast<int>(S::kLight)})
+            for (int value = 0; value < (row == S::kBrightness ? 2 : kRingModes); ++value) {
+                if (row == S::kBrightness) rig.session().setBrightness(value ? kBrightMost : kBrightLeast);
+                else rig.session().setStickLight(value);
+                rig.app.settings().goTo(row);
+                rig.frames(1);
+                const Drawn drawn = rig.draw(s.at[size].get());
+                const float top = static_cast<float>(rig.app.settings().rowNowY(row));
+                float valueEnd = 0.f, noteStart = 0.f, barX = 0.f, barW = 0.f;
+                for (const textfit::Text& t : drawn.frame.texts) {
+                    if (t.y < top || t.y > top + S::kRowH) continue;
+                    if (t.x == S::kValueX) valueEnd = t.x + t.w;
+                    if (std::fabs(t.x + t.w - S::kNoteRight) < 0.01f) noteStart = t.x;
+                }
+                CHECK(valueEnd > S::kValueX && noteStart >= valueEnd + S::kNoteGap - 0.5f);
+                bool bar = false;
+                for (const textfit::Box& b : drawn.frame.boxes)
+                    if (!bar && b.h == 4.f && b.y == top + S::kRowH - 16) bar = true, barX = b.x, barW = b.w;
+                CHECK(bar == (row == S::kBrightness));
+                if (bar) CHECK(barX >= valueEnd + S::kBarGap - 1.f && barX + barW <= noteStart - S::kNoteGap + 1.f && barW >= 40.f);
+            }
+    rig.session().useLights(Lights());
 }
 
 // The step numbers of a scene of 25 steps, bar 2: they count through the cell (17 to 25) and a step

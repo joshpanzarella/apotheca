@@ -60,6 +60,43 @@ void SettingsScreen::typeButton(Button b) {
     }
 }
 
+bool SettingsScreen::here(int row) const {
+    if (row == kBrightness) return session_.screenHere();
+    if (row == kLight) return session_.ringHere();
+    return row >= 0 && row < kRows;
+}
+
+int SettingsScreen::placeOf(int row) const {
+    int place = 0;
+    for (int r = 0; r < row && r < kRows; ++r) place += here(r) ? 1 : 0;
+    return place;
+}
+
+int SettingsScreen::rowAt(int place) const {
+    int last = 0;
+    for (int r = 0; r < kRows; ++r) {
+        if (!here(r)) continue;
+        if (place <= 0) return r;
+        --place;
+        last = r;
+    }
+    return last; // past the end: the last
+}
+
+void SettingsScreen::goTo(int row) {
+    row = row < 0 ? 0 : (row >= kRows ? kRows - 1 : row);
+    int to = row;
+    while (to < kRows && !here(to)) ++to;
+    if (to >= kRows)
+        for (to = row; to > 0 && !here(to); --to) {}
+    row_ = to;
+    const int place = placeOf(row_);
+    if (place < first_) first_ = place;
+    if (place >= first_ + kRowsShown) first_ = place - kRowsShown + 1;
+    const int most = places() > kRowsShown ? places() - kRowsShown : 0; // (rows gone: no room left empty)
+    if (first_ > most) first_ = most;
+}
+
 void SettingsScreen::change(int by) {
     switch (row_) {
     case kTempo: session_.setTempo(project_.tempo + static_cast<float>(by)); break;
@@ -75,6 +112,8 @@ void SettingsScreen::change(int by) {
         break;
     }
     case kVolume: session_.setVolume(session_.volume() + 0.05f * static_cast<float>(by)); break;
+    case kBrightness: session_.setBrightness(session_.brightness() + kBrightStep * by); break;
+    case kLight: session_.setStickLight(session_.stickLight() + by); break; // (a choice with ends)
     case kStick: session_.setStickSpeed(session_.stickSpeed() + 0.05f * static_cast<float>(by)); break;
     case kTextSize: session_.setTextSize(session_.textSize() + by); break; // (it has ends, as PIANO ROLL has)
     case kTheme: session_.setTheme(session_.theme() + by); break;       // (so has this; the colours change from the next frame)
@@ -112,8 +151,8 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (isDirection(b)) {
-        if (b == Button::Up) goTo(row_ - 1);
-        if (b == Button::Down) goTo(row_ + 1);
+        if (b == Button::Up) step(-1);
+        if (b == Button::Down) step(1);
         if (b == Button::Left) change(-1);
         if (b == Button::Right) change(1);
         holding_ = false; // moving off lets go
@@ -206,15 +245,15 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
         stickWas_ = true;
         for (; saved_ >= 1.f; saved_ -= 1.f) {
             if (sideways) change(push > 0.f ? 1 : -1);
-            else goTo(row_ + (push > 0.f ? 1 : -1));
+            else step(push > 0.f ? 1 : -1);
         }
     }
     if (repeating_ != Button::None && repeatAt_ == 0) {
         repeatAt_ = nowMs + kRepeatDelayMs;
     } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
         repeatAt_ = nowMs + kRepeatEveryMs;
-        if (repeating_ == Button::Up) goTo(row_ - 1);
-        if (repeating_ == Button::Down) goTo(row_ + 1);
+        if (repeating_ == Button::Up) step(-1);
+        if (repeating_ == Button::Down) step(1);
         if (repeating_ == Button::Left) change(-1);
         if (repeating_ == Button::Right) change(1);
     }
@@ -278,7 +317,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         return;
     }
 
-    const char* names[kRows] = {"TEMPO", "CHORD PACK", "TRACK NAME", "BOUNCE", "VOLUME", "STICK SPEED", "TEXT SIZE", "THEME", "PIANO ROLL", "USB KEYBOARD", "WIFI PAGE", "BUTTONS", "CONTROLS"};
+    const char* names[kRows] = {"TEMPO", "CHORD PACK", "TRACK NAME", "BOUNCE", "VOLUME", "BRIGHTNESS", "STICK LIGHT", "STICK SPEED", "TEXT SIZE", "THEME", "PIANO ROLL", "USB KEYBOARD", "WIFI PAGE", "BUTTONS", "CONTROLS"};
     const int rowH = kRowH, w = kRowW; // (twelve rows shown: 34 a row, as it was with eleven, would run into the hints bar)
     fonts.small.draw(r, 16.f, 34.f, "PROJECT", kDim);
     // A row out of sight above (the page has moved down) or below: an arrow after its section's name.
@@ -287,11 +326,11 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // Which Apotheca this is.
     std::snprintf(text, sizeof text, "APOTHECA %s   %s", kVersion, kBuilt);
     fonts.small.drawRight(r, kScreenW - 16.f, 34.f, text, kDim);
-    for (int row = first_; row < first_ + kRowsShown && row < kRows; ++row) {
+    for (int place = first_; place < first_ + kRowsShown && place < places(); ++place) {
         // The first four belong to the song; the rest to the handheld.
-        const int y = rowNowY(row);
+        const int row = rowAt(place), y = rowY(place, first_);
         if (row == kVolume) fonts.small.draw(r, 16.f, y - 18.f, "HANDHELD", kDim);
-        if (row == kVolume && first_ + kRowsShown < kRows) more(y - 18.f, "HANDHELD", "DOWN");
+        if (row == kVolume && first_ + kRowsShown < places()) more(y - 18.f, "HANDHELD", "DOWN");
         const bool here = row == row_;
         float part = -1.f;
         const char* note = "";
@@ -327,6 +366,20 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             part = session_.volume();
             note = "also SEL + L1 / R1";
             break;
+        case kBrightness:
+            std::snprintf(text, sizeof text, "%d%%", session_.brightness());
+            part = static_cast<float>(session_.brightness()) / 100.f;
+            note = "also MENU + volume keys";
+            break;
+        case kLight: {
+            static const char* const what[kRingModes] = {"OFF", "ON", "BEAT", "STEPS"};
+            static const char* const says[kRingModes] = {"the light round the stick", "steady, in the theme's colour",
+                                                         "a flash on every beat", "the step playing goes round"};
+            const int mode = session_.stickLight();
+            std::snprintf(text, sizeof text, "%s", what[mode]);
+            note = says[mode];
+            break;
+        }
         case kStick:
             std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(session_.stickSpeed() * 100.f)));
             part = (session_.stickSpeed() - Session::kStickSlowest) / (Session::kStickFastest - Session::kStickSlowest);

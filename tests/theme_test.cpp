@@ -330,7 +330,8 @@ void testTheRow() {
     session.view = View::Settings;
     S& setup = rig.app.settings();
     // After TEXT SIZE, among the handheld's rows.
-    CHECK(S::kRows == 13 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kRowsShown == 12);
+    // (Fifteen rows since BRIGHTNESS and STICK LIGHT, which show only on our own firmware: thirteen here.)
+    CHECK(S::kRows == 15 && setup.places() == 13 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kRowsShown == 12);
     setup.goTo(S::kTextSize);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kTheme && session.theme() == kThemeBrown);
@@ -378,17 +379,18 @@ void testTheRow() {
     CHECK(setup.firstShown() == 0 && setup.shown(S::kTempo) && !setup.shown(S::kControls));
     rig.draw();
     CHECK(rig.drewText("TEMPO") && !rig.drewText("CONTROLS") && rig.drewText("THEME"));
-    for (int row = 1; row < S::kRows; ++row) {
+    for (int place = 1; place < setup.places(); ++place) {
         rig.tap(DOWN);
-        CHECK(setup.cursorRow() == row && setup.shown(row));
-        CHECK(setup.firstShown() == (row < S::kRowsShown ? 0 : row - S::kRowsShown + 1));
+        CHECK(setup.placeOf(setup.cursorRow()) == place && setup.shown(setup.cursorRow()));
+        CHECK(setup.firstShown() == (place < S::kRowsShown ? 0 : place - S::kRowsShown + 1));
     }
     rig.draw();
     CHECK(rig.drewText("CONTROLS") && rig.drewText("SET UP AGAIN") && !rig.drewText("TEMPO") && rig.drewText("PROJECT") && rig.drewText("HANDHELD"));
     // Every row shown inside the page, none over another.
-    for (int row = setup.firstShown(); row < setup.firstShown() + S::kRowsShown; ++row) {
+    for (int place = setup.firstShown(); place < setup.firstShown() + S::kRowsShown; ++place) {
+        const int row = setup.rowAt(place);
         CHECK(setup.rowNowY(row) >= ui::kTopBarH + 8 && setup.rowNowY(row) + S::kRowH - 6 <= ui::kScreenH - ui::kHintsH - 4);
-        if (row > setup.firstShown()) CHECK(setup.rowNowY(row) >= setup.rowNowY(row - 1) + S::kRowH - 2);
+        if (place > setup.firstShown()) CHECK(setup.rowNowY(row) >= setup.rowNowY(setup.rowAt(place - 1)) + S::kRowH - 2);
     }
     // Back up: it stays put until the cursor passes the top.
     rig.tap(UP);
