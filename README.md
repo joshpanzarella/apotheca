@@ -11,7 +11,7 @@ kit, a sampler, or one of seven synths: Phazed (phase distortion, 113 presets), 
 FM, after a classic 80s synth, 233 presets), PHYSIC (plucked and struck sounds that ring by
 themselves: strings, mallets, bells, 112 presets), ACID (a mono bass with accent and slide,
 after a classic bass line box, 64 presets), CLOUD (clouds of grains from your recordings,
-48 presets) or MORPH (wavetables, swept from wave to wave, 64 presets). Up to sixteen scenes of
+48 presets) or MORPH (wavetables, swept from wave to wave, 64 presets). Up to 64 scenes of
 one to eight bars, each with its own repeat count. Four screens:
 
 - **SONG**: tracks across, scenes down. Add tracks, set how many times each
@@ -602,8 +602,15 @@ You have a loop going and want the next part of the song to start from it.
   same, so it goes on from where it was, now in the new one.
 - One press, nothing asked. **SELECT + B takes it back** (and puts you, and
   the playing, back on the scene you came from); SELECT + A does it again.
-- A song holds 16 scenes. With the sixteenth in use it says "NO ROOM: 16
-  SCENES" and changes nothing.
+- A song holds 64 scenes. With the 64th in use it says "NO ROOM: 64
+  SCENES" and changes nothing. (A scene with nothing in it takes no memory
+  and no time, so the 64 cost nothing until they are used.)
+- **The SONG screen shows eight scenes at a time** and scrolls as the
+  cursor moves: hold the D-pad down (about 2 s from the top to scene 64) or
+  push the stick.
+- **A song of more than 16 scenes on an older build** (one that holds 16) opens with its
+  first 16 scenes only: the rest are not read, and saving it there loses
+  them. A song of 16 scenes or fewer is written exactly as before.
 
 ### Bouncing: getting a song out
 

@@ -19,7 +19,7 @@
 // sound passes untouched, above it the peaks are rounded off, and nothing
 // ever leaves louder than full scale.
 //
-// A song is up to sixteen scenes. In a scene each track has a cell of 1 to 8
+// A song is up to kMaxScenes (64) scenes. In a scene each track has a cell of 1 to 8
 // bars of sixteen steps. The scene lasts as long as its longest cell; a
 // shorter cell goes round under it (a one-bar drum loop plays four times
 // under a four-bar part). A scene has a repeat count: whole passes of it. Playing a song plays scene 1 its
@@ -111,7 +111,9 @@ constexpr float kMinTempo = 40.f;
 constexpr float kLongestEchoGapSeconds = 2.f * 8.f * 15.f / kMinTempo;
 static_assert(kBusRestSeconds > kLongestEchoGapSeconds + 1.f, "a bus at rest must have waited longer than any gap in a tail");
 constexpr float kMaxTempo = 240.f;
-constexpr int kMaxScenes = 16;
+constexpr int kMaxScenes = 64;    // a song's scenes (scenes-plan.md: it was 16; one with nothing in it costs next to nothing)
+constexpr int kOldSceneCount = 16; // what it was: a song file's `repeats` and `length` still have sixteen numbers at least
+static_assert(kMaxScenes <= 64, "the engine keeps which scenes it has handed a store a bit a scene, in 64 bits (Engine::given_)");
 constexpr int kMaxRepeats = 16;
 constexpr int kMaxBars = 8;       // the longest a cell (one track in one scene) can be
 constexpr int kPatternSlots = kMaxScenes * kMaxBars; // a bar of a scene is slot scene * kMaxBars + bar
@@ -188,7 +190,7 @@ struct Command {
         SetNote,        // write one note of a synth pattern: track, scene, a = slot (0..63),
                         //   b = step, c = MIDI note, d = length in whole steps, extra = and this much of a
                         //   step more (so d = 2, extra = 0.4 is 2.4 steps), value = velocity (0 empties the slot)
-        SetSceneCount,  // a = how many scenes the song has (1..16)
+        SetSceneCount,  // a = how many scenes the song has (1..kMaxScenes)
         SetSceneRepeats,// scene, a = times it plays (1..16)
         SetCellBars,    // how long a track's cell is in a scene: track, scene, a = bars (1..8)
         ClearCell,      // empty every bar of a track's cell: track, scene. Its length is left as it is.
@@ -244,9 +246,11 @@ struct Command {
         SetLaneChoke,   // CHOKE, a drum lane's group (drums.hpp): track, a = lane, b = kChokeNone, 1 or 2 (a number
                         //   not known is NONE). A hit on a lane in a group cuts the group's other lanes; it cuts
                         //   nothing by itself. Every lane at NONE: the kit plays as it always did.
-        SetLaneSwing    // SWING, a drum lane's (feel_rule.hpp): track, a = lane, b = 0..100 (held there). Every
+        SetLaneSwing,   // SWING, a drum lane's (feel_rule.hpp): track, a = lane, b = 0..100 (held there). Every
                         //   second sixteenth comes that much of a third of a step late. Live, as FEEL.
                         //   0: the lane plays as it always did.
+        GiveScene       // internal: sent by send() before the first command that writes into a scene with
+                        //   nothing in it (scenes-plan.md): track, scene, pointer = its store, made here
     };
     Type type = Trigger;
     int track = 0;
@@ -287,30 +291,10 @@ inline int autoLaneOfEffect(int slot, int param) { return 8 + slot * 4 + param; 
 inline int autoSlotOfLane(int lane) { return lane >= 8 && lane < 8 + 4 * kTrackSlots ? (lane - 8) / 4 : -1; } // -1: not an effect's lane
 inline int autoLaneOfSend(int bus) { return kAutoSendLane + bus; }
 
-struct TrackImage {
-    // Indexed by pattern slot: scene * kMaxBars + bar. Slot 0 is scene 1, bar 1.
-    float level[kPatternSlots][kDrumLanes][kSteps] = {};
-    float nudge[kPatternSlots][kDrumLanes][kSteps] = {};
-    float chance[kPatternSlots][kDrumLanes][kSteps];
-    float start[kPatternSlots][kDrumLanes][kSteps] = {};
-    int bars[kMaxScenes]; // how long the track's cell is in each scene
-    struct Note { std::uint8_t step = 0, pitch = 0; float length = 0.f; float velocity = 0.f; float nudge = 0.f; std::uint8_t ratchet = 0, glide = 0, throwTo = 0; ChordPlay play; }; // length in steps, not only whole ones
-    Note notes[kPatternSlots][kMaxNotes];
-    // Automation, [scene][lane][bar * 16 + step], or null for none anywhere.
-    std::unique_ptr<float[]> automation;
-    float laneLevel[kDrumLanes];
-    float lanePart[kDrumLanes] = {}; // how much of its sound each hit on a lane plays (0: all); see Command::SetLanePart
-    StepFx fx[kPatternSlots][kDrumLanes][kSteps]; // each hit's step effects
-    TrackImage() {
-        for (auto& scene : chance)
-            for (auto& lane : scene)
-                for (float& c : lane) c = 1.f;
-        for (float& l : laneLevel) l = 1.f;
-        for (int& b : bars) b = 1;
-    }
-};
+// A note as the engine is handed it (TrackImage::Note).
+struct ImageNote { std::uint8_t step = 0, pitch = 0; float length = 0.f; float velocity = 0.f; float nudge = 0.f; std::uint8_t ratchet = 0, glide = 0, throwTo = 0; ChordPlay play; }; // length in steps, not only whole ones
 
-// One scene of one track, as TrackImage holds sixteen: for Engine::moveScenes.
+// One scene of one track: for Engine::moveScenes, and a TrackImage's scenes.
 struct SceneImage {
     float level[kMaxBars][kDrumLanes][kSteps] = {};
     float nudge[kMaxBars][kDrumLanes][kSteps] = {};
@@ -318,7 +302,7 @@ struct SceneImage {
     float start[kMaxBars][kDrumLanes][kSteps] = {};
     StepFx fx[kMaxBars][kDrumLanes][kSteps];
     int bars = 1; // how long the track's cell is in it
-    TrackImage::Note notes[kMaxBars][kMaxNotes];
+    ImageNote notes[kMaxBars][kMaxNotes];
     float automation[kAutoLanes * kAutoSteps]; // [lane][bar * 16 + step]
     SceneImage() {
         for (auto& bar : chance)
@@ -326,6 +310,45 @@ struct SceneImage {
                 for (float& c : lane) c = 1.f;
         for (float& v : automation) v = kAutoNone;
     }
+};
+
+// Every pattern of a track, for Engine::setTrackImage: a SceneImage for each scene that holds
+// something (scenes-plan.md: a song uses few of its kMaxScenes; nullptr is a scene with nothing in
+// it), the cells' lengths, and the lanes' levels. Read and written by pattern slot (scene * kMaxBars
+// + bar: slot 0 is scene 1, bar 1) as it always was; a slot written makes its scene.
+struct TrackImage {
+    using Note = ImageNote;
+    std::unique_ptr<SceneImage> scenes[kMaxScenes];
+    SceneImage& scene(int s) {
+        if (!scenes[s]) scenes[s].reset(new SceneImage);
+        return *scenes[s];
+    }
+    template <class Row, Row (SceneImage::*Field)[kMaxBars]>
+    struct BySlot {
+        TrackImage* image;
+        Row& operator[](int slot) const { return (image->scene(slot / kMaxBars).*Field)[slot % kMaxBars]; }
+        Row* at(int slot) const { return &(*this)[slot]; } // a scene's first slot: its bars, as an array
+    };
+    BySlot<float[kDrumLanes][kSteps], &SceneImage::level> level{this};
+    BySlot<float[kDrumLanes][kSteps], &SceneImage::nudge> nudge{this};
+    BySlot<float[kDrumLanes][kSteps], &SceneImage::chance> chance{this};
+    BySlot<float[kDrumLanes][kSteps], &SceneImage::start> start{this};
+    BySlot<StepFx[kDrumLanes][kSteps], &SceneImage::fx> fx{this}; // each hit's step effects
+    BySlot<Note[kMaxNotes], &SceneImage::notes> notes{this};
+    // Automation, [scene][lane][bar * 16 + step] as one run.
+    struct Automation {
+        TrackImage* image;
+        float& operator[](int i) const { return image->scene(i / (kAutoLanes * kAutoSteps)).automation[i % (kAutoLanes * kAutoSteps)]; }
+    } automation{this};
+    int bars[kMaxScenes]; // how long the track's cell is in each scene
+    float laneLevel[kDrumLanes];
+    float lanePart[kDrumLanes] = {}; // how much of its sound each hit on a lane plays (0: all); see Command::SetLanePart
+    TrackImage() {
+        for (float& l : laneLevel) l = 1.f;
+        for (int& b : bars) b = 1;
+    }
+    TrackImage(const TrackImage&) = delete; // (its slots point at itself)
+    TrackImage& operator=(const TrackImage&) = delete;
 };
 
 class Engine {
@@ -348,14 +371,16 @@ public:
     // Take a track's instrument away and empty its patterns, so the track
     // can be given another. False if it had none.
     bool removeTrack(int track);
-    // Replace every pattern on a track at once.
+    // Replace every pattern on a track at once. The engine's stores for the scenes that hold
+    // something are made here, from the image (the audio thread only swaps them in), and the image
+    // is freed (send(): a SetTrackImage command's pointer is a TrackImage, taken on success).
     bool setTrackImage(int track, std::unique_ptr<TrackImage> image);
     // A scene put into the song, or one taken out, in ONE step for the audio thread, which
     // copies nothing: it changes which scene is which, and takes in the one scene that is new,
     // made ready here. by = 1: a scene goes in at `from`, those from there on move down one and
     // the last falls off the end. by = -1 (from 1 up): the scene before `from` goes, those from
     // `from` on move up one, and the new one is the last. `scenes` is that new scene for each of
-    // the kNumTracks tracks (nullptr for a track with nothing: it gets whichever scene went);
+    // the kNumTracks tracks (nullptr for a track with nothing in it there);
     // `repeats` and `steps` are its own, and `sceneCount` the song's from then on. The playing
     // goes with a scene that moves (see Command::ScenesMoved). Allocates; false if the queue is full.
     bool moveScenes(int from, int by, const std::unique_ptr<SceneImage>* scenes, int sceneCount, int repeats, int steps);
@@ -381,11 +406,16 @@ public:
     void collectGarbage();
 
     // From the control thread. Returns false if the queue is full.
-    bool send(const Command& command) {
-        if (commands_.push(command)) return true;
-        dropped_.fetch_add(1, std::memory_order_relaxed);
-        return false;
-    }
+    // A command that writes into a scene of a track that has nothing there yet is sent after a
+    // GiveScene with that scene's store, made here (scenes-plan.md: the audio thread never
+    // allocates, and a scene nobody has written has no store of its own); both or neither go.
+    // RemoveInstrument is given a holder for the track's stores, and SetTrackImage's TrackImage is
+    // made into stores here (and freed when the command went).
+    bool send(const Command& command);
+    // For the tests: how many scenes of a track have a store of their own (or will have, once the
+    // audio thread has taken what was sent), and whether the one blank store is still blank.
+    int scenesGiven(int track) const;
+    static bool blankStillBlank();
     // How many commands found the queue full and were lost, ever. The queue is
     // emptied at the start of every render(), so this only moves when the audio
     // thread has stood still for seconds. When it does move, the engine no longer
@@ -573,6 +603,28 @@ private:
             for (SceneStore* scene : scenes) delete scene;
         }
     };
+    // What SetTrackImage carries: a store for each scene that holds something (nullptr: none), made
+    // on the app thread, and the lanes' levels. The audio thread puts in their place the stores the
+    // track had (nullptr for the blank one) and hands it back. RemoveInstrument carries one empty,
+    // to hand the track's stores back in: one thing in the trash, not one a scene.
+    struct SceneSet {
+        SceneStore* scenes[kMaxScenes] = {};
+        float laneLevel[kDrumLanes];
+        float lanePart[kDrumLanes];
+        ~SceneSet() {
+            for (SceneStore* scene : scenes) delete scene;
+        }
+    };
+    // Where a scene that nobody has written reads from: ONE store for every engine, made once and
+    // never written (scenes-plan.md). Every write into a scene goes through `written`.
+    static SceneStore* blankScene();
+    static SceneStore* written(SceneStore* scene) { return scene == blankScene() ? nullptr : scene; }
+    SceneStore* writable(const Command& c); // the store a pattern command writes into: nullptr where there is none
+    // Which scenes of each track have a store of their own: the app thread's own count of what it
+    // has handed over (GiveScene, SetTrackImage, a scene move, a track taken away), a bit a scene.
+    std::uint64_t given_[kNumTracks] = {};
+    static bool leavesBlank(const Command& command); // a write that leaves a scene as the blank one has it
+    void moveGiven(int from, int by, const std::unique_ptr<SceneImage>* scenes);
     // One scene's patterns read in, as the engine keeps them (from a TrackImage, or a SceneImage).
     static void sceneIn(SceneStore& to, const float (*level)[kDrumLanes][kSteps], const float (*nudge)[kDrumLanes][kSteps], const float (*chance)[kDrumLanes][kSteps],
                         const float (*start)[kDrumLanes][kSteps], const StepFx (*fx)[kDrumLanes][kSteps], const TrackImage::Note (*notes)[kMaxNotes], int bars, const float* automation);
@@ -608,9 +660,11 @@ private:
         // The patterns are large (every bar of every scene), so they live
         // on the heap: an Engine can then sit on the stack.
         // Each scene is a piece of its own, so that a scene put into the song or taken out
-        // (Command::ScenesMoved) is sixteen pointers moved and nothing copied. What follows
+        // (Command::ScenesMoved) is a few pointers moved and nothing copied. A scene nobody has
+        // written is the one blank store (blankScene), never written. What follows
         // reads them as the one run they used to be: by pattern slot, by scene, by place.
         SceneStore* scenes[kMaxScenes];
+        SceneSet* goneSet = nullptr; // a RemoveInstrument's holder, kept while the track fades
         struct DrumsOf {
             SceneStore* const* scenes;
             DrumScene& operator[](int slot) const { return scenes[slot / kMaxBars]->drums[slot % kMaxBars]; }
@@ -698,10 +752,12 @@ private:
         double offIn[128];
         Track() {
             for (double& off : offIn) off = kNoNote;
-            for (SceneStore*& scene : scenes) scene = new SceneStore;
+            for (SceneStore*& scene : scenes) scene = blankScene();
         }
         ~Track() {
-            for (SceneStore* scene : scenes) delete scene;
+            for (SceneStore* scene : scenes)
+                if (scene != blankScene()) delete scene;
+            delete goneSet;
         }
         // Hits waiting for their moment: a late hit from the step that just
         // began, and an early hit that belongs to the next one.
@@ -942,7 +998,7 @@ private:
     // once a frame (collectGarbage). One song opened throws away at most about
     // 150 (12 tracks: a synth and its recording, or eight lane recordings; 12
     // track images; 40 effects fading out), so this holds several of those.
-    struct Trash { bool isImage = false; void* pointer = nullptr; bool isSample = false; bool isEffect = false; bool isMove = false; };
+    struct Trash { bool isImage = false; void* pointer = nullptr; bool isSample = false; bool isEffect = false; bool isMove = false; bool isStore = false; }; // isImage: a SceneSet
     SpscQueue<Trash, 1024> trash_;
     static void destroy(const Trash& trash);
     // What found the trash full waits here (the audio thread's alone) and is

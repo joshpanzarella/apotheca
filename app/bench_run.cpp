@@ -1306,6 +1306,44 @@ static int appRows(bool all) {
         std::printf("  %-28s %7.3f ms\n", "...a knob and a hit, undone", spent / rounds);
     }
     std::printf("  %-28s %7.3f ms\n", "a bar of notes to the engine", ms([&] { session.sendNoteBar(1, 0, 0); drain(); }, 200));
+    {
+        // A cell made longer and back: the track is sent whole (Session::sendTrackImage), its patterns
+        // handed to the engine (scenes-plan.md).
+        TrackData& t = p.tracks[2];
+        std::printf("  %-28s %7.3f ms\n", "a track sent whole", ms([&] {
+            session.setCellBars(2, 0, 1);
+            t.drums[0][1] = DrumPattern(); // (its second bar emptied: made longer, it is filled, and the track sent)
+            t.notes[0][1] = NotePattern();
+            for (int lane = 0; lane < kAutoLanes; ++lane)
+                for (int step = 0; step < kSteps; ++step) t.automation[0][lane][kSteps + step] = kAutoNone;
+            session.setCellBars(2, 0, 2);
+            app.update(input, clock += 800);
+            drain();
+        }, 20));
+    }
+    {
+        // NEXT SCENE on the third scene and its undo, each with its frame (scenes-plan.md).
+        double spent = 0.0;
+        const int rounds = 10;
+        for (int i = 0; i < rounds; ++i) {
+            p.scene = 2;
+            spent += ms([&] { session.nextScene(); app.update(input, clock += 800); drain(); session.undo(); app.update(input, clock += 800); drain(); }, 1);
+        }
+        std::printf("  %-28s %7.3f ms\n", "NEXT SCENE, then undo", spent / rounds);
+    }
+    {
+        // What the program holds (the whole process: the engine, the Session, its undo, the song's text kept).
+        long rss = 0, peak = 0;
+        if (FILE* f = std::fopen("/proc/self/status", "r")) {
+            char line[256];
+            while (std::fgets(line, sizeof line, f)) {
+                if (std::strncmp(line, "VmRSS:", 6) == 0) rss = std::atol(line + 6);
+                if (std::strncmp(line, "VmHWM:", 6) == 0) peak = std::atol(line + 6);
+            }
+            std::fclose(f);
+        }
+        std::printf("  %-28s %7.1f MB  (at most %.1f MB)\n", "memory in use", rss / 1024.0, peak / 1024.0);
+    }
     if (!all) return 0;
     screenRows(app, session, *engine, input, clock);
     processorRows("after the rows", false);

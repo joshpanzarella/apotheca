@@ -410,7 +410,7 @@ bool notesEmpty(const NotePattern& p) { // NotePattern::empty
 void putAutomation(std::string& out, const TrackData& track) {
     // auto SCENE LANE then pairs INDEX VALUE: the steps of a lane of automation that have something on them.
     for (int scene = 0; scene < kMaxScenes; ++scene)
-        for (int lane = 0; lane < kAutoLanes; ++lane) {
+        for (int lane = 0; lane < kAutoLanes && track.automation.has(scene); ++lane) {
             if (laneEmpty(track.automation[scene][lane])) continue;
             std::string line;
             for (int i = 0; i < kAutoSteps; ++i) {
@@ -643,14 +643,23 @@ void putTrack(std::string& out, const TrackData& track) {
 void putHead(std::string& out, const ProjectHead& project) {
     out += "apotheca-song 1\n";
     put(out, "tempo %.6g\n", project.tempo);
+    // repeats and length: a number a scene, sixteen of them as a song has always had (so a song of
+    // sixteen scenes or fewer is written as it always was), and more only up to the last scene past
+    // the sixteenth that is not at its usual (scenes-plan.md).
+    const auto upTo = [](const int* values, int usual) {
+        int count = kOldSceneCount;
+        for (int s = kOldSceneCount; s < kMaxScenes; ++s)
+            if (values[s] != usual) count = s + 1;
+        return count;
+    };
     out += "repeats";
-    for (int r : project.repeats) put(out, " %.0f", r);
+    for (int s = 0; s < upTo(project.repeats, 1); ++s) put(out, " %.0f", project.repeats[s]);
     // length: how many steps each scene lasts, where one is cut short (0: all of them). Only if any is.
     bool cut = false;
     for (int n : project.steps) cut = cut || n > 0;
     if (cut) {
         out += "\nlength";
-        for (int n : project.steps) put(out, " %.0f", n);
+        for (int s = 0; s < upTo(project.steps, 0); ++s) put(out, " %.0f", project.steps[s]);
     }
     out += "\n";
     if (project.chordPack[0]) out += std::string("pack ") + project.chordPack + "\n";
@@ -677,9 +686,11 @@ void putHead(std::string& out, const ProjectHead& project) {
 
 void markUsed(const TrackData& track, TextUsed& used) {
     for (int scene = 0; scene < kMaxScenes; ++scene) {
+        const bool kit = track.kind == TrackKind::Drums;
+        const bool bars = kit ? track.drums.has(scene) : track.notes.has(scene), lanes = track.automation.has(scene); // (no piece: nothing in it)
         for (int bar = 0; bar < kMaxBars; ++bar)
-            used.bar[scene][bar] = track.kind == TrackKind::Drums ? !levelsEmpty(track.drums[scene][bar]) : !notesEmpty(track.notes[scene][bar]);
-        for (int lane = 0; lane < kAutoLanes; ++lane) used.lane[scene][lane] = !laneEmpty(track.automation[scene][lane]);
+            used.bar[scene][bar] = bars && (kit ? !levelsEmpty(track.drums[scene][bar]) : !notesEmpty(track.notes[scene][bar]));
+        for (int lane = 0; lane < kAutoLanes; ++lane) used.lane[scene][lane] = lanes && !laneEmpty(track.automation[scene][lane]);
     }
 }
 
@@ -689,33 +700,23 @@ void markUsed(const TrackData& track, TextUsed& used) {
 // drum patterns of a synth track, and the notes of a drum track, are not written: not looked at.
 // Whole bytes where they are compared: a difference the text does not show only makes it written again.
 bool sameForText(const TrackData& seen, const TextUsed& used, const TrackData& now) {
-    static_assert(std::is_trivially_copyable<TrackData>::value, "a track is kept and compared as bytes");
-    const char* x = reinterpret_cast<const char*>(&seen);
-    const char* y = reinterpret_cast<const char*>(&now);
-    const std::size_t drums = static_cast<std::size_t>(reinterpret_cast<const char*>(&seen.drums) - x);
-    const std::size_t notes = static_cast<std::size_t>(reinterpret_cast<const char*>(&seen.notes) - x);
-    const std::size_t after = static_cast<std::size_t>(reinterpret_cast<const char*>(&seen.bars) - x);
-    const std::size_t automation = static_cast<std::size_t>(reinterpret_cast<const char*>(&seen.automation) - x);
-    const std::size_t afterAutomation = automation + sizeof seen.automation;
-    if (notes != drums + sizeof seen.drums || after != notes + sizeof seen.notes || automation < after) return false; // (laid out otherwise: never the same)
-    if (std::memcmp(x, y, drums) != 0) return false;                                                  // the kind
-    if (std::memcmp(x + after, y + after, automation - after) != 0) return false;                     // the bars, the sound, the settings
-    if (std::memcmp(x + afterAutomation, y + afterAutomation, sizeof(TrackData) - afterAutomation) != 0) return false; // the name, the sampler...
+    if (!now.sameFields(seen)) return false; // the kind, the bars, the sound, the settings, the name, the sampler...
     const bool kit = seen.kind == TrackKind::Drums;
-    for (int scene = 0; scene < kMaxScenes; ++scene)
+    for (int scene = 0; scene < kMaxScenes; ++scene) {
+        const bool bars = kit ? now.drums.has(scene) : now.notes.has(scene), lanes = now.automation.has(scene); // (no piece: nothing in it)
         for (int bar = 0; bar < kMaxBars; ++bar) {
             if (used.bar[scene][bar]) {
-                if (kit ? std::memcmp(&seen.drums[scene][bar], &now.drums[scene][bar], sizeof(DrumPattern)) != 0
-                        : std::memcmp(&seen.notes[scene][bar], &now.notes[scene][bar], sizeof(NotePattern)) != 0) return false;
-            } else if (kit ? !levelsEmpty(now.drums[scene][bar]) : !notesEmpty(now.notes[scene][bar])) {
+                if (!bars || (kit ? std::memcmp(&seen.drums[scene][bar], &now.drums[scene][bar], sizeof(DrumPattern)) != 0
+                                  : std::memcmp(&seen.notes[scene][bar], &now.notes[scene][bar], sizeof(NotePattern)) != 0)) return false;
+            } else if (bars && (kit ? !levelsEmpty(now.drums[scene][bar]) : !notesEmpty(now.notes[scene][bar]))) {
                 return false;
             }
         }
-    for (int scene = 0; scene < kMaxScenes; ++scene)
         for (int lane = 0; lane < kAutoLanes; ++lane) {
-            if (used.lane[scene][lane] ? std::memcmp(seen.automation[scene][lane], now.automation[scene][lane], sizeof seen.automation[scene][lane]) != 0
-                                       : !laneEmpty(now.automation[scene][lane])) return false;
+            if (used.lane[scene][lane] ? !lanes || std::memcmp(seen.automation[scene][lane], now.automation[scene][lane], sizeof seen.automation[scene][lane]) != 0
+                                       : lanes && !laneEmpty(now.automation[scene][lane])) return false;
         }
+    }
     return true;
 }
 
@@ -761,7 +762,7 @@ const std::string& SongTextCache::text(const Project& project) {
         const TrackData& now = project.tracks[t];
         if (part.seen && sameForText(*part.seen, *part.used, now)) continue;
         if (!part.seen) part.seen.reset(new TrackData), part.used.reset(new TextUsed);
-        std::memcpy(static_cast<void*>(part.seen.get()), &now, sizeof now); // byte for byte, what lies between the fields too
+        *part.seen = now; // byte for byte, what lies between the fields too (TrackData's copy)
         markUsed(now, *part.used);
         part.text.clear();
         putTrack(part.text, now);
@@ -801,35 +802,13 @@ const TrackData& blankTrackData() {
     return *blank;
 }
 
-// `track` made as new, byte for byte what copying a blank one gives. A piece already as a blank
-// one's (most of a track: empty bars, unwritten lanes) is only read, against one blank piece that
-// stays in the cache, and not written.
+// `track` made as new, byte for byte what copying a blank one gives: the fields copied, and no
+// piece of any scene (each is made again where the song writes it).
 void makeBlank(TrackData& track) {
-    static_assert(std::is_trivially_copyable<TrackData>::value, "a track is made blank as bytes");
-    const TrackData& blank = blankTrackData();
-    char* to = reinterpret_cast<char*>(&track);
-    const char* from = reinterpret_cast<const char*>(&blank);
-    const std::size_t drums = static_cast<std::size_t>(reinterpret_cast<const char*>(&blank.drums) - from);
-    const std::size_t notes = static_cast<std::size_t>(reinterpret_cast<const char*>(&blank.notes) - from);
-    const std::size_t afterNotes = notes + sizeof blank.notes;
-    const std::size_t automation = static_cast<std::size_t>(reinterpret_cast<const char*>(&blank.automation) - from);
-    const std::size_t afterAutomation = automation + sizeof blank.automation;
-    if (notes != drums + sizeof blank.drums || automation < afterNotes) { // (laid out otherwise: copied whole)
-        std::memcpy(static_cast<void*>(&track), &blank, sizeof track);
-        return;
-    }
-    const auto piece = [](void* now, const void* as, std::size_t size) {
-        if (std::memcmp(now, as, size) != 0) std::memcpy(now, as, size);
-    };
-    std::memcpy(to, from, drums);
-    for (int scene = 0; scene < kMaxScenes; ++scene)
-        for (int bar = 0; bar < kMaxBars; ++bar) {
-            piece(&track.drums[scene][bar], &blank.drums[0][0], sizeof(DrumPattern));
-            piece(&track.notes[scene][bar], &blank.notes[0][0], sizeof(NotePattern));
-        }
-    std::memcpy(to + afterNotes, from + afterNotes, automation - afterNotes);
-    for (int scene = 0; scene < kMaxScenes; ++scene) piece(track.automation[scene], blank.automation[0], sizeof track.automation[scene]);
-    std::memcpy(to + afterAutomation, from + afterAutomation, sizeof(TrackData) - afterAutomation);
+    track.fieldsFrom(blankTrackData());
+    track.drums.clear();
+    track.notes.clear();
+    track.automation.clear();
 }
 } // namespace
 
