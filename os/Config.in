@@ -1,0 +1,4 @@
+menu "Apotheca"
+	source "$BR2_EXTERNAL_APOTHECA_PATH/package/apotheca/Config.in"
+	source "$BR2_EXTERNAL_APOTHECA_PATH/package/rocknix-joypad/Config.in"
+endmenu

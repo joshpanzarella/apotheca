@@ -1,0 +1,28 @@
+# Apotheca's /etc/inittab, read by BusyBox init (no runlevels, no systemd).
+# <tty>::<action>:<program>
+
+# Start the system: mounts, then /etc/init.d/S* in order
+::sysinit:/bin/mount -t proc proc /proc
+::sysinit:/bin/mkdir -p /dev/pts /dev/shm
+::sysinit:/bin/mount -a
+::sysinit:/bin/mkdir -p /run/apotheca
+null::sysinit:/bin/ln -sf /proc/self/fd /dev/fd
+null::sysinit:/bin/ln -sf /proc/self/fd/0 /dev/stdin
+null::sysinit:/bin/ln -sf /proc/self/fd/1 /dev/stdout
+null::sysinit:/bin/ln -sf /proc/self/fd/2 /dev/stderr
+::sysinit:/bin/hostname -F /etc/hostname
+::sysinit:/sbin/ifconfig lo 127.0.0.1 up
+::sysinit:/etc/init.d/rcS
+
+# Batch 1: a shell on the screen, on USB serial (the USB-C port), on the
+# board's UART pins, and on qemu's serial port for the desk test. Each one
+# starts again when it ends. A console whose port is not there sleeps.
+tty1::respawn:-/bin/sh
+::respawn:/usr/libexec/apotheca/console ttyGS0
+::respawn:/usr/libexec/apotheca/console ttyS0
+::respawn:/usr/libexec/apotheca/console ttyAMA0
+
+# Going down: stop the scripts, then everything written reaches the card
+::shutdown:/etc/init.d/rcK
+::shutdown:/bin/sync
+::shutdown:/bin/umount -a -r

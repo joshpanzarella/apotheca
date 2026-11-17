@@ -1,0 +1,9 @@
+config BR2_PACKAGE_ROCKNIX_JOYPAD
+	bool "rocknix-joypad"
+	depends on BR2_LINUX_KERNEL
+	help
+	  ROCKNIX's joypad driver: the H700 handhelds' buttons (GPIO)
+	  and stick (the ADC behind an analog mux) as one input device.
+	  ROCKNIX's device trees for these units name it (patch 0140).
+
+	  https://github.com/ROCKNIX/rocknix-joypad

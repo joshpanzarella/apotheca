@@ -1,0 +1,4 @@
+#!/bin/sh
+# What getty starts on a console: a login shell, so /etc/profile runs.
+cd /root 2>/dev/null || cd /
+exec /bin/sh -l

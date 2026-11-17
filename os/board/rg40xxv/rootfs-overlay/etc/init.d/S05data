@@ -1,0 +1,47 @@
+#!/bin/sh
+# Mounts the card's DATA partition (the 4th) at /data.
+#
+# The image's DATA partition is 32 MiB of zeros. On the first boot, and only
+# while its first MiB is all zeros with no file system found, it is stretched
+# to the end of the card and made exFAT, labelled APOTHECA: nothing is on it,
+# so nothing is lost. Anything else is mounted as it is and never made again:
+# a DATA partition that will not mount is left alone and said so, never
+# formatted.
+
+. /usr/lib/apotheca/common.sh
+
+start() {
+    root=$(root_partition) || { say "DATA: cannot find the root's disk"; return 1; }
+    disk=$(disk_of "$root")
+    data=$(partition_of "$disk" 4) || { say "DATA: no partition 4 on $disk"; return 1; }
+
+    if [ -z "$(blkid -s TYPE -o value "/dev/$data" 2>/dev/null)" ] &&
+       [ "$(dd if="/dev/$data" bs=1M count=1 2>/dev/null | tr -d '\000' | wc -c)" = 0 ]; then
+        grow "$disk" "$data" || say "DATA: could not grow $data; making it as it is"
+        mkfs.exfat -q -L APOTHECA "/dev/$data" && sync ||
+            { say "DATA: could not make $data exFAT"; return 1; }
+        say "DATA: $data is $(( $(cat /sys/class/block/$data/size) / 2048 )) MiB, exFAT, APOTHECA"
+    fi
+
+    if mount -t exfat -o noatime,errors=remount-ro "/dev/$data" /data; then
+        say "DATA: /dev/$data on /data ($(df -h /data | awk 'NR==2 {print $2}'))"
+    else
+        say "DATA: /dev/$data WILL NOT MOUNT: boot log not saved, nothing formatted"
+        return 1
+    fi
+}
+
+grow() {
+    disk=$1 data=$2
+    say "DATA: first boot, growing $data to the end of the card"
+    # ", +" is "same start, as large as it can be".
+    echo ", +" | sfdisk --no-reread --no-tell-kernel -q -N 4 "/dev/$disk" || return 1
+    # Tell the kernel the new size of partition 4 alone: the others are in use.
+    partx -u -n 4 "/dev/$disk"
+}
+
+case "$1" in
+    start) start ;;
+    stop) sync; umount /data 2>/dev/null; true ;;
+    *) echo "usage: $0 start|stop" ;;
+esac

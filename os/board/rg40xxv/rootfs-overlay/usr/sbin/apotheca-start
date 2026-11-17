@@ -1,0 +1,64 @@
+#!/bin/sh
+# apotheca-start [ARGS...]: runs Apotheca once, as the port's Apotheca.sh does
+# on other firmware, and returns when it stops. apotheca-keep starts it again.
+#
+# Apotheca keeps everything beside its program (songs, recordings, presets,
+# settings, controls.txt, and updates sent over WiFi), so it runs from the
+# card's DATA partition, /data/apotheca, not from the read-only system:
+#
+#   - the system's copy (/usr/lib/apotheca) is put there on the first start,
+#     and again whenever the system on the card is newer than the one that
+#     put it there (a new card image wins over an earlier WiFi update);
+#   - an update accepted on the handheld waits as apotheca.new: it is put in
+#     place and the old program kept; if the new one does not get going
+#     (the mark update-trying is still there when it stops) the old one
+#     comes back. Exactly the rules of scripts/Apotheca.sh.
+#
+# ARGS default to --handheld. Its output goes to /data/apotheca/apotheca.log.
+
+system=/usr/lib/apotheca
+dir=/data/apotheca
+[ $# -gt 0 ] || set -- --handheld
+
+if ! mountpoint -q /data; then
+    echo "apotheca-start: /data is not mounted" >&2
+    exit 1
+fi
+mkdir -p "$dir" || exit 1
+cd "$dir" || exit 1
+
+if [ ! -x apotheca ] || [ "$(cat system-version 2>/dev/null)" != "$(cat "$system/VERSION")" ]; then
+    cp "$system/apotheca" apotheca.part && mv apotheca.part apotheca && chmod +x apotheca
+    cp "$system/routed-gothic-narrow.ttf" .
+    mkdir -p chords licences
+    cp "$system"/chords/*.json chords/
+    cp "$system"/licences/* licences/
+    cp "$system/VERSION" system-version
+    rm -f apotheca.new update-trying
+    sync
+fi
+
+if [ -f apotheca.new ]; then
+    rm -f apotheca.old
+    if mv apotheca apotheca.old && mv apotheca.new apotheca; then
+        chmod +x apotheca
+        : > update-trying
+    else
+        [ -f apotheca ] || mv apotheca.old apotheca
+    fi
+    sync
+fi
+
+./apotheca "$@" > apotheca.log 2>&1
+code=$?
+
+if [ -f update-trying ]; then
+    rm -f update-trying
+    if [ -f apotheca.old ]; then
+        mv apotheca apotheca.failed
+        mv apotheca.old apotheca
+        echo "the update did not start; back to the one before" >> apotheca.log
+    fi
+fi
+sync
+exit $code

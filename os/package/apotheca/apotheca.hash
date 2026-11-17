@@ -1,0 +1,6 @@
+# Licence files of the code built into Apotheca (checked by legal-info).
+sha256  79e69637a0382bc9f4f640aa1ad4ae7bd86bebbe981e9b09a79d9880cf6c965f  third_party/easycz/LICENSE
+sha256  cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30  third_party/msfa/LICENSE
+sha256  ee2ef82481ffb445ecdd4b3a4c1f82c0cddb2da8fe39d8e8dc384fffb3e7f06f  third_party/signalsmith/LICENSE-stretch.txt
+sha256  072b5e9eb5b22880bdf6256324654cf3ce53dba828edb911921121e1be09d9c3  third_party/signalsmith/LICENSE-linear.txt
+sha256  347e72ba866d834e55189d84c520f744d63363061bc606f456a7ce5162b3123c  assets/fonts/routed-gothic-LICENSE.txt
