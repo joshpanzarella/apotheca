@@ -239,6 +239,16 @@ void fill(Rig& rig) {
     for (int step = 0; step < kSteps; step += 2) drums.drums[1][0].level[3][step] = 0.4f;
     drums.drums[2][0].level[0][0] = 1.f;
     drums.drums[2][0].level[1][8] = 0.65f;
+    // SWING on lane 2 (felt too) and lane 7 (by itself): lane 7's hits on off sixteenths, one ratcheted
+    // (squeezed), one nudged early (asked a step ahead, and swung late after all), one in scene 3.
+    // (Lanes 5 and 6 are left empty: the undo test below places hits there.)
+    drums.laneSwing[1] = 75;
+    drums.laneSwing[6] = 100;
+    d.level[6][3] = 0.7f;
+    d.fx[6][3].ratchet = 3;
+    d.level[6][15] = 0.6f;
+    d.nudge[6][15] = -0.2f;
+    drums.drums[2][0].level[6][11] = 0.5f;
 
     NotePattern& n = synth.notes[0][0];
     n.notes[0] = NoteEvent{0, 60, 6.5f, 0.f, 0.8f, 0, 0, 0, 0}; // long: it is sounding wherever in the first steps the gesture comes

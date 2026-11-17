@@ -16,7 +16,7 @@ one to eight bars, each with its own repeat count. Four screens:
 
 - **SONG**: tracks across, scenes down. Add tracks, set how many times each
   scene plays, copy bars by dragging.
-- **PATTERN**: a drum grid (levels, nudge, chance, paint, lane dice, a live human feel for each lane) or, for
+- **PATTERN**: a drum grid (levels, nudge, chance, paint, lane dice, a live human feel and swing for each lane) or, for
   a synth, a piano roll on its side (keys across, time down) with chords
   from chord packs.
 - **DEVICE**: for a synth, a main panel of folder, preset and eight macros,
@@ -481,14 +481,14 @@ designer".
   card, picked from its list; a synth lane also has its named voices and
   its knobs, read as the handheld reads them), its picture with **START and END to drag**, **PLAY** (held:
   heard until it is let go; or hold 1 to 8 on the computer's keyboard), its
-  VOLUME, CHOKE, FIT TO and FEEL (HUMAN TIME, HUMAN LEVEL), and its EDIT:
+  VOLUME, CHOKE, FIT TO and FEEL (HUMAN TIME, HUMAN LEVEL, SWING), and its EDIT:
   START, END, FADE IN, FADE OUT, GAIN, PITCH, FINE, REVERSE, with
   **NORMALIZE** and **TRIM SILENCE**. Everything reads as the handheld
   reads it. The picture is what the KIT page's EDIT view draws: the whole
   file (or the built-in drum), the part played lit, as loud as GAIN and the
   fades make it. FIT is for a recording or a synth voice: a built-in drum has none. As on the
   handheld, the file on the card is never changed, and a lane's EDIT, CHOKE,
-  FEEL and synth voice are undone with undo; a recording picked, FIT and
+  FEEL, SWING and synth voice are undone with undo; a recording picked, FIT and
   VOLUME are not.
 - Every setting of the synth is on the page, in the same groups as the
   handheld's pages, with the eight macros at the top. Phazed's envelopes
@@ -1644,14 +1644,16 @@ the drum), and:
 | --- | --- | --- |
 | Left / right | **HUMAN TIME**: OFF, 10, 25, 50, 75, 100% | Each hit up to 12 ms early or late (6 ms on a main beat) |
 | Up / down | **HUMAN LEVEL**: the same six | Each hit up to 15% louder or quieter (7.5% on a main beat) |
-| Y | **Dice**: a small feel, OFF, 10 or 25% of each. Always something, never what it was | |
-| A | **This lane's feel onto every lane** of the kit. From a lane at OFF, that clears them all | |
+| L1 / R1 | **SWING**: OFF, 10, 25, 50, 75, 100% (L1 less, R1 more) | Every second sixteenth a third of a step late: a triplet |
+| Y | **Dice**: a small feel, OFF, 10 or 25% of each. Always something, never what it was. It leaves SWING alone | |
+| A | **This lane's feel onto every lane** of the kit, its SWING too. From a lane at OFF, that clears them all | |
 
-- With X held the strip under the grid shows HUMAN TIME, HUMAN LEVEL and
-  EVERY LANE (COPY, or THE SAME once they are), each button under its field.
+- With X held the strip under the grid shows SWING, HUMAN TIME, HUMAN LEVEL
+  and EVERY LANE (COPY, or THE SAME once they are), each button under its field.
 - **A lane with a feel wears a purple mark at the left of its name**: the
-  upper piece for HUMAN TIME, the lower for HUMAN LEVEL. With the cursor on
-  the name the strip says both in a line.
+  upper piece for HUMAN TIME, the lower for HUMAN LEVEL. **A swung lane wears
+  a purple long and short dash at the top right of its name.** With the cursor
+  on the name the strip says all three in a line.
 - It is the lane's, in every scene of the track. A new kit plays plain.
 - **It is heard only as the pattern plays.** Set it while the song runs.
   Hearing a drum with X or A is always plain.
@@ -1675,9 +1677,27 @@ the drum), and:
 - CHANCE on a hit works as before.
 - Kept in the song (a song without it is written as it always was), undone
   by SELECT + B, and in a bounce.
-- SWING is not built yet.
-- **Nobody has listened to this yet.** The tests measure where each hit
-  lands and how loud; whether 12 ms and 15% are the right "most" is for ears.
+
+**SWING** plays the hits on steps 2, 4, 6 ... 16 late, the same every time
+round (it is not a roll). The main beats are never swung.
+
+| SWING | The off sixteenth comes | As drum machines print it |
+| --- | --- | --- |
+| 10% | 1/30 of a step late | 51.7% |
+| 25% | 1/12 of a step late | 54.2% |
+| 50% | 1/6 of a step late | 58.3% |
+| 75% | 1/4 of a step late | 62.5% |
+| 100% | 1/3 of a step late: each eighth played long and short, 2 to 1, as a triplet | 66.7% |
+
+- It adds to a hit's own nudge and to HUMAN TIME.
+- A ratcheted hit that is swung squeezes its hits into what is left of its
+  step, so the last one ends before the next step's hit.
+- **Slices in order still play as one unbroken sound**: a run takes the
+  swing of its first hit. A break laid out in order on a swung lane is not
+  swung inside; a run that starts on steps 2, 4 ... is moved late as a whole.
+- **Nobody has listened to this yet** (FEEL or SWING). The tests measure where
+  each hit lands and how loud; whether 12 ms and 15% are the right "most", and
+  whether SWING's six steps are the right ones, is for ears.
 
 ### THROW
 

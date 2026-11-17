@@ -603,6 +603,12 @@ void putTrack(std::string& out, const TrackData& track) {
             put(out, " %.0f", track.laneFeel[lane].time);
             put(out, " %.0f\n", track.laneFeel[lane].level);
         }
+        // swing LANE AMOUNT: a lane's SWING, 0..100. Left out at 0.
+        for (int lane = 0; lane < kDrumLanes; ++lane) {
+            if (track.laneSwing[lane] == 0) continue;
+            put(out, "swing %.0f", lane + 1);
+            put(out, " %.0f\n", track.laneSwing[lane]);
+        }
         // choke LANE GROUP: a lane in CHOKE 1 or 2. Left out in none.
         for (int lane = 0; lane < kDrumLanes; ++lane) {
             if (track.laneChoke[lane] == kChokeNone) continue;
@@ -1013,6 +1019,10 @@ void readLines(SongReading& r, const std::string& text, std::size_t from, std::s
             if (!(in >> lane >> time) || !(lane >= 1) || lane > kDrumLanes) continue;
             if (!(in >> level)) level = 0;
             track->laneFeel[static_cast<int>(lane) - 1] = laneFeelOf(wholeIn(time, 0, 100), wholeIn(level, 0, 100)); // (held as doubles first)
+        } else if (word == "swing" && track->kind == TrackKind::Drums) {
+            double lane, amount;
+            if (!(in >> lane >> amount) || !(lane >= 1) || lane > kDrumLanes) continue;
+            track->laneSwing[static_cast<int>(lane) - 1] = laneSwingOf(wholeIn(amount, 0, 100)); // (held as a double first)
         } else if (word == "choke" && track->kind == TrackKind::Drums) {
             double lane, group;
             if (!(in >> lane >> group) || !(lane >= 1) || lane > kDrumLanes) continue;

@@ -146,11 +146,22 @@ void PatternScreen::feelRoll() {
     session_.setLaneFeel(project_.track, lane_, feel.time, feel.level);
 }
 
-// ...A puts this lane's feel on every lane of the kit (a lane at OFF: every lane plays plain again).
+// ...A puts this lane's feel on every lane of the kit, its SWING with it (a lane at OFF: every lane
+// plays plain again).
 void PatternScreen::feelToAll() {
     if (onTempo_ || step_ != kLaneName) return;
     const LaneFeel feel = trk().laneFeel[lane_];
-    for (int lane = 0; lane < kDrumLanes; ++lane) session_.setLaneFeel(project_.track, lane, feel.time, feel.level);
+    const int swing = trk().laneSwing[lane_];
+    for (int lane = 0; lane < kDrumLanes; ++lane) {
+        session_.setLaneFeel(project_.track, lane, feel.time, feel.level);
+        session_.setLaneSwing(project_.track, lane, swing);
+    }
+}
+
+// ...L1 and R1: one click of its SWING, less and more, through the six amounts; it stops at each end.
+void PatternScreen::swingTurn(int by) {
+    if (onTempo_ || step_ != kLaneName) return;
+    session_.setLaneSwing(project_.track, lane_, feelAmountStep(trk().laneSwing[lane_], by));
 }
 
 void PatternScreen::hearHit() {
@@ -621,7 +632,11 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         return;
     }
-    if (feelHeld_ && (b == Button::L1 || b == Button::R1)) return; // (kept for SWING; the slices and the brush wait until X is let go)
+    if (feelHeld_ && (b == Button::L1 || b == Button::R1)) {
+        // SWING, a click less or more. (The slices and the brush wait until X is let go.)
+        if (event.down) swingTurn(b == Button::R1 ? 1 : -1);
+        return;
+    }
     if ((fxHeld_ || feelHeld_) && b == Button::Y) {
         // The dice, for what this hit does, or for the lane's feel. (Y's own jobs wait until X is let go;
         // and if X is let go first, Y coming up after it is not a tap: it rolls nothing and steps no chance.)
@@ -874,6 +889,15 @@ void PatternScreen::drawFeelMark(SDL_Renderer* r, int nameY, LaneFeel feel) {
     if (feel.level) fill(r, kFeelMarkX, nameY + kCellH - kFeelMarkInset - kFeelMarkH, kFeelMarkW, kFeelMarkH, kPurple);
 }
 
+// A swung lane: a purple mark at the top right of its name, a long piece and a short one, as the
+// eighth is played. `nameY`: the top of the name's box.
+void PatternScreen::drawSwingMark(SDL_Renderer* r, int nameY, int swing) {
+    if (swing <= 0) return;
+    const int y = nameY + kSwingMarkInset, shortX = kSwingMarkRight - kSwingMarkShort;
+    fill(r, shortX - kSwingMarkGap - kSwingMarkLong, y, kSwingMarkLong, kSwingMarkH, kPurple);
+    fill(r, shortX, y, kSwingMarkShort, kSwingMarkH, kPurple);
+}
+
 // A lane in a CHOKE group: a brass mark at the bottom right of its name, a piece for each of the
 // group's number. `nameY`: the top of the name's box.
 void PatternScreen::drawChokeMark(SDL_Renderer* r, int nameY, int group) {
@@ -941,6 +965,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const Font& nameFont = fonts.within(&Fonts::medium, laneLabel(lane), kNameW - 10.f); // (a long recording's name at XL: held at LARGE)
         nameFont.draw(r, 15.f, y + (kCellH - nameFont.capHeight()) / 2.f, laneLabel(lane), !onTempo_ && lane == lane_ ? kTeal : kText);
         drawFeelMark(r, y, trk().laneFeel[lane]);
+        drawSwingMark(r, y, trk().laneSwing[lane]);
         drawChokeMark(r, y, trk().laneChoke[lane]);
 
         for (int s = 0; s < kSteps; ++s) {
@@ -1020,25 +1045,29 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else if (onName && feelHeld_) {
         // X is held: the strip is the lane's feel, and nothing else.
         const LaneFeel feel = trk().laneFeel[lane_];
+        const int swing = trk().laneSwing[lane_];
         tight.small.draw(r, 8.f, stripY, "LANE", kDim);
         tight.fit(laneLabel(lane_), 104.f).draw(r, 8.f, stripY + 16.f, laneLabel(lane_), kText);
+        feelAmountText(swing, text, sizeof text);
+        field(kFeelSwingX, "SWING", text, swing ? kBrass : kText);
         feelAmountText(feel.time, text, sizeof text);
         field(kFeelTimeX, "HUMAN TIME", text, feel.time ? kBrass : kText);
         feelAmountText(feel.level, text, sizeof text);
         field(kFeelLevelX, "HUMAN LEVEL", text, feel.level ? kBrass : kText);
         bool all = true;
-        for (int lane = 0; lane < kDrumLanes; ++lane) all = all && trk().laneFeel[lane] == feel;
+        for (int lane = 0; lane < kDrumLanes; ++lane) all = all && trk().laneFeel[lane] == feel && trk().laneSwing[lane] == swing;
         field(kFeelAllX, "EVERY LANE", all ? "THE SAME" : "COPY", all ? kDim : kText);
     } else if (onName) {
         tight.small.draw(r, 8.f, stripY, "LANE", kDim);
         tight.fit(laneLabel(lane_), 104.f).draw(r, 8.f, stripY + 16.f, laneLabel(lane_), kText);
         // Its feel, in a line: what X held would show in full.
         // (Not while something is being said on that row: why L1 did not open the slices.)
-        if (const LaneFeel feel = trk().laneFeel[lane_]; !feel.atRest() && !said()[0]) {
-            char time[8], level[8], summary[48];
+        if (const LaneFeel feel = trk().laneFeel[lane_]; (!feel.atRest() || trk().laneSwing[lane_]) && !said()[0]) {
+            char swing[8], time[8], level[8], summary[64];
+            feelAmountText(trk().laneSwing[lane_], swing, sizeof swing);
             feelAmountText(feel.time, time, sizeof time);
             feelAmountText(feel.level, level, sizeof level);
-            std::snprintf(summary, sizeof summary, "HUMAN TIME %s   HUMAN LEVEL %s", time, level);
+            std::snprintf(summary, sizeof summary, "SWING %s   HUMAN TIME %s   HUMAN LEVEL %s", swing, time, level);
             tight.small.drawRight(r, 632.f, stripY + 44.f, summary, kPurple);
         }
         std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(trk().laneLevel[lane_] * 100.f)));
@@ -1130,8 +1159,8 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char brushText[40];
     if (feelHeld_ && onName) {
         // As on a hit: each button under the field it sets, the dice alone at the left.
-        const HintUnder under[] = {{kFeelTimeX, "LEFT / RIGHT"}, {kFeelLevelX, "UP / DOWN"}, {kFeelAllX, "A"}};
-        ui::hintsUnder(r, fonts, "Y", under, 3);
+        const HintUnder under[] = {{kFeelSwingX, "L1 / R1"}, {kFeelTimeX, "LEFT / RIGHT"}, {kFeelLevelX, "UP / DOWN"}, {kFeelAllX, "A"}};
+        ui::hintsUnder(r, fonts, "Y", under, 4);
         return;
     } else if (fxHeld_ && hitHere()) { // (as the strip above: its fields are there only on a hit)
         // Each button under the field it sets, with no word: the field's name is right above it.

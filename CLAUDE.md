@@ -1637,8 +1637,8 @@ effect in those two groups and fails one that does not.
     (`app/lane_feel.hpp`); Y the dice (OFF, 10 or 25% of each, never none, never what it was);
     A this lane's feel onto every lane (from OFF: all plain). **X there still hears the drum,
     exactly as before** (`hearLaneHeld` on the press, `keepHearing` lets go): the one hold is
-    both, and a turn of the feel sounds nothing (the feel is the playing pattern's). L1 and R1 do
-    nothing while it is held (kept for SWING). **Y let go after X is not a tap** (`yDidSomething_`
+    both, and a turn of the feel sounds nothing (the feel is the playing pattern's). L1 and R1 are
+    SWING while it is held (next rule). **Y let go after X is not a tap** (`yDidSomething_`
     is set by the dice): it rolled the lane's hits, and on a hit it stepped the chance. **A or Y
     pressed while X was held does nothing of its own if X is let go first** (`aSpent_`,
     `ySpent_`, until the button comes up; a hit's THROW and dice too): with A still down the
@@ -1655,7 +1655,34 @@ effect in those two groups and fails one that does not.
     again) and `tests/feelapp_test.cpp` (the gesture, the strip off the drawn screen, the song
     file, undo, a song sent again, a bounce, X still hearing, the stick's pace, X let go first).
     `feel_test testTime testSlices` runs just those. `textsize` holds the name's line and the
-    held strip as tight rows. SWING is not built.
+    held strip as tight rows.
+- **SWING is a third amount on each drum LANE, live, and no roll** (owner, 2026-11-14; built on
+  branch `swing`, 2026-11-17; `feel_rule.hpp`: `swingOffStep`, `swingSamples`; plan: the SWING
+  section of `docs/plans/drum-feel-plan.md`). The hits on steps 2, 4 ... 16 come SWING percent of a
+  third of a step late: **at 100% exactly a third (`amount * samplesPerStep / 300`), each eighth
+  played 2 to 1, a triplet**. FEEL's six clicks. **Nobody has heard it.**
+  - **It goes through FEEL's path in `schedule`**: a swung lane's every hit is whole samples (`ceil`
+    of nudge + roll + swing, `Pending::whole`), and **a run of slices takes its first hit's swing**
+    (`feelRunBack`'s head), so a break in order is never swung inside. **A lane at 0 is the old path
+    to the bit**: `effects_test --print` the same, and a busy drum song's sum the same on `main`'s
+    engine and this one (`swing_test --print`).
+  - **Never early, so never asked ahead for it**; a hit nudged early is asked as before (the
+    wait counts from `floor(elapsed)` on a swung lane, as a felt one). **A swung ratchet is squeezed
+    into its step less the swing** (`playHit`'s `late`): unsqueezed, a x4's last piece cut the next
+    step's hit. The step before is not stretched.
+  - **The app**: `TrackData::laneSwing`, `Session::setLaneSwing`, `Command::SetLaneSwing` (a = lane,
+    b = amount; appended), every drum lane's sent by `sendSong`; in a song file `swing LANE AMOUNT`,
+    **left out at 0**; undo by `soundMark` / `restoreSounds`; the designer page's `kKitSwing`.
+  - **The gesture: X held on a lane's name, L1 less, R1 more** (`swingTurn`); X + A copies it with
+    the feel (THE SAME needs all three alike); **the dice leave it alone**. The strip's SWING field
+    is first, `kFeelSwingX`, its L1 / R1 chip under it. **The mark** (`drawSwingMark`, both views): a
+    long and a short purple dash at the top right of the name. The name's line reads SWING, HUMAN
+    TIME, HUMAN LEVEL. Stills `feel-swing`, `feel-swing-held`; `feel` and `feel-same-held` swing too.
+  - Tests: `tests/swing_test.cpp` (the engine: places at every amount and at 133 BPM, nudge and
+    HUMAN TIME added, ratchets, blocks 1 to 333, helpers, tempo turned, Play twice, a bounce, turned
+    while playing, slices, DUCK and THROW, a track gone, a scene put in), `feelapp_test` `testSwing`
+    and `testSwingKept`; `nextscene_test`'s `fill` has two swung lanes. Cost: nothing that shows
+    (`bench`'s SWING rows: every lane of twelve kits at 100%, -0.01%).
 - **CHOKE is a group on each drum LANE, two of them** (owner, 2026-11-15: "choke the open hi hat with a
   closed one"; `DrumMachine::setLaneChoke`, `kChokeNone` / `kChokeGroups` and `chokeGroupOf` in
   drums.hpp). A hit on a lane in a group gives every OTHER lane of that group still sounding the
@@ -2837,7 +2864,7 @@ watch again, it is in git (the commit before batch 8b).
 3. LFO and random stepper per track (`docs/plans/modulation-plan.md`): batch 0, the groundwork, is built (branch `mods`: the rule, `giveLane`, DETUNE mended, QMOD's early return, the cost row), and batch 1, the engine (the tick, `runMods`, the commands, X held while stopped); their review is mended (the plan's section 14); batch 2, the song, is built too (`TrackData::mods`, `Session::setMod`, the `mod` / `modsteps` words, undo, the TYPE carry: section 15); **batches 3 and 4 are built (2026-11-15, the owner's calls A to H taken; section 18): X held on a knob is its MOD, on DEVICE and FX**; **batch 5, the MOD tab after FX, is built (2026-11-15, section 20)**; next, batch 6 (the brass mark on the target's own bar). **Joined with `main` (2026-11-15)**, and the join's review mended (section 17: no defect, the bench's MOD rows timed in turns): FEEL, AT END, the mixer, the picker, JAX-EP and Twin's removal sit beside the MODs; nobody has heard a MOD.
 4. **PHYSIC** (owner, 2026-11-14): a physical-model synth for plucked and struck sounds (strings, mallets, bells). Plan: `docs/plans/physic-plan.md`. **Built and joined: the engine (2026-11-15, 24 presets) and the app (2026-11-16). Batch 10 (BODY, PAIR, MOTOR, NOISE, BUZZ, a fifth page and 8 presets: 32) on branch `physic2`, 2026-11-16. Nobody has heard it, not run on the handheld.**
 5. **An acid mono bass** (303-style: accent, slide; **ACID, built 2026-11-16, batches 0 to 5 of `docs/plans/acid-plan.md`: the engine, the app, 32 presets, README. Nobody has heard it, not run on the handheld; batch 6, calibration from recordings, waits on the owner's source**), then **a granular synth** (clouds from the recordings) (owner, 2026-11-14; **CLOUD, planned 2026-11-16 in `docs/plans/granular-plan.md`; its engine and its app built on branch `cloud` (batches 0 to 2; the pool 24, not 32), not heard, not run on the handheld; batch 3's 24 presets, batch 4's designer page and batch 5's review and README too; the owner's three open questions are in the plan's batch 5 section**).
-7. **FEEL on the drum grid** (owner, 2026-11-14; `docs/plans/drum-feel-plan.md`): HUMAN TIME and HUMAN LEVEL for each lane, live, the main beats tighter. **Built on branch `feel` (2026-11-15), not joined, not heard by anyone**; SWING later.
+7. **FEEL on the drum grid** (owner, 2026-11-14; `docs/plans/drum-feel-plan.md`): HUMAN TIME and HUMAN LEVEL for each lane, live, the main beats tighter. **Built on branch `feel` (2026-11-15), not heard by anyone**. **SWING built on branch `swing` (2026-11-17: batches 0 to 3 of the plan's SWING section), not joined, not heard**; the owner's seven calls are in the plan.
 6. **The sample picker in columns** (owner, 2026-11-14; `docs/plans/picker-plan.md`): three columns as yazi, folders two levels deep, new folders and moving recordings on the device. The owner asked for it to go soon: after the JAX-EP's presets. **Batches 0 to 2 are built on branch `picker`** (two levels underneath, the three columns, + NEW FOLDER, carry with hold R1, hold B on an empty folder), not joined, not tried on the handheld; batch 3, the review and its mend, is done (2026-11-15).
 
 8. **The efficiency pass, then FM-6** (owner, 2026-11-15, after SPEED TEST on the handheld: it is

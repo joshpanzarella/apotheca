@@ -155,6 +155,26 @@ struct Rig {
         }
         return at;
     }
+    // Where SWING puts them, for the swing the project holds (no feel).
+    std::vector<long> swung(int bars = 2) {
+        std::vector<long> at;
+        for (long n = 0; n < bars * kSteps; ++n) at.push_back(n * kStep + static_cast<long>(std::ceil(swingSamples(kit().laneSwing[kClickLane], static_cast<int>(n % kSteps), kStep))));
+        return at;
+    }
+    // The swing mark by a lane's name: its long piece and its short one.
+    bool markSwing(int lane) const {
+        using namespace pattern_layout;
+        const int y = kGridTop + lane * kLaneH + kSwingMarkInset + 1;
+        return canvas.is(kSwingMarkRight - 1, y, ui::kPurple) && canvas.is(kSwingMarkRight - kSwingMarkShort - kSwingMarkGap - kSwingMarkLong + 1, y, ui::kPurple) &&
+               !canvas.is(kSwingMarkRight - kSwingMarkShort - 1, y, ui::kPurple); // (the gap between them)
+    }
+    bool anySwingMark(int lane) const {
+        using namespace pattern_layout;
+        const int y = kGridTop + lane * kLaneH + kSwingMarkInset + 1;
+        for (int x = kSwingMarkRight - kSwingMarkShort - kSwingMarkGap - kSwingMarkLong; x < kSwingMarkRight; ++x)
+            if (canvas.is(x, y, ui::kPurple)) return true;
+        return false;
+    }
     std::vector<long> grid(int bars = 2) {
         std::vector<long> at;
         for (long n = 0; n < bars * kSteps; ++n) at.push_back(n * kStep);
@@ -549,12 +569,12 @@ void heldOnAName(Rig& rig) {
     rig.draw();
     const Chips chips = rig.chips();
     // Each chip's left edge is its field's; the dice alone at the left.
-    CHECK((chips == Chips{{8, rig.chipW("Y")}, {static_cast<int>(kFeelTimeX), rig.chipW("LEFT / RIGHT")}, {static_cast<int>(kFeelLevelX), rig.chipW("UP / DOWN")}, {static_cast<int>(kFeelAllX), rig.chipW("A")}}));
-    CHECK(rig.label(kFeelTimeX, "HUMAN TIME") && rig.label(kFeelLevelX, "HUMAN LEVEL") && rig.label(kFeelAllX, "EVERY LANE"));
+    CHECK((chips == Chips{{8, rig.chipW("Y")}, {static_cast<int>(kFeelSwingX), rig.chipW("L1 / R1")}, {static_cast<int>(kFeelTimeX), rig.chipW("LEFT / RIGHT")}, {static_cast<int>(kFeelLevelX), rig.chipW("UP / DOWN")}, {static_cast<int>(kFeelAllX), rig.chipW("A")}}));
+    CHECK(rig.label(kFeelSwingX, "SWING") && rig.label(kFeelTimeX, "HUMAN TIME") && rig.label(kFeelLevelX, "HUMAN LEVEL") && rig.label(kFeelAllX, "EVERY LANE"));
     CHECK(!rig.label(kFeelTimeX + 1.f, "HUMAN TIME") && !rig.label(kFeelTimeX, "HUMAN LEVEL")); // (the check can tell)
     CHECK(!rig.label(134.f, "DRUM VOLUME") && !rig.label(430.f, "DICE HITS"));                     // the strip is the feel and nothing else
-    CHECK(rig.chipIs(static_cast<int>(kFeelTimeX), "LEFT / RIGHT") && rig.chipIs(static_cast<int>(kFeelLevelX), "UP / DOWN") && rig.chipIs(static_cast<int>(kFeelAllX), "A"));
-    CHECK(rig.diceAlone(static_cast<int>(kFeelTimeX)));
+    CHECK(rig.chipIs(static_cast<int>(kFeelSwingX), "L1 / R1") && rig.chipIs(static_cast<int>(kFeelTimeX), "LEFT / RIGHT") && rig.chipIs(static_cast<int>(kFeelLevelX), "UP / DOWN") && rig.chipIs(static_cast<int>(kFeelAllX), "A"));
+    CHECK(rig.diceAlone(static_cast<int>(kFeelSwingX)));
     // The help is said at the bar's end: the last chip leaves it room.
     CHECK(ui::gHintsOver == 0);
 }
@@ -599,7 +619,7 @@ void testTheStrip() {
     CHECK(!drums.feeling() && rig.plainBar(kOnAName, 4));
     CHECK(rig.label(134.f, "DRUM VOLUME"));
     {
-        const char* line = "HUMAN TIME 100%   HUMAN LEVEL 100%";
+        const char* line = "SWING OFF   HUMAN TIME 100%   HUMAN LEVEL 100%";
         const Font& small = rig.scratch.fonts->small;
         CHECK(rig.inked(small, 632.f - small.width(line), kStripY + 44.f, line, ui::kPurple));
     }
@@ -607,8 +627,8 @@ void testTheStrip() {
     rig.app.session().setLaneFeel(0, 1, 25, 50);
     rig.draw();
     {
-        const char* line = "HUMAN TIME 25%   HUMAN LEVEL 50%";
-        const char* swapped = "HUMAN TIME 50%   HUMAN LEVEL 25%";
+        const char* line = "SWING OFF   HUMAN TIME 25%   HUMAN LEVEL 50%";
+        const char* swapped = "SWING OFF   HUMAN TIME 50%   HUMAN LEVEL 25%";
         const Font& small = rig.scratch.fonts->small;
         CHECK(rig.inked(small, 632.f - small.width(line), kStripY + 44.f, line, ui::kPurple));
         CHECK(!rig.inked(small, 632.f - small.width(swapped), kStripY + 44.f, swapped, ui::kPurple));
@@ -640,7 +660,7 @@ void testTheStrip() {
     drums.moveCursorTo(6, -1);
     rig.draw();
     {
-        const char* line = "HUMAN TIME OFF   HUMAN LEVEL OFF";
+        const char* line = "SWING OFF   HUMAN TIME OFF   HUMAN LEVEL OFF";
         const Font& small = rig.scratch.fonts->small;
         CHECK(!rig.inked(small, 632.f - small.width(line), kStripY + 44.f, line, ui::kPurple));
     }
@@ -685,14 +705,17 @@ void testTheStrip() {
     rig.key(X, true);
     CHECK(drums.feeling() && drums.slicing());
     heldOnAName(rig);
-    // L1 and R1 with X held do nothing: the slice view stays, and no brush goes down.
+    // L1 and R1 with X held are SWING: the slice view stays, and no brush goes down.
+    CHECK(rig.kit().laneSwing[2] == 0);
     rig.tap(SDLK_q);
-    CHECK(drums.slicing() && drums.feeling());
+    CHECK(drums.slicing() && drums.feeling() && rig.kit().laneSwing[2] == 0); // (at OFF: L1 stops there)
     rig.key(SDLK_w, true);
     rig.frames(1);
-    CHECK(!drums.painting());
+    CHECK(!drums.painting() && rig.kit().laneSwing[2] == 10);
     rig.key(SDLK_w, false);
     rig.frames(1);
+    rig.tap(SDLK_q);
+    CHECK(drums.slicing() && rig.kit().laneSwing[2] == 0);
     const LaneFeel was = rig.kit().laneFeel[2];
     rig.tap(SDLK_UP); // HUMAN LEVEL, not "one slice / runs on"
     CHECK(rig.kit().laneFeel[2].level != was.level || was.level == 100);
@@ -898,6 +921,222 @@ void testXStillHears() {
     CHECK(tapped > 0.05f && rig.kit().laneFeel[2] == was);
 }
 
+// ---- SWING -----------------------------------------------------------------------------------------
+
+// X held on a lane's name: R1 one click of SWING more, L1 one less, through the six amounts, stopping at
+// each end. The engine plays it; the strip says it; the name wears its mark; the copy takes it; the dice
+// leave it alone.
+void testSwing() {
+    using namespace pattern_layout;
+    const TempFolder temp;
+    Rig rig(temp.path);
+    PatternScreen& drums = rig.drums();
+    rig.clicks();
+    drums.moveCursorTo(kClickLane, -1);
+    CHECK(rig.played() == rig.grid());
+    rig.key(X, true);
+    rig.frames(1);
+    const int amounts[6] = {0, 10, 25, 50, 75, 100};
+    for (int i = 1; i <= 7; ++i) {
+        rig.tap(SDLK_w); // R1
+        CHECK(rig.kit().laneSwing[kClickLane] == amounts[i > 5 ? 5 : i]);
+    }
+    rig.tap(SDLK_q, 2); // L1
+    CHECK(rig.kit().laneSwing[kClickLane] == 50);
+    CHECK(rig.kit().laneFeel[kClickLane].atRest()); // SWING is not the feel's amounts
+    for (int lane = 0; lane < kDrumLanes; ++lane)
+        if (lane != kClickLane) CHECK(rig.kit().laneSwing[lane] == 0);
+    CHECK(drums.cursorLane() == kClickLane && drums.cursorStep() == -1 && drums.feeling() && !drums.slicing() && !drums.painting());
+    rig.key(X, false);
+    rig.frames(2);
+    CHECK(!drums.slicing()); // (L1 let go with X held opens no slices)
+    // The engine was told: every second sixteenth a sixth of a step late.
+    const std::vector<long> at = rig.played();
+    CHECK(at == rig.swung() && at != rig.grid());
+    if (at.size() > 3) CHECK(at[1] == kStep + 1000 && at[2] == 2 * kStep && at[3] == 3 * kStep + 1000);
+    // Without X, L1 and R1 are what they were: R1 is the brush on a step.
+    drums.moveCursorTo(kClickLane, 0);
+    rig.key(SDLK_w, true);
+    rig.frames(1);
+    CHECK(drums.painting() && rig.kit().laneSwing[kClickLane] == 50);
+    rig.key(SDLK_w, false);
+    rig.frames(1);
+    drums.moveCursorTo(kClickLane, -1);
+    // HUMAN TIME beside it: each hit at its roll plus its swing.
+    rig.app.session().setLaneFeel(0, kClickLane, 50, 0);
+    rig.frames(2);
+    {
+        const std::vector<long> both = rig.played();
+        std::vector<long> want;
+        for (long n = 0; n < 2 * kSteps; ++n) {
+            const int step = static_cast<int>(n % kSteps);
+            const long place = n * kStep + static_cast<long>(std::ceil(feelSamples(50, step, feelSeed(0, kClickLane, 0, step, n), 48.0, kStep) + swingSamples(50, step, kStep)));
+            want.push_back(n == 0 && place < 0 ? 0 : place);
+        }
+        CHECK(both == want);
+    }
+    rig.app.session().setLaneFeel(0, kClickLane, 0, 0);
+
+    // The mark: a lane with SWING alone wears it, not FEEL's; one with none wears neither.
+    CHECK(rig.canvas.ok && rig.scratch.ok);
+    if (!rig.canvas.ok || !rig.scratch.ok) return;
+    rig.draw();
+    CHECK(rig.markSwing(kClickLane) && !rig.markTime(kClickLane) && !rig.markLevel(kClickLane));
+    for (int lane = 0; lane < kDrumLanes; ++lane)
+        if (lane != kClickLane) CHECK(!rig.anySwingMark(lane));
+    // ...in the slice view too (the one name stands where the grid's first does).
+    rig.app.session().setLaneSample(0, kClickLane, "break");
+    rig.frames(2);
+    drums.setSlicing(true);
+    rig.draw();
+    CHECK(drums.slicing() && rig.markSwing(0));
+    rig.app.session().setLaneSwing(0, kClickLane, 0);
+    rig.draw();
+    CHECK(!rig.anySwingMark(0));
+    rig.app.session().setLaneSwing(0, kClickLane, 50);
+    drums.setSlicing(false);
+    rig.app.session().setLaneSample(0, kClickLane, "click");
+    rig.frames(2);
+    // The strip with X up: SWING first in the line, and a lane with SWING alone has the line.
+    rig.draw();
+    {
+        const char* line = "SWING 50%   HUMAN TIME OFF   HUMAN LEVEL OFF";
+        const Font& small = rig.scratch.fonts->small;
+        CHECK(rig.inked(small, 632.f - small.width(line), kStripY + 44.f, line, ui::kPurple));
+    }
+    // X held: SWING's field, brass, its chip under it; EVERY LANE asks for SWING too.
+    rig.key(X, true);
+    heldOnAName(rig);
+    CHECK(rig.value(kFeelSwingX, "50%", ui::kBrass) && !rig.value(kFeelSwingX, "25%", ui::kBrass));
+    CHECK(rig.value(kFeelTimeX, "OFF", ui::kText));
+    CHECK(rig.value(kFeelAllX, "COPY", ui::kText)); // the feels are alike (all OFF), the swings are not
+    // The dice leave SWING alone.
+    for (int i = 0; i < 12; ++i) {
+        rig.tap(Y);
+        CHECK(rig.kit().laneSwing[kClickLane] == 50 && !rig.kit().laneFeel[kClickLane].atRest());
+    }
+    // X + A: the feel and the SWING onto every lane.
+    rig.tap(A);
+    for (int lane = 0; lane < kDrumLanes; ++lane) CHECK(rig.kit().laneSwing[lane] == 50 && rig.kit().laneFeel[lane] == rig.kit().laneFeel[kClickLane]);
+    heldOnAName(rig);
+    CHECK(rig.value(kFeelAllX, "THE SAME", ui::kDim));
+    for (int lane = 0; lane < kDrumLanes; ++lane) CHECK(rig.markSwing(lane));
+    // ...and a lane at OFF takes every lane's SWING off with its feel.
+    rig.tap(SDLK_q, 6);
+    rig.tap(SDLK_LEFT, 6);
+    rig.tap(SDLK_DOWN, 6);
+    rig.tap(A);
+    for (int lane = 0; lane < kDrumLanes; ++lane) CHECK(rig.kit().laneSwing[lane] == 0 && rig.kit().laneFeel[lane].atRest());
+    rig.key(X, false);
+    rig.frames(1);
+    rig.draw();
+    for (int lane = 0; lane < kDrumLanes; ++lane) CHECK(!rig.anySwingMark(lane));
+}
+
+// SWING in the song file (left out at 0), in undo (one hold, one step), in a song sent again, in a bounce.
+void testSwingKept() {
+    const TempFolder temp;
+    const std::string folder = tempFolder("swingb");
+    Rig rig(temp.path);
+    Session& session = rig.app.session();
+    PatternScreen& drums = rig.drums();
+    rig.clicks();
+    rig.settle();
+    // The song file.
+    const std::string plain = songText(rig.project());
+    CHECK(plain.find("swing") == std::string::npos);
+    session.setLaneSwing(0, 0, 25);
+    session.setLaneSwing(0, 7, 100);
+    const std::string text = songText(rig.project());
+    CHECK(text.find("\nswing 1 25\n") != std::string::npos && text.find("\nswing 8 100\n") != std::string::npos && text.find("swing 2 ") == std::string::npos);
+    {
+        std::unique_ptr<Project> back(new Project);
+        CHECK(parseSong(text, *back) && songText(*back) == text);
+        CHECK(back->tracks[0].laneSwing[0] == 25 && back->tracks[0].laneSwing[7] == 100 && back->tracks[0].laneSwing[1] == 0);
+    }
+    session.setLaneSwing(0, 0, 0);
+    session.setLaneSwing(0, 7, 0);
+    CHECK(songText(rig.project()) == plain);
+    {
+        // By hand: held as doubles first, a lane that is not there skipped, a line with no amount skipped,
+        // a line under a synth track not taken.
+        const std::size_t lanes = plain.find("\nlanes ");
+        CHECK(lanes != std::string::npos);
+        const std::size_t after = plain.find('\n', lanes + 1) + 1;
+        const auto with = [&](const std::string& lines) { return plain.substr(0, after) + lines + plain.substr(after); };
+        std::unique_ptr<Project> odd(new Project);
+        CHECK(parseSong(with("swing 2 1e300\nswing 4 -7\nswing 5\nswing 9 50\nswing 0 50\nswing x\nswing 6 nan\nswing 7 66.9\n"), *odd));
+        CHECK(odd->tracks[0].laneSwing[1] == 100 && odd->tracks[0].laneSwing[6] == 66);
+        for (int lane : {0, 2, 3, 4, 5, 7}) CHECK(odd->tracks[0].laneSwing[lane] == 0);
+        std::unique_ptr<Project> want(new Project); // (and nothing else of the song moved)
+        CHECK(parseSong(plain, *want));
+        want->tracks[0].laneSwing[1] = 100;
+        want->tracks[0].laneSwing[6] = 66;
+        CHECK(songText(*odd) == songText(*want));
+        // Under a synth track: not taken.
+        std::unique_ptr<Project> synth(new Project);
+        CHECK(parseSong(plain, *synth));
+        synth->tracks[1] = synth->tracks[0];
+        synth->tracks[1].kind = TrackKind::Phazed;
+        std::string two = songText(*synth);
+        two += "swing 3 50\n"; // after the last track's lines: the synth's
+        std::unique_ptr<Project> none(new Project);
+        CHECK(parseSong(two, *none));
+        for (int lane = 0; lane < kDrumLanes; ++lane) CHECK(none->tracks[1].laneSwing[lane] == 0 && none->tracks[0].laneSwing[lane] == 0);
+    }
+    // Undo: the clicks of one hold are one step; undo and redo reach the engine.
+    rig.settle();
+    drums.moveCursorTo(kClickLane, -1);
+    const int steps = session.undoSteps();
+    rig.key(X, true);
+    rig.tap(SDLK_w, 5);
+    rig.key(X, false);
+    rig.settle();
+    CHECK(rig.kit().laneSwing[kClickLane] == 100 && session.undoSteps() == steps + 1);
+    CHECK(rig.played() == rig.swung() && rig.played() != rig.grid());
+    CHECK(session.undo());
+    CHECK(rig.kit().laneSwing[kClickLane] == 0 && rig.played() == rig.grid());
+    CHECK(session.redo());
+    CHECK(rig.kit().laneSwing[kClickLane] == 100 && rig.played() == rig.swung());
+    // The whole song sent again: the engine has it; a song with none plays straight, though the engine had one.
+    session.applyProject();
+    rig.frames(4);
+    CHECK(rig.played() == rig.swung() && rig.played() != rig.grid());
+    rig.kit().laneSwing[kClickLane] = 0; // (as a song read from a file: the project alone changes)
+    session.applyProject();
+    rig.frames(4);
+    CHECK(rig.played() == rig.grid());
+    // A bounce is what was heard: the last step's hit swung, inside the bar.
+    session.useBounceFolder(folder);
+    session.setLaneSwing(0, kClickLane, 100);
+    rig.frames(30);
+    session.togglePlay(true);
+    std::vector<long> heard;
+    {
+        std::vector<float> out(2 * 256);
+        for (long done = 0; done < kBar - 256; done += 256) {
+            rig.engine->render(out.data(), 256);
+            for (int i = 0; i < 256; ++i)
+                if (out[static_cast<std::size_t>(2 * i)] != 0.f) heard.push_back(done + i);
+        }
+    }
+    session.togglePlay(true);
+    rig.frames(30);
+    CHECK(session.startBounce(Session::Bounce::Song));
+    session.finishBounce();
+    std::string bytes;
+    CHECK(readTextFile(folder + "/" + session.bounceLast(), bytes) && bytes.size() > 44);
+    std::vector<long> bounced;
+    for (std::size_t at = 44; at + 3 < bytes.size(); at += 4) {
+        const int low = static_cast<unsigned char>(bytes[at]), high = static_cast<signed char>(bytes[at + 1]);
+        if (high * 256 + low != 0) bounced.push_back(static_cast<long>((at - 44) / 4));
+    }
+    CHECK(heard.size() == 16 && bounced == heard);
+    if (heard.size() == 16) CHECK(heard[15] == 15 * kStep + 2000);
+    std::remove((folder + "/" + session.bounceLast()).c_str());
+    rmdir(folder.c_str());
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -909,6 +1148,7 @@ int main(int argc, char** argv) {
     const Test tests[] = {
         {"testTheGesture", testTheGesture}, {"testTurnedWhileItPlays", testTurnedWhileItPlays}, {"testTheDiceAndTheCopy", testTheDiceAndTheCopy}, {"testTheStrip", testTheStrip}, {"testTheSongFile", testTheSongFile},
         {"testUndoAndASongSentAgain", testUndoAndASongSentAgain}, {"testABounce", testABounce}, {"testXStillHears", testXStillHears}, {"testXLetGoFirst", testXLetGoFirst},
+        {"testSwing", testSwing}, {"testSwingKept", testSwingKept},
     };
     for (const Test& test : tests) {
         bool wanted = argc < 2;

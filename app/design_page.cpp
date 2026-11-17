@@ -393,8 +393,8 @@ function recordingOptions(pick, first, now) {
 // ---- a drum KIT: a card a lane ----
 // Each lane's settings are ids of their own (lane * spec.stride + field), so a lane's control sends
 // `set` as any other. Fields 0 to 7 are EDIT's rows (START, END, FADE IN, FADE OUT, GAIN, PITCH, FINE,
-// REVERSE); then FIT, CHOKE, VOLUME, HUMAN TIME, HUMAN LEVEL.
-const kEdit = {start: 0, end: 1, fadeIn: 2, fadeOut: 3, gain: 4, pitch: 5, fine: 6, reverse: 7}, kFit = 8, kChoke = 9, kVolume = 10, kHumanTime = 11, kHumanLevel = 12;
+// REVERSE); then FIT, CHOKE, VOLUME, HUMAN TIME, HUMAN LEVEL, SWING.
+const kEdit = {start: 0, end: 1, fadeIn: 2, fadeOut: 3, gain: 4, pitch: 5, fine: 6, reverse: 7}, kFit = 8, kChoke = 9, kVolume = 10, kHumanTime = 11, kHumanLevel = 12, kSwing = 13;
 // The guard and how loud a point of the file is made, for the picture only: lane_edit.cpp's guarded()
 // and laneEditLevelAt(), which the KIT page's EDIT view draws with. Keep them the same.
 function guarded(x) { const a = Math.abs(x); if (a <= 0.9) return x; const y = 0.9 + 0.1 * Math.tanh((a - 0.9) / 0.1); return x < 0 ? -y : y; }
@@ -461,7 +461,7 @@ function laneCard(w) {
   };
   card.append(wave(w));
   const g = el('div', 'grid five');
-  for (const f of [kVolume, kChoke, kFit, kHumanTime, kHumanLevel]) {
+  for (const f of [kVolume, kChoke, kFit, kHumanTime, kHumanLevel, kSwing]) {
     const box = control(item(f));
     if (f === kFit && !w.recording && !w.synth) { box.querySelector('select').disabled = true; box.title = 'FIT stretches a recording: a built-in drum has none.'; }
     g.append(box);

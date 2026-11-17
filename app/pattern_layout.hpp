@@ -17,11 +17,14 @@ constexpr int kStripY = kGridTop + 8 * kLaneH + 6;
 // draws its name and value there, and the bar under it draws the button that sets it there
 // (ui::hintsUnder), so the two cannot drift apart.
 constexpr float kFxPitchX = 190.f, kFxRatchetX = 260.f, kFxReverseX = 355.f, kFxCutX = 450.f, kFxThrowX = 555.f;
-// With X held on a lane's name the strip is the lane's FEEL: HUMAN TIME, HUMAN LEVEL, and the
-// copy onto every lane. The field and the button's chip under it share these, as above.
-constexpr float kFeelTimeX = 190.f, kFeelLevelX = 320.f, kFeelAllX = 450.f;
+// With X held on a lane's name the strip is the lane's FEEL: SWING, HUMAN TIME, HUMAN LEVEL, and
+// the copy onto every lane. The field and the button's chip under it share these, as above.
+constexpr float kFeelSwingX = 130.f, kFeelTimeX = 225.f, kFeelLevelX = 335.f, kFeelAllX = 450.f;
 // A lane with a feel wears a mark at the left of its name: the upper piece for HUMAN TIME, the lower for HUMAN LEVEL.
 constexpr int kFeelMarkX = kNameX + 3, kFeelMarkW = 3, kFeelMarkH = 12, kFeelMarkInset = 5;
+// A swung lane wears a purple mark at the top right of its name: a long piece and a short one, 2 to 1,
+// as the eighth is played; the short one ends at kSwingMarkRight, kSwingMarkInset down from the box's top.
+constexpr int kSwingMarkRight = kNameX + kNameW - 4, kSwingMarkLong = 8, kSwingMarkShort = 4, kSwingMarkGap = 2, kSwingMarkH = 3, kSwingMarkInset = 4;
 // A lane in a CHOKE group wears a brass mark at the bottom right of its name: one piece for CHOKE 1, two
 // for CHOKE 2, the right one ending at kChokeMarkRight, kChokeMarkInset up from the box's foot.
 constexpr int kChokeMarkRight = kNameX + kNameW - 4, kChokeMarkW = 8, kChokeMarkH = 3, kChokeMarkGap = 3, kChokeMarkInset = 4;

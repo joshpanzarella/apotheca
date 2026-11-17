@@ -838,7 +838,7 @@ std::uint32_t Session::soundMark() const {
         mix(track.send, sizeof track.send);
         mix(&track.glideFrom, sizeof track.glideFrom);
         mix(track.mods, sizeof track.mods);
-        if (track.kind == TrackKind::Drums) mix(track.laneFeel, sizeof track.laneFeel), mix(track.laneChoke, sizeof track.laneChoke), mix(track.laneEdit, sizeof track.laneEdit), mix(track.laneSynth, sizeof track.laneSynth);
+        if (track.kind == TrackKind::Drums) mix(track.laneFeel, sizeof track.laneFeel), mix(track.laneSwing, sizeof track.laneSwing), mix(track.laneChoke, sizeof track.laneChoke), mix(track.laneEdit, sizeof track.laneEdit), mix(track.laneSynth, sizeof track.laneSynth);
         if (const SynthSpec* spec = specFor(track.kind)) {
             mix(&track.preset, sizeof track.preset);
             mix(spec->values(const_cast<TrackData&>(track)), sizeof(int) * static_cast<std::size_t>(settingCount(track.kind)));
@@ -949,6 +949,9 @@ void Session::restoreSounds(const StepRead& was, const bool same[kNumTracks]) {
         if (now.kind == TrackKind::Drums)
             for (int lane = 0; lane < kDrumLanes; ++lane)
                 if (now.laneFeel[lane] != then.laneFeel[lane]) setLaneFeel(t, lane, then.laneFeel[lane].time, then.laneFeel[lane].level);
+        if (now.kind == TrackKind::Drums)
+            for (int lane = 0; lane < kDrumLanes; ++lane)
+                if (now.laneSwing[lane] != then.laneSwing[lane]) setLaneSwing(t, lane, then.laneSwing[lane]);
         if (now.kind == TrackKind::Drums)
             for (int lane = 0; lane < kDrumLanes; ++lane)
                 if (now.laneChoke[lane] != then.laneChoke[lane]) setLaneChoke(t, lane, then.laneChoke[lane]);
@@ -1589,6 +1592,19 @@ void Session::setLaneFeel(int track, int lane, int time, int level) {
     engine.send(c); // (lost to a full queue: the whole song is sent again, this with it)
 }
 
+void Session::setLaneSwing(int track, int lane, int amount) {
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums) return;
+    const std::uint8_t swing = laneSwingOf(amount);
+    if (swing == project.tracks[track].laneSwing[lane]) return;
+    project.tracks[track].laneSwing[lane] = swing;
+    Command c;
+    c.type = Command::SetLaneSwing;
+    c.track = track;
+    c.a = lane;
+    c.b = swing;
+    engine.send(c); // (lost to a full queue: the whole song is sent again, this with it)
+}
+
 void Session::setLaneLevel(int track, int lane, float level) {
     if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums || level != level) return;
     level = level < 0.f ? 0.f : (level > 1.f ? 1.f : level);
@@ -1839,6 +1855,18 @@ void Session::sendSong() {
             c.a = lane;
             c.b = project.tracks[track].laneFeel[lane].time;
             c.c = project.tracks[track].laneFeel[lane].level;
+            engine.send(c);
+        }
+    }
+    // Every drum lane's SWING, at 0 too.
+    for (int track = 0; track < kNumTracks; ++track) {
+        if (project.tracks[track].kind != TrackKind::Drums) continue;
+        for (int lane = 0; lane < kDrumLanes; ++lane) {
+            c = Command();
+            c.type = Command::SetLaneSwing;
+            c.track = track;
+            c.a = lane;
+            c.b = project.tracks[track].laneSwing[lane];
             engine.send(c);
         }
     }

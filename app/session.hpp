@@ -177,6 +177,7 @@ public:
     // FEEL: a drum lane's HUMAN TIME and HUMAN LEVEL, each 0..100 (feel_rule.hpp). Live: the engine is told at
     // once, and hits asked for from then on go by it. A step of undo (seen by soundMark, as GLIDE FROM is).
     void setLaneFeel(int track, int lane, int time, int level);
+    void setLaneSwing(int track, int lane, int amount); // SWING, 0..100 (held there)
     // A drum lane's volume, 0..1 (the drum grid's lane name, and the sound designer's page). Not a step
     // of undo, as it never was.
     void setLaneLevel(int track, int lane, float level);

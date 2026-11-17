@@ -175,6 +175,7 @@ public:
     bool feeling() const { return feelHeld_; } // X is held on a lane's name
     LaneFeel laneFeel(int lane) const { return project_.current().laneFeel[lane]; }
     static void drawFeelMark(SDL_Renderer* renderer, int nameY, LaneFeel feel); // the mark on a lane's name (both views)
+    static void drawSwingMark(SDL_Renderer* renderer, int nameY, int swing); // SWING: its mark on a lane's name (both views)
     static void drawChokeMark(SDL_Renderer* renderer, int nameY, int group); // CHOKE: the lane's group, on its name (both views)
     // The slice view (see the top of this file).
     bool slicing() const { return slicing_; }
@@ -230,7 +231,8 @@ private:
     void hearHit();                  // the hit under the cursor, as the pattern would play it
     void feelTurn(Button direction); // with X held on a lane's name: one click of HUMAN TIME (left / right) or HUMAN LEVEL (up / down)
     void feelRoll();                 // ...Y: the dice set the lane's feel, small amounts
-    void feelToAll();                // ...A: this lane's feel onto every lane of the kit
+    void feelToAll();                // ...A: this lane's feel (its SWING too) onto every lane of the kit
+    void swingTurn(int by);          // ...L1 / R1: one click of its SWING, less / more
     // The marks a hit's step effects put on its block (pattern_slices.cpp). `rise` is how far the pitch dash moves for a semitone.
     static void drawFxMarks(SDL_Renderer* renderer, const StepFx& fx, int x, int y, int w, int h, int middleY, float rise);
     void drawSlices(SDL_Renderer* renderer, const Fonts& fonts) const; // pattern_slices.cpp

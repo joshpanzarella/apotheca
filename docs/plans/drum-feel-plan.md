@@ -183,7 +183,7 @@ HUMAN LEVEL. Built the way FEEL was, in batches: the plan (this), the engine, th
 | Where it is kept | `TrackData::laneSwing[8]` (0..100), `Track::swing[8]` in the engine, `Command::SetLaneSwing` (appended: a = lane, b = amount), `Session::setLaneSwing` |
 | The song file | `swing LANE AMOUNT`, a line of the kit's own, **left out at 0**; under a synth track not taken; the number held as a double first |
 | Undo | `soundMark` / `restoreSounds`, as FEEL: one hold of X is one step |
-| The gesture | X held on a lane's NAME: **R1 one click more, L1 one less**, stopping at the ends (and held, they repeat at the feel's pace) |
+| The gesture | X held on a lane's NAME: **R1 one click more, L1 one less**, stopping at the ends (a press a click: six clicks end to end need no repeat) |
 | The strip | SWING is its first field, `kFeelSwingX`; the L1 / R1 chip stands under it by that one constant. HUMAN TIME, HUMAN LEVEL and EVERY LANE move right to make room |
 | The mark | Purple, as FEEL's: a long and a short piece (2 to 1) along the top right of the name |
 | X up | The name's purple line says SWING too |

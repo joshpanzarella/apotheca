@@ -41,7 +41,7 @@ inline const char* const kViews[] = {
     "bounce", "bounce-tail", "bounce-ready", "panic", "wifi", "revs", "add-track", "chords", "chords-swap", "notes",
     "phazed", "page0", "page1", "page2", "page3", "page4", "page5", "page6", "page7", "page8", "page9", "jaxep", "jaxep0", "jaxep1", "jaxep2", "jaxep3", "jaxep4", "jaxep5", "jaxep-bank", "jaxep-held",
     "kit", "slices", "slices-32", "slices-name", "slices-name-feel", "slices-throw", "starts", "picker", "picker-in", "picker-deep", "picker-deleting", "picker-new", "picker-typing", "picker-carrying", "picker-folder-deleting", "sampler-picker",
-    "feel", "feel-held", "feel-off-held", "feel-same-held", "feel-said",
+    "feel", "feel-held", "feel-off-held", "feel-same-held", "feel-said", "feel-swing", "feel-swing-held",
     "choke", "kit-choke", "kit-choke-held", "kit-edit", "kit-edit-held", "kit-edit-deleting", "kit-edit-column",
     "kit-synth", "kit-voice", "kit-voice-held", "kit-voice-deleting", "kit-voice-clap", "kit-voice-named",
     "setup", "buttons", "typing", "help", "help-load",

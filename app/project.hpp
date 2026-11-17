@@ -238,6 +238,8 @@ struct TrackData {
     LaneEdit laneEdit[kDrumLanes];        // EDIT: what each lane does to its sound (START, END, GAIN...: lane_edit.hpp). The file is never written
     LaneFeel laneFeel[kDrumLanes];        // FEEL: each lane's HUMAN TIME and HUMAN LEVEL, 0..100 (apotheca/feel_rule.hpp). The track's,
                                           // not a scene's; live, nothing is written into the hits
+    std::uint8_t laneSwing[kDrumLanes] = {}; // SWING: each lane's, 0..100 (apotheca/feel_rule.hpp): every second sixteenth up to a
+                                          // third of a step late. The track's, live, as FEEL
     std::uint8_t laneChoke[kDrumLanes] = {}; // CHOKE: each lane's group, kChokeNone, 1 or 2 (drums.hpp). The track's; a new kit
                                           // has its hats in CHOKE 1 (Session::chokeNewKit), a blank TrackData none
     int preset = 0;              // a synth's preset, patch and macros

@@ -35,7 +35,7 @@
 //
 // On a KIT, `set ID VALUE` names a lane's setting: ID is lane * kKitStride + a KitField. Fields 0 to 7
 // are the lane's EDIT rows in LaneEditRow's order (lane_edit.hpp); then FIT (steps), CHOKE (group),
-// VOLUME (percent) and FEEL's HUMAN TIME and HUMAN LEVEL (percent). A synth lane's knobs: kKitKnobs below.
+// VOLUME (percent), FEEL's HUMAN TIME and HUMAN LEVEL (percent) and SWING (percent). A synth lane's knobs: kKitKnobs below.
 
 #include <mutex>
 #include <string>
@@ -47,7 +47,7 @@ namespace apotheca {
 
 // A KIT's settings: lane * kKitStride + field. The EDIT rows keep LaneEditRow's numbers (0 to 7).
 constexpr int kKitStride = 16;
-enum KitField { kKitFit = 8, kKitChoke, kKitVolume, kKitHumanTime, kKitHumanLevel, kKitFields };
+enum KitField { kKitFit = 8, kKitChoke, kKitVolume, kKitHumanTime, kKitHumanLevel, kKitSwing, kKitFields };
 // DRUM SYNTH: a synth lane's knob P is the id kKitKnobs + lane * 8 + P, after every lane's fields (so the
 // ids above, in pages and tests, stay where they were). Its name and readings hang on the lane's model:
 // the spec's wave gives the names, the state the readings.

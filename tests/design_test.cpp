@@ -896,6 +896,7 @@ void testKitFromThePage() {
     CHECK(rig.tell("set 24 16") && kit.laneFit[1] == 16 && rig.tell("set 25 2") && kit.laneChoke[1] == 2 && rig.tell("set 25 7") && kit.laneChoke[1] == kChokeNone);
     CHECK(rig.tell("set 26 37") && kit.laneLevel[1] == 0.37f && rig.tell("set 27 25") && kit.laneFeel[1].time == 25 && rig.tell("set 28 50") && kit.laneFeel[1].level == 50 && kit.laneFeel[1].time == 25);
     CHECK(rig.tell("set 27 0") && kit.laneFeel[1].time == 0 && kit.laneFeel[1].level == 50);
+    CHECK(rig.tell("set 29 75") && kit.laneSwing[1] == 75 && rig.tell("set 29 400") && kit.laneSwing[1] == 100 && rig.tell("set 29 0") && kit.laneSwing[1] == 0); // SWING (held to 0..100)
     CHECK(rig.tell("set 26 400") && kit.laneLevel[1] == 1.f && rig.tell("set 26 -4") && kit.laneLevel[1] == 0.f);
     v = numbersOf(rig.get("/design/state").body);
     CHECK(v.size() == static_cast<std::size_t>(kKitKnobs + kDrumLanes * drumsynth::kPlaces) && v[24] == 16 && v[25] == 0 && v[26] == 0 && v[27] == 0 && v[28] == 50 && v[kitId(2, kKitFit)] == 0);
@@ -1308,8 +1309,8 @@ int main() {
                 const TrackData& t = rig.track();
                 const LaneEdit& e = t.laneEdit[lane];
                 char line[256];
-                std::snprintf(line, sizeof line, "lane %d sample '%s' start %d end %d gain %d fadein %d fadeout %d pitch %d fine %d reverse %d fit %d choke %d volume %.2f time %d level %d",
-                              lane + 1, t.laneSample[lane], e.start, e.end, e.gain, e.fadeIn, e.fadeOut, e.pitch, e.fine, e.reverse, t.laneFit[lane], t.laneChoke[lane], static_cast<double>(t.laneLevel[lane]), t.laneFeel[lane].time, t.laneFeel[lane].level);
+                std::snprintf(line, sizeof line, "lane %d sample '%s' start %d end %d gain %d fadein %d fadeout %d pitch %d fine %d reverse %d fit %d choke %d volume %.2f time %d level %d swing %d",
+                              lane + 1, t.laneSample[lane], e.start, e.end, e.gain, e.fadeIn, e.fadeOut, e.pitch, e.fine, e.reverse, t.laneFit[lane], t.laneChoke[lane], static_cast<double>(t.laneLevel[lane]), t.laneFeel[lane].time, t.laneFeel[lane].level, t.laneSwing[lane]);
                 if (lanesWere[static_cast<std::size_t>(lane)] != line) std::printf("%s\n", line), std::fflush(stdout);
                 lanesWere[static_cast<std::size_t>(lane)] = line;
             }

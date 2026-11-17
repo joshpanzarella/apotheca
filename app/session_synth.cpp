@@ -419,6 +419,7 @@ std::string Session::kitSpec(int track) const {
     const auto feel = [](int v, char* into) { feelAmountText(v, into, 64); };
     out += "," + kitField("HUMAN TIME", kKitHumanTime, (stops(kAmountAt, kAmountClicks, feel) + "}").c_str());
     out += "," + kitField("HUMAN LEVEL", kKitHumanLevel, (stops(kAmountAt, kAmountClicks, feel) + "}").c_str());
+    out += "," + kitField("SWING", kKitSwing, (stops(kAmountAt, kAmountClicks, feel) + "}").c_str());
     // DRUM SYNTH: a synth lane's knob P is kKitKnobs + lane * 8 + P (designer.hpp), 0..100, its name in the
     // wave's "synth", its reading in the state. And the models, for the SOUND choice.
     std::snprintf(text, sizeof text, "],\"knobs\":%d", kKitKnobs);
@@ -476,6 +477,7 @@ std::string Session::designState() const {
             v[kKitVolume] = static_cast<int>(std::lround(t.laneLevel[lane] * 100.f));
             v[kKitHumanTime] = t.laneFeel[lane].time;
             v[kKitHumanLevel] = t.laneFeel[lane].level;
+            v[kKitSwing] = t.laneSwing[lane];
             for (int f = 0; f < kKitStride; ++f) std::snprintf(text, sizeof text, lane || f ? ",%d" : "%d", v[f]), out += text;
         }
         for (int lane = 0; lane < kDrumLanes; ++lane) // a synth lane's knobs, from kKitKnobs (0 where it is none)
@@ -644,6 +646,7 @@ void Session::serveKit(const DesignRequest& r) {
         else if (field == kKitVolume) setLaneLevel(track, lane, static_cast<float>(r.b) / 100.f); // (held to 0..1 there)
         else if (field == kKitHumanTime) setLaneFeel(track, lane, r.b, t.laneFeel[lane].level);
         else if (field == kKitHumanLevel) setLaneFeel(track, lane, t.laneFeel[lane].time, r.b);
+        else if (field == kKitSwing) setLaneSwing(track, lane, r.b);
         return;
     }
     case DesignRequest::LaneSample: // only a recording the page was offered, or none (the built-in drum)

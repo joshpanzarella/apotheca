@@ -548,15 +548,20 @@ int main(int argc, char** argv) {
         // the cursor on a lane's name. feel: the strip's one line says the lane's. feel-held: X held,
         // the strip is its feel. feel-off-held: on a lane with none. feel-same-held: every lane at
         // 100% and 100%, the strip at its widest. feel-said: L1 pressed on that built-in drum (the
-        // message has the row; the feel's line gives way to it).
+        // message has the row; the feel's line gives way to it). SWING too: lanes 2, 3 and 6 swung
+        // (lane 6 alone, its mark by itself), every lane at 100% in feel-same-held. feel-swing: the
+        // cursor on lane 6, SWING alone in its line; feel-swing-held: X held there.
         Session& session = app.session();
         session.setLaneFeel(0, 0, 10, 0);
         session.setLaneFeel(0, 1, 25, 10);
         session.setLaneFeel(0, 2, 50, 25);
         session.setLaneFeel(0, 4, 0, 75);
+        session.setLaneSwing(0, 1, 100);
+        session.setLaneSwing(0, 2, 50);
+        session.setLaneSwing(0, 5, 25);
         if (std::strstr(view, "same"))
-            for (int lane = 0; lane < kDrumLanes; ++lane) session.setLaneFeel(0, lane, 100, 100);
-        app.drums().moveCursorTo(std::strstr(view, "off") ? 3 : 2, -1);
+            for (int lane = 0; lane < kDrumLanes; ++lane) session.setLaneFeel(0, lane, 100, 100), session.setLaneSwing(0, lane, 100);
+        app.drums().moveCursorTo(std::strstr(view, "off") ? 3 : (std::strstr(view, "swing") ? 5 : 2), -1);
         if (std::strstr(view, "-held")) pushKey(SDLK_s, true); // X held
         if (std::strstr(view, "-said")) app.drums().setSlicing(true); // L1 on a built-in drum: why it has no slices, said on the row the feel's line has
     } else if (std::strcmp(view, "choke") == 0 || std::strncmp(view, "kit-choke", 9) == 0) {
@@ -1193,7 +1198,7 @@ int main(int argc, char** argv) {
             app.session().setLaneOneSlice(0, 5, true);
             if (std::strcmp(view, "slices-32") == 0) app.drums().setStart(5, 5, 25.f / 32.f + 0.012f); // on a finer cut, and slid a little off it
             app.drums().moveCursorTo(5, std::strncmp(view, "slices-name", 11) == 0 ? -1 : 5);
-            if (std::strcmp(view, "slices-name-feel") == 0) app.session().setLaneFeel(0, 5, 25, 50); // the lane's feel: its mark by the name, its line on the strip
+            if (std::strcmp(view, "slices-name-feel") == 0) app.session().setLaneFeel(0, 5, 25, 50), app.session().setLaneSwing(0, 5, 75); // the lane's feel and swing: their marks by the name, their line on the strip
             app.drums().setSlicing(true);
             if (std::strcmp(view, "slices-throw") == 0) { // slices thrown to a bus, and X held on one
                 StepFx f;
