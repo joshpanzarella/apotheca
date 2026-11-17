@@ -482,6 +482,110 @@ void Session::setCellBars(int track, int scene, int bars) {
     engine.send(c);
 }
 
+// ---- copy a bar ---------------------------------------------------------------------------
+
+namespace {
+bool sameDrumBar(const DrumPattern& a, const DrumPattern& b) {
+    return std::memcmp(a.level, b.level, sizeof a.level) == 0 && std::memcmp(a.nudge, b.nudge, sizeof a.nudge) == 0 &&
+           std::memcmp(a.chance, b.chance, sizeof a.chance) == 0 && std::memcmp(a.start, b.start, sizeof a.start) == 0 &&
+           std::memcmp(a.fromDice, b.fromDice, sizeof a.fromDice) == 0 && std::memcmp(a.fx, b.fx, sizeof a.fx) == 0 &&
+           std::memcmp(a.diceSeed, b.diceSeed, sizeof a.diceSeed) == 0;
+}
+// (A note and a chord have no bytes that are not set: they are compared whole, as cellMark hashes them.)
+bool sameNoteBar(const NotePattern& a, const NotePattern& b) { return std::memcmp(a.notes, b.notes, sizeof a.notes) == 0 && std::memcmp(a.chords, b.chords, sizeof a.chords) == 0; }
+} // namespace
+
+Session::BarCopy Session::copyBar(int track, int scene, int bar) {
+    if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes || bar < 0 || bar >= kMaxBars) return BarCopy::NoTrack;
+    const TrackData& t = project.tracks[track];
+    if (t.kind == TrackKind::None) return BarCopy::NoTrack;
+    clip_.has = true;
+    clip_.drums = t.kind == TrackKind::Drums;
+    clip_.track = track;
+    clip_.scene = scene;
+    clip_.bar = bar;
+    clip_.drumBar = clip_.drums ? t.drums[scene][bar] : DrumPattern();
+    clip_.noteBar = clip_.drums ? NotePattern() : t.notes[scene][bar];
+    for (int lane = 0; lane < kAutoLanes; ++lane)
+        for (int step = 0; step < kSteps; ++step) clip_.automation[lane][step] = t.automation[scene][lane][bar * kSteps + step];
+    ++barCopies_;
+    return BarCopy::Done;
+}
+
+Session::BarCopy Session::pasteBar(int track, int scene, int bar) {
+    if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes || bar < 0 || bar >= kMaxBars) return BarCopy::NoTrack;
+    TrackData& t = project.tracks[track];
+    if (t.kind == TrackKind::None) return BarCopy::NoTrack;
+    if (!clip_.has) return BarCopy::NothingCopied;
+    if (clip_.drums && t.kind != TrackKind::Drums) return BarCopy::DrumsOnDrums;
+    if (!clip_.drums && !isSynth(t.kind)) return BarCopy::NotesOnNotes;
+
+    // What goes on: the bar as copied, a note that runs over the bar line held to the end of THIS cell
+    // (as the roll holds a length: a note may run on over the bar lines, not past the cell).
+    NotePattern notes = clip_.noteBar;
+    const int bars = t.bars[scene] < 1 ? 1 : (t.bars[scene] > kMaxBars ? kMaxBars : t.bars[scene]);
+    if (bar >= bars) return BarCopy::NoTrack; // (a bar the cell does not have: the grids never show one)
+    const int room = (bars - bar) * kSteps;
+    for (NoteEvent& n : notes.notes)
+        if (n.velocity > 0.f && n.length > static_cast<float>(room - n.step)) n.length = static_cast<float>(room - n.step);
+    for (ChordEvent& c : notes.chords)
+        if (c.velocity > 0.f && c.length > static_cast<float>(room - c.step)) c.length = static_cast<float>(room - c.step);
+    // Automation only onto the track it came from: another track's lanes are other knobs.
+    const bool lanes = track == clip_.track;
+    bool same = clip_.drums ? sameDrumBar(t.drums[scene][bar], clip_.drumBar) : sameNoteBar(t.notes[scene][bar], notes);
+    for (int lane = 0; lane < kAutoLanes && lanes && same; ++lane)
+        same = std::memcmp(&t.automation[scene][lane][bar * kSteps], clip_.automation[lane], sizeof clip_.automation[lane]) == 0;
+    if (same) return BarCopy::Same; // nothing to do, and no step of undo
+
+    // A step of undo of its own, as NEXT SCENE's: whatever was being edited just before ends here.
+    if (undoReady_ && cellMark() != cellMark_) noteEdit();
+    if (editing_ || !undoReady_) settled_ = patternsNow();
+    editing_ = false;
+    noteEdit();
+    if (clip_.drums) t.drums[scene][bar] = clip_.drumBar;
+    else t.notes[scene][bar] = notes;
+    if (lanes)
+        for (int lane = 0; lane < kAutoLanes; ++lane)
+            for (int step = 0; step < kSteps; ++step) t.automation[scene][lane][bar * kSteps + step] = clip_.automation[lane][step];
+    sendTrackImage(track); // every bar of it, in one piece (as setCellBars)
+    if (undoReady_) {
+        settled_ = patternsNow(); // ...and nothing after it joins its step
+        editing_ = false;
+        cellMark_ = cellMark();
+    }
+    return BarCopy::Done;
+}
+
+Session::BarCopy Session::copyBarHere() {
+    const BarCopy answer = copyBar(project.track, project.scene, project.bar);
+    say(barCopyWords(answer, false, project.bar).c_str());
+    return answer;
+}
+
+Session::BarCopy Session::pasteBarHere() {
+    const BarCopy answer = pasteBar(project.track, project.scene, project.bar);
+    say(barCopyWords(answer, true, project.bar).c_str());
+    return answer;
+}
+
+std::string Session::barCopyWords(BarCopy answer, bool paste, int bar) {
+    char text[64];
+    switch (answer) {
+    case BarCopy::Done: std::snprintf(text, sizeof text, paste ? "PASTED ON BAR %d" : "BAR %d COPIED", bar + 1); break;
+    case BarCopy::Same: std::snprintf(text, sizeof text, "BAR %d IS THE SAME ALREADY", bar + 1); break;
+    case BarCopy::NothingCopied: return "NOTHING COPIED YET";
+    case BarCopy::DrumsOnDrums: return "DRUMS GO ON A DRUM TRACK";
+    case BarCopy::NotesOnNotes: return "NOTES GO ON A NOTE TRACK";
+    case BarCopy::NoTrack: return "NO BAR HERE";
+    }
+    return text;
+}
+
+void Session::say(const char* text) {
+    std::snprintf(saidText_, sizeof saidText_, "%s", text);
+    ++saidCount_;
+}
+
 // A whole cell to the engine: emptied there in one command, then only what
 // is in it. (Every step of eight bars would be four thousand commands.)
 // A hit's step effects, as the engine is told them.

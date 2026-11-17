@@ -54,6 +54,8 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
             viewBeforeShoulders_ = session_.view; // the first of them: the triggers may turn the tabs on the way
             slicingBeforeShoulders_ = drums_.slicing(); // ...and L1 may open or shut the slices
             trackBeforeShoulders_ = session_.project.track; // ...or, on FX, L1 / R1 step the track
+            clipBeforeShoulders_ = session_.barClip();       // ...or, on the grids, L1 then R1 copy the bar
+            copiesBeforeShoulders_ = session_.barCopies();
         }
         if (down == 4) {
             panicking_ = true;
@@ -62,9 +64,18 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
             if (drums_.slicing() != slicingBeforeShoulders_) drums_.setSlicing(slicingBeforeShoulders_);
             if (trackBeforeShoulders_ < session_.project.trackCount()) session_.project.track = trackBeforeShoulders_;
             session_.wantSlices = -1;
+            if (session_.barCopies() != copiesBeforeShoulders_) { // a copy on the way: not meant
+                session_.setBarClip(clipBeforeShoulders_);
+                saidSeen_ = session_.saidCount();
+                undoSaidUntil_ = 0;
+            }
+            drums_.shouldersPressed(); // L1 let go after this is no tap of L1
+            notes_.shouldersPressed();
             session_.panic(true);
             return;
         }
+        // L1 held and another shoulder pressed: L1 let go is then no tap (the slices, the zoom).
+        if (b != Button::L1 && input.held(Button::L1)) drums_.shouldersPressed(), notes_.shouldersPressed();
         // With both triggers down the bumpers are on their way to a panic, not painting.
         if ((b == Button::L1 || b == Button::R1) && input.held(Button::L2) && input.held(Button::R2)) return;
     } else if (shoulder && panicking_) {
@@ -224,6 +235,14 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     screenNow().onButton(event, input);
+    takeSessionSaid();
+}
+
+void App::takeSessionSaid() {
+    if (session_.saidCount() == saidSeen_) return;
+    saidSeen_ = session_.saidCount();
+    std::snprintf(undoSaid_, sizeof undoSaid_, "%s", session_.saidText());
+    undoSaidUntil_ = now_ + 1500;
 }
 
 void App::changeVolume(float by) {

@@ -41,6 +41,8 @@ New screens and gestures keep these; do not invent a variant.
 - **B** deletes, empties, goes back. **Hold B deletes for good** (with a bar that fills): never another button. Typing a name, B keeps it and leaves; Y deletes a letter.
 - **X** hears (on SONG it solos the track: owner, 2026-11-15). **Hold X** is "what it does": step effects on a drum hit, ratchet and glide on a note.
 - **Hold R1** drags: paint from an empty step, carry from a note, copy on SONG.
+- **Hold L1 on the grids** (drum grid, slices, roll) is the bar key: **+ R1 copies the bar, + A pastes it**.
+  So L1's own tap (the slices, the roll's zoom) acts on its LET GO, and only if nothing else was pressed meanwhile.
 - **Y** is the screen's special (chance, chord, mute, catch, roll).
 - **SELECT + something** is for whole-song things. **L2 / R2** are the tabs.
 - **A held D-pad has two speeds**, in `ui.hpp`: `kCursor...` for cursors, `kList...` for lists and choices.
@@ -52,7 +54,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (61) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`, `idle_test` as `idle1` to `idle3`; `textsize`, `textviews` and `themeviews` each run by themselves) |
+| All tests (66) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`, `idle_test` as `idle1` to `idle3`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them). `./build/bench --profile NAME [SECONDS]` renders one setup with no clock for callgrind (`--toggle-collect='*profiledRender*'`; NAME empty lists them; `docs/plans/speed-plan.md`) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-switch` (COMP, on its second setting; with `--hold-a` the heading shows the key that switches its TYPE), `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling); the list of recordings: `picker` (SAMPLES, on a folder), `picker-in` (in a folder), `picker-deep` (two folders down), `picker-deleting`, `picker-new` (on + NEW FOLDER), `picker-typing` (its name being typed), `picker-carrying` (R1 held, steered onto a folder), `picker-folder-deleting` (B held on an empty folder), `sampler-picker`; the help card: `help` (with SOUND 43%, WORST 88%, CPU 37%: pretended, `App::pretendLoad`), `help-load` (its longest line); the sampler: `sampler` (on START), `sampler-end` (on END; both with START 12% and END 80% marked; the demo's last track becomes the sampler, all twelve being used), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`, and at rest: `bounce-ready`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; JAX-EP's panel and pages: `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank` (MAIN on B7 Distortion Guitar, in BANK B: the longest of the 32 names), `jaxep-held` (a knob, A held); FM-6's: `fm6` (MAIN), `fm6-1` to `fm6-8` (its pages), `fm6-long` (HARPSICH 1, the widest name), `fm6-fixed` (an operator at a FIXED pitch, on FINE), `fm6-off` (an operator OFF); PHYSIC's: `physic` (MAIN), `physic-1` to `physic-5` (SOUND, RING, PLAY, DICE, BODY: on Vibes, PAIR and BUZZ up), `physic-long` (its widest preset name), `physic-string` (RING on Steel: STRETCH reads B), `physic-noise` (SOUND on Hand Drum: HARDNESS reads a NOISE burst's length); a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); FEEL on the drum grid: `feel` (lanes with their marks, the cursor on a name), `feel-held` (X held: the strip is the lane's feel), `feel-off-held`, `feel-same-held` (every lane at 100%, the strip at its widest), `feel-said` (L1 on a built-in drum with a feel: the message has the row), `slices-name-feel` (the slice view's name with its mark; needs `--samples`); X held on a knob, its MOD: `device-mod-held` (an LFO on Phazed's TONE), `device-mod-stepper`, `device-mod-new` (none yet), `device-mod-full` (MODS FULL), `device-mod-deleting` (B held), `fx-mod-held` (an LFO on TAPE's FEEDBACK), `fx-mod-stepper`, `fx-mod-new`, `fx-mod-full`, `fx-sends-mod-held` (on ECHO: the panel in SPACE's row); the brass mark with the song playing: `device-modded`, `fx-modded`; the MOD tab: `mod` (an LFO on TONE, a STEPPER on ECHO; the demo plays, so the dots move), `mod-lfo` (on DEPTH), `mod-steps` (MOD 2's row, on step 5), `mod-depth` (MOD 1's DEPTH lane written, the demo playing), `mod-mixer` (LEVEL and PAN as targets), `mod-target` and `mod-drums` (each with `--hold-a`: the list of targets), `mod-off`, `mod-deleting`, `mod-12`, `mod-free` (a free LFO: SPEED in Hz), `device-mod-free`; any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -1499,6 +1501,37 @@ effect in those two groups and fails one that does not.
   drawn by `pattern_slices.cpp`), not a screen of its own, so every grid
   gesture works in it unchanged. A hit's slice is its `start`; there is no
   separate slice data. A lane has 16 slices, or its FIT in steps if longer.
+- **COPY A BAR: hold L1, R1 copies the bar shown, A pastes over it** (owner, 2026-11-17: "copying
+  steps 1-16 to paste on 17-32"; `Session::copyBar` / `pasteBar` / `BarClip`, `copyBarHere` /
+  `pasteBarHere` for the screens; `tests/copybar_test.cpp`). The drum grid, its slice view and the roll.
+  - **The clipboard is memory only**, never in the song file; a new song keeps it. It holds a drum
+    bar (`DrumPattern`, every field) or a note bar (`NotePattern`, chords and their effects), the bar's
+    16 steps of every automation lane, and where it came from.
+  - **A paste REPLACES the bar** and is **one step of undo of its own** (as NEXT SCENE: the burst
+    before it ends, and `settled_` is taken after it, so an edit straight after is a step too). Onto a
+    bar that is already the same (compared field by field; automation too on the same track): nothing,
+    no step. The engine gets the track's image (`sendTrackImage`, as `setCellBars`).
+  - **Drums only onto a drum track, notes onto any synth or sampler track**; a track with nothing, or
+    a bar past the cell's end: refused. **A note over the bar line keeps its length, held to the end of
+    the cell it lands in** (as the roll's `room`). **Automation only onto the SAME track** (another
+    track's lanes are other knobs; its own are left).
+  - **The gesture**: L1 must go down FIRST, with nothing else held (`l1First_`; not with X held: X's
+    L1 / R1 are the step effects, GLIDE FROM, the feel). R1 then copies (no brush, no carry), A pastes
+    (no hit or note placed; on the grid `aSpent_`, so A's hold nudges nothing). **L1's own tap acts on
+    its let go**: the drum grid's slices (`l1Used_`: any other button pressed while L1 was held cancels
+    it) and the roll's zoom (`zoomUsed_`, set by a copy or a paste). The App tells both screens when
+    another shoulder goes down with L1 held (`shouldersPressed`), so a panic's let go of L1 opens no
+    slices; **a panic begun L1, R1 puts the copy back** (`clipBeforeShoulders_`, `barCopies`).
+  - What was done is said in the App's box above the bar (`Session::say`, taken by
+    `App::takeSessionSaid`): BAR 1 COPIED, PASTED ON BAR 2, BAR 2 IS THE SAME ALREADY, NOTHING
+    COPIED YET, DRUMS GO ON A DRUM TRACK, NOTES GO ON A NOTE TRACK. Each fits the box at LARGE
+    (`testTheWordsFit`).
+  - **The hints are in the bar only while L1 is held** (R1 copy bar, A paste bar; the roll also
+    UP / DOWN zoom): the plain bars of the drum grid and the roll have no room. Not on the help card
+    (full). Stills `copy-bar`, `copy-bar-notes`, `copy-bar-refused`.
+  - Mutants: every one tried in `copybar_test` dies but the App's two `shouldersPressed` calls (the
+    panic's, and "another shoulder with L1 held"): each is the other's belt, and the two taken out
+    together die (`testTheSlicesAndL1`, the panic begun L1, L2, R2, R1).
 - **A drum hit that starts where the lane's sound has just got to carries it
   on** (`DrumMachine::trigger`, within 1.5 ms, never from the very top). That
   is what makes slices in order seamless. Do not "simplify" it away.

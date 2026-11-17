@@ -36,6 +36,10 @@
 //   hold R1 on an empty step, and drag    paint a note on every step crossed
 //   L1                    zoom: a tap goes closer (2 octaves, 1, round to 3);
 //                         held, up is closer and down is further
+//   hold L1, R1           copy the bar on screen: its notes and chords
+//   hold L1, A            paste it over the bar on screen (another bar, cell, scene,
+//                         or synth or sampler track). One step of undo; on the same
+//                         track its automation goes with it
 //   START                 play / stop (this scene, looping)
 //
 // A cell can be 1, 2, 4 or 8 bars long (set on the Song screen). The roll
@@ -103,6 +107,11 @@ public:
 
     static constexpr int kLowest = 12, kHighest = 108; // C0 to C8
 
+    // COPY A BAR: hold L1, then R1 copies the bar shown (its notes and chords), A pastes over it
+    // (Session::copyBar). A copy or a paste is a use of L1: its tap's zoom does not happen too.
+    bool barKeyHeld() const { return l1First_; }
+    void shouldersPressed() { zoomUsed_ = true; } // (the App: another shoulder went down with L1 held)
+
     int visibleKeys() const; // 12, 24 or 36: the zoom (Session::octavesShown)
     void zoomTo(int octaves);
 
@@ -144,7 +153,8 @@ private:
     int cellW() const;
     void keepInView();
     bool zoomPushed_ = false;
-    bool zooming_ = false, zoomUsed_ = false; // L1 is held; it did something with up / down
+    bool zooming_ = false, zoomUsed_ = false; // L1 is held; it did something with up / down (or copied, or pasted)
+    bool l1First_ = false; // L1 is held and went down with nothing else held: R1 copies the bar, A pastes it
     int shownKeys_ = 24;
     int low_ = 48;   // the lowest key shown: C3, so middle C sits in the middle
 
