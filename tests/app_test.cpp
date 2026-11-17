@@ -8378,6 +8378,16 @@ void testUndoWorksOnTheTrackItChanged() {
     session.noteEdit();
     rig.frames(60);
     CHECK(p.steps[0] == 100 && session.undo() && p.steps[0] == 100 && p.tracks[3].drums[0][0].level[0][1] == 0.f && p.tracks[5].bars[0] == 8);
+    // That cell made a bar long again: the length stays 100, a whole scene and more, and the text
+    // writes it so. Read back, such a length is "every step" (0), whole or a part at a time.
+    session.setCellBars(5, 0, 1);
+    rig.frames(60);
+    CHECK(p.steps[0] == 100);
+    p.tracks[3].drums[0][0].level[0][2] = 1.f;
+    session.sendDrumPattern(3, 0);
+    session.noteEdit();
+    rig.frames(60);
+    CHECK(session.undo() && p.steps[0] == 0 && std::fabs(p.tracks[3].drums[0][0].level[0][2] - 90.f / 127.f) < 1e-6f);
 }
 
 // NEXT SCENE taken back reads the step whole: the sixteenth scene comes from it. A track that the

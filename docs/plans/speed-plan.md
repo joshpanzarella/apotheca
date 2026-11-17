@@ -476,6 +476,85 @@ as on main 0.565 (its pins were remade there for FM-6), and `ctest` passed: 44
 of 52 in one run at a load of 20 (the other eight timed out, `themeviews`
 failed at the place it fails under load) and those eight one at a time after.
 
+### Batch 4: undo and the song's text (2026-11-16 and 17, branch `undo`)
+
+**Undo then redo went from 21 ms to 0.65 ms on the desk.** Measured with
+`bench --app` (new: the app's rows alone), three runs each, the same desk:
+
+| Row (the bench's song: 12 tracks, 33 KB of text) | Before | After | Handheld before (SPEED TEST) | Handheld after (estimate) |
+| --- | --- | --- | --- | --- |
+| Undo, then redo | 20.9 to 21.7 ms | **0.63 to 0.67 ms** | 200 ms | about 6 to 10 ms |
+| ...a knob and a hit, undone | 10.1 to 11.4 ms | 1.1 to 1.3 ms | 213 ms | about 12 to 20 ms |
+| The song as text | 1.61 to 1.75 ms | 0.68 to 0.76 ms | 17.5 ms | about 8 ms |
+| Text back into a song | 3.88 to 3.95 ms | 0.77 to 0.84 ms | 47 ms | about 10 ms |
+| A frame that ends an edit | 0.57 to 0.59 ms | 0.32 to 0.37 ms | 12.3 ms | about 7 ms |
+
+The handheld column is the desk times the ratio each row had before (10 to 21
+times). **The ratio may not hold**: the old rows were mostly fresh memory and
+copies, the new ones more arithmetic. SPEED TEST says.
+
+Where the time went (callgrind, undo and redo only): building and copying
+whole Projects (`new Project` in `restorePatterns` and in `parseSong`, the
+blank track copied in, `project = *song`, and `patternsSameAsText`'s 1 MB copy)
+was memcpy 45% and memset 33% of the instructions, and most of the wall time
+(fresh pages). In the text: `snprintf` and `istringstream`.
+
+What changed:
+
+- **`readStep` builds no Project** (`Session::StepRead`): the song's own lines
+  into a `ProjectHead`, and only the tracks whose text differs from now into
+  `TrackData` made once and kept. `SongReader` reads a part at a time as
+  `parseSong` reads the whole (one reading, `readLines`, under both);
+  `cutSongAt` gives the parts' places without copying them. The text of each
+  track now is what undo or redo just made, not compared a second time.
+- **`parseSong` reads in place.** `Project` is a `ProjectHead` (everything but
+  the tracks) and the tracks; a track is made blank piece by piece
+  (`makeBlank`), writing only what is not blank already.
+- **`patternsSameAsText`** compares only the patterns' own lines
+  (`patternText`) for two tracks of one kind: no 1 MB copy, no whole track
+  written twice.
+- **`SongTextCache` compares a track by what its text reads**: a bar or a
+  lane that had nothing in it is only looked at, one side, by one `memcmp`
+  against an empty one. Exact: `putTrack` writes nothing for it.
+- **Numbers written by `appendNumber`**: `%.0f`, `%.4g` and `%.6g` to the
+  byte, by 128-bit integer arithmetic (the value is m x 2^e, so a x 10^s is a
+  fraction of two whole numbers; rounding to the even digit decided exactly).
+  Not `std::to_chars` (libstdc++ 9 has none for floats). snprintf where it
+  would not fit (under about 1e-22, a `%.0f` with a fraction).
+- **Numbers read by `LineIn`** (`app/line_in.hpp`): a line read as a
+  `std::istringstream` of it reads it, failures included: num_get's gathering
+  of characters, then the exact fast path (15 digits within 1e22: one
+  correctly rounded multiply or divide) or strtod.
+- `putAutomation` skips an unwritten lane by one `memcmp`.
+
+Held by:
+
+- `save_test`: `appendNumber` against snprintf over 14.5 M values (every float
+  exponent, 0..1, 1e-5..1e5, random doubles, halves to the even digit, the
+  edges of `%g`'s two styles, denormals, -0, infinities, not a number); **every
+  float was checked once outside the tests** for `%.6g` and `%.4g` (4.3 G, 0
+  wrong). `LineIn` against the stream over 600 000 random lines and numbers
+  (16 to 19 digit whole numbers too). A song read in place as into a new
+  Project; `SongReader`'s parts as `parseSong`'s whole; the cache with levels
+  and steps the text does not write.
+- `app_test --undo` (`testUndoIsAsItWasReadWhole` unchanged and passing), and
+  a new check: a length of a whole scene and more read back by an undo.
+- **28 mutants of the new code, 28 killed** (the number writer's rounding and
+  styles, `LineIn`'s rules, `makeBlank`, the cache's compare, `readStep`'s
+  bars, whole read, head and finish, `patternText`, `cutSongAt`). Two
+  mutants survived at first on `LineIn`'s end-of-file mark: it was redundant
+  and went. One on a kind set for a track not read: nothing read it, it went.
+- The song files are byte for byte as before: `everykind_main.inc`,
+  `twinsong_main.inc` and every song-file test pass unchanged; full `ctest`.
+
+Memory: a step's tracks are kept between undos, a megabyte each the first time
+a step needs that track (all twelve after a NEXT SCENE is taken back, which
+reads whole); the cache keeps 512 bytes a track more; one blank `TrackData`
+(1 MB) is kept for `makeBlank`.
+
+Not done: the bigger song (2.5 MB of text) was not timed; nothing of this has
+run on the handheld. The handheld build (`scripts/build-handheld.sh`) builds.
+
 ### What is left
 
 - Batch 1's other half of #9, a `Glide` at rest skipping its step: in nineteen

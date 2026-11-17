@@ -647,7 +647,9 @@ private:
     std::string bounceFolder_;
     float bounceCap_ = kBounceCapSeconds;
     std::string patternsNow() const;                 // the patterns as text: a step of undo
-    void restorePatterns(const std::string& text, int movedFrom = 0, int movedBy = 0); // (moved: a "next scene" lies between; see moveScenesHere)
+    // (moved: a "next scene" lies between; see moveScenesHere). Only undo and redo call it, each just
+    // after patternsNow(): readStep takes the text of each track now from what that made.
+    void restorePatterns(const std::string& text, int movedFrom = 0, int movedBy = 0);
     void sendTrackImage(int track);                  // every pattern of a track to the engine, in one piece
     std::unique_ptr<TrackImage> trackImage(int track) const; // ...made, not yet sent
     std::unique_ptr<SceneImage> sceneImage(int track, int scene) const; // one scene of a track
@@ -656,8 +658,9 @@ private:
     // A scene put into the song or taken out. Three things, in this order: the song here
     // (moveScenesHere), the engine (tellScenesMoved: one command, which holds everything), and
     // whatever here holds the number of a scene that is playing (scenesMoved).
-    void moveScenesHere(int from, int by, const Project* last);
-    bool patternsAre(const Project& was) const;
+    struct StepRead;
+    void moveScenesHere(int from, int by, const StepRead* last);
+    bool patternsAre(const StepRead& was) const;
     void tellScenesMoved(int from, int by);
     void scenesMoved(int from, int by);
     // Scene moves told to the engine and not yet known to be heard, oldest first, and how many were
@@ -673,7 +676,22 @@ private:
     // made from, when that is what lies between this text and the one it is swapped for: taking
     // it back or putting it forward moves the player and the playing as well as the patterns.
     static bool patternsSameAsText(const TrackData& now, const TrackData& then);
-    bool readStep(const std::string& text, Project& was, bool same[kNumTracks], bool whole);
+    // A step of undo as read back (readStep): the song's own lines, and the tracks whose text is not
+    // the track's text now (`read`). Never a Project: its tracks are made once, the first time a step
+    // needs each, and kept (a megabyte a track; most undos read one). Speed plan batch 4: building
+    // and copying whole 12 MB Projects was most of an undo's 200 ms on the handheld.
+    struct StepRead {
+        ProjectHead head;
+        int count = 0;                       // how many tracks the step has
+        TrackKind kind[kNumTracks] = {};     // each read track's kind (None past `count`, and for one not read)
+        bool read[kNumTracks] = {};          // read into tracks[t]; false: its text is the track's now, and it was not read
+        std::unique_ptr<TrackData> tracks[kNumTracks];
+        const TrackData& track(int t) const { return *tracks[t]; }
+    };
+    StepRead step_;
+    std::vector<std::size_t> stepStarts_;
+    // `textNow_` must be as the project is (undo and redo have just made it: patternsNow).
+    bool readStep(const std::string& text, StepRead& was, bool same[kNumTracks], bool whole);
     bool readUndoWhole_ = false;
     // Undo covers more than the patterns: each track's effects, sends, sound (preset, settings,
     // macros, a sampler's settings) and GLIDE FROM, the master's effects and the buses' (their
@@ -681,7 +699,7 @@ private:
     // has to say so. restoreSounds puts them back from a step, through the engine's usual commands.
     std::uint32_t soundMark() const;
     std::uint32_t soundMark_ = 0;
-    void restoreSounds(const Project& was, const bool same[kNumTracks]);
+    void restoreSounds(const StepRead& was, const bool same[kNumTracks]);
     void restoreEffect(int track, int slot, const EffectData& then);
     void sendMod(int track, int mod); // the project's MOD told to the engine (OFF: one command)
     struct UndoStep { std::string text; int nextScene = -1; };

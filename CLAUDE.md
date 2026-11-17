@@ -1135,22 +1135,43 @@ effect in those two groups and fails one that does not.
   step's text (`dropTrackText`), and another instrument is passed by (its kind
   differs). The delete itself is still not undone.
 - **The song's text is made a track at a time** (`SongTextCache`,
-  `Session::textNow()`): a track whose bytes are as they were when its text
-  was made is not written again. The autosave, the end of a burst of edits and
-  undo all use it, so with nothing changed the autosave is a compare of memory
-  (2.5 MB of text: 0.8 ms on the desk, was 68). The copies it keeps cost
-  about 1 MB a track (11.8 MB for twelve). **An undo reads back only the
-  tracks whose text differs from the step's** (`Session::readStep`; the rest
-  get a stand-in line that gives their kind and cells' lengths). A scene move
-  reads the step whole (it takes the sixteenth scene from it).
-  `readUndoWhole(true)` reads every step whole, as before: `app_test`
-  (`testUndoIsAsItWasReadWhole`) holds the two the same. **A track whose
+  `Session::textNow()`): a track whose text would be as it was when its text
+  was made is not written again. **It is compared by what the text reads**
+  (`sameForText`, `TextUsed`): everything outside the patterns byte for byte;
+  a bar or a lane of automation that had something in it byte for byte; one
+  that had nothing only looked at, one side, to see it still has nothing
+  (first by one `memcmp` against an empty one: `levelsEmpty`, `notesEmpty`,
+  `laneEmpty`). Exact, because `putTrack` writes nothing for such a piece. The
+  autosave, the end of a burst of edits and undo all use it, so with nothing
+  changed the autosave is a compare of memory. The copies it keeps cost about
+  1 MB a track (11.8 MB for twelve). **An undo reads back only the tracks
+  whose text differs from the step's, and builds no `Project`** (speed plan
+  batch 4: `Session::readStep` into a `StepRead`: the song's own lines, and
+  the tracks read into `TrackData` made once and kept, a megabyte a track ever
+  needed; `SongReader` reads a part at a time as `parseSong` reads the whole,
+  `cutSongAt` gives the parts' places). The text of each track now is what
+  undo or redo just made (`patternsNow`), not compared again: **only they call
+  `restorePatterns`**. A scene move reads the step whole (it takes the
+  sixteenth scene from it). `readUndoWhole(true)` reads every step whole:
+  `app_test` (`testUndoIsAsItWasReadWhole`) holds the two the same, and
+  `save_test` (`testASongReadInPartsIsAsReadWhole`) the reader. **A track whose
   numbers differ from the step's but whose text is the same is left alone**
-  (compared by `trackText`, as the file writes it): a value the text rounds
-  (a keyboard's 90/127) made one undo send all twelve tracks whole.
-  `app_test --undo` runs the undo tests alone. Do not give the cache
-  a count of changes instead: the screens write into the project in many
-  places, and one that forgot to count is work never saved.
+  (`patternsSameAsText`: of one kind, only the patterns' own lines,
+  `patternText`): a value the text rounds (a keyboard's 90/127) made one undo
+  send all twelve tracks whole. `app_test --undo` runs the undo tests alone.
+  Do not give the cache a count of changes instead: the screens write into the
+  project in many places, and one that forgot to count is work never saved.
+- **The song's text is written and read without snprintf or streams** (speed
+  plan batch 4): `appendNumber` writes `%.0f`, `%.4g` and `%.6g` to the byte
+  as snprintf does (exact 128-bit arithmetic; snprintf where it would not
+  fit), and `LineIn` (`app/line_in.hpp`) reads a line as a `std::istringstream`
+  of it does, failures included (num_get's gathering, then strtod or its exact
+  fast path). `save_test` holds both to the library over millions of values
+  and lines (every float was checked once, outside the tests). **`parseSong`
+  reads in place** (`Project` is a `ProjectHead` and the tracks; a track is
+  made blank piece by piece, `makeBlank`), so it is never handed a second
+  12 MB Project. A new format in the song file goes through `put`'s three, or
+  snprintf; a new way to read goes through `LineIn`'s operations.
 - **Scenes are numbered by their place, so a scene put in moves the ones
   after it** (NEXT SCENE, SELECT + Y: `Session::nextScene`). Whatever holds a
   scene's number must follow: the engine's playing, its patterns and an
@@ -2588,9 +2609,10 @@ effect in those two groups and fails one that does not.
 | ...a macro changed, a call: Phazed / QMOD / JAX-EP (the same runs) | 0.36 / 0.92 / 0.11 us; 24 MODs on QMOD's macros run: +0.27% of a core |
 | 24 LFOs FREE against the same 24 in time, twelve silent drum tracks, on the sends (2026-11-16, three `bench` runs, the six engines timed in turns, load 5 to 12; the 24 in time +0.074 to +0.090% over none) | -0.002 to -0.005%: nothing that shows |
 | One idle frame | 0.03 ms |
-| A frame that ends an edit (undo snapshot) | 1 ms |
-| Undo plus redo (bench: twelve tracks, an edit to one) | 20 ms; 21 to 31 before undo took sounds, 22 after (2026-11-14, a busy desk) |
-| ...a knob and a hit on two tracks, undone and redone | 19 to 24 ms before, 12 to 13 after |
+| A frame that ends an edit (undo snapshot) | 0.32 to 0.37 ms (speed batch 4, 2026-11-17, `bench --app`; 0.57 to 0.59 before, 12.3 on the handheld). **Handheld: about 7 ms, an estimate** |
+| Undo plus redo (bench: twelve tracks, an edit to one) | **0.63 to 0.67 ms** (speed batch 4; 20.9 to 21.7 before it on the same desk, the handheld's SPEED TEST 200). **Handheld: about 6 to 10 ms, an estimate** |
+| ...a knob and a hit on two tracks, undone and redone | 1.1 to 1.3 ms (10 to 11 before batch 4; 213 on the handheld). Handheld estimate 12 to 20 ms |
+| The bench's song (33 KB) as text / read back into a song | 0.68 to 0.76 ms / 0.77 to 0.84 ms (1.61 to 1.75 / 3.88 to 3.95 before batch 4; 17.5 / 47 on the handheld). Handheld estimate about 8 / 10 ms |
 | The busiest song shared out other ways (speed plan batch 0, 2026-11-15, one run, load 6): 2 helpers / 3 / 2 heaviest first / 3 heaviest first. **The desk cannot tell; the device's SPEED TEST decides** | 12.0 / 13.3 / 11.4 / 11.1% of a block |
 | A screen pass while the song plays, SDL's software renderer (batch 0): SONG / drum grid | update 0.06 / 0.05 ms, drawing 1.7 / 1.6 ms |
 | Instructions in one second of sound (callgrind, clang -O2 -g, `bench --profile`; speed plan section 8): busiest / twelve silent Phazed / eleven silent samplers, chords / twelve drum tracks / thrown, before batch 1. The busiest song then had two QMOD tracks where FM-6 is now | 2,070 / 351 / 67.5 / 214 / 435 M |

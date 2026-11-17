@@ -1,4 +1,5 @@
 #include "song_file.hpp"
+#include "line_in.hpp"
 #include "instruments.hpp"
 #include "samples.hpp"
 
@@ -21,6 +22,170 @@
 
 namespace apotheca {
 
+// ---- numbers as snprintf writes them (speed plan batch 4) -------------------------------------
+// snprintf("%.6g") was 65% of writing a song's text. These write the same bytes by exact integer
+// arithmetic: the value is m * 2^e (m a whole number of 53 bits at most), so a * 10^s is a fraction
+// of two whole numbers that fit 128 bits for every s the song's numbers need, and its rounding
+// (glibc's: to nearest, a half to the even digit, on the exact value) is decided exactly. Where
+// they would not fit (under about 1e-22, over about 1e38, infinite, not a number, a %.0f of a
+// number with a fraction) snprintf writes it, as before.
+namespace {
+using Wide = unsigned __int128;
+
+constexpr std::uint64_t kTens[20] = {1ull, 10ull, 100ull, 1000ull, 10000ull, 100000ull, 1000000ull, 10000000ull, 100000000ull,
+    1000000000ull, 10000000000ull, 100000000000ull, 1000000000000ull, 10000000000000ull, 100000000000000ull,
+    1000000000000000ull, 10000000000000000ull, 100000000000000000ull, 1000000000000000000ull, 10000000000000000000ull};
+
+int bitsOf(Wide v) {
+    const std::uint64_t high = static_cast<std::uint64_t>(v >> 64), low = static_cast<std::uint64_t>(v);
+    return high ? 128 - __builtin_clzll(high) : (low ? 64 - __builtin_clzll(low) : 0);
+}
+
+constexpr std::uint64_t kFives[28] = {1ull, 5ull, 25ull, 125ull, 625ull, 3125ull, 15625ull, 78125ull, 390625ull, 1953125ull,
+    9765625ull, 48828125ull, 244140625ull, 1220703125ull, 6103515625ull, 30517578125ull, 152587890625ull, 762939453125ull,
+    3814697265625ull, 19073486328125ull, 95367431640625ull, 476837158203125ull, 2384185791015625ull, 11920928955078125ull,
+    59604644775390625ull, 298023223876953125ull, 1490116119384765625ull, 7450580596923828125ull};
+
+// floor(a * 10^s) into `whole`, and how the rest stands against a half (-1 under, 0 a half exactly,
+// 1 over). False where the numbers would not fit. `a` is finite and over 0.
+bool tensOf(double a, int s, std::uint64_t& whole, int& rest) {
+    if (s > 27 || s < -27) return false;
+    int e = 0;
+    const double f = std::frexp(a, &e);                                   // a = f * 2^e, f in [0.5, 1)
+    const std::uint64_t m = static_cast<std::uint64_t>(std::ldexp(f, 53)); // exact: f has 53 bits at most
+    e -= 53;                                                              // a = m * 2^e
+    const Wide five = kFives[s < 0 ? -s : s];
+    Wide num = static_cast<Wide>(m) * (s > 0 ? five : 1);
+    const int q = e + s; // a * 10^s = num * 2^q / (s < 0 ? five : 1)
+    Wide w, r, den;
+    if (s >= 0) { // a power of two below: shifts
+        if (q >= 0) {
+            if (bitsOf(num) + q > 126) return false;
+            w = num << q;
+            r = 0;
+            den = 1;
+        } else {
+            const int shift = -q;
+            if (shift > 126) return false;
+            w = num >> shift;
+            r = num & ((static_cast<Wide>(1) << shift) - 1);
+            den = static_cast<Wide>(1) << shift;
+        }
+    } else {
+        den = five;
+        if (q >= 0) {
+            if (bitsOf(num) + q > 126) return false;
+            num <<= q;
+        } else {
+            if (bitsOf(den) - q > 126) return false;
+            den <<= -q;
+        }
+        w = num / den;
+        r = num % den;
+    }
+    if (w >> 64) return false;
+    whole = static_cast<std::uint64_t>(w);
+    const Wide twice = r << 1;
+    rest = twice < den ? -1 : (twice == den ? 0 : 1);
+    return true;
+}
+
+int digitsInto(char* to, std::uint64_t v) { // v's decimal digits, the first not 0 (v > 0)
+    char back[24];
+    int n = 0;
+    while (v) back[n++] = static_cast<char>('0' + v % 10), v /= 10;
+    for (int i = 0; i < n; ++i) to[i] = back[n - 1 - i];
+    return n;
+}
+
+// "%.Pg" of a finite v other than 0, P 1..17. 0 where tensOf could not.
+std::size_t gText(char* out, double v, int p) {
+    const double a = v < 0 ? -v : v;
+    int e2 = 0;
+    std::frexp(a, &e2);
+    int x = static_cast<int>(std::floor((e2 - 1) * 0.30102999566398120)); // the decimal exponent, or one under it
+    std::uint64_t whole = 0;
+    int rest = 0;
+    for (int tries = 0;; ++tries) {
+        if (tries > 3 || !tensOf(a, p - 1 - x, whole, rest)) return 0;
+        if (whole < kTens[p - 1]) --x;
+        else if (whole >= kTens[p]) ++x;
+        else break;
+    }
+    std::uint64_t d = whole + ((rest > 0 || (rest == 0 && (whole & 1))) ? 1 : 0);
+    if (d == kTens[p]) d = kTens[p - 1], ++x;
+    char digits[24];
+    digitsInto(digits, d); // p of them
+    int used = p; // the digits that are written: trailing zeros of the fraction are not
+    std::size_t n = 0;
+    if (v < 0) out[n++] = '-';
+    if (x < -4 || x >= p) {
+        while (used > 1 && digits[used - 1] == '0') --used;
+        out[n++] = digits[0];
+        if (used > 1) {
+            out[n++] = '.';
+            for (int i = 1; i < used; ++i) out[n++] = digits[i];
+        }
+        out[n++] = 'e';
+        out[n++] = x < 0 ? '-' : '+';
+        const int ex = x < 0 ? -x : x;
+        if (ex < 10) out[n++] = '0';
+        char exDigits[8];
+        const int en = digitsInto(exDigits, static_cast<std::uint64_t>(ex));
+        for (int i = 0; i < en; ++i) out[n++] = exDigits[i];
+        return n;
+    }
+    // As %f with p - 1 - x places: the point after x + 1 digits (x >= 0), or "0." and -x - 1 zeros first.
+    const int before = x >= 0 ? x + 1 : 0;
+    while (used > before && digits[used - 1] == '0') --used;
+    if (x >= 0) {
+        for (int i = 0; i < before; ++i) out[n++] = digits[i];
+        if (used > before) {
+            out[n++] = '.';
+            for (int i = before; i < used; ++i) out[n++] = digits[i];
+        }
+    } else {
+        out[n++] = '0';
+        out[n++] = '.';
+        for (int i = 0; i < -x - 1; ++i) out[n++] = '0';
+        for (int i = 0; i < used; ++i) out[n++] = digits[i];
+    }
+    return n;
+}
+} // namespace
+
+void appendNumber(std::string& out, double v, char conversion, int precision) {
+    char text[40];
+    std::size_t n = 0;
+    if (v == v && v - v == 0.0) { // finite
+        if (conversion == 'f' && precision == 0 && v == std::floor(v) && v > -9.2e18 && v < 9.2e18) {
+            const long long whole = static_cast<long long>(v);
+            if (whole == 0) {
+                if (std::signbit(v)) text[n++] = '-';
+                text[n++] = '0';
+            } else {
+                if (whole < 0) text[n++] = '-';
+                n += static_cast<std::size_t>(digitsInto(text + n, static_cast<std::uint64_t>(whole < 0 ? -whole : whole)));
+            }
+        } else if (conversion == 'g' && precision >= 1 && precision <= 17) {
+            if (v == 0.0) {
+                if (std::signbit(v)) text[n++] = '-';
+                text[n++] = '0';
+            } else {
+                n = gText(text, v, precision);
+            }
+        }
+    }
+    if (n > 0) {
+        out.append(text, n);
+        return;
+    }
+    char format[8], wide[400]; // (a %.0f of the largest double is 309 digits)
+    std::snprintf(format, sizeof format, "%%.%d%c", precision, conversion);
+    std::snprintf(wide, sizeof wide, format, v);
+    out += wide;
+}
+
 namespace {
 
 std::uint64_t gTracksWritten = 0, gBytesRead = 0;
@@ -40,7 +205,17 @@ float depthFromFile(double v) { return v == v ? static_cast<float>(2.0 * (v > 0.
 // A value of a STEPPER's row, -1..1; not a number is 0.
 float rowIn(double v) { return v == v ? fractionIn(v, -1.f, 1.f) : 0.f; }
 
+// `format` is words and one number, "%.0f", "%.4g" or "%.6g" (all the song file writes): written as
+// snprintf writes it, to the byte (numberText), without snprintf for the usual numbers. Anything else
+// in a format goes to snprintf whole.
 void put(std::string& out, const char* format, double a) {
+    const char* at = std::strchr(format, '%');
+    if (at && at[1] == '.' && at[2] >= '0' && at[2] <= '9' && (at[3] == 'f' || at[3] == 'g') && !std::strchr(at + 4, '%')) {
+        out.append(format, static_cast<std::size_t>(at - format));
+        appendNumber(out, a, at[3], at[2] - '0');
+        out += at + 4;
+        return;
+    }
     char text[48];
     std::snprintf(text, sizeof text, format, a);
     out += text;
@@ -123,7 +298,10 @@ std::string soundText(TrackKind kind, const EffectData* effects, const float* se
     return out;
 }
 
-SoundLine readSoundLine(const std::string& word, std::istream& in, const SoundParts& to, bool oldSound) {
+namespace {
+// (A template: a preset is read through a std::istream, a song through a LineIn. The same reading.)
+template <class In>
+SoundLine readSoundLineIn(const std::string& word, In& in, const SoundParts& to, bool oldSound) {
     if (word == "fx") {
         double slot, value;
         std::string name;
@@ -187,17 +365,53 @@ SoundLine readSoundLine(const std::string& word, std::istream& in, const SoundPa
     }
     return SoundLine::NotOne;
 }
+} // namespace
+
+SoundLine readSoundLine(const std::string& word, std::istream& in, const SoundParts& to, bool oldSound) {
+    return readSoundLineIn(word, in, to, oldSound);
+}
+
+// What of a track its text was made from, beyond its bytes: which bars had something in them and
+// which lanes of automation had a step written (SongTextCache::Part). A bar with nothing in it is
+// written as nothing whatever its other numbers are (putDrumScenes and putNoteScenes skip it; the
+// scene's own line asks only whether it is empty), and so is a lane with no step at 0 or over.
+struct TextUsed {
+    bool bar[kMaxScenes][kMaxBars];
+    bool lane[kMaxScenes][kAutoLanes];
+};
 
 namespace {
 
+// (Each first asks whether its piece is exactly as nothing written leaves it, a compare the library
+// does many bytes at a time; only a piece that is not is looked at number by number.)
+bool laneEmpty(const float* steps) { // as putAutomation reads a lane: a step under 0 is not written
+    static const struct None { float v[kAutoSteps]; None() { for (float& x : v) x = kAutoNone; } } none;
+    static_assert(kAutoNone < 0.f, "an unwritten step is under 0");
+    if (std::memcmp(steps, none.v, sizeof none.v) == 0) return true;
+    for (int i = 0; i < kAutoSteps; ++i)
+        if (!(steps[i] < 0.f)) return false;
+    return true;
+}
+bool levelsEmpty(const DrumPattern& p) { // DrumPattern::empty, over the levels alone
+    static const float none[kDrumLanes][kSteps] = {};
+    if (std::memcmp(p.level, none, sizeof none) == 0) return true;
+    for (const auto& lane : p.level)
+        for (float v : lane)
+            if (v > 0.f) return false;
+    return true;
+}
+bool notesEmpty(const NotePattern& p) { // NotePattern::empty
+    static const NotePattern* const none = new NotePattern();
+    return std::memcmp(&p, none, sizeof p) == 0 || p.empty();
+}
+
 // One track of a song file: from its "track" line to the next one's.
-void putTrack(std::string& out, const TrackData& track) {
-    ++gTracksWritten;
-    out += std::string("track ") + instrument(track.kind)->word + "\n";
-    if (track.name[0]) out += std::string("name ") + track.name + "\n";
+// The patterns' own lines of a track (putTrack writes them among its others): its automation...
+void putAutomation(std::string& out, const TrackData& track) {
     // auto SCENE LANE then pairs INDEX VALUE: the steps of a lane of automation that have something on them.
     for (int scene = 0; scene < kMaxScenes; ++scene)
         for (int lane = 0; lane < kAutoLanes; ++lane) {
+            if (laneEmpty(track.automation[scene][lane])) continue;
             std::string line;
             for (int i = 0; i < kAutoSteps; ++i) {
                 const float v = track.automation[scene][lane][i];
@@ -210,6 +424,124 @@ void putTrack(std::string& out, const TrackData& track) {
             put(out, " %.0f", lane);
             out += line + "\n";
         }
+}
+
+// ...a drum track's scenes...
+void putDrumScenes(std::string& out, const TrackData& track) {
+    // scene N, then "bars B" if the cell is longer than one, then each
+    // bar's hits; "bar K" comes before those of the second bar on.
+    // Then the bars the cell hides (made shorter: they come back as they were if it is made
+    // longer again), each after its "bar K" past the cell's end. A program from before
+    // reads no line for a bar the cell does not have, so it skips them.
+    for (int scene = 0; scene < kMaxScenes; ++scene) {
+        if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene)) continue;
+        put(out, "scene %.0f\n", scene + 1);
+        if (track.bars[scene] > 1) put(out, "bars %.0f\n", track.bars[scene]);
+        for (int bar = 0; bar < kMaxBars; ++bar) {
+            const DrumPattern& p = track.drums[scene][bar];
+            if (p.empty()) continue;
+            if (bar > 0) put(out, "bar %.0f\n", bar + 1);
+            out += "seeds";
+            for (std::uint32_t seed : p.diceSeed) put(out, " %.0f", seed);
+            out += "\n";
+            for (int lane = 0; lane < kDrumLanes; ++lane) {
+                for (int step = 0; step < kSteps; ++step) {
+                    if (p.level[lane][step] <= 0.f) continue;
+                    put(out, "hit %.0f", lane + 1);
+                    put(out, " %.0f", step + 1);
+                    put(out, " %.6g", p.level[lane][step]);
+                    put(out, " %.6g", p.nudge[lane][step]);
+                    put(out, " %.6g", p.chance[lane][step]);
+                    out += p.fromDice[lane][step] ? " 1" : " 0";
+                    if (p.start[lane][step] > 0.f) put(out, " %.6g", p.start[lane][step]); // where in the sound it begins
+                    out += "\n";
+                    // stepfx LANE STEP PITCH RATCHET BACKWARDS CUT [THROW]: the hit's step effects, if it has any.
+                    // THROW (1 ECHO, 2 SPACE, 3 both) is left off when it is 0, as every older song has it.
+                    // ("fx" is taken: it is an effect in a slot.)
+                    if (const StepFx& fx = p.fx[lane][step]; fx.any()) {
+                        put(out, "stepfx %.0f", lane + 1);
+                        put(out, " %.0f", step + 1);
+                        put(out, " %.0f", fx.pitch);
+                        put(out, " %.0f", fx.hits());
+                        put(out, " %.0f", fx.reverse ? 1 : 0);
+                        put(out, " %.0f", fx.cut);
+                        if (fx.throwTo) put(out, " %.0f", fx.throwTo);
+                        out += "\n";
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ...and a synth track's.
+void putNoteScenes(std::string& out, const TrackData& track) {
+    for (int scene = 0; scene < kMaxScenes; ++scene) { // (and the hidden bars, as a drum track's)
+        if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene)) continue;
+        put(out, "scene %.0f\n", scene + 1);
+        if (track.bars[scene] > 1) put(out, "bars %.0f\n", track.bars[scene]);
+        for (int bar = 0; bar < kMaxBars; ++bar) {
+            const NotePattern& p = track.notes[scene][bar];
+            if (p.empty()) continue;
+            if (bar > 0) put(out, "bar %.0f\n", bar + 1);
+            for (const NoteEvent& n : p.notes) {
+                if (n.velocity <= 0.f) continue;
+                put(out, "note %.0f", n.step + 1);
+                put(out, " %.0f", n.pitch);
+                put(out, " %.6g", n.length);
+                put(out, " %.6g", n.velocity);
+                // early or late, in steps; and then its THROW (1 ECHO, 2 SPACE, 3 both), which
+                // has the nudge written before it even at 0, so that it is the sixth number
+                if (n.nudge != 0.f || n.throwTo) put(out, " %.6g", n.nudge);
+                if (n.throwTo) put(out, " %.0f", n.throwTo);
+                out += "\n";
+                // notefx STEP KEY RATCHET GLIDE: what the note does besides play, if anything
+                if (n.ratchet >= 2 || n.glide) {
+                    put(out, "notefx %.0f", n.step + 1);
+                    put(out, " %.0f", n.pitch);
+                    put(out, " %.0f", n.ratchet >= 2 ? n.ratchet : 1);
+                    put(out, " %.0f\n", glideKind(n.glide)); // (1, "on" in an old song, is half a step)
+                }
+            }
+            // chord STEP LENGTH LEVEL INVERSION ROOT NAME then its notes above the root
+            for (const ChordEvent& c : p.chords) {
+                if (c.velocity <= 0.f) continue;
+                put(out, "chord %.0f", c.step + 1);
+                put(out, " %.6g", c.length);
+                put(out, " %.6g", c.velocity);
+                put(out, " %.0f", c.inversion);
+                put(out, " %.0f ", c.root);
+                out += c.name[0] ? c.name : "?";
+                for (int i = 0; i < c.count; ++i) put(out, " %.0f", c.intervals[i]);
+                if (c.nudge != 0.f) put(out, " nudge %.6g", c.nudge);
+                out += "\n";
+                if (c.ratchet >= 2 || c.throwTo) { // chordfx STEP RATCHET [THROW]: THROW is left off at 0
+                    put(out, "chordfx %.0f", c.step + 1);
+                    put(out, " %.0f", c.ratchet >= 2 ? c.ratchet : 1);
+                    if (c.throwTo) put(out, " %.0f", c.throwTo);
+                    out += "\n";
+                }
+                // chordplay STEP STRUM ORDER TIME LEVEL LENGTHS: the chord effects (chord_rule.hpp).
+                // A line of its own, left out when none is set: a chord that has none is written
+                // as it always was, and a program from before them skips the line whole.
+                if (c.play.strum || c.play.order || c.play.time || c.play.level || c.play.lengths) {
+                    put(out, "chordplay %.0f", c.step + 1);
+                    put(out, " %.0f", c.play.strum);
+                    put(out, " %.0f", c.play.order);
+                    put(out, " %.0f", c.play.time);
+                    put(out, " %.0f", c.play.level);
+                    put(out, " %.0f\n", c.play.lengths);
+                }
+            }
+        }
+    }
+}
+
+void putTrack(std::string& out, const TrackData& track) {
+    ++gTracksWritten;
+    out += std::string("track ") + instrument(track.kind)->word + "\n";
+    if (track.name[0]) out += std::string("name ") + track.name + "\n";
+    putAutomation(out, track);
     if (track.muted) out += "muted\n";
     // mix DB PAN: the track's level on the mixer, in dB from its usual, and its pan (-50 left .. 50 right). Left out at 0 0.
     if (track.mixDb != 0 || track.mixPan != 0) {
@@ -267,50 +599,7 @@ void putTrack(std::string& out, const TrackData& track) {
             put(out, "choke %.0f", lane + 1);
             put(out, " %.0f\n", track.laneChoke[lane]);
         }
-        // scene N, then "bars B" if the cell is longer than one, then each
-        // bar's hits; "bar K" comes before those of the second bar on.
-        // Then the bars the cell hides (made shorter: they come back as they were if it is made
-        // longer again), each after its "bar K" past the cell's end. A program from before
-        // reads no line for a bar the cell does not have, so it skips them.
-        for (int scene = 0; scene < kMaxScenes; ++scene) {
-            if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene)) continue;
-            put(out, "scene %.0f\n", scene + 1);
-            if (track.bars[scene] > 1) put(out, "bars %.0f\n", track.bars[scene]);
-            for (int bar = 0; bar < kMaxBars; ++bar) {
-                const DrumPattern& p = track.drums[scene][bar];
-                if (p.empty()) continue;
-                if (bar > 0) put(out, "bar %.0f\n", bar + 1);
-                out += "seeds";
-                for (std::uint32_t seed : p.diceSeed) put(out, " %.0f", seed);
-                out += "\n";
-                for (int lane = 0; lane < kDrumLanes; ++lane) {
-                    for (int step = 0; step < kSteps; ++step) {
-                        if (p.level[lane][step] <= 0.f) continue;
-                        put(out, "hit %.0f", lane + 1);
-                        put(out, " %.0f", step + 1);
-                        put(out, " %.6g", p.level[lane][step]);
-                        put(out, " %.6g", p.nudge[lane][step]);
-                        put(out, " %.6g", p.chance[lane][step]);
-                        out += p.fromDice[lane][step] ? " 1" : " 0";
-                        if (p.start[lane][step] > 0.f) put(out, " %.6g", p.start[lane][step]); // where in the sound it begins
-                        out += "\n";
-                        // stepfx LANE STEP PITCH RATCHET BACKWARDS CUT [THROW]: the hit's step effects, if it has any.
-                        // THROW (1 ECHO, 2 SPACE, 3 both) is left off when it is 0, as every older song has it.
-                        // ("fx" is taken: it is an effect in a slot.)
-                        if (const StepFx& fx = p.fx[lane][step]; fx.any()) {
-                            put(out, "stepfx %.0f", lane + 1);
-                            put(out, " %.0f", step + 1);
-                            put(out, " %.0f", fx.pitch);
-                            put(out, " %.0f", fx.hits());
-                            put(out, " %.0f", fx.reverse ? 1 : 0);
-                            put(out, " %.0f", fx.cut);
-                            if (fx.throwTo) put(out, " %.0f", fx.throwTo);
-                            out += "\n";
-                        }
-                    }
-                }
-            }
-        }
+        putDrumScenes(out, track);
     } else {
         if (track.kind == TrackKind::Sampler) {
             // sound NAME: its recording. sampler: root tune start attack release loop level [end]. END is
@@ -329,70 +618,12 @@ void putTrack(std::string& out, const TrackData& track) {
             for (int i = 0; i < settingCount(track.kind); ++i) put(out, " %.0f", values[i]);
             out += "\n";
         }
-        for (int scene = 0; scene < kMaxScenes; ++scene) { // (and the hidden bars, as a drum track's)
-            if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene)) continue;
-            put(out, "scene %.0f\n", scene + 1);
-            if (track.bars[scene] > 1) put(out, "bars %.0f\n", track.bars[scene]);
-            for (int bar = 0; bar < kMaxBars; ++bar) {
-                const NotePattern& p = track.notes[scene][bar];
-                if (p.empty()) continue;
-                if (bar > 0) put(out, "bar %.0f\n", bar + 1);
-                for (const NoteEvent& n : p.notes) {
-                    if (n.velocity <= 0.f) continue;
-                    put(out, "note %.0f", n.step + 1);
-                    put(out, " %.0f", n.pitch);
-                    put(out, " %.6g", n.length);
-                    put(out, " %.6g", n.velocity);
-                    // early or late, in steps; and then its THROW (1 ECHO, 2 SPACE, 3 both), which
-                    // has the nudge written before it even at 0, so that it is the sixth number
-                    if (n.nudge != 0.f || n.throwTo) put(out, " %.6g", n.nudge);
-                    if (n.throwTo) put(out, " %.0f", n.throwTo);
-                    out += "\n";
-                    // notefx STEP KEY RATCHET GLIDE: what the note does besides play, if anything
-                    if (n.ratchet >= 2 || n.glide) {
-                        put(out, "notefx %.0f", n.step + 1);
-                        put(out, " %.0f", n.pitch);
-                        put(out, " %.0f", n.ratchet >= 2 ? n.ratchet : 1);
-                        put(out, " %.0f\n", glideKind(n.glide)); // (1, "on" in an old song, is half a step)
-                    }
-                }
-                // chord STEP LENGTH LEVEL INVERSION ROOT NAME then its notes above the root
-                for (const ChordEvent& c : p.chords) {
-                    if (c.velocity <= 0.f) continue;
-                    put(out, "chord %.0f", c.step + 1);
-                    put(out, " %.6g", c.length);
-                    put(out, " %.6g", c.velocity);
-                    put(out, " %.0f", c.inversion);
-                    put(out, " %.0f ", c.root);
-                    out += c.name[0] ? c.name : "?";
-                    for (int i = 0; i < c.count; ++i) put(out, " %.0f", c.intervals[i]);
-                    if (c.nudge != 0.f) put(out, " nudge %.6g", c.nudge);
-                    out += "\n";
-                    if (c.ratchet >= 2 || c.throwTo) { // chordfx STEP RATCHET [THROW]: THROW is left off at 0
-                        put(out, "chordfx %.0f", c.step + 1);
-                        put(out, " %.0f", c.ratchet >= 2 ? c.ratchet : 1);
-                        if (c.throwTo) put(out, " %.0f", c.throwTo);
-                        out += "\n";
-                    }
-                    // chordplay STEP STRUM ORDER TIME LEVEL LENGTHS: the chord effects (chord_rule.hpp).
-                    // A line of its own, left out when none is set: a chord that has none is written
-                    // as it always was, and a program from before them skips the line whole.
-                    if (c.play.strum || c.play.order || c.play.time || c.play.level || c.play.lengths) {
-                        put(out, "chordplay %.0f", c.step + 1);
-                        put(out, " %.0f", c.play.strum);
-                        put(out, " %.0f", c.play.order);
-                        put(out, " %.0f", c.play.time);
-                        put(out, " %.0f", c.play.level);
-                        put(out, " %.0f\n", c.play.lengths);
-                    }
-                }
-            }
-        }
+        putNoteScenes(out, track);
     }
 }
 
 // The song's own lines, before its tracks.
-void putHead(std::string& out, const Project& project) {
+void putHead(std::string& out, const ProjectHead& project) {
     out += "apotheca-song 1\n";
     put(out, "tempo %.6g\n", project.tempo);
     out += "repeats";
@@ -427,27 +658,69 @@ void putHead(std::string& out, const Project& project) {
     }
 }
 
-// Are the two tracks the same, in every byte their text is made from? (The drum patterns of a
-// synth track, and the notes of a drum track, are not written: a difference there is not one.)
-// Whole bytes: two that differ in a byte the text does not show only make it written again.
-bool sameForText(const TrackData& a, const TrackData& b) {
+void markUsed(const TrackData& track, TextUsed& used) {
+    for (int scene = 0; scene < kMaxScenes; ++scene) {
+        for (int bar = 0; bar < kMaxBars; ++bar)
+            used.bar[scene][bar] = track.kind == TrackKind::Drums ? !levelsEmpty(track.drums[scene][bar]) : !notesEmpty(track.notes[scene][bar]);
+        for (int lane = 0; lane < kAutoLanes; ++lane) used.lane[scene][lane] = !laneEmpty(track.automation[scene][lane]);
+    }
+}
+
+// Would `now` be written as `seen` was (whose bars and lanes in use are `used`)? Everything outside
+// the patterns byte for byte; a bar or a lane that had something in it byte for byte; one that had
+// nothing only looked at to see it still has nothing (one side read, a quarter of a drum bar). The
+// drum patterns of a synth track, and the notes of a drum track, are not written: not looked at.
+// Whole bytes where they are compared: a difference the text does not show only makes it written again.
+bool sameForText(const TrackData& seen, const TextUsed& used, const TrackData& now) {
     static_assert(std::is_trivially_copyable<TrackData>::value, "a track is kept and compared as bytes");
-    const char* x = reinterpret_cast<const char*>(&a);
-    const char* y = reinterpret_cast<const char*>(&b);
-    const std::size_t drums = static_cast<std::size_t>(reinterpret_cast<const char*>(&a.drums) - x);
-    const std::size_t notes = static_cast<std::size_t>(reinterpret_cast<const char*>(&a.notes) - x);
-    const std::size_t after = static_cast<std::size_t>(reinterpret_cast<const char*>(&a.bars) - x);
-    if (notes != drums + sizeof a.drums || after != notes + sizeof a.notes) return false; // (laid out otherwise: never the same)
-    if (std::memcmp(x, y, drums) != 0) return false; // what comes before the patterns: the kind
-    if (std::memcmp(x + after, y + after, sizeof(TrackData) - after) != 0) return false; // everything after them
-    return a.kind == TrackKind::Drums ? std::memcmp(x + drums, y + drums, sizeof a.drums) == 0 : std::memcmp(x + notes, y + notes, sizeof a.notes) == 0;
+    const char* x = reinterpret_cast<const char*>(&seen);
+    const char* y = reinterpret_cast<const char*>(&now);
+    const std::size_t drums = static_cast<std::size_t>(reinterpret_cast<const char*>(&seen.drums) - x);
+    const std::size_t notes = static_cast<std::size_t>(reinterpret_cast<const char*>(&seen.notes) - x);
+    const std::size_t after = static_cast<std::size_t>(reinterpret_cast<const char*>(&seen.bars) - x);
+    const std::size_t automation = static_cast<std::size_t>(reinterpret_cast<const char*>(&seen.automation) - x);
+    const std::size_t afterAutomation = automation + sizeof seen.automation;
+    if (notes != drums + sizeof seen.drums || after != notes + sizeof seen.notes || automation < after) return false; // (laid out otherwise: never the same)
+    if (std::memcmp(x, y, drums) != 0) return false;                                                  // the kind
+    if (std::memcmp(x + after, y + after, automation - after) != 0) return false;                     // the bars, the sound, the settings
+    if (std::memcmp(x + afterAutomation, y + afterAutomation, sizeof(TrackData) - afterAutomation) != 0) return false; // the name, the sampler...
+    const bool kit = seen.kind == TrackKind::Drums;
+    for (int scene = 0; scene < kMaxScenes; ++scene)
+        for (int bar = 0; bar < kMaxBars; ++bar) {
+            if (used.bar[scene][bar]) {
+                if (kit ? std::memcmp(&seen.drums[scene][bar], &now.drums[scene][bar], sizeof(DrumPattern)) != 0
+                        : std::memcmp(&seen.notes[scene][bar], &now.notes[scene][bar], sizeof(NotePattern)) != 0) return false;
+            } else if (kit ? !levelsEmpty(now.drums[scene][bar]) : !notesEmpty(now.notes[scene][bar])) {
+                return false;
+            }
+        }
+    for (int scene = 0; scene < kMaxScenes; ++scene)
+        for (int lane = 0; lane < kAutoLanes; ++lane) {
+            if (used.lane[scene][lane] ? std::memcmp(seen.automation[scene][lane], now.automation[scene][lane], sizeof seen.automation[scene][lane]) != 0
+                                       : !laneEmpty(now.automation[scene][lane])) return false;
+        }
+    return true;
 }
 
 } // namespace
 
+std::string patternText(const TrackData& track) {
+    std::string out;
+    putAutomation(out, track);
+    if (track.kind == TrackKind::Drums) putDrumScenes(out, track);
+    else if (isSynth(track.kind)) putNoteScenes(out, track);
+    return out;
+}
+
 std::string trackText(const TrackData& track) {
     std::string out;
     putTrack(out, track);
+    return out;
+}
+
+std::string songHeadText(const ProjectHead& head) {
+    std::string out;
+    putHead(out, head);
     return out;
 }
 
@@ -458,6 +731,9 @@ std::string songText(const Project& project) {
     return out;
 }
 
+SongTextCache::SongTextCache() = default;
+SongTextCache::~SongTextCache() = default;
+
 const std::string& SongTextCache::text(const Project& project) {
     std::string head;
     putHead(head, project);
@@ -466,15 +742,17 @@ const std::string& SongTextCache::text(const Project& project) {
     for (int t = 0; t < count; ++t) {
         Part& part = parts_[t];
         const TrackData& now = project.tracks[t];
-        if (part.seen && sameForText(*part.seen, now)) continue;
-        if (!part.seen) part.seen.reset(new TrackData);
+        if (part.seen && sameForText(*part.seen, *part.used, now)) continue;
+        if (!part.seen) part.seen.reset(new TrackData), part.used.reset(new TextUsed);
         std::memcpy(static_cast<void*>(part.seen.get()), &now, sizeof now); // byte for byte, what lies between the fields too
+        markUsed(now, *part.used);
         part.text.clear();
         putTrack(part.text, now);
         changed = true;
     }
     for (int t = count; t < kNumTracks; ++t) { // a track taken away: its copy goes too
         parts_[t].seen.reset();
+        parts_[t].used.reset();
         parts_[t].text.clear();
     }
     if (changed) {
@@ -499,49 +777,105 @@ const std::string& SongTextCache::track(int t) const {
 std::uint64_t tracksWritten() { return gTracksWritten; }
 std::uint64_t bytesRead() { return gBytesRead; }
 
-bool parseSong(const std::string& text, Project& project) {
-    gBytesRead += text.size();
-    std::istringstream lines(text);
-    std::string line;
-    if (!std::getline(lines, line) || line.compare(0, 13, "apotheca-song") != 0) return false;
+namespace {
+// A track as new (1 MB: never on the stack), made once.
+const TrackData& blankTrackData() {
+    static const std::unique_ptr<const TrackData> blank(new TrackData);
+    return *blank;
+}
 
-    std::unique_ptr<Project> song(new Project);
-    const std::unique_ptr<const TrackData> blank(new TrackData); // a track as new (821 KB: never on the stack)
-    song->tracks[0] = *blank; // no tracks until the file names them
+// `track` made as new, byte for byte what copying a blank one gives. A piece already as a blank
+// one's (most of a track: empty bars, unwritten lanes) is only read, against one blank piece that
+// stays in the cache, and not written.
+void makeBlank(TrackData& track) {
+    static_assert(std::is_trivially_copyable<TrackData>::value, "a track is made blank as bytes");
+    const TrackData& blank = blankTrackData();
+    char* to = reinterpret_cast<char*>(&track);
+    const char* from = reinterpret_cast<const char*>(&blank);
+    const std::size_t drums = static_cast<std::size_t>(reinterpret_cast<const char*>(&blank.drums) - from);
+    const std::size_t notes = static_cast<std::size_t>(reinterpret_cast<const char*>(&blank.notes) - from);
+    const std::size_t afterNotes = notes + sizeof blank.notes;
+    const std::size_t automation = static_cast<std::size_t>(reinterpret_cast<const char*>(&blank.automation) - from);
+    const std::size_t afterAutomation = automation + sizeof blank.automation;
+    if (notes != drums + sizeof blank.drums || automation < afterNotes) { // (laid out otherwise: copied whole)
+        std::memcpy(static_cast<void*>(&track), &blank, sizeof track);
+        return;
+    }
+    const auto piece = [](void* now, const void* as, std::size_t size) {
+        if (std::memcmp(now, as, size) != 0) std::memcpy(now, as, size);
+    };
+    std::memcpy(to, from, drums);
+    for (int scene = 0; scene < kMaxScenes; ++scene)
+        for (int bar = 0; bar < kMaxBars; ++bar) {
+            piece(&track.drums[scene][bar], &blank.drums[0][0], sizeof(DrumPattern));
+            piece(&track.notes[scene][bar], &blank.notes[0][0], sizeof(NotePattern));
+        }
+    std::memcpy(to + afterNotes, from + afterNotes, automation - afterNotes);
+    for (int scene = 0; scene < kMaxScenes; ++scene) piece(track.automation[scene], blank.automation[0], sizeof track.automation[scene]);
+    std::memcpy(to + afterAutomation, from + afterAutomation, sizeof(TrackData) - afterAutomation);
+}
+} // namespace
+
+// Where the reading of a song's lines has got to, from one run of lines to the next (parseSong
+// reads them all in one run; SongReader a part at a time).
+struct SongReading {
+    ProjectHead& head;
+    TrackData* const* slots; // where each track's lines go, by its place among the song's tracks
+    TrackData* track = nullptr;
     bool oldSound = false; // the track being read was written as `track twin` or `track qmod`: its notes are read, its sound is not
     int count = 0, scene = -1, bar = 0;
     int oldSteps[kMaxScenes]; // "steps": to a bar, as songs were kept before a scene had a length
-    for (int& n : oldSteps) n = kSteps;
-    TrackData* track = nullptr;
+    SongReading(ProjectHead& h, TrackData* const* s) : head(h), slots(s) {
+        for (int& n : oldSteps) n = kSteps;
+    }
+};
 
-    while (std::getline(lines, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back(); // a file kept with Windows' line ends: a name must not end in it
-        std::istringstream in(line);
-        std::string word;
+namespace {
+// The lines of `text` from `from` (the start of a line) to `to`, each as std::getline cuts them,
+// read where it lies (LineIn: no copy, no stream).
+void readLines(SongReading& r, const std::string& text, std::size_t from, std::size_t to) {
+    ProjectHead& head = r.head;
+    TrackData*& track = r.track;
+    bool& oldSound = r.oldSound;
+    int &count = r.count, &scene = r.scene, &bar = r.bar;
+    int* const oldSteps = r.oldSteps;
+    const char* const all = text.data();
+    const std::size_t size = to;
+    std::size_t at = from;
+    std::string word;
+    while (at < size) {
+        const char* begin = all + at;
+        const void* stop = std::memchr(begin, '\n', size - at);
+        const char* end = stop ? static_cast<const char*>(stop) : all + size;
+        at = static_cast<std::size_t>(end - all) + 1;
+        if (end > begin && end[-1] == '\r') --end; // a file kept with Windows' line ends: a name must not end in it
+        LineIn in(begin, end);
+        word.clear();
         if (!(in >> word)) continue;
 
         if (word == "tempo") {
             double tempo = 120;
-            if (in >> tempo) song->tempo = fractionIn(tempo, kMinTempo, kMaxTempo);
+            if (in >> tempo) head.tempo = fractionIn(tempo, kMinTempo, kMaxTempo);
         } else if (word == "length") {
             double n;
-            for (int i = 0; i < kMaxScenes && (in >> n); ++i) song->steps[i] = wholeIn(n, 0, kMaxBars * kSteps);
+            for (int i = 0; i < kMaxScenes && (in >> n); ++i) head.steps[i] = wholeIn(n, 0, kMaxBars * kSteps);
         } else if (word == "steps") {
             // As songs were kept before: steps to a BAR, 1..16. Turned into a length once the cells' bars are known (below).
             double n;
             for (int i = 0; i < kMaxScenes && (in >> n); ++i) oldSteps[i] = wholeIn(n, 1, kSteps);
         } else if (word == "repeats") {
             double r;
-            for (int i = 0; i < kMaxScenes && (in >> r); ++i) song->repeats[i] = wholeIn(r, 1, kMaxRepeats);
+            for (int i = 0; i < kMaxScenes && (in >> r); ++i) head.repeats[i] = wholeIn(r, 1, kMaxRepeats);
         } else if (word == "pack") {
             std::string name;
-            std::getline(in >> std::ws, name);
-            std::snprintf(song->chordPack, sizeof song->chordPack, "%s", name.c_str());
+            skipSpace(in);
+            restOfLine(in, name);
+            std::snprintf(head.chordPack, sizeof head.chordPack, "%s", name.c_str());
         } else if (word == "fx" && !track) { // the master's (a track's: readSoundLine, below)
             double slot, value;
             std::string name;
             if (!(in >> slot >> name) || slot < 1 || slot > kMasterSlots) continue;
-            EffectData& data = song->masterEffects[static_cast<int>(slot) - 1];
+            EffectData& data = head.masterEffects[static_cast<int>(slot) - 1];
             const EffectKind kind = effectFromWord(name.c_str());
             if (kind == EffectKind::None) continue; // an effect this version does not have: the slot is left as it was
             const EffectInfo& info = effectInfo(kind);
@@ -550,13 +884,13 @@ bool parseSong(const std::string& text, Project& project) {
             for (int i = 0; i < info.params && (in >> value); ++i) data.param[i] = fractionIn(value, 0.f, 1.f);
         } else if (word == "songend") {
             double end = 0;
-            if (in >> end) song->songEnd = songEndKind(wholeIn(end, 0, 255)); // (held as a double first; a number nobody knows: LOOP)
+            if (in >> end) head.songEnd = songEndKind(wholeIn(end, 0, 255)); // (held as a double first; a number nobody knows: LOOP)
         } else if (word == "master") {
             double db = 0, pan = 0;
             if (!(in >> db)) continue;
             if (!(in >> pan)) pan = 0;
-            song->masterDb = wholeIn(db, kMixLeastDb, kMixMostDb);
-            song->masterPan = wholeIn(pan, -kPanMost, kPanMost);
+            head.masterDb = wholeIn(db, kMixLeastDb, kMixMostDb);
+            head.masterPan = wholeIn(pan, -kPanMost, kPanMost);
         } else if (word == "busfx") {
             double bus, value;
             std::string name;
@@ -565,8 +899,8 @@ bool parseSong(const std::string& text, Project& project) {
             const EffectKind kind = effectFromWord(name.c_str());
             // An effect this version does not have, or one that is not for this bus: the bus keeps what it had.
             if (kind == EffectKind::None ? name != "none" : effectBus(kind) != b) continue;
-            song->setBusEffect(b, kind);
-            for (int i = 0; i < effectInfo(kind).params && (in >> value); ++i) song->busEffects[b].param[i] = fractionIn(value, 0.f, 1.f);
+            head.setBusEffect(b, kind);
+            for (int i = 0; i < effectInfo(kind).params && (in >> value); ++i) head.busEffects[b].param[i] = fractionIn(value, 0.f, 1.f);
         } else if (word == "track") {
             std::string kind;
             in >> kind;
@@ -574,15 +908,15 @@ bool parseSong(const std::string& text, Project& project) {
             track = nullptr;
             scene = -1;
             if (k == TrackKind::None || count >= kNumTracks) continue; // an instrument this version does not have, or a thirteenth track
-            track = &song->tracks[count++];
-            *track = *blank;
+            track = r.slots[count++];
+            makeBlank(*track);
             track->kind = k;
             if (const SynthSpec* spec = specFor(k)) spec->loadPreset(*track, 0);
         } else if (!track) {
             continue; // nothing else means anything outside a track
         } else if (word == "name") {
             std::string rest;
-            std::getline(in, rest);
+            restOfLine(in, rest);
             std::string safe;
             for (char ch : rest) {
                 const bool fine = (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == ' ' || ch == '-' || ch == '_';
@@ -598,7 +932,7 @@ bool parseSong(const std::string& text, Project& project) {
                 if (index < 0 || index >= kAutoSteps || !(value >= 0.0)) continue;
                 track->automation[static_cast<int>(sceneNumber) - 1][static_cast<int>(lane)][static_cast<int>(index)] = static_cast<float>(value > 1.0 ? 1.0 : value);
             }
-        } else if (readSoundLine(word, in, SoundParts{track->kind, track->effects, track->send, &track->glideFrom, track->mods}, oldSound) != SoundLine::NotOne) {
+        } else if (readSoundLineIn(word, in, SoundParts{track->kind, track->effects, track->send, &track->glideFrom, track->mods}, oldSound) != SoundLine::NotOne) {
             continue; // fx, send, glidefrom, mod, modsteps: the track's sound past its synth (a preset file's too)
         } else if (word == "mix") {
             double db = 0, pan = 0;
@@ -615,7 +949,8 @@ bool parseSong(const std::string& text, Project& project) {
             double lane, fit;
             std::string name;
             if (!(in >> lane >> fit) || lane < 1 || lane > kDrumLanes) continue;
-            std::getline(in >> std::ws, name);
+            skipSpace(in);
+            restOfLine(in, name);
             if (!sampleNameOk(name)) continue; // a name, or a folder and a name: not a path out of the samples folder
             const int l = static_cast<int>(lane) - 1;
             std::snprintf(track->laneSample[l], sizeof track->laneSample[l], "%s", name.c_str());
@@ -655,7 +990,8 @@ bool parseSong(const std::string& text, Project& project) {
             track->laneChoke[static_cast<int>(lane) - 1] = static_cast<std::uint8_t>(chokeGroupOf(wholeIn(group, -1, kChokeGroups + 1))); // (a group nobody knows: none)
         } else if (word == "sound" && track->kind == TrackKind::Sampler) {
             std::string name;
-            std::getline(in >> std::ws, name);
+            skipSpace(in);
+            restOfLine(in, name);
             if (!sampleNameOk(name)) continue; // a name, or a folder and a name: not a path out of the samples folder
             std::snprintf(track->sample, sizeof track->sample, "%s", name.c_str());
         } else if (word == "sampler" && track->kind == TrackKind::Sampler) {
@@ -804,18 +1140,67 @@ bool parseSong(const std::string& text, Project& project) {
             p.chords[slot] = c;
         }
     }
-    if (count == 0) song->tracks[0].kind = TrackKind::Drums; // a song always has its drum track
-    // A MOD whose target does not fit its track reads OFF: a slot that is empty, a setting that
-    // is not there or is a choice, a macro on a track with none (mods.hpp).
-    for (int t = 0; t < count; ++t) modsFit(song->tracks[t]);
+}
+
+// After every line: an old song's "steps" made a length, and a length of every step kept as 0.
+// `bars` is how long each scene is (Project::sceneBars), the tracks read.
+void finishSteps(SongReading& r, const int bars[kMaxScenes]) {
     for (int s = 0; s < kMaxScenes; ++s) {
         // An old song's "13 steps to a bar": its bars but the last whole, and thirteen steps of the last.
-        if (song->steps[s] == 0 && oldSteps[s] < kSteps) song->steps[s] = (song->sceneBars(s) - 1) * kSteps + oldSteps[s];
-        if (song->steps[s] >= song->sceneBars(s) * kSteps) song->steps[s] = 0; // every step: kept as "all of them"
+        if (r.head.steps[s] == 0 && r.oldSteps[s] < kSteps) r.head.steps[s] = (bars[s] - 1) * kSteps + r.oldSteps[s];
+        if (r.head.steps[s] >= bars[s] * kSteps) r.head.steps[s] = 0; // every step: kept as "all of them"
     }
-    project = *song;
+}
+
+std::size_t afterFirstLine(const std::string& text) {
+    const std::size_t first = text.find('\n');
+    return first == std::string::npos ? text.size() : first + 1;
+}
+} // namespace
+
+bool parseSong(const std::string& text, Project& project) {
+    gBytesRead += text.size();
+    if (text.compare(0, 13, "apotheca-song") != 0) return false; // (its first line: no line end can come before 13 letters that have none)
+
+    // Read in place. (It was read into a second Project and copied over this one: 12 MB made and
+    // 12 MB copied, 42% of the time.) From here it is a song, and every part of `project` is written.
+    static_cast<ProjectHead&>(project) = ProjectHead();
+    TrackData* slots[kNumTracks];
+    for (int t = 0; t < kNumTracks; ++t) slots[t] = &project.tracks[t];
+    SongReading r(project, slots);
+    readLines(r, text, afterFirstLine(text), text.size());
+    for (int t = r.count; t < kNumTracks; ++t) makeBlank(project.tracks[t]); // no tracks but those the file names
+    if (r.count == 0) project.tracks[0].kind = TrackKind::Drums;              // a song always has its drum track
+    // A MOD whose target does not fit its track reads OFF: a slot that is empty, a setting that
+    // is not there or is a choice, a macro on a track with none (mods.hpp).
+    for (int t = 0; t < r.count; ++t) modsFit(project.tracks[t]);
+    int bars[kMaxScenes];
+    for (int s = 0; s < kMaxScenes; ++s) bars[s] = project.sceneBars(s);
+    finishSteps(r, bars);
     return true;
 }
+
+SongReader::SongReader(const std::string& text, ProjectHead& head, TrackData* const* slots)
+    : text_(text), reading_(new SongReading(head, slots)) {
+    head = ProjectHead();
+}
+SongReader::~SongReader() = default;
+
+void SongReader::readHead(std::size_t to) {
+    gBytesRead += to;
+    const std::size_t first = afterFirstLine(text_);
+    if (first < to) readLines(*reading_, text_, first, to);
+}
+
+void SongReader::readTrack(int index, std::size_t from, std::size_t to) {
+    gBytesRead += to - from;
+    reading_->count = index;
+    reading_->track = nullptr;
+    readLines(*reading_, text_, from, to);
+    if (reading_->count == index + 1) modsFit(*reading_->slots[index]);
+}
+
+void SongReader::finish(const int bars[kMaxScenes]) { finishSteps(*reading_, bars); }
 
 namespace {
 bool space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r'; } // as `>>` skips
@@ -828,13 +1213,10 @@ std::size_t wordAt(const std::string& text, std::size_t at, std::size_t end, std
 }
 } // namespace
 
-bool cutSong(const std::string& text, std::string& head, std::vector<std::string>& tracks) {
-    head.clear();
-    tracks.clear();
+bool cutSongAt(const std::string& text, std::vector<std::size_t>& starts) {
+    starts.clear();
     if (text.compare(0, 13, "apotheca-song") != 0) return false;
-    std::size_t from = 0; // where the part being read began
     bool inTrack = false;
-    int count = 0;
     static const char* const songsOwn[] = {"tempo", "length", "steps", "repeats", "pack", "busfx", "master", "songend"};
     for (std::size_t at = 0; at < text.size();) {
         std::size_t end = text.find('\n', at);
@@ -846,9 +1228,8 @@ bool cutSong(const std::string& text, std::string& head, std::vector<std::string
         if (is("track")) {
             std::size_t kindFrom = 0;
             const std::size_t kindTo = wordAt(text, after, end, kindFrom);
-            if (trackKindFromWord(text.substr(kindFrom, kindTo - kindFrom).c_str()) == TrackKind::None || ++count > kNumTracks) return false;
-            (inTrack ? tracks.emplace_back() : head).assign(text, from, at - from);
-            from = at;
+            if (trackKindFromWord(text.substr(kindFrom, kindTo - kindFrom).c_str()) == TrackKind::None || starts.size() >= static_cast<std::size_t>(kNumTracks)) return false;
+            starts.push_back(at);
             inTrack = true;
         } else if (inTrack) {
             for (const char* own : songsOwn)
@@ -856,7 +1237,19 @@ bool cutSong(const std::string& text, std::string& head, std::vector<std::string
         }
         at = end;
     }
-    (inTrack ? tracks.emplace_back() : head).assign(text, from, text.size() - from);
+    return true;
+}
+
+bool cutSong(const std::string& text, std::string& head, std::vector<std::string>& tracks) {
+    head.clear();
+    tracks.clear();
+    std::vector<std::size_t> starts;
+    if (!cutSongAt(text, starts)) return false;
+    head.assign(text, 0, starts.empty() ? text.size() : starts[0]);
+    for (std::size_t t = 0; t < starts.size(); ++t) {
+        const std::size_t to = t + 1 < starts.size() ? starts[t + 1] : text.size();
+        tracks.emplace_back(text, starts[t], to - starts[t]);
+    }
     return true;
 }
 
