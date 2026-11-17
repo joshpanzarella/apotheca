@@ -226,6 +226,9 @@ if(APOTHECA_BUILD_APP)
     set_tests_properties(presets_heard_cloud PROPERTIES TIMEOUT 120)
     add_test(NAME presets_heard_morph COMMAND presets_test --heard-morph)
     set_tests_properties(presets_heard_morph PROPERTIES TIMEOUT 120)
+    # PHAZED's added presets (presets-plan.md, "More presets"): as FM-6's, each MOD heard.
+    add_test(NAME presets_heard_phazed COMMAND presets_test --heard-phazed)
+    set_tests_properties(presets_heard_phazed PROPERTIES TIMEOUT 120)
     # The speed plan's changes (docs/plans/speed-plan.md), each held to the sound it made before,
     # to the bit, beside the old way of working it out. It reads the effects' and the CZ's own parts.
     add_executable(speed_test tests/speed_test.cpp)

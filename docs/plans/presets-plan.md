@@ -224,8 +224,11 @@ send 2 0.3
    and more down, LEAD a single line, SEQUENCE sixteenths, PADS / STRINGS / ATMOS a chord held, the
    rest PHYSIC's phrase), holds the same limits, and the synth's own VCA clip at 0 at a placed
    note's level and at full velocity; `--measure-jaxep` prints their figures and the booklet's 32
-   under every phrase (`docs/plans/jx3p-plan.md`, "The second set of presets"). PHAZED's added presets have no such test
-   yet.
+   under every phrase (`docs/plans/jx3p-plan.md`, "The second set of presets"). **PHAZED's** the same way as FM-6's:
+   `--heard-phazed` (ctest `presets_heard_phazed`; `--measure-phazed` for all 65 of the engine's too), a
+   bass folder (the engine's Bass, the added DEEP BASS) with FM-6's bass line, a window of -26 to -10 dB.
+   Any `--heard...` takes `--part K/N` (every Nth preset from the Kth), so a synth whose check grows past
+   the two-minute limit is cut into ctest entries.
 5. A still of the device on one: `--view jaxep` and pick it by hand, or the WiFi page's
    list (it shows the folder and the name).
 
@@ -257,3 +260,20 @@ modsteps 2 8 0.25 0 -0.5 0 0.5 ...
 It is read as carefully as a song (`readPresetFile`): every number held as a double
 first, then to its range; a word nobody knows passed by; a MOD aimed at nothing OFF;
 Windows line ends taken. A file from before 2026-11-16 has no `whole` and is plain.
+
+## More presets (2026-11-17)
+
+The owner: "I think we need ... more presets for all of the synths." Branch `morepresets`. The thin
+ones first, every synth given folders a musician looks for. **Nobody has heard any of them**: each is
+held only by the numbers of its `--heard...` check (loudness, peak, a tail that ends, every MOD moving
+and heard) and by `presets_test`'s new rule that **no two presets of one added folder are one sound**
+(the same settings, macros and track sound). How each was made: start from a built-in by its name, bend
+it a little, give it its effects, sends and MODs, then measure and move the LEVEL until it sits in the
+window.
+
+| Synth | Before (engine + data) | Added | New folders |
+| --- | --- | --- | --- |
+| PHAZED | 65 + 0 | 48, every one a whole sound | STAGE KEYS, DEEP BASS, LEADS, PADS, PLUCKS, BELLS, DRONES, TEXTURES (six each) |
+
+PHAZED's engine folders are the CZ bank's own words (Keys, Bass...), so the added ones are other words
+(DEEP BASS, not BASS): the folder step and the list would show two folders that read alike.
