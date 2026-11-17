@@ -2305,6 +2305,27 @@ effect in those two groups and fails one that does not.
   - Stills `cloud`, `cloud-1` to `cloud-3`, `cloud-long`, `cloud-sounding` (a key held: the still is
     taken before the engine renders, so no ticks show there; `testCloudsHintsFit` reads them off a
     drawn screen).
+- **MORPH** (2026-11-17, the engine only: batches 0 and 1 of `docs/plans/wavetable-plan.md`;
+  `engine/include/apotheca/morph.hpp`, `morph_rule.hpp`, `engine/src/morph.cpp`, `engine/src/morph/tables.*`;
+  `tests/morph_test.cpp`). `SynthKind::Morph` appended. **Every figure is SELF. Nobody has heard it, not
+  run on the handheld; no app side yet.** The owner's 17 calls are at the plan's picks.
+  - **A table is 32 frames kept at 18 sizes, one a half octave**; a stream reads the first size whose top
+    harmonic is at or under rate - 20 kHz, so a size change drops nothing under 19.85 kHz and needs no
+    crossfade. **32 points a harmonic (capped at 2048)**: at 8 a straight-line read aliased -39 dB on
+    FOLD at key 96; at 32, -64 dB at worst. 80 KB a frame, **41 MB for the 16 built-ins**, made once
+    in `prepare` (130 to 200 ms on the desk), shared, never freed.
+  - **The tables use no maths library** (`turnSin` / `turnCos` from the house polynomials, `exp2Poly`;
+    `#pragma clang fp contract(off)`), so the handheld makes the desk's tables. Not yet checked under qemu.
+  - **A key works on a 16-sample tick counted from its strike**; every setting the patch and macros give
+    slides in over 512 samples counted from when it changed (a MOD on POSITION is a line), at once when
+    no key sounds. The MOD ENV steps once a tick (its shape made at rate / 16). TABLE A, TABLE B and
+    UNISON are read at the strike.
+  - **A pool of 24 streams** (a stream is one oscillator's read; UNISON x (B on ? 2 : 1) a key): a key
+    that finds too few steals the oldest let-go key, then the oldest, until it fits. The cost's ceiling.
+  - **The only roll is a unison stream's start** (`streamPhase`: the strike's seed); one stream alone
+    starts at 0. The readout is CLOUD's `grainPlaces` path: each key's place in A, newest first, then B's.
+  - Cost (`bench`, a quiet desk): 6 keys 0.47%, the pool full 0.67%, asleep 0; 53 M / 87 M instructions
+    a second (about 5% / 9% of a handheld core by the speed plan's rule, not run there).
 - **FM-6's `setMacro` returns early on the value it has**, as Phazed's
   does (JAX-EP's does not; `bench` times it: 0.035 us a change, 0.002 the same value;
   `Fm6::applied()` counts them for `fm6_test`).

@@ -457,3 +457,72 @@ is listed at the top of the header; every figure is SELF.
   no check stood exactly on the ceiling; one does now).
 - **Not run**: the whole `ctest` (nothing outside the new header and its test was touched;
   `morph`, `words` and `temp` pass). Nothing is heard: there is no sound yet.
+
+## 10. Batch 1, as built (2026-11-17): the tables and the voice
+
+**Built and tested on the desk; nobody has heard it, not run on the handheld, no app side yet.**
+Every figure is SELF.
+
+| File | Holds |
+| --- | --- |
+| `engine/src/morph/tables.hpp`, `tables.cpp` | a table's layout, the FFT, the 16 recipes, `tableFromHarmonics` / `tableFromWaves`, `builtInTable`, `turnSin` / `turnCos` (the house's polynomials: no library call, so the handheld's tables are the desk's) |
+| `engine/include/apotheca/morph.hpp`, `engine/src/morph.cpp` | the synth: 12 key slots, the 24-stream pool, the tick, the reads, the filter, both envelopes, 8 engine presets (BASIC) |
+| `engine/include/apotheca/instrument.hpp` | `SynthKind::Morph` appended; `grainPlaces`' comment widened (MORPH's places) |
+| `engine/src/engine.cpp` | `addSynthTrack` makes it |
+| `app/bench_run.cpp` | "MORPH, 6 keys", "MORPH, the pool full", "MORPH asleep", and the tables' making time |
+| `tests/morph_test.cpp` | `ctest -R morph`, about 12 s: the rule, the tables, the voice, through the engine |
+| `tests/words_test.sh` | `engine/src/morph` in `kBeside` (11 folders) |
+
+### Where it differs from sections 2 to 4
+
+| Plan | Built | Why |
+| --- | --- | --- |
+| 8 points a harmonic, 50 KB a frame | **32 points a harmonic** (capped at 2048), **80 KB a frame**, 2.5 MB a table, **41 MB for the 16** | measured: a straight-line read makes an image of each harmonic about 12 dB further down per doubling of its points. At 8, FOLD's last frame (its energy in its top harmonics) aliased **-39 dB** under its loudest at key 96; at 32, **-64 dB at worst** over every table at keys 36 to 96. The plan's throwaway weighted the error by a saw's energy and hid it |
+| The MOD ENV sample by sample | **stepped once a tick** (its shape made at a sixteenth of the rate); both envelopes land on their sustain on the tick | the cost (below) |
+| The setting FILTER TYPE | **FILTER** (`morph::Filter`) | `FilterType` is the engine's own enum's name |
+| Pool full target 0.5% | 0.64 to 0.68% (under the 0.7% ceiling) | below |
+| A first-pass voice | the frame pair taken once a run when it does not change, the size tables worked out once, nothing slid when nothing is sliding | below |
+
+### Measured (desk)
+
+| What | Figure |
+| --- | --- |
+| The 16 tables made (once, at the first MORPH track's `prepare`) | **130 to 200 ms** (a plain double FFT); the handheld at x13 to x20: **2 to 4 s, a guess**, so batch 2 makes them on the helper thread at the program's start |
+| Pitch, a sine frame, keys 24 to 96 | 0.0002 cents off at worst |
+| A frame as made, harmonics 2 to 10 read off the sound (ANALOG, VOWEL, FM, ORGAN) | within 0.1 dB of the table |
+| A quarter of the way between two frames | 3.5e-8 from the straight crossfade, sample for sample |
+| Aliasing under 10 kHz, every table at its middle and last frame, keys 36 to 96 | **-64 dB** at worst (FOLD, key 96) |
+| The worst dip half way between two frames | under 1 dB for 13 tables; SYNC 1.84, HARMONIC 3.01 (its frames share no harmonic), ANALOG 0.54 |
+| Filter, a saw at key 36, CUTOFF 1047 Hz | LOW 12 at 4 kHz -25 dB, LOW 24 -50 dB, HIGH at 131 Hz -36 dB, BAND -6 at its middle; KEY TRACK holds the cutoff a key-octave apart to 0.01 dB |
+| A MOD on POSITION (20% to 100%) | a line: the most it moves a sample is 0.8 / 512, exactly |
+| A steal, a key struck again, allNotesOff | no step past what the sines sounding could make (0.07 against 0.097) |
+| A minute held on a decay to nothing, then let go | the least state held 1.1e-9, then exact zeros |
+| The 8 engine presets, a chord of four | -23 to -9 dB, peak 0.95 at most (Pulse Width) |
+| **Cost** (`bench`, a quiet run: Phazed 0.9%, JAX-EP 0.61% in it) | **6 keys (A + B + SUB, LOW 12, the MOD ENV on POSITION) 0.47%; the pool full (UNISON 2, A + B, WIDTH, LOW 24) 0.67%; asleep 0.00%**. `morph_test --measure cost`: 0.43 / 0.29 (A alone) / 0.64 / 0.42 (UNISON 4, 3 keys) |
+| Instructions (callgrind, a second, clang -O2) | 6 keys A + B, LOW 12: **53 M**; the pool full: **87 M**. By the speed plan's rule (1 G is about a handheld core): **about 5% and 9% of a handheld core, not run there**. JAX-EP's 6 notes: about 9.5% |
+
+**Over the plan's targets** (0.3% plain, 0.5% the pool): the plain case is 1.5 times its target,
+the pool full is under the ceiling. Cut from 88 M to 53 M instructions in this batch (the size tables
+were worked out by loops every tick; the MOD ENV ran a sample at a time; the frame pair was taken
+every sample). Left, if it must go lower: the gains and places as arrays each run (about 20% of
+what is left), the per-key tick (about 15%).
+
+### Tests and mutants
+
+`morph_test` holds the rule (batch 0) and: the tables (32 frames, peak 1, no DC, guards, each size's
+harmonics as made and none past them, the tables' sine against the library's, the dips), a table from
+given harmonics, pitch, frames as made and the straight morph, aliasing, the filter, SUB, LEVEL,
+VELOCITY and WIDTH's sides, glide, POSITION moved by the MOD ENV and by a macro, the pool (UNISON's
+key counts, mixed UNISONs, a let-go key stolen first, then the oldest, a key struck again), no click,
+blocks 1 to 333 to the bit with everything moving, through the engine (0 to 3 helpers, other blocks,
+Play from the top, the readout), no allocation, tiny numbers, NaN, silence, Play from the top with the
+rolls, the presets.
+
+**Mutants: 22, 21 killed.** Six survived the first run: five were tests that could not reach them
+(a key let go before it had sounded, mixed UNISONs never tried, the first sample's unison roll, the
+first tick's place, a key struck again) and each got its check; **one is kept as a guard**: the filter's
+states snapped on the tick, which no sounding key reaches (the oscillators always feed the filter; the
+envelope is after it).
+
+**Not done**: the desk and the handheld's bits compared under qemu (the tables use no library call
+and the voice has `fp contract(off)`, as PHYSIC's; not run); the 24 data presets (batch 3).

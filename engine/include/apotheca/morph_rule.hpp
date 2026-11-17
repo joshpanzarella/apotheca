@@ -63,7 +63,7 @@ enum Setting {
     Unison,       // 1..4: streams an oscillator (a choice)
     Detune,       // 0..100: the streams' spread, read +- CENTS (detuneCents)
     Width,        // 0..100: the streams' spread apart in the sides
-    FilterType,   // 0..4: OFF, LOW 12, LOW 24, BAND, HIGH (a choice)
+    Filter,   // 0..4: OFF, LOW 12, LOW 24, BAND, HIGH (a choice)
     Cutoff,       // 0..100: read HZ, 20 HZ to 20 KHZ (cutoffHz)
     Resonance,    // 0..100: Q 0.5 to 20 (resonanceQ)
     KeyTrack,     // 0..100: how far CUTOFF follows the key
@@ -111,7 +111,7 @@ inline int settingMax(int id) {
     case BFine: return 50;
     case Octave: return 2;
     case Unison: return kUnisonMost;
-    case FilterType: return kFilters - 1;
+    case Filter: return kFilters - 1;
     case Level: return 6;
     default: return 100;
     }
@@ -210,11 +210,14 @@ inline double bRatio(int semi, int fine) { return std::exp2(bCents(semi, fine) /
 
 // ---- the sizes a frame is kept at ----------------------------------------------------------
 // One SIZE every half octave. Size m holds harmonics 1 to sizeHarmonics(m) = floor(512 / 2^(m/2))
-// in sizeLength(m) points: the power of two at or over 8 times the harmonics, held to 128..2048.
-// (8 points a harmonic keep a straight-line read clean: the plan's section 4, measured.)
+// in sizeLength(m) points: the power of two at or over 32 times the harmonics, held to 128..2048.
+// A straight-line read between points makes images of each harmonic about 12 dB further down for
+// each doubling of the points it has (sinc squared): at 8 points a frame rich in its top harmonics
+// (FOLD) aliased 39 dB under its loudest at key 96 (batch 1, measured), at 32 the sizes from H 64
+// down are 47 dB or more. The four largest sizes (low keys) are held at 2048 points.
 constexpr int kSizes = 18;
 constexpr int kTopHarmonics = 512;
-constexpr int kPointsPerHarmonic = 8;
+constexpr int kPointsPerHarmonic = 32;
 constexpr int kLengthLeast = 128, kLengthMost = 2048;
 inline int sizeHarmonics(int m) {
     static const int h[kSizes] = {512, 362, 256, 181, 128, 90, 64, 45, 32, 22, 16, 11, 8, 5, 4, 2, 2, 1};

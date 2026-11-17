@@ -48,14 +48,15 @@ public:
     virtual void setSample(const float* data, int length) { (void)data; (void)length; }
     // For an instrument that plays grains (CLOUD): where each sounding grain reads now, as a share
     // of its recording (0..1), at most `most` of them, after the last render; how many. -1: it
-    // plays no grains. Called on the thread that renders it, after render.
+    // plays no grains. Called on the thread that renders it, after render. MORPH gives its keys'
+    // places in their tables here (morph.hpp says how): the same readout for the picture.
     virtual int grainPlaces(float* places, int most) const { (void)places; (void)most; return -1; }
 
     // Writes `frames` samples (replacing what was there).
     virtual void render(float* left, float* right, int frames) = 0;
 };
 
-enum class SynthKind { Phazed, Sampler, Jx3p, Fm6, Physic, Acid, Cloud }; // (memory only: QMOD went, FM-6 took its place, 2026-11-15; PHYSIC appended, ACID after it, CLOUD after that)
+enum class SynthKind { Phazed, Sampler, Jx3p, Fm6, Physic, Acid, Cloud, Morph }; // (memory only: QMOD went, FM-6 took its place, 2026-11-15; PHYSIC appended, ACID after it, CLOUD after that, MORPH after CLOUD)
 
 // Every synth has this many macros (the eight knobs on its DEVICE screen).
 // Songs, presets and automation lanes 0..7 all count on it; each synth's

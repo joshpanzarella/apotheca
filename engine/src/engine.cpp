@@ -5,6 +5,7 @@
 #include "apotheca/physic.hpp"
 #include "apotheca/acid.hpp"
 #include "apotheca/cloud.hpp"
+#include "apotheca/morph.hpp"
 #include "apotheca/physic_rule.hpp"
 
 #include <chrono>
@@ -457,6 +458,7 @@ bool Engine::addSynthTrack(int track, SynthKind kind) {
     else if (kind == SynthKind::Physic) synth.reset(new Physic);
     else if (kind == SynthKind::Acid) synth.reset(new Acid);
     else if (kind == SynthKind::Cloud) synth.reset(new Cloud);
+    else if (kind == SynthKind::Morph) synth.reset(new Morph);
     else synth.reset(new Phazed);
     if (!synth->ok()) return false;
     synth->prepare(sampleRate_);
