@@ -1270,7 +1270,7 @@ void testMorphPresetsAsHeard(bool measure) {
     }
     if (measure) std::printf("  loudest %.1f dB, quietest %.1f dB\n", hi, lo);
     CHECK(hi - lo <= kMorphSpreadDb);
-    CHECK(builtInPresets(kind) == 32 && Morph::presetCount() == 8);
+    CHECK(builtInPresets(kind) == 64 && Morph::presetCount() == 8);
 }
 
 // ---- PHAZED's added presets, heard through their whole sound ----------------------------------------
@@ -1773,7 +1773,7 @@ int main(int argc, char** argv) {
             std::printf(failures ? "%d check(s) failed\n" : "CLOUD's presets as heard: passed\n", failures);
             return failures ? 1 : 0;
         }
-        // --heard-morph: MORPH's 32 the same way (its own ctest entry, presets_heard_morph).
+        // --heard-morph: MORPH's 64 the same way (its own ctest entry, presets_heard_morph).
         // --measure-morph: their figures, printed.
         if (std::strcmp(argv[a], "--heard-morph") == 0 || std::strcmp(argv[a], "--measure-morph") == 0) {
             testMorphPresetsAsHeard(std::strcmp(argv[a], "--measure-morph") == 0);
