@@ -285,3 +285,20 @@ window.
 
 PHAZED's engine folders are the CZ bank's own words (Keys, Bass...), so the added ones are other words
 (DEEP BASS, not BASS): the folder step and the list would show two folders that read alike.
+
+**What costs more than 1% of a desk core while it plays** (each heard check's cost column, a busy
+shared desk, one run; PHAZED's own engine is 0.7 to 1.7% before any effect): PHAZED's Dusty Keys
+(WEAR), Night Flute (HALL), Vibe Tremolo, Glass Bloom and Bowed Drone (BLOOM) 2.3 to 2.5%; FM-6's
+Brass Bells and Orchestra Drone 1.8%; MORPH's Glass Drone (BLOOM) 1.6 to 1.7%; JAX-EP's Chime Bloom
+(BLOOM) 1.8%; PHYSIC's Felt Piano (WEAR and PLATE) 1.4 to 1.6%. The reverbs that grow (BLOOM, HALL,
+SHIMMER) and WEAR are most of it. Not timed on the handheld.
+
+**The owner's calls** (each taken at the answer given, so nothing waits):
+
+1. PHAZED's added folders are other words than the engine's (DEEP BASS beside Bass). The other way
+   is to rename the engine's seven to capitals (KEYS, BASS...) and put the added ones in them: a
+   folder is only a name, but the engine's presets are the CZ bank's own words. *Taken: other words.*
+2. ACID's LEADS play the line an octave up (OCTAVE +1). *Taken: so; a player can turn it down.*
+3. The 16 new JAX-EP presets do not all carry a MOD (the first 110 each did). *Taken: an organ or a
+   bell that moves only where it should.*
+4. A heard check past about a minute is cut into ctest halves with `--part` (JAX-EP's now). *Taken.*

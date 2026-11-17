@@ -286,7 +286,7 @@ void testBadFiles() {
     CHECK(p->tracks[0].laneLevel[0] == 1.f && p->tracks[0].laneLevel[1] == 0.f && p->tracks[0].laneLevel[2] == 1.f);
     CHECK(p->tracks[0].notes[0][0].empty());
     const TrackData& synth = p->tracks[1];
-    CHECK(synth.preset == Phazed::presetCount() - 1);
+    CHECK(synth.preset == specFor(TrackKind::Phazed)->presetCount() - 1); // held to the last listed (the added ones too)
     CHECK(synth.macro[0] == 1.f && synth.macro[1] == 0.f && synth.macro[2] == 0.5f);
     CHECK(synth.patch.value[0] == phazed::settingMax(0) && synth.patch.value[1] == phazed::settingMin(1));
     int notes = 0;
