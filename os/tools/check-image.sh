@@ -36,7 +36,7 @@ esac
 
 here=$(cd "$(dirname "$0")/../.." && pwd)
 python3 -I - "$img" "$here/build-image/output/host/bin/unsquashfs" "$here" <<'EOF'
-import os, struct, subprocess, shutil, sys, tempfile
+import os, re, struct, subprocess, shutil, sys, tempfile
 
 path = sys.argv[1]
 data = open(path, 'rb')
@@ -183,6 +183,19 @@ if unsquashfs:
         check(b'export APOTHECA_OWNS_SCREEN=1' in cat('/usr/libexec/apotheca/run') and b'export APOTHECA_STICK_LIGHT=' in cat('/usr/libexec/apotheca/run'),
               "run gives Apotheca the backlight and the stick's light (app/lights.hpp)")
         check(b'APOTHECA_STICK_LIGHT' in cat('/usr/lib/apotheca/apotheca'), "the Apotheca on the card knows the stick's light")
+        # The owner's boot log (Linux 7.2): ttyS2's device is the port below the UART.
+        run = cat('/usr/libexec/apotheca/run').decode('utf-8', 'replace')
+        pattern = re.search(r'^\s*(\S*5001400\.serial\S*)\)', run, re.M)
+        found = []
+        if pattern:
+            for path in ['/sys/devices/platform/soc/5001400.serial/5001400.serial:0/5001400.serial:0.0',
+                         '/sys/devices/platform/soc/5001400.serial',
+                         '/sys/devices/platform/soc/5000000.serial/5000000.serial:0/5000000.serial:0.0']:
+                r = subprocess.run(['sh', '-c', 'case "$1" in %s) echo yes ;; *) echo no ;; esac' % pattern.group(1), 'sh', path],
+                                   capture_output=True, text=True)
+                found.append(r.stdout.strip())
+        check(found == ['yes', 'yes', 'no'],
+              "run finds the stick light's serial line as Linux 7.2 places it, and as before (%s)" % found)
         check(b'KEEP_OFF:-poweroff' in cat('/usr/sbin/apotheca-keep'), "apotheca-keep turns the handheld off on the mark")
         check(b'APOTHECA_OFF_MARK' in cat('/usr/lib/apotheca/apotheca'), "the Apotheca on the card knows the off mark")
         check(any(l.endswith('/test_power.ko') for l in listing.splitlines()),

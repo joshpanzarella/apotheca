@@ -24,7 +24,10 @@
 #            program's here (nothing else on this system sets them): SET's
 #            BRIGHTNESS and STICK LIGHT (app/lights.hpp). APOTHECA_OWNS_SCREEN=1
 #            when there is a backlight; APOTHECA_STICK_LIGHT names the serial line
-#            of the ring's controller (UART5, 5001400.serial: ttyS2 on our kernel)
+#            of the ring's controller (UART5, 5001400.serial: ttyS2 on our kernel;
+#            Linux 7.2 puts the tty's device below the UART's own,
+#            .../5001400.serial/5001400.serial:0/5001400.serial:0.0, so both
+#            shapes are matched: the first card matched only the other)
 #            when that line and the ring's power switch (the LED
 #            rgb:kbd_backlight, a GPIO: on or off) are there. Apotheca runs as
 #            root, so it can write them. bl_power stays apotheca-power's.
@@ -90,7 +93,7 @@ ring=
 if [ -e /sys/class/leds/rgb:kbd_backlight/brightness ]; then
     for t in /sys/class/tty/ttyS*; do
         case "$(readlink -f "$t/device" 2>/dev/null)" in
-        */5001400.serial) [ -c "/dev/${t##*/}" ] && ring=/dev/${t##*/} ;;
+        */5001400.serial|*/5001400.serial/*) [ -c "/dev/${t##*/}" ] && ring=/dev/${t##*/} ;;
         esac
     done
 fi
