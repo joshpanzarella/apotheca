@@ -10,9 +10,16 @@
 #include <string>
 #include <vector>
 
+#include <dirent.h>
+
+#include <algorithm>
+#include <initializer_list>
+
 #include "app.hpp"
+#include "canvas.hpp"
 #include "chords.hpp"
 #include "song_file.hpp"
+#include "temp_folder.hpp"
 
 using namespace apotheca;
 
@@ -150,16 +157,345 @@ void testReadingAPack() {
 
 void testThePacksThatShip() {
     const std::vector<ChordPack> packs = loadChordPacks(APOTHECA_SOURCE_DIR "/assets/chords");
-    CHECK(packs.size() == 7); // the built-in one and six files
+    CHECK(packs.size() == 20); // the built-in one and nineteen files
     CHECK(packs[0].name == "Plain C" && packs[0].chords.size() == 13);
     for (std::size_t i = 0; i < packs.size(); ++i) {
         CHECK(!packs[i].name.empty() && !packs[i].chords.empty());
         if (i >= 2) CHECK(packs[i - 1].name < packs[i].name); // by name after the built-in one
         for (const ChordShape& c : packs[i].chords) CHECK(c.name[0] && c.count >= 1 && c.rootKey >= 0 && c.rootKey < 12);
     }
-    // A folder that is not there still leaves the built-in pack.
-    CHECK(loadChordPacks("/no/such/folder").size() == 1);
-    CHECK(loadChordPacks("").size() == 1);
+    // A folder that is not there still leaves the built-in pack and the shipped ones.
+    CHECK(loadChordPacks("/no/such/folder").size() == 20);
+    CHECK(loadChordPacks("").size() == 20);
+}
+
+std::string readFile(const std::string& path) {
+    std::string text;
+    CHECK(readTextFile(path, text));
+    return text;
+}
+
+std::vector<std::string> packFiles() {
+    std::vector<std::string> names;
+    if (DIR* dir = opendir(APOTHECA_SOURCE_DIR "/assets/chords")) {
+        while (const dirent* e = readdir(dir)) {
+            const std::string n = e->d_name;
+            if (n.size() > 5 && n.compare(n.size() - 5, 5, ".json") == 0) names.push_back(n);
+        }
+        closedir(dir);
+    }
+    std::sort(names.begin(), names.end());
+    return names;
+}
+
+bool sameShape(const ChordShape& a, const ChordShape& b) {
+    if (std::strcmp(a.name, b.name) != 0 || a.rootKey != b.rootKey || a.count != b.count) return false;
+    for (int i = 0; i < a.count; ++i)
+        if (a.intervals[i] != b.intervals[i]) return false;
+    return true;
+}
+
+// The packs compiled in are the files in assets/chords, every chord of every one (run
+// tools/chord_packs.py after changing a file), so an update over WiFi brings what the zip would.
+void testTheShippedPacksAreTheFiles() {
+    const std::vector<std::string> files = packFiles();
+    CHECK(files.size() == shippedPackTexts().size() && files.size() == shippedPacks().size());
+    for (std::size_t i = 0; i < files.size() && i < shippedPackTexts().size(); ++i) {
+        ChordPack fromFile, compiled;
+        CHECK(parseChordPack(readFile(std::string(APOTHECA_SOURCE_DIR "/assets/chords/") + files[i]), fromFile));
+        CHECK(parseChordPack(shippedPackTexts()[i], compiled)); // in file-name order
+        CHECK(fromFile.name == compiled.name && fromFile.chords.size() == compiled.chords.size());
+        for (std::size_t c = 0; c < fromFile.chords.size() && c < compiled.chords.size(); ++c)
+            CHECK(sameShape(fromFile.chords[c], compiled.chords[c]));
+        // And every fact the checks below read (the .inc is the whole file, its spaces out).
+        PackFacts a, b;
+        CHECK(readPackFacts(readFile(std::string(APOTHECA_SOURCE_DIR "/assets/chords/") + files[i]), a) && readPackFacts(shippedPackTexts()[i], b));
+        CHECK(a.description == b.description && a.progressions.size() == b.progressions.size() && a.chords.size() == b.chords.size());
+        for (std::size_t c = 0; c < a.chords.size() && c < b.chords.size(); ++c)
+            CHECK(a.chords[c].quality == b.chords[c].quality && a.chords[c].outside == b.chords[c].outside && a.chords[c].legacyName == b.chords[c].legacyName);
+    }
+}
+
+// A file on the card takes the place of a shipped pack of the same name; another name is one more.
+void testACardPackTakesAShippedOnesPlace() {
+    const std::string folder = tempFolder("chordpacks");
+    const std::string mine = "{\"name\":\"Smoke\",\"chords\":[{\"intervals\":[0,4,7],\"root\":{\"degree\":0}}]}";
+    const std::string other = "{\"name\":\"Zinc\",\"chords\":[{\"intervals\":[0,3,7],\"root\":{\"degree\":1}}]}";
+    CHECK(writeTextFile(folder + "/smoke-mine.json", mine) && writeTextFile(folder + "/zinc.json", other));
+    const std::vector<ChordPack> packs = loadChordPacks(folder);
+    CHECK(packs.size() == 21);
+    int smokes = 0;
+    for (const ChordPack& p : packs)
+        if (p.name == "Smoke") {
+            ++smokes;
+            CHECK(p.chords.size() == 1 && std::strcmp(p.chords[0].name, "C") == 0);
+        }
+    CHECK(smokes == 1 && packs.back().name == "Zinc" && packs[0].name == "Plain C");
+    for (std::size_t i = 2; i < packs.size(); ++i) CHECK(packs[i - 1].name < packs[i].name);
+}
+
+// ---- every shipped chord is what it says ------------------------------------------------------
+// Each chord is worked out again from its quality and its root, and held to its pack's scale and
+// its name. The quality's notes, as pitch classes over the root: those it must have, and those it
+// may have besides (the fifth, mostly; the ninth under an eleventh or a thirteenth).
+
+int bits(std::initializer_list<int> pcs) {
+    int b = 0;
+    for (int pc : pcs) b |= 1 << pc;
+    return b;
+}
+
+struct Quality {
+    const char* name;
+    int must, may;
+};
+
+const Quality kQualities[] = {
+    {"major", bits({0, 4, 7}), 0},          {"m", bits({0, 3, 7}), 0},
+    {"dim", bits({0, 3, 6}), 0},            {"aug", bits({0, 4, 8}), 0},
+    {"5", bits({0, 7}), 0},                 {"sus2", bits({0, 2, 7}), 0},
+    {"sus4", bits({0, 5, 7}), 0},           {"sus2add11", bits({0, 2, 5, 7}), 0},
+    {"sus4add9", bits({0, 2, 5, 7}), 0},    {"add9", bits({0, 2, 4}), bits({7})},
+    {"madd9", bits({0, 2, 3}), bits({7})},  {"madd11", bits({0, 3, 5}), bits({7})},
+    {"6", bits({0, 4, 9}), bits({7})},      {"m6", bits({0, 3, 9}), bits({7})},
+    {"6/9", bits({0, 2, 4, 9}), bits({7})}, {"m6/9", bits({0, 2, 3, 9}), bits({7})},
+    {"7", bits({0, 4, 10}), bits({7})},     {"maj7", bits({0, 4, 11}), bits({7})},
+    {"m7", bits({0, 3, 10}), bits({7})},    {"mMaj7", bits({0, 3, 11}), bits({7})},
+    {"m7b5", bits({0, 3, 6, 10}), 0},       {"dim7", bits({0, 3, 6, 9}), 0},
+    {"7sus4", bits({0, 5, 10}), bits({7})}, {"7#5", bits({0, 4, 8, 10}), 0},
+    {"maj7#5", bits({0, 4, 8, 11}), bits({2})},
+    {"9", bits({0, 2, 4, 10}), bits({7})},  {"maj9", bits({0, 2, 4, 11}), bits({7})},
+    {"m9", bits({0, 2, 3, 10}), bits({7})}, {"mMaj9", bits({0, 2, 3, 11}), bits({7})},
+    {"9sus4", bits({0, 2, 5, 10}), bits({7})},
+    {"m11", bits({0, 3, 5, 10}), bits({2, 7})},
+    {"maj7#11", bits({0, 4, 6, 11}), bits({2, 7})},
+    {"maj9#11", bits({0, 2, 4, 6, 11}), bits({7})},
+    {"13", bits({0, 4, 9, 10}), bits({2, 7})},
+    {"maj13", bits({0, 4, 9, 11}), bits({2, 7})},
+    {"maj7add13", bits({0, 4, 9, 11}), bits({7})},
+    {"13sus4", bits({0, 5, 9, 10}), bits({2, 7})},
+    {"7b9", bits({0, 1, 4, 10}), bits({7})},
+    {"7#9", bits({0, 3, 4, 10}), bits({7})},
+    {"7#9b13", bits({0, 3, 4, 8, 10}), 0},
+    {"7sus4b9", bits({0, 1, 5, 10}), bits({7})},
+    {"quartal", bits({0, 5, 10}), 0},       {"quartal4", bits({0, 3, 5, 10}), 0},
+    {"quartal5", bits({0, 3, 5, 8, 10}), 0},
+};
+
+// A quality's notes: "(open)" is a voicing and changes none; "(no3)", "no3" and "(no5)" take the
+// third or the fifth out, and then it must not be there. False: a quality nobody knows.
+bool qualityNotes(std::string q, int& must, int& may) {
+    int without = 0;
+    const auto ends = [&](const char* tail) {
+        const std::size_t n = std::strlen(tail);
+        if (q.size() <= n || q.compare(q.size() - n, n, tail) != 0) return false;
+        q.erase(q.size() - n);
+        return true;
+    };
+    ends("(open)");
+    if (ends("(no3)") || ends("no3")) without = bits({3, 4});
+    else if (ends("(no5)")) without = bits({7});
+    for (const Quality& known : kQualities)
+        if (q == known.name) {
+            must = known.must & ~without;
+            may = known.may & ~without;
+            return true;
+        }
+    return false;
+}
+
+const char* const kKeys[12] = {"C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"};
+
+// The root spelled as its scale spells it: the degree's own letter (in a seven-note scale), with
+// what the alteration takes it to. A flat second is Db, never C#.
+std::string spelled(const PackFacts& pack, const PackFacts::Chord& c) {
+    const int pc = ((pack.tonic + pack.scale[static_cast<std::size_t>(c.degree)] + c.alteration) % 12 + 12) % 12;
+    if (pack.scale.size() != 7) return kKeys[pc];
+    static const char* const letters = "CDEFGAB";
+    static const int natural[7] = {0, 2, 4, 5, 7, 9, 11};
+    const int tonicLetter = static_cast<int>(std::strchr(letters, kKeys[pack.tonic][0]) - letters);
+    const int letter = (tonicLetter + c.degree) % 7;
+    const int accidental = ((pc - natural[letter]) % 12 + 18) % 12 - 6;
+    if (accidental < -2 || accidental > 2) return "?";
+    std::string out(1, letters[letter]);
+    out.append(static_cast<std::size_t>(accidental < 0 ? -accidental : accidental), accidental < 0 ? 'b' : '#');
+    return out;
+}
+
+std::string shownQuality(const std::string& q) { // as parseChordPack names a chord
+    if (q.compare(0, 5, "major") == 0) return q.substr(5);
+    if (q.compare(0, 5, "minor") == 0) return "m" + q.substr(5);
+    return q;
+}
+
+bool isNoteName(const std::string& s) {
+    return (s.size() == 1 || (s.size() == 2 && (s[1] == 'b' || s[1] == '#'))) && s[0] >= 'A' && s[0] <= 'G';
+}
+
+// Everything wrong with a pack, one line each; none for a good one.
+std::vector<std::string> packFaults(const std::string& json) {
+    std::vector<std::string> faults;
+    const auto fault = [&](const std::string& where, const std::string& what) { faults.push_back(where + ": " + what); };
+    PackFacts pack;
+    if (!readPackFacts(json, pack)) {
+        fault("pack", "not a pack");
+        return faults;
+    }
+    if (pack.schemaVersion != 2) fault(pack.name, "schemaVersion is not 2");
+    if (pack.tonic < 0 || pack.tonic > 11) fault(pack.name, "no tonic");
+    if (pack.name.empty() || pack.name.size() > 12) fault(pack.name, "a name of 1 to 12 letters");
+    if (pack.description.empty() || pack.description.size() > 200) fault(pack.name, "a description of 1 to 200 letters");
+    if (pack.scale.size() < 5 || pack.scale[0] != 0) fault(pack.name, "the scale");
+    for (std::size_t i = 1; i < pack.scale.size(); ++i)
+        if (pack.scale[i] <= pack.scale[i - 1] || pack.scale[i] > 11) fault(pack.name, "the scale");
+    if (pack.chords.size() < 7 || pack.chords.size() > 24) fault(pack.name, "7 to 24 chords");
+    if (!faults.empty()) return faults;
+    int scaleBits = 0;
+    for (int pc : pack.scale) scaleBits |= 1 << pc;
+    std::vector<std::string> ids, names;
+    std::vector<std::vector<int>> shapes;
+    const std::string idStart = pack.id.substr(pack.id.find('.') + 1) + ".";
+    for (const PackFacts::Chord& c : pack.chords) {
+        const std::string at = pack.name + " " + c.id;
+        if (c.id.compare(0, idStart.size(), idStart) != 0) fault(at, "an id that does not start with the pack's");
+        if (std::find(ids.begin(), ids.end(), c.id) != ids.end()) fault(at, "an id twice");
+        ids.push_back(c.id);
+        // Voices: 1 to 6, the root at the bottom, rising, in two octaves; a pedal is a voice too.
+        const std::size_t voices = c.intervals.size() + (c.pedal >= 0 ? 1 : 0);
+        if (c.intervals.empty() || voices > 6) fault(at, "1 to 6 voices");
+        if (c.intervals.empty() || c.intervals[0] != 0) fault(at, "the root at the bottom");
+        for (std::size_t i = 1; i < c.intervals.size(); ++i)
+            if (c.intervals[i] <= c.intervals[i - 1] || c.intervals[i] > 24) fault(at, "rising, two octaves at most");
+        for (int r : c.required)
+            if (std::find(c.intervals.begin(), c.intervals.end(), r) == c.intervals.end()) fault(at, "a required note it does not have");
+        if (c.preferredVoices < static_cast<int>(c.required.size()) || c.preferredVoices > 6) fault(at, "preferredVoices");
+        if (c.function != "tonic" && c.function != "predominant" && c.function != "dominant" && c.function != "unknown") fault(at, "its function");
+        if (c.degree < 0 || c.degree >= static_cast<int>(pack.scale.size()) || c.alteration < -2 || c.alteration > 2) {
+            fault(at, "its root");
+            continue;
+        }
+        // The quality: every note it must have, and nothing it may not.
+        int must = 0, may = 0, has = 0;
+        if (!qualityNotes(c.quality, must, may)) fault(at, "a quality nobody knows: " + c.quality);
+        else {
+            for (int i : c.intervals) has |= 1 << (i % 12);
+            if ((has & must) != must) fault(at, "a note of " + c.quality + " missing");
+            if (has & ~(must | may)) fault(at, "a note that is not " + c.quality);
+        }
+        // The scale: a note outside it is borrowed, says so, and says which.
+        const int root = ((pack.scale[static_cast<std::size_t>(c.degree)] + c.alteration) % 12 + 12) % 12; // over the tonic
+        std::vector<int> outside;
+        for (int i : c.intervals) {
+            const int pc = (root + i) % 12;
+            if (!(scaleBits & (1 << pc)) && std::find(outside.begin(), outside.end(), pc) == outside.end()) outside.push_back(pc);
+        }
+        std::sort(outside.begin(), outside.end());
+        if (!outside.empty() && c.borrowedFrom.empty()) fault(at, "notes outside the scale, not borrowed");
+        if (outside != c.outside || (!outside.empty() && !c.hasOutside)) fault(at, "outside is not the notes outside the scale");
+        // The name the strip shows: the root as the scale spells it, and the quality.
+        const std::string spelling = spelled(pack, c), expected = spelling + shownQuality(c.quality);
+        const std::string automatic = kKeys[(pack.tonic + root) % 12] + shownQuality(c.quality);
+        std::string name = c.legacyName.empty() ? automatic : c.legacyName;
+        const std::size_t slash = name.rfind('/');
+        if (slash != std::string::npos && isNoteName(name.substr(slash + 1))) {
+            if (name.substr(slash + 1) != spelling) fault(at, "a slash chord whose bass is not its root");
+        } else if (name != expected) {
+            fault(at, "named " + name + ", spelled " + expected + (c.legacyName.empty() ? " (give it a legacyName)" : ""));
+        }
+        if (name.size() > 15) fault(at, "a name longer than 15 letters");
+        if (std::find(names.begin(), names.end(), name) != names.end()) fault(at, "a name twice: " + name);
+        names.push_back(name);
+        std::vector<int> shape = c.intervals;
+        shape.insert(shape.begin(), root);
+        if (std::find(shapes.begin(), shapes.end(), shape) != shapes.end()) fault(at, "the same chord twice");
+        shapes.push_back(shape);
+    }
+    std::vector<std::string> progressions;
+    if (pack.progressions.size() > 4) fault(pack.name, "more than 4 progressions");
+    for (const PackFacts::Progression& p : pack.progressions) {
+        if (p.id.compare(0, idStart.size(), idStart) != 0 || std::find(progressions.begin(), progressions.end(), p.id) != progressions.end())
+            fault(pack.name + " " + p.id, "its id");
+        progressions.push_back(p.id);
+        if (p.segments.empty() || p.segments.size() > 64) fault(pack.name + " " + p.id, "1 to 64 chords");
+        for (const auto& segment : p.segments) {
+            if (std::find(ids.begin(), ids.end(), segment.first) == ids.end()) fault(pack.name + " " + p.id, "no chord " + segment.first);
+            if (segment.second <= 0) fault(pack.name + " " + p.id, "a length that is not one");
+        }
+    }
+    return faults;
+}
+
+void testEveryShippedChordIsWhatItSays() {
+    std::vector<std::string> names;
+    for (const std::string& file : packFiles()) {
+        const std::string text = readFile(std::string(APOTHECA_SOURCE_DIR "/assets/chords/") + file);
+        for (const std::string& f : packFaults(text)) {
+            std::printf("  %s: %s\n", file.c_str(), f.c_str());
+            CHECK(f.empty());
+        }
+        PackFacts pack;
+        CHECK(readPackFacts(text, pack));
+        CHECK(pack.id == "authored." + file.substr(0, file.size() - 5)); // the file is named after the pack
+        CHECK(std::find(names.begin(), names.end(), pack.name) == names.end() && pack.name != builtInPack().name);
+        names.push_back(pack.name);
+    }
+    CHECK(names.size() == 19);
+
+    // And the checks catch what they are for: each fault planted in a good pack is found.
+    const std::string good = shippedPackTexts().size() > 13 ? shippedPackTexts()[13] : std::string(); // smoke.json
+    CHECK(good.find("\"name\":\"Smoke\"") != std::string::npos && packFaults(good).empty());
+    struct Plant {
+        const char* what;
+        const char* from;
+        const char* to;
+        const char* found;
+    };
+    const Plant plants[] = {
+        {"a thirteenth made a flat thirteenth", ".V13\",\"quality\":\"13\",\"root\":{\"degree\":4,\"alteration\":0},\"intervals\":[0,4,10,14,21]",
+         ".V13\",\"quality\":\"13\",\"root\":{\"degree\":4,\"alteration\":0},\"intervals\":[0,4,10,14,20]", "a note"},
+        {"a major seventh called a seventh", ".Imaj7\",\"quality\":\"maj7\"", ".Imaj7\",\"quality\":\"7\"", "not 7"},
+        {"the ii on the wrong degree", ".iim9\",\"quality\":\"m9\",\"root\":{\"degree\":1", ".iim9\",\"quality\":\"m9\",\"root\":{\"degree\":2", "outside the scale"},
+        {"a flat second left to be named C#", ",\"legacyName\":\"Db9\"", "", "give it a legacyName"},
+        {"a borrowed note not listed", "\"outside\":[8]", "\"outside\":[]", "outside is not"},
+        {"a chord twice", "\"id\":\"smoke.iim7\"", "\"id\":\"smoke.iim9\"", "an id twice"},
+        {"a progression to no chord", "\"chordId\":\"smoke.V13\"", "\"chordId\":\"smoke.V14\"", "no chord"},
+        {"seven voices", "[0,4,9,14,19]", "[0,4,9,14,19,21,23]", "1 to 6 voices"},
+        {"a quality nobody knows", "\"quality\":\"m7b5\"", "\"quality\":\"half\"", "nobody knows"},
+        {"a slash chord on another bass", "\"legacyName\":\"Db9\"", "\"legacyName\":\"F/G\"", "slash chord"},
+    };
+    for (const Plant& plant : plants) {
+        std::string bad = good;
+        const std::size_t at = bad.find(plant.from);
+        CHECK(at != std::string::npos);
+        if (at == std::string::npos) continue;
+        bad.replace(at, std::strlen(plant.from), plant.to);
+        bool found = false;
+        for (const std::string& f : packFaults(bad)) found = found || f.find(plant.found) != std::string::npos;
+        if (!found) std::printf("  not caught: %s\n", plant.what);
+        CHECK(found);
+    }
+}
+
+// Every chord's name fits its tile on the strip, and every pack's name fits between L1 and R1
+// before the count (note_screen.cpp: tiles 88 across, the count at 300). The strip is a tight
+// row, the same at every TEXT SIZE.
+void testTheNamesFitTheStrip() {
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    const Font& small = canvas.fonts->fixed().small;
+    float widest = 0.f;
+    for (const ChordPack& pack : loadChordPacks("")) {
+        std::string upper = pack.name;
+        for (char& ch : upper) ch = static_cast<char>(ch >= 'a' && ch <= 'z' ? ch - 32 : ch);
+        CHECK(8.f + small.width("L1") + 6.f + small.width(upper.c_str()) + 6.f + small.width("R1") <= 294.f);
+        for (const ChordShape& c : pack.chords) {
+            widest = std::max(widest, small.width(c.name));
+            if (small.width(c.name) > 82.f) std::printf("  too wide: %s\n", c.name);
+            CHECK(small.width(c.name) <= 82.f);
+        }
+    }
+    CHECK(widest > 40.f); // (measured, not nothing)
 }
 
 void testAChordsNotes() {
@@ -521,14 +857,14 @@ void testPacksAndTheSongFile() {
     Rig rig;
     rig.app.session().useChordFolder(APOTHECA_SOURCE_DIR "/assets/chords");
     const std::vector<ChordPack>& packs = rig.app.session().packs;
-    CHECK(packs.size() == 7 && rig.app.session().packIndex() == 0);
+    CHECK(packs.size() == 20 && rig.app.session().packIndex() == 0);
     rig.key(Y, true);
     rig.tap(SDLK_RIGHT, 2);
     rig.tap(R1);
     CHECK(rig.app.session().packIndex() == 1 && packs[1].name == rig.app.project().chordPack);
     CHECK(rig.notes().handIndex() == 0); // a new pack starts at its first chord
     rig.tap(L1, 2);
-    CHECK(rig.app.session().packIndex() == 6); // round the end
+    CHECK(rig.app.session().packIndex() == static_cast<int>(packs.size()) - 1); // round the end
     rig.tap(R1, 2);
     CHECK(rig.app.session().packIndex() == 1);
     rig.tap(SDLK_RIGHT);
@@ -554,6 +890,7 @@ void testPacksAndTheSongFile() {
     CHECK(p.chordAt(4) >= 0 && p.used() == rig.pat().used());
     CHECK(std::strcmp(back->chordPack, rig.app.project().chordPack) == 0);
     // A song whose pack is not on this device falls back to the built-in one, and keeps its chords.
+    std::snprintf(back->chordPack, sizeof back->chordPack, "%s", "Not Here");
     Rig other;
     other.app.project() = *back;
     CHECK(other.app.session().packIndex() == 0);
@@ -642,6 +979,10 @@ int main(int, char**) {
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     testReadingAPack();
     testThePacksThatShip();
+    testTheShippedPacksAreTheFiles();
+    testACardPackTakesAShippedOnesPlace();
+    testEveryShippedChordIsWhatItSays();
+    testTheNamesFitTheStrip();
     testAChordsNotes();
     testChordsAndLooseNotesShareTheSlots();
     testATapOfYPlacesTheChordInHand();

@@ -1733,7 +1733,7 @@ std::unique_ptr<TrackImage> Session::trackImage(int t) const {
 }
 
 // A new handheld's engine is a new song but for the two buses, which hold nothing until they are told.
-Session::Session(Engine& engine, Project& project) : engine(engine), project(project), packs(1, builtInPack()) {
+Session::Session(Engine& engine, Project& project) : engine(engine), project(project), packs(loadChordPacks("")) {
     for (int bus = 0; bus < kBuses; ++bus) sendEffects(busTrack(bus));
 }
 

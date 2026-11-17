@@ -1524,8 +1524,8 @@ zip).
 
 One that nobody answers is dropped when WiFi is turned off or Apotheca is
 closed. The first install still goes by SD card. Only the program is
-updated this way: a new launcher script, fonts or chord packs still come
-from the zip.
+updated this way: a new launcher script or fonts still come from the zip
+(the chord packs that ship are inside the program).
 
 The handheld has to be on a WiFi network already (set in the firmware's own
 settings). Making its own hotspot, so no router is needed, is a job for the
@@ -2063,11 +2063,39 @@ name. Chords never overlap in time.
   place. B while Y is held breaks it into loose notes instead.
 - A new chord is as long as the last one you set.
 
-**Chord packs** are JSON files in the form Shapetaker's Transmutation reads,
-in a `chords` folder beside the program (`assets/chords` in this repository).
-Drop a file in and it shows up. What is read from a pack is listed at the
-top of `app/chords.hpp`. A pack called "Plain C" is built in. A song file
-stores each chord whole, so a song still plays on a device without its pack.
+**Twenty packs come with the program**, all in C (nobody has heard the
+thirteen added on 2026-11-17; their notes are checked by the tests):
+
+| Pack | Chords | For |
+| --- | --- | --- |
+| Plain C | 13 | the plain chords of C major |
+| Afterglow | 12 | warm major, sixths and upper extensions, a few borrowed from minor |
+| Delta | 18 | blues: every chord a seventh, the twelve-bar, 9ths, 13ths, the sharp nine, a minor blues |
+| Elegy | 23 | minor and harmonic minor: the major five, the diminished seventh, the lament, the line cliche |
+| Ember | 17 | phrygian: the flat second over the tonic, the Spanish turn |
+| Glass | 10 | clear pentatonic fragments, mostly three voices |
+| Haze | 15 | ambient: close seconds, suspended stacks, chords over a held C |
+| Hearth | 17 | folk: open triads voiced as a guitar holds them |
+| Hollow | 17 | dark: minor-major sevenths, augmented and diminished, minor chords a tritone away |
+| Horizon | 19 | cinematic: wide fifths, the rising six-three-seven, chords a third away |
+| Luminous | 7 | bright lydian |
+| Moonlit | 7 | dorian minor |
+| Revival | 18 | gospel: walk-ups through diminished chords, the four over the five, the flat six |
+| Skyline | 22 | city pop: the four-five-three-six road, major sevenths, secondary dominants |
+| Smoke | 23 | jazz: two-five-ones with 9ths and 13ths, altered dominants, the tritone substitute |
+| Stone | 15 | fourths: chords stacked in fourths, the modal eleventh |
+| Strobe | 15 | deep house stabs: close minor sevenths, ninths and elevenths |
+| Tidal | 12 | flowing mixolydian |
+| Velvet | 18 | neo-soul: minor ninths and elevenths, lush major sevenths |
+| Weightless | 8 | suspended and quartal |
+
+They are built into the program, so an update over WiFi brings them. More are
+JSON files in the form Shapetaker's Transmutation reads, in a `chords` folder
+beside the program (`assets/chords` in this repository holds the ones that
+ship). Drop a file in and it shows up; one with the name of a pack that ships
+takes its place. What is read from a pack is listed at the top of
+`app/chords.hpp`. A song file stores each chord whole, so a song still plays
+on a device without its pack.
 A bar holds 64 notes, chords' notes included, and 16 chords.
 
 ### Chord effects

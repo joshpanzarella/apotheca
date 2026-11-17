@@ -385,6 +385,16 @@ effect in those two groups and fails one that does not.
   where no modulator sounds, or on LFO where PMS is 0, moves and changes nothing). `fm6-plan.md` section 11. **Tests of the engine's tables (`app_test`, `design_test`,
   `textsize`) run with the data emptied** (`useBuiltInDataForTests`), so a designer
   adding presets breaks none of them; `presets_test` holds the shipped data.
+- **The chord packs that ship are compiled in** (2026-11-17, `docs/plans/chordpacks-plan.md`):
+  `assets/chords/*.json` are the source, edited by hand (schema 2, Transmutation's form);
+  `tools/chord_packs.py` writes `app/chord_packs.inc` from them, and `ctest -R chord` fails a stale
+  one. A file on the card with a shipped pack's name takes its place. A song keeps its pack by NAME
+  and each chord whole, so chords may be added, moved or renamed; **a pack's name is kept**.
+  `chord_test` (`testEveryShippedChordIsWhatItSays`) works every chord out again from its quality and
+  root (`kQualities`: a new quality goes there), holds its notes to the scale (a borrowed chord says
+  `borrowedFrom` and lists its notes outside in `outside`), spells its root as the scale does (a flat
+  root needs a `legacyName`: Db9, never C#9), 1 to 6 voices, and fits every name to its 88-pixel
+  tile on the strip (`testTheNamesFitTheStrip`).
 - **FM-6's built-ins are five factory banks** (2026-11-16): ROM 1A, 1B, 2B, 3B, 4B,
   160 voices, a folder each, written by `tools/fm6_rom.py` into
   `engine/src/fm6/roms.hpp` (`kRom`, each with its folder). A bank is appended, never
@@ -2900,7 +2910,7 @@ watch again, it is in git (the commit before batch 8b).
 11. **A drum synth** (owner, 2026-11-17): a kit lane's sound made from knobs. **Batches 0 to 5 built** (`docs/plans/drumsynth-plan.md`: twelve models, the KIT page's SOUND column and VOICE view, 73 named voices, the designer page, the review); all joined to main (0.700). Not heard, not run on the handheld; the owner's twelve calls are with the owner.
 12. **A wavetable synth, MORPH** (owner, 2026-11-17: "let's do the wavetable after that"; `docs/plans/wavetable-plan.md`): batches 0 to 5 built and joined to main (0.718): the rule, the tables and the voice, the app, the 32 presets, the designer page's picture, the review and the qemu bit check. Left: batch 6, a player's own table from a recording (the owner's call 7). Not heard, not run on the handheld; the owner's 17 calls are at the plan's picks.
 
-Open: FM-6's banks ROM2A, 3A and 4A (in the same archive; not taken: the job asked for the B sides), which chord packs ship, more presets, own WiFi hotspot, an automation
+Open: FM-6's banks ROM2A, 3A and 4A (in the same archive; not taken: the job asked for the B sides), more presets, own WiFi hotspot, an automation
 step-editor, a picture of FM-6's ALGORITHM (its wiring; msfa's table says each). **Twin Analog is gone** (owner, 2026-11-11: rethink it; 2026-11-13: it
 becomes a faithful Roland JX-3P clone, which is what it was meant to be). The
 clone is JAX-EP, built in batches 0 to 8c of `docs/plans/jx3p-plan.md` on
