@@ -658,6 +658,55 @@ is what the pin needs (PE6 may be driven by the panel only once it is out of
 reset), that `gpio input PE6` reads it on the H700 (U-Boot's sunxi gpio
 names), and that the pulse shows nothing with the backlight off.
 
+## 14. Plan: batch 5's WiFi (2026-11-17; the A/B system update is a later part)
+
+**Why the WiFi page does not work on our card**: the boot log has rtw88's
+8821CS probing and failing on `rtw88/rtw8821c_fw.bin`. ROCKNIX builds that
+file into its kernel (`CONFIG_EXTRA_FIRMWARE`); our `linux.fragment` replaced
+the list with the panel files, so it went. Nothing joins a network either: no
+`wpa_supplicant`, no DHCP running.
+
+| Part | Choice | Why |
+| --- | --- | --- |
+| Firmware | Buildroot's `linux-firmware` (pinned with Buildroot 2026.02.3, sum checked), `BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW88`: `/lib/firmware/rtw88/rtw8821c_fw.bin` on the root. Licence `LICENCE.rtlwifi_firmware.txt` (Realtek: redistributable, binary only), in legal-info by Buildroot and listed in `board/rg40xxv/README.md` | Recorded by Buildroot itself; no file vendored by hand |
+| The driver | rtw88 (`RTW88`, `_SDIO`, `_8821C`, `_8821CS`) **as modules** in `linux.fragment`: S02modules loads them by modalias after the root is mounted, so the firmware is read from `/lib/firmware` (built in, the driver asks before any file system is there) | Also keeps the kernel smaller; the panel files stay built in |
+| Joining | `wpa_supplicant` (nl80211, control socket, `wpa_cli`, WPA2 and WPA3-SAE), no D-Bus. iwd needs D-Bus: more to carry | Small, scriptable |
+| Address | BusyBox `udhcpc` with Buildroot's `default.script` | Already on the card |
+| The glue | `/usr/sbin/apotheca-wifi` (shell, root): `up`, `down`, `scan` (one line a network: signal, security, name), `join NAME` (password on stdin, never on a command line), `forget NAME`, `status` (`off`, `joining NAME`, `joined NAME ADDRESS`, `wrong-password NAME`, `not-found NAME`). Saved networks in `/data/apotheca/wifi/networks.conf` (`wpa_supplicant` format, `update_config=1`): on the APOTHECA drive, so a card moved to a new handheld keeps them, and a Mac can delete the file | One small program the app talks to; testable on its own |
+| When it runs | **Only while the WIFI PAGE is on**: turning it on runs `apotheca-wifi up` (the radio, `wpa_supplicant`, `udhcpc`; it rejoins a saved network by itself), off runs `down` (the radio off). The app runs it on a thread of its own: no frame waits | Battery, and nothing running beside the sound when WiFi is not wanted |
+| `run` | sets `APOTHECA_WIFI=/usr/sbin/apotheca-wifi`. On the port (stock firmware) it is not set and the app is as today | The same program for both |
+
+**On the handheld (app side; the owner's button standards)**: the SET page
+gets a **NETWORK** row under WIFI PAGE, shown only when `APOTHECA_WIFI` is
+set:
+
+- Its value is the network joined, or NONE; its note says JOINING..., WRONG
+  PASSWORD, NOT FOUND, or the address (the WIFI PAGE row keeps its address).
+- **Hold A + UP / DOWN** steps through the networks found (strongest first,
+  a lock mark where one needs a password; scanned when the row is reached
+  and again every 10 s while the page is on). Let go of A: join it. A saved
+  network or an open one joins at once; one that needs a password opens
+  **the keys a track's name is typed with** (Y deletes a letter, B or START
+  keep it and join; B with nothing typed leaves). The keys need upper case,
+  figures and the common signs, and room for 63 letters (a WPA password's
+  most): the typing code gets those as a mode of its own, the track name's
+  keys left as they are.
+- **Hold B** (the bar that fills) forgets the network joined: "what cannot
+  be undone says so".
+- The password is never written to a log, the boot log included
+  (`networks.conf` holds it, as any computer's WiFi settings do).
+
+**Tests**: the app side in `app_test`/`textsize` with a stand-in
+`apotheca-wifi` (a script in the test folder that answers from a file): the
+row, the list, the keys' new mode, the hints at 0 over, every text at XL. The
+system side in `qemu-test.py` with `mac80211_hwsim` (two made-up radios;
+`CONFIG_MAC80211_HWSIM=m`, never loaded on the H700) and `hostapd` on one as
+the access point (WPA2 and an open one): `scan` lists them, `join` with the
+right password gets an address, with the wrong one says so, `forget` and
+`down`, and the WiFi page answers over it. **Only the handheld can show**:
+the 8821CS loading its firmware and joining the owner's network, the
+transfer rate, and whether the radio is heard in the sound.
+
 ## Sources
 
 - Anbernic, RG 40XXV product page (SoC, RAM, screen, battery, WiFi, BT): https://anbernic.com/products/rg-40xxv
