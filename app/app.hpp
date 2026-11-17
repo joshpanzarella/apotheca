@@ -53,7 +53,7 @@ public:
     void useBatteryFolder(const std::string& folder) { batteryRoot_ = folder; batteryReadAt_ = 0; }
     // Read the program's own time from another file than /proc/self/stat (the tests: a made-up one).
     void useCpuFile(const std::string& path, double ticksPerSecond = 100.0, int cores = 4) { cpu_.usePath(path); cpu_.pretend(ticksPerSecond, cores); }
-    // The help card's line: "SOUND 43%  WORST 88%  CPU 37%", the parts known ("": none yet). SOUND is
+    // The help card's line: "SOUND 43%  CPU 37%" (WORST is measured, not shown: owner, 2026-11-17), the parts known ("": none yet). SOUND is
     // the sound's share of its own time, WORST its worst call in that second, CPU the whole program's
     // share of the processor (all its threads, over every core).
     static std::string loadWords(const int load[3]);
