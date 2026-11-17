@@ -18,9 +18,9 @@ for s in S01seedrng S20seedrng S01syslogd S02klogd S02sysctl S11modules \
     rm -f "$target/etc/init.d/$s"
 done
 
-# What went into this build, for the boot log.
+# What went into this build, for the boot log. (No date: the image is
+# reproducible, so every date in it is Buildroot's fixed one.)
 {
-    echo "built: $(date -u -d "@${SOURCE_DATE_EPOCH:-$(date +%s)}" '+%Y-%m-%d %H:%M UTC' 2>/dev/null || date -u)"
     echo "apotheca commit: ${APOTHECA_COMMIT:-unknown}"
     echo "buildroot: ${BR2_VERSION:-unknown}"
 } > "$target/etc/apotheca-build"
