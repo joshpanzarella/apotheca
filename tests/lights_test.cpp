@@ -473,7 +473,9 @@ void testTheRingFollowsTheSong() {
     rig.session().setStickLight(kRingSteps);
     rig.session().setTheme(kThemePaper);
     rig.frames(2);
-    const Rgb teal = fullest(0, 106, 92), brass = fullest(128, 84, 0), dim = dimmed(teal, kRingDim);
+    // (LIGHT COLOUR at THEME: PAPER's ring colour is its amber, and beside amber a bar's first step is white.)
+    const Rgb teal = ringThemeColour(kThemePaper), brass = lightColourOf(kLightWhite), dim = dimmed(teal, kRingDim);
+    CHECK(teal == rgb(255, 130, 40) && ringFirstFor(teal) == brass);
     std::vector<unsigned char> last = sys.last();
     CHECK(last.size() == 51);
     for (int i = 0; i < kRingLeds; ++i) CHECK(last[static_cast<std::size_t>(2 + 3 * i)] == dim.r && last[static_cast<std::size_t>(3 + 3 * i)] == dim.g);
@@ -555,6 +557,15 @@ void testScenesAndColours() {
     ringColours(kLightRainbow, teal, 0, 3, turned);
     for (int i = 0; i < kRingLeds; ++i) CHECK(turned[i] == c[(i + 3) % kRingLeds]);
     CHECK(hueRgb(0) == rgb(255, 0, 0) && hueRgb(256) == rgb(255, 255, 0) && hueRgb(1024) == rgb(0, 0, 255) && hueRgb(kHueRound) == hueRgb(0) && hueRgb(-256) == hueRgb(1280));
+    // THEME's own colours: BROWN's is BRASS (the owner's), each theme's its own, a number out of range BROWN's.
+    CHECK(ringThemeColour(kThemeBrown) == lightColourOf(kLightBrass) && ringThemeColour(99) == ringThemeColour(kThemeBrown) && ringThemeColour(-1) == ringThemeColour(0));
+    for (int a = 0; a < kThemes; ++a)
+        for (int b = 0; b < a; ++b) CHECK(ringThemeColour(a) != ringThemeColour(b));
+    // A bar's first step: brass, or white where the ring is too near brass to tell.
+    const Rgb white = lightColourOf(kLightWhite), brassSet = lightColourOf(kLightBrass);
+    for (int which : {kLightBrass, kLightOrange, kLightYellow}) CHECK(ringFirstFor(lightColourOf(which)) == white);
+    for (int which : {kLightTeal, kLightPurple, kLightRed, kLightGreen, kLightBlue, kLightPink, kLightWhite}) CHECK(ringFirstFor(lightColourOf(which)) == brassSet);
+    CHECK(ringFirstFor(ringThemeColour(kThemeBrown)) == white && ringFirstFor(ringThemeColour(kThemeBlue)) == brassSet && ringFirstFor(ringThemeColour(kThemeBlack)) == brassSet);
     // ON in RAINBOW: every LED its own hue; dim ones dimmed each by its own.
     ringColours(kLightRainbow, teal, 0, -1, c);
     RingPlace stopped;
@@ -584,7 +595,7 @@ void testScenesAndColours() {
             ++seen;
             const std::vector<unsigned char> last = sys.last();
             const int lit = ringLedOf(place / 2);
-            const Rgb want = place % 16 == 0 ? fullest(kThemeTable[kThemeBrown].brass.r, kThemeTable[kThemeBrown].brass.g, kThemeTable[kThemeBrown].brass.b) : rgb(255, 0, 0);
+            const Rgb want = place % 16 == 0 ? lightColourOf(kLightBrass) : rgb(255, 0, 0);
             CHECK(last.size() == 51 && last[static_cast<std::size_t>(2 + 3 * lit)] == want.r && last[static_cast<std::size_t>(3 + 3 * lit)] == want.g &&
                   last[static_cast<std::size_t>(4 + 3 * lit)] == want.b);
             const int other = (lit + 8) % kRingLeds;

@@ -254,3 +254,22 @@ Y's tap after, the turn kept across holds, a kept hit written over: each fails. 
 
 **Only the owner can tell**: whether R1 / L1 with Y held is found without being told, and whether
 the turn wants to be on L1 / R1 and the count on the D-pad instead.
+
+## The stick light, after the owner saw it (2026-11-17): A, B and C
+
+The owner has seen the ring's colours and likes them. Three asks.
+
+### A. THEME's colour, picked for the ring
+
+LIGHT COLOUR at THEME was the theme's cursor colour made full. Now each theme has a colour picked
+for the ring (`ringThemeColour`, lights.hpp): **BROWN is the BRASS preset's colour** (the owner's
+word), BLUE a sky blue, GREEN a spring green, BLACK white, PAPER a warm amber, GREY an ice blue.
+**Only BROWN's was asked for; the other five are picks nobody has seen on the ring.**
+
+A bar's first step (BEAT and STEPS) is brass, **or white where the ring is too near brass to tell**
+(`ringFirstFor`: BRASS, ORANGE, YELLOW, BROWN's THEME, PAPER's amber). TRACK and RAINBOW keep brass.
+A new theme must be given a ring colour (a `static_assert` counts them).
+
+Tests: `lights_test`: BROWN's is BRASS, the six all differ, out of range is BROWN's, which colours
+get white; the ring through the Session on PAPER (amber, white on the bar). Mutants: the theme
+passed, the first's rule.

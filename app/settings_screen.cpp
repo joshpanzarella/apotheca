@@ -403,7 +403,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                                                             "GREEN", "BLUE", "PINK", "WHITE", "TRACK", "RAINBOW"};
             const int which = session_.lightColour();
             std::snprintf(text, sizeof text, "%s", what[which]);
-            note = which == kLightTheme ? "the theme's cursor colour" : which == kLightTrack ? "a colour for each track" : which == kLightRainbow ? "turns a light a beat" : "";
+            note = which == kLightTheme ? "a colour picked for the theme" : which == kLightTrack ? "a colour for each track" : which == kLightRainbow ? "turns a light a beat" : "";
             break;
         }
         case kStick:

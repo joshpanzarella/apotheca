@@ -129,6 +129,28 @@ inline Rgb lightColourOf(int which) {
     c.r = kSet[which][0], c.g = kSet[which][1], c.b = kSet[which][2];
     return c;
 }
+// LIGHT COLOUR at THEME: a colour picked for the ring for each theme (owner, 2026-11-17, having seen
+// the ring: "a bit better", and "BRASS should be coupled with the default BROWN theme"). In the order
+// of ui.hpp's ThemeId: BROWN the BRASS preset's own colour, BLUE a sky blue, GREEN a spring green,
+// BLACK white, PAPER a warm amber (a lamp on paper), GREY an ice blue. A theme added later takes
+// BROWN's until it is given one. (Only BROWN's was asked for; the rest are picks nobody has seen.)
+constexpr int kRingThemes = 6;
+inline Rgb ringThemeColour(int theme) {
+    static const std::uint8_t kSet[kRingThemes][3] = {{255, 170, 30}, {30, 140, 255}, {40, 255, 110}, {255, 255, 255}, {255, 130, 40}, {150, 210, 255}};
+    Rgb c;
+    if (theme < 0 || theme >= kRingThemes) theme = 0;
+    c.r = kSet[theme][0], c.g = kSet[theme][1], c.b = kSet[theme][2];
+    return c;
+}
+// A bar's first step (BEAT, STEPS) beside a ring colour: brass; where the ring is too near brass
+// to tell (BRASS itself, BROWN's THEME, ORANGE, YELLOW, PAPER's amber), white.
+inline Rgb ringFirstFor(Rgb colour) {
+    const Rgb brass = lightColourOf(kLightBrass);
+    const int apart = (colour.r > brass.r ? colour.r - brass.r : brass.r - colour.r) + (colour.g > brass.g ? colour.g - brass.g : brass.g - colour.g) +
+                      (colour.b > brass.b ? colour.b - brass.b : brass.b - colour.b);
+    return apart < 150 ? lightColourOf(kLightWhite) : brass;
+}
+
 // The sixteen LEDs' colours for LIGHT COLOUR `which`: `theme` for THEME, the track up (0..11) for TRACK,
 // the beats played since Play (-1 stopped) for RAINBOW's turn.
 inline void ringColours(int which, Rgb theme, int track, int beats, Rgb out[kRingLeds]) {

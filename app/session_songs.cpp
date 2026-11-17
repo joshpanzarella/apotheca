@@ -314,7 +314,7 @@ void Session::setLightColour(int which) {
 }
 
 RingFrame Session::ringNow() const {
-    const Theme& t = kThemeTable[theme_ >= 0 && theme_ < kThemes ? theme_ : kThemeBrown];
+    static_assert(kRingThemes == kThemes, "a new theme is given its ring colour (ringThemeColour, lights.hpp)");
     RingPlace at;
     if (project.playing && project.playStep >= 0) {
         at.step = project.playStep;
@@ -323,9 +323,9 @@ RingFrame Session::ringNow() const {
     }
     Rgb colours[kRingLeds];
     const int beats = at.sceneStep < 0 ? -1 : (project.playRepeat * at.sceneSteps + at.sceneStep) / 4;
-    ringColours(lightColour_, fullest(t.teal.r, t.teal.g, t.teal.b), project.track, beats, colours);
-    // A bar's first step in the theme's brass; in white where the ring is brass already.
-    const Rgb first = lightColour_ == kLightBrass ? lightColourOf(kLightWhite) : fullest(t.brass.r, t.brass.g, t.brass.b);
+    ringColours(lightColour_, ringThemeColour(theme_), project.track, beats, colours);
+    // A bar's first step in brass; in white where the ring is too near brass to tell (RAINBOW and TRACK: brass).
+    const Rgb first = lightColour_ == kLightTrack || lightColour_ == kLightRainbow ? lightColourOf(kLightBrass) : ringFirstFor(colours[0]);
     return ringPicture(stickLight_, brightness_, at, colours, first);
 }
 
