@@ -26,12 +26,22 @@ struct Preset {
     const char* category;
     int value[kSettings];
 };
-// The engine's own (the 24 of the plan are data in the app, batch 3). Preset 0 is a new track's.
+// The engine's own: the STILL folder (SCAN at FREEZE: a pad from one place). The plan's other three
+// folders, DRIFT, DUST and CHOIR, are data in the app (app/presets/cloud.inc), each a folder of its own
+// after these. Preset 0 is a new track's. Nobody has heard any of them.
 //                                  POS SPR SIZE DENS SCAT SHAPE PSPR STEPS REV STER SCAN ROOT TUNE ATK REL LEVEL VEL
 const Preset kPresets[] = {
     {"Soft Cloud", "STILL", {25, 10, 60, 52, 50, 50, 0, kStepsFree, 0, 40, 50, 60, 0, 8, 54, 80, 50}},
-    {"Dust", "DUST", {40, 60, 20, 30, 100, 10, 0, kStepsFree, 30, 80, 50, 60, 0, 0, 40, 80, 50}},
-    {"Fifths Choir", "CHOIR", {50, 20, 85, 60, 60, 80, 40, kStepsFifths, 0, 60, 50, 60, 0, 40, 70, 80, 50}},
+    // Long grains packed tight from one place, a few cents apart: a held glass note.
+    {"Glass Hold", "STILL", {40, 3, 85, 75, 60, 50, 10, kStepsFree, 0, 70, 50, 60, 0, 40, 70, 75, 40}},
+    // Each grain swells in and some run backwards, wide: the recording breathed rather than played.
+    {"Breath Pad", "STILL", {60, 20, 80, 60, 90, 85, 5, kStepsFree, 15, 90, 50, 60, 0, 65, 75, 75, 30}},
+    // An octave above and below sprinkled through it (PITCH SPRAY on the octaves' grid).
+    {"Frozen Shimmer", "STILL", {50, 5, 75, 70, 60, 60, 85, kStepsOctaves, 0, 80, 50, 60, 0, 50, 75, 66, 40}},
+    // Few grains, each nearly a second, at random times: the recording surfacing and sinking.
+    {"Still Water", "STILL", {30, 8, 95, 35, 100, 50, 0, kStepsFree, 0, 50, 50, 60, 0, 30, 70, 80, 40}},
+    // Half the grains backwards, every side, a slow release: a ring of the one place.
+    {"Halo", "STILL", {70, 15, 80, 65, 70, 40, 10, kStepsFree, 50, 100, 50, 60, 0, 40, 75, 75, 40}},
 };
 const int kPresetCount = static_cast<int>(sizeof kPresets / sizeof kPresets[0]);
 constexpr int kLogged = 64; // the starts kept for the tests

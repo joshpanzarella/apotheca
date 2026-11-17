@@ -509,6 +509,10 @@ public:
     // effects, sends, GLIDE FROM and MODs in too (putPresetSound); a plain one leaves them. One step
     // of undo brings back what was there (soundMark sees it all).
     void chooseSynthPreset(int track, int index);
+    // A player's own CLOUD preset names the recording it was saved with: put in if the card has it, by
+    // its name, else by its base name where exactly one has it (as findMissing); else the track keeps
+    // its own and the App says RECORDING NOT FOUND. True if it went in (or was in already).
+    bool putPresetRecording(int track, const std::string& name);
     // A track sound put in as a preset puts it: each slot, send, GLIDE FROM and MOD that differs (as
     // the song file writes it) and nothing else, through the engine's usual commands (another kind of
     // effect: Session::setEffect, its 10 ms fade, its slot's automation cleared). Nothing is written

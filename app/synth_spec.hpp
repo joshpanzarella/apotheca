@@ -89,6 +89,7 @@ struct UserPreset {
     std::vector<float> macros; // the eight macros as they were when it was saved
     std::string folder;        // a built-in's folder; empty for the player's own (USER)
     TrackSound sound;          // the track's sound past its synth (`whole` if the preset holds it)
+    std::string recording;     // CLOUD's: the track's recording when the player saved it ("" none). A built-in never names one
 };
 void setUserPresets(TrackKind kind, std::vector<UserPreset> presets);
 const std::vector<UserPreset>& userPresets(TrackKind kind);

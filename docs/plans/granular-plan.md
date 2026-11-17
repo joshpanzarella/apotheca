@@ -416,3 +416,26 @@ the picture's brass line and ticks off the drawn screen), `idle_test`'s part, `t
 batches 3 to 5**: the 24 presets and a whole preset's recording (3), the designer page's picture,
 POSITION mark and SPRAY band, `sample NAME`, ROLL (4), the review, mutants of the app side, README's
 page and bench again (5).
+
+## As built: batch 3, the presets (2026-11-17, branch `cloud`)
+
+**24 presets in four folders of six; nobody has heard any of them.** STILL is the engine's own table
+(`engine/src/cloud.cpp`: Soft Cloud, Glass Hold, Breath Pad, Frozen Shimmer, Still Water, Halo), so its
+three engine presets of batch 1 (Dust, Fifths Choir) moved into the data's folders: a folder the data
+adds after the engine's must have a name of its own, or the folder step finds two runs of it. DRIFT,
+DUST and CHOIR are `app/presets/cloud.inc`. Made to differ, not to be one pad six ways: SCAN walking
+forward, backward, stepped and swung; an LFO walking POSITION; DUST from specks of 6 ms to backwards
+embers with their DENSITY flaring; CHOIR on fifths, octaves, an octave down, with SHIMMER, ENSEMBLE,
+WEAR, ECHO or SPACE where a sound wants one. Six carry a MOD, eight an effect or a send.
+
+`presets_test --heard-cloud` (ctest `presets_heard_cloud`, about 7 s): a phrase of five overlapping
+keys at 120 BPM twice round, then Stop, through the TONE and through a recording the test makes (a sine
+rising 200 to 800 Hz, then noise). Measured: loudest -28.2 to -15.4 dB on the TONE, -23.5 to -13.4 dB
+on the recording; peak 0.55 at most; tails 0 to 4.7 s; every MOD moving and heard (the phrase without it
+-2 to +4 dB apart: the rolls change with it). Held: -30 to -8 dB, peak under 0.9, a tail ending in 30 s,
+the presets on one source within 14 dB, each MOD heard at -40 dB or more.
+
+**A player's own preset keeps its recording** (`UserPreset::recording`, `sound NAME` after `whole`):
+picked, it goes in by its name, else by its base name where exactly one has it, else the track keeps its
+own and RECORDING NOT FOUND is said. `presets_test` `testACloudPresetBringsItsRecording`; its five
+mutants killed. Not done: a pick's recording is not a step of undo (as the sampler's is not).

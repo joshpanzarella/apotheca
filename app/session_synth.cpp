@@ -96,6 +96,8 @@ void Session::chooseSynthPreset(int track, int index) {
         sendSynthPatch(track);
     }
     putPresetSound(track, presetSound(t.kind, index));
+    if (const UserPreset* own = holdsRecording(t.kind) ? listedPreset(t.kind, index) : nullptr)
+        if (!own->recording.empty()) putPresetRecording(track, own->recording);
 }
 
 // The track's sound past its synth as a preset picked leaves it (presets-plan.md). A whole preset
