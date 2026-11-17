@@ -1,0 +1,58 @@
+#!/bin/sh
+# What inittab starts, under apotheca-keep: sets up how Apotheca reaches the
+# screen, the sound card and the buttons, then runs it once (apotheca-start).
+#
+#   screen   SDL's KMSDRM driver (the kernel's display API, no desktop), through
+#            Mesa: panfrost on the Mali GPU. If Apotheca has stopped within
+#            seconds twice in a row (KEEP_FAILS from apotheca-keep), or the file
+#            /data/apotheca/gpu-off exists, Mesa draws with the CPU instead
+#            (softpipe) and SDL uses its own software renderer: the fallback.
+#   sound    ALSA straight to the card: plughw on the first card that is not
+#            HDMI (the SoC's codec on the handheld; qemu's virtio card on the
+#            desk). /data/apotheca/sound-card overrides it (a card's id).
+#   buttons  the joypad is a joystick SDL finds by itself; the power and
+#            volume keys are handed to SDL as keyboards (there is no udev).
+
+dir=/data/apotheca
+log=$dir/logs/apotheca-start.log
+mkdir -p "$dir/logs"
+say() { echo "[$(cut -d' ' -f1 /proc/uptime)] $*" >> "$log"; }
+
+export SDL_VIDEODRIVER=kmsdrm
+export SDL_AUDIODRIVER=alsa
+export HOME=/data/apotheca
+
+mode=gpu
+if [ -e "$dir/gpu-off" ] || [ "${KEEP_FAILS:-0}" -ge 2 ]; then
+    mode=software
+    export LIBGL_ALWAYS_SOFTWARE=1
+    export SDL_RENDER_DRIVER=software
+fi
+
+# The sound card
+card=$(cat "$dir/sound-card" 2>/dev/null)
+if [ -z "$card" ]; then
+    for c in /proc/asound/card[0-9]*; do
+        [ -f "$c/id" ] || continue
+        id=$(cat "$c/id")
+        case "$id" in *[Hh][Dd][Mm][Ii]*) continue ;; esac
+        card=$id
+        break
+    done
+fi
+[ -n "$card" ] && export AUDIODEV="plughw:CARD=$card,DEV=0"
+
+# The keys that are keyboards to the kernel: the power key (axp20x-pek) and
+# the volume keys (gpio-keys), as "2:/dev/input/eventN" (2: a keyboard).
+keys=
+for e in /sys/class/input/event*; do
+    name=$(cat "$e/device/name" 2>/dev/null)
+    case "$name" in
+    *gpio-keys*|*axp20x-pek*|*Power*Key*|*power*key*)
+        keys="${keys:+$keys,}2:/dev/input/$(basename "$e")" ;;
+    esac
+done
+[ -n "$keys" ] && export SDL_EVDEV_DEVICES="$keys"
+
+say "start: $mode drawing, sound ${AUDIODEV:-none found}, keys ${keys:-none}, fails before ${KEEP_FAILS:-0}"
+exec /usr/sbin/apotheca-start --handheld

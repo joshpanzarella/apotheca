@@ -1,8 +1,8 @@
 #!/bin/sh
 # apotheca-keep NAME PROGRAM [ARGS...]
 #
-# Runs PROGRAM and starts it again whenever it stops. Batch 2 runs Apotheca
-# under it (from /etc/inittab); batch 1 has it for the desk test.
+# Runs PROGRAM and starts it again whenever it stops. /etc/inittab runs
+# Apotheca under it.
 #
 #   - A program that ran KEEP_QUICK seconds or more starts again at once.
 #   - One that stopped sooner waits 1, 2, 4 ... seconds, at most
@@ -11,6 +11,7 @@
 #   - While the file $KEEP_RUN/NAME.hold exists nothing is started (for work
 #     from the shell: touch it, kill the program, do the work, remove it).
 #   - Every start and stop is written to $KEEP_LOG/NAME.log.
+#   - The program gets KEEP_FAILS: how many starts in a row stopped too soon.
 #   - Sent TERM or INT (shutdown), it stops the program and then itself.
 
 name=$1
@@ -45,7 +46,9 @@ while :; do
         fails=0
     fi
     began=$(now)
-    "$@" &
+    # The program is told how many times in a row it stopped too soon
+    # (/usr/libexec/apotheca/run falls back to drawing with the CPU on 2).
+    KEEP_FAILS=$fails "$@" &
     child=$!
     note "started (pid $child)"
     wait "$child"

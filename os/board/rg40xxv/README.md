@@ -38,8 +38,17 @@ fragments' comments, the tools) is Apotheca's own.
 **What Buildroot fetches** (each at a pinned version, each sum checked:
 `BR2_DOWNLOAD_FORCE_CHECK_HASHES`): Linux 7.2 (GPL-2.0), U-Boot 2026.01
 (GPL-2.0+), Trusted Firmware-A v2.15.0 (BSD-3-Clause), BusyBox, util-linux,
-exfatprogs, alsa-lib, alsa-utils, evtest, and Bootlin's toolchain (glibc,
-libstdc++, libgcc: their runtime parts go on the card). Their licences are
+exfatprogs, alsa-lib, alsa-utils, evtest, Mesa 26.0.1 (MIT, with parts under
+other permissive licences: Buildroot lists them), libdrm (MIT), expat, zlib,
+SPIRV-Tools (Apache-2.0), SDL2 2.32.10 (Zlib), and Bootlin's toolchain (glibc,
+libstdc++, libgcc: their runtime parts go on the card). LLVM, clang, libclc
+and SPIRV-LLVM-Translator (Apache-2.0 with LLVM exception) are built for the
+build machine only, to compile Mesa's shaders: **none of them is on the card**.
+
+**Two changes to Buildroot itself**, in `../../patches-to-buildroot/` (each
+says why; `scripts/build-image.sh` applies them once to its Buildroot tree):
+panfrost without LLVM, clang and OpenCL on the target, and host Mesa
+matching host LLVM's RTTI. They change only how Mesa is built. Their licences are
 recorded by Buildroot itself: `scripts/build-image.sh -- legal-info` gathers
 every source, patch and licence text into `build-image/output/legal-info/`.
 

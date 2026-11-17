@@ -85,12 +85,21 @@ BR2_PACKAGE_ALSA_UTILS_AMIXER=y
 BR2_PACKAGE_ALSA_UTILS_APLAY=y
 BR2_PACKAGE_ALSA_UTILS_SPEAKER_TEST=y
 
-# Batch 2, desk side: Apotheca built by this toolchain, against SDL2 with
-# ALSA. On the card, NOT started at boot yet: SDL2's display driver for a
-# system with no desktop (KMSDRM) needs Mesa's GBM and EGL, which come with
-# the GPU work. /usr/sbin/apotheca-start runs it by hand.
+# Batch 2: Apotheca, started at boot (inittab, apotheca-keep), built by this
+# toolchain against SDL2 on KMS/DRM (no desktop) with ALSA.
 BR2_PACKAGE_APOTHECA=y
+BR2_PACKAGE_APOTHECA_TOOLS=y
 BR2_PACKAGE_SDL2=y
+BR2_PACKAGE_SDL2_KMSDRM=y
+BR2_PACKAGE_SDL2_OPENGLES=y
+# Mesa: panfrost for the Mali-G31 (with os/patches-to-buildroot, no LLVM on
+# the card: its shaders are compiled on the build machine), softpipe as the
+# fallback that draws with the CPU, GBM and EGL for SDL's KMSDRM.
+BR2_PACKAGE_MESA3D=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_PANFROST=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SOFTPIPE=y
+BR2_PACKAGE_MESA3D_OPENGL_EGL=y
+BR2_PACKAGE_MESA3D_OPENGL_ES=y
 
 # Tools that make the image
 BR2_PACKAGE_HOST_DOSFSTOOLS=y

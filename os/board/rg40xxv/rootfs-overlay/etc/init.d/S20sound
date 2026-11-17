@@ -1,0 +1,55 @@
+#!/bin/sh
+# Sets the H616 codec's mixer once at boot, so sound reaches the speaker and
+# the headphone jack. The codec's controls (sound/soc/sunxi/sun4i-codec.c):
+#
+#   DAC Playback Volume          the digital level, 0 dB at its top
+#   Line Out Playback Volume     the analog output level
+#   Line Out Playback Switch     the output on
+#   Line Out Source Playback Route   Stereo (not Mono Differential)
+#   Left/Right Mixer DAC Playback Switch   the DAC into the output mixers
+#   Speaker Switch               the speaker amplifier (a card pin switch)
+#
+# Apotheca sets its own volume on top (its VOLUME on the SET page), so the
+# codec is left at full: 0 dB digital, the line out at its top. Anything not
+# found (another card, qemu's) is said in the boot log and passed by.
+
+. /usr/lib/apotheca/common.sh
+
+set_control() {
+    if amixer -q -c "$card" cset "name=$1" "$2" 2>/dev/null; then
+        set_ok="$set_ok $1;"
+    else
+        set_missing="$set_missing $1;"
+    fi
+}
+
+start() {
+    card=
+    for c in /proc/asound/card[0-9]*; do
+        [ -f "$c/id" ] || continue
+        case "$(cat "$c/id")" in *[Hh][Dd][Mm][Ii]*) continue ;; esac
+        card=${c#/proc/asound/card}
+        break
+    done
+    if [ -z "$card" ]; then
+        say "sound: no sound card"
+        return 0
+    fi
+    set_ok= set_missing=
+    set_control "DAC Playback Volume" 100%
+    set_control "Line Out Playback Volume" 100%
+    set_control "Line Out Playback Switch" on,on
+    set_control "Line Out Source Playback Route" Stereo
+    # One control when the two mixers share it, two when they do not.
+    set_control "DAC Playback Switch" on,on
+    set_control "Left Mixer DAC Playback Switch" on,on
+    set_control "Right Mixer DAC Playback Switch" on,on
+    set_control "Speaker Switch" on
+    say "sound: card $card ($(cat /proc/asound/card$card/id)); set:${set_ok:- none}; not there:${set_missing:- none}"
+}
+
+case "$1" in
+    start) start ;;
+    stop) ;;
+    *) echo "usage: $0 start|stop" ;;
+esac

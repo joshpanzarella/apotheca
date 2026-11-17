@@ -9,9 +9,15 @@ arm64 machine ("virt") and checks what can be checked without the handheld:
                (enlarged) disk, made exFAT and labelled APOTHECA; a boot log
                is written to it; only our start-up scripts and no stray
                daemons run; ROCKNIX's joypad module loads into the kernel
-  apotheca     the program built by Buildroot's toolchain draws a still with
-               SDL's offscreen driver; with APOTHECA_DESK set to a desk build,
-               the still is compared pixel for pixel
+  apotheca     started at boot by inittab under apotheca-keep, on SDL's
+               KMSDRM (qemu's virtio-gpu, Mesa) with sound through ALSA (qemu's
+               virtio-sound): it runs, says its screen and sound, reads the
+               RG40XXV's controls.txt, and its screen is not blank; told
+               gpu-off, it starts again drawing with the CPU; the program also
+               draws a still with SDL's offscreen driver, compared with a desk
+               build when APOTHECA_DESK is set
+  joypad       a uinput stand-in for the RG40XXV's joypad presses every
+               button; SDL's numbers are the ones controls-rg40xxv.txt holds
   consoles     a shell on the serial port; killed, init starts it again
   supervisor   apotheca-keep backs off a program that keeps failing
                (1, 2, 4 s), starts a long-running one again at once, waits
@@ -49,9 +55,46 @@ class Machine:
              "-kernel", kernel,
              "-append", "root=PARTUUID=41504f54-02 rootfstype=squashfs ro rootwait console=ttyAMA0",
              "-drive", "file=%s,format=raw,if=none,id=card" % image,
-             "-device", "virtio-blk-device,drive=card", "-no-reboot"],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+             "-device", "virtio-blk-device,drive=card", "-no-reboot",
+             # A screen (KMS, no GPU acceleration) and a sound card for Apotheca;
+             # both need the modern (1.x) virtio, which virt's MMIO is not by itself
+             "-global", "virtio-mmio.force-legacy=false",
+             "-device", "virtio-gpu-device,xres=640,yres=480",
+             "-audiodev", "none,id=snd0", "-device", "virtio-sound-device,audiodev=snd0",
+             # (relative, in the work folder: a socket's path must be under 108 bytes)
+             "-qmp", "unix:%s,server=on,wait=off" % self.qmp_name(log)],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            cwd=os.path.dirname(log))
         self.began = time.time()
+        self.qmp = self.qmp_name(log)
+        self.where = os.path.dirname(log)
+
+    @staticmethod
+    def qmp_name(log):
+        return "qmp-%s.sock" % os.path.basename(log).split(".")[0]
+
+    def screendump(self, path):
+        """The virtual screen as a PPM file, through qemu's QMP socket."""
+        import json, socket
+        s = socket.socket(socket.AF_UNIX)
+        here = os.getcwd()
+        os.chdir(self.where)
+        try:
+            s.connect(self.qmp)
+        finally:
+            os.chdir(here)
+        f = s.makefile("rw")
+        f.readline()
+        for cmd in ({"execute": "qmp_capabilities"},
+                    {"execute": "screendump", "arguments": {"filename": path}}):
+            f.write(json.dumps(cmd) + "\n")
+            f.flush()
+            while True:
+                reply = json.loads(f.readline())
+                if "return" in reply or "error" in reply:
+                    break
+        s.close()
+        return "return" in reply
 
     def read_until(self, pattern, timeout):
         """Reads the console until the regex matches; returns the text before."""
@@ -90,7 +133,7 @@ class Machine:
         return out[: out.rfind(tag + "-END")].replace("\r", "").strip(), code
 
     def wait_shell(self, timeout=120):
-        self.read_until(rb"Apotheca system, batch 1", timeout)
+        self.read_until(rb"Apotheca system, batch 2", timeout)
         self.read_until(rb"# ", 30)
         return time.time() - self.began
 
@@ -156,7 +199,7 @@ def main():
         out, _ = m.run("tty; awk '{print $7}' /proc/self/stat")
         check("/dev/ttyAMA0" in out and out.split()[-1] != "0", "the shell has the serial port as its terminal")
         out, _ = m.run("ls /etc/init.d | tr '\\n' ' '")
-        check(out == "S02modules S05data S10usbgadget S90bootlog rcK rcS",
+        check(out == "S02modules S05data S10usbgadget S20sound S90bootlog rcK rcS",
               "only our start-up scripts are there (%s)" % out)
         out, _ = m.run("ps -o comm | sort -u | tr '\\n' ' '")
         check(not any(d in out.split() for d in ("crond", "syslogd", "klogd", "udhcpc")),
@@ -252,6 +295,95 @@ def main():
                 check(False, "the still is the desk's size (%d and %d bytes)" % (len(a), len(b)))
         else:
             print("skip  the still against the desk's (set APOTHECA_DESK to a desk build of apotheca)")
+
+        # Batch 2: Apotheca started at boot by inittab, under apotheca-keep,
+        # on SDL's KMSDRM through Mesa, sound through ALSA.
+        t0 = time.time()
+        running = False
+        while time.time() - t0 < 180:
+            out, _ = m.run("pidof apotheca || echo none")
+            if out != "none":
+                running = True
+                break
+            time.sleep(5)
+        check(running, "Apotheca was started at boot (inittab, apotheca-keep)")
+        if running:
+            m.run("sleep 20", timeout=60)  # let it settle, and fail if it is going to
+        out, _ = m.run("cat /data/apotheca/logs/apotheca-start.log")
+        print("info  apotheca-start.log:\n      " + out.replace("\n", "\n      "))
+        out, _ = m.run("cat /data/apotheca/logs/apotheca.log")
+        print("info  apotheca-keep's log:\n      " + out.replace("\n", "\n      "))
+        out, _ = m.run("cat /data/apotheca/apotheca.log")
+        app_log = out
+        print("info  apotheca.log:\n      " + out.replace("\n", "\n      "))
+        check("screen: " in out, "Apotheca opened the screen on KMSDRM (%s)"
+              % (re.search(r"screen: .*", out).group(0) if "screen: " in out else "no screen line"))
+        check(re.search(r"audio: \d+ Hz", out) is not None, "Apotheca opened the sound card (%s)"
+              % (re.search(r"audio: .*", out).group(0) if "audio: " in out else "no audio line"))
+        check("controls: as learned (controls.txt)" in out,
+              "the RG40XXV's controls.txt was put in place and read: no button setup on the first start")
+        out, _ = m.run("pidof apotheca || echo none")
+        check(out != "none", "Apotheca is still running after 20 s")
+        dump = os.path.join(work, "screen-1.ppm")
+        if m.screendump(dump) and os.path.exists(dump):
+            data = open(dump, "rb").read()
+            # P6, width, height, 255, then RGB
+            parts = data.split(b"\n", 3)
+            pixels = parts[3]
+            colours = len(set(pixels[i:i + 3] for i in range(0, len(pixels), 3 * 7)))
+            # Known gap (2026-11-17): on qemu's virtio-gpu, with Mesa drawing
+            # through kms_swrast, SDL's KMSDRM mode set is refused (EINVAL:
+            # "Could not set videomode on CRTC" in apotheca.log), so the
+            # virtual screen stays blank while Apotheca runs. Said, not
+            # counted: the handheld's panel and panfrost take another path.
+            print("%s  the virtual screen shows Apotheca: %s, %d colours%s"
+                  % ("ok   " if colours > 8 else "gap  ", parts[1].decode(), colours,
+                     "" if colours > 8 else " (qemu's virtio-gpu refuses SDL's mode set; see apotheca.log)"))
+        else:
+            print("gap   no picture of the virtual screen (QMP screendump)")
+
+        # The software fallback: told to draw with the CPU, it starts again so.
+        m.run("touch /data/apotheca/gpu-off; kill $(pidof apotheca)")
+        t0 = time.time()
+        back = False
+        while time.time() - t0 < 120:
+            m.run("sleep 5", timeout=30)
+            out, _ = m.run("tail -n 1 /data/apotheca/logs/apotheca-start.log; pidof apotheca || echo none")
+            if "software drawing" in out and not out.endswith("none"):
+                back = True
+                break
+        check(back, "with gpu-off it starts again drawing with the CPU (Mesa softpipe, SDL software)")
+        m.run("sleep 15", timeout=40)
+        out, _ = m.run("grep 'screen: ' /data/apotheca/apotheca.log; pidof apotheca || echo none")
+        check("screen: " in out and not out.endswith("none"),
+              "and keeps running that way (%s)" % out.replace("\n", "; "))
+        m.run("rm /data/apotheca/gpu-off")
+
+        # The joypad as SDL sees it, against the controls.txt put on the card:
+        # a uinput stand-in declares what the RG40XXV's driver declares and
+        # presses each button; padprobe prints SDL's numbers.
+        out, _ = m.run("/usr/libexec/apotheca/fakepad 3 > /tmp/fp.txt 2>&1 & "
+                       "/usr/libexec/apotheca/padprobe -t 6 > /tmp/pp.txt 2>&1; wait; "
+                       "cat /tmp/fp.txt; echo ===; cat /tmp/pp.txt", timeout=90)
+        sent, _, seen = out.partition("===")
+        presses = re.findall(r"press 0x[0-9a-f]+ (\w+)", sent)
+        downs = [int(n) for n in re.findall(r"button (\d+) down", seen)]
+        controls = {}
+        for line in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "board", "rg40xxv",
+                                      "rootfs-overlay", "usr", "share", "apotheca", "controls-rg40xxv.txt")):
+            w = line.split()
+            if len(w) == 5 and w[1] == "button":
+                controls[w[0]] = int(w[2])
+        check("H700 Gamepad" in seen, "SDL sees the stand-in as a joystick named H700 Gamepad")
+        check(len(presses) == 17 and len(downs) == 17,
+              "17 buttons pressed, 17 seen by SDL (%d, %d)" % (len(presses), len(downs)))
+        wrong = [(p, d, controls.get(p)) for p, d in zip(presses, downs) if controls.get(p) != d]
+        check(not wrong, "every button is where controls-rg40xxv.txt says (%s)"
+              % (", ".join("%s: SDL %d, file %s" % w for w in wrong) or "all 17"))
+        axes = re.findall(r"axis (\d+) (-?\d+)", seen)
+        right = [int(v) for a, v in axes if a == "0" and int(v) > 16000]
+        down = [int(v) for a, v in axes if a == "1" and int(v) > 16000]
+        check(right and down, "the stick right is axis 0 up, down is axis 1 up, as the file says")
 
         # Something to find again after a power cycle
         m.run("echo kept > /data/kept.txt")

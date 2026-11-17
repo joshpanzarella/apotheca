@@ -1,0 +1,25 @@
+host-mesa3d: match host LLVM's RTTI.
+
+With panfrost no longer selecting target OpenCL (0001), BR2_PACKAGE_LLVM_RTTI
+is off, so host LLVM is built without RTTI, and Mesa's configure stops
+("LLVM was built without RTTI, so Mesa must also disable RTTI"). The target
+side already passes -Dcpp_rtti by the same option; this does it for the host.
+
+diff -ru a/package/mesa3d/mesa3d.mk b/package/mesa3d/mesa3d.mk
+--- a/package/mesa3d/mesa3d.mk
++++ b/package/mesa3d/mesa3d.mk
+@@ -310,6 +310,14 @@
+ 	-Dglx=disabled \
+ 	-Dvulkan-drivers=""
+ 
++# Host LLVM has RTTI only when target LLVM is asked for it (OpenCL): Mesa
++# must match it, or its configure stops.
++ifeq ($(BR2_PACKAGE_LLVM_RTTI),y)
++HOST_MESA3D_CONF_OPTS += -Dcpp_rtti=true
++else
++HOST_MESA3D_CONF_OPTS += -Dcpp_rtti=false
++endif
++
+ HOST_MESA3D_DEPENDENCIES = \
+ 	host-libclc \
+ 	host-libdrm \

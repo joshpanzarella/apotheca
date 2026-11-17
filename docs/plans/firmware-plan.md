@@ -149,7 +149,7 @@ The build runs in Docker on Linux, as `build-handheld.sh` does today.
 | --- | --- | --- | --- | --- |
 | **0** | **Measure ROCKNIX against today.** ROCKNIX H700 (the DDR4 image) on a spare card, the RG40XXV device tree picked, Apotheca copied in as a port, SPEED TEST run. Also: `device-info.log` from both cards | Nothing to build. We write the steps and a small script that gathers the logs | Flash the card, pick the tree, start Apotheca, run SPEED TEST, send both logs | Low. **The cheapest real data in this plan** |
 | **1** (built on the desk, 2026-11-17: section 8) | **A minimal image that boots to a console.** Buildroot, mainline U-Boot, the kernel with ROCKNIX's H700 patches, BusyBox. A shell on the screen if the panel comes up, and on USB serial (the USB-C port acting as a serial device) or the UART pins | The image builds; the same root file system boots in qemu's generic arm64 machine | Flash, power on, report what the screen shows; if nothing, a photo, or the UART (section 6) | Medium: first contact |
-| **2** | **Apotheca as the only program.** Display (KMSDRM), buttons and stick, sound through ALSA, a newer SDL2 built by Buildroot, Apotheca built by Buildroot's toolchain (no more Ubuntu 20.04 sysroot). A tiny init (BusyBox init or our own script; no systemd) that starts Apotheca and starts it again if it stops. Read-only system partition plus a data partition | Init and restart logic in qemu; the program starts with the software renderer under qemu's virtual screen | Play a song, press every button, plug headphones, run SPEED TEST | Medium: sound and buttons bring-up |
+| **2** (built on the desk, 2026-11-17: section 9) | **Apotheca as the only program.** Display (KMSDRM), buttons and stick, sound through ALSA, a newer SDL2 built by Buildroot, Apotheca built by Buildroot's toolchain (no more Ubuntu 20.04 sysroot). A tiny init (BusyBox init or our own script; no systemd) that starts Apotheca and starts it again if it stops. Read-only system partition plus a data partition | Init and restart logic in qemu; the program starts with the software renderer under qemu's virtual screen | Play a song, press every button, plug headphones, run SPEED TEST | Medium: sound and buttons bring-up |
 | **3** | **GPU drawing.** Mesa with panfrost, SDL2's OpenGL ES 2 renderer; check every screen draws the same (our stills are the reference) | The stills drawn with Mesa's software GL (llvmpipe) match today's | Look at every tab; run SPEED TEST with the new present row | Low to medium: SDL's GL renderer differs from software in small ways (lines, blending) |
 | **4** | **Power.** Battery reading, charging screen with the device off, clean shutdown at low battery, auto power-off when idle, suspend and resume on the power key | The shutdown logic with a made-up battery file | Leave it asleep overnight; let it run flat on purpose with a song open (songs must survive); charge it off | Medium: suspend on the H700 is still young in mainline |
 | **5** | **WiFi and updates.** `rtw88` with Realtek's firmware, `wpa_supplicant`, network choice on Apotheca's WiFi page; the program update as today; **whole-system update into slot B** with U-Boot's boot counter falling back to slot A; the hotspot tried | A/B and fallback under qemu (a bad image must fall back by itself) | Join the home network; send an update; send a deliberately broken one and see it fall back | Medium |
@@ -316,8 +316,80 @@ it takes to start.
 
 | # | Question | Recommended answer |
 | --- | --- | --- |
-| 11 | Apotheca's own licence: legal-info marks its source "not to be given out" until one is chosen. Which? | Decide before anyone else gets the image; nothing is needed for the owner's own use |
-| 12 | Batch 1 gives a root shell with no password on USB serial and the UART. Keep it in later batches for bring-up, or close it from batch 2? | **Keep it until batch 5** (WiFi), then close it, or leave it only behind a button held at power on |
+| 11 | Apotheca's own licence: legal-info marks its source "not to be given out" until one is chosen. Which? | **Answered (2026-11-17): the owner's, later.** Nothing is needed for the owner's own use |
+| 12 | Batch 1 gives a root shell with no password on USB serial and the UART. Keep it in later batches for bring-up, or close it from batch 2? | **Answered (2026-11-17): keep it open until batch 5, then close it** |
+
+## 9. As built: batch 2 (2026-11-17)
+
+**Apotheca starts at boot, on the GPU, with the CPU as the fallback. Built
+and tested on the desk only; nobody has started it on a handheld.**
+
+### What was found
+
+| Thing | Finding |
+| --- | --- |
+| **SDL2 on a system with no desktop needs Mesa** | SDL2's KMSDRM driver (the kernel's display API) needs GBM and EGL and an OpenGL ES (or GL) library: Buildroot's `BR2_PACKAGE_SDL2_KMSDRM` depends on them, and SDL2 has no plain-framebuffer driver any more. Even SDL's software renderer presents through a GLES texture there. So batch 2 brings in Mesa, and with it most of batch 3's GPU drawing |
+| **Buildroot 2026.02 ties panfrost to LLVM and clang on the card** | Its `mesa3d` package makes the panfrost driver depend on target LLVM and its shader compiler select target OpenCL (target clang, libclc, SPIRV-LLVM-Translator): four LLVM-sized builds and over 100 MB on the card. Mesa itself needs none of that on the target: Buildroot already configures it with `-Dmesa-clc=system -Dprecomp-compiler=system`, so the shaders are compiled at build time by `host-mesa3d` (built with host LLVM and clang). `os/patches-to-buildroot/0001-...` drops the target side; the build script applies it to the Buildroot tree once |
+| **No udev, and SDL copes** | SDL2 finds joysticks with no udev by watching `/dev/input` (inotify). Keyboards it does not look for, so the power key (`axp20x-pek`) and the volume keys (`gpio-keys`) are handed to it in `SDL_EVDEV_DEVICES` (`/usr/libexec/apotheca/run`) |
+| **The joypad as SDL numbers it** | SDL numbers a joystick's buttons by their key codes from `BTN_JOYSTICK` (0x120) up. The RG40XXV's device tree gives the driver these codes, so the buttons come out B 0, A 1, X 2, Y 3, L1 4, R1 5, L2 6, R2 7, SELECT 8, START 9, MENU (F) 10, L3 11, R3 12, UP 13, DOWN 14, LEFT 15, RIGHT 16, and the axes ABS_X 0, ABS_Y 1, ABS_RX 2, ABS_RY 3. That is `usr/share/apotheca/controls-rg40xxv.txt`. **Which ADC channel the RG40XXV's one stick is on is a guess** (X and Y, the left stick's codes); the device tree declares four |
+| **The codec's mixer** | `sun4i-codec`'s H616 controls: DAC Playback Volume, Line Out Playback Volume and Switch, Line Out Source Playback Route, the mixers' DAC Playback Switch, and the card's Speaker pin switch. `/etc/init.d/S20sound` sets them to full (Apotheca's own VOLUME is on top), and the boot log lists every control the card has |
+
+### What was built
+
+| Part | What |
+| --- | --- |
+| Mesa 26.0.1 | panfrost (the Mali-G31), softpipe (drawing with the CPU, the fallback), GBM, EGL, GLES. No LLVM on the card |
+| SDL2 2.32.10 | KMSDRM and GLES on, ALSA, and the offscreen driver (for the desk test's stills) |
+| Start at boot | `/etc/inittab`: `apotheca-keep apotheca /usr/libexec/apotheca/run`. `run` sets SDL's driver, the sound card (`plughw` on the first card that is not HDMI, or `/data/apotheca/sound-card`) and the keys, then `apotheca-start` runs `/data/apotheca/apotheca --handheld` |
+| The fallback | `apotheca-keep` tells the program how many of its starts in a row stopped within 10 s (`KEEP_FAILS`). From two, or with `/data/apotheca/gpu-off` on the card, `run` starts it with `LIBGL_ALWAYS_SOFTWARE=1` (Mesa's softpipe) and `SDL_RENDER_DRIVER=software`. A start that then runs long resets the count, so the GPU is tried again next time |
+| The buttons | `controls-rg40xxv.txt` is copied to `/data/apotheca/controls.txt` when there is none: no button setup on the first start. Deleting it brings the setup back |
+| Sound | `S20sound` sets the mixer at boot |
+| Tools | `padprobe` (what SDL sees of the joysticks, in controls.txt's numbers: for the owner from the USB shell) and `fakepad` (a uinput stand-in for the joypad, for the desk test), `os/package/apotheca-tools` |
+| Kernel | virtio-gpu and virtio-sound as modules, for the desk test (loaded only where qemu's devices are) |
+| Boot log | adds every sound card's mixer controls, the joysticks SDL sees, and the ends of Apotheca's logs |
+
+**The image** for the owner was built from commit `fdb3fc2`:
+`apotheca-rg40xxv.img.gz`, **32.5 MB**, sha256
+`2115cae3de1ccb5318c5acba44825cf99db9e30cf87986d0c13072d8c5414af8`. The
+root file system is 22.1 MB (11.8 in batch 1: Mesa's `libgallium` is 19.9 MB
+unpacked). **The build**: about three hours on the desk's four cores the
+first time, nearly two of them host LLVM (45 min) and clang (50 min); after
+that a change to a script is 20 seconds and to Apotheca under two minutes.
+**Disk**: 13 GB at its peak, 7.0 GB after `--tidy` (which keeps LLVM's and
+Mesa's "done" marks, so they are not made again).
+
+### Tested on the desk
+
+| Test | Result |
+| --- | --- |
+| Reproducible | **Two builds give the same `img.gz` to the bit** (Apotheca and the tools rebuilt from the commit in between) |
+| `check-image.sh` | every check passes |
+| `qemu-test.py` (now with qemu's virtio screen and sound card, modern virtio) | **every check passes (44)**, one gap said, below |
+| Apotheca at boot | started by inittab under `apotheca-keep` 11 s after power on (emulated CPU), still running 20 s later; its log: `screen: opengles2, accelerated` (on qemu that is Mesa drawing with the CPU: there is no virgl, and Mesa fell back to `kms_swrast` by itself), `audio: 48000 Hz, 256 frames per buffer` through ALSA, `controls: as learned (controls.txt)` (no button setup) |
+| The fallback | with `gpu-off` it starts again on SDL's software renderer (`screen: software`) and keeps running |
+| The joypad | a uinput stand-in declaring what the RG40XXV's driver declares (name, ids, 17 keys, 4 axes) presses every button: **SDL numbers all 17 as `controls-rg40xxv.txt` says**, and the stick's right and down are axes 0 and 1 upwards |
+| The still against the desk | Apotheca built for the card draws the FX screen within 2 levels of the desk's on all but 68 to 124 pixels (the demo is at another place under emulation) |
+| **Gap: no picture of qemu's screen** | On qemu's virtio-gpu, with Mesa drawing through `kms_swrast`, SDL's KMSDRM mode set is refused (`Could not set videomode on CRTC`, `pageflip: -22` in apotheca.log) and the virtual screen stays blank while Apotheca runs. The handheld takes another path (sun4i-drm and panfrost through Mesa's `kmsro`), so this says nothing either way about the panel. **If it happens on the handheld too, Apotheca runs with a black screen and does not stop**, so the fallback does not start; the boot log has the line. Not chased further |
+
+### Only the handheld can tell
+
+**Whether panfrost draws Apotheca right and fast** (the desk has no Mali: qemu's
+virtual screen has no GPU, so the desk only ever drew with the CPU),
+whether the panel's mode and orientation are right under KMSDRM, **whether
+sound comes out** (the codec, the speaker amplifier, the headphone jack),
+**whether the buttons and the stick are where controls-rg40xxv.txt says**
+(the stand-in declares what the device tree says; the real driver was not
+run), the power and volume keys, and how long it takes from power to the
+SONG screen.
+
+### Left for batch 3 and later
+
+- **Batch 3**: check every screen draws the same on panfrost as in the stills
+  (GLES differs from SDL's software renderer in small ways), and time a
+  present on the device (SPEED TEST's new row).
+- **Batch 4**: a real power-off and low-battery shutdown; what "quit" means
+  on a dedicated device (today `apotheca-keep` starts it again at once).
+- The stick's ADC channel, if it is not X and Y.
 
 ## Sources
 

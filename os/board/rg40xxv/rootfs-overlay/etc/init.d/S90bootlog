@@ -33,6 +33,14 @@ report() {
     for b in /sys/class/backlight/*; do [ -d "$b" ] && echo "$b: $(cat $b/brightness)/$(cat $b/max_brightness)"; done
     section "input"; cat /proc/bus/input/devices 2>/dev/null
     section "sound"; cat /proc/asound/cards 2>/dev/null
+    for c in /proc/asound/card[0-9]*; do
+        [ -d "$c" ] && { echo "--- ${c#/proc/asound/} controls"; amixer -c "${c#/proc/asound/card}" contents 2>&1; }
+    done
+    section "joysticks as SDL sees them"; /usr/libexec/apotheca/padprobe -l 2>&1
+    section "apotheca"
+    cat /data/apotheca/logs/apotheca-start.log 2>/dev/null | tail -n 20
+    cat /data/apotheca/logs/apotheca.log 2>/dev/null | tail -n 20
+    echo "--- apotheca.log (the program's own)"; tail -n 40 /data/apotheca/apotheca.log 2>/dev/null
     section "power"
     for p in /sys/class/power_supply/*; do
         [ -d "$p" ] || continue
@@ -69,7 +77,7 @@ start() {
         | awk -v keep=$KEEP '{ f[NR] = $0 } END { for (i = 1; i <= NR - keep; i++) print f[i] }' \
         | xargs -r rm -f
 
-    # A second look once late drivers have come up
+    # A second look once late drivers have come up, and Apotheca has started
     (
         sleep 20
         { echo; echo "##### 20 seconds later"; report; } >> "$file" 2>&1
