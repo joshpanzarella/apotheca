@@ -401,7 +401,7 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
             fonts.medium.draw(renderer, x + 18.f, y + 46.f, "It will be used the next time Apotheca starts.", kText);
             fonts.small.draw(renderer, x + 18.f, y + 74.f, "The one running now is kept. If the new one does not", kDim);
             fonts.small.draw(renderer, x + 18.f, y + 90.f, "start, Apotheca goes back to this one by itself.", kDim);
-            const char* now = "To update now: SEL + START quits; then start it again.";
+            const char* now = updateNowWords(quitTurnsOff_);
             fonts.within(&Fonts::small, now, w - 36.f).draw(renderer, x + 18.f, y + 116.f, now, kText);
         } else if (updateSaid_ == 2) {
             fonts.large.draw(renderer, x + 18.f, y + 16.f, "COULD NOT KEEP THE UPDATE", kBrass);
@@ -455,7 +455,7 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
             {"L2  R2", "on PATTERN: the scene a step shorter / longer"},
             {"Y", "on PATTERN: NEXT SCENE, a copy of this one to add to"},
             {"UP  DOWN  LEFT  RIGHT", "tempo: a beat a minute / ten at a time"}, // (one line: the card is full)
-            {"START", "quit Apotheca"},
+            {"START", quitWords(quitTurnsOff_)},
         };
         float ly = y + 14.f;
         const auto title = [&](const char* text) {

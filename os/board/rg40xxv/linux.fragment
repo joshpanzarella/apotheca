@@ -24,3 +24,7 @@ CONFIG_VIRTIO_MMIO=y
 # they load only where qemu's devices are (S02modules) and never on the H700.
 CONFIG_DRM_VIRTIO_GPU=m
 CONFIG_SND_VIRTIO=m
+# Batch 4's desk test: a made-up battery whose level the test sets
+# (/sys/module/test_power/parameters), for apotheca-power's low-battery
+# turn-off under qemu. A module nothing asks for: never loaded on the H700.
+CONFIG_TEST_POWER=m

@@ -46,6 +46,11 @@ report() {
         [ -d "$p" ] || continue
         echo "$p:"; cat "$p/uevent" 2>/dev/null | sed 's/^/  /'
     done
+    for b in /sys/class/backlight/*; do
+        [ -d "$b" ] && echo "backlight $b: brightness $(cat "$b/brightness" 2>/dev/null) of $(cat "$b/max_brightness" 2>/dev/null), bl_power $(cat "$b/bl_power" 2>/dev/null)"
+    done
+    echo "sleep: state [$(cat /sys/power/state 2>/dev/null)], mem_sleep [$(cat /sys/power/mem_sleep 2>/dev/null)]"
+    echo "--- power.log (apotheca-power: the power key, the battery)"; tail -n 30 /data/apotheca/logs/power.log 2>/dev/null
     section "usb"; ls /sys/class/udc 2>/dev/null; cat /sys/kernel/config/usb_gadget/apotheca/UDC 2>/dev/null
     section "regulators"
     for r in /sys/class/regulator/regulator.*; do

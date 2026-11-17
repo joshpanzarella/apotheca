@@ -18,6 +18,11 @@ null::sysinit:/bin/ln -sf /proc/self/fd/2 /dev/stderr
 # that cannot start; touch /run/apotheca/apotheca.hold to stop restarts).
 ::respawn:/usr/sbin/apotheca-keep apotheca /usr/libexec/apotheca/run
 
+# The power key and the battery (apotheca-power): a short press turns the
+# screen off and on, held 2 s turns the handheld off, a low battery too.
+# Every way off goes through poweroff, so rcK's S95apotheca saves the song.
+::respawn:/usr/sbin/apotheca-power
+
 # A shell on the screen (seen when Apotheca is not running), on USB serial
 # (the USB-C port), on the board's UART pins, and on qemu's serial port for
 # the desk test. Each one starts again when it ends. A console whose port is
@@ -27,7 +32,8 @@ tty1::respawn:-/bin/sh
 ::respawn:/usr/libexec/apotheca/console ttyS0
 ::respawn:/usr/libexec/apotheca/console ttyAMA0
 
-# Going down: stop the scripts, then everything written reaches the card
+# Going down: stop the scripts (S95apotheca first: Apotheca saves and ends),
+# then everything written reaches the card
 ::shutdown:/etc/init.d/rcK
 ::shutdown:/bin/sync
 ::shutdown:/bin/umount -a -r

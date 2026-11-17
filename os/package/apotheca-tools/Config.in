@@ -2,7 +2,9 @@ config BR2_PACKAGE_APOTHECA_TOOLS
 	bool "apotheca-tools"
 	depends on BR2_PACKAGE_SDL2
 	help
-	  Two small programs for bring-up and the desk test:
-	  padprobe (what SDL sees of the joysticks, in controls.txt's
-	  numbers) and fakepad (a uinput stand-in for the RG40XXV's
-	  joypad, for qemu). In /usr/libexec/apotheca.
+	  apotheca-power (/usr/sbin: the power key and the battery,
+	  started by inittab), and two small programs for bring-up and
+	  the desk test: padprobe (what SDL sees of the joysticks, in
+	  controls.txt's numbers) and fakepad (a uinput stand-in for the
+	  RG40XXV's joypad and power key, for qemu). In
+	  /usr/libexec/apotheca.
