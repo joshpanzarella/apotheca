@@ -12,7 +12,13 @@
 //   ADVANCED         A opens the pages.
 //   X                hear the sound. Held on a macro: its MOD (mod_knob.hpp), its fields in LIVE
 //                    OUTPUT's place while X is held, and the note heard as long as X is.
-//   Y                PHYSIC only (SynthSpec::roll): a new sound from the dice, on its MODEL.
+//   Y                PHYSIC and CLOUD (SynthSpec::roll): a new sound from the dice.
+//
+// A synth that plays the track's recording (CLOUD: SynthSpec::recording) shows its picture on MAIN,
+// between PRESET and the macros (POSITION a brass line, SPRAY a lit band about it, each grain sounding
+// a tick at its place), and its first page's first stop is RECORDING: a tap of A the list of
+// recordings (the sampler's, with its preview), hold A + up / down the next one, R1 there RECORD
+// (elsewhere R1 is the next page), Y anywhere on that page CATCH (the last bar the song played).
 //
 // ADVANCED is every setting. For Phazed that is nine pages: the sound as a
 // whole, each of the two lines, and each line's three eight-step envelopes
@@ -21,11 +27,16 @@
 // PHYSIC, four: SOUND, RING, PLAY, DICE. L1 and R1 turn the pages; B goes back
 // to MAIN.
 
+#include "redraw.hpp"
 #include "screen.hpp"
 #include <SDL.h>
 
+#include <string>
+#include <vector>
+
 #include "input.hpp"
 #include "mod_knob.hpp"
+#include "sample_picker.hpp"
 #include "session.hpp"
 #include "synth_spec.hpp"
 #include "ui.hpp"
@@ -40,6 +51,9 @@ public:
     void onButton(const ButtonEvent& event, const Input& input) override;
     void update(const Input& input, Uint32 nowMs) override;
     void draw(SDL_Renderer* renderer, const Fonts& fonts) const override;
+    unsigned stirring() const override { // (redraw.hpp)
+        return (!said_.empty() && lastMs_ < saidUntil_ ? kStirScreenSaid : 0u) | picker_.stirring();
+    }
 
     // For tests and stills.
     static constexpr int kPages = 10; // Phazed's: MAIN, then nine advanced pages
@@ -103,6 +117,25 @@ public:
     // X held on a macro: its MOD (for the tests: held(), mod(), full()...).
     const ModKnob& modKnob() const { return modKnob_; }
 
+    // A synth that plays the recording (CLOUD): MAIN's picture under PRESET, and the macros and
+    // ADVANCED below it, a little shorter, still down to the LIVE OUTPUT strip.
+    static constexpr int kPictureY = kPresetY + kPresetH + 10, kPictureH = 80;
+    static constexpr int kPicMacroY = kPictureY + kPictureH + 10;
+    static constexpr int kPicMacroH = (ui::kAboveScope - 10 - kAdvancedH - kMacroGap - kPicMacroY) / 2;
+    static constexpr int kPicAdvancedY = kPicMacroY + 2 * kPicMacroH + kMacroGap + 10;
+    static_assert(kPicAdvancedY + kAdvancedH <= ui::kAboveScope, "MAIN ends above LIVE OUTPUT");
+    int macroY() const { return spec_.recording ? kPicMacroY : kMacroY; }
+    int macroH() const { return spec_.recording ? kPicMacroH : kMacroH; }
+    int advancedY() const { return spec_.recording ? kPicAdvancedY : kAdvancedY; }
+    // The picture's ticks are as tall as this, at its top and at its bottom.
+    static constexpr int kTickH = 8;
+    // CLOUD's RECORDING stop: the first of its first page (not a setting: its id is kRecordingId).
+    static constexpr int kRecordingId = -1;
+    bool onRecording() const { return spec_.recording && page_ == 1 && cursor_ == 0; }
+    SamplePicker& picker() { return picker_; }
+    const SamplePicker& picker() const { return picker_; }
+    const std::string& said() const { return said_; }
+
     // Cursor stops on MAIN.
     enum { kFolder, kPreset, kFirstMacro, kAdvanced = kFirstMacro + kSynthMacros, kMainStops };
 
@@ -150,6 +183,20 @@ private:
     ModKnob modKnob_;
     bool stickWait_ = false; // X let go off a MOD with the stick still pushed: it moves nothing until it comes back
     void endMod(const Input& input);
+
+    // CLOUD's recording (SynthSpec::recording).
+    SamplePicker picker_;
+    std::string said_;
+    Uint32 saidUntil_ = 0;
+    bool stepped_ = false; // A was used to change something: letting go is not a tap
+    std::vector<std::string> names_; // the recordings, read as A goes down on RECORDING
+    void openPicker();
+    void stepRecording(int by);
+    void hearFromList(SamplePicker::Hear how);
+    void say(const std::string& words, Uint32 ms);
+    void drawPicture(SDL_Renderer* r, const Fonts& fonts) const;
+    void drawScreen(SDL_Renderer* r, const Fonts& fonts) const;
+    bool wasRecording_ = false;
 };
 
 } // namespace apotheca

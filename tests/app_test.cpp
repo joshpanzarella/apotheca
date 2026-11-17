@@ -27,6 +27,7 @@
 #include "controls.hpp"
 #include "instruments.hpp"
 #include "mods.hpp"
+#include "samples.hpp"
 #include "song_file.hpp"
 #include "synth_spec.hpp"
 #include "temp_folder.hpp"
@@ -6374,7 +6375,7 @@ void testAddingJaxep() {
     const InstrumentInfo* info = instrument(TrackKind::Jx3p);
     CHECK(info && std::string(info->listName) == "JAX-EP" && std::string(info->name) == "JAX-EP" && std::string(info->word) == "jaxep" &&
           std::string(info->presetEnding) == ".jaxep" && info->synth == SynthKind::Jx3p);
-    CHECK(kInstrumentCount == 7);
+    CHECK(kInstrumentCount == 8);
     for (int i = 0; i < kInstrumentCount; ++i) CHECK(std::string(kInstruments[i].word) != "twin");
     bool old = false;
     CHECK(trackKindFromWord("twin", &old) == TrackKind::Jx3p && old);
@@ -6395,12 +6396,12 @@ void testAddingJaxep() {
     rig->tap(RIGHT);
     rig->tap(A);
     CHECK(rig->app.song().choosing());
-    rig->tap(DOWN, 6); // PHAZED > JAX-EP > SAMPLER > FM-6 > PHYSIC > ACID > DRUMS
+    rig->tap(DOWN, 7); // PHAZED > JAX-EP > SAMPLER > FM-6 > PHYSIC > ACID > CLOUD > DRUMS
     rig->tap(A);
     CHECK(rig->project().tracks[2].kind == TrackKind::Drums);
     rig->tap(RIGHT);
     rig->tap(A);
-    rig->tap(UP, 5); // PHAZED > DRUMS > ACID > PHYSIC > FM-6 > SAMPLER
+    rig->tap(UP, 6); // PHAZED > DRUMS > CLOUD > ACID > PHYSIC > FM-6 > SAMPLER
     rig->tap(A);
     CHECK(rig->project().tracks[3].kind == TrackKind::Sampler);
 
@@ -9344,7 +9345,9 @@ void testChangingAnInstrumentSaysWhatGoes() {
     CHECK(ly + 20 + fonts.small.capHeight() < top + SongScreen::listH(kInstrumentCount, true));
     // Adding a track: seven rows (ACID's) stand higher too, at the usual pitch; the words make them close up.
     CHECK(SongScreen::listTop(kInstrumentCount, false) == SongScreen::kListBottom - SongScreen::listH(kInstrumentCount, false) && SongScreen::listTop(kInstrumentCount, false) > ui::kTopBarH);
-    CHECK(SongScreen::listPitch(kInstrumentCount, false) == SongScreen::kInstrumentPitch && SongScreen::listPitch(kInstrumentCount, true) == 47 && SongScreen::listPitch(6, true) == SongScreen::kInstrumentPitch);
+    // (Eight since CLOUD: they close up adding a track too, to 46, and to 41 with the words, each box a pixel short.)
+    CHECK(SongScreen::listPitch(7, false) == SongScreen::kInstrumentPitch && SongScreen::listPitch(7, true) == 47 && SongScreen::listPitch(6, true) == SongScreen::kInstrumentPitch);
+    CHECK(SongScreen::listPitch(kInstrumentCount, false) == 46 && SongScreen::listPitch(kInstrumentCount, true) == 41 && SongScreen::rowH(kInstrumentCount, true) == 40 && SongScreen::rowH(6, false) == 46);
     rig.tap(B);
     CHECK(!says() && rig.project().tracks[1].kind == TrackKind::Phazed);
     // Adding a track loses nothing: nothing said.
@@ -9412,7 +9415,7 @@ void testPhysicOnATrack() {
     CHECK(std::string(text) == "2 PHYSIC" && isSynth(track.kind));
     const InstrumentInfo* info = instrument(TrackKind::Physic);
     CHECK(info && std::string(info->word) == "physic" && std::string(info->presetEnding) == ".physic" && info->synth == SynthKind::Physic);
-    CHECK(&kInstruments[kInstrumentCount - 2] == info && trackKindFromWord("physic") == TrackKind::Physic); // (ACID after it)
+    CHECK(&kInstruments[kInstrumentCount - 3] == info && trackKindFromWord("physic") == TrackKind::Physic); // (ACID and CLOUD after it)
     // On MARIMBA, its first preset, and it plays.
     const PhysicPatch first = Physic::presetPatch(0);
     CHECK(track.preset == 0 && std::string(physicSpec().presetName(0)) == "Marimba" && std::equal(first.value, first.value + physic::kSettings, track.physic.value));
@@ -9741,7 +9744,7 @@ void testAcidOnATrack() {
     CHECK(std::string(text) == "2 ACID" && isSynth(track.kind));
     const InstrumentInfo* info = instrument(TrackKind::Acid);
     CHECK(info && std::string(info->word) == "acid" && std::string(info->presetEnding) == ".acid" && info->synth == SynthKind::Acid);
-    CHECK(&kInstruments[kInstrumentCount - 1] == info && trackKindFromWord("acid") == TrackKind::Acid);
+    CHECK(&kInstruments[kInstrumentCount - 2] == info && trackKindFromWord("acid") == TrackKind::Acid); // (CLOUD after it)
     CHECK(std::string(info->about) == "mono bass, after a classic bass line box");
     const AcidPatch first = Acid::presetPatch(0);
     CHECK(track.preset == 0 && std::string(acidSpec().presetName(0)) == "Classic Saw" && std::equal(first.value, first.value + acid::kSettings, track.acid.value));
@@ -9873,6 +9876,242 @@ void testAcidOnATrack() {
     CHECK(parseSong(written, *again));
     CHECK(again->tracks[1].kind == TrackKind::Acid && again->tracks[1].preset == 1 && std::equal(track.acid.value, track.acid.value + acid::kSettingRoom, again->tracks[1].acid.value));
     CHECK(near(again->tracks[1].macro[acid::MacroSweep], 0.8f));
+}
+
+
+// CLOUD (granular-plan.md, batch 2): the eighth instrument, last in the list. A new track is on Soft
+// Cloud and plays the built-in TONE; it takes a recording as the sampler does (the list, the song
+// file's `sound` line, its uses, a delete, a rename, CATCH), its three pages and readings, its macros
+// (none a choice), ROLL on Y, undo, MAIN's picture with the grains, a player's own preset.
+void testCloudOnATrack() {
+    Rig rig;
+    Session& session = rig.app.session();
+    const std::string folder = tempFolder("cloud");
+    session.useSongFolder(folder + "/songs", 7u);
+    session.useSampleFolder(folder + "/samples");
+    mkdir((folder + "/samples").c_str(), 0755);
+    std::vector<float> wave(48000);
+    for (std::size_t i = 0; i < wave.size(); ++i) wave[i] = static_cast<float>(0.5 * std::sin(6.283185307 * 220.0 * i / 48000.0));
+    CHECK(writeWav(folder + "/samples/hum.wav", wave, 48000) && writeWav(folder + "/samples/buzz.wav", wave, 48000));
+
+    session.view = View::Song;
+    rig.app.song().moveCursorTo(0, rig.project().trackCount());
+    rig.tap(A);
+    rig.tap(DOWN, 6); // PHAZED > JAX-EP > SAMPLER > FM-6 > PHYSIC > ACID > CLOUD
+    rig.tap(A);
+    CHECK(rig.project().trackCount() == 2 && rig.project().tracks[1].kind == TrackKind::Cloud);
+    TrackData& track = rig.project().tracks[1];
+    rig.project().track = 1;
+    char text[48];
+    ui::trackName(rig.project(), 1, text, sizeof text);
+    CHECK(std::string(text) == "2 CLOUD" && isSynth(track.kind) && holdsRecording(track.kind) && holdsRecording(TrackKind::Sampler) && !holdsRecording(TrackKind::Acid));
+    const InstrumentInfo* info = instrument(TrackKind::Cloud);
+    CHECK(info && std::string(info->word) == "cloud" && std::string(info->presetEnding) == ".cloud" && info->synth == SynthKind::Cloud);
+    CHECK(&kInstruments[kInstrumentCount - 1] == info && trackKindFromWord("cloud") == TrackKind::Cloud);
+    CHECK(std::string(info->about) == "clouds of grains from your recordings");
+    const CloudPatch first = Cloud::presetPatch(0);
+    CHECK(track.preset == 0 && std::string(cloudSpec().presetName(0)) == "Soft Cloud" && std::equal(first.value, first.value + cloud::kSettings, track.cloud.value));
+    CHECK(settingCount(TrackKind::Cloud) == 17 && presetSettingCount(TrackKind::Cloud) == 17 && shownSettingCount(TrackKind::Cloud) == 17);
+    CHECK(builtInPresets(TrackKind::Cloud) >= Cloud::presetCount() && !track.sample[0]);
+    // No recording: the TONE plays, and its grains are there for the picture.
+    session.audition(1, 60, 0.9f);
+    CHECK(rig.listen(9600) > 0.01f);
+    float places[kGrainsShown];
+    CHECK(rig.engine->grainPlaces(1, places, kGrainsShown) > 0);
+    rig.render(48000);
+
+    // A recording, as the sampler takes one: kept, read, counted, renamed, deleted.
+    session.setTrackSample(1, "hum");
+    CHECK(std::string(track.sample) == "hum" && session.trackSound(1).seconds > 0.9f && !session.trackSound(1).missing);
+    CHECK(session.sampleUses("hum") == 1 && session.sampleUses("buzz") == 0);
+    session.audition(1, 60, 0.9f);
+    CHECK(rig.listen(9600) > 0.01f);
+    rig.render(48000);
+    // The song file says it with the sampler's line, before the synth's.
+    std::unique_ptr<Project> again(new Project);
+    std::string written = songText(rig.project());
+    CHECK(written.find("\ntrack cloud\nsound hum\npreset 1\n") != std::string::npos);
+    CHECK(parseSong(written, *again) && again->tracks[1].kind == TrackKind::Cloud && std::string(again->tracks[1].sample) == "hum");
+    // A rename follows it; a delete takes it away (the TONE again).
+    session.recordingChanged("hum", "drone");
+    CHECK(std::string(track.sample) == "drone");
+    session.recordingChanged("drone", "hum");
+    CHECK(session.deleteSample("hum") && !track.sample[0] && session.sampleUses("hum") == 0);
+
+    // The device screen: MAIN, then SOURCE (RECORDING first), GRAINS, PLAY.
+    session.view = View::Device;
+    rig.frames(2);
+    SynthScreen& screen = rig.app.cloud();
+    screen.goTo(0, SynthScreen::kAdvanced);
+    rig.tap(A);
+    CHECK(screen.page() == 1 && screen.pageCount() == 4 && screen.onRecording() && screen.settingHere() == SynthScreen::kRecordingId);
+    // Hold A + up: the next recording ("buzz", the one left), heard; down: none again.
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(std::string(track.sample) == "buzz" && !screen.picker().isOpen());
+    rig.key(A, true);
+    rig.tap(DOWN);
+    rig.key(A, false);
+    CHECK(!track.sample[0]);
+    // A tap: the list of recordings; A on a recording puts it on and closes it.
+    rig.tap(A);
+    CHECK(screen.picker().isOpen());
+    while (screen.picker().under() && screen.picker().under()->name != "buzz") rig.tap(DOWN);
+    rig.tap(A);
+    rig.frames(2);
+    CHECK(!screen.picker().isOpen() && std::string(track.sample) == "buzz");
+    // Y on the page: CATCH, the last bar the engine played (the keys heard above) as this track's recording.
+    rig.tap(Y);
+    CHECK(screen.said().find("CAUGHT THE LAST BAR AS") == 0 && std::string(track.sample).find("catches/") == 0 && session.trackSound(1).seconds > 0.f);
+    rig.frames(200);
+    CHECK(screen.said().empty());
+    session.setTrackSample(1, "buzz");
+    // RIGHT: POSITION; R1 there turns the page (on RECORDING it records: no input here, said so).
+    rig.tap(RIGHT);
+    CHECK(screen.settingHere() == cloud::Position);
+    rig.tap(R1);
+    CHECK(screen.page() == 2 && screen.settingHere() == cloud::Size);
+    rig.tap(R1);
+    CHECK(screen.page() == 3 && screen.settingHere() == cloud::PitchSpray);
+    rig.tap(R1);
+    CHECK(screen.page() == 1 && screen.onRecording());
+    rig.tap(R1);
+    CHECK(screen.page() == 1 && screen.said().find("NO INPUT FOUND") == 0);
+    const SynthSpec& spec = cloudSpec();
+    int seen[cloud::kSettings] = {};
+    for (int page = 1; page < spec.pages; ++page)
+        for (int i = 0; i < spec.itemCount(page); ++i) {
+            int id = -1;
+            const char* name = "";
+            spec.item(page, i, id, name);
+            CHECK(id >= 0 && id < cloud::kSettings && name[0]);
+            if (id >= 0 && id < cloud::kSettings) ++seen[id];
+        }
+    for (int id = 0; id < cloud::kSettings; ++id) CHECK(seen[id] == 1);
+    CHECK(spec.pages == 4 && std::string(spec.pageNames[1]) == "SOURCE" && std::string(spec.pageNames[2]) == "GRAINS" && std::string(spec.pageNames[3]) == "PLAY" && spec.recording);
+    const char* const lanes[kSynthMacros] = {"POSITION", "SPRAY", "SIZE", "DENSITY", "SCAN", "PITCH", "SHAPE", "REVERSE"}; // the engine's lanes (cloud::Macro)
+    for (int m = 0; m < kSynthMacros; ++m) CHECK(std::string(spec.macroNames[m]) == lanes[m]);
+    CHECK(cloud::macroSetting(cloud::MacroScan) == cloud::Scan && cloud::macroSetting(cloud::MacroPitchSpray) == cloud::PitchSpray);
+    for (int id = 0; id < cloud::kSettings; ++id) CHECK(spec.settingMin(id) == cloud::settingMin(id) && spec.settingMax(id) == cloud::settingMax(id));
+
+    // Its settings read in their units.
+    const auto reads = [&](int id, int value) { spec.settingText(id, value, text, sizeof text); return std::string(text); };
+    CHECK(reads(cloud::Position, 25) == "25%" && reads(cloud::Spray, 0) == "OFF" && reads(cloud::Spray, 10) == "+-0.5%" && reads(cloud::Spray, 100) == "+-50%");
+    CHECK(reads(cloud::Size, 0) == "5 MS" && reads(cloud::Size, 60) == "120 MS" && reads(cloud::Size, 100) == "1.0 S");
+    CHECK(reads(cloud::Density, 0) == "1.0 HZ" && reads(cloud::Density, 52) == "16 HZ" && reads(cloud::Density, 100) == "200 HZ");
+    CHECK(reads(cloud::Shape, 0) == "PLUCK" && reads(cloud::Shape, 50) == "SMOOTH" && reads(cloud::Shape, 100) == "SWELL" && reads(cloud::Shape, 30) == "PEAK 30%");
+    CHECK(reads(cloud::PitchSpray, 0) == "OFF" && reads(cloud::PitchSpray, 50) == "+-300 CENTS" && reads(cloud::PitchSpray, 100) == "+-1200 CENTS");
+    CHECK(reads(cloud::PitchSteps, 0) == "FREE" && reads(cloud::PitchSteps, 1) == "OCTAVES" && reads(cloud::PitchSteps, 2) == "FIFTHS");
+    CHECK(reads(cloud::Scan, 50) == "FREEZE" && reads(cloud::Scan, 75) == "+1.00X" && reads(cloud::Scan, 0) == "-2.00X");
+    CHECK(reads(cloud::Root, 60) == "C4" && reads(cloud::Root, 69) == "A4" && reads(cloud::Tune, -100) == "-100 CENTS");
+    CHECK(reads(cloud::Attack, 8) == "2 MS" && reads(cloud::Release, 54) == "289 MS" && reads(cloud::Level, 100) == "0.0 DB" && reads(cloud::Level, 0) == "OFF");
+    CHECK(reads(cloud::Reverse, 0) == "OFF" && reads(cloud::Velocity, 50) == "50%" && reads(cloud::Stereo, 40) == "40%");
+    // The macros: none a choice, each -100 to +100, each takes a MOD.
+    for (int m = 0; m < kSynthMacros; ++m) CHECK(!macroIsChoice(TrackKind::Cloud, m) && modTargetFits(track, kModFirstMacro + m));
+
+    // Y on MAIN rolls a new cloud: the grains' settings, never the recording, POSITION, SCAN, ROOT,
+    // TUNE, the envelope or the levels. One step of undo.
+    rig.tap(B);
+    screen.goTo(0, SynthScreen::kPreset);
+    rig.frames(60);
+    const CloudPatch before = track.cloud;
+    const int stepsWere = session.undoSteps();
+    rig.tap(Y);
+    rig.frames(60);
+    bool moved = false;
+    for (int id : {cloud::Spray, cloud::Size, cloud::Density, cloud::Scatter, cloud::Shape, cloud::Stereo}) moved = moved || track.cloud.value[id] != before.value[id];
+    CHECK(moved && spec.roll && std::string(track.sample) == "buzz");
+    for (int id : {cloud::Position, cloud::Scan, cloud::Root, cloud::Tune, cloud::Attack, cloud::Release, cloud::Level, cloud::Velocity}) CHECK(track.cloud.value[id] == before.value[id]);
+    for (unsigned seed = 0; seed < 200; ++seed) {
+        CHECK(session.rollSynth(1, seed));
+        for (int id = 0; id < cloud::kSettings; ++id) CHECK(track.cloud.value[id] >= cloud::settingMin(id) && track.cloud.value[id] <= cloud::settingMax(id));
+    }
+    rig.frames(60);
+    CHECK(session.undoSteps() >= stepsWere + 1 && session.undo());
+
+    // A player's own preset goes over the FIRST preset's sound, and keeps the track's recording.
+    setUserPresets(TrackKind::Cloud, {UserPreset{"MY FOG", {70, 30}, {0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f}}});
+    session.chooseSynthPreset(1, 1);
+    session.chooseSynthPreset(1, builtInPresets(TrackKind::Cloud));
+    CHECK(std::string(cloudSpec().presetCategory(track.preset)) == "USER" && track.cloud.value[cloud::Position] == 70 && track.cloud.value[cloud::Spray] == 30);
+    for (int id = cloud::Size; id < cloud::kSettingRoom; ++id) CHECK(track.cloud.value[id] == first.value[id]);
+    CHECK(std::string(track.sample) == "buzz");
+    setUserPresets(TrackKind::Cloud, {});
+
+    // A song keeps a CLOUD track: its kind, its recording, its preset and every number of its sound.
+    session.chooseSynthPreset(1, 2);
+    session.setSynthSetting(1, cloud::Scan, 80);
+    track.macro[cloud::MacroDensity] = 0.8f;
+    written = songText(rig.project());
+    CHECK(parseSong(written, *again));
+    CHECK(again->tracks[1].kind == TrackKind::Cloud && again->tracks[1].preset == 2 && std::string(again->tracks[1].sample) == "buzz");
+    CHECK(std::equal(track.cloud.value, track.cloud.value + cloud::kSettingRoom, again->tracks[1].cloud.value) && near(again->tracks[1].macro[cloud::MacroDensity], 0.8f));
+    // A sampler given the CLOUD keeps the recording, and the other way.
+    CHECK(session.setTrackKind(1, TrackKind::Sampler) && std::string(track.sample) == "buzz");
+    CHECK(session.setTrackKind(1, TrackKind::Cloud) && std::string(track.sample) == "buzz" && session.trackSound(1).seconds > 0.9f);
+}
+
+// CLOUD's hints fit the bar at 0 over, on MAIN and its three pages, A held and not, with either help;
+// MAIN says HOLD X on every macro and Y off them; RECORDING says its list, R1 and Y. MAIN's picture
+// has a brass POSITION line and, while a key sounds, teal ticks; LIVE OUTPUT still below the macros.
+void testCloudsHintsFit() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    std::unique_ptr<Rig> rig(new Rig);
+    CHECK(rig->app.session().addTrack(TrackKind::Cloud));
+    rig->project().track = 1;
+    rig->app.session().view = View::Device;
+    SynthScreen& screen = rig->app.cloud();
+    CHECK(screen.pageCount() == 4);
+    int states = 0;
+    for (int menu = 0; menu < 2; ++menu)
+        for (int page = 0; page < screen.pageCount(); ++page) {
+            const int stops = page == 0 ? SynthScreen::kMainStops : cloudSpec().itemCount(page) + (page == 1 ? 1 : 0);
+            for (int cursor = 0; cursor < stops; ++cursor)
+                for (int held = 0; held < 2; ++held) {
+                    screen.goTo(page, cursor);
+                    if (held) rig->key(A, true);
+                    rig->frames(1);
+                    ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP";
+                    canvas.clear();
+                    rig->app.draw(canvas.r, fonts);
+                    ++states;
+                    if (ui::gHintsOver != 0.f) {
+                        std::printf("FAIL CLOUD's hints: page %d stop %d, A %s: %.0f pixels over\n", page, cursor, held ? "held" : "up", static_cast<double>(ui::gHintsOver));
+                        ++failures;
+                    }
+                    if (!held && page == 0) {
+                        const bool macro = cursor >= SynthScreen::kFirstMacro && cursor < SynthScreen::kAdvanced;
+                        CHECK(hintKeyed(canvas, scratch, "Y", "new sound") == !macro);
+                        if (macro) CHECK(hintKeyed(canvas, scratch, "HOLD X", "mod"));
+                    }
+                    if (!held && page == 1 && cursor == 0) CHECK(hintKeyed(canvas, scratch, "A", "list") && hintKeyed(canvas, scratch, "R1", "record") && hintKeyed(canvas, scratch, "Y", "catch"));
+                    if (held) rig->key(A, false);
+                    rig->frames(1);
+                }
+        }
+    CHECK(states == 2 * 2 * (SynthScreen::kMainStops + cloud::kSettings + 1));
+    // MAIN's picture: POSITION's brass line where POSITION (25%) puts it; the ticks of a key sounding.
+    screen.goTo(0, SynthScreen::kPreset);
+    const int px = 10, pw = ui::kScreenW - 20, y = SynthScreen::kPictureY;
+    const auto drawn = [&] { rig->frames(1); canvas.clear(); rig->app.draw(canvas.r, fonts); };
+    drawn();
+    const int brassX = px + static_cast<int>(0.25f * (pw - 2));
+    CHECK(canvas.is(brassX, y + SynthScreen::kPictureH / 2, ui::kBrass));
+    int ticks = 0;
+    for (int x = px; x < px + pw; ++x) ticks += canvas.is(x, y + 4, ui::kTeal) ? 1 : 0;
+    CHECK(ticks == 0);
+    Command c;
+    c.type = Command::NoteOn, c.track = 1, c.a = 60, c.value = 0.9f;
+    rig->engine->send(c);
+    rig->render(9600);
+    drawn();
+    for (int x = px; x < px + pw; ++x) ticks += canvas.is(x, y + 4, ui::kTeal) ? 1 : 0;
+    CHECK(ticks >= 2);
+    CHECK(SynthScreen::kPicAdvancedY + SynthScreen::kAdvancedH <= ui::kAboveScope && SynthScreen::kPicMacroH >= 60);
 }
 
 // ACID's hints fit the bar at 0 over, on MAIN and both pages, A held and not, with either help; MAIN
@@ -10057,6 +10296,12 @@ int main(int argc, char** argv) {
         std::printf(failures ? "%d check(s) failed\n" : "ACID's tests passed\n", failures);
         return failures ? 1 : 0;
     }
+    if (argc > 1 && std::string(argv[1]) == "--cloud") { // just CLOUD's own
+        testCloudOnATrack();
+        testCloudsHintsFit();
+        std::printf(failures ? "%d check(s) failed\n" : "CLOUD's tests passed\n", failures);
+        return failures ? 1 : 0;
+    }
     if (argc > 1 && std::string(argv[1]) == "--undo") { // just undo kept through a resync, a delete, another instrument
         testAResyncKeepsUndo();
         testATrackDeletedOrChangedKeepsUndo();
@@ -10213,6 +10458,8 @@ int main(int argc, char** argv) {
     testAcidsHintsFit();
     testAcidsAccentMark();
     testAnAcidLine();
+    testCloudOnATrack();
+    testCloudsHintsFit();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

@@ -930,14 +930,14 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fonts.small.draw(r, x + 12.f, y + 12.f, text, kDim);
         for (int i = 0; i < kInstrumentCount; ++i) {
             const InstrumentInfo& info = kInstruments[i];
-            const int by = y + 36 + i * listPitch(kInstrumentCount, changing_ >= 0);
+            const int by = y + 36 + i * listPitch(kInstrumentCount, changing_ >= 0), bh = rowH(kInstrumentCount, changing_ >= 0);
             char about[64];
             if (info.countPresets) std::snprintf(about, sizeof about, "%s, %d presets", info.about, builtInPresets(info.kind));
             else std::snprintf(about, sizeof about, "%s", info.about);
-            box(r, x + 12, by, w - 24, 46, kPanel2, kLine);
-            fonts.large.draw(r, x + 24.f, by + 9.f, info.listName, i == choice_ ? kTeal : kText);
-            fonts.within(&Fonts::small, about, w - 48.f).draw(r, x + 24.f, by + 29.f, about, kDim); // (the longest at XL: held at LARGE)
-            if (i == choice_) outline(r, x + 11, by - 1, w - 22, 48, kTeal, 2);
+            box(r, x + 12, by, w - 24, bh, kPanel2, kLine);
+            fonts.large.draw(r, x + 24.f, by + 9.f * bh / 46.f, info.listName, i == choice_ ? kTeal : kText);
+            fonts.within(&Fonts::small, about, w - 48.f).draw(r, x + 24.f, by + bh - 17.f, about, kDim); // (the longest at XL: held at LARGE)
+            if (i == choice_) outline(r, x + 11, by - 1, w - 22, bh + 2, kTeal, 2);
         }
         if (changing_ >= 0 && kInstruments[choice_].kind != project_.tracks[changing_].kind) { // (A on the one it has changes nothing)
             const float ly = y + 36.f + kInstrumentCount * static_cast<float>(listPitch(kInstrumentCount, true)) + 4.f;

@@ -52,7 +52,7 @@ int Session::sampleUses(const std::string& name) const {
     for (int t = 0; t < kNumTracks; ++t) {
         const TrackData& track = project.tracks[t];
         for (int lane = 0; lane < kDrumLanes; ++lane) uses += track.kind == TrackKind::Drums && name == track.laneSample[lane];
-        uses += track.kind == TrackKind::Sampler && name == track.sample;
+        uses += holdsRecording(track.kind) && name == track.sample;
     }
     return uses;
 }
@@ -70,7 +70,7 @@ bool Session::deleteSample(const std::string& name) {
         TrackData& track = project.tracks[t];
         for (int lane = 0; lane < kDrumLanes; ++lane)
             if (track.kind == TrackKind::Drums && name == track.laneSample[lane]) setLaneSample(t, lane, "");
-        if (track.kind == TrackKind::Sampler && name == track.sample) setTrackSample(t, "");
+        if (holdsRecording(track.kind) && name == track.sample) setTrackSample(t, "");
     }
     return true;
 }
@@ -146,7 +146,7 @@ void Session::recordingChanged(const std::string& from, const std::string& to) {
     if ((from.empty() && to.empty()) || (!from.empty() && !sampleNameOk(from)) || (!to.empty() && !sampleNameOk(to))) return;
     for (int t = 0; t < kNumTracks; ++t) {
         TrackData& track = project.tracks[t];
-        const bool sampler = track.kind == TrackKind::Sampler;
+        const bool sampler = holdsRecording(track.kind); // (a sampler or a CLOUD: one recording)
         if (!sampler && track.kind != TrackKind::Drums) continue;
         for (int lane = 0; lane < (sampler ? 1 : kDrumLanes); ++lane) { // a sampler has one recording, kept where lane 0's sound is
             char* name = sampler ? track.sample : track.laneSample[lane];
@@ -171,7 +171,7 @@ int Session::findMissing(const std::string& label) {
     std::vector<Lost> lost;
     for (int t = 0; t < kNumTracks; ++t) {
         const TrackData& track = project.tracks[t];
-        const bool sampler = track.kind == TrackKind::Sampler;
+        const bool sampler = holdsRecording(track.kind); // (a sampler or a CLOUD: one recording)
         if (!sampler && track.kind != TrackKind::Drums) continue;
         for (int lane = 0; lane < (sampler ? 1 : kDrumLanes); ++lane) {
             const char* name = sampler ? track.sample : track.laneSample[lane];
@@ -183,7 +183,7 @@ int Session::findMissing(const std::string& label) {
     const std::vector<std::string> have = wavNames(sampleFolder_); // once, however many are missing
     int found = 0;
     for (const Lost& one : lost) {
-        const bool sampler = project.tracks[one.track].kind == TrackKind::Sampler;
+        const bool sampler = holdsRecording(project.tracks[one.track].kind);
         char* name = sampler ? project.tracks[one.track].sample : project.tracks[one.track].laneSample[one.lane];
         const auto read = [&] { sampler ? loadTrackSample(one.track) : loadLane(one.track, one.lane); };
         const std::string was = name, base = sampleLabel(was);
@@ -416,7 +416,7 @@ Session::Rec Session::toggleRecording(int track, int lane) {
     lastRecorded_.clear();
     if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return rec_;
     const TrackKind kind = project.tracks[track].kind;
-    if (kind != TrackKind::Drums && kind != TrackKind::Sampler) return rec_;
+    if (kind != TrackKind::Drums && !holdsRecording(kind)) return rec_;
     if (sampleFolder_.empty() || !input_ || !input_->start()) return rec_ = Rec::NoInput;
     recTrack_ = track;
     recLane_ = lane;
@@ -440,7 +440,7 @@ void Session::finishRecording() {
     }
     if (!writeWav(sampleFolder_ + "/" + name + ".wav", take, static_cast<int>(kSampleRate))) return;
     lastRecorded_ = name;
-    if (project.tracks[recTrack_].kind == TrackKind::Sampler) setTrackSample(recTrack_, name);
+    if (holdsRecording(project.tracks[recTrack_].kind)) setTrackSample(recTrack_, name);
     else if (project.tracks[recTrack_].kind == TrackKind::Drums) setLaneSample(recTrack_, recLane_, name);
 }
 
@@ -472,7 +472,7 @@ void Session::loadTrackSample(int track) {
 }
 
 void Session::setTrackSample(int track, const std::string& name) {
-    if (track < 0 || track >= kNumTracks || project.tracks[track].kind != TrackKind::Sampler) return;
+    if (track < 0 || track >= kNumTracks || !holdsRecording(project.tracks[track].kind)) return;
     std::snprintf(project.tracks[track].sample, sizeof project.tracks[track].sample, "%s", name.c_str());
     loadTrackSample(track);
 }
@@ -492,7 +492,7 @@ void Session::setSamplerSetting(int track, int id, int value) {
 
 std::string Session::catchLastBar(int track, int lane) {
     if (sampleFolder_.empty() || track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return "";
-    const bool sampler = project.tracks[track].kind == TrackKind::Sampler; // its one recording; the lane does not matter
+    const bool sampler = holdsRecording(project.tracks[track].kind); // its one recording; the lane does not matter
     if (!sampler && project.tracks[track].kind != TrackKind::Drums) return "";
     const std::vector<float> bar = engine.lastBar();
     float peak = 0.f;

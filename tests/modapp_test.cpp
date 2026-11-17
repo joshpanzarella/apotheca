@@ -121,9 +121,9 @@ void testTheSessionHoldsAMod() {
     Session& session = rig.session();
     Project& project = rig.project();
     CHECK(session.addTrack(TrackKind::Phazed) && session.addTrack(TrackKind::Fm6) && session.addTrack(TrackKind::Sampler) && session.addTrack(TrackKind::Jx3p) &&
-          session.addTrack(TrackKind::Physic) && session.addTrack(TrackKind::Acid));
+          session.addTrack(TrackKind::Physic) && session.addTrack(TrackKind::Acid) && session.addTrack(TrackKind::Cloud));
     rig.settle();
-    for (int t = 0; t < 6; ++t)
+    for (int t = 0; t < 8; ++t)
         for (int m = 0; m < kModsPerTrack; ++m) CHECK(blank(session.modData(t, m)));
     CHECK(rig.onlyAt(0, -1, 0.f));
 
@@ -167,6 +167,7 @@ void testTheSessionHoldsAMod() {
         CHECK(blank(project.tracks[5].mods[0]) == (macro >= 7));
         if (macro < 7) CHECK(rig.onlyAt(5, macro, 0.5f));
         CHECK(session.setMod(6, 0, square(macro, 0.5f)) && rig.onlyAt(6, macro, 0.5f)); // ACID: every one an amount
+        CHECK(session.setMod(7, 0, square(macro, 0.5f)) && rig.onlyAt(7, macro, 0.5f)); // CLOUD: every one an amount (a sampler's: none)
         CHECK(blank(project.tracks[0].mods[0]) && blank(project.tracks[3].mods[0]));
         CHECK(blank(project.tracks[1].mods[0]) == (macro >= 6) && !blank(project.tracks[2].mods[1]));
     }
@@ -183,9 +184,9 @@ void testTheSessionHoldsAMod() {
     }
     // No such track, no such MOD, a track with nothing on it.
     CHECK(!session.setMod(-1, 0, square(20, 0.5f)) && !session.setMod(kNumTracks, 0, square(20, 0.5f)) && !session.setMod(kMasterTrack, 0, square(20, 0.5f)));
-    CHECK(!session.setMod(0, -1, square(20, 0.5f)) && !session.setMod(0, kModsPerTrack, square(20, 0.5f)) && !session.setMod(7, 0, square(20, 0.5f)));
-    CHECK(blank(project.tracks[7].mods[0]) && blank(session.modData(-3, 0)) && blank(session.modData(0, 5)));
-    CHECK(!session.setMod(7, 0, ModSettings())); // (OFF asked of a track with nothing: there is no such MOD)
+    CHECK(!session.setMod(0, -1, square(20, 0.5f)) && !session.setMod(0, kModsPerTrack, square(20, 0.5f)) && !session.setMod(8, 0, square(20, 0.5f)));
+    CHECK(blank(project.tracks[8].mods[0]) && blank(session.modData(-3, 0)) && blank(session.modData(0, 5)));
+    CHECK(!session.setMod(8, 0, ModSettings())); // (OFF asked of a track with nothing: there is no such MOD)
     // What it holds already, asked again: nothing is sent.
     CHECK(session.setMod(1, 0, square(4, 0.5f)));
     rig.render(1000);

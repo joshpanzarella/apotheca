@@ -436,6 +436,19 @@ void theSession(Rig& rig, const std::string& samples) {
     rig.press(Y);
     rig.run(3000);
 
+    // CLOUD (granular-plan.md): MAIN's picture has a tick at each grain sounding, which move by
+    // themselves while a key sounds and go when it ends. At LEVEL 0 nothing is heard, so LIVE OUTPUT
+    // stands still and only the grains (the readout) say the picture moved.
+    rig.part = "a CLOUD's grains on MAIN's picture, at LEVEL 0";
+    rig.byHand([&] {
+        s.addTrack(TrackKind::Cloud);
+        rig.project().track = rig.project().trackCount() - 1;
+        s.setSynthSetting(rig.project().track, cloud::Level, 0);
+    });
+    rig.run(300);
+    rig.press(X); // a tap: heard a moment, then RELEASE, the grains going on under it
+    rig.run(3000);
+
     rig.part = "a synth's key heard on its page";
     rig.byHand([&] {
         s.addTrack(TrackKind::Phazed);
@@ -669,7 +682,7 @@ int main(int argc, char** argv) {
         const Reason reasons[] = {{kStirEvent, 1}, {kStirHeld, 1}, {kStirStick, 1}, {kStirPlaying, 1}, {kStirPlace, 1}, {kStirScope, 1},
                                   {kStirMeters, 1}, {kStirMidi, 1}, {kStirVolume, 1}, {kStirSaid, 1}, {kStirPanicNote, 2},
                                   {kStirUpdateSaid, 2}, {kStirFitting, 2}, {kStirRecording, 2}, {kStirBouncing, 2}, {kStirWifi, 2},
-                                  {kStirScreenSaid, 3}, {kStirPlayhead, 3}, {kStirPicker, 3}, {kStirButtonTest, 3}, {kStirAfter, 3}, {kStirLoad, 3}};
+                                  {kStirScreenSaid, 3}, {kStirPlayhead, 3}, {kStirPicker, 3}, {kStirButtonTest, 3}, {kStirAfter, 3}, {kStirLoad, 3}, {kStirGrains, 3}};
         // A reason that was never the only one on a pass changes nothing when taken away: it is not
         // run again, and is said as surviving. The others are run, and must fail.
         for (const Reason& r : reasons) {

@@ -8,6 +8,7 @@
 #include "apotheca/engine.hpp"
 #include "apotheca/physic.hpp"
 #include "apotheca/acid.hpp"
+#include "apotheca/cloud.hpp"
 #include "lane_edit.hpp"
 
 namespace apotheca {
@@ -201,10 +202,15 @@ inline float panAmount(int pan) { return static_cast<float>(pan) / static_cast<f
 // and stands where Twin Analog stood, whose tracks it takes: docs/plans/jx3p-plan.md, section 5. Fm6 is
 // FM-6 and stands where QMOD stood, whose tracks it takes too: docs/plans/fm6-plan.md. Physic is PHYSIC,
 // appended: docs/plans/physic-plan.md. Acid is ACID, appended after it: docs/plans/acid-plan.md.)
-enum class TrackKind { None, Drums, Phazed, Jx3p, Sampler, Fm6, Physic, Acid };
+enum class TrackKind { None, Drums, Phazed, Jx3p, Sampler, Fm6, Physic, Acid, Cloud }; // (Cloud: CLOUD, appended: docs/plans/granular-plan.md)
 // Played from the piano roll: everything but the drums. (What else there is
 // to know about each instrument is in instruments.hpp.)
 inline bool isSynth(TrackKind kind) { return kind != TrackKind::None && kind != TrackKind::Drums; }
+// A track that plays one recording, the track's `sample`: the sampler, and CLOUD (its grains are read
+// from it). Whatever means "this track holds a recording" (its uses, a delete, a rename, a file found
+// again, CATCH, RECORD, the song file's `sound` line) asks this; what means the sampler's own settings
+// asks for the sampler.
+inline bool holdsRecording(TrackKind kind) { return kind == TrackKind::Sampler || kind == TrackKind::Cloud; }
 
 struct TrackData {
     TrackKind kind = TrackKind::None;
@@ -237,13 +243,14 @@ struct TrackData {
     Fm6Patch fm6;                // when it is FM-6 (a new track's is its first preset: Session::addTrack)
     PhysicPatch physic;          // when it is PHYSIC (the same: its first preset, MARIMBA). Room for 26, 23 used
     AcidPatch acid;              // when it is ACID (the same: its first preset, Classic Saw). Room for 20, 14 used
+    CloudPatch cloud;            // when it is CLOUD (the same: its first preset, Soft Cloud). Room for 24, 17 used
     float macro[kSynthMacros];
     // Automation: [scene][lane][bar * 16 + step], or kAutoNone (see the engine's kAutoLanes).
     float automation[kMaxScenes][kAutoLanes][kAutoSteps];
     char name[11] = {};  // what the player calls the track ("BASS"); empty: its instrument's name
     bool muted = false;  // silent until unmuted; kept with the song
     bool solo = false;   // only soloed tracks are heard while any is; not kept with the song
-    char sample[64] = {};           // when it is a sampler: its recording's file name (as a lane's), or empty
+    char sample[64] = {};           // when it is a sampler or a CLOUD (holdsRecording): its recording's file name (as a lane's), or empty
     int sampler[sampler::kSettings]; // ...and its settings
 
     TrackData() {

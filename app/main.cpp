@@ -1295,6 +1295,31 @@ int main(int argc, char** argv) {
         } else {
             app.physic().goTo(0, SynthScreen::kFirstMacro + 1);
         }
+    } else if (std::strncmp(view, "cloud", 5) == 0) {
+        // A CLOUD track, added the way the Song screen adds one, on the TONE (no recording): MAIN with its
+        // picture, a macro lit ("cloud"); a page ("cloud-1" to "cloud-3": SOURCE, on RECORDING; GRAINS;
+        // PLAY); MAIN on the widest of its names ("cloud-long"); a key held, its grains ticked on the
+        // picture ("cloud-sounding").
+        app.session().addTrack(TrackKind::Cloud);
+        const int track = app.project().trackCount() - 1;
+        app.project().track = track;
+        app.session().view = View::Device;
+        if (std::strcmp(view, "cloud-long") == 0) {
+            int widest = 0;
+            for (int i = 1; i < cloudSpec().presetCount(); ++i)
+                if (std::strlen(cloudSpec().presetName(i)) > std::strlen(cloudSpec().presetName(widest))) widest = i;
+            app.session().chooseSynthPreset(track, widest);
+            app.cloud().goTo(0, SynthScreen::kPreset);
+        } else if (std::strcmp(view, "cloud-sounding") == 0) {
+            app.session().setSynthSetting(track, cloud::Density, 85);
+            app.session().setSynthSetting(track, cloud::Spray, 40);
+            app.session().auditionHeld(track, 60, kPlacedLevel, &app);
+            app.cloud().goTo(0, SynthScreen::kFirstMacro);
+        } else if (view[5] == '-') {
+            app.cloud().goTo(std::atoi(view + 6), 0);
+        } else {
+            app.cloud().goTo(0, SynthScreen::kFirstMacro + 1);
+        }
     } else if (std::strncmp(view, "acid", 4) == 0) {
         // An ACID track, added the way the Song screen adds one: MAIN, a macro lit ("acid"); a page
         // ("acid-1", "acid-2": SOUND, FILTER); SOUND on SLIDE at FIXED ("acid-fixed"); MAIN on the widest

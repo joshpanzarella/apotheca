@@ -78,6 +78,9 @@ public:
     static constexpr int listPitch(int instruments, bool changing) {
         return 46 + instruments * kInstrumentPitch + (changing ? kChangeLostH : 0) <= kListRoom ? kInstrumentPitch : (kListRoom - 46 - (changing ? kChangeLostH : 0)) / instruments;
     }
+    // A row's box: 46 high, or a pixel short of the pitch where the rows close up (eight since CLOUD:
+    // 46 adding a track, 41 with the words under them), its two lines placed within it.
+    static constexpr int rowH(int instruments, bool changing) { return listPitch(instruments, changing) - 1 < 46 ? listPitch(instruments, changing) - 1 : 46; }
     static constexpr int listH(int instruments, bool changing) { return 46 + instruments * listPitch(instruments, changing) + (changing ? kChangeLostH : 0); }
     static constexpr int listTop(int instruments, bool changing) {
         return kListBottom - listH(instruments, changing) < kListY ? kListBottom - listH(instruments, changing) : kListY;

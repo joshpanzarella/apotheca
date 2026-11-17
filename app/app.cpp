@@ -17,7 +17,7 @@ constexpr Uint32 kPanicNoteMs = 4000; // how long the notice stays once the butt
 
 App::App(Engine& engine)
     : project_(new Project), session_(engine, *project_), song_(session_), drums_(session_), notes_(session_), kit_(session_), fx_(session_), mods_(session_), sampler_(session_), settings_(session_),
-      phazed_(session_, phazedSpec()), jaxep_(session_, jx3pSpec()), fm6_(session_, fm6Spec()), physic_(session_, physicSpec()), acid_(session_, acidSpec()) {}
+      phazed_(session_, phazedSpec()), jaxep_(session_, jx3pSpec()), fm6_(session_, fm6Spec()), physic_(session_, physicSpec()), acid_(session_, acidSpec()), cloud_(session_, cloudSpec()) {}
 
 // The one screen that is up: by the tab, and for PATTERN and DEVICE by the
 // track's instrument.
@@ -34,6 +34,7 @@ Screen& App::screenNow() {
         if (kind == TrackKind::Fm6) return fm6_;
         if (kind == TrackKind::Physic) return physic_;
         if (kind == TrackKind::Acid) return acid_;
+        if (kind == TrackKind::Cloud) return cloud_;
         if (kind == TrackKind::Sampler) return sampler_;
         return kit_;
     case View::Effects: return fx_;
@@ -361,6 +362,9 @@ void App::readouts(Readouts& out) const {
     for (int track = kMasterTrack; track < kNumTracks; ++track)
         for (int slot = 0; slot < slotsOf(track); ++slot) out.meters.push_back(engine.effectMeter(track, slot));
     for (int i = 0; i < 3; ++i) out.load[i] = load_[i];
+    float places[kGrainsShown]; // the track up's CLOUD grains (MAIN's picture draws them)
+    const int grains = engine.grainPlaces(project_->track, places, kGrainsShown);
+    out.grains.assign(places, places + (grains > 0 ? grains : 0));
     out.midi[0] = static_cast<int>(session_.midiHeard());
     out.midi[1] = session_.midiKeyboards();
 }
