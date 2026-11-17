@@ -39,7 +39,8 @@
 //                  on a recording, else on the built-in kick)
 //                  kit-synth (the KIT page with four lanes of synth voices), kit-voice, kit-voice-held,
 //                  kit-voice-deleting, kit-voice-clap (a lane's VOICE view: KICK on TUNE, A held, B held;
-//                  CLAP, its empty places, on SPREAD)
+//                  CLAP, its empty places, on SPREAD), kit-voice-named (lane 6's CLAP on its voice
+//                  FINGER SNAP, the cursor on MODEL with A held: what LEFT / RIGHT do)
 //                  sampler, sampler-end (with --samples: a sampler track, START 12% and END 80%, the cursor on START / END)
 //   --hold-a, --hold-y, --on-name, --on-tempo, --dice, --paint, --paint-random
 //                  with --demo: a gesture held on the drum grid
@@ -71,6 +72,7 @@
 #include "version.hpp"
 #include "apotheca/engine.hpp"
 #include "app.hpp"
+#include "drum_voices.hpp"
 #include "redraw.hpp"
 #include "bench_run.hpp"
 #include "controls.hpp"
@@ -579,9 +581,14 @@ int main(int argc, char** argv) {
         session.setLaneSynth(0, 5, drumsynth::usualVoice(drumsynth::kClap));
         session.finishStretching();
         session.view = View::Device;
-        const bool clap = std::strcmp(view, "kit-voice-clap") == 0;
+        const bool named = std::strcmp(view, "kit-voice-named") == 0;
+        if (named)
+            for (int place = 0; place < voiceCount(drumsynth::kClap); ++place)
+                if (std::strcmp(voiceName(drumsynth::kClap, place), "FINGER SNAP") == 0) session.setLaneSynth(0, 5, voiceAt(drumsynth::kClap, place));
+        const bool clap = named || std::strcmp(view, "kit-voice-clap") == 0;
         app.kit().goTo(clap ? 5 : 0, KitScreen::kSound);
-        if (view[4] == 'v') app.kit().openVoice(clap ? drumsynth::kOwn : drumsynth::kTune);
+        if (view[4] == 'v') app.kit().openVoice(named ? KitScreen::kVoiceModel : clap ? drumsynth::kOwn : drumsynth::kTune);
+        if (named) pushKey(SDLK_x, true); // A held on MODEL
         if (std::strcmp(view, "kit-voice-held") == 0) pushKey(SDLK_x, true); // A held
         if (std::strcmp(view, "kit-voice-deleting") == 0) {
             pushKey(SDLK_z, true); // B held

@@ -206,7 +206,13 @@ is (a recording picked again is one press).
 
 ## 5. Presets (batch 3)
 
-**Minimal: each model's usual is its sound, and a short list of NAMED VOICES
+**As built (batch 3): 73 named voices, 5 to 8 a model, CLASSIC (the usual) first**,
+in `app/presets/drumvoices.inc` read by `app/drum_voices.cpp` (`voice WORD NAME`, then `set PLACE
+DIAL ...`). **A lane keeps its dials, not the voice's name or place**, so the list is NOT append-only.
+`drumsynthapp_test` (`testTheNamedVoices`) fails a line it cannot read, a voice that is the usual or
+another's, and two voices of a model that are alike (length within 1.3 times, brightness within 1.2
+and crest within 1.3: it caught seven pairs in the first draft). The VOICE view writes the voice's name
+in brass after the model while the dials are its. Planned below: **Minimal: each model's usual is its sound, and a short list of NAMED VOICES
 a model** as built-in data (`app/presets/drumvoices.inc`: `voice MODEL NAME
 v1..v8`, read by the presets reader's rules, append-only, `presets_test` reads
 it): KICK BOOM, PUNCH, DEEP, CLICK...; four to six a model, about 50 in

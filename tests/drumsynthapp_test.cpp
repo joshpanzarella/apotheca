@@ -22,6 +22,7 @@
 #include "apotheca/engine.hpp"
 #include "app.hpp"
 #include "canvas.hpp"
+#include "drum_voices.hpp"
 #include "lane_edit.hpp"
 #include "samples.hpp"
 #include "song_file.hpp"
@@ -565,6 +566,170 @@ void testTheVoiceView() {
     CHECK(!kit.voicing());
 }
 
+// ---- the named voices (batch 3) ------------------------------------------------------------------------
+
+// What a sound is like, in three numbers: how long it lasts (to 40 dB under its peak), how bright it is
+// (its first difference's level over its own), and how its peak stands over its level (crest).
+struct Like {
+    double seconds = 0, bright = 0, crest = 0;
+};
+Like likeOf(const std::vector<float>& s) {
+    Like l;
+    const float floor = peakOf(s) * 0.01f;
+    std::size_t last = 0;
+    double e = 0, d = 0;
+    for (std::size_t i = 0; i < s.size(); ++i) {
+        if (std::fabs(s[i]) > floor) last = i;
+        e += static_cast<double>(s[i]) * s[i];
+        if (i) d += (static_cast<double>(s[i]) - s[i - 1]) * (static_cast<double>(s[i]) - s[i - 1]);
+    }
+    l.seconds = static_cast<double>(last + 1) / kRate;
+    l.bright = e > 0 ? std::sqrt(d / e) : 0;
+    l.crest = e > 0 ? peakOf(s) / std::sqrt(e / static_cast<double>(last + 1)) : 0;
+    return l;
+}
+
+bool gMeasure = false;
+
+void testTheNamedVoices() {
+    const DrumVoiceData& data = drumVoices();
+    for (const std::string& p : data.problems) std::printf("  drumvoices.inc %s\n", p.c_str());
+    CHECK(data.problems.empty());
+    int all = 0;
+    for (int m = drumsynth::kNone + 1; m < drumsynth::kModels; ++m) {
+        const int count = voiceCount(m);
+        all += count - 1;
+        CHECK(count >= 6); // CLASSIC and five more at least
+        CHECK(voicePlaceOf(drumsynth::usualVoice(m)) == 0 && std::strcmp(voiceName(m, 0), kUsualVoiceName) == 0);
+        std::vector<Like> likes;
+        for (int place = 0; place < count; ++place) {
+            const drumsynth::Voice v = voiceAt(m, place);
+            CHECK(v.model == m && drumsynth::voiceHeld(v) == v && voicePlaceOf(v) == place);
+            CHECK(std::strlen(voiceName(m, place)) <= kVoiceNameMost);
+            const std::vector<float> s = drumsynth::make(v, kRate);
+            CHECK(!s.empty() && s.back() == 0.f && peakOf(s) <= drumsynth::kPeak && peakOf(s) > 0.99f * drumsynth::kPeak);
+            likes.push_back(likeOf(s));
+            if (gMeasure) std::printf("  %-7s %-12s %5.2f s  bright %.3f  crest %5.2f\n", drumsynth::modelName(m), voiceName(m, place), likes.back().seconds, likes.back().bright, likes.back().crest);
+        }
+        // Not flat: every two voices of a model are apart in at least one of the three, plainly.
+        for (int a = 0; a < count; ++a)
+            for (int b = a + 1; b < count; ++b) {
+                const Like& x = likes[static_cast<std::size_t>(a)];
+                const Like& y = likes[static_cast<std::size_t>(b)];
+                const auto apart = [](double p, double q, double by) { return p > q * by || q > p * by; };
+                const bool differ = apart(x.seconds, y.seconds, 1.3) || apart(x.bright, y.bright, 1.2) || apart(x.crest, y.crest, 1.3);
+                if (!differ) std::printf("  %s: %s and %s are alike\n", drumsynth::modelName(m), voiceName(m, a), voiceName(m, b));
+                CHECK(differ);
+            }
+        // ...and the whole list reaches far: its longest over its shortest, or its brightest over its darkest.
+        double lo = 1e9, hi = 0, dark = 1e9, light = 0;
+        for (const Like& l : likes) lo = std::min(lo, l.seconds), hi = std::max(hi, l.seconds), dark = std::min(dark, l.bright), light = std::max(light, l.bright);
+        CHECK(hi > 3.0 * lo || light > 2.0 * dark);
+    }
+    if (gMeasure) std::printf("  %d named voices\n", all);
+    CHECK(voiceCount(drumsynth::kNone) == 0 && voiceCount(drumsynth::kModels) == 0 && !voiceAt(drumsynth::kKick, 99).on() && std::strcmp(voiceName(drumsynth::kKick, -1), "") == 0);
+    drumsynth::Voice turned = drumsynth::usualVoice(drumsynth::kKick);
+    turned.dial[drumsynth::kTune] = 3;
+    CHECK(voicePlaceOf(turned) == -1 && voicePlaceOf(drumsynth::Voice()) == -1);
+    // The reader: what it takes, and every line it cannot.
+    const DrumVoiceData good = readDrumVoices("# a note\nvoice kick DEEP ONE   # after\nset TUNE 3  BEND 99\n\nvoice clap WIDE\nset TONE 100\n");
+    CHECK(good.problems.empty() && good.voices[drumsynth::kKick].size() == 1 && good.voices[drumsynth::kClap].size() == 1);
+    if (good.voices[drumsynth::kKick].size() == 1) {
+        drumsynth::Voice want = drumsynth::usualVoice(drumsynth::kKick);
+        want.dial[drumsynth::kTune] = 3;
+        want.dial[drumsynth::kOwn] = 99;
+        CHECK(good.voices[drumsynth::kKick][0].name == "DEEP ONE" && good.voices[drumsynth::kKick][0].voice == want);
+    }
+    const char* bad[] = {
+        "set TUNE 3\n",                              // no voice
+        "voice bongo LOW\n",                         // no such model
+        "voice kick low\n",                          // not capitals
+        "voice kick A NAME FAR TOO LONG\n",          // too long
+        "voice kick CLASSIC\nset TUNE 1\n",           // the usual's name
+        "voice kick ONE\nset TUNE 2\nvoice kick ONE\nset TUNE 4\n", // twice
+        "voice kick ONE\nset SPREAD 2\n",            // not KICK's
+        "voice clave ONE\nset TONE 2\n",             // CLAVE has no TONE
+        "voice kick ONE\nset TUNE 101\n",            // over 100
+        "voice kick ONE\nset TUNE x\n",              // not a number
+        "voice kick ONE\nset TUNE\n",                // no number
+        "voice kick ONE\n",                          // the usual voice
+        "voice kick ONE\nset TUNE 2\nvoice kick TWO\nset TUNE 2\n", // another's
+        "voice kick ONE\nset TUNE 2\nplay it\n",     // not understood
+    };
+    for (const char* text : bad) {
+        const DrumVoiceData d = readDrumVoices(text);
+        if (d.problems.empty()) std::printf("  not a problem: %s", text);
+        CHECK(!d.problems.empty());
+    }
+}
+
+void testPickingAVoice() {
+    Rig rig;
+    rig.session().view = View::Device;
+    rig.session().setLaneSynth(0, 2, voiceOf(drumsynth::kKick));
+    rig.frames(2);
+    KitScreen& kit = rig.app.kit();
+    kit.goTo(2, KitScreen::kSound);
+    rig.tap(A);
+    CHECK(kit.voicing() && kit.voicePlace() == KitScreen::kVoiceModel);
+    const int count = voiceCount(drumsynth::kKick);
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(Right);
+    CHECK(rig.kit().laneSynth[2] == voiceAt(drumsynth::kKick, 1));
+    rig.tap(Right, count + 2); // the last: the end stops
+    CHECK(rig.kit().laneSynth[2] == voiceAt(drumsynth::kKick, count - 1));
+    rig.tap(Left, 2);
+    CHECK(rig.kit().laneSynth[2] == voiceAt(drumsynth::kKick, count - 3));
+    rig.key(A, false);
+    rig.frames(1);
+    // A knob turned: no voice's dials. LEFT / RIGHT go on from the voice last picked.
+    rig.tap(Down);
+    rig.key(A, true);
+    rig.tap(Up);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(voicePlaceOf(rig.kit().laneSynth[2]) == -1);
+    rig.tap(Up); // MODEL
+    rig.key(A, true);
+    rig.tap(Right);
+    CHECK(rig.kit().laneSynth[2] == voiceAt(drumsynth::kKick, count - 2));
+    rig.tap(Left, count + 2);
+    CHECK(rig.kit().laneSynth[2] == drumsynth::usualVoice(drumsynth::kKick)); // CLASSIC, the first
+    // Another model: its list from CLASSIC.
+    rig.tap(Up);
+    CHECK(rig.kit().laneSynth[2] == drumsynth::usualVoice(drumsynth::kSnare));
+    rig.tap(Right);
+    CHECK(rig.kit().laneSynth[2] == voiceAt(drumsynth::kSnare, 1));
+    // Sideways with A held does nothing on a knob.
+    rig.key(A, false);
+    rig.frames(1);
+    rig.tap(Down);
+    const drumsynth::Voice before = rig.kit().laneSynth[2];
+    rig.key(A, true);
+    rig.tap(Right);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(rig.kit().laneSynth[2] == before);
+    // The voice's name, in brass, after the model; SYNTH when turned by hand.
+    rig.tap(Up);
+    {
+        Canvas canvas;
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(ui::gHintsOver == 0);
+    }
+    // One step of undo takes a pick back.
+    rig.frames(60);
+    rig.key(A, true);
+    rig.tap(Right);
+    rig.key(A, false);
+    rig.frames(60);
+    CHECK(rig.kit().laneSynth[2] == voiceAt(drumsynth::kSnare, 2));
+    CHECK(rig.session().undo());
+    rig.frames(4);
+    CHECK(rig.kit().laneSynth[2] == voiceAt(drumsynth::kSnare, 1));
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -576,10 +741,16 @@ int main(int argc, char** argv) {
     const Test tests[] = {
         {"testTheEnginePlaysIt", testTheEnginePlaysIt}, {"testOneOrTheOther", testOneOrTheOther}, {"testEditAndFit", testEditAndFit},
         {"testALongVoiceWaits", testALongVoiceWaits}, {"testTheSongFile", testTheSongFile}, {"testASongOpens", testASongOpens}, {"testUndo", testUndo},
-        {"testTheSoundColumn", testTheSoundColumn}, {"testTheVoiceView", testTheVoiceView},
+        {"testTheSoundColumn", testTheSoundColumn}, {"testTheVoiceView", testTheVoiceView}, {"testTheNamedVoices", testTheNamedVoices},
+        {"testPickingAVoice", testPickingAVoice},
     };
+    int named = 0;
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--measure") == 0) gMeasure = true;
+        else ++named;
+    }
     for (const Test& test : tests) {
-        bool wanted = argc < 2;
+        bool wanted = named == 0;
         for (int i = 1; i < argc; ++i) wanted = wanted || std::strcmp(argv[i], test.name) == 0;
         if (!wanted) continue;
         const int before = failures;
