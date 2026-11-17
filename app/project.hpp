@@ -9,6 +9,7 @@
 #include "apotheca/physic.hpp"
 #include "apotheca/acid.hpp"
 #include "apotheca/cloud.hpp"
+#include "apotheca/drum_synth.hpp"
 #include "lane_edit.hpp"
 
 namespace apotheca {
@@ -231,6 +232,8 @@ struct TrackData {
     char laneSample[kDrumLanes][64] = {}; // a recording on the lane in place of the built-in drum: its file's name ("kick", or "kicks/808" in a folder), or empty
     int laneFit[kDrumLanes] = {};         // stretch that recording to last this many steps at the song's tempo; 0: as recorded
     bool laneOneSlice[kDrumLanes] = {};   // each hit on the lane plays one slice of its sound and stops (false: it runs on to the next hit)
+    drumsynth::Voice laneSynth[kDrumLanes]; // DRUM SYNTH: a lane's sound made from a model and its knobs (apotheca/drum_synth.hpp), in
+                                          // place of a recording or the built-in drum; model 0 is none. A lane with one has no laneSample
     LaneEdit laneEdit[kDrumLanes];        // EDIT: what each lane does to its sound (START, END, GAIN...: lane_edit.hpp). The file is never written
     LaneFeel laneFeel[kDrumLanes];        // FEEL: each lane's HUMAN TIME and HUMAN LEVEL, 0..100 (apotheca/feel_rule.hpp). The track's,
                                           // not a scene's; live, nothing is written into the hits
