@@ -7,6 +7,7 @@
 //              engine told), and hold A + UP / DOWN / the stick on a SONG cell, its words and hints.
 //   scale      SCALE LOCK: the scales (scales.hpp), the song file's line, undo, the SET rows, the roll's
 //              cursor and carry, the chord in hand moved into the key.
+//   even       EVEN: the rule (euclidHit), Y held on a lane's name + R1 / L1, the turn, the words, undo, hints.
 //
 // `easy_test NAME...` runs just those sections.
 
@@ -752,6 +753,120 @@ void testTheRollKeepsToIt() {
     CHECK(c && c->root % 12 == 2 && std::string(c->name) == "D");
 }
 
+// ---- batch 5: EVEN -----------------------------------------------------------------------------------
+
+std::string laneSteps(Rig& rig, int lane) {
+    std::string out;
+    for (int step = 0; step < kSteps; ++step) out += rig.track(0).drums[rig.project().scene][rig.project().bar].level[lane][step] > 0.f ? 'x' : '.';
+    return out;
+}
+
+void testTheEvenRule() {
+    const auto row = [](int hits) {
+        std::string out;
+        for (int step = 0; step < 16; ++step) out += euclidHit(hits, step) ? 'x' : '.';
+        return out;
+    };
+    CHECK(row(0) == "................" && row(1) == "x..............." && row(4) == "x...x...x...x...");
+    CHECK(row(3) == "x.....x....x...." && row(5) == "x...x..x..x..x.." && row(16) == "xxxxxxxxxxxxxxxx");
+    for (int hits = 0; hits <= 16; ++hits) {
+        int n = 0, gapMost = 0, gapLeast = 99, last = -1, first = -1;
+        for (int step = 0; step < 16; ++step)
+            if (euclidHit(hits, step)) {
+                ++n;
+                if (last >= 0) gapMost = std::max(gapMost, step - last), gapLeast = std::min(gapLeast, step - last);
+                if (first < 0) first = step;
+                last = step;
+            }
+        CHECK(n == hits);
+        if (hits >= 2) {
+            const int round = first + 16 - last; // the gap round the bar's end
+            gapMost = std::max(gapMost, round), gapLeast = std::min(gapLeast, round);
+            CHECK(gapMost - gapLeast <= 1); // as even as sixteen steps allow
+        }
+    }
+}
+
+void testEvenOnALane() {
+    Rig rig;
+    Session& session = rig.session();
+    PatternScreen& drums = rig.app.drums();
+    rig.frames(2);
+    // Lane 3 (the open hat): a hit of the player's, quiet, on step 1.
+    drums.setStep(3, 0, 0.4f);
+    drums.setStep(3, 9, 1.f);
+    rig.settle();
+    drums.moveCursorTo(3, -1);
+    rig.key(Y, true);
+    rig.frames(1);
+    rig.tap(R1); // two hits now: three, even
+    CHECK(laneSteps(rig, 3) == "x.....x....x...." && rig.said() == "EVEN: 3 HITS");
+    rig.tap(R1);
+    CHECK(laneSteps(rig, 3) == "x...x...x...x...");
+    CHECK(drums.level(3, 0) == 0.4f && drums.level(3, 4) == kPlacedLevel); // (a hit that stays keeps what it had)
+    rig.tap(RIGHT); // turned a step later
+    CHECK(laneSteps(rig, 3) == ".x...x...x...x.." && rig.said() == "EVEN: 4 HITS, TURNED 1");
+    rig.tap(LEFT, 2);
+    CHECK(laneSteps(rig, 3) == "...x...x...x...x" && rig.said() == "EVEN: 4 HITS, TURNED 15");
+    rig.tap(L1); // one fewer, the turn kept
+    CHECK(laneSteps(rig, 3) == ".....x....x....x" && rig.said() == "EVEN: 3 HITS, TURNED 15");
+    rig.tap(UP); // (the dice's own job is still up / down: one more hit, where the dice put it)
+    int n = 0;
+    for (char c : laneSteps(rig, 3)) n += c == 'x' ? 1 : 0;
+    CHECK(n == 4);
+    rig.key(Y, false);
+    rig.frames(2);
+    // Y let go after EVEN is no tap: nothing reshuffled.
+    const std::string after = laneSteps(rig, 3);
+    rig.settle();
+    CHECK(laneSteps(rig, 3) == after);
+    // A new hold: LEFT / RIGHT are the starts again until R1 or L1; L1 to none empties the lane.
+    rig.key(Y, true);
+    rig.frames(1);
+    for (int i = 0; i < 5; ++i) rig.tap(L1);
+    CHECK(laneSteps(rig, 3) == "................" && rig.said() == "EVEN: NO HITS");
+    rig.tap(L1);
+    CHECK(laneSteps(rig, 3) == "................");
+    for (int i = 0; i < 20; ++i) rig.tap(R1);
+    CHECK(laneSteps(rig, 3) == "xxxxxxxxxxxxxxxx");
+    rig.key(Y, false);
+    rig.frames(2);
+    // Other lanes are not touched; undo puts the lane back as it was before the holds.
+    CHECK(laneSteps(rig, 0) == laneSteps(rig, 0));
+    rig.settle();
+    rig.undo();
+    rig.settle();
+    CHECK(laneSteps(rig, 3) == after);
+    rig.undo();
+    rig.settle();
+    CHECK(laneSteps(rig, 3) == "x........x......" && drums.level(3, 0) == 0.4f);
+    // On a step (not a name), Y + R1 does nothing of EVEN's.
+    drums.moveCursorTo(3, 2);
+    rig.key(Y, true);
+    rig.frames(1);
+    rig.tap(R1);
+    rig.key(Y, false);
+    rig.frames(2);
+    CHECK(rig.said() != "EVEN: 3 HITS");
+    // The hints fit, Y held on a name before and after EVEN.
+    Canvas canvas;
+    if (canvas.ok) {
+        drums.moveCursorTo(3, -1);
+        rig.key(Y, true);
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(ui::gHintsOver == 0.f);
+        rig.tap(R1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(ui::gHintsOver == 0.f);
+        rig.key(Y, false);
+        rig.frames(2);
+    }
+    (void)session;
+}
+
 struct Section {
     const char* name;
     std::function<void()> run;
@@ -766,6 +881,7 @@ int main(int argc, char** argv) {
         {"click", [] { testTheClick(), testTheCountIn(), testTheClickInTheApp(); }},
         {"transpose", [] { testChordNames(), testTransposeACell(), testTransposeOnSong(); }},
         {"scale", [] { testTheScales(), testTheScaleInTheSong(), testTheRollKeepsToIt(); }},
+        {"even", [] { testTheEvenRule(), testEvenOnALane(); }},
     };
     for (const Section& s : sections) {
         bool wanted = argc < 2;

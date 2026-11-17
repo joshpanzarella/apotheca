@@ -460,6 +460,34 @@ void PatternScreen::diceTurn(float hits) {
     }
 }
 
+int PatternScreen::laneHits() const {
+    int count = 0;
+    for (int step = 0; step < kSteps; ++step) count += pat().level[lane_][step] > 0.f ? 1 : 0;
+    return count;
+}
+
+// EVEN: `hits` spread evenly over the bar shown (euclidHit), turned `turn` steps later. Every step of the
+// lane is written (the player's hits too: undo puts them back), as the dice do; a hit that stays where one
+// was keeps all it had, a new one is placed at 90%. The first heard, stopped, as the dice's are.
+void PatternScreen::evenLane(int hits, int turn) {
+    hits = hits < 0 ? 0 : (hits > kSteps ? kSteps : hits);
+    turn = ((turn % kSteps) + kSteps) % kSteps;
+    evenHits_ = hits, evenTurn_ = turn;
+    for (int step = 0; step < kSteps; ++step) {
+        const bool hit = euclidHit(hits, (step - turn + kSteps) % kSteps);
+        const bool there = pat().level[lane_][step] > 0.f;
+        if (hit && !there) setStep(lane_, step, kNewHitLevel);
+        else if (!hit && there) setStep(lane_, step, 0.f);
+    }
+    yDidSomething_ = true;
+    char text[40];
+    if (hits == 0) std::snprintf(text, sizeof text, "EVEN: NO HITS");
+    else std::snprintf(text, sizeof text, "EVEN: %d HIT%s%s", hits, hits == 1 ? "" : "S", turn ? "," : "");
+    if (hits > 0 && turn) std::snprintf(text + std::strlen(text), sizeof text - std::strlen(text), " TURNED %d", turn);
+    session_.say(text);
+    if (!project_.playing && hits > 0) audition(lane_, kNewHitLevel);
+}
+
 // The lane's hits, every one of them (the player's too: undo puts them back), as many again in a
 // new shuffle. An empty lane gets kFirstRoll; a full one kFullRoll, or a roll would change nothing.
 void PatternScreen::diceReshuffle() {
@@ -575,6 +603,8 @@ void PatternScreen::nudgeExact(Button direction, bool withY) {
             setChance(lane_, step_, nextTenth(pat().chance[lane_][step_], sign));
             turning_ = Turning::Chance;
             yDidSomething_ = true;
+        } else if (!vertical && !onTempo_ && step_ == kLaneName && evening_) {
+            evenLane(evenHits_, evenTurn_ + (sign > 0.f ? 1 : -1)); // EVEN: the pattern a step later or earlier
         } else if (!vertical && !onTempo_ && step_ == kLaneName) {
             rolled_ = false;
             turnStart(sign); // roll the lane's starts, or put them back
@@ -635,6 +665,16 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
             else fx.cut = static_cast<std::uint8_t>(fx.cut + 1); // past the last, setFx makes it "off" again
             setFx(lane_, step_, fx);
             if (!project_.playing) hearHit();
+        }
+        return;
+    }
+    if (dicing_ && !ySpent_ && !onTempo_ && step_ == kLaneName && !feelHeld_ && (b == Button::L1 || b == Button::R1)) {
+        // EVEN: one hit more (R1) or fewer (L1), spread evenly. Its own turn kept while Y stays held.
+        if (event.down) {
+            const int now = evening_ ? evenHits_ : laneHits();
+            if (!evening_) evenTurn_ = 0;
+            evening_ = true;
+            evenLane(now + (b == Button::R1 ? 1 : -1), evenTurn_);
         }
         return;
     }
@@ -731,6 +771,7 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
             setChance(lane_, step_, now > 0.76f ? 0.75f : now > 0.51f ? 0.5f : now > 0.26f ? 0.25f : 1.f);
         }
         dicing_ = event.down;
+        evening_ = false; // (a new hold of Y starts with the dice's own jobs)
         diceSaved_ = 0.f;
         axis_ = Axis::None;
         if (!event.down && !shaping_) turning_ = Turning::Nothing;
@@ -779,7 +820,7 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
     // A button let go while another screen was showing (a song opened, a tab turned) never told this
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
     if (!input.held(Button::A)) shaping_ = false;
-    if (!input.held(Button::Y)) dicing_ = false;
+    if (!input.held(Button::Y)) dicing_ = false, evening_ = false;
     if (!input.held(Button::R1)) paint_ = Paint::None;
     if (!input.held(Button::B)) erasing_ = false;
     if (!input.held(Button::X) || !hitHere()) fxHeld_ = false;
@@ -1217,10 +1258,14 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("UP / DOWN", "chance");
         hint("LEFT / RIGHT", "where the sound starts");
         hint("TAP Y", "100 > 75 > 50 > 25");
+    } else if (dicing_ && onName && evening_) {
+        hint("R1 / L1", "more / fewer, even");
+        hint("LEFT / RIGHT", "turn it a step");
     } else if (dicing_ && onName) {
         hint("UP / DOWN", "more / fewer hits");
         hint("RIGHT", "roll the starts");
         hint("LEFT", "starts to the top");
+        hint("R1 / L1", "even");
         hint("TAP Y", "reshuffle");
     } else if (shaping_) {
         hint("UP / DOWN", onTempo_ ? "tempo" : "drum volume");
