@@ -173,3 +173,51 @@ the cell, BACK WHERE IT WAS, a drum cell, one undo for the hold. Mutants tried: 
 end of the range, the chord's name, the bars, the slash: each fails a check.
 
 **Only the owner can tell**: whether a semitone a press and an octave a push are the right steps.
+
+## Batch 4: SCALE LOCK
+
+**What**: the song's KEY and SCALE; with one on, the piano roll keeps to it.
+
+**Where it is set**: two SET rows in PROJECT, after CHORD PACK: **KEY** (C to B, round) and **SCALE**
+(OFF, MAJOR, MINOR, DORIAN, PHRYGIAN, LYDIAN, MIXOLYDIAN, LOCRIAN, MAJOR PENT, MINOR PENT, HARMONIC
+MINOR, BLUES; a choice with ends). OFF is chromatic: every key. `app/scales.hpp` is the one table.
+
+**On the roll** (`NoteScreen::keyStop`, `nextKey`, `shapeAt`):
+
+- **the cursor steps left / right only through the scale's keys**, the stick too; **a key a note or
+  chord of the bar shown is on is a stop as well**, so a note out of the scale can still be reached,
+  heard and deleted;
+- **the keys out of the scale are drawn dim** (their cells the background's, with the panel's line:
+  a gap, on every theme);
+- **a note carried sideways (hold R1) goes to the next key of the scale** (a chord still a semitone:
+  moved by scale steps its kind would change);
+- **the chord in hand is the pack's moved into the KEY** (`packShift`): the pack's tonic lined up with
+  the KEY, and a major pack under a minor scale moved to its relative major (a minor pack under a major
+  scale to its relative minor), so C major's chords in A MINOR stay C, Dm, Em... and in D MAJOR are D,
+  Em, F#m. The names move with them (`transposeChordName`); `ChordPack::tonic` and `minor` are read
+  from the pack's file. A chord swapped in place (Y on a chord) takes the moved one too.
+
+**In the song file**: `scale KEY KIND` among the song's own lines, **left out at OFF**; a KEY out of
+range is held to 0..11, a kind nobody knows is OFF. A step of undo (`setScale` calls `noteEdit`;
+`restorePatterns` puts the head's back).
+
+| Call | Taken |
+| --- | --- |
+| The song's or a track's | **The song's**: one key for every synth track, set once |
+| Where | **SET page, two rows** (the page's own pattern; the roll has no free button) |
+| Out-of-scale keys | **Dim and passed by**, not hidden: the roll keeps its layout (the look is settled) |
+| A note already out of the scale | **Kept, and the cursor still stops on it** |
+| "Chords fit it" | **The pack moved into the key** (relative major / minor), not each chord bent to the scale |
+| Undo | **Yes**, as AT END |
+
+**Tests**: `easy_test scale`: each scale's count of keys, D major's keys, harmonic minor, blues,
+minor or not, kinds out of range, key names; `packShift` for major, minor and relative; a pack's
+tonic and minor from its file; the song line written, left out at OFF, read back, a key held, a kind
+nobody knows, a short line; undo; the SET rows (KEY round, SCALE's ends); the roll: off every key, D
+MAJOR's steps, a note out of the scale a stop, the keyboard's end, a carried note to E then F#, the
+chord in hand in D major, A minor, off, and placed with Y. `app_test` steps the rows. Stills
+`scale-roll`, `setup-scale`. Mutants tried: the note stop, the carry, the undo, the shift.
+
+**Only the owner can tell**: whether the dim keys read well on the handheld's screen, and whether
+moving the pack into the key is what "fit" meant (the other reading, each chord bent to the scale,
+changes chords' kinds).

@@ -5,11 +5,14 @@
 //              SET rows and settings.txt, when the Session tells the engine, a bounce without it.
 //   transpose  TRANSPOSE: chord names, Session::transposeCell (every bar, all or nothing, undo, the
 //              engine told), and hold A + UP / DOWN / the stick on a SONG cell, its words and hints.
+//   scale      SCALE LOCK: the scales (scales.hpp), the song file's line, undo, the SET rows, the roll's
+//              cursor and carry, the chord in hand moved into the key.
 //
 // `easy_test NAME...` runs just those sections.
 
 #include <SDL.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -22,6 +25,7 @@
 #include "app.hpp"
 #include "canvas.hpp"
 #include "chords.hpp"
+#include "scales.hpp"
 #include "tap_tempo.hpp"
 #include "song_file.hpp"
 #include "temp_folder.hpp"
@@ -611,6 +615,143 @@ void testTransposeOnSong() {
     CHECK(rig.track(t).notes[0][0].notes[0].pitch == 60);
 }
 
+// ---- batch 4: SCALE LOCK -------------------------------------------------------------------------
+
+void testTheScales() {
+    // Each scale's keys, counted: seven, five or six; the key itself always in.
+    const int counts[kScaleKinds] = {12, 7, 7, 7, 7, 7, 7, 7, 5, 5, 7, 6};
+    for (int kind = 0; kind < kScaleKinds; ++kind) {
+        int n = 0;
+        for (int pc = 0; pc < 12; ++pc) n += inScale(0, kind, pc) ? 1 : 0;
+        CHECK(n == counts[kind] && inScale(5, kind, 5 + 24));
+        CHECK(std::strlen(scaleName(kind)) > 0);
+    }
+    // D major: D E F# G A B C#; out: D# F G# A# C.
+    for (int p : {62, 64, 66, 67, 69, 71, 73, 50}) CHECK(inScale(2, kScaleMajor, p));
+    for (int p : {63, 65, 68, 70, 72}) CHECK(!inScale(2, kScaleMajor, p));
+    CHECK(inScale(9, kScaleHarmonicMinor, 68) && !inScale(9, kScaleMinor, 68)); // (A harmonic minor's G#)
+    CHECK(inScale(0, kScaleBlues, 6) && !inScale(0, kScaleMinorPent, 6));
+    CHECK(minorScale(kScaleMinor) && minorScale(kScaleDorian) && minorScale(kScaleBlues) && !minorScale(kScaleMajor) && !minorScale(kScaleLydian) && !minorScale(kScaleOff));
+    CHECK(scaleKindOf(99) == kScaleOff && scaleKindOf(-1) == kScaleOff && scaleKindOf(kScaleBlues) == kScaleBlues);
+    CHECK(std::string(keyName(13)) == "C#" && std::string(keyName(-2)) == "Bb");
+    // A pack in C major: into D major +2, into A minor 0 (its relative major is C), into E minor -5 (G), off 0.
+    CHECK(packShift(0, false, 2, kScaleMajor) == 2 && packShift(0, false, 9, kScaleMinor) == 0 && packShift(0, false, 4, kScaleMinor) == -5);
+    CHECK(packShift(0, false, 7, kScaleOff) == 0 && packShift(9, true, 0, kScaleMajor) == 0 && packShift(9, true, 9, kScaleMinor) == 0);
+    CHECK(packShift(0, false, 6, kScaleMajor) == 6 && packShift(0, false, 7, kScaleMajor) == -5);
+    // A pack's tonic and minor read from its file.
+    ChordPack pack;
+    CHECK(parseChordPack("{\"name\":\"m\",\"sourceTonic\":9,\"scale\":{\"pitchClasses\":[0,2,3,5,7,8,10]},\"chords\":[{\"root\":{\"degree\":0},\"intervals\":[0,3,7],\"quality\":\"minor\"}]}", pack));
+    CHECK(pack.tonic == 9 && pack.minor && std::string(pack.chords[0].name) == "Am");
+    CHECK(builtInPack().tonic == 0 && !builtInPack().minor);
+}
+
+void testTheScaleInTheSong() {
+    Rig rig;
+    Session& session = rig.session();
+    rig.settle();
+    const std::string plain = songText(rig.project());
+    CHECK(plain.find("\nscale ") == std::string::npos); // left out at OFF
+    session.setScale(14, kScaleDorian); // (the key goes round: D)
+    CHECK(rig.project().scaleKey == 2 && rig.project().scaleKind == kScaleDorian);
+    session.setScale(2, kScaleKinds + 4); // (the kinds have ends)
+    CHECK(rig.project().scaleKind == kScaleBlues);
+    session.setScale(2, kScaleDorian);
+    const std::string text = songText(rig.project());
+    CHECK(text.find("\nscale 2 3\n") != std::string::npos);
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back) && back->scaleKey == 2 && back->scaleKind == kScaleDorian);
+    // A key out of range is held; a kind nobody knows is OFF; a line with one number is passed by.
+    std::string odd = text;
+    odd.replace(odd.find("\nscale 2 3\n"), 11, "\nscale 40 77\n");
+    CHECK(parseSong(odd, *back) && back->scaleKey == 11 && back->scaleKind == kScaleOff);
+    odd = plain + "scale 5\n";
+    back.reset(new Project);
+    CHECK(parseSong(odd, *back) && back->scaleKey == 0 && back->scaleKind == kScaleOff);
+    // A step of undo.
+    rig.settle();
+    rig.undo();
+    rig.settle();
+    CHECK(rig.project().scaleKind == kScaleOff);
+    // The SET rows: KEY goes round, SCALE has ends.
+    session.view = View::Settings;
+    rig.frames(1);
+    rig.app.settings().goTo(SettingsScreen::kKey);
+    rig.tap(LEFT);
+    CHECK(rig.project().scaleKey == 11);
+    rig.tap(RIGHT, 3);
+    CHECK(rig.project().scaleKey == 2);
+    rig.tap(DOWN);
+    CHECK(rig.app.settings().cursorRow() == SettingsScreen::kScale);
+    rig.tap(RIGHT);
+    CHECK(rig.project().scaleKind == kScaleMajor);
+    rig.tap(RIGHT, kScaleKinds + 2);
+    CHECK(rig.project().scaleKind == kScaleBlues);
+    rig.tap(LEFT, kScaleKinds + 2);
+    CHECK(rig.project().scaleKind == kScaleOff);
+}
+
+void testTheRollKeepsToIt() {
+    Rig rig;
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Phazed));
+    rig.project().track = 1;
+    session.view = View::Pattern;
+    rig.frames(2);
+    NoteScreen& roll = rig.app.notes();
+    roll.moveCursorTo(62, 0);
+    // Off: every key.
+    rig.tap(RIGHT);
+    CHECK(roll.cursorPitch() == 63);
+    // D MAJOR: the cursor steps through its keys.
+    session.setScale(2, kScaleMajor);
+    roll.moveCursorTo(62, 0);
+    rig.tap(RIGHT);
+    CHECK(roll.cursorPitch() == 64);
+    rig.tap(RIGHT);
+    CHECK(roll.cursorPitch() == 66);
+    rig.tap(LEFT, 3);
+    CHECK(roll.cursorPitch() == 61);
+    // A note out of the scale is a stop too (it can still be reached, and deleted).
+    rig.track(1).notes[0][0].notes[0] = NoteEvent();
+    NoteEvent n;
+    n.step = 4, n.pitch = 63, n.length = 1.f, n.velocity = 0.9f;
+    rig.track(1).notes[0][0].notes[0] = n;
+    roll.moveCursorTo(62, 0);
+    rig.tap(RIGHT);
+    CHECK(roll.cursorPitch() == 63);
+    rig.tap(RIGHT);
+    CHECK(roll.cursorPitch() == 64);
+    // ...and the ends of the keyboard stop it.
+    roll.moveCursorTo(NoteScreen::kHighest, 0);
+    rig.tap(RIGHT);
+    CHECK(roll.cursorPitch() == NoteScreen::kHighest);
+    // A note carried sideways goes to the next key of the scale: D# (out) carried right lands on E, then F#.
+    roll.moveCursorTo(63, 4);
+    rig.key(R1, true);
+    rig.frames(20); // (held: it carries)
+    rig.tap(RIGHT);
+    CHECK(rig.track(1).notes[0][0].notes[0].pitch == 64);
+    rig.tap(RIGHT);
+    CHECK(rig.track(1).notes[0][0].notes[0].pitch == 66);
+    rig.key(R1, false);
+    rig.frames(2);
+    // The chord in hand: the built-in pack (C major) moved into D major: its first chord is D.
+    CHECK(std::string(roll.shapeAt(0).name) == "D" && roll.shapeAt(0).rootKey == 2 && std::string(roll.shapeAt(1).name) == "Em");
+    session.setScale(9, kScaleMinor); // A minor: C major's own chords
+    CHECK(std::string(roll.shapeAt(0).name) == "C" && std::string(roll.shapeAt(5).name) == "Am");
+    session.setScale(2, kScaleOff); // off: the pack as it is
+    CHECK(std::string(roll.shapeAt(0).name) == "C");
+    // Placed with Y: the chord lands moved.
+    session.setScale(2, kScaleMajor);
+    roll.moveCursorTo(62, 8);
+    rig.tap(Y);
+    rig.frames(2);
+    const ChordEvent* c = nullptr;
+    for (const ChordEvent& e : rig.track(1).notes[0][0].chords)
+        if (e.velocity > 0.f) c = &e;
+    CHECK(c && c->root % 12 == 2 && std::string(c->name) == "D");
+}
+
 struct Section {
     const char* name;
     std::function<void()> run;
@@ -624,6 +765,7 @@ int main(int argc, char** argv) {
         {"taptempo", [] { testTheTapRule(), testTapOnTheDrumGrid(), testTapOnTheSetPage(); }},
         {"click", [] { testTheClick(), testTheCountIn(), testTheClickInTheApp(); }},
         {"transpose", [] { testChordNames(), testTransposeACell(), testTransposeOnSong(); }},
+        {"scale", [] { testTheScales(), testTheScaleInTheSong(), testTheRollKeepsToIt(); }},
     };
     for (const Section& s : sections) {
         bool wanted = argc < 2;

@@ -1,4 +1,5 @@
 #include "settings_screen.hpp"
+#include "scales.hpp"
 
 #include <string>
 
@@ -101,6 +102,8 @@ void SettingsScreen::change(int by) {
     switch (row_) {
     case kTempo: session_.setTempo(project_.tempo + static_cast<float>(by)); break;
     case kPack: session_.choosePack(session_.packIndex() + by); break;
+    case kKey: session_.setScale(project_.scaleKey + by, project_.scaleKind); break; // (round: B to C)
+    case kScale: session_.setScale(project_.scaleKey, project_.scaleKind + by); break; // (a choice with ends)
     case kBounce: bounceWhat_ = ((bounceWhat_ + by) % 3 + 3) % 3; break;
     case kTrackName: {
         // Through the list of names, round and round; the first is "its instrument's own".
@@ -321,7 +324,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         return;
     }
 
-    const char* names[kRows] = {"TEMPO", "CHORD PACK", "TRACK NAME", "BOUNCE", "VOLUME", "BRIGHTNESS", "STICK LIGHT", "LIGHT COLOUR", "STICK SPEED", "TEXT SIZE", "THEME", "PIANO ROLL", "USB KEYBOARD", "CLICK", "COUNT IN", "WIFI PAGE", "BUTTONS", "CONTROLS"};
+    const char* names[kRows] = {"TEMPO", "CHORD PACK", "KEY", "SCALE", "TRACK NAME", "BOUNCE", "VOLUME", "BRIGHTNESS", "STICK LIGHT", "LIGHT COLOUR", "STICK SPEED", "TEXT SIZE", "THEME", "PIANO ROLL", "USB KEYBOARD", "CLICK", "COUNT IN", "WIFI PAGE", "BUTTONS", "CONTROLS"};
     const int rowH = kRowH, w = kRowW; // (twelve rows shown: 34 a row, as it was with eleven, would run into the hints bar)
     fonts.small.draw(r, 16.f, 34.f, "PROJECT", kDim);
     // A row out of sight above (the page has moved down) or below: an arrow after its section's name.
@@ -344,6 +347,14 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             note = "A: tap it in time";
             break;
         case kPack: std::snprintf(text, sizeof text, "%s", session_.packs[session_.packIndex()].name.c_str()); break;
+        case kKey:
+            std::snprintf(text, sizeof text, "%s", keyName(project_.scaleKey));
+            note = project_.scaleKind == kScaleOff ? "with SCALE, the roll's key" : "the chords in hand move to it";
+            break;
+        case kScale:
+            std::snprintf(text, sizeof text, "%s", scaleName(project_.scaleKind));
+            note = project_.scaleKind == kScaleOff ? "the roll takes every key" : "the roll keeps to it";
+            break;
         case kTrackName: {
             char full[24];
             trackName(project_, project_.track, full, sizeof full);

@@ -403,6 +403,8 @@ and the day it was built. The number goes up by one with every build.
 | --- | --- | --- |
 | TEMPO | A beat a minute | **Tap it in time**: from the second tap the tempo is the beat of the last five taps (a pause of two seconds starts again). The box above the bar says TAPPED: 117 BPM |
 | CHORD PACK | Another pack | |
+| KEY | The song's key, C to B (round) | |
+| SCALE | **SCALE LOCK**: OFF (every key), MAJOR, MINOR, DORIAN, PHRYGIAN, LYDIAN, MIXOLYDIAN, LOCRIAN, MAJOR PENT, MINOR PENT, HARMONIC MINOR, BLUES. On, the piano roll's cursor steps left / right only through the scale's keys (and any key a note of the bar shown is on, so it can still be reached), the keys out of it are drawn dim, a note carried sideways (hold R1) goes to the next key of the scale, and the chord pack's chords are moved into the key (a major pack in a minor scale to its relative major: C major's chords in A minor stay C, Dm...). Kept in the song; a step of undo | |
 | TRACK NAME | A name for the track being worked on, from a list | **Type one**: a grid of letters and numbers. A types, **Y deletes a letter, B keeps the name and leaves** (with nothing typed B leaves and the name stays as it was), START keeps it too (with nothing typed: the instrument's own name). Ten characters. |
 | VOLUME | A twentieth | |
 | BRIGHTNESS | The screen, 10% to 100% in fives (also **MENU + the volume keys**, ten at a time). **Only on Apotheca's own system for the RG40XXV** | |

@@ -113,6 +113,11 @@ public:
     void shouldersPressed() { zoomUsed_ = true; } // (the App: another shoulder went down with L1 held)
 
     int visibleKeys() const; // 12, 24 or 36: the zoom (Session::octavesShown)
+    // SCALE LOCK (scales.hpp): the pack's chord `index`, moved into the song's KEY when a SCALE is on (packShift).
+    ChordShape shapeAt(int index) const;
+    // A key the cursor stops on: every key with no SCALE; with one, the scale's keys and any key a note or chord of the bar shown is on.
+    bool keyStop(int pitch) const;
+    int nextKey(int from, int way) const; // the next stop that way from `from`, or `from` at the keyboard's end
     void zoomTo(int octaves);
 
 private:

@@ -1,6 +1,7 @@
 // Session, part one of four (see session_parts.hpp for what is where).
 #include "mods.hpp"
 #include "session.hpp"
+#include "scales.hpp"
 #include "redraw.hpp"
 #include "instruments.hpp"
 #include "ui.hpp"
@@ -50,6 +51,15 @@ void Session::syncClick() {
     c.type = Command::SetClick;
     c.a = clickWanted() ? 1 : 0;
     if (engine.send(c)) sentClick_ = c.a;
+}
+
+void Session::setScale(int key, int kind) {
+    key = ((key % 12) + 12) % 12;
+    kind = kind < kScaleOff ? kScaleOff : (kind >= kScaleKinds ? kScaleKinds - 1 : kind);
+    if (key == project.scaleKey && kind == project.scaleKind) return;
+    project.scaleKey = key;
+    project.scaleKind = kind;
+    noteEdit(); // a step of undo: it is a line of the song
 }
 
 void Session::setSongEnd(int end) {
@@ -1280,6 +1290,7 @@ void Session::restorePatterns(const std::string& text, int movedFrom, int movedB
     };
     mixBack(kMasterTrack, was.head.masterDb, was.head.masterPan);
     project.songEnd = was.head.songEnd; // (the song's own lines are always read; the engine is told by update's syncSong)
+    project.scaleKey = was.head.scaleKey, project.scaleKind = was.head.scaleKind;
     for (int t = 0; t < kNumTracks; ++t)
         if (!same[t] && project.tracks[t].kind != TrackKind::None && project.tracks[t].kind == was.kind[t] && was.read[t]) mixBack(t, was.track(t).mixDb, was.track(t).mixPan);
     for (int t = 0; t < kNumTracks && !asItWas; ++t) {

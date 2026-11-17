@@ -31,6 +31,8 @@ struct ChordShape {
 
 struct ChordPack {
     std::string name;
+    int tonic = 0;      // its sourceTonic, 0 = C
+    bool minor = false; // its scale has a minor third and no major one (SCALE LOCK moves it to a minor key's relative major)
     std::vector<ChordShape> chords;
 };
 

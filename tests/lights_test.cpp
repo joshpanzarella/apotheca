@@ -291,7 +291,7 @@ void testTheSetPage() {
         // Not ours (the stock firmware): the page as it was, the two rows passed by.
         Rig rig;
         S& setup = rig.setup();
-        CHECK(!setup.here(S::kBrightness) && !setup.here(S::kLight) && setup.places() == 15);
+        CHECK(!setup.here(S::kBrightness) && !setup.here(S::kLight) && setup.places() == 17);
         setup.goTo(S::kVolume);
         rig.tap(DOWN);
         CHECK(setup.cursorRow() == S::kStick);
@@ -300,13 +300,13 @@ void testTheSetPage() {
         setup.goTo(S::kBrightness); // (asked for by number: the next row that is here)
         CHECK(setup.cursorRow() == S::kStick);
         setup.goTo(S::kControls);
-        CHECK(setup.firstShown() == 3 && setup.shown(S::kControls) && !setup.shown(S::kTempo));
+        CHECK(setup.firstShown() == 5 && setup.shown(S::kControls) && !setup.shown(S::kTempo));
     }
     Sys sys;
     Rig rig;
     rig.session().useLights(sys.both());
     S& setup = rig.setup();
-    CHECK(setup.here(S::kBrightness) && setup.here(S::kLight) && setup.here(S::kLightColour) && setup.places() == 18);
+    CHECK(setup.here(S::kBrightness) && setup.here(S::kLight) && setup.here(S::kLightColour) && setup.places() == 20);
     // After VOLUME, among the handheld's rows.
     setup.goTo(S::kVolume);
     rig.tap(DOWN);
@@ -349,7 +349,7 @@ void testTheSetPage() {
         CHECK(setup.placeOf(setup.cursorRow()) == place && setup.shown(setup.cursorRow()));
         CHECK(setup.firstShown() == (place < S::kRowsShown ? 0 : place - S::kRowsShown + 1));
     }
-    CHECK(setup.cursorRow() == S::kControls && setup.firstShown() == 6);
+    CHECK(setup.cursorRow() == S::kControls && setup.firstShown() == 8);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kControls);
     for (int place = setup.firstShown(); place < setup.firstShown() + S::kRowsShown; ++place) {
@@ -362,7 +362,7 @@ void testTheSetPage() {
     // The lights taken away (they never are on a handheld, but the page must not stay past its end).
     rig.session().useLights(Lights());
     setup.goTo(S::kControls);
-    CHECK(setup.firstShown() == 3 && setup.cursorRow() == S::kControls);
+    CHECK(setup.firstShown() == 5 && setup.cursorRow() == S::kControls);
 }
 
 // ---- kept in settings.txt --------------------------------------------------------------------------

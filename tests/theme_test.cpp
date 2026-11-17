@@ -331,7 +331,7 @@ void testTheRow() {
     S& setup = rig.app.settings();
     // After TEXT SIZE, among the handheld's rows.
     // (Fifteen rows since BRIGHTNESS and STICK LIGHT, which show only on our own firmware: thirteen here.)
-    CHECK(S::kRows == 18 && setup.places() == 15 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kRowsShown == 12);
+    CHECK(S::kRows == 20 && setup.places() == 17 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kRowsShown == 12);
     setup.goTo(S::kTextSize);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kTheme && session.theme() == kThemeBrown);
@@ -394,7 +394,7 @@ void testTheRow() {
     }
     // Back up: it stays put until the cursor passes the top.
     rig.tap(UP);
-    CHECK(setup.firstShown() == 3); // (fifteen places since CLICK and COUNT IN)
+    CHECK(setup.firstShown() == 5); // (seventeen places since CLICK, COUNT IN, KEY and SCALE)
     setup.goTo(S::kPack);
     CHECK(setup.firstShown() == 1);
     rig.tap(UP);

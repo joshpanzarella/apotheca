@@ -1,6 +1,7 @@
 #include "note_screen.hpp"
 
 #include "note_marks.hpp"
+#include "scales.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -187,7 +188,16 @@ bool NoteScreen::carryBy(int dp, int ds) {
 }
 
 void NoteScreen::carry(Button direction) {
-    carryBy(direction == Button::Right ? 1 : direction == Button::Left ? -1 : 0, direction == Button::Down ? 1 : direction == Button::Up ? -1 : 0);
+    int dp = direction == Button::Right ? 1 : direction == Button::Left ? -1 : 0;
+    // A note carried sideways with a SCALE on goes to the next key of the scale (a chord a semitone, as before).
+    if (dp != 0 && carrying_ == Carry::Note && project_.scaleKind != kScaleOff) {
+        const int from = pat().notes[carried_].pitch;
+        int to = from + dp;
+        while (to >= kLowest && to <= kHighest && !inScale(project_.scaleKey, project_.scaleKind, to)) to += dp;
+        if (to < kLowest || to > kHighest) return;
+        dp = to - from;
+    }
+    carryBy(dp, direction == Button::Down ? 1 : direction == Button::Up ? -1 : 0);
 }
 
 // The stick, up and down, with X held: the note slides freely in time, off
@@ -210,10 +220,42 @@ void NoteScreen::carryFree(float steps) {
     resend();
 }
 
+bool NoteScreen::keyStop(int pitch) const {
+    if (project_.scaleKind == kScaleOff || inScale(project_.scaleKey, project_.scaleKind, pitch)) return true;
+    const NotePattern& p = pat();
+    for (const NoteEvent& n : p.notes)
+        if (n.velocity > 0.f && n.pitch == pitch) return true;
+    for (const ChordEvent& c : p.chords) {
+        if (c.velocity <= 0.f) continue;
+        int keys[kChordNotes];
+        const int count = c.pitches(keys);
+        for (int i = 0; i < count; ++i)
+            if (keys[i] == pitch) return true;
+    }
+    return false;
+}
+
+int NoteScreen::nextKey(int from, int way) const {
+    for (int p = from + way; p >= kLowest && p <= kHighest; p += way)
+        if (keyStop(p)) return p;
+    return from;
+}
+
+ChordShape NoteScreen::shapeAt(int index) const {
+    const ChordPack& p = pack();
+    ChordShape shape = p.chords[static_cast<std::size_t>(index) % p.chords.size()];
+    const int by = packShift(p.tonic, p.minor, project_.scaleKey, project_.scaleKind);
+    if (by != 0) {
+        shape.rootKey = ((shape.rootKey + by) % 12 + 12) % 12;
+        transposeChordName(shape.name, by);
+    }
+    return shape;
+}
+
 void NoteScreen::moveCursor(Button direction) {
     if (carrying_ != Carry::Nothing) return carry(direction);
-    if (direction == Button::Right) moveCursorTo(pitch_ + 1, step_);
-    if (direction == Button::Left) moveCursorTo(pitch_ - 1, step_);
+    if (direction == Button::Right) moveCursorTo(nextKey(pitch_, 1), step_); // (with a SCALE on: the next key of it)
+    if (direction == Button::Left) moveCursorTo(nextKey(pitch_, -1), step_);
     if (direction == Button::Up) moveCursorTo(pitch_, step_ - 1);
     if (direction == Button::Down) moveCursorTo(pitch_, step_ + 1);
     if (painting_) paintHere();
@@ -306,9 +348,7 @@ void NoteScreen::stepLength(int by) {
 // ---- chords ---------------------------------------------------------------------------
 
 ChordEvent NoteScreen::inHand() const {
-    const ChordPack& p = pack();
-    const ChordShape& shape = p.chords[static_cast<std::size_t>(hand_) % p.chords.size()];
-    ChordEvent c = makeChord(shape, pitch_, step_, handLength_, kNewLevel, inversion_);
+    ChordEvent c = makeChord(shapeAt(hand_), pitch_, step_, handLength_, kNewLevel, inversion_);
     // It stops at the end of the bar, or where the next chord starts.
     const float most = static_cast<float>((cellBars() - project_.bar) * kSteps - c.step); // to the end of the cell
     if (c.length > most) c.length = most;
@@ -350,7 +390,7 @@ void NoteScreen::beginPick() {
         const ChordEvent& c = pat().chords[editing_];
         inversion_ = c.inversion;
         for (int i = 0; i < count; ++i)
-            if (std::strcmp(pack().chords[static_cast<std::size_t>(i)].name, c.name) == 0) { hand_ = i; break; }
+            if (std::strcmp(shapeAt(i).name, c.name) == 0) { hand_ = i; break; }
         hearChord(c);
         showChord(c);
     } else {
@@ -369,7 +409,7 @@ void NoteScreen::pickChanged() {
     }
     // Swap it in place: the same steps, level, octave, nudge and ratchet.
     ChordEvent& c = pat().chords[editing_];
-    ChordEvent swapped = makeChord(pack().chords[static_cast<std::size_t>(hand_)], c.root, c.step, c.length, c.velocity, inversion_);
+    ChordEvent swapped = makeChord(shapeAt(hand_), c.root, c.step, c.length, c.velocity, inversion_);
     swapped.nudge = c.nudge;
     swapped.ratchet = c.ratchet;
     swapped.throwTo = c.throwTo;
@@ -861,6 +901,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         numbersFit = numbersFit && fonts.small.width(text) <= kGridLeft - (number >= 100 ? 3.f : 7.f);
     }
     const Font& numberFont = numbersFit ? fonts.small : fonts.fixed().small;
+    const bool scaleOn = project_.scaleKind != kScaleOff;
     for (int step = 0; step < kSteps; ++step) {
         // Counted through the cell: bar 2 reads 17 to 32. A step past the scene's end (a scene of
         // 25 steps: 26 to 32) is never played and reads "-".
@@ -871,7 +912,9 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                               step == step_ ? kTeal : (step % 4 == 0 ? kText : kDim));
         for (int pitch = low_; pitch < low_ + visibleKeys(); ++pitch) {
             const SDL_Color inside = isBlackKey(pitch) ? kBg : (step % 4 == 0 ? kPanel2 : kPanel);
-            box(r, gx(pitch), gy(step), cellW(), kCellH, inside, kLine);
+            // SCALE LOCK: a key out of the scale is dim, as a gap (its line the panel's, not the grid's).
+            if (!scaleOn || inScale(project_.scaleKey, project_.scaleKind, pitch)) box(r, gx(pitch), gy(step), cellW(), kCellH, inside, kLine);
+            else box(r, gx(pitch), gy(step), cellW(), kCellH, kBg, kPanel);
         }
     }
     // A brighter line down the grid where each octave starts.
@@ -1148,7 +1191,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             const bool here = index == hand_;
             box(r, tx, tileY, tileW, tileH, here ? kPanel2 : kPanel, kLine);
             tight.small.drawCentered(r, tx + tileW / 2.f, tileY + (tileH - tight.small.capHeight()) / 2.f,
-                                     p.chords[static_cast<std::size_t>(index)].name, here ? kText : kDim);
+                                     shapeAt(index).name, here ? kText : kDim);
             if (here) outline(r, tx - 1, tileY - 1, tileW + 2, tileH + 2, kBrass, 2);
         }
     } else {
