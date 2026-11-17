@@ -434,11 +434,27 @@ as not charging, which only matters for its red colour under 15%, where a
 full battery never is. The power key is mainline's `axp20x-pek` (KEY_POWER on
 press and release); ROCKNIX's 0157 drops the press that wakes it from suspend.
 
-IMAGE_LINE_PLACEHOLDER
+**The image** for the owner was built from commit `8c16ca3`:
+`apotheca-rg40xxv.img.gz`, **32.5 MB** (32,529,471 bytes), sha256
+`27471f07e4b4a3c9637aacd0b62f0a3fefccafc004eb702b6cb8c939ac92724c`. The root
+file system is 22.1 MB, as in batch 2 (`apotheca-power` is 22 KB). The kernel
+was built again (`CONFIG_TEST_POWER=m`): about 40 minutes on a desk shared
+with another build. **Disk**: 7.0 GB after `--tidy`.
 
 ### Tested on the desk
 
-TESTS_PLACEHOLDER
+| Test | Result |
+| --- | --- |
+| **Reproducible** | **Two builds give the same `img.gz` to the bit** (Apotheca and the tools rebuilt from the commit in between) |
+| `check-image.sh` | **every check passes (62)**. New: with `unsquashfs` it reads the root: `apotheca-power`, `apotheca-keep`, `apotheca-start`, `S95apotheca`, `run` and `fakepad` there and executable; inittab starting `apotheca-power` and Apotheca, and running rcK; `run` handing over the off mark; `apotheca-keep` turning off on it; the Apotheca on the card knowing `APOTHECA_OFF_MARK`; `test_power.ko` there. Against the batch 2 image the seven new checks fail, as they should |
+| `power-test.py` (new: `apotheca-power` built for the desk, a made-up `/sys`, input devices as FIFOs fed the kernel's records, "off" a command that writes a file; about a minute) | **every check passes (33)**: the power key and joypad found, the volume keys left alone, one found later, and with no `/dev/input` at the start the folder and its first device found when they appear; a tap: the backlight off and on; held 1.5 s nothing, 2.3 s off with the key down, the backlight off first, letting go after does nothing; 5% on a charger (USB online; Charging; Not charging) never, one low read never, two reads off; 30% at 3.20 V off; a voltage in millivolts not read; `low-battery 0` never, `10` at 8%, `99` refused; `power-key sleep` writes `mem`; TERM ends it. **Mutants**: two reads made one, `Not charging` not counted, the long press at 0 ms, the backlight not put back at the start, the voltage rule taken out, the watch on `/dev`'s parent taken out: each fails the test |
+| `qemu-test.py` (now five boots, about 17 minutes) | **every check passes (76)**, the one gap of batch 2 said again (qemu's virtual screen stays blank). New: `apotheca-power` running from inittab; `apotheca-keep` runs its off command and starts nothing when the program leaves the mark, and a stale mark counts for nothing; **a short press of a stand-in power key holds a stand-in joypad** (`evtest --grab` is told it is grabbed and sees no press), another lets it go; **Apotheca quit with SEL + START on the stand-in joypad leaves the mark and the machine powers down** (`apotheca-keep`'s log on the next boot: code 0, quit; Apotheca's own log: "turning the handheld off (quit)"); **the power key held 2.6 s powers it down, S95apotheca stopping Apotheca first** ("Apotheca stopped (in 1.3 s), its song saved" on the console); **the kernel's made-up battery at 4%**: on a charger nothing in 50 s, unplugged one low read, a second, off, Apotheca stopped first; **`idle-off 1`**: Apotheca left alone powers the machine down after 80 s (a minute idle, and the start); a shell `poweroff` stops Apotheca first too |
+| App (`ctest`, 71 tests) | **68 passed under `ctest -j2`; `effects2`, `idle1` and `idle2` timed out at 120 s** with the image build running beside them on the desk's four cores, and **each passed run by itself** (98, 82 and 118 s, still beside the build). `app_test` passes, `testQuittingTurnsTheHandheldOff` with it |
+
+**Not shown by any test**: that the song is on the card after a turn-off.
+The tests show the order (the mark is written after `saveNow`, and TERM
+reaches `saveNow` through SDL's quit), not the file; a new song with nothing
+in it is not saved at all, by design.
 
 ### Only the handheld can tell
 
