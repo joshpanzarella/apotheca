@@ -43,6 +43,14 @@ fi
 # The buttons, as the RG40XXV's joypad driver numbers them (os/README.md):
 # put there once, so the first start does not ask for each button. Delete
 # controls.txt on the card to be asked instead.
+# Cards made before 2026-11-17 put X and Y the wrong way round (the owner's
+# unit: the device tree's "X" key is the Y button). A controls.txt that is
+# still exactly that old default has the two lines swapped; one the player
+# made or changed is left alone.
+if [ -f controls.txt ] && grep -qx 'X button 2 0 0' controls.txt && grep -qx 'Y button 3 0 0' controls.txt &&
+   [ "$(sed -e 's/^X button 2 0 0$/X button 3 0 0/' -e 's/^Y button 3 0 0$/Y button 2 0 0/' controls.txt)" = "$(cat /usr/share/apotheca/controls-rg40xxv.txt)" ]; then
+    cp /usr/share/apotheca/controls-rg40xxv.txt controls.txt.part && mv controls.txt.part controls.txt
+fi
 [ -f controls.txt ] || cp /usr/share/apotheca/controls-rg40xxv.txt controls.txt
 
 if [ -f apotheca.new ]; then

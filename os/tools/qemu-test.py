@@ -151,7 +151,13 @@ class Machine:
     def wait_shell(self, timeout=120):
         self.read_until(rb"Apotheca system, batch 4", timeout)
         self.read_until(rb"# ", 30)
-        return time.time() - self.began
+        took = time.time() - self.began
+        # The kernel's own messages off this console (all but its emergencies,
+        # which "reboot: Power down" is): one landing in a command's output
+        # failed checks now and then ("deferred probe pending" at about 13 s).
+        # The boot log still has every message (dmesg is not touched).
+        self.run("dmesg -n 1")
+        return took
 
     def end(self, timeout=60):
         try:

@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/*
+ * Apotheca's own: ROCKNIX's v2-panel tree with the panel file that keeps the
+ * v2 start-up commands but takes the pixel clock edge and the timings from
+ * Anbernic's own system (os/tools/make-v2-stock-panel.py says what and why).
+ */
+
+#include "sun50i-h700-anbernic-rg40xx-v.dts"
+
+/ {
+	rocknix-dt-id = "sun50i-h700-anbernic-rg40xx-v-v2-stock-panel";
+};
+
+&panel {
+	compatible = "anbernic,rg40xx-v2-stock-panel", "panel-mipi-dpi-spi";
+};

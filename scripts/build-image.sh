@@ -1,7 +1,7 @@
 #!/bin/sh
 # Build Apotheca's own system image for the Anbernic RG40XXV.
 #
-#   scripts/build-image.sh [--dtb rg40xx-v|rg40xx-v-v2-panel] [--dram lpddr4|lpddr3]
+#   scripts/build-image.sh [--dtb rg40xx-v|rg40xx-v-v2-panel|rg40xx-v-v2-stock-panel] [--dram lpddr4|lpddr3]
 #                          [--tidy] [-- MAKE-ARGS...]
 #
 # Output: build-image/apotheca-rg40xxv.img.gz (and its .sha256), ready for
@@ -9,13 +9,17 @@
 #
 #   --dtb    which device tree the card starts with (dtb.img on its boot
 #            partition; both are on it, and the other can be copied over).
-#            Default rg40xx-v. Batch 0 on ROCKNIX tells which one the owner's
-#            unit needs.
+#            Default rg40xx-v-v2-panel: the owner's unit has the newer screen
+#            (it showed a picture with it, 2026-11-17; the first tree left
+#            only coloured stripes). rg40xx-v is for units with the first screen;
+#            rg40xx-v-v2-stock-panel is the newer screen with Anbernic's own
+#            pixel clock edge and timings (a choice to compare, not the default).
 #   --dram   the memory type U-Boot sets up. Default lpddr4 (ROCKNIX lists
 #            the RG40XX V under its DDR4 image).
 #   --tidy   after the build, delete the biggest build folders (the kernel,
 #            U-Boot, Mesa and the host LLVM and clang that build Mesa's
-#            shaders). The kernel and U-Boot are made again next time; the
+#            shaders), and the joypad module built against the kernel. The
+#            kernel, U-Boot and the module are made again next time; the
 #            others keep their "done" marks and are not.
 #   -- ARGS  passed to Buildroot's make (e.g. -- linux-menuconfig).
 #
@@ -37,7 +41,7 @@ br="$work/buildroot-$BR_VERSION"
 out="$work/output"
 external="$here/os"
 
-dtb=rg40xx-v
+dtb=rg40xx-v-v2-panel
 dram=lpddr4
 tidy=no
 while [ $# -gt 0 ]; do
@@ -49,7 +53,7 @@ while [ $# -gt 0 ]; do
     *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
 done
-case "$dtb" in rg40xx-v|rg40xx-v-v2-panel) ;; *) echo "--dtb: rg40xx-v or rg40xx-v-v2-panel" >&2; exit 2 ;; esac
+case "$dtb" in rg40xx-v|rg40xx-v-v2-panel|rg40xx-v-v2-stock-panel) ;; *) echo "--dtb: rg40xx-v, rg40xx-v-v2-panel or rg40xx-v-v2-stock-panel" >&2; exit 2 ;; esac
 case "$dram" in lpddr4|lpddr3) ;; *) echo "--dram: lpddr4 or lpddr3" >&2; exit 2 ;; esac
 
 mkdir -p "$work/dl"
@@ -99,6 +103,10 @@ cp "$out/images/apotheca-rg40xxv.img.gz" "$work/apotheca-rg40xxv.img.gz"
 
 if [ "$tidy" = yes ]; then
     rm -rf "$out"/build/linux-[0-9]* "$out"/build/uboot-[0-9]*
+    # A kernel module built outside the kernel must be made again with it:
+    # an old one is refused by the new kernel (its symbol versions), and
+    # Buildroot does not rebuild a package because one it needs was rebuilt.
+    rm -rf "$out"/build/rocknix-joypad-*
     # These are kept as done (their stamps stay), so the next build does not
     # make LLVM and clang again; only their work files go.
     for d in "$out"/build/host-llvm-[0-9]* "$out"/build/host-clang-[0-9]* \
