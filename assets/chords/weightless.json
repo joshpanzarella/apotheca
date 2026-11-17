@@ -58,7 +58,11 @@
       "root": {
         "alteration": 0,
         "degree": 0
-      }
+      },
+      "borrowedFrom": "mixolydian flat seven",
+      "outside": [
+        10
+      ]
     },
     {
       "function": "unknown",
@@ -79,7 +83,12 @@
       "root": {
         "alteration": 0,
         "degree": 0
-      }
+      },
+      "borrowedFrom": "flat seven and flat three",
+      "outside": [
+        3,
+        10
+      ]
     },
     {
       "function": "unknown",
@@ -91,7 +100,7 @@
         14
       ],
       "preferredVoices": 4,
-      "quality": "sus4",
+      "quality": "sus4add9",
       "requiredIntervals": [
         0,
         5,
@@ -112,7 +121,7 @@
         17
       ],
       "preferredVoices": 4,
-      "quality": "sus2",
+      "quality": "sus2add11",
       "requiredIntervals": [
         0,
         2,
@@ -121,7 +130,11 @@
       "root": {
         "alteration": 0,
         "degree": 3
-      }
+      },
+      "borrowedFrom": "mixolydian flat seven",
+      "outside": [
+        10
+      ]
     },
     {
       "function": "unknown",
@@ -134,7 +147,7 @@
       ],
       "pedalSemitone": 0,
       "preferredVoices": 4,
-      "quality": "sus4",
+      "quality": "7sus4",
       "requiredIntervals": [
         0,
         5,

@@ -49,7 +49,7 @@
     },
     {
       "id": "afterglow.Imaj7add13",
-      "quality": "maj7add13",
+      "quality": "maj13",
       "root": {
         "degree": 0,
         "alteration": 0
@@ -117,7 +117,7 @@
     },
     {
       "id": "afterglow.IVmaj13no5",
-      "quality": "maj13(no5)",
+      "quality": "maj13",
       "root": {
         "degree": 3,
         "alteration": 0
@@ -225,7 +225,10 @@
       ],
       "preferredVoices": 4,
       "function": "predominant",
-      "borrowedFrom": "parallel natural minor: minor iv, added sixth"
+      "borrowedFrom": "parallel natural minor: minor iv, added sixth",
+      "outside": [
+        8
+      ]
     },
     {
       "id": "afterglow.bVImaj7",
@@ -247,7 +250,11 @@
       ],
       "preferredVoices": 4,
       "function": "predominant",
-      "borrowedFrom": "parallel natural minor: bVI"
+      "borrowedFrom": "parallel natural minor: bVI",
+      "outside": [
+        3,
+        8
+      ]
     },
     {
       "id": "afterglow.bVIIadd9",
@@ -269,7 +276,10 @@
       ],
       "preferredVoices": 4,
       "function": "unknown",
-      "borrowedFrom": "parallel natural minor: bVII"
+      "borrowedFrom": "parallel natural minor: bVII",
+      "outside": [
+        10
+      ]
     },
     {
       "id": "afterglow.V9sus4",

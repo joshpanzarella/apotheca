@@ -286,7 +286,7 @@ void testBadFiles() {
     CHECK(p->tracks[0].laneLevel[0] == 1.f && p->tracks[0].laneLevel[1] == 0.f && p->tracks[0].laneLevel[2] == 1.f);
     CHECK(p->tracks[0].notes[0][0].empty());
     const TrackData& synth = p->tracks[1];
-    CHECK(synth.preset == Phazed::presetCount() - 1);
+    CHECK(synth.preset == specFor(TrackKind::Phazed)->presetCount() - 1); // held to the last listed (the added ones too)
     CHECK(synth.macro[0] == 1.f && synth.macro[1] == 0.f && synth.macro[2] == 0.5f);
     CHECK(synth.patch.value[0] == phazed::settingMax(0) && synth.patch.value[1] == phazed::settingMin(1));
     int notes = 0;
@@ -1459,9 +1459,9 @@ void testASongReadsInPlaceAsIntoANewOne() {
         for (int scene = 0; scene < kMaxScenes; ++scene) {
             track.bars[scene] = 2;
             for (int bar = 0; bar < kMaxBars; ++bar) {
-                track.drums[scene][bar].level[bar][scene] = 0.5f;
+                track.drums[scene][bar].level[bar][scene % kSteps] = 0.5f;
                 track.drums[scene][bar].chance[1][2] = 0.3f;
-                track.notes[scene][bar].notes[bar] = NoteEvent{scene, 50 + bar, 1.f, 0.f, 0.7f};
+                track.notes[scene][bar].notes[bar] = NoteEvent{scene % kSteps, 50 + bar, 1.f, 0.f, 0.7f};
                 track.notes[scene][bar].chords[1].root = 70;
             }
             for (int lane = 0; lane < kAutoLanes; ++lane) track.automation[scene][lane][lane] = 0.25f;
@@ -1494,12 +1494,12 @@ void testASongReadsInPlaceAsIntoANewOne() {
     for (int t = 0; t < kNumTracks; ++t) {
         const TrackData& u = busy->tracks[t];
         const TrackData& v = fresh->tracks[t];
-        unlike += std::memcmp(u.drums, v.drums, sizeof u.drums) != 0;
-        unlike += std::memcmp(u.notes, v.notes, sizeof u.notes) != 0;
-        unlike += std::memcmp(u.automation, v.automation, sizeof u.automation) != 0;
+        unlike += !u.drums.sameAs(v.drums);
+        unlike += !u.notes.sameAs(v.notes);
+        unlike += !u.automation.sameAs(v.automation);
         unlike += std::memcmp(u.bars, v.bars, sizeof u.bars) != 0 || u.kind != v.kind || u.muted != v.muted || std::strcmp(u.name, v.name) != 0;
         unlike += std::memcmp(u.send, v.send, sizeof u.send) != 0 || std::memcmp(u.laneLevel, v.laneLevel, sizeof u.laneLevel) != 0;
-        if (t >= 2) unlike += std::memcmp(u.drums, blank->drums, sizeof u.drums) != 0 || std::memcmp(u.automation, blank->automation, sizeof u.automation) != 0 || u.kind != TrackKind::None;
+        if (t >= 2) unlike += !u.drums.sameAs(blank->drums) || !u.automation.sameAs(blank->automation) || u.kind != TrackKind::None;
     }
     CHECK(unlike == 0);
 }
@@ -1544,7 +1544,71 @@ void testASongReadInPartsIsAsReadWhole() {
     CHECK(wrong == 0);
 }
 
+// A song past sixteen scenes (scenes-plan.md). A track's scenes are pieces made when something is
+// written there: a new song holds none, a song read holds them only where its text writes something
+// (a kit no notes, automation only where a lane is written). A song of sixteen scenes or fewer is
+// written as it always was (sixteen numbers on `repeats` and `length`); one past it gives the numbers
+// up to its last scene that is not at its usual, and reads back the same. A copy of a track is its
+// fields byte for byte and its pieces piece for piece, and the pieces stand past the fields' last byte.
+static void testScenesPastSixteen() {
+    std::unique_ptr<Project> fresh(new Project);
+    int held = 0;
+    for (const TrackData& t : fresh->tracks) held += t.piecesHeld();
+    CHECK(held == 0 && fresh->sceneCount() == 1);
+    {
+        const TrackData& t = fresh->tracks[0];
+        CHECK(reinterpret_cast<const char*>(&t.drums) - reinterpret_cast<const char*>(&t) >= static_cast<std::ptrdiff_t>(sizeof(TrackFields)));
+        CHECK(t.drums[40][3].empty() && t.automation[63][5][7] == kAutoNone && t.piecesHeld() == 0); // read: the blank piece, none made
+    }
+    // Hits in scenes 1, 3 and 40 of the kit; a note in scene 64 of a synth; a lane in scene 20.
+    std::unique_ptr<Project> p(new Project);
+    p->tracks[1].kind = TrackKind::Phazed;
+    specFor(TrackKind::Phazed)->loadPreset(p->tracks[1], 0);
+    for (int scene : {0, 2, 39}) p->tracks[0].drums[scene][0].level[1][4] = 0.8f;
+    p->tracks[1].notes[63][0].notes[0] = NoteEvent{2, 60, 1.f, 0.f, 0.9f};
+    p->tracks[1].automation[19][3][5] = 0.5f;
+    p->repeats[40] = 3;
+    p->steps[30] = 12; // (fewer than its one bar: a scene cut short)
+    p->tracks[0].bars[50] = 4; // a cell longer than a bar, in a scene with nothing in it
+    CHECK(p->sceneCount() == 64 && p->tracks[0].drums.held() == 3 && p->tracks[0].piecesHeld() == 3 && p->tracks[1].piecesHeld() == 2);
+    const std::string text = songText(*p);
+    CHECK(text.find("scene 40\n") != std::string::npos && text.find("scene 64\n") != std::string::npos && text.find("auto 20 3") != std::string::npos);
+    // repeats up to the 41st (the last past the sixteenth not at 1), length up to the 31st.
+    std::string repeats = "repeats", length = "length";
+    for (int s = 0; s < 41; ++s) repeats += s == 40 ? " 3" : " 1";
+    for (int s = 0; s < 31; ++s) length += s == 30 ? " 12" : " 0";
+    CHECK(text.find(repeats + "\n") != std::string::npos && text.find(length + "\n") != std::string::npos);
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back) && songText(*back) == text);
+    CHECK(back->tracks[0].drums.held() == 3 && back->tracks[0].notes.held() == 0 && back->tracks[0].automation.held() == 0);
+    CHECK(back->tracks[1].notes.held() == 1 && back->tracks[1].drums.held() == 0 && back->tracks[1].automation.held() == 1);
+    CHECK(back->tracks[0].drums[39][0].level[1][4] == 0.8f && back->repeats[40] == 3 && back->steps[30] == 12 && back->tracks[0].bars[50] == 4 && back->sceneCount() == 64);
+    // Sixteen scenes or fewer: sixteen numbers, as before.
+    std::unique_ptr<Project> small(new Project);
+    small->repeats[15] = 2;
+    small->steps[3] = 9;
+    const std::string smallText = songText(*small);
+    CHECK(smallText.find("repeats 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 2\n") != std::string::npos);
+    CHECK(smallText.find("length 0 0 0 9 0 0 0 0 0 0 0 0 0 0 0 0\n") != std::string::npos);
+    // A copy: the fields byte for byte, the pieces as pieces.
+    std::unique_ptr<TrackData> copy(new TrackData(back->tracks[0]));
+    CHECK(copy->sameFields(back->tracks[0]) && copy->samePatternsAs(back->tracks[0]) && copy->drums.held() == 3);
+    copy->drums[39][0].level[1][4] = 0.f; // its own piece, not the original's
+    CHECK(back->tracks[0].drums[39][0].level[1][4] == 0.8f && !copy->samePatternsAs(back->tracks[0]));
+    *copy = back->tracks[1];
+    // (its three drum pieces stay, blank now: an assignment never frees a piece something may hold a bar of)
+    CHECK(copy->drums.held() == 3 && copy->drums[39][0].empty() && copy->notes.held() == 1 && copy->samePatternsAs(back->tracks[1]) && copy->sameFields(back->tracks[1]));
+    // A piece made by reading through a non-const track is the blank one: the same patterns.
+    std::unique_ptr<TrackData> looked(new TrackData(back->tracks[1]));
+    CHECK(looked->drums[5][0].empty() && looked->drums.held() == 1 && looked->samePatternsAs(back->tracks[1]));
+    // A scene number past 64 is not taken.
+    std::unique_ptr<Project> odd(new Project);
+    CHECK(parseSong("apotheca-song 1\ntrack drums\nscene 65\nhit 1 1 0.8 0 1 0\nscene 64\nhit 2 1 0.8 0 1 0\n", *odd));
+    CHECK(odd->tracks[0].drums.held() == 1 && odd->tracks[0].drums[63][0].level[1][0] == 0.8f && odd->sceneCount() == 64);
+}
+
 int main(int, char**) {
+    testScenesPastSixteen();
     testNumbersAsSnprintfWritesThem();
     testALineReadsAsAStreamReadsIt();
     testCuttingASong();

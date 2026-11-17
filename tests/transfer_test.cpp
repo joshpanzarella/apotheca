@@ -439,7 +439,8 @@ void testTurningItOnFromTheDevice() {
     session.useSongFolder(root + "/songs", 3);
     session.useSampleFolder(root + "/samples");
     session.useChordFolder(root + "/chords");
-    CHECK(session.packs.size() == 1);
+    const std::size_t packsShipped = 1 + shippedPacks().size(); // the built-in one and those compiled in
+    CHECK(session.packs.size() == packsShipped);
 
     // L1 in the song list turns it on.
     session.view = View::Song;
@@ -461,11 +462,14 @@ void testTurningItOnFromTheDevice() {
     // A chord pack sent to it is there to pick from on the next frame.
     CHECK(put(port, door + "/chords/sent.json", kPack).status == 200);
     app.update(input, clock += 16);
-    CHECK(session.packs.size() == 2 && session.packs[1].name == "Sent");
+    CHECK(session.packs.size() == packsShipped + 1);
+    bool sentIsThere = false;
+    for (const ChordPack& pack : session.packs) sentIsThere = sentIsThere || pack.name == "Sent";
+    CHECK(sentIsThere);
     // Deleted from the page, it is gone from the list on the next frame too.
     CHECK(del(port, door + "/chords/sent.json").status == 200);
     app.update(input, clock += 16);
-    CHECK(session.packs.size() == 1);
+    CHECK(session.packs.size() == packsShipped);
     // A song sent to it is in the list the next time the list is opened.
     CHECK(put(port, door + "/songs/from%20afar.song", "apotheca-song 1\ntrack drums\nscene 1\nhit 1 1 1\n").status == 200);
     bool listed = false;

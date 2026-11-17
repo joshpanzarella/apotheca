@@ -1,0 +1,704 @@
+{
+  "schemaVersion": 2,
+  "id": "authored.smoke",
+  "name": "Smoke",
+  "sourceTonic": 0,
+  "scale": {
+    "id": "major",
+    "pitchClasses": [
+      0,
+      2,
+      4,
+      5,
+      7,
+      9,
+      11
+    ]
+  },
+  "description": "Jazz in C. Two-five-ones with ninths and thirteenths, altered dominants, a tritone substitute and the passing diminished.",
+  "tags": [
+    "jazz",
+    "major",
+    "extended",
+    "altered",
+    "authored"
+  ],
+  "guidance": {
+    "density": "lush",
+    "chordRegister": {
+      "low": 48,
+      "high": 84
+    },
+    "leadRegister": {
+      "low": 64,
+      "high": 93
+    },
+    "bassRegister": {
+      "low": 28,
+      "high": 50
+    },
+    "melody": {
+      "targets": [
+        0,
+        2,
+        4,
+        7,
+        9,
+        11,
+        14,
+        16,
+        19,
+        21
+      ],
+      "allowApproach": true,
+      "requireResolution": true
+    }
+  },
+  "chords": [
+    {
+      "id": "smoke.Imaj7",
+      "quality": "maj7",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "smoke.Imaj9",
+      "quality": "maj9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "smoke.I69",
+      "quality": "6/9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        9,
+        14,
+        19
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        9,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "smoke.sharpIdim7",
+      "quality": "dim7",
+      "root": {
+        "degree": 0,
+        "alteration": 1
+      },
+      "intervals": [
+        0,
+        3,
+        6,
+        9
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        6,
+        9
+      ],
+      "preferredVoices": 4,
+      "function": "dominant",
+      "borrowedFrom": "passing diminished",
+      "outside": [
+        1,
+        10
+      ]
+    },
+    {
+      "id": "smoke.iim7",
+      "quality": "m7",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "smoke.iim9",
+      "quality": "m9",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "predominant"
+    },
+    {
+      "id": "smoke.iim11",
+      "quality": "m11",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        17
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        17
+      ],
+      "preferredVoices": 5,
+      "function": "predominant"
+    },
+    {
+      "id": "smoke.bII9",
+      "quality": "9",
+      "root": {
+        "degree": 1,
+        "alteration": -1
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "dominant",
+      "legacyName": "Db9",
+      "borrowedFrom": "tritone substitute of V",
+      "outside": [
+        1,
+        3,
+        8
+      ]
+    },
+    {
+      "id": "smoke.II9",
+      "quality": "9",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "dominant",
+      "borrowedFrom": "V of V",
+      "outside": [
+        6
+      ]
+    },
+    {
+      "id": "smoke.iiim7",
+      "quality": "m7",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "smoke.III7b9",
+      "quality": "7b9",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10,
+        13
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        13
+      ],
+      "preferredVoices": 5,
+      "function": "dominant",
+      "borrowedFrom": "V of vi",
+      "outside": [
+        8
+      ]
+    },
+    {
+      "id": "smoke.IVmaj7",
+      "quality": "maj7",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "smoke.IVmaj7s11",
+      "quality": "maj7#11",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        11,
+        18
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11,
+        18
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "smoke.ivm6",
+      "quality": "m6",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        9
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        9
+      ],
+      "preferredVoices": 4,
+      "function": "predominant",
+      "borrowedFrom": "parallel minor iv",
+      "outside": [
+        8
+      ]
+    },
+    {
+      "id": "smoke.V7",
+      "quality": "7",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "dominant"
+    },
+    {
+      "id": "smoke.V13",
+      "quality": "13",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        10,
+        14,
+        21
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        21
+      ],
+      "preferredVoices": 5,
+      "function": "dominant"
+    },
+    {
+      "id": "smoke.V7b9",
+      "quality": "7b9",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10,
+        13
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        13
+      ],
+      "preferredVoices": 5,
+      "function": "dominant",
+      "borrowedFrom": "harmonic minor dominant",
+      "outside": [
+        8
+      ]
+    },
+    {
+      "id": "smoke.V7alt",
+      "quality": "7#9b13",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        10,
+        15,
+        20
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        15,
+        20
+      ],
+      "preferredVoices": 5,
+      "function": "dominant",
+      "borrowedFrom": "altered dominant",
+      "outside": [
+        3,
+        10
+      ]
+    },
+    {
+      "id": "smoke.vim7",
+      "quality": "m7",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "smoke.vim9",
+      "quality": "m9",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "smoke.VI7b9",
+      "quality": "7b9",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10,
+        13
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        13
+      ],
+      "preferredVoices": 5,
+      "function": "dominant",
+      "borrowedFrom": "V of ii",
+      "outside": [
+        1,
+        10
+      ]
+    },
+    {
+      "id": "smoke.bVII7",
+      "quality": "7",
+      "root": {
+        "degree": 6,
+        "alteration": -1
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "dominant",
+      "borrowedFrom": "backdoor dominant",
+      "outside": [
+        8,
+        10
+      ]
+    },
+    {
+      "id": "smoke.viim7b5",
+      "quality": "m7b5",
+      "root": {
+        "degree": 6,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        6,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        6,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "dominant"
+    }
+  ],
+  "progressions": [
+    {
+      "id": "smoke.two-five-one",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "smoke.iim9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "smoke.V13",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "smoke.Imaj9",
+          "durationTicks": 7680,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "smoke.turnaround",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "smoke.Imaj7",
+          "durationTicks": 1920,
+          "weight": 1.0
+        },
+        {
+          "chordId": "smoke.VI7b9",
+          "durationTicks": 1920,
+          "weight": 1.0
+        },
+        {
+          "chordId": "smoke.iim9",
+          "durationTicks": 1920,
+          "weight": 1.0
+        },
+        {
+          "chordId": "smoke.V7b9",
+          "durationTicks": 1920,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "smoke.tritone",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "smoke.iim9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "smoke.bII9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "smoke.Imaj9",
+          "durationTicks": 7680,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "smoke.backdoor",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "smoke.ivm6",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "smoke.bVII7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "smoke.Imaj7",
+          "durationTicks": 7680,
+          "weight": 1.0
+        }
+      ]
+    }
+  ]
+}

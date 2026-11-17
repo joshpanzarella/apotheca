@@ -1,0 +1,619 @@
+{
+  "schemaVersion": 2,
+  "id": "authored.revival",
+  "name": "Revival",
+  "sourceTonic": 0,
+  "scale": {
+    "id": "major",
+    "pitchClasses": [
+      0,
+      2,
+      4,
+      5,
+      7,
+      9,
+      11
+    ]
+  },
+  "description": "Gospel in C. Walk-ups through diminished chords, the four over the five, a seven to the four and the flat six shout.",
+  "tags": [
+    "gospel",
+    "major",
+    "chromatic",
+    "extended",
+    "authored"
+  ],
+  "guidance": {
+    "density": "lush",
+    "chordRegister": {
+      "low": 48,
+      "high": 84
+    },
+    "leadRegister": {
+      "low": 64,
+      "high": 93
+    },
+    "bassRegister": {
+      "low": 28,
+      "high": 50
+    },
+    "melody": {
+      "targets": [
+        0,
+        2,
+        4,
+        7,
+        9,
+        12,
+        14,
+        16,
+        19,
+        21
+      ],
+      "allowApproach": true,
+      "requireResolution": true
+    }
+  },
+  "chords": [
+    {
+      "id": "revival.Iadd9",
+      "quality": "add9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        14
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "revival.I13",
+      "quality": "13",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        10,
+        14,
+        21
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        21
+      ],
+      "preferredVoices": 5,
+      "function": "dominant",
+      "borrowedFrom": "I7 leading to IV",
+      "outside": [
+        10
+      ]
+    },
+    {
+      "id": "revival.sharpIdim7",
+      "quality": "dim7",
+      "root": {
+        "degree": 0,
+        "alteration": 1
+      },
+      "intervals": [
+        0,
+        3,
+        6,
+        9
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        6,
+        9
+      ],
+      "preferredVoices": 4,
+      "function": "dominant",
+      "borrowedFrom": "passing diminished",
+      "outside": [
+        1,
+        10
+      ]
+    },
+    {
+      "id": "revival.iim9",
+      "quality": "m9",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "predominant"
+    },
+    {
+      "id": "revival.II7",
+      "quality": "7",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "dominant",
+      "borrowedFrom": "V of V",
+      "outside": [
+        6
+      ]
+    },
+    {
+      "id": "revival.iiim7",
+      "quality": "m7",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "revival.III7s9",
+      "quality": "7#9",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10,
+        15
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        15
+      ],
+      "preferredVoices": 5,
+      "function": "dominant",
+      "borrowedFrom": "V of vi",
+      "outside": [
+        8
+      ]
+    },
+    {
+      "id": "revival.IVmaj9",
+      "quality": "maj9",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "predominant"
+    },
+    {
+      "id": "revival.ivm6",
+      "quality": "m6",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        9
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        9
+      ],
+      "preferredVoices": 4,
+      "function": "predominant",
+      "borrowedFrom": "parallel minor iv",
+      "outside": [
+        8
+      ]
+    },
+    {
+      "id": "revival.sharpIVdim7",
+      "quality": "dim7",
+      "root": {
+        "degree": 3,
+        "alteration": 1
+      },
+      "intervals": [
+        0,
+        3,
+        6,
+        9
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        6,
+        9
+      ],
+      "preferredVoices": 4,
+      "function": "dominant",
+      "borrowedFrom": "passing diminished",
+      "outside": [
+        3,
+        6
+      ]
+    },
+    {
+      "id": "revival.IVoverV",
+      "quality": "9sus4",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        10,
+        14,
+        17
+      ],
+      "requiredIntervals": [
+        0,
+        10,
+        14,
+        17
+      ],
+      "preferredVoices": 4,
+      "function": "dominant",
+      "legacyName": "F/G"
+    },
+    {
+      "id": "revival.V13",
+      "quality": "13",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        10,
+        14,
+        21
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        21
+      ],
+      "preferredVoices": 5,
+      "function": "dominant"
+    },
+    {
+      "id": "revival.V7s5",
+      "quality": "7#5",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        8,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        8,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "dominant",
+      "borrowedFrom": "augmented dominant",
+      "outside": [
+        3
+      ]
+    },
+    {
+      "id": "revival.vim9",
+      "quality": "m9",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "revival.VI7b9",
+      "quality": "7b9",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10,
+        13
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        13
+      ],
+      "preferredVoices": 5,
+      "function": "dominant",
+      "borrowedFrom": "V of ii",
+      "outside": [
+        1,
+        10
+      ]
+    },
+    {
+      "id": "revival.bVI9",
+      "quality": "9",
+      "root": {
+        "degree": 5,
+        "alteration": -1
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "predominant",
+      "borrowedFrom": "flat six shout",
+      "outside": [
+        3,
+        6,
+        8,
+        10
+      ]
+    },
+    {
+      "id": "revival.bVII9",
+      "quality": "9",
+      "root": {
+        "degree": 6,
+        "alteration": -1
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "unknown",
+      "borrowedFrom": "mixolydian bVII",
+      "outside": [
+        8,
+        10
+      ]
+    },
+    {
+      "id": "revival.viim7b5",
+      "quality": "m7b5",
+      "root": {
+        "degree": 6,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        6,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        6,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "dominant"
+    }
+  ],
+  "progressions": [
+    {
+      "id": "revival.walk-up",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "revival.Iadd9",
+          "durationTicks": 1920,
+          "weight": 1.0
+        },
+        {
+          "chordId": "revival.sharpIdim7",
+          "durationTicks": 1920,
+          "weight": 1.0
+        },
+        {
+          "chordId": "revival.iim9",
+          "durationTicks": 1920,
+          "weight": 1.0
+        },
+        {
+          "chordId": "revival.V13",
+          "durationTicks": 1920,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "revival.seven-to-four",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "revival.I13",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "revival.IVmaj9",
+          "durationTicks": 1920,
+          "weight": 1.0
+        },
+        {
+          "chordId": "revival.sharpIVdim7",
+          "durationTicks": 1920,
+          "weight": 1.0
+        },
+        {
+          "chordId": "revival.Iadd9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "revival.IVoverV",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "revival.three-six-two-five",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "revival.iiim7",
+          "durationTicks": 1920,
+          "weight": 1.0
+        },
+        {
+          "chordId": "revival.VI7b9",
+          "durationTicks": 1920,
+          "weight": 1.0
+        },
+        {
+          "chordId": "revival.iim9",
+          "durationTicks": 1920,
+          "weight": 1.0
+        },
+        {
+          "chordId": "revival.V13",
+          "durationTicks": 1920,
+          "weight": 1.0
+        },
+        {
+          "chordId": "revival.Iadd9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "revival.shout",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "revival.bVI9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "revival.V13",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "revival.Iadd9",
+          "durationTicks": 7680,
+          "weight": 1.0
+        }
+      ]
+    }
+  ]
+}

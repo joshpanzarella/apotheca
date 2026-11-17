@@ -496,8 +496,10 @@ int main(int argc, char** argv) {
         if (textSize >= 0) app.session().setTextSize(textSize);
         if (theme >= 0) app.session().setTheme(theme); // (the same: kept, without --shot)
         if (!smoke && !shot) app.session().startMidi(); // USB keyboards, whenever one is plugged in
-        app.session().useChordFolder(beside);
-        if (app.session().packs.size() == 1) app.session().useChordFolder(beside.substr(0, beside.size() - 6) + "../assets/chords");
+        // (The packs that ship are compiled in; a folder adds packs, or takes a shipped one's place.)
+        struct stat chordsThere;
+        const bool besideIsThere = stat(beside.c_str(), &chordsThere) == 0 && S_ISDIR(chordsThere.st_mode);
+        app.session().useChordFolder(besideIsThere ? beside : beside.substr(0, beside.size() - 6) + "../assets/chords");
         std::printf("chord packs: %d\n", static_cast<int>(app.session().packs.size()));
         // Recordings for drum lanes: WAV files in a "samples" folder beside the program.
         const std::string folder = samples ? samples : beside.substr(0, beside.size() - 6) + "samples";
@@ -1048,14 +1050,17 @@ int main(int argc, char** argv) {
         app.song().moveCursorTo(0, app.project().trackCount());
         tapKey(SDLK_x);
     } else if (std::strncmp(view, "chords", 6) == 0) {
-        // The pads, with Y held: "chords" to place one, "chords-swap" on one.
+        // The pads, with Y held: "chords" to place one, "chords-swap" on one, "chords-smoke" deep in
+        // a big pack (SMOKE, 23 chords: the tiles scrolled to its middle, a chord with a flat root).
         app.project().track = 2;
-        const bool swap = std::strcmp(view, "chords-swap") == 0;
+        const bool swap = std::strcmp(view, "chords-swap") == 0, deep = std::strcmp(view, "chords-smoke") == 0;
         app.notes().moveCursorTo(60, swap ? 2 : 14);
         if (swap) app.session().choosePack(1);
+        for (std::size_t i = 0; deep && i < app.session().packs.size(); ++i)
+            if (app.session().packs[i].name == "Smoke") app.session().choosePack(static_cast<int>(i));
         app.session().view = View::Pattern;
         pushKey(SDLK_a, true); // Y, held
-        tapKey(SDLK_RIGHT, swap ? 1 : 2);
+        tapKey(SDLK_RIGHT, swap ? 1 : deep ? 7 : 2);
     } else if (std::strcmp(view, "notes") == 0) {
         app.project().track = 1;
         app.notes().moveCursorTo(57, 6);
@@ -1485,6 +1490,34 @@ int main(int argc, char** argv) {
         pushKey(SDLK_BACKSPACE, true); // SELECT, held
         tapKey(SDLK_a, std::strcmp(view + 10, "-full") == 0 ? kMaxScenes : 1); // Y
         pushKey(SDLK_BACKSPACE, false);
+    } else if (std::strncmp(view, "scenes", 6) == 0) {
+        // A song past sixteen scenes (scenes-plan.md): the demo's last scene copied with NEXT SCENE up to 48
+        // ("scenes-full": all 64). On SONG with the cursor on scene 48 (rows 41 to 48); "-end" on the row past
+        // the last scene (AT END); "-full" on scene 64; "-grid" and "-roll" the drum grid and the piano roll on
+        // scene 48, its cells eight bars long, on the eighth, just after SEL + L2 ("SCENE 48: 127 STEPS OF 128");
+        // "-playing" SONG with scene 48 playing (the top bar's scene).
+        const char* kind = view + 6;
+        const int want = std::strcmp(kind, "-full") == 0 ? kMaxScenes : 48;
+        for (int i = 0; i < kMaxScenes && app.project().sceneCount() < want; ++i) {
+            app.project().scene = app.project().sceneCount() - 1;
+            app.session().nextScene();
+        }
+        const int last = want - 1;
+        app.project().scene = last;
+        if (std::strcmp(kind, "-grid") == 0 || std::strcmp(kind, "-roll") == 0) {
+            app.project().track = kind[1] == 'r' ? 1 : 0;
+            app.session().setCellBars(app.project().track, last, kMaxBars);
+            app.project().bar = kMaxBars - 1;
+            if (kind[1] == 'r') app.notes().moveCursorTo(57, 6);
+            pushKey(SDLK_BACKSPACE, true); // SELECT, held
+            tapKey(SDLK_1);                // L2: a step shorter
+            pushKey(SDLK_BACKSPACE, false);
+        } else {
+            app.session().view = View::Song;
+            if (std::strcmp(kind, "-end") == 0) app.song().moveCursorTo(app.song().songEndRow(), -1);
+            else app.song().moveCursorTo(last, 0);
+            if (std::strcmp(kind, "-playing") == 0) tapKey(SDLK_RETURN); // START: from the scene worked on
+        }
     } else if (std::strncmp(view, "copy-bar", 8) == 0) {
         // COPY A BAR: L1 held (the bar says what R1 and A do) just after R1 copied the bar (BAR 1 COPIED),
         // on the drum grid; on the piano roll ("copy-bar-notes"); and a drum bar refused on a synth track

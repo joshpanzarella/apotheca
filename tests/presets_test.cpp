@@ -14,6 +14,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
@@ -41,6 +42,11 @@ static int failures = 0;
     } while (0)
 
 namespace {
+
+// `--part K/N` (with a --heard option): only every Nth preset from the Kth, so a synth's heard check
+// can be cut into ctest entries that each finish inside the two-minute limit.
+int gPart = 0, gParts = 1;
+bool inPart(int preset) { return preset % gParts == gPart; }
 
 const TrackKind kSynths[] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Physic, TrackKind::Acid, TrackKind::Cloud, TrackKind::Morph};
 
@@ -166,6 +172,29 @@ void testTheShippedData(bool print) {
             CHECK(numbers && most > 0.001f);
             rig.render(96000);
         }
+    }
+    // No two presets of one added folder are the same sound: the synth's settings, the macros and the
+    // track sound (as the song file writes it) are never all alike (presets-plan.md, "More presets").
+    for (TrackKind kind : kSynths) {
+        const PresetData& data = builtInData(kind);
+        for (std::size_t i = 0; i < data.added.size(); ++i)
+            for (std::size_t j = i + 1; j < data.added.size(); ++j) {
+                const UserPreset &a = data.added[i], &b = data.added[j];
+                if (a.folder != b.folder) continue;
+                const bool same = a.values == b.values && a.macros == b.macros && trackSoundText(kind, a.sound) == trackSoundText(kind, b.sound);
+                if (same) std::printf("  %s %s: \"%s\" and \"%s\" are one sound\n", instrument(kind)->word, a.folder.c_str(), a.name.c_str(), b.name.c_str());
+                CHECK(!same);
+            }
+    }
+    // An added preset's name is no built-in's before it, capitals not counted: `base NAME` finds one.
+    for (TrackKind kind : kSynths) {
+        const SynthSpec& spec = *specFor(kind);
+        for (int i = enginePresets(kind); i < builtInPresets(kind); ++i)
+            for (int j = 0; j < i; ++j) {
+                const bool same = strcasecmp(spec.presetName(i), spec.presetName(j)) == 0;
+                if (same) std::printf("  %s %d %s / %s: the name of %d %s\n", instrument(kind)->word, i + 1, spec.presetCategory(i), spec.presetName(i), j + 1, spec.presetCategory(j));
+                CHECK(!same);
+            }
     }
     // The added folders come after the engine's: each one's presets side by side, no folder twice.
     for (TrackKind kind : kSynths) {
@@ -858,6 +887,7 @@ void testPhysicPresetsAsHeard(bool measure) {
     const int first = measure ? 0 : enginePresets(kind);
     if (measure) std::printf("  %-3s %-14s %-20s %8s %6s %6s %7s  %s\n", "", "folder", "name", "loudest", "peak", "tail", "cost", "MODs swing");
     for (int i = first; i < builtInPresets(kind); ++i) {
+        if (!inPart(i)) continue;
         const Heard h = hearPhysicPreset(i);
         const TrackSound* sound = presetSound(kind, i);
         bool modsMove = true;
@@ -894,7 +924,7 @@ const char* const kJaxepPhraseNames[] = {"notes", "pad", "bass", "lead", "seq"};
 JaxepPhrase jaxepPhraseFor(const std::string& folder) {
     if (folder == "BASS") return JaxepPhrase::Bass;
     if (folder == "LEAD") return JaxepPhrase::Lead;
-    if (folder == "PADS" || folder == "STRINGS" || folder == "ATMOS") return JaxepPhrase::Pad;
+    if (folder == "PADS" || folder == "STRINGS" || folder == "ATMOS" || folder == "ORGAN") return JaxepPhrase::Pad;
     if (folder == "SEQUENCE") return JaxepPhrase::Sequence;
     return JaxepPhrase::Notes;
 }
@@ -1016,6 +1046,7 @@ void testJaxepPresetsAsHeard(bool measure) {
         std::printf("\n  %-3s %-14s %-20s %-5s %8s %6s %6s %7s %5s  %s\n", "", "folder", "name", "heard", "loudest", "peak", "tail", "cost", "clip/full", "MODs swing");
     }
     for (int i = enginePresets(kind); i < builtInPresets(kind); ++i) {
+        if (!inPart(i)) continue;
         const JaxepPhrase phrase = jaxepPhraseFor(spec.presetCategory(i));
         const JaxepHeard j = hearJaxepPreset(i, phrase);
         const Heard& h = j.heard;
@@ -1063,7 +1094,12 @@ struct Fm6Heard {
 };
 
 // A bass is played low and as one line; anything else plays keys. (MORPH's are heard the same way.)
-bool fm6IsBass(int preset, TrackKind kind = TrackKind::Fm6) { return std::strcmp(specFor(kind)->presetCategory(preset), "BASS") == 0; }
+// (PHAZED's are heard the same way too: its engine folder "Bass" and the added DEEP BASS.)
+bool fm6IsBass(int preset, TrackKind kind = TrackKind::Fm6) {
+    const char* folder = specFor(kind)->presetCategory(preset);
+    if (kind == TrackKind::Phazed) return std::strcmp(folder, "Bass") == 0 || std::strcmp(folder, "DEEP BASS") == 0;
+    return std::strcmp(folder, "BASS") == 0;
+}
 
 // The phrase, a bar at 120 BPM played round twice (4 s), then Stop and the tail. Keys: a low note held
 // the whole bar under four notes up, a four-key chord held six steps (loose notes: one moment), a high
@@ -1176,6 +1212,7 @@ void testFm6PresetsAsHeard(bool measure) {
     const int first = measure ? 0 : enginePresets(kind);
     if (measure) std::printf("  %-3s %-14s %-20s %8s %6s %6s %7s  %s\n", "", "folder", "name", "loudest", "peak", "tail", "cost", "MODs swing / heard");
     for (int i = first; i < builtInPresets(kind); ++i) {
+        if (!inPart(i)) continue;
         Fm6Heard h = hearFm6Preset(i);
         hearFm6Mods(i, h);
         const TrackSound* sound = presetSound(kind, i);
@@ -1218,6 +1255,7 @@ void testMorphPresetsAsHeard(bool measure) {
     if (measure) std::printf("  %-3s %-8s %-16s %8s %6s %6s %7s  %s\n", "", "folder", "name", "loudest", "peak", "tail", "cost", "MODs swing / heard");
     double lo = 1e9, hi = -1e9;
     for (int i = 0; i < builtInPresets(kind); ++i) {
+        if (!inPart(i)) continue;
         Fm6Heard h = hearFm6Preset(i, -1, nullptr, kind);
         hearFm6Mods(i, h, kind);
         const TrackSound* sound = presetSound(kind, i);
@@ -1243,7 +1281,48 @@ void testMorphPresetsAsHeard(bool measure) {
     }
     if (measure) std::printf("  loudest %.1f dB, quietest %.1f dB\n", hi, lo);
     CHECK(hi - lo <= kMorphSpreadDb);
-    CHECK(builtInPresets(kind) == 32 && Morph::presetCount() == 8);
+    CHECK(builtInPresets(kind) == 64 && Morph::presetCount() == 8);
+}
+
+// ---- PHAZED's added presets, heard through their whole sound ----------------------------------------
+// (presets-plan.md, "More presets".) Played as FM-6's are (a bar of keys, or the bass line for a bass
+// folder, round twice, Stop, the tail): the loudest tenth inside the window, the master's peak under
+// 0.9, a tail that ends, every MOD moving and heard. The window is the engine's own 65 played the same
+// way, with room either side (`--measure-phazed` prints them). Nothing is pinned by checksum.
+constexpr double kPhazedQuietestDb = -26.0, kPhazedLoudestDb = -10.0;
+constexpr float kPhazedPeakMost = 0.9f;
+constexpr double kPhazedTailMost = 60.0;
+constexpr double kPhazedModHeardDb = -40.0; // a MOD turned off changes the phrase by at least 1% of its RMS
+void testPhazedPresetsAsHeard(bool measure) {
+    const TrackKind kind = TrackKind::Phazed;
+    const SynthSpec& spec = *specFor(kind);
+    const int first = measure ? 0 : enginePresets(kind);
+    if (measure) std::printf("  %-3s %-14s %-20s %8s %6s %6s %7s  %s\n", "", "folder", "name", "loudest", "peak", "tail", "cost", "MODs swing / heard");
+    for (int i = first; i < builtInPresets(kind); ++i) {
+        if (!inPart(i)) continue;
+        Fm6Heard h = hearFm6Preset(i, -1, nullptr, kind);
+        hearFm6Mods(i, h, kind);
+        const TrackSound* sound = presetSound(kind, i);
+        bool modsMove = true;
+        char swing[96] = "";
+        for (int m = 0; m < kModsPerTrack; ++m) {
+            if (!sound || sound->mods[m].kind == kModOff) continue;
+            modsMove = modsMove && h.modSwing[m] > 0.005f && h.modHeardDb[m] >= kPhazedModHeardDb;
+            char one[40];
+            std::snprintf(one, sizeof one, " %d:%.2f/%.0fdB", m + 1, h.modSwing[m], h.modHeardDb[m]);
+            std::strcat(swing, one);
+        }
+        if (measure)
+            std::printf("  %-3d %-14s %-20s %6.1f dB %6.3f %5.1fs %6.2f%% %s\n", i + 1, spec.presetCategory(i), spec.presetName(i), h.loudestDb, h.peak, h.tail, h.cost * 100.0, swing);
+        if (i < enginePresets(kind)) continue;
+        const bool fine = h.numbers && h.loudestDb >= kPhazedQuietestDb && h.loudestDb <= kPhazedLoudestDb && h.peak < kPhazedPeakMost && h.ended && h.tail <= kPhazedTailMost && modsMove;
+        if (!fine) std::printf("  PHAZED %d %s / %s: loudest %.1f dB, peak %.3f, tail %.1f s%s%s, MODs%s\n", i + 1, spec.presetCategory(i), spec.presetName(i), h.loudestDb, h.peak, h.tail, h.ended ? "" : " (not ended)", h.numbers ? "" : ", NOT A NUMBER", swing);
+        CHECK(h.numbers);
+        CHECK(h.loudestDb >= kPhazedQuietestDb && h.loudestDb <= kPhazedLoudestDb);
+        CHECK(h.peak < kPhazedPeakMost);
+        CHECK(h.ended && h.tail <= kPhazedTailMost);
+        CHECK(modsMove);
+    }
 }
 
 // ---- ACID's added presets, heard through their whole sound ------------------------------------------
@@ -1382,6 +1461,7 @@ void testAcidPresetsAsHeard(bool measure) {
     const int first = 0; // (every one: the engine's own eight are batch 4's too, CLASSIC)
     if (measure) std::printf("  %-3s %-10s %-18s %8s %6s %6s %7s %5s %s  %s\n", "", "folder", "name", "loudest", "peak", "tail", "cost", "clip", "ties", "MODs swing / heard");
     for (int i = first; i < builtInPresets(kind); ++i) {
+        if (!inPart(i)) continue;
         AcidHeard h = hearAcidPreset(i);
         hearAcidMods(i, h);
         const TrackSound* sound = presetSound(kind, i);
@@ -1555,6 +1635,7 @@ void testCloudPresetsAsHeard(bool measure) {
     if (measure) std::printf("  %-3s %-6s %-16s %18s %16s %7s %6s  %s\n", "", "folder", "name", "TONE loud / peak", "rec loud / peak", "tail", "cost", "MODs swing / heard");
     double lo[2] = {1e9, 1e9}, hi[2] = {-1e9, -1e9};
     for (int i = 0; i < builtInPresets(kind); ++i) {
+        if (!inPart(i)) continue;
         const CloudHeard tone = hearCloudPreset(i, "");
         CloudHeard rec = hearCloudPreset(i, "sweep");
         hearCloudMods(i, rec);
@@ -1586,10 +1667,10 @@ void testCloudPresetsAsHeard(bool measure) {
         if (measure) std::printf("  on %s: %.1f to %.1f dB\n", which ? "the recording" : "the TONE", lo[which], hi[which]);
         CHECK(hi[which] - lo[which] <= kCloudSpreadDb);
     }
-    CHECK(builtInPresets(kind) == 24 && Cloud::presetCount() == 6);
-    // Four folders of six, each a run of its own (the folder step walks them).
-    const char* const folders[4] = {"STILL", "DRIFT", "DUST", "CHOIR"};
-    for (int i = 0; i < 24; ++i) CHECK(std::strcmp(spec.presetCategory(i), folders[i / 6]) == 0);
+    CHECK(builtInPresets(kind) == 48 && Cloud::presetCount() == 6);
+    // Eight folders of six, each a run of its own (the folder step walks them).
+    const char* const folders[8] = {"STILL", "DRIFT", "DUST", "CHOIR", "PADS", "DRONES", "PLUCKS", "RHYTHM"};
+    for (int i = 0; i < 48; ++i) CHECK(std::strcmp(spec.presetCategory(i), folders[i / 6]) == 0);
 }
 
 // A player's own CLOUD preset keeps its recording: written with it, read back, and picked it puts it
@@ -1667,6 +1748,9 @@ int main(int argc, char** argv) {
     SDL_SetMainReady();
     bool print = false;
     for (int a = 1; a < argc; ++a) print = print || std::strcmp(argv[a], "--print") == 0;
+    for (int a = 1; a + 1 < argc; ++a)
+        if (std::strcmp(argv[a], "--part") == 0 && std::sscanf(argv[a + 1], "%d/%d", &gPart, &gParts) == 2 && gParts >= 1 && gPart >= 1 && gPart <= gParts) --gPart;
+        else if (std::strcmp(argv[a], "--part") == 0) gPart = 0, gParts = 1;
     for (int a = 1; a < argc; ++a) {
         if (std::strcmp(argv[a], "--show") == 0) {
             show();
@@ -1700,11 +1784,18 @@ int main(int argc, char** argv) {
             std::printf(failures ? "%d check(s) failed\n" : "CLOUD's presets as heard: passed\n", failures);
             return failures ? 1 : 0;
         }
-        // --heard-morph: MORPH's 32 the same way (its own ctest entry, presets_heard_morph).
+        // --heard-morph: MORPH's 64 the same way (its own ctest entry, presets_heard_morph).
         // --measure-morph: their figures, printed.
         if (std::strcmp(argv[a], "--heard-morph") == 0 || std::strcmp(argv[a], "--measure-morph") == 0) {
             testMorphPresetsAsHeard(std::strcmp(argv[a], "--measure-morph") == 0);
             std::printf(failures ? "%d check(s) failed\n" : "MORPH's presets as heard: passed\n", failures);
+            return failures ? 1 : 0;
+        }
+        // --heard-phazed: PHAZED's added presets the same way (its own ctest entry, presets_heard_phazed).
+        // --measure-phazed: every PHAZED built-in's figures, printed.
+        if (std::strcmp(argv[a], "--heard-phazed") == 0 || std::strcmp(argv[a], "--measure-phazed") == 0) {
+            testPhazedPresetsAsHeard(std::strcmp(argv[a], "--measure-phazed") == 0);
+            std::printf(failures ? "%d check(s) failed\n" : "PHAZED's presets as heard: passed\n", failures);
             return failures ? 1 : 0;
         }
         // --heard-jaxep: JAX-EP's added presets the same way, the VCA's clip counted too (its own ctest

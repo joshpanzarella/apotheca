@@ -38,7 +38,7 @@ inline const char* const kViews[] = {
     "fx-deleting", "fx-trying", "fx-mod-held", "fx-mod-stepper", "fx-mod-new", "fx-mod-full", "fx-sends-mod-held", "fx-modded",
     "mod", "mod-lfo", "mod-steps", "mod-depth", "mod-mixer", "mod-target", "mod-target --hold-a", "mod-off", "mod-drums", "mod-drums --hold-a", "mod-deleting", "mod-12", "mod-free",
     "device-mod-held", "device-mod-stepper", "device-mod-new", "device-mod-full", "device-mod-deleting", "device-modded", "device-mod-free", "change-instrument", "song-deleting", "song-head", "song-marks", "song-marks-12", "song-mixer", "song-mixer-master", "song-mixer-12", "song-mixer-master-12", "song-end-loop", "song-end-stop",
-    "bounce", "bounce-tail", "bounce-ready", "panic", "wifi", "revs", "add-track", "chords", "chords-swap", "notes",
+    "bounce", "bounce-tail", "bounce-ready", "panic", "wifi", "revs", "add-track", "chords", "chords-swap", "chords-smoke", "notes",
     "phazed", "page0", "page1", "page2", "page3", "page4", "page5", "page6", "page7", "page8", "page9", "jaxep", "jaxep0", "jaxep1", "jaxep2", "jaxep3", "jaxep4", "jaxep5", "jaxep-bank", "jaxep-held",
     "kit", "slices", "slices-32", "slices-name", "slices-name-feel", "slices-throw", "starts", "picker", "picker-in", "picker-deep", "picker-deleting", "picker-new", "picker-typing", "picker-carrying", "picker-folder-deleting", "sampler-picker",
     "feel", "feel-held", "feel-off-held", "feel-same-held", "feel-said", "feel-swing", "feel-swing-held",
@@ -50,7 +50,7 @@ inline const char* const kViews[] = {
     "acid", "acid-1", "acid-2", "acid-fixed", "acid-long", "acid-roll",
     "cloud", "cloud-1", "cloud-2", "cloud-3", "cloud-long", "cloud-sounding",
     "morph", "morph-b", "morph-1", "morph-2", "morph-3", "morph-4", "morph-5", "morph-keys", "morph-long", "morph-sounding",
-    "next-scene", "next-scene-notes", "next-scene-full", "copy-bar", "copy-bar-notes", "copy-bar-refused", "volume", "setup-lights", "setup-light", "brightness", "update-ready", "update-ready-drums", "update-accepted", "nomenu", "help-nomenu", "kit-old",
+    "next-scene", "next-scene-notes", "next-scene-full", "scenes", "scenes-end", "scenes-full", "scenes-grid", "scenes-roll", "scenes-playing", "copy-bar", "copy-bar-notes", "copy-bar-refused", "volume", "setup-lights", "setup-light", "brightness", "update-ready", "update-ready-drums", "update-accepted", "nomenu", "help-nomenu", "kit-old",
     "", " --dice", " --paint", " --paint-random", " --on-name", " --on-tempo", " --hold-a", " --hold-y",
     "help --no-menu", "song --no-menu", "setup --no-menu",
 };

@@ -575,8 +575,6 @@ static void testAutomation() {
         image->notes[0][0].pitch = 45;
         image->notes[0][0].length = 16.f;
         image->notes[0][0].velocity = 0.8f;
-        image->automation.reset(new float[kMaxScenes * kAutoLanes * kAutoSteps]);
-        for (int i = 0; i < kMaxScenes * kAutoLanes * kAutoSteps; ++i) image->automation[i] = kAutoNone;
         for (int i = 8; i < 12; ++i) image->automation[(0 * kAutoLanes + lane) * kAutoSteps + i] = 1.f;
         CHECK(engine->setTrackImage(1, std::move(image)));
         engine->send(make(Command::Play, 0, 0, 1));
@@ -3347,7 +3345,111 @@ static void testTheSamplerTakesTheOldest() {
     CHECK(about(level(), 6.f));
 }
 
+// A scene's store is made when something is first written there (scenes-plan.md): a write that
+// leaves a scene as nothing makes none; the first hit, note, length or step of automation makes one,
+// handed over before it (both or neither); a track taken away has none again; a track sent whole has
+// one for each scene that holds something; a scene move moves them; the one blank store is never
+// written; and what is written plays.
+static void testScenesHaveStoresWhenWritten() {
+    {
+        SpscQueue<int, 4> q; // room for three
+        CHECK(q.hasRoom(3) && !q.hasRoom(4));
+        CHECK(q.push(1) && q.push(2) && q.hasRoom(1) && !q.hasRoom(2));
+        int out = 0;
+        CHECK(q.pop(out) && q.hasRoom(2) && !q.hasRoom(3));
+    }
+    std::unique_ptr<Engine> engine(new Engine);
+    const auto at = [](Command c, int scene, int bar = 0) { c.scene = scene, c.bar = bar; return c; };
+    CHECK(engine->scenesGiven(0) == 0);
+    // Writes that leave a scene as nothing: no store.
+    engine->send(at(step(KICK, 0, 0.f), 5));
+    engine->send(at(make(Command::SetStepNudge, 0, KICK, 0, 0.f), 5));
+    engine->send(at(make(Command::SetStepChance, 0, KICK, 0, 1.f), 5));
+    engine->send(at(make(Command::SetStepStart, 0, KICK, 0, 0.f), 5));
+    engine->send(at(make(Command::SetNote, 0, 3, 0, 0.f), 6));
+    engine->send(at(make(Command::SetCellBars, 0, 1), 7));
+    engine->send(at(make(Command::SetAutomation, 0, 2, 4, -1.f), 8));
+    engine->send(at(make(Command::ClearCell, 0), 9));
+    engine->send(at(make(Command::ClearAutomation, 0, -1), 9));
+    renderFrames(*engine, 64);
+    CHECK(engine->scenesGiven(0) == 0 && Engine::blankStillBlank());
+    // Each that writes something: a store, once.
+    engine->send(at(step(KICK, 0, 1.f), 2));
+    engine->send(at(step(SNARE, 4, 1.f), 2, 1));
+    CHECK(engine->scenesGiven(0) == 1);
+    engine->send(at(make(Command::SetStepNudge, 0, KICK, 0, 0.1f), 3));
+    engine->send(at(make(Command::SetStepChance, 0, KICK, 0, 0.5f), 4));
+    engine->send(at(make(Command::SetStepStart, 0, KICK, 0, 0.5f), 5));
+    Command fx = at(make(Command::SetStepFx, 0, KICK, 0), 6);
+    fx.d = 2;
+    engine->send(fx);
+    engine->send(at(make(Command::SetNote, 0, 3, 0, 0.8f), 7));
+    engine->send(at(make(Command::SetCellBars, 0, 2), 8));
+    engine->send(at(make(Command::SetAutomation, 0, 2, 4, 0.5f), 10));
+    CHECK(engine->scenesGiven(0) == 8);
+    engine->send(at(make(Command::SetCellBars, 0, 1), 2)); // (scene 3 back to one bar: its hit plays every bar)
+    // What was written plays, in its scene: the kick on the first step of scene 3, alone.
+    engine->send(make(Command::Play, 0, 2, 1));
+    renderFrames(*engine, 512);
+    CHECK(engine->trackPeak(0) > 0.1f);
+    CHECK(Engine::blankStillBlank());
+    // A track taken away: its stores gone with it (handed back), and a scene of it plays nothing.
+    engine->send(make(Command::Stop));
+    renderFrames(*engine, 48000);
+    CHECK(engine->removeTrack(0) && engine->scenesGiven(0) == 0 && engine->addDrumTrack(0));
+    renderFrames(*engine, 64);
+    engine->collectGarbage();
+    engine->send(make(Command::Play, 0, 2, 1));
+    renderFrames(*engine, 4096);
+    CHECK(engine->trackPeak(0) == 0.f);
+    engine->send(make(Command::Stop));
+    // A track sent whole: a store for each scene with something in it, or a cell longer than a bar.
+    std::unique_ptr<TrackImage> image(new TrackImage);
+    image->level[2 * kMaxBars][KICK][0] = 0.9f;
+    image->bars[8] = 4;
+    CHECK(engine->setTrackImage(0, std::move(image)) && engine->scenesGiven(0) == 2);
+    renderFrames(*engine, 64);
+    engine->send(make(Command::Play, 0, 2, 1));
+    renderFrames(*engine, 512);
+    CHECK(engine->trackPeak(0) > 0.1f);
+    engine->send(make(Command::Stop));
+    renderFrames(*engine, 64);
+    // A scene put in before the third: the stores move with their scenes, and the new one has one
+    // when it holds something.
+    std::unique_ptr<SceneImage> scenes[kNumTracks];
+    CHECK(engine->moveScenes(2, 1, scenes, 10, 1, 0) && engine->scenesGiven(0) == 2);
+    scenes[0].reset(new SceneImage);
+    CHECK(engine->moveScenes(0, 1, scenes, 11, 1, 0) && engine->scenesGiven(0) == 3);
+    renderFrames(*engine, 64);
+    engine->send(make(Command::Play, 0, 4, 1)); // the kick's scene, two places on
+    renderFrames(*engine, 512);
+    CHECK(engine->trackPeak(0) > 0.1f);
+    engine->send(make(Command::Stop));
+    renderFrames(*engine, 64);
+    // Taken back out: the last scene new (and empty), so the count goes down by the one taken out.
+    scenes[0].reset();
+    CHECK(engine->moveScenes(1, -1, scenes, 10, 1, 0) && engine->scenesGiven(0) == 2);
+    renderFrames(*engine, 64);
+    CHECK(Engine::blankStillBlank());
+    // A full queue: the store and the write go together, or neither does.
+    int room = 0;
+    while (engine->send(make(Command::SetTempo, 0, 0, 0, 120.f))) ++room;
+    const unsigned lost = engine->dropped();
+    CHECK(!engine->send(at(step(KICK, 0, 1.f), 12)) && engine->scenesGiven(0) == 2 && engine->dropped() == lost + 1);
+    renderFrames(*engine, 64);
+    // Room for one: the store would go and the write not, so neither does.
+    for (int i = 0; i + 1 < room; ++i) engine->send(make(Command::SetTempo, 0, 0, 0, 120.f));
+    CHECK(!engine->send(at(step(KICK, 0, 1.f), 12)) && engine->scenesGiven(0) == 2 && engine->dropped() == lost + 2);
+    CHECK(engine->send(make(Command::SetTempo, 0, 0, 0, 120.f)) && !engine->send(make(Command::SetTempo, 0, 0, 0, 120.f))); // (that one place was there)
+    renderFrames(*engine, 64);
+    CHECK(engine->send(at(step(KICK, 0, 1.f), 12)) && engine->scenesGiven(0) == 3);
+    renderFrames(*engine, 64);
+    engine->collectGarbage();
+    CHECK(engine->trashHeld() == 0 && engine->trashLost() == 0 && Engine::blankStillBlank());
+}
+
 int main() {
+    testScenesHaveStoresWhenWritten();
     testAPresetPutsTheMacrosRestBack();
     testCellsOfSeveralBars();
     testANoteNudgedOffItsStep();

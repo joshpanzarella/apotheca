@@ -1,0 +1,674 @@
+{
+  "schemaVersion": 2,
+  "id": "authored.skyline",
+  "name": "Skyline",
+  "sourceTonic": 0,
+  "scale": {
+    "id": "major",
+    "pitchClasses": [
+      0,
+      2,
+      4,
+      5,
+      7,
+      9,
+      11
+    ]
+  },
+  "description": "City pop in C. The four-five-three-six road, major sevenths and ninths, secondary dominants, the minor four and the four over the five.",
+  "tags": [
+    "city-pop",
+    "major",
+    "extended",
+    "authored"
+  ],
+  "guidance": {
+    "density": "lush",
+    "chordRegister": {
+      "low": 50,
+      "high": 86
+    },
+    "leadRegister": {
+      "low": 64,
+      "high": 96
+    },
+    "bassRegister": {
+      "low": 28,
+      "high": 52
+    },
+    "melody": {
+      "targets": [
+        0,
+        2,
+        4,
+        7,
+        9,
+        11,
+        14,
+        16,
+        19,
+        21
+      ],
+      "allowApproach": true,
+      "requireResolution": true
+    }
+  },
+  "chords": [
+    {
+      "id": "skyline.Imaj7",
+      "quality": "maj7",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "skyline.Imaj9",
+      "quality": "maj9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "skyline.Iadd9",
+      "quality": "add9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        14
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "skyline.I9",
+      "quality": "9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "dominant",
+      "borrowedFrom": "V of IV",
+      "outside": [
+        10
+      ]
+    },
+    {
+      "id": "skyline.iim7",
+      "quality": "m7",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "skyline.iim9",
+      "quality": "m9",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "predominant"
+    },
+    {
+      "id": "skyline.II7",
+      "quality": "7",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "dominant",
+      "borrowedFrom": "V of V",
+      "outside": [
+        6
+      ]
+    },
+    {
+      "id": "skyline.iiim7",
+      "quality": "m7",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "skyline.III7",
+      "quality": "7",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "dominant",
+      "borrowedFrom": "V of vi",
+      "outside": [
+        8
+      ]
+    },
+    {
+      "id": "skyline.IVmaj7",
+      "quality": "maj7",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "skyline.IVmaj9",
+      "quality": "maj9",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "predominant"
+    },
+    {
+      "id": "skyline.ivm6",
+      "quality": "m6",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        9
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        9
+      ],
+      "preferredVoices": 4,
+      "function": "predominant",
+      "borrowedFrom": "parallel minor iv",
+      "outside": [
+        8
+      ]
+    },
+    {
+      "id": "skyline.V7",
+      "quality": "7",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "dominant"
+    },
+    {
+      "id": "skyline.V13",
+      "quality": "13",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        10,
+        14,
+        21
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        21
+      ],
+      "preferredVoices": 5,
+      "function": "dominant"
+    },
+    {
+      "id": "skyline.IVoverV",
+      "quality": "9sus4",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        10,
+        14,
+        17
+      ],
+      "requiredIntervals": [
+        0,
+        10,
+        14,
+        17
+      ],
+      "preferredVoices": 4,
+      "function": "dominant",
+      "legacyName": "F/G"
+    },
+    {
+      "id": "skyline.vm7",
+      "quality": "m7",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "predominant",
+      "borrowedFrom": "ii of IV",
+      "outside": [
+        10
+      ]
+    },
+    {
+      "id": "skyline.vim7",
+      "quality": "m7",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "skyline.vim9",
+      "quality": "m9",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "skyline.VI7",
+      "quality": "7",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "dominant",
+      "borrowedFrom": "V of ii",
+      "outside": [
+        1
+      ]
+    },
+    {
+      "id": "skyline.bVImaj7",
+      "quality": "maj7",
+      "root": {
+        "degree": 5,
+        "alteration": -1
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "preferredVoices": 4,
+      "function": "predominant",
+      "borrowedFrom": "parallel minor bVI",
+      "outside": [
+        3,
+        8
+      ]
+    },
+    {
+      "id": "skyline.bVIImaj7",
+      "quality": "maj7",
+      "root": {
+        "degree": 6,
+        "alteration": -1
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "preferredVoices": 4,
+      "function": "unknown",
+      "borrowedFrom": "parallel minor bVII",
+      "outside": [
+        10
+      ]
+    },
+    {
+      "id": "skyline.viim7b5",
+      "quality": "m7b5",
+      "root": {
+        "degree": 6,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        6,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        6,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "dominant"
+    }
+  ],
+  "progressions": [
+    {
+      "id": "skyline.the-road",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "skyline.IVmaj7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "skyline.V7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "skyline.iiim7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "skyline.vim7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "skyline.night-drive",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "skyline.IVmaj7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "skyline.III7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "skyline.vim7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "skyline.vm7",
+          "durationTicks": 1920,
+          "weight": 1.0
+        },
+        {
+          "chordId": "skyline.I9",
+          "durationTicks": 1920,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "skyline.the-city",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "skyline.Imaj9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "skyline.vim9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "skyline.iim9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "skyline.V13",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "skyline.back-door",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "skyline.IVmaj9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "skyline.ivm6",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "skyline.Imaj9",
+          "durationTicks": 7680,
+          "weight": 1.0
+        }
+      ]
+    }
+  ]
+}

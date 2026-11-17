@@ -6,12 +6,12 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 ## Status
 
 A small song machine that runs, at 48 kHz. Up to twelve tracks, each a drum
-kit, a sampler, or one of seven synths: Phazed (phase distortion, 65 presets), JAX-EP
-(a virtual analog synth modeled after a popular DCO synth, 142 presets), FM-6 (six-operator
-FM, after a classic 80s synth, 209 presets), PHYSIC (plucked and struck sounds that ring by
-themselves: strings, mallets, bells, 96 presets), ACID (a mono bass with accent and slide,
-after a classic bass line box, 32 presets), CLOUD (clouds of grains from your recordings,
-24 presets) or MORPH (wavetables, swept from wave to wave, 32 presets). Up to sixteen scenes of
+kit, a sampler, or one of seven synths: Phazed (phase distortion, 113 presets), JAX-EP
+(a virtual analog synth modeled after a popular DCO synth, 158 presets), FM-6 (six-operator
+FM, after a classic 80s synth, 233 presets), PHYSIC (plucked and struck sounds that ring by
+themselves: strings, mallets, bells, 112 presets), ACID (a mono bass with accent and slide,
+after a classic bass line box, 64 presets), CLOUD (clouds of grains from your recordings,
+48 presets) or MORPH (wavetables, swept from wave to wave, 64 presets). Up to 64 scenes of
 one to eight bars, each with its own repeat count. Four screens:
 
 - **SONG**: tracks across, scenes down. Add tracks, set how many times each
@@ -604,8 +604,15 @@ You have a loop going and want the next part of the song to start from it.
   same, so it goes on from where it was, now in the new one.
 - One press, nothing asked. **SELECT + B takes it back** (and puts you, and
   the playing, back on the scene you came from); SELECT + A does it again.
-- A song holds 16 scenes. With the sixteenth in use it says "NO ROOM: 16
-  SCENES" and changes nothing.
+- A song holds 64 scenes. With the 64th in use it says "NO ROOM: 64
+  SCENES" and changes nothing. (A scene with nothing in it takes no memory
+  and no time, so the 64 cost nothing until they are used.)
+- **The SONG screen shows eight scenes at a time** and scrolls as the
+  cursor moves: hold the D-pad down (about 2 s from the top to scene 64) or
+  push the stick.
+- **A song of more than 16 scenes on an older build** (one that holds 16) opens with its
+  first 16 scenes only: the rest are not read, and saving it there loses
+  them. A song of 16 scenes or fewer is written exactly as before.
 
 ### Bouncing: getting a song out
 
@@ -787,11 +794,12 @@ and level.
   with their gaps closed up. A new FM-6 track starts on the first. Some names
   are in two banks, and eight voices are copies of one before them (kept so
   each bank is whole: `tools/fm6/README.md`).
-- **49 more in eight folders of their own, each a whole track sound** (the
+- **73 more in twelve folders of their own, each a whole track sound** (the
   synth with its effects, sends and MODs, picked as one): **KEYS** (7: electric
   pianos, a clav through a wah, a worn celeste, vibes), **BASS** (6), **BELLS &
   METAL** (6), **PADS** (6), **LEADS** (6), **PLUCKS** (6), **FX & ATMOS** (6) and
-  **MOVING** (6: a MOD is most of the sound). Some are factory voices dressed up,
+  **MOVING** (6: a MOD is most of the sound); then 24 more, factory voices
+  given a room: **ORGANS**, **BRASS**, **DRONES** and **ARPS** (6 each). Some are factory voices dressed up,
   some are new voices. Nobody has heard them yet: their levels, peaks and tails
   are measured, and each MOD is checked to change the sound. The ten to try first:
 
@@ -877,7 +885,7 @@ damps it (RELEASE; at RING letting go does nothing, as a marimba has no damper).
   starts on Marimba**, so notes placed at once play a marimba line. After
   them, presets that hold a track sound (effects, sends, MODs: "Presets"
   above), in folders of their own: SHIMMER (Glass Steps, a bell through
-  SHIMMER with a STEPPER on POSITION), then **63 more in eight folders**:
+  SHIMMER with a STEPPER on POSITION), then **79 more in ten folders**:
   ATMOS (glass drawn by a breath, a singing bowl, pads that swell and beat),
   METAL (gongs, an anvil, a steel pan, a comb, a ring modulator), GAMELAN
   (bronze in pairs that beat), PREPARED (strings with bolts, paper, clips,
@@ -885,7 +893,9 @@ damps it (RELEASE; at RING letting go does nothing, as a marimba has no damper).
   rattle), PLUCKS (strings and tines through ensemble, dub, phaser, flanger,
   bloom), TEXTURES (worn, crushed, fuzzed, backwards) and MOVING (a MOD is
   most of the sound: a STEPPER walking where a marimba is struck, wood
-  turning to metal while it rings). Ten to try first: Bowed Glass, Singing
+  turning to metal while it rings), then BASS and KEYS (eight each: plucked,
+  struck and buzzing basses; struck strings, tines and bars played as keys).
+  Ten to try first: Bowed Glass, Singing
   Bowl, Gong Wash, Ombak, Bolt Piano, Hand Pan, Dub Kalimba, Jawari, Timbre
   Walk, Wood To Metal. Nobody has heard them yet; each was measured to play
   at a sane level, not clip, end its tail and move its MODs
@@ -983,7 +993,7 @@ note at 100%, a slide is a note's GLIDE.
   slide takes the glide's own length (the roll's line), or 60 MS at SLIDE FIXED.
 - **One voice**: the newest note wins, and letting it go never goes back to a
   note still held. In a chord the last key to start sounds.
-- **32 presets in five folders**: CLASSIC (Classic Saw, Classic Square,
+- **64 presets in nine folders**: CLASSIC (Classic Saw, Classic Square,
   Rubber Saw, Hollow Square, Echo Line, Low Pulse, Echo Square, Bright
   Classic), SQUELCH (resonance up, short decays: Squelch, Rubber Duck, Wet
   Snap, Screamer, and four with a STEPPER walking the cutoff: Step Squelch,
@@ -991,7 +1001,10 @@ note at 100%, a slide is a note's GLIDE.
   envelope: Sub Line, Deep Square, Warm Floor, Dark Round, Low Murmur, Velvet
   Bass), DISTORTED (each with DRIVE, SATURATE or FUZZ in its first slot:
   Driven, Saturated, Fuzz Line, Tube Acid, Burnt Rubber, Dub Smash) and MOVING
-  (a MOD plays the knob: Breathing, Wobble Reso, Semitone Steps, Drift). **A
+  (a MOD plays the knob: Breathing, Wobble Reso, Semitone Steps, Drift), then
+  CLEAN (round lines, little resonance), LEADS (an octave up, through an
+  echo, a ring, a flanger or a vowel), DUB (into the delays and the rooms) and
+  HARD (folded, crushed, clipped, fuzzed), eight each. **A
   new ACID track starts on Classic Saw.** Ten to try first: Rubber Saw, Echo
   Line, Squelch, Wet Snap, Step Squelch, Long Squelch, Sub Line, Burnt Rubber,
   Dub Smash, Drift. Each was measured playing a 16-step acid line: a sane
@@ -1078,13 +1091,15 @@ track makes a sound at once.
 - **Y on MAIN rolls a new cloud**: SPRAY, SIZE, DENSITY, SCATTER, SHAPE, PITCH
   SPRAY, PITCH STEPS, REVERSE and STEREO. It never changes the recording,
   POSITION, SCAN, PITCH, TUNE, the envelope or the levels. One step of undo.
-- **24 presets in four folders**: STILL (one place, held: Soft Cloud, Glass
+- **48 presets in eight folders**: STILL (one place, held: Soft Cloud, Glass
   Hold, Breath Pad, Frozen Shimmer, Still Water, Halo), DRIFT (the place moves:
   Slow Tide, Backwards River, Wander, Tape Scrub, Drifting Choir, Pendulum),
   DUST (short grains, sparse: Dust, Crackle, Rain on Glass, Embers, Static
   Specks, Step Dust) and CHOIR (pitched on octaves and fifths: Fifths Choir,
-  Octave Ghosts, Cathedral, Low Choir, Bloom Choir, Choir Sweep). **A new
-  CLOUD track starts on Soft Cloud, on the TONE.** Six carry a MOD, eight an
+  Octave Ghosts, Cathedral, Low Choir, Bloom Choir, Choir Sweep), then PADS,
+  DRONES, PLUCKS and RHYTHM (in time with the song: a STEPPER or an effect
+  plays it), six each. **A new
+  CLOUD track starts on Soft Cloud, on the TONE.** Thirteen carry a MOD, 23 an
   effect or a send. A preset picked keeps the track's recording; **a preset of
   your own saved on CLOUD keeps its recording's name**, and picked again puts
   that recording back (by its name, else the one recording of the same name in
@@ -1167,11 +1182,12 @@ sound walks through the table while the note plays.
   SUB, UNISON, DETUNE, WIDTH, the filter, the MOD ENV and its two amounts.
   OCTAVE, TUNE, the AMP envelope, KEY TRACK, VELOCITY and LEVEL stay. One step
   of undo.
-- **32 presets in five folders**: BASIC (one table each, played plainly: Analog
+- **64 presets in eleven folders**: BASIC (one table each, played plainly: Analog
   Sweep, Pulse Width, Sync Rise, Vowel Talk, Organ Stops, Harmonic Walk, Fold
   Grow, FM Bell), PADS, LEADS, BASS and MOVING (a MOD on POSITION in each: a
-  table played as a sequence of waves, a free LFO, a step with chance). **A new
-  MORPH track starts on Analog Sweep.** Eight carry a MOD, fifteen an effect or
+  table played as a sequence of waves, a free LFO, a step with chance), then
+  KEYS, PLUCKS (six each), BELLS, ARPS, DRONES and FX (five each). **A new
+  MORPH track starts on Analog Sweep.** Seventeen carry a MOD, 33 an effect or
   a send.
 - **On the WiFi page** the TABLES section draws A's and B's: every frame of the
   table stacked, the one POSITION reads bright. Click or drag to move POSITION.
@@ -1526,8 +1542,8 @@ zip).
 
 One that nobody answers is dropped when WiFi is turned off or Apotheca is
 closed. The first install still goes by SD card. Only the program is
-updated this way: a new launcher script, fonts or chord packs still come
-from the zip.
+updated this way: a new launcher script or fonts still come from the zip
+(the chord packs that ship are inside the program).
 
 The handheld has to be on a WiFi network already (set in the firmware's own
 settings). Making its own hotspot, so no router is needed, is a job for the
@@ -2074,11 +2090,39 @@ name. Chords never overlap in time.
   place. B while Y is held breaks it into loose notes instead.
 - A new chord is as long as the last one you set.
 
-**Chord packs** are JSON files in the form Shapetaker's Transmutation reads,
-in a `chords` folder beside the program (`assets/chords` in this repository).
-Drop a file in and it shows up. What is read from a pack is listed at the
-top of `app/chords.hpp`. A pack called "Plain C" is built in. A song file
-stores each chord whole, so a song still plays on a device without its pack.
+**Twenty packs come with the program**, all in C (nobody has heard the
+thirteen added on 2026-11-17; their notes are checked by the tests):
+
+| Pack | Chords | For |
+| --- | --- | --- |
+| Plain C | 13 | the plain chords of C major |
+| Afterglow | 12 | warm major, sixths and upper extensions, a few borrowed from minor |
+| Delta | 18 | blues: every chord a seventh, the twelve-bar, 9ths, 13ths, the sharp nine, a minor blues |
+| Elegy | 23 | minor and harmonic minor: the major five, the diminished seventh, the lament, the line cliche |
+| Ember | 17 | phrygian: the flat second over the tonic, the Spanish turn |
+| Glass | 10 | clear pentatonic fragments, mostly three voices |
+| Haze | 15 | ambient: close seconds, suspended stacks, chords over a held C |
+| Hearth | 17 | folk: open triads voiced as a guitar holds them |
+| Hollow | 17 | dark: minor-major sevenths, augmented and diminished, minor chords a tritone away |
+| Horizon | 19 | cinematic: wide fifths, the rising six-three-seven, chords a third away |
+| Luminous | 7 | bright lydian |
+| Moonlit | 7 | dorian minor |
+| Revival | 18 | gospel: walk-ups through diminished chords, the four over the five, the flat six |
+| Skyline | 22 | city pop: the four-five-three-six road, major sevenths, secondary dominants |
+| Smoke | 23 | jazz: two-five-ones with 9ths and 13ths, altered dominants, the tritone substitute |
+| Stone | 15 | fourths: chords stacked in fourths, the modal eleventh |
+| Strobe | 15 | deep house stabs: close minor sevenths, ninths and elevenths |
+| Tidal | 12 | flowing mixolydian |
+| Velvet | 18 | neo-soul: minor ninths and elevenths, lush major sevenths |
+| Weightless | 8 | suspended and quartal |
+
+They are built into the program, so an update over WiFi brings them. More are
+JSON files in the form Shapetaker's Transmutation reads, in a `chords` folder
+beside the program (`assets/chords` in this repository holds the ones that
+ship). Drop a file in and it shows up; one with the name of a pack that ships
+takes its place. What is read from a pack is listed at the top of
+`app/chords.hpp`. A song file stores each chord whole, so a song still plays
+on a device without its pack.
 A bar holds 64 notes, chords' notes included, and 16 chords.
 
 ### Chord effects
@@ -2153,6 +2197,16 @@ preset. Two things follow from the copy: notes that are sounding at that
 moment fade out once, and such a sound then plays four notes at a time
 instead of eight.
 
+Phazed's 65 presets are in seven folders (Keys, Bass, Brass & Leads, Strings &
+Pads, Bells & Plucks, Organs, Drums & FX). **48 more, in eight folders of their
+own, are each a whole track sound** (the synth with its effects, sends and
+MODs: "Presets" above): STAGE KEYS (a tine piano through tremolo, a worn
+digital piano, a clav through a wah), DEEP BASS, LEADS, PADS, PLUCKS, BELLS,
+DRONES and TEXTURES, six each. Each starts from one of the 65 and bends it.
+Nobody has heard them yet; each was measured to play at a sane level, not
+clip, end its tail and have every MOD change the sound (`presets_test
+--heard-phazed`).
+
 ADVANCED: every setting. Phazed has nine pages (the sound, each line, and
 each line's volume, wave and pitch envelopes drawn out). JAX-EP has
 five (DCO-1, DCO-2, VCF, VCA and envelope, LFO and chorus). FM-6 has eight
@@ -2173,14 +2227,15 @@ pages are that synth's panel:
   String II, Organ I ... Planet, Jet). On FOLDER, hold A and press up or down
   to go from one bank to the other. A new JAX-EP track starts on the first.
   After them, presets that hold a track sound (effects, sends, MODs: "Presets"
-  above), **110 in twelve folders of their own**: PADS (Warm Pad, then pads that
+  above), **126 in fourteen folders of their own**: PADS (Warm Pad, then pads that
   breathe, shimmer and bloom), STRINGS, BRASS, BASS (subs, an accented resonant
   line, sync growls, a dub sub), LEAD (single lines: sync, fuzz, vowels, a breath),
   KEYS (metal pianos, a rotor organ, a wah clavinet), PLUCK, SEQUENCE (for
   sixteenths: STEPPERS that accent, re-tune a synced DCO-2, pan and gate),
   SYNC & METAL (the two CROSS MODs), ATMOS (whistling noise, a worn radio, a
-  haunted organ), CLASSIC 80S and MOVING (a MOD is most of the sound). Every
-  one has at least one MOD. Ten to try first: Tidal Pad, Bowed Sync, Acid Line,
+  haunted organ), CLASSIC 80S and MOVING (a MOD is most of the sound), then
+  ORGAN and BELLS (eight each: drawbar, pipe and combo organs on the GATE;
+  METAL and SYNC rings). The first 110 have at least one MOD each. Ten to try first: Tidal Pad, Bowed Sync, Acid Line,
   Dub Sub, Sync Scream, Suitcase Keys, Berlin Bass, Night Wind, Haunted Organ,
   Interval Walk. Nobody has heard them yet; each was measured to play at a
   sane level, never reach the VCA's clip (at full velocity too), end its tail

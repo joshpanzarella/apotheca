@@ -10,6 +10,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <utility>
 
 namespace apotheca {
@@ -78,7 +79,6 @@ Engine::Engine() {
     for (auto& k : busKinds_) k.store(0, std::memory_order_relaxed);
     tracks_[0].hasDrums = true;
     for (Track& track : tracks_) {
-        for (int i = 0; i < kMaxScenes * kAutoLanes * kAutoSteps; ++i) track.automation[i] = kAutoNone;
         for (int lane = 0; lane < kAutoLanes; ++lane) {
             // Macros start in the middle and sends at nothing; an effect says when it arrives.
             // A MOD's DEPTH lane (22, 23) at no depth until a MOD says (batch 7).
@@ -98,11 +98,20 @@ Engine::~Engine() {
     Command command;
     while (commands_.pop(command)) {
         if (command.type == Command::InstallSynth) delete static_cast<Instrument*>(command.pointer);
-        if (command.type == Command::SetTrackImage) delete static_cast<TrackImage*>(command.pointer);
+        if (command.type == Command::SetTrackImage || command.type == Command::RemoveInstrument) delete static_cast<SceneSet*>(command.pointer);
+        if (command.type == Command::GiveScene) delete static_cast<SceneStore*>(command.pointer);
         if (command.type == Command::SetLaneSample) delete static_cast<SampleData*>(command.pointer);
         if (command.type == Command::InstallEffect) delete static_cast<Effect*>(command.pointer);
         if (command.type == Command::SetTrackSample) delete static_cast<SampleData*>(command.pointer);
         if (command.type == Command::ScenesMoved) delete static_cast<SceneMove*>(command.pointer);
+    }
+    if (holding_.load(std::memory_order_relaxed)) { // a command waiting for a fade that never ended
+        if (held_.type == Command::InstallSynth) delete static_cast<Instrument*>(held_.pointer);
+        if (held_.type == Command::SetTrackImage || held_.type == Command::RemoveInstrument) delete static_cast<SceneSet*>(held_.pointer);
+        if (held_.type == Command::GiveScene) delete static_cast<SceneStore*>(held_.pointer);
+        if (held_.type == Command::SetLaneSample || held_.type == Command::SetTrackSample) delete static_cast<SampleData*>(held_.pointer);
+        if (held_.type == Command::InstallEffect) delete static_cast<Effect*>(held_.pointer);
+        if (held_.type == Command::ScenesMoved) delete static_cast<SceneMove*>(held_.pointer);
     }
     collectGarbage();
     for (int i = 0; i < heldCount_; ++i) destroy(heldTrash_[i]);
@@ -114,7 +123,8 @@ Engine::~Engine() {
 void Engine::destroy(const Trash& trash) {
     if (trash.isEffect) delete static_cast<Effect*>(trash.pointer);
     else if (trash.isSample) delete static_cast<SampleData*>(trash.pointer);
-    else if (trash.isImage) delete static_cast<TrackImage*>(trash.pointer);
+    else if (trash.isImage) delete static_cast<SceneSet*>(trash.pointer); // and the stores in it
+    else if (trash.isStore) delete static_cast<SceneStore*>(trash.pointer);
     else if (trash.isMove) delete static_cast<SceneMove*>(trash.pointer); // and the scenes in it
     else delete static_cast<Instrument*>(trash.pointer);
 }
@@ -249,8 +259,150 @@ bool Engine::setTrackImage(int track, std::unique_ptr<TrackImage> image) {
     c.track = track;
     c.pointer = image.get();
     if (!send(c)) return false;
-    image.release(); // the audio thread hands it back through the trash
+    image.release(); // send() made it into stores, which the audio thread takes, and freed it
     return true;
+}
+
+Engine::SceneStore* Engine::blankScene() {
+    static SceneStore blank;
+    return &blank;
+}
+
+bool Engine::blankStillBlank() {
+    static const SceneStore fresh;
+    const SceneStore& blank = *blankScene();
+    if (blank.bars != 1 || std::memcmp(blank.drums, fresh.drums, sizeof fresh.drums) != 0 || // (DrumScene has no padding)
+        std::memcmp(blank.automation, fresh.automation, sizeof fresh.automation) != 0) return false;
+    for (int bar = 0; bar < kMaxBars; ++bar)
+        for (int i = 0; i < kMaxNotes; ++i) {
+            const Note& n = blank.notes[bar][i];
+            if (n.velocity != 0.f || n.length != 0.f || n.nudge != 0.f || n.hold != 0.f || n.step || n.pitch || n.ratchet || n.glide || n.piece || n.throwTo || n.how ||
+                std::memcmp(&n.play, &fresh.notes[bar][i].play, sizeof n.play) != 0) return false;
+        }
+    return true;
+}
+
+Engine::SceneStore* Engine::writable(const Command& c) {
+    return validTrack(c.track) && validScene(c.scene) ? written(tracks_[c.track].scenes[c.scene]) : nullptr;
+}
+
+int Engine::scenesGiven(int track) const {
+    if (!validTrack(track)) return 0;
+    int count = 0;
+    for (std::uint64_t bits = given_[track]; bits; bits &= bits - 1) ++count;
+    return count;
+}
+
+// Would this write leave a scene with no store of its own as the blank one has it? (Then it needs
+// none: the audio thread finds the blank store and leaves it be.) Each is exactly what the
+// command's case in apply() would write: a step emptied, a nudge of 0, a chance of 1, a start of 0,
+// an empty note, a cell of one bar, a step of automation with nothing on it.
+bool Engine::leavesBlank(const Command& c) {
+    switch (c.type) {
+    case Command::SetStep: return !(c.value > 0.f);
+    case Command::SetStepNudge: return c.value == 0.f;
+    case Command::SetStepChance: return c.value >= 1.f;
+    case Command::SetStepStart: return c.value <= 0.f;
+    case Command::SetNote: return !(c.value > 0.f);
+    case Command::SetCellBars: return c.a <= 1;
+    case Command::SetAutomation: return c.value < 0.f;
+    default: return false; // (SetStepFx: given a store, as the app sends it only for a hit that has some)
+    }
+}
+
+bool Engine::send(const Command& command) {
+    const auto push = [this](const Command& c) {
+        if (commands_.push(c)) return true;
+        dropped_.fetch_add(1, std::memory_order_relaxed);
+        return false;
+    };
+    switch (command.type) {
+    case Command::SetStep:
+    case Command::SetStepNudge:
+    case Command::SetStepChance:
+    case Command::SetStepStart:
+    case Command::SetStepFx:
+    case Command::SetNote:
+    case Command::SetCellBars:
+    case Command::SetAutomation: {
+        const int t = command.track, scene = command.scene;
+        if (validTrack(t) && validScene(scene) && !((given_[t] >> scene) & 1) && !leavesBlank(command)) {
+            // The scene's store first, then the write into it: both go, or neither.
+            if (!commands_.hasRoom(2)) {
+                dropped_.fetch_add(1, std::memory_order_relaxed);
+                return false;
+            }
+            Command give;
+            give.type = Command::GiveScene;
+            give.track = t;
+            give.scene = scene;
+            give.pointer = new SceneStore;
+            if (!push(give)) {
+                delete static_cast<SceneStore*>(give.pointer);
+                return false;
+            }
+            given_[t] |= std::uint64_t(1) << scene;
+        }
+        return push(command);
+    }
+    case Command::RemoveInstrument: {
+        Command c = command;
+        // A holder for the track's stores to go back in, when it has any (one thing in the trash).
+        std::unique_ptr<SceneSet> holder(validTrack(c.track) && given_[c.track] != 0 ? new SceneSet : nullptr);
+        c.pointer = holder.get();
+        if (!push(c)) return false;
+        holder.release();
+        if (validTrack(c.track)) given_[c.track] = 0;
+        return true;
+    }
+    case Command::SetTrackImage: {
+        // The image made into the engine's stores here, a store for each scene that holds something
+        // (or whose cell is longer than a bar): the audio thread only swaps them in.
+        if (!command.pointer) return push(command);
+        const TrackImage& image = *static_cast<const TrackImage*>(command.pointer);
+        std::unique_ptr<SceneSet> set(new SceneSet);
+        std::uint64_t has = 0;
+        for (int scene = 0; scene < kMaxScenes; ++scene) {
+            const SceneImage* from = image.scenes[scene].get();
+            if (!from && image.bars[scene] == 1) continue;
+            SceneStore* store = new SceneStore;
+            set->scenes[scene] = store;
+            if (from) sceneIn(*store, from->level, from->nudge, from->chance, from->start, from->fx, from->notes, image.bars[scene], from->automation);
+            else store->bars = static_cast<std::uint8_t>(image.bars[scene] < 1 ? 1 : (image.bars[scene] > kMaxBars ? kMaxBars : image.bars[scene]));
+            has |= std::uint64_t(1) << scene;
+        }
+        for (int lane = 0; lane < kDrumLanes; ++lane) {
+            set->laneLevel[lane] = image.laneLevel[lane];
+            set->lanePart[lane] = image.lanePart[lane];
+        }
+        Command c = command;
+        c.pointer = set.get();
+        if (!push(c)) return false; // (the image is still the caller's)
+        set.release();
+        delete &image;
+        if (validTrack(c.track)) given_[c.track] = has;
+        return true;
+    }
+    default:
+        return push(command);
+    }
+}
+
+// The bits of given_ moved as ScenesMoved moves the stores (apply): the same scenes, the same way.
+void Engine::moveGiven(int from, int by, const std::unique_ptr<SceneImage>* scenes) {
+    const int last = kMaxScenes - 1;
+    const bool in = by == 1 && validScene(from), out = by == -1 && from >= 1 && validScene(from);
+    if (!in && !out) return;
+    const int gone = in ? last : from - 1, made = in ? from : last;
+    for (int t = 0; t < kNumTracks; ++t) {
+        std::uint64_t& bits = given_[t];
+        for (int scene = gone; scene != made; scene -= by) {
+            const std::uint64_t bit = std::uint64_t(1) << scene;
+            bits = ((bits >> (scene - by)) & 1) ? (bits | bit) : (bits & ~bit);
+        }
+        const std::uint64_t bit = std::uint64_t(1) << made;
+        bits = scenes && scenes[t] ? (bits | bit) : (bits & ~bit);
+    }
 }
 
 bool Engine::moveScenes(int from, int by, const std::unique_ptr<SceneImage>* scenes, int sceneCount, int repeats, int steps) {
@@ -271,6 +423,7 @@ bool Engine::moveScenes(int from, int by, const std::unique_ptr<SceneImage>* sce
     c.pointer = move.get();
     if (!send(c)) return false;
     move.release(); // the audio thread hands it back through the trash, with the scenes that went
+    moveGiven(from, by, scenes);
     return true;
 }
 
@@ -940,8 +1093,8 @@ void Engine::apply(const Command& c) {
         }
         break;
     case Command::SetStepFx:
-        if (validTrack(c.track) && slotFor(c) >= 0 && validCell(c.a, c.b)) {
-            StepFx& fx = tracks_[c.track].drumScenes[slotFor(c)].fx[c.a][c.b];
+        if (validTrack(c.track) && slotFor(c) >= 0 && validCell(c.a, c.b) && writable(c)) {
+            StepFx& fx = writable(c)->drums[c.bar].fx[c.a][c.b];
             fx.pitch = static_cast<std::int8_t>(c.c < -kMaxStepPitch ? -kMaxStepPitch : (c.c > kMaxStepPitch ? kMaxStepPitch : c.c));
             fx.ratchet = static_cast<std::uint8_t>(c.d < 0 ? 0 : (c.d > kMaxRatchet ? kMaxRatchet : c.d));
             fx.reverse = c.value == 1.f;
@@ -949,8 +1102,8 @@ void Engine::apply(const Command& c) {
         }
         break;
     case Command::SetStepStart:
-        if (validTrack(c.track) && slotFor(c) >= 0 && validCell(c.a, c.b) && std::isfinite(c.value)) {
-            tracks_[c.track].drumScenes[slotFor(c)].start[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
+        if (validTrack(c.track) && slotFor(c) >= 0 && validCell(c.a, c.b) && std::isfinite(c.value) && writable(c)) {
+            writable(c)->drums[c.bar].start[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
         }
         break;
     case Command::InstallEffect: {
@@ -1019,23 +1172,23 @@ void Engine::apply(const Command& c) {
         break;
     }
     case Command::SetStep:
-        if (validTrack(c.track) && slotFor(c) >= 0 && validCell(c.a, c.b) && std::isfinite(c.value)) {
-            tracks_[c.track].drumScenes[slotFor(c)].level[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
+        if (validTrack(c.track) && slotFor(c) >= 0 && validCell(c.a, c.b) && std::isfinite(c.value) && writable(c)) {
+            writable(c)->drums[c.bar].level[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
         }
         break;
     case Command::SetStepNudge:
-        if (validTrack(c.track) && slotFor(c) >= 0 && validCell(c.a, c.b) && std::isfinite(c.value)) {
-            tracks_[c.track].drumScenes[slotFor(c)].nudge[c.a][c.b] = c.value < -0.5f ? -0.5f : (c.value > 0.5f ? 0.5f : c.value);
+        if (validTrack(c.track) && slotFor(c) >= 0 && validCell(c.a, c.b) && std::isfinite(c.value) && writable(c)) {
+            writable(c)->drums[c.bar].nudge[c.a][c.b] = c.value < -0.5f ? -0.5f : (c.value > 0.5f ? 0.5f : c.value);
         }
         break;
     case Command::SetStepChance:
-        if (validTrack(c.track) && slotFor(c) >= 0 && validCell(c.a, c.b) && std::isfinite(c.value)) {
-            tracks_[c.track].drumScenes[slotFor(c)].chance[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
+        if (validTrack(c.track) && slotFor(c) >= 0 && validCell(c.a, c.b) && std::isfinite(c.value) && writable(c)) {
+            writable(c)->drums[c.bar].chance[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
         }
         break;
     case Command::SetNote:
-        if (validTrack(c.track) && slotFor(c) >= 0 && c.a >= 0 && c.a < kMaxNotes && std::isfinite(c.value)) {
-            Note& note = tracks_[c.track].notes[slotFor(c)][c.a];
+        if (validTrack(c.track) && slotFor(c) >= 0 && c.a >= 0 && c.a < kMaxNotes && std::isfinite(c.value) && writable(c)) {
+            Note& note = writable(c)->notes[c.bar][c.a];
             float length = static_cast<float>(c.d) + (std::isfinite(c.extra) ? c.extra : 0.f);
             if (length > 255.f) length = 255.f;
             const bool sound = c.value > 0.f && c.b >= 0 && c.b < kSteps && c.c >= 0 && c.c <= 127 && c.d >= 0 && length >= kShortestNote;
@@ -1072,8 +1225,8 @@ void Engine::apply(const Command& c) {
                     Track& track = tracks_[t];
                     SceneStore* const leaving = track.scenes[gone];
                     for (int scene = gone; scene != made; scene -= c.b) track.scenes[scene] = track.scenes[scene - c.b];
-                    track.scenes[made] = move.scenes[t] ? move.scenes[t] : leaving; // (a track with nothing: the one that went will do)
-                    if (move.scenes[t]) move.scenes[t] = leaving;
+                    track.scenes[made] = move.scenes[t] ? move.scenes[t] : blankScene(); // (nothing in it: the blank one)
+                    move.scenes[t] = written(leaving); // back through the trash (the blank one stays)
                     // An arpeggio that is playing goes with its scene, as the playing does (below). One
                     // whose scene has no place to go to stays, and looks whether its chord is still there.
                     for (auto& arp : track.arps) {
@@ -1114,22 +1267,21 @@ void Engine::apply(const Command& c) {
         if (validScene(c.scene)) steps_[c.scene] = c.a < 0 ? 0 : (c.a > kMaxBars * kSteps ? kMaxBars * kSteps : c.a);
         break;
     case Command::ClearCell:
-        if (validTrack(c.track) && validScene(c.scene)) {
-            Track& track = tracks_[c.track];
-            for (int slot = c.scene * kMaxBars; slot < (c.scene + 1) * kMaxBars; ++slot) {
-                DrumScene& scene = track.drumScenes[slot];
+        if (SceneStore* store = writable(c)) { // (a scene with nothing in it has nothing to empty)
+            for (int bar = 0; bar < kMaxBars; ++bar) {
+                DrumScene& scene = store->drums[bar];
                 for (int lane = 0; lane < kDrumLanes; ++lane)
                     for (int step = 0; step < kSteps; ++step) {
                         scene.level[lane][step] = scene.nudge[lane][step] = scene.start[lane][step] = 0.f;
                         scene.chance[lane][step] = 1.f;
                         scene.fx[lane][step] = StepFx();
                     }
-                for (Note& note : track.notes[slot]) note = Note();
+                for (Note& note : store->notes[bar]) note = Note();
             }
         }
         break;
     case Command::SetCellBars:
-        if (validTrack(c.track) && validScene(c.scene)) tracks_[c.track].bars[c.scene] = static_cast<std::uint8_t>(c.a < 1 ? 1 : (c.a > kMaxBars ? kMaxBars : c.a));
+        if (SceneStore* store = writable(c)) store->bars = static_cast<std::uint8_t>(c.a < 1 ? 1 : (c.a > kMaxBars ? kMaxBars : c.a));
         break;
     case Command::Play:
         ++playsTaken_; // (songEnded says which one stopped at its end; a Play counted in is taken now)
@@ -1357,14 +1509,14 @@ void Engine::apply(const Command& c) {
         }
         break;
     case Command::SetAutomation:
-        if (validTrack(c.track) && validScene(c.scene) && c.a >= 0 && c.a < kAutoLanes && c.b >= 0 && c.b < kAutoSteps && c.value == c.value)
-            tracks_[c.track].autoAt(c.scene, c.a)[c.b] = c.value < 0.f ? kAutoNone : (c.value > 1.f ? 1.f : c.value);
+        if (c.a >= 0 && c.a < kAutoLanes && c.b >= 0 && c.b < kAutoSteps && c.value == c.value && writable(c))
+            writable(c)->automation[c.a * kAutoSteps + c.b] = c.value < 0.f ? kAutoNone : (c.value > 1.f ? 1.f : c.value);
         break;
     case Command::ClearAutomation:
-        if (validTrack(c.track) && validScene(c.scene))
+        if (SceneStore* store = writable(c))
             for (int lane = 0; lane < kAutoLanes; ++lane)
                 if (c.a < 0 || c.a == lane)
-                    for (int i = 0; i < kAutoSteps; ++i) tracks_[c.track].autoAt(c.scene, lane)[i] = kAutoNone;
+                    for (int i = 0; i < kAutoSteps; ++i) store->automation[lane * kAutoSteps + i] = kAutoNone;
         break;
     case Command::SetSetting:
         if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->setSetting(c.a, c.b);
@@ -1380,6 +1532,19 @@ void Engine::apply(const Command& c) {
         if (validTrack(c.track)) {
             Track& track = tracks_[c.track];
             track.autoHeld = 0; // (a track taken away, or the whole song sent again, holds nothing back)
+            // The holder its stores go back in (send() gives every RemoveInstrument one). A track
+            // already on its way has the first one's; this one goes back empty.
+            SceneSet* holder = static_cast<SceneSet*>(c.pointer);
+            if (!holder) {
+                // (none: it has no stores, or they go back one by one in takeAway)
+            } else if (track.going || track.goneSet) {
+                Trash trash;
+                trash.isImage = true;
+                trash.pointer = holder;
+                bin(trash);
+            } else {
+                track.goneSet = holder;
+            }
             if (track.going) break; // already on its way
             // Still sounding (the last block it made): it fades first, and is taken away at the end
             // of the fade (renderChunk). Silent: at once, as it always was.
@@ -1390,21 +1555,42 @@ void Engine::apply(const Command& c) {
                 break;
             }
             takeAway(c.track);
+        } else if (c.pointer) {
+            Trash trash;
+            trash.isImage = true;
+            trash.pointer = c.pointer;
+            bin(trash);
+        }
+        break;
+    case Command::GiveScene:
+        if (c.pointer) {
+            // A scene that had nothing in it gets its own store (send() sends this before the
+            // first write into it). One there already (never, by send()'s count) keeps its own.
+            SceneStore* const given = static_cast<SceneStore*>(c.pointer);
+            if (validTrack(c.track) && validScene(c.scene) && tracks_[c.track].scenes[c.scene] == blankScene()) {
+                tracks_[c.track].scenes[c.scene] = given;
+            } else {
+                Trash trash;
+                trash.isStore = true;
+                trash.pointer = given;
+                bin(trash);
+            }
         }
         break;
     case Command::SetTrackImage:
         if (c.pointer) {
-            const TrackImage& image = *static_cast<TrackImage*>(c.pointer);
+            // Pointers swapped, nothing copied: the stores were made from the image by send().
+            SceneSet& set = *static_cast<SceneSet*>(c.pointer);
             if (validTrack(c.track)) {
                 Track& track = tracks_[c.track];
                 for (int scene = 0; scene < kMaxScenes; ++scene) {
-                    const int slot = scene * kMaxBars;
-                    sceneIn(*track.scenes[scene], image.level + slot, image.nudge + slot, image.chance + slot, image.start + slot, image.fx + slot, image.notes + slot, image.bars[scene],
-                            image.automation ? image.automation.get() + scene * kAutoLanes * kAutoSteps : nullptr);
+                    SceneStore* const leaving = track.scenes[scene];
+                    track.scenes[scene] = set.scenes[scene] ? set.scenes[scene] : blankScene();
+                    set.scenes[scene] = written(leaving);
                 }
                 for (int lane = 0; lane < kDrumLanes; ++lane) {
-                    track.drums.setLaneLevel(lane, image.laneLevel[lane]);
-                    track.drums.setLanePart(lane, image.lanePart[lane]);
+                    track.drums.setLaneLevel(lane, set.laneLevel[lane]);
+                    track.drums.setLanePart(lane, set.lanePart[lane]);
                 }
             }
             Trash trash;
@@ -1903,18 +2089,29 @@ void Engine::takeAway(int t) {
         bin(trash);
     }
     for (int lane = 0; lane < kDrumLanes; ++lane) track.drums.setLaneLevel(lane, 1.f), track.drums.setLaneChoke(lane, kChokeNone); // (the next kit here is in no group until told)
-    for (int slot = 0; slot < kPatternSlots; ++slot) {
-        DrumScene& scene = track.drumScenes[slot];
-        for (int lane = 0; lane < kDrumLanes; ++lane)
-            for (int step = 0; step < kSteps; ++step) {
-                scene.level[lane][step] = scene.nudge[lane][step] = scene.start[lane][step] = 0.f;
-                scene.chance[lane][step] = 1.f;
-                scene.fx[lane][step] = StepFx();
-            }
+    // Its patterns: every scene back to the blank store, nothing written, nothing copied. The stores
+    // go back in the holder RemoveInstrument brought (one thing in the trash), or one by one.
+    SceneSet* const holder = track.goneSet;
+    track.goneSet = nullptr;
+    for (int scene = 0; scene < kMaxScenes; ++scene) {
+        SceneStore* const leaving = written(track.scenes[scene]);
+        track.scenes[scene] = blankScene();
+        if (!leaving) continue;
+        if (holder) {
+            holder->scenes[scene] = leaving;
+        } else {
+            Trash trash;
+            trash.isStore = true;
+            trash.pointer = leaving;
+            bin(trash);
+        }
     }
-    for (int slot = 0; slot < kPatternSlots; ++slot)
-        for (Note& note : track.notes[slot]) note = Note();
-    for (int scene = 0; scene < kMaxScenes; ++scene) track.bars[scene] = 1;
+    if (holder) {
+        Trash trash;
+        trash.isImage = true;
+        trash.pointer = holder;
+        bin(trash);
+    }
     for (double& off : track.offIn) off = kNoNote;
     for (auto& p : track.pendingNotes) p = Track::PendingNote();
     for (auto& arp : track.arps) arp = Track::Arp();

@@ -31,6 +31,13 @@ report() {
     for m in /sys/class/drm/*/modes; do [ -s "$m" ] && echo "$m: $(tr '\n' ' ' < "$m")"; done
     cat /proc/fb 2>/dev/null
     for b in /sys/class/backlight/*; do [ -d "$b" ] && echo "$b: $(cat $b/brightness)/$(cat $b/max_brightness)"; done
+    # Which screen: U-Boot read pin PE6 (low: the newer screen) and chose the
+    # tree (rocknix-dt-id, at the top). Read again here, straight from the
+    # pin controller (port E's data register, bit 6; its function in cfg0).
+    if grep -q allwinner /proc/device-tree/compatible 2>/dev/null; then
+        pe=$(devmem 0x0300B0A0 32 2>/dev/null) cfg=$(devmem 0x0300B090 32 2>/dev/null)
+        [ -n "$pe" ] && echo "screen: PE6 reads $(( (pe >> 6) & 1 )) (port E data $pe, PE6 function $(( (cfg >> 24) & 15 ))); the tree U-Boot chose: $(tr -d '\000' < /proc/device-tree/rocknix-dt-id 2>/dev/null)"
+    fi
     section "lights (the LEDs, and the serial lines: the stick's ring is behind UART5, 5001400.serial)"
     for l in /sys/class/leds/*; do
         [ -d "$l" ] || continue
