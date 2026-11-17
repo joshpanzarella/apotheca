@@ -26,7 +26,7 @@ handheld as before.** Keep the stock card in a drawer and use a spare one.
 - A card reader for your computer.
 - **balenaEtcher** (https://etcher.balena.io) or **Raspberry Pi Imager**
   (https://www.raspberrypi.com/software/). Both are free.
-- The image: `apotheca-rg40xxv.img.gz` (about 25 MB; its sha256 is in
+- The image: `apotheca-rg40xxv.img.gz` (about 33 MB; its sha256 is in
   `apotheca-rg40xxv.img.gz.sha256` beside it).
 
 ## Putting it on the card
