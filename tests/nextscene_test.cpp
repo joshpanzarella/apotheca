@@ -1915,9 +1915,7 @@ void testASceneHandedOverIsWhatTheCommandsWrite() {
         const int at = 3, slot = at * kMaxBars;
         std::unique_ptr<TrackImage> image(new TrackImage);
         if (drums) image->bars[at] = 2;
-        into(image->level + slot, image->nudge + slot, image->chance + slot, image->start + slot, image->fx + slot, image->notes + slot, drums);
-        image->automation.reset(new float[kMaxScenes * kAutoLanes * kAutoSteps]);
-        for (int i = 0; i < kMaxScenes * kAutoLanes * kAutoSteps; ++i) image->automation[i] = kAutoNone;
+        into(image->level.at(slot), image->nudge.at(slot), image->chance.at(slot), image->start.at(slot), image->fx.at(slot), image->notes.at(slot), drums);
         if (drums) image->automation[(at * kAutoLanes + autoLaneOfSend(0)) * kAutoSteps + 3] = kSend;
         for (int step = 0; step < kSteps && !drums; ++step) image->automation[at * kAutoLanes * kAutoSteps + step] = macro(step);
         return image;
@@ -2063,9 +2061,9 @@ void testOnceThroughAfterAMove() {
     const auto song = [&](Bare& bare, bool whole) { // whole: three scenes, the new one at the top; else the two it is put in front of
         std::unique_ptr<TrackImage> image(new TrackImage);
         const int first = whole ? 1 : 0;
-        if (whole) early(image->level, image->nudge, 5);
-        early(image->level + first * kMaxBars, image->nudge + first * kMaxBars, 0);
-        early(image->level + (first + 1) * kMaxBars, image->nudge + (first + 1) * kMaxBars, 2);
+        if (whole) early(image->level.at(0), image->nudge.at(0), 5);
+        early(image->level.at(first * kMaxBars), image->nudge.at(first * kMaxBars), 0);
+        early(image->level.at((first + 1) * kMaxBars), image->nudge.at((first + 1) * kMaxBars), 2);
         bare.engine->setTrackImage(0, std::move(image));
         bare.say(Command::SetSceneCount, 0, whole ? 3 : 2);
         bare.render(256);

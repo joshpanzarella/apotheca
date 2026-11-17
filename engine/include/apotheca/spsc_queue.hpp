@@ -26,6 +26,12 @@ public:
         return true;
     }
 
+    // Producer thread only: room for `count` more pushes (the consumer only makes more room).
+    bool hasRoom(std::size_t count) const {
+        const std::size_t used = (head_.load(std::memory_order_relaxed) - tail_.load(std::memory_order_acquire)) & (N - 1);
+        return used + count <= N - 1;
+    }
+
     // Any thread: nothing waiting, as far as can be seen from here. (A moment
     // out of date by the time it is read, which is all a caller should need.)
     bool empty() const { return tail_.load(std::memory_order_acquire) == head_.load(std::memory_order_acquire); }

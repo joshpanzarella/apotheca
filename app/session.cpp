@@ -1667,6 +1667,17 @@ void Session::sendTrackImage(int t) {
 }
 
 namespace {
+// Does a scene of a track hold anything the engine plays: a hit, a note or a step of automation, in
+// any of its bars (the hidden ones too)?
+bool sceneHolds(const TrackData& track, int scene) {
+    for (int bar = 0; bar < kMaxBars; ++bar)
+        if (!track.drums[scene][bar].empty() || !track.notes[scene][bar].empty()) return true;
+    for (const auto& lane : track.automation[scene])
+        for (float v : lane)
+            if (v >= 0.f) return true;
+    return false;
+}
+
 // The bars of one scene of a track, as the engine is handed them: into a TrackImage's place for that scene, or a SceneImage.
 void sceneInto(const TrackData& track, int scene, float (*level)[kDrumLanes][kSteps], float (*nudge)[kDrumLanes][kSteps], float (*chance)[kDrumLanes][kSteps],
                float (*start)[kDrumLanes][kSteps], StepFx (*fx)[kDrumLanes][kSteps], TrackImage::Note (*to)[kMaxNotes]) {
@@ -1699,9 +1710,11 @@ void sceneInto(const TrackData& track, int scene, float (*level)[kDrumLanes][kSt
 }
 } // namespace
 
-// One scene of a track, for a scene move (Engine::moveScenes).
+// One scene of a track, for a scene move (Engine::moveScenes); nullptr when it holds nothing (the
+// engine's blank store goes in its place) and its cell is a bar long.
 std::unique_ptr<SceneImage> Session::sceneImage(int t, int scene) const {
     const TrackData& track = project.tracks[t];
+    if (track.bars[scene] == 1 && !sceneHolds(track, scene)) return nullptr;
     std::unique_ptr<SceneImage> image(new SceneImage);
     image->bars = track.bars[scene];
     sceneInto(track, scene, image->level, image->nudge, image->chance, image->start, image->fx, image->notes);
@@ -1713,17 +1726,11 @@ std::unique_ptr<TrackImage> Session::trackImage(int t) const {
     const TrackData& track = project.tracks[t];
     std::unique_ptr<TrackImage> image(new TrackImage);
     for (int scene = 0; scene < kMaxScenes; ++scene) {
-        const int slot = scene * kMaxBars;
         image->bars[scene] = track.bars[scene];
-        sceneInto(track, scene, image->level + slot, image->nudge + slot, image->chance + slot, image->start + slot, image->fx + slot, image->notes + slot);
-    }
-    bool automated = false;
-    for (const auto& scene : track.automation)
-        for (const auto& lane : scene)
-            for (float v : lane) automated = automated || v >= 0.f;
-    if (automated) {
-        image->automation.reset(new float[kMaxScenes * kAutoLanes * kAutoSteps]);
-        std::memcpy(image->automation.get(), track.automation, sizeof track.automation);
+        if (!sceneHolds(track, scene)) continue; // nothing in it: no scene for the engine to keep (scenes-plan.md)
+        SceneImage& to = image->scene(scene);
+        sceneInto(track, scene, to.level, to.nudge, to.chance, to.start, to.fx, to.notes);
+        std::memcpy(to.automation, track.automation[scene], sizeof to.automation);
     }
     for (int lane = 0; lane < kDrumLanes; ++lane) {
         image->laneLevel[lane] = track.laneLevel[lane];
