@@ -47,6 +47,7 @@ inline const char* const kViews[] = {
     "fm6", "fm6-1", "fm6-2", "fm6-3", "fm6-4", "fm6-5", "fm6-6", "fm6-7", "fm6-8", "fm6-long", "fm6-fixed", "fm6-off",
     "physic", "physic-1", "physic-2", "physic-3", "physic-4", "physic-5", "physic-long", "physic-string", "physic-noise",
     "acid", "acid-1", "acid-2", "acid-fixed", "acid-long", "acid-roll",
+    "cloud", "cloud-1", "cloud-2", "cloud-3", "cloud-long", "cloud-sounding",
     "next-scene", "next-scene-notes", "next-scene-full", "volume", "update-ready", "update-ready-drums", "update-accepted", "nomenu", "help-nomenu", "kit-old",
     "", " --dice", " --paint", " --paint-random", " --on-name", " --on-tempo", " --hold-a", " --hold-y",
     "help --no-menu", "song --no-menu", "setup --no-menu",

@@ -1,6 +1,9 @@
 #include "synth_screen.hpp"
 
 #include "mods.hpp"
+#include "samples.hpp"
+
+#include "apotheca/cloud.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -18,16 +21,22 @@ constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCurs
 constexpr float kStickStopsPerSecond = 16.f;
 constexpr float kMacroPerSecond = 2.f;    // stick fully over: bottom to top in half a second
 constexpr float kPresetsPerSecond = 10.f;
+constexpr Uint32 kListPreviewMs = 1500, kListRestMs = 4000; // CLOUD's list of recordings: a preview, and X on it
 
 
 } // namespace
 
 // ---- what is on each page --------------------------------------------------------
 
-int SynthScreen::itemCount() const { return page_ == 0 ? kMainStops : spec_.itemCount(page_); }
+// (CLOUD's first page has RECORDING before its settings: SynthSpec::recording.)
+int SynthScreen::itemCount() const { return page_ == 0 ? kMainStops : spec_.itemCount(page_) + (spec_.recording && page_ == 1 ? 1 : 0); }
 
 SynthScreen::Item SynthScreen::item(int index) const {
     Item it = {0, ""};
+    if (spec_.recording && page_ == 1) {
+        if (index == 0) return {kRecordingId, "RECORDING"};
+        --index;
+    }
     spec_.item(page_, index, it.id, it.name);
     return it;
 }
@@ -151,13 +160,67 @@ void SynthScreen::setSetting(int id, int value) {
 
 int SynthScreen::valueOf(int id) const { return settingValue(spec_, values(), id); }
 
-bool SynthScreen::isChoice(int id) const { return spec_.settingMax(id) - spec_.settingMin(id) <= kChoiceRange; }
+bool SynthScreen::isChoice(int id) const { return id >= 0 && spec_.settingMax(id) - spec_.settingMin(id) <= kChoiceRange; }
+
+// ---- CLOUD's recording (SynthSpec::recording) -------------------------------------------------
+
+void SynthScreen::say(const std::string& words, Uint32 ms) {
+    said_ = words;
+    for (char& c : said_) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+    saidUntil_ = lastMs_ + ms;
+}
+
+// The next or the one before in the list of recordings ("none", the TONE, first), heard at once when
+// the song is stopped. The ends stop.
+void SynthScreen::stepRecording(int by) {
+    stepped_ = true;
+    const int count = static_cast<int>(names_.size()) + 1;
+    int now = 0;
+    for (int i = 0; i < count - 1; ++i)
+        if (names_[static_cast<std::size_t>(i)] == trk().sample) now = i + 1;
+    const int to = now + by;
+    if (to < 0 || to >= count) return;
+    session_.setTrackSample(project_.track, to == 0 ? "" : names_[static_cast<std::size_t>(to - 1)]);
+    hear();
+}
+
+// The list's preview: the cloud at middle C for a moment (Session::kAuditionMs and more), stopped as
+// soon as the cursor moves on; X held, as long as X is; X while it plays, on a while.
+void SynthScreen::hearFromList(SamplePicker::Hear how) {
+    if (how == SamplePicker::Hear::Quiet) return session_.stopHeard(this);
+    if (how == SamplePicker::Hear::Rest) return session_.hearFor(kListRestMs);
+    session_.auditionHeld(project_.track, 60, kPlacedLevel, this);
+    if (how == SamplePicker::Hear::Preview) session_.hearFor(kListPreviewMs);
+}
+
+void SynthScreen::openPicker() {
+    const int track = project_.track;
+    SamplePicker::Jobs jobs;
+    jobs.use = [this, track](const std::string& name) { session_.setTrackSample(track, name); };
+    jobs.hear = [this](SamplePicker::Hear how) { hearFromList(how); };
+    jobs.sounding = [this] { return session_.hearingOn(this); };
+    jobs.sound = [this, track] { return &session_.trackSound(track); };
+    jobs.remove = [this](const std::string& name) { return session_.deleteSample(name); };
+    jobs.move = [this](const std::string& from, const std::string& to) { return session_.moveSample(from, to); };
+    jobs.makeFolder = [this](const std::string& name) { return session_.makeSampleFolder(name); };
+    jobs.removeFolder = [this](const std::string& name) { return session_.deleteSampleFolder(name); };
+    jobs.following = [this] { return session_.following(); };
+    jobs.followFailures = [this] { return session_.followFailures(); };
+    jobs.used = [this, track](const std::string& name) { return session_.sampleUses(name) - (name == project_.tracks[track].sample ? 1 : 0); };
+    picker_.open(session_.sampleNames(), session_.sampleFolders(), trk().sample, "CLOUD: PICK ITS RECORDING", "THE BUILT-IN TONE", jobs);
+}
 
 void SynthScreen::turn(float amount) {
     if (amount == 0.f) return;
-    if (page_ == 0) {
-        if (cursor_ >= kFirstMacro && cursor_ < kAdvanced) {
+    if (page_ == 0 || onRecording()) {
+        if (page_ == 0 && cursor_ >= kFirstMacro && cursor_ < kAdvanced) {
             setMacro(cursor_ - kFirstMacro, trk().macro[cursor_ - kFirstMacro] + amount * kMacroPerSecond);
+            return;
+        }
+        if (onRecording()) { // CLOUD's RECORDING: one at a time, as the presets
+            saved_ += amount * kPresetsPerSecond;
+            for (; saved_ >= 1.f; saved_ -= 1.f) stepRecording(1);
+            for (; saved_ <= -1.f; saved_ += 1.f) stepRecording(-1);
             return;
         }
         if (cursor_ == kAdvanced) return;
@@ -219,6 +282,7 @@ void SynthScreen::stepExact(int by) {
         return;
     }
     const int id = item(cursor_).id;
+    if (id == kRecordingId) return stepRecording(by);
     setSetting(id, valueOf(id) + by);
 }
 
@@ -233,6 +297,11 @@ void SynthScreen::endMod(const Input& input) {
 
 void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
+    if (picker_.isOpen()) { // CLOUD's list of recordings: every button is its own but START
+        if (b == Button::Start && event.down && !input.held(Button::Select) && !picker_.typing()) session_.togglePlay(false);
+        else picker_.onButton(event, project_.playing);
+        return;
+    }
     // X: hear the sound. Held on a macro (MAIN, A not held), it is also the macro's MOD: the X-held
     // check comes before every other button's own job (Y's roll, B's middle, the D-pad's cursor).
     if (b == Button::X) {
@@ -247,6 +316,14 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (modKnob_.held() && modKnob_.onButton(event, lastMs_)) return;
+    // A tap of A on CLOUD's RECORDING: the list of recordings. Held, it turns to the next one.
+    if (b == Button::A && onRecording()) {
+        if (!event.down && holding_ && !stepped_) openPicker();
+        if (event.down) stepped_ = false, names_ = session_.sampleNames();
+        holding_ = event.down;
+        saved_ = 0.f;
+        return;
+    }
     if (b == Button::A) {
         if (event.down && page_ == 0 && cursor_ == kAdvanced) {
             goTo(1, 0);
@@ -258,6 +335,12 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
     // Y on MAIN: a new sound from the dice, on a synth that has them (PHYSIC: SynthSpec::roll). At once,
     // and it is heard. Not with A held (turning), and on the pages nothing.
+    // Y on CLOUD's first page: CATCH, the last bar the song played as this track's recording.
+    if (b == Button::Y && event.down && spec_.recording && page_ == 1 && !holding_) {
+        const std::string name = session_.catchLastBar(project_.track, 0);
+        say(name.empty() ? std::string("NOTHING TO CATCH: PLAY SOMETHING FIRST") : "CAUGHT THE LAST BAR AS \"" + name + "\"", 2500);
+        return;
+    }
     if (b == Button::Y && event.down && spec_.roll && page_ == 0 && !holding_) {
         if (session_.rollSynth(project_.track, lastMs_ * 2654435761u + (++rolls_) * 40503u)) hear();
         return;
@@ -286,6 +369,11 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
             setMacro(cursor_ - kFirstMacro, 0.5f);
             session_.setWriting(writing);
         }
+    } else if (b == Button::R1 && onRecording() && !holding_) {
+        // RECORD on CLOUD's RECORDING (as the sampler's R1): once to start (it waits for sound), again to stop.
+        const Session::Rec now = session_.toggleRecording(project_.track, 0);
+        if (now == Session::Rec::NoInput) say("NO INPUT FOUND: PLUG IN A USB MICROPHONE OR INTERFACE", 3000);
+        else if (now == Session::Rec::Idle && session_.lastRecorded().empty()) say("NOTHING RECORDED: NO SOUND CAME IN", 3000);
     } else if (b == Button::R1 && page_ > 0) {
         goTo(page_ == spec_.pages - 1 ? 1 : page_ + 1, 0);
     } else if (b == Button::L1 && page_ > 0) {
@@ -311,6 +399,23 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
     if (modKnob_.held()) {
         modKnob_.update(input, nowMs, dt); // the stick and the D-pad are the MOD's; the cursor stays on the knob
         return;
+    }
+    if (spec_.recording) {
+        picker_.update(input, nowMs, project_.playing);
+        if (picker_.isOpen()) return;
+        // While recording, the line says how it is going (as the sampler's).
+        const Session::Rec rec = session_.recording();
+        if (rec == Session::Rec::Waiting || rec == Session::Rec::Recording) {
+            char text[64];
+            if (rec == Session::Rec::Waiting) std::snprintf(text, sizeof text, "WAITING FOR SOUND...  R1 TO CANCEL");
+            else std::snprintf(text, sizeof text, "RECORDING  %.1f S OF 10  R1 TO STOP", static_cast<double>(session_.recordSeconds()));
+            say(text, 3000);
+            wasRecording_ = true;
+        } else if (wasRecording_) {
+            wasRecording_ = false; // it has just stopped, by R1 or at ten seconds
+            say(session_.lastRecorded().empty() ? std::string("NOTHING RECORDED: NO SOUND CAME IN") : "RECORDED AS \"" + session_.lastRecorded() + "\"", 3000);
+        }
+        if (!said_.empty() && nowMs >= saidUntil_) said_.clear();
     }
     if (stickWait_ && x == 0.f && y == 0.f) stickWait_ = false;
 
@@ -349,10 +454,69 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
 
 // ---- drawing ----------------------------------------------------------------------------
 
+namespace {
+// The built-in TONE's outline (Cloud::tone at the engine's rate), made once: what MAIN draws, dim,
+// for a CLOUD with no recording.
+const std::vector<float>& toneOutline() {
+    static std::vector<float> peaks;
+    if (peaks.empty()) {
+        const std::vector<float>& tone = Cloud::tone(48000.f);
+        peaks.assign(512, 0.f);
+        for (std::size_t i = 0; i < tone.size(); ++i) {
+            float& peak = peaks[i * peaks.size() / tone.size()];
+            peak = std::fabs(tone[i]) > peak ? std::fabs(tone[i]) : peak;
+        }
+    }
+    return peaks;
+}
+} // namespace
+
+// CLOUD's picture on MAIN: the recording's outline (the TONE's, dim, with none), lit within SPRAY of
+// POSITION (both as the knobs have them now, macros on), POSITION a brass line, and each grain
+// sounding a teal tick at its place, top and bottom (Engine::grainPlaces, as of the last chunk).
+void SynthScreen::drawPicture(SDL_Renderer* r, const Fonts& fonts) const {
+    const int x = 8, y = kPictureY, w = kScreenW - 16, h = kPictureH;
+    box(r, x, y, w, h, kPanel, kLine);
+    const TrackData& t = trk();
+    const Session::LaneSound& sound = session_.trackSound(project_.track);
+    const bool tone = !t.sample[0] || sound.missing || sound.peaks.empty();
+    const std::vector<float>& peaks = tone ? toneOutline() : sound.peaks;
+    const float position = static_cast<float>(cloud::positionShare(cloud::macroBent(static_cast<float>(t.cloud.value[cloud::Position]), session_.automated(project_.track, cloud::MacroPosition, t.macro[cloud::MacroPosition]), 0.f, 100.f)));
+    const float spray = static_cast<float>(cloud::sprayShare(cloud::macroBent(static_cast<float>(t.cloud.value[cloud::Spray]), session_.automated(project_.track, cloud::MacroSpray, t.macro[cloud::MacroSpray]), 0.f, 100.f)));
+    const int px = x + 2, py = y + 2 + kTickH, pw = w - 4, ph = h - 4 - 2 * kTickH;
+    const int count = static_cast<int>(peaks.size());
+    for (int i = 0; i < count; ++i) {
+        const float at = (i + 0.5f) / count;
+        float off = at - position;
+        if (off > 0.5f) off -= 1.f; // the recording has no edges: the band goes round
+        if (off < -0.5f) off += 1.f;
+        const bool lit = std::fabs(off) <= spray + 0.5f / count;
+        const int colH = 1 + static_cast<int>(peaks[static_cast<std::size_t>(i)] * (ph - 1));
+        fill(r, px + pw * i / count, py + (ph - colH) / 2, pw / count > 0 ? pw / count : 1, colH, lit && !tone ? kText : (lit ? kDim : kLine));
+    }
+    fill(r, px + static_cast<int>(position * (pw - 2)), py - 2, 2, ph + 4, kBrass); // POSITION
+    float places[kGrainsShown];
+    const int grains = session_.engine.grainPlaces(project_.track, places, kGrainsShown);
+    for (int g = 0; g < grains; ++g) {
+        const int gx = px + static_cast<int>(places[g] * (pw - 2));
+        fill(r, gx, y + 2, 2, kTickH - 1, kTeal);
+        fill(r, gx, y + h - 1 - kTickH, 2, kTickH - 1, kTeal);
+    }
+    std::string label = !t.sample[0] ? std::string("TONE (BUILT IN)") : sound.missing ? std::string("FILE NOT FOUND: THE TONE PLAYS") : sampleLabel(t.sample);
+    for (char& c : label) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+    fonts.fixed().small.draw(r, x + 8.f, y + 2.f + kTickH, label.c_str(), tone ? kDim : kText); // (a text over a picture: the tight row's lettering)
+}
+
 void SynthScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
+    drawScreen(r, fonts);
+    if (picker_.isOpen()) picker_.draw(r, fonts); // CLOUD's list of recordings, over everything
+}
+
+void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
     char text[64], name[24];
     trackName(project_, project_.track, name, sizeof name);
     std::snprintf(text, sizeof text, "%s / %s", name, spec_.pageNames[page_]);
+    if (!said_.empty()) std::snprintf(text, sizeof text, "%s", said_.c_str()); // (CATCH, RECORD: for a moment)
     topBar(r, fonts, View::Device, text, project_);
     const TrackData& t = trk();
     const SDL_Color cursorColor = holding_ ? kBrass : kTeal;
@@ -385,21 +549,23 @@ void SynthScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         }
 
         for (int m = 0; m < kMacros; ++m) {
-            const int x = 8 + (m % 4) * kMacroPitchX, y = kMacroY + (m / 4) * (kMacroH + kMacroGap);
+            const int x = 8 + (m % 4) * kMacroPitchX, y = macroY() + (m / 4) * (macroH() + kMacroGap);
             // While the song plays an automated macro shows where the pattern has it, not where its knob rests.
             const float v = session_.automated(project_.track, m, t.macro[m]);
             spec_.macroText(m, v, text, sizeof text);
-            macroBox(r, fonts, x, y, kMacroW, kMacroH, spec_.macroNames[m], text, v, cursor_ == kFirstMacro + m, holding_);
+            macroBox(r, fonts, x, y, kMacroW, macroH(), spec_.macroNames[m], text, v, cursor_ == kFirstMacro + m, holding_);
             // A purple bar along the bottom: this macro has automation in the cell being worked on.
-            if (session_.hasAutomation(project_.track, project_.scene, m)) fill(r, x + 1, y + kMacroH - 3, kMacroW - 2, 2, kPurple);
+            if (session_.hasAutomation(project_.track, project_.scene, m)) fill(r, x + 1, y + macroH() - 3, kMacroW - 2, 2, kPurple);
             // A MOD on it runs: the thin brass mark where the macro is given this moment (batch 6).
-            drawModMark(r, x + kMacroBarInset, y + kMacroH - kMacroBarFromFoot, kMacroW - 2 * kMacroBarInset, kMacroBarH,
+            drawModMark(r, x + kMacroBarInset, y + macroH() - kMacroBarFromFoot, kMacroW - 2 * kMacroBarInset, kMacroBarH,
                         modMarkAt(session_, project_.track, kModFirstMacro + m, v));
         }
-        box(r, 8, kAdvancedY, kMacroW, kAdvancedH, kPanel2, kLine);
-        fonts.medium.draw(r, 20.f, kAdvancedY + (kAdvancedH - fonts.medium.capHeight()) / 2.f, "ADVANCED  >", cursor_ == kAdvanced ? kTeal : kText);
-        if (cursor_ == kAdvanced) outline(r, 7, kAdvancedY - 1, kMacroW + 2, kAdvancedH + 2, kTeal, 2);
-        const float middle = kAdvancedY + kAdvancedH / 2.f;
+        if (spec_.recording) drawPicture(r, fonts);
+        const int advancedTop = advancedY();
+        box(r, 8, advancedTop, kMacroW, kAdvancedH, kPanel2, kLine);
+        fonts.medium.draw(r, 20.f, advancedTop + (kAdvancedH - fonts.medium.capHeight()) / 2.f, "ADVANCED  >", cursor_ == kAdvanced ? kTeal : kText);
+        if (cursor_ == kAdvanced) outline(r, 7, advancedTop - 1, kMacroW + 2, kAdvancedH + 2, kTeal, 2);
+        const float middle = advancedTop + kAdvancedH / 2.f;
         std::snprintf(text, sizeof text, "Every setting of this sound, on %d pages.", spec_.pages - 1);
         fonts.small.draw(r, 174.f, middle - 14.f, text, kDim);
         fonts.small.draw(r, 174.f, middle + 2.f, "The macros above bend the sound and leave it as it was made.", kDim);
@@ -444,6 +610,15 @@ void SynthScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         for (int i = 0; i < itemCount(); ++i) {
             const Item it = item(i);
             const int x = 8 + (i % 4) * kMacroPitchX, y = settingY(rows, i / 4);
+            if (it.id == kRecordingId) { // CLOUD's recording: its name, cut to the box (or the TONE)
+                const Session::LaneSound& sound = session_.trackSound(project_.track);
+                std::string shown = !trk().sample[0] ? std::string("TONE") : sound.missing ? std::string("NOT FOUND") : sampleLabel(trk().sample);
+                for (char& c : shown) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+                const Font& valueFont = boxFonts.large;
+                while (shown.size() > 1 && valueFont.width(shown.c_str()) > kMacroW - 14.f) shown.pop_back();
+                valueBox(r, boxFonts, x, y, kMacroW, rowH, it.name, shown.c_str(), -1.f, i == cursor_, holding_);
+                continue;
+            }
             const int value = valueOf(it.id);
             settingReading(spec_, values(), it.id, text, sizeof text);
             const int range = spec_.settingMax(it.id) - spec_.settingMin(it.id);
@@ -506,8 +681,14 @@ void SynthScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     }
 
     if (holding_) {
-        hint("STICK UP / DOWN", "change it");
+        hint("STICK UP / DOWN", onRecording() ? "next recording" : "change it");
         hint("D-PAD UP / DOWN", "by one");
+    } else if (onRecording()) {
+        hint("A", "list");
+        hint("HOLD A", "next");
+        hint("R1", "record");
+        hint("Y", "catch");
+        hint("B", "main");
     } else {
         hint("HOLD A", "change");
         hint("L1 R1", "page");

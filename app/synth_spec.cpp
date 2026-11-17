@@ -1,6 +1,8 @@
 #include "synth_spec.hpp"
 #include "presets.hpp"
 
+#include "apotheca/envelope.hpp"
+
 #include <cmath>
 #include <cstdint>
 
@@ -12,8 +14,9 @@ namespace apotheca {
 namespace {
 
 std::vector<UserPreset>& userList(TrackKind kind) {
-    static std::vector<UserPreset> phazedOnes, jx3pOnes, fm6Ones, physicOnes, acidOnes;
-    return kind == TrackKind::Jx3p ? jx3pOnes : kind == TrackKind::Fm6 ? fm6Ones : kind == TrackKind::Physic ? physicOnes : kind == TrackKind::Acid ? acidOnes : phazedOnes;
+    static std::vector<UserPreset> phazedOnes, jx3pOnes, fm6Ones, physicOnes, acidOnes, cloudOnes;
+    return kind == TrackKind::Jx3p ? jx3pOnes : kind == TrackKind::Fm6 ? fm6Ones : kind == TrackKind::Physic ? physicOnes : kind == TrackKind::Acid ? acidOnes
+         : kind == TrackKind::Cloud ? cloudOnes : phazedOnes;
 }
 
 // The preset functions every spec uses: the engine's built-in presets first, then the ones the app's
@@ -584,6 +587,111 @@ void item(int page, int index, int& id, const char*& name) {
 }
 } // namespace ac
 
+
+// ---- CLOUD -----------------------------------------------------------------------------
+// The plan: docs/plans/granular-plan.md, sections 1 and 4. Seventeen settings on three pages, SOURCE
+// (the screen puts RECORDING first: SynthSpec::recording), GRAINS and PLAY, each read in its unit.
+
+namespace cl {
+using namespace cloud;
+
+const char* const kPages[4] = {"MAIN", "SOURCE", "GRAINS", "PLAY"};
+struct Item { int id; const char* name; };
+const Item kSource[] = {{Position, "POSITION"}, {Spray, "SPRAY"}, {Scan, "SCAN"}, {Root, "ROOT"}, {Tune, "TUNE"}};
+const Item kGrains[] = {{Size, "SIZE"}, {Density, "DENSITY"}, {Scatter, "SCATTER"}, {Shape, "SHAPE"}, {Reverse, "REVERSE"}, {Stereo, "STEREO"}};
+const Item kPlay[] = {{PitchSpray, "PITCH SPRAY"}, {PitchSteps, "PITCH STEPS"}, {Attack, "ATTACK"}, {Release, "RELEASE"}, {Level, "LEVEL"}, {Velocity, "VELOCITY"}};
+struct Page { const Item* items; int count; };
+const Page kPageItems[4] = {{nullptr, 0}, {kSource, 5}, {kGrains, 6}, {kPlay, 6}};
+static_assert(5 + 6 + 6 == kSettings, "every setting is on one page");
+
+// A player's own preset is written over the FIRST preset's sound (as PHYSIC's and ACID's).
+void loadPreset(TrackData& t, int index) {
+    if (const std::vector<int>* own = Presets<Cloud, TrackKind::Cloud>::own(index)) {
+        t.cloud = Cloud::presetPatch(0);
+        for (int id = 0; id < kSettings && id < static_cast<int>(own->size()); ++id) t.cloud.value[id] = settingHeld(id, (*own)[id]);
+    } else {
+        t.cloud = Cloud::presetPatch(index);
+    }
+}
+int* values(TrackData& t) { return t.cloud.value; }
+
+void secondsText(double s, char* out, std::size_t n) { // "120 MS", "1.0 S"
+    if (s < 0.9995) std::snprintf(out, n, "%.0f MS", s * 1000.0);
+    else std::snprintf(out, n, "%.1f S", s);
+}
+const char* const kNoteNames[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+void settingText(int id, int value, char* out, int size) {
+    const std::size_t n = static_cast<std::size_t>(size);
+    switch (id) {
+    case Spray: { // a share of the recording either way (its length is the track's, not the setting's)
+        const double p = 100.0 * sprayShare(value);
+        if (value <= 0) std::snprintf(out, n, "OFF");
+        else std::snprintf(out, n, p < 9.95 ? "+-%.1f%%" : "+-%.0f%%", p);
+        return;
+    }
+    case Size: return secondsText(sizeSeconds(value), out, n);
+    case Density: {
+        const double hz = densityHz(value);
+        std::snprintf(out, n, hz < 9.95 ? "%.1f HZ" : "%.0f HZ", hz);
+        return;
+    }
+    case Shape:
+        if (value == 0) std::snprintf(out, n, "PLUCK");
+        else if (value == 50) std::snprintf(out, n, "SMOOTH");
+        else if (value == 100) std::snprintf(out, n, "SWELL");
+        else std::snprintf(out, n, "PEAK %d%%", value);
+        return;
+    case PitchSpray:
+        if (value <= 0) std::snprintf(out, n, "OFF");
+        else std::snprintf(out, n, "+-%.0f CENTS", pitchSprayCents(value));
+        return;
+    case PitchSteps: std::snprintf(out, n, "%s", stepsName(value)); return;
+    case Reverse: case Velocity:
+        if (value <= 0) std::snprintf(out, n, "OFF");
+        else std::snprintf(out, n, "%d%%", value);
+        return;
+    case Scan:
+        if (value == 50) std::snprintf(out, n, "FREEZE");
+        else std::snprintf(out, n, "%+.2fX", scanTimes(value));
+        return;
+    case Root: std::snprintf(out, n, "%s%d", kNoteNames[((value % 12) + 12) % 12], value / 12 - 1); return;
+    case Tune: std::snprintf(out, n, "%+d CENTS", value); return;
+    case Attack: return secondsText(envelope::attackSeconds(static_cast<float>(value)), out, n);
+    case Release: return secondsText(envelope::fallSeconds(static_cast<float>(value)), out, n);
+    case Level:
+        if (value <= 0) std::snprintf(out, n, "OFF");
+        else std::snprintf(out, n, "%.1f DB", levelDb(value));
+        return;
+    default: std::snprintf(out, n, "%d%%", value); return; // POSITION, SCATTER, STEREO
+    }
+}
+// No macro is a choice: each reads -100 to +100 about the patch.
+void macroText(int, float v, char* out, int size) { plusMinus(v, out, size); }
+bool envelopePage(int) { return false; }
+int itemCount(int page) { return page >= 1 && page < 4 ? kPageItems[page].count : 0; }
+void item(int page, int index, int& id, const char*& name) {
+    const Item& it = kPageItems[page].items[index];
+    id = it.id;
+    name = it.name;
+}
+
+// ROLL (Y on MAIN, the plan's call 11): a new cloud from the dice, by a hash of the seed and each
+// one's place (PHYSIC's rule). SPRAY, SIZE, DENSITY, SCATTER, SHAPE, PITCH SPRAY (off more often
+// than not), PITCH STEPS (FREE mostly), REVERSE (off more often than not) and STEREO are rolled; the
+// recording, POSITION, SCAN, ROOT, TUNE, the envelope and the levels stay.
+void roll(TrackData& t, unsigned seed) {
+    int* v = t.cloud.value;
+    v[Spray] = ps::between(seed, 0, 0, 60);
+    v[Size] = ps::between(seed, 1, 25, 90);
+    v[Density] = ps::between(seed, 2, 20, 85);
+    v[Scatter] = ps::between(seed, 3, 0, 100);
+    v[Shape] = ps::between(seed, 4, 0, 100);
+    v[PitchSpray] = ps::unit(seed, 5) < 0.6 ? 0 : ps::between(seed, 6, 5, 60);
+    v[PitchSteps] = ps::unit(seed, 7) < 0.7 ? kStepsFree : (ps::unit(seed, 8) < 0.5 ? kStepsOctaves : kStepsFifths);
+    v[Reverse] = ps::unit(seed, 9) < 0.6 ? 0 : ps::between(seed, 10, 10, 60);
+    v[Stereo] = ps::between(seed, 11, 10, 90);
+}
+} // namespace cl
 } // namespace
 
 const char* const kJaxepBankNote = "1983 BOOKLET, SPEEDS GUESSED";
@@ -594,7 +702,7 @@ const SynthSpec& phazedSpec() {
     static const SynthSpec spec = {"PHAZED", Presets<Phazed, TrackKind::Phazed>::count, Presets<Phazed, TrackKind::Phazed>::name, Presets<Phazed, TrackKind::Phazed>::category, pz::loadPreset, pz::values,
                                    phazed::settingMin, phazed::settingMax, pz::settingText,
                                    {"TONE", "MOTION", "ATTACK", "RELEASE", "DETUNE", "VIBRATO", "CHORUS", "OCTAVE"}, pz::macroText,
-                                   10, pz::kPages, pz::itemCount, pz::item, pz::envelopePage, nullptr, false, nullptr, nullptr, nullptr};
+                                   10, pz::kPages, pz::itemCount, pz::item, pz::envelopePage, nullptr, false, nullptr, nullptr, nullptr, false};
     return spec;
 }
 
@@ -602,7 +710,7 @@ const SynthSpec& jx3pSpec() {
     static const SynthSpec spec = {"JAX-EP", Presets<Jx3p, TrackKind::Jx3p>::count, Presets<Jx3p, TrackKind::Jx3p>::name, Presets<Jx3p, TrackKind::Jx3p>::category, jx::loadPreset, jx::values,
                                    jx3p::settingMin, jx3p::settingMax, jx::settingText,
                                    {"CUTOFF", "RESO", "ENV", "TUNE", "MIX", "LFO", "ATTACK", "RELEASE"}, jx::macroText,
-                                   6, jx::kPages, jx::itemCount, jx::item, jx::envelopePage, jx::folderNote, true, nullptr, nullptr, nullptr};
+                                   6, jx::kPages, jx::itemCount, jx::item, jx::envelopePage, jx::folderNote, true, nullptr, nullptr, nullptr, false};
     return spec;
 }
 
@@ -610,7 +718,7 @@ void setUserPresets(TrackKind kind, std::vector<UserPreset> presets) { userList(
 const std::vector<UserPreset>& userPresets(TrackKind kind) { return userList(kind); }
 int enginePresets(TrackKind kind) {
     return kind == TrackKind::Jx3p ? Jx3p::presetCount() : kind == TrackKind::Phazed ? Phazed::presetCount() : kind == TrackKind::Fm6 ? Fm6::presetCount()
-         : kind == TrackKind::Physic ? Physic::presetCount() : kind == TrackKind::Acid ? Acid::presetCount() : 0;
+         : kind == TrackKind::Physic ? Physic::presetCount() : kind == TrackKind::Acid ? Acid::presetCount() : kind == TrackKind::Cloud ? Cloud::presetCount() : 0;
 }
 int builtInPresets(TrackKind kind) { return specFor(kind) ? enginePresets(kind) + static_cast<int>(builtInData(kind).added.size()) : 0; }
 const UserPreset* listedPreset(TrackKind kind, int index) {
@@ -624,7 +732,8 @@ const UserPreset* listedPreset(TrackKind kind, int index) {
 }
 int settingCount(TrackKind kind) {
     return kind == TrackKind::Jx3p ? static_cast<int>(jx3p::kSettings) : kind == TrackKind::Phazed ? static_cast<int>(phazed::kSettings) : kind == TrackKind::Fm6 ? static_cast<int>(fm6::kSettings)
-         : kind == TrackKind::Physic ? static_cast<int>(physic::kSettings) : kind == TrackKind::Acid ? static_cast<int>(acid::kSettings) : 0;
+         : kind == TrackKind::Physic ? static_cast<int>(physic::kSettings) : kind == TrackKind::Acid ? static_cast<int>(acid::kSettings)
+         : kind == TrackKind::Cloud ? static_cast<int>(cloud::kSettings) : 0;
 }
 int shownSettingCount(TrackKind kind) { return kind == TrackKind::Fm6 ? fm::kShownSettings : settingCount(kind); }
 
@@ -657,7 +766,7 @@ const SynthSpec& fm6Spec() {
     static const SynthSpec spec = {"FM-6", Presets<Fm6, TrackKind::Fm6>::count, Presets<Fm6, TrackKind::Fm6>::name, Presets<Fm6, TrackKind::Fm6>::category, fm::loadPreset, fm::values,
                                    fm::shownMin, fm::shownMax, fm::settingText,
                                    {"BRIGHT", "FEEDBACK", "ATTACK", "DECAY", "RELEASE", "DETUNE", "LFO", "PITCH ENV"}, fm::macroText,
-                                   9, fm::kPages, fm::itemCount, fm::item, fm::envelopePage, nullptr, false, fm::bitOf, fm::readingIn, nullptr};
+                                   9, fm::kPages, fm::itemCount, fm::item, fm::envelopePage, nullptr, false, fm::bitOf, fm::readingIn, nullptr, false};
     return spec;
 }
 
@@ -667,7 +776,7 @@ const SynthSpec& physicSpec() {
     static const SynthSpec spec = {"PHYSIC", Presets<Physic, TrackKind::Physic>::count, Presets<Physic, TrackKind::Physic>::name, Presets<Physic, TrackKind::Physic>::category, ps::loadPreset, ps::values,
                                    physic::settingMin, physic::settingMax, ps::settingText,
                                    {"TONE", "POSITION", "DECAY", "MATERIAL", "STRETCH", "RELEASE", "DICE", "OCTAVE"}, ps::macroText,
-                                   6, ps::kPages, ps::itemCount, ps::item, ps::envelopePage, nullptr, true, nullptr, ps::readingIn, ps::roll};
+                                   6, ps::kPages, ps::itemCount, ps::item, ps::envelopePage, nullptr, true, nullptr, ps::readingIn, ps::roll, false};
     return spec;
 }
 
@@ -677,13 +786,23 @@ const SynthSpec& acidSpec() {
     static const SynthSpec spec = {"ACID", Presets<Acid, TrackKind::Acid>::count, Presets<Acid, TrackKind::Acid>::name, Presets<Acid, TrackKind::Acid>::category, ac::loadPreset, ac::values,
                                    acid::settingMin, acid::settingMax, ac::settingText,
                                    {"CUTOFF", "RESO", "ENV MOD", "DECAY", "ACCENT", "DRIVE", "SWEEP", "TUNE"}, ac::macroText,
-                                   3, ac::kPages, ac::itemCount, ac::item, ac::envelopePage, nullptr, true, nullptr, nullptr, nullptr};
+                                   3, ac::kPages, ac::itemCount, ac::item, ac::envelopePage, nullptr, true, nullptr, nullptr, nullptr, false};
+    return spec;
+}
+
+// CLOUD's macros are the engine's eight (cloud::Macro), none a choice. Its WiFi page reads every
+// setting as the device does. Y on MAIN rolls a new cloud (cl::roll); it plays the track's recording.
+const SynthSpec& cloudSpec() {
+    static const SynthSpec spec = {"CLOUD", Presets<Cloud, TrackKind::Cloud>::count, Presets<Cloud, TrackKind::Cloud>::name, Presets<Cloud, TrackKind::Cloud>::category, cl::loadPreset, cl::values,
+                                   cloud::settingMin, cloud::settingMax, cl::settingText,
+                                   {"POSITION", "SPRAY", "SIZE", "DENSITY", "SCAN", "PITCH", "SHAPE", "REVERSE"}, cl::macroText,
+                                   4, cl::kPages, cl::itemCount, cl::item, cl::envelopePage, nullptr, true, nullptr, nullptr, cl::roll, true};
     return spec;
 }
 
 const SynthSpec* specFor(TrackKind kind) {
     return kind == TrackKind::Phazed ? &phazedSpec() : kind == TrackKind::Jx3p ? &jx3pSpec() : kind == TrackKind::Fm6 ? &fm6Spec()
-         : kind == TrackKind::Physic ? &physicSpec() : kind == TrackKind::Acid ? &acidSpec() : nullptr;
+         : kind == TrackKind::Physic ? &physicSpec() : kind == TrackKind::Acid ? &acidSpec() : kind == TrackKind::Cloud ? &cloudSpec() : nullptr;
 }
 
 } // namespace apotheca

@@ -1636,8 +1636,8 @@ void Session::sendSong() {
                 c.b = track.sampler[id];
                 engine.send(c);
             }
-            loadTrackSample(t);
         }
+        if (holdsRecording(track.kind)) loadTrackSample(t); // (CLOUD's too: none, and it plays its TONE)
 
         if (const SynthSpec* spec = specFor(track.kind)) {
             c = Command();

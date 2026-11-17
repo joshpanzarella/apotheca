@@ -392,3 +392,27 @@ VELOCITY, the read).
 - The picture: **`Engine::grainPlaces(track, places, kGrainsShown)`** (shares 0..1 of the recording,
   as of the last chunk; -1 for no grains): a readout for the redraw, and an `idle_test` part.
 - The pool is 24 (`cloud::kPool`): the plan's "32 grains" in its words goes with it.
+
+## As built: batch 2, the app (2026-11-17, branch `cloud`)
+
+**Built and tested on the desk; nobody has heard it, not run on the handheld.** CLAUDE.md's "CLOUD in
+the app" block lists what is where. Where it differs from section 2 and 4:
+
+| Plan | Built | Why |
+| --- | --- | --- |
+| SOURCE, GRAINS, PLAY: three rows of two | the generic screen's rows of four: SOURCE two rows (RECORDING and five), GRAINS and PLAY six | one screen for every synth |
+| SPRAY read as +- seconds | **+-% of the recording** (`sprayShare`) | a setting's reading is given no recording; the picture's lit band shows the seconds |
+| SCAN read as x-2.00 to x2.00 | "+1.00X", **FREEZE at the middle** | the device's lettering has no x sign |
+| R1 RECORD on SOURCE | **R1 RECORD on the RECORDING stop only**; elsewhere R1 turns the page | R1 is the pages on every synth's screen |
+| The picture's grains | teal ticks top and bottom, a redraw readout (`kStirGrains`) | as planned |
+| A player's preset remembers its recording | **not yet**: batch 3, with the presets | |
+| The WiFi page | the generic synth page serves it (no picture, no `sample NAME`) | batch 4 |
+
+Tests: `app_test --cloud` (the track, the TONE, a recording kept, read, counted, renamed, deleted, the
+song file's line, the screen's stops, the list, CATCH, RECORD with no input, every reading, the macros,
+ROLL's 200 seeds in range, undo, a player's preset, a sampler and back; every stop's hints at 0 over;
+the picture's brass line and ticks off the drawn screen), `idle_test`'s part, `textsize`, `scope_test`,
+`save_test`, `modapp_test`, `presets_test` and `design_test` with CLOUD in their lists. **Left for
+batches 3 to 5**: the 24 presets and a whole preset's recording (3), the designer page's picture,
+POSITION mark and SPRAY band, `sample NAME`, ROLL (4), the review, mutants of the app side, README's
+page and bench again (5).

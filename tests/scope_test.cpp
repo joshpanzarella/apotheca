@@ -64,11 +64,12 @@ const Page kPages[] = {
     {"PHYSIC RING", TrackKind::Physic, 2, true}, {"PHYSIC PLAY", TrackKind::Physic, 3, true},
     {"PHYSIC DICE", TrackKind::Physic, 4, true}, {"PHYSIC BODY", TrackKind::Physic, 5, true},
     {"ACID MAIN", TrackKind::Acid, 0, true}, {"ACID SOUND", TrackKind::Acid, 1, true}, {"ACID FILTER", TrackKind::Acid, 2, true},
+    {"CLOUD MAIN", TrackKind::Cloud, 0, true}, {"CLOUD SOURCE", TrackKind::Cloud, 1, true}, {"CLOUD GRAINS", TrackKind::Cloud, 2, true}, {"CLOUD PLAY", TrackKind::Cloud, 3, true},
     {"sampler", TrackKind::Sampler, 0, true}, {"kit", TrackKind::None, 0, true},
 };
 
 SynthScreen* synthScreen(Rig& rig, TrackKind kind) {
-    return kind == TrackKind::Phazed ? &rig.app.phazed() : kind == TrackKind::Jx3p ? &rig.app.jaxep() : kind == TrackKind::Fm6 ? &rig.app.fm6() : kind == TrackKind::Physic ? &rig.app.physic() : kind == TrackKind::Acid ? &rig.app.acid() : nullptr;
+    return kind == TrackKind::Phazed ? &rig.app.phazed() : kind == TrackKind::Jx3p ? &rig.app.jaxep() : kind == TrackKind::Fm6 ? &rig.app.fm6() : kind == TrackKind::Physic ? &rig.app.physic() : kind == TrackKind::Acid ? &rig.app.acid() : kind == TrackKind::Cloud ? &rig.app.cloud() : nullptr;
 }
 
 // Draws the page into the canvas, in a theme.

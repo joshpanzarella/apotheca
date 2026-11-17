@@ -310,7 +310,7 @@ void FxScreen::hear(bool held) {
     const TrackKind kind = project_.current().kind;
     if (held && kind == TrackKind::Drums) {
         session_.hearLaneHeld(project_.track, 0, kPlacedLevel, this);
-    } else if (held && kind == TrackKind::Sampler) {
+    } else if (held && holdsRecording(kind)) {
         session_.auditionHeld(project_.track, 60, kPlacedLevel, this);
     } else if (kind == TrackKind::Drums) {
         Command c;

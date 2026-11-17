@@ -32,6 +32,9 @@ const char* const kPhysicText =
 const char* const kAcidText =
 #include "presets/acid.inc"
     ;
+const char* const kCloudText =
+#include "presets/cloud.inc"
+    ;
 
 // Held as a double first, as a song's numbers are (song_file.cpp's wholeIn and fractionIn).
 const double kValueMost = 1000000.0;
@@ -47,11 +50,13 @@ std::vector<int> engineValues(TrackKind kind, int index) {
     Fm6Patch fm6;
     PhysicPatch physic;
     AcidPatch acid;
+    CloudPatch cloud;
     if (kind == TrackKind::Phazed) phazed = Phazed::presetPatch(index), from = phazed.value;
     if (kind == TrackKind::Jx3p) jx3p = Jx3p::presetPatch(index), from = jx3p.value;
     if (kind == TrackKind::Fm6) fm6 = Fm6::presetPatch(index), from = fm6.value;
     if (kind == TrackKind::Physic) physic = Physic::presetPatch(index), from = physic.value;
     if (kind == TrackKind::Acid) acid = Acid::presetPatch(index), from = acid.value;
+    if (kind == TrackKind::Cloud) cloud = Cloud::presetPatch(index), from = cloud.value;
     return from ? std::vector<int>(from, from + count) : std::vector<int>();
 }
 
@@ -59,14 +64,14 @@ std::vector<int> engineValues(TrackKind kind, int index) {
 const char* engineFolder(TrackKind kind, int index) {
     return kind == TrackKind::Phazed ? Phazed::presetCategory(index) : kind == TrackKind::Jx3p ? Jx3p::presetCategory(index)
          : kind == TrackKind::Fm6 ? Fm6::presetCategory(index) : kind == TrackKind::Physic ? Physic::presetCategory(index)
-         : kind == TrackKind::Acid ? Acid::presetCategory(index) : "";
+         : kind == TrackKind::Acid ? Acid::presetCategory(index) : kind == TrackKind::Cloud ? Cloud::presetCategory(index) : "";
 }
 
 // An engine built-in's name (the engine's own, as engineFolder).
 const char* engineName(TrackKind kind, int index) {
     return kind == TrackKind::Phazed ? Phazed::presetName(index) : kind == TrackKind::Jx3p ? Jx3p::presetName(index)
          : kind == TrackKind::Fm6 ? Fm6::presetName(index) : kind == TrackKind::Physic ? Physic::presetName(index)
-         : kind == TrackKind::Acid ? Acid::presetName(index) : "";
+         : kind == TrackKind::Acid ? Acid::presetName(index) : kind == TrackKind::Cloud ? Cloud::presetName(index) : "";
 }
 
 // Two names the same, as a designer writes them: capitals not counted.
@@ -103,7 +108,7 @@ bool soundWord(const std::string& word) { return word == "fx" || word == "send" 
 
 const char* builtInText(TrackKind kind) {
     return kind == TrackKind::Phazed ? kPhazedText : kind == TrackKind::Jx3p ? kJaxepText : kind == TrackKind::Fm6 ? kFm6Text
-         : kind == TrackKind::Physic ? kPhysicText : kind == TrackKind::Acid ? kAcidText : "";
+         : kind == TrackKind::Physic ? kPhysicText : kind == TrackKind::Acid ? kAcidText : kind == TrackKind::Cloud ? kCloudText : "";
 }
 
 // ---- the player's own preset files ---------------------------------------------------------
@@ -393,10 +398,10 @@ namespace {
 PresetData& dataOf(TrackKind kind) {
     static PresetData phazed = readPresetData(TrackKind::Phazed, kPhazedText), jaxep = readPresetData(TrackKind::Jx3p, kJaxepText),
                       fm6 = readPresetData(TrackKind::Fm6, kFm6Text), physic = readPresetData(TrackKind::Physic, kPhysicText),
-                      acid = readPresetData(TrackKind::Acid, kAcidText);
+                      acid = readPresetData(TrackKind::Acid, kAcidText), cloud = readPresetData(TrackKind::Cloud, kCloudText);
     static PresetData none;
     none = PresetData();
-    return kind == TrackKind::Phazed ? phazed : kind == TrackKind::Jx3p ? jaxep : kind == TrackKind::Fm6 ? fm6 : kind == TrackKind::Physic ? physic : kind == TrackKind::Acid ? acid : none;
+    return kind == TrackKind::Phazed ? phazed : kind == TrackKind::Jx3p ? jaxep : kind == TrackKind::Fm6 ? fm6 : kind == TrackKind::Physic ? physic : kind == TrackKind::Acid ? acid : kind == TrackKind::Cloud ? cloud : none;
 }
 } // namespace
 

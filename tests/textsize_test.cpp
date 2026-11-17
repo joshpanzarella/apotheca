@@ -1022,8 +1022,8 @@ void testTheOtherScreens() {
     const std::string longest = "a folder with a long name/a recording with a very long name indeed";
 
     // SONG: twelve tracks, the narrowest columns there are, every one with a name of ten wide letters.
-    const TrackKind kinds[] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Sampler, TrackKind::Drums, TrackKind::Physic, TrackKind::Acid};
-    for (int t = 1; t < kNumTracks; ++t) CHECK(session.addTrack(kinds[(t - 1) % 7]));
+    const TrackKind kinds[] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Sampler, TrackKind::Drums, TrackKind::Physic, TrackKind::Acid, TrackKind::Cloud};
+    for (int t = 1; t < kNumTracks; ++t) CHECK(session.addTrack(kinds[(t - 1) % 8]));
     session.view = View::Song;
     rig.frames(2);
     CHECK(holds(rig, "SONG, twelve tracks") > 12);
@@ -1150,7 +1150,7 @@ void testTheOtherScreens() {
     // The DEVICE screens: every page of every synth, the cursor on its first box.
     struct Synth { TrackKind kind; SynthScreen* screen; const char* name; };
     const Synth synths[] = {{TrackKind::Phazed, &rig.app.phazed(), "PHAZED"}, {TrackKind::Jx3p, &rig.app.jaxep(), "JAX-EP"}, {TrackKind::Fm6, &rig.app.fm6(), "FM-6"},
-                            {TrackKind::Physic, &rig.app.physic(), "PHYSIC"}, {TrackKind::Acid, &rig.app.acid(), "ACID"}};
+                            {TrackKind::Physic, &rig.app.physic(), "PHYSIC"}, {TrackKind::Acid, &rig.app.acid(), "ACID"}, {TrackKind::Cloud, &rig.app.cloud(), "CLOUD"}};
     session.view = View::Device;
     int pagesSeen = 0;
     for (const Synth& synth : synths) {
@@ -1174,7 +1174,7 @@ void testTheOtherScreens() {
         rig.key(A, false);
         rig.frames(1);
     }
-    CHECK(pagesSeen == 10 + 6 + 9 + 6 + 3);
+    CHECK(pagesSeen == 10 + 6 + 9 + 6 + 3 + 4);
 
     // JAX-EP (jx3p-plan.md, batch 6b): every setting of every page with the cursor on it, at the bottom of what
     // it reads and, with A held, at the top (a knob: 0.0 and 10.0; a choice: its first and its last word).
@@ -2390,7 +2390,7 @@ void testTheStepNumbersOfAShortScene() {
 int main(int argc, char** argv) {
     // The engine's own presets only: the tests here are of their tables. The presets the app's data
     // adds (and any track sound it gives a built-in) are presets_test's.
-    for (TrackKind kind : {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Physic, TrackKind::Acid}) useBuiltInDataForTests(kind, PresetData());
+    for (TrackKind kind : {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Physic, TrackKind::Acid, TrackKind::Cloud}) useBuiltInDataForTests(kind, PresetData());
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     if (argc >= 3 && std::strcmp(argv[1], "views") == 0) return runViews(argv[2], argc >= 4 ? argv[3] : nullptr);
     CHECK(screens().canvas.ok);

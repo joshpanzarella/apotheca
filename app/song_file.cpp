@@ -321,6 +321,7 @@ void putTrack(std::string& out, const TrackData& track) {
                 if (id < sampler::End || track.sampler[id] != sampler::settingDefault(id)) put(out, " %.0f", track.sampler[id]);
             out += "\n";
         } else {
+            if (track.kind == TrackKind::Cloud && track.sample[0]) out += std::string("sound ") + track.sample + "\n"; // (CLOUD's recording: the sampler's line)
             put(out, "preset %.0f\n", track.preset + 1);
             out += "macros";
             for (float m : track.macro) put(out, " %.6g", m);
@@ -653,7 +654,7 @@ bool parseSong(const std::string& text, Project& project) {
             double lane, group;
             if (!(in >> lane >> group) || !(lane >= 1) || lane > kDrumLanes) continue;
             track->laneChoke[static_cast<int>(lane) - 1] = static_cast<std::uint8_t>(chokeGroupOf(wholeIn(group, -1, kChokeGroups + 1))); // (a group nobody knows: none)
-        } else if (word == "sound" && track->kind == TrackKind::Sampler) {
+        } else if (word == "sound" && holdsRecording(track->kind)) {
             std::string name;
             std::getline(in >> std::ws, name);
             if (!sampleNameOk(name)) continue; // a name, or a folder and a name: not a path out of the samples folder
@@ -906,7 +907,7 @@ bool renameRecordings(std::string& text, const std::vector<std::pair<std::string
             kind = trackKindFromWord(which.c_str());
             if (kind != TrackKind::None && count++ >= kNumTracks) kind = TrackKind::None; // a thirteenth track is not read
         } else if ((word == "sample" && kind == TrackKind::Drums && (in >> lane >> fit) && lane >= 1 && lane <= kDrumLanes) ||
-                   (word == "sound" && kind == TrackKind::Sampler)) {
+                   (word == "sound" && holdsRecording(kind))) {
             std::getline(in >> std::ws, name); // the rest of the line, as it is read
             std::string now = name;
             for (const auto& rename : renames)

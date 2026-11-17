@@ -72,6 +72,7 @@ public:
     SynthScreen& fm6() { return fm6_; }
     SynthScreen& physic() { return physic_; }
     SynthScreen& acid() { return acid_; }
+    SynthScreen& cloud() { return cloud_; }
     KitScreen& kit() { return kit_; }
     FxScreen& fx() { return fx_; }
     ModScreen& mods() { return mods_; }
@@ -143,6 +144,7 @@ private:
     SynthScreen fm6_;
     SynthScreen physic_;
     SynthScreen acid_;
+    SynthScreen cloud_;
 };
 
 } // namespace apotheca

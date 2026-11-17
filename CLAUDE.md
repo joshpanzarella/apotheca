@@ -98,8 +98,9 @@ has presets and macros, and its DEVICE screen in `App::screenNow()`. Then the
 places that list the synths by name: `userList`, `builtInPresets`,
 `settingCount`, `specFor` (synth_spec.cpp), `macroIsChoice` (mods.hpp, for a
 threshold macro), its stills in `main.cpp` and `kViews`, and the tests'
-lists (`textsize`, `scope_test`, `save_test`, `modapp_test`). ACID was the
-last added (2026-11-16, batch 3 of acid-plan.md): follow its commit (PHYSIC's has a roll too).
+lists (`textsize`, `scope_test`, `save_test`, `modapp_test`). CLOUD was the
+last added (2026-11-17, batch 2 of granular-plan.md: a roll, and a recording as the sampler's); ACID's
+commit is the plainest pattern.
 
 Where effects are, in the engine:
 
@@ -2153,6 +2154,34 @@ effect in those two groups and fails one that does not.
     (a `static_assert`).
   - `setMacro` and `setSetting` store and return; `selectPreset` puts the macros at 0.5. Three engine
     presets (Soft Cloud, Dust, Fifths Choir); the plan's 24 are app data (batch 3).
+- **CLOUD in the app** (batch 2, 2026-11-17; `cl` in `app/synth_spec.cpp`, `app_test` `testCloudOnATrack`
+  and `testCloudsHintsFit`, `app_test --cloud`). `TrackKind::Cloud` appended, its row LAST (word `cloud`,
+  presets `NAME.cloud`, short name CLD, "clouds of grains from your recordings"), `TrackData::cloud` a
+  `CloudPatch` of 24, 17 used. A new track is on Soft Cloud with no recording: the TONE. MAIN, SOURCE,
+  GRAINS, PLAY; no macro a choice; **ROLL on Y** (`cl::roll`: SPRAY, SIZE, DENSITY, SCATTER, SHAPE, PITCH
+  SPRAY, PITCH STEPS, REVERSE, STEREO; never the recording, POSITION, SCAN, ROOT, TUNE, the envelope or
+  the levels). Its own preset over preset 0's sound first. **Nobody has heard it.**
+  - **Its recording is the sampler's `TrackData::sample`, through `holdsRecording(kind)`** (project.hpp):
+    `sampleUses`, `deleteSample`, `recordingChanged`, `findMissing`, CATCH, RECORD, `setTrackSample`,
+    `applyProject`'s `loadTrackSample`, the song file's `sound NAME` (written before `preset` on a CLOUD
+    track) and the rename that follows saved songs. What means the sampler's own settings still asks for
+    the sampler. A track given the other of the two keeps the recording.
+  - **`SynthSpec::recording`** (CLOUD's alone) gives the generic screen two things: **MAIN's picture**
+    (`SynthScreen::drawPicture`, between PRESET and the macros, `kPictureY`/`kPictureH` 80, the macros
+    `kPicMacroH` 69 under it): the recording's outline (the TONE's, dim), lit within SPRAY of POSITION
+    (macros on), POSITION a brass line, each sounding grain a teal tick top and bottom from
+    `Engine::grainPlaces`, the name in the fixed lettering over it; and **RECORDING as the first stop of
+    SOURCE** (`kRecordingId`, not a setting: `item()` adds it): a tap of A the list of recordings (the
+    sampler's `SamplePicker`, its preview the cloud at middle C), hold A + up / down the next, R1 there
+    RECORD (elsewhere R1 is the page), Y anywhere on SOURCE CATCH; what is said shows in the top bar.
+  - **The grains are a readout for the redraw** (`Readouts::grains`, `kStirGrains`: the track up's places,
+    `App::readouts`); `idle_test` has a part (a CLOUD at LEVEL 0, so LIVE OUTPUT stands still and only the
+    grains move).
+  - **Eight instruments close the list up**: 46 adding a track, 41 with the words under it, each box a
+    pixel short of the pitch (`SongScreen::rowH`, its two lines placed within).
+  - Stills `cloud`, `cloud-1` to `cloud-3`, `cloud-long`, `cloud-sounding` (a key held: the still is
+    taken before the engine renders, so no ticks show there; `testCloudsHintsFit` reads them off a
+    drawn screen).
 - **FM-6's `setMacro` returns early on the value it has**, as Phazed's
   does (JAX-EP's does not; `bench` times it: 0.035 us a change, 0.002 the same value;
   `Fm6::applied()` counts them for `fm6_test`).
@@ -2613,7 +2642,7 @@ watch again, it is in git (the commit before batch 8b).
 2. Twin Analog became a JX-3P clone, **JAX-EP on the device** (`docs/plans/jx3p-plan.md`; branch `jx3p`: **batches 0 to 8c are done (2026-11-15)**: the engine, the app, the 32 presets, the tests off Twin, Twin's code out, the docs. Not joined to `main`, nobody has heard any of it, SPEED TEST has not run on the handheld. Left: batch 9, calibration from recordings, which waits on the owner's source; and the owner's open calls in the plan's section 8).
 3. LFO and random stepper per track (`docs/plans/modulation-plan.md`): batch 0, the groundwork, is built (branch `mods`: the rule, `giveLane`, DETUNE mended, QMOD's early return, the cost row), and batch 1, the engine (the tick, `runMods`, the commands, X held while stopped); their review is mended (the plan's section 14); batch 2, the song, is built too (`TrackData::mods`, `Session::setMod`, the `mod` / `modsteps` words, undo, the TYPE carry: section 15); **batches 3 and 4 are built (2026-11-15, the owner's calls A to H taken; section 18): X held on a knob is its MOD, on DEVICE and FX**; **batch 5, the MOD tab after FX, is built (2026-11-15, section 20)**; next, batch 6 (the brass mark on the target's own bar). **Joined with `main` (2026-11-15)**, and the join's review mended (section 17: no defect, the bench's MOD rows timed in turns): FEEL, AT END, the mixer, the picker, JAX-EP and Twin's removal sit beside the MODs; nobody has heard a MOD.
 4. **PHYSIC** (owner, 2026-11-14): a physical-model synth for plucked and struck sounds (strings, mallets, bells). Plan: `docs/plans/physic-plan.md`. **Built and joined: the engine (2026-11-15, 24 presets) and the app (2026-11-16). Batch 10 (BODY, PAIR, MOTOR, NOISE, BUZZ, a fifth page and 8 presets: 32) on branch `physic2`, 2026-11-16. Nobody has heard it, not run on the handheld.**
-5. **An acid mono bass** (303-style: accent, slide; **ACID, built 2026-11-16, batches 0 to 5 of `docs/plans/acid-plan.md`: the engine, the app, 32 presets, README. Nobody has heard it, not run on the handheld; batch 6, calibration from recordings, waits on the owner's source**), then **a granular synth** (clouds from the recordings) (owner, 2026-11-14; **CLOUD, planned 2026-11-16 in `docs/plans/granular-plan.md`; its engine built on branch `cloud` the same day (batches 0 and 1; the pool 24, not 32), not heard, not run on the handheld; the app, batch 2, is next**).
+5. **An acid mono bass** (303-style: accent, slide; **ACID, built 2026-11-16, batches 0 to 5 of `docs/plans/acid-plan.md`: the engine, the app, 32 presets, README. Nobody has heard it, not run on the handheld; batch 6, calibration from recordings, waits on the owner's source**), then **a granular synth** (clouds from the recordings) (owner, 2026-11-14; **CLOUD, planned 2026-11-16 in `docs/plans/granular-plan.md`; its engine and its app built on branch `cloud` (batches 0 to 2; the pool 24, not 32), not heard, not run on the handheld; next: batch 3 (the 24 presets), 4 (the designer page), 5 (review, README)**).
 7. **FEEL on the drum grid** (owner, 2026-11-14; `docs/plans/drum-feel-plan.md`): HUMAN TIME and HUMAN LEVEL for each lane, live, the main beats tighter. **Built on branch `feel` (2026-11-15), not joined, not heard by anyone**; SWING later.
 6. **The sample picker in columns** (owner, 2026-11-14; `docs/plans/picker-plan.md`): three columns as yazi, folders two levels deep, new folders and moving recordings on the device. The owner asked for it to go soon: after the JAX-EP's presets. **Batches 0 to 2 are built on branch `picker`** (two levels underneath, the three columns, + NEW FOLDER, carry with hold R1, hold B on an empty folder), not joined, not tried on the handheld; batch 3, the review and its mend, is done (2026-11-15).
 

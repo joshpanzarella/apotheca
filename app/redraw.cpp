@@ -32,6 +32,7 @@ const char* stirName(unsigned bit) {
     case kStirMargin: return "margin";
     case kStirFirst: return "first";
     case kStirLoad: return "load";
+    case kStirGrains: return "grains";
     }
     return "?";
 }
@@ -51,6 +52,7 @@ bool Redraw::wanted(const App& app, const Input& input, bool stirred, Uint32 now
     if (std::memcmp(now_.place, shown_.place, sizeof now_.place) != 0) stirs |= kStirPlace;
     if (!same(now_.scope, shown_.scope)) stirs |= kStirScope;
     if (!same(now_.meters, shown_.meters)) stirs |= kStirMeters;
+    if (!same(now_.grains, shown_.grains)) stirs |= kStirGrains;
     if (std::memcmp(now_.midi, shown_.midi, sizeof now_.midi) != 0) stirs |= kStirMidi;
     if (std::memcmp(now_.load, shown_.load, sizeof now_.load) != 0) stirs |= kStirLoad;
     stirs &= ~ignored_;

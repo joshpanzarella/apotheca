@@ -47,6 +47,9 @@ struct SynthSpec {
     // Y on MAIN: a new sound from the dice, `seed` deciding it (PHYSIC's: a new strike and ring on the
     // same MODEL, its levels and dice left; physic-plan.md, section 3). Null: Y does nothing there.
     void (*roll)(TrackData& track, unsigned seed);
+    // The synth plays the track's recording (CLOUD: holdsRecording): MAIN shows its picture, and its
+    // first page's first stop is RECORDING (the list of recordings, CATCH and RECORD, as the sampler's).
+    bool recording;
 };
 
 // What JAX-EP's folders say (jx3p-plan.md, section 4): the two banks are from a booklet of 1983 and may
@@ -60,6 +63,7 @@ const SynthSpec& jx3pSpec(); // JAX-EP on the device
 const SynthSpec& fm6Spec();
 const SynthSpec& physicSpec();
 const SynthSpec& acidSpec();
+const SynthSpec& cloudSpec();
 
 // What a preset may hold past its synth (docs/plans/presets-plan.md): the track's three effects, its
 // two sends, its GLIDE FROM and its two MODs, "the track's sound". A preset that holds it is WHOLE:

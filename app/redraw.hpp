@@ -13,7 +13,8 @@
 //   - a button event or any other event of the window this pass, a button held, the stick pushed;
 //   - the song playing;
 //   - something the engine shows moved since the last picture: where the song is, the LIVE
-//     OUTPUT line, a meter (COMP, DUCK, LIMITER); a MIDI keyboard's note or one plugged in;
+//     OUTPUT line, a meter (COMP, DUCK, LIMITER), a CLOUD's grains; a MIDI keyboard's note or one
+//     plugged in;
 //   - the App's own timed things: the volume, a message ("UNDONE"...), the panic notice, the
 //     update's answer;
 //   - the Session at work by itself: a recording being fitted to the tempo, a recording being
@@ -66,7 +67,8 @@ enum Stir : unsigned {
     kStirAfter = 1u << 20,       // something above was so on the pass before
     kStirMargin = 1u << 21,      // within kKeepDrawingMs of a stir
     kStirFirst = 1u << 22,       // the first pass, or the picture was asked for again (forget)
-    kStirLoad = 1u << 23,        // the help card's line of how hard the program works moved (a second at a time)
+    kStirLoad = 1u << 23,
+    kStirGrains = 1u << 24,      // CLOUD's grains moved (the track up: Engine::grainPlaces), on its MAIN's picture        // the help card's line of how hard the program works moved (a second at a time)
 };
 // The name of a stir, for a test's report.
 const char* stirName(unsigned bit);
@@ -79,6 +81,7 @@ struct Readouts {
     std::vector<float> meters; // every effect meter there is
     int midi[2] = {};          // MIDI notes seen, keyboards plugged in
     int load[3] = {};          // the help card's SOUND, WORST and ALL, as drawn (App::loadShown)
+    std::vector<float> grains; // the track up's CLOUD grains, where each reads (Engine::grainPlaces); none for any other
 };
 
 class Redraw {

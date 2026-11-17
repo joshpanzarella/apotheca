@@ -26,6 +26,9 @@ const InstrumentInfo kInstruments[] = {
     // ACID (owner, 2026-11-14; docs/plans/acid-plan.md): a one-voice bass, ACCENT a note at 100%, SLIDE its
     // GLIDE. Last in the list. The line names no maker and no model (the words test looks for the box's).
     {TrackKind::Acid, "ACID", "ACID", "ACID", "mono bass, after a classic bass line box", false, "acid", SynthKind::Acid, ".acid"},
+    // CLOUD (owner, 2026-11-14; docs/plans/granular-plan.md): clouds of grains from the track's recording (the
+    // built-in TONE when it has none). Last in the list.
+    {TrackKind::Cloud, "CLOUD", "CLD", "CLOUD", "clouds of grains from your recordings", false, "cloud", SynthKind::Cloud, ".cloud"},
 };
 const int kInstrumentCount = static_cast<int>(sizeof kInstruments / sizeof kInstruments[0]);
 
