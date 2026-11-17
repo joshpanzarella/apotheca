@@ -104,4 +104,119 @@ new MOVING / Drift
 set 3 20  4 82  5 70  6 25  13 -12
 mod 1 1 0 0.75 10 6 0 0          # an LFO on CUTOFF, +50%, 4 BARS, DRIFT
 mod 2 1 2 0.7 7 5 0 0            # ENV MOD, +40%, a half, RANDOM
+# ---- More presets (2026-11-17, presets-plan.md, "More presets") --------------------------------------
+# Macro lanes for a MOD: 0 CUTOFF 1 RESONANCE 2 ENV MOD 3 DECAY 4 ACCENT 5 DRIVE 6 SWEEP 7 TUNE.
+
+# ---- CLEAN: round lines, the resonance low, nothing in the slots but a little ---------------------
+new CLEAN / Plain Saw
+set 3 35  4 30  5 40  13 -2
+new CLEAN / Plain Square
+base Classic Square
+set 3 40  4 25  5 35  13 -3
+new CLEAN / Muted Pluck
+set 3 15  4 40  5 50  6 10  10 30  13 2
+new CLEAN / Soft Round
+base Classic Square
+set 1 -1  3 25  4 15  5 20  10 70  12 1  13 2
+new CLEAN / Glassy Saw
+set 3 55  4 40  5 20  6 60  13 -6
+fx 1 chorus 0.3 0.35 0.125 0.3      # RATE, DEPTH, TYPE, MIX
+new CLEAN / Short Stab
+set 3 25  4 50  5 70  6 15  10 15  13 -2
+new CLEAN / Fixed Glide
+set 3 30  4 55  5 45  11 1  13 -2   # SLIDE FIXED: every slide one length
+new CLEAN / Held Line
+set 3 30  4 45  5 45  13 -2
+fx 1 comp 0.4 0.4167 0.3 1          # THRESHOLD, RATIO, SPEED, MIX: held level
+
+# ---- LEADS: an octave up, over the bass, with somewhere to go -------------------------------------
+new LEADS / High Squelch
+set 1 1  3 30  4 85  5 75  6 25  13 -3
+fx 1 ping 0.3125 0.35 0.45 0.25     # TIME 1/8, FEEDBACK, TONE, MIX
+new LEADS / Lead Square
+base Classic Square
+set 1 1  3 40  4 55  5 45  13 2
+fx 1 chorus 0.35 0.45 0.125 0.4
+new LEADS / Tape Saw
+set 1 1  3 35  4 65  5 55  13 0
+fx 1 tape 0.5625 0.4 0.35 0.3       # TIME 1/8 DOT, FEEDBACK, AGE, MIX
+new LEADS / Screech
+set 1 1  3 20  4 94  5 90  6 20  7 80  13 -8
+new LEADS / Ring Lead
+set 1 1  3 35  4 60  5 50  13 4
+fx 1 ring 0.45 0.1667 0.3 0.4       # FREQ, SINE, SPREAD, MIX
+new LEADS / Flanged Lead
+base Classic Square
+set 1 1  3 35  4 70  5 60  13 2
+fx 1 flanger 0.3 0.6 0.6 0.5        # RATE, DEPTH, FEEDBACK, MIX
+new LEADS / Vowel Lead
+set 1 1  3 40  4 50  5 40  13 0
+fx 1 vowel 0.3 0.5 0.6 0.7          # VOWEL, SHIFT, RESONANCE, MIX
+mod 1 1 8 0.85 8 1 0 0              # MOD 1: an LFO on the VOWEL, +70%, a bar, TRIANGLE: it talks
+new LEADS / Phase Lead
+set 1 1  3 30  4 75  5 65  13 0
+fx 1 phaser 0.35 0.7 0.5 0.5        # RATE, DEPTH, FEEDBACK, MIX
+
+# ---- DUB: the line into the delays and the spaces ---------------------------------------------------
+new DUB / Dub Echo
+set 3 25  4 70  5 55  13 -3
+fx 1 dub 0.5625 0.5 0.4 0.3         # TIME 1/8 DOT, FEEDBACK, TONE, MIX
+new DUB / Space Line
+base Classic Square
+set 3 30  4 60  5 50  13 -2
+send 2 0.4                          # into SPACE (a new song's HALL)
+new DUB / Tape Drift
+set 3 25  4 65  5 55  13 -4
+fx 1 tape 0.6875 0.4 0.5 0.3        # TIME 1/4
+mod 1 1 9 0.7 9 6 0 0               # TAPE's FEEDBACK, +40%, 2 BARS, DRIFT
+new DUB / Reverse Echo
+set 3 30  4 70  5 55  13 -4
+fx 1 reverse 0.6875 0.35 0.3        # TIME 1/4, FEEDBACK, MIX
+new DUB / Spring Acid
+base Classic Square
+set 3 30  4 75  5 60  13 -3
+fx 1 spring 0.5 0.55 0.5 0.3        # DRIP, DECAY, TONE, MIX
+new DUB / Ping Pong
+set 3 22  4 80  5 70  6 25  13 -6
+fx 1 ping 0.5625 0.45 0.4 0.3       # TIME 1/8 DOT
+new DUB / Plate Squelch
+set 3 18  4 88  5 80  6 20  8 80  13 -4
+fx 1 plate 0.2 0.6 0.45 0.3         # PRE, DECAY, TONE, MIX
+new DUB / Stutter Line
+base Classic Square
+set 3 28  4 70  5 55  13 -4
+fx 1 stutter 0.5625 0.5 0.35 0.5    # LENGTH 1/8, REPEATS, CHANCE, MIX
+send 1 0.2
+
+# ---- HARD: bent, folded, crushed --------------------------------------------------------------------
+new HARD / Fold Acid
+set 3 25  4 70  5 60  13 -4
+fx 1 fold 0.5 0.5 0.45 0.7          # DRIVE, SYMMETRY, TONE, MIX
+mod 1 1 8 0.7 8 1 0 0               # FOLD's DRIVE, +40%, a bar, TRIANGLE
+new HARD / Crushed
+base Classic Square
+set 3 30  4 65  5 55  13 -3
+fx 1 crush 0.4 0.55 0.6             # BITS, RATE, MIX
+new HARD / Hard Clip
+set 3 22  4 80  5 70  9 40  13 -9
+fx 1 saturate 0.55 0.875 0.5 0.8    # DRIVE, HARD, TONE, MIX
+new HARD / Fuzz Square
+base Classic Square
+set 3 25  4 60  5 55
+fx 1 fuzz 0.65 0.45 0.15 1          # FUZZ, TONE, GATE, MIX
+new HARD / Ring Acid
+set 3 25  4 75  5 65  13 -4
+fx 1 ring 0.3 0.8333 0.2 0.5        # FREQ, SQUARE, SPREAD, MIX
+mod 1 1 8 0.7 5 5 0 0               # RING's FREQ, +40%, a quarter, RANDOM
+new HARD / Overdrive
+set 3 20  4 85  5 80  6 20  9 90  13 -12
+fx 1 drive 0.5 0.45 1 0.4           # DRIVE, TONE, MIX, OUTPUT
+new HARD / Worn Acid
+set 3 25  4 75  5 65  9 30  13 -5
+fx 1 wear 0.4 0.6 0.3 0.4           # WOW, DIRT, DROPS, TONE
+new HARD / Snap Acid
+base Classic Square
+set 3 20  4 85  5 85  6 15  9 20  13 -20
+fx 1 snap 0.75 0.3 1                # ATTACK, SUSTAIN, MIX: the front of each note harder
+mod 1 1 0 0.7 9 0 0 0               # CUTOFF, +40%, 2 BARS, SINE
 )presets"
