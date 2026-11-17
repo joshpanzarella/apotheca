@@ -112,7 +112,12 @@ public:
     static constexpr int kEditBoxX = 8, kEditBoxStep = 157, kEditBoxW = 153;
     static constexpr Uint32 kDeleteHoldMs = 1000;
     static constexpr const char* kDeletingWords = "PUTTING EVERY EDIT BACK TO NONE"; // in the heading while the bar fills
-    static constexpr Uint32 kHearEveryMs = 150; // a box being turned is heard this often at most
+    // A box turned is heard ONCE, when the turning is done (owner, 2026-11-17: heard at every step it
+    // "sounds odd and you can't really hear what has changed"): A let go, the D-pad and the stick at
+    // rest, kHearAfterMs since the last change, and the new sound made (not MAKING IT...). X hears at once.
+    static constexpr Uint32 kHearAfterMs = 300;
+    bool hearOwed() const { return hearOwed_; }
+    int hears() const { return hears_; } // sounds this screen has begun (for the tests)
 
     // The VOICE view: on a synth lane, its model and knobs (the EDIT view's layout). A place of -1 is
     // the MODEL box; 0 to 7 the knobs (drumsynth::Place).
@@ -165,7 +170,10 @@ private:
     float turned_ = 0.f;        // the stick's part-turned box
     bool reversePushed_ = false; // the stick is pushed on REVERSE: it clicks once a push
     bool deleting_ = false, deleteTimed_ = false, bBack_ = false; // B held; bBack_: its tap goes back to the kit
-    Uint32 deleteSince_ = 0, heardAt_ = 0;
+    Uint32 deleteSince_ = 0, changedAt_ = 0;
+    bool hearOwed_ = false; // a box was turned and its sound is not heard yet
+    int hears_ = 0;
+    void hearWhenDone(const Input& input, Uint32 nowMs);
     float deletePart_ = 0.f;
     bool voicing_ = false;
     int voicePlace_ = kVoiceModel;

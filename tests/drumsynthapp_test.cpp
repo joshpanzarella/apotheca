@@ -747,6 +747,79 @@ void testPickingAVoice() {
 
 } // namespace
 
+// A knob turned is heard ONCE, when the turn is done (owner, 2026-11-17): not while A is held, not
+// before kHearAfterMs, once after; X hears at once; a turn with the song playing owes nothing.
+void testHeardWhenTheTurnIsDone() {
+    Rig rig;
+    Session& session = rig.session();
+    session.view = View::Device;
+    session.setLaneSynth(0, 2, voiceOf(drumsynth::kClap));
+    rig.frames(2);
+    KitScreen& kit = rig.app.kit();
+    kit.goTo(2, KitScreen::kSound);
+    rig.tap(A);
+    rig.tap(Down);
+    CHECK(kit.voicing() && kit.voicePlace() == drumsynth::kTune);
+    const int before = kit.hears();
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(Up, 3);
+    rig.frames(40); // (640 ms, A still held)
+    CHECK(kit.hears() == before && kit.hearOwed());
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(kit.hears() <= before + 1); // (let go: heard once kHearAfterMs has passed and the sound is made)
+    rig.frames(60);
+    CHECK(kit.hears() == before + 1 && !kit.hearOwed());
+    rig.frames(60);
+    CHECK(kit.hears() == before + 1); // once
+    // Quickly: let go under kHearAfterMs after the last step, heard only once the wait is over.
+    rig.key(A, true);
+    rig.frames(1);
+    rig.key(Up, true);
+    rig.frames(1);
+    rig.key(Up, false);
+    rig.key(A, false);
+    rig.frames(2); // (about 50 ms)
+    CHECK(kit.hears() == before + 1 && kit.hearOwed());
+    rig.frames(60);
+    CHECK(kit.hears() == before + 2);
+    // X hears at once.
+    rig.tap(X);
+    CHECK(kit.hears() == before + 3);
+    // A turn owed, then Play before it is heard: the song is heard instead.
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(Up);
+    rig.key(A, false);
+    session.togglePlay(false);
+    rig.frames(60);
+    CHECK(kit.hears() == before + 3 && !kit.hearOwed());
+    session.togglePlay(false);
+    rig.frames(2);
+    // Playing: a turn owes nothing.
+    session.togglePlay(false);
+    rig.frames(2);
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(Up);
+    rig.key(A, false);
+    rig.frames(60);
+    CHECK(kit.hears() == before + 3 && !kit.hearOwed());
+    session.togglePlay(false);
+    rig.frames(2);
+    // Left the view with a turn owed: not heard.
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(Up);
+    rig.key(A, false);
+    rig.frames(1);
+    rig.tap(B); // (back: TUNE is not at its usual value, so first B gives it its usual...)
+    rig.tap(B); // (...and the second goes back to the kit)
+    rig.frames(60);
+    CHECK(!kit.voicing() && !kit.hearOwed());
+}
+
 int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     struct Test {
@@ -757,7 +830,7 @@ int main(int argc, char** argv) {
         {"testTheEnginePlaysIt", testTheEnginePlaysIt}, {"testOneOrTheOther", testOneOrTheOther}, {"testEditAndFit", testEditAndFit},
         {"testALongVoiceWaits", testALongVoiceWaits}, {"testTheSongFile", testTheSongFile}, {"testASongOpens", testASongOpens}, {"testUndo", testUndo},
         {"testTheSoundColumn", testTheSoundColumn}, {"testTheVoiceView", testTheVoiceView}, {"testTheNamedVoices", testTheNamedVoices},
-        {"testPickingAVoice", testPickingAVoice},
+        {"testPickingAVoice", testPickingAVoice}, {"testHeardWhenTheTurnIsDone", testHeardWhenTheTurnIsDone},
     };
     int named = 0;
     for (int i = 1; i < argc; ++i) {
