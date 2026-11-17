@@ -8,7 +8,8 @@
 //
 //   on a cell          A opens it on the Pattern screen. B empties it.
 //                      Hold A + stick left / right: how long it is, 1, 2, 4
-//                      or 8 bars. The scene lasts as long as its longest
+//                      or 8 bars. Hold A + UP / DOWN: TRANSPOSE its notes a semitone
+//                      (the stick up / down: an octave; Session::transposeCell). The scene lasts as long as its longest
 //                      cell; a shorter one goes round under it, and is
 //                      drawn once with a LOOPS mark.
 //                      Hold R1 and drag: copy it into every cell crossed.
@@ -166,6 +167,11 @@ private:
     bool holding_ = false;  // A is held on a repeat count
     bool turned_ = false;   // ...and the stick or D-pad changed it, so letting go is not a tap
     float saved_ = 0.f;     // part-steps of the repeat count saved up
+    // TRANSPOSE (easywins batch 3): A held on a cell, UP / DOWN a semitone, the stick up / down an octave.
+    int transposed_ = 0;    // how far this hold has moved the cell, for what is said
+    float savedY_ = 0.f;
+    bool stickWasYHeld_ = false;
+    void transpose(int by);
 
     bool listing_ = false;  // the list of songs is open
     std::vector<std::string> songs_; // as it was when the list opened, newest first

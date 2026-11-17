@@ -158,6 +158,23 @@ void SongScreen::moveCursor(Button direction, bool pressed) {
     if (copying_) pasteHere();
 }
 
+// TRANSPOSE: the cell's notes and chords `by` semitones (Session::transposeCell), said in the box above the bar.
+void SongScreen::transpose(int by) {
+    turned_ = true; // (letting go of A does not open the cell)
+    const Session::Transposed done = session_.transposeCell(column_, scene_, by);
+    char text[48];
+    if (done == Session::kTransposed) {
+        transposed_ += by;
+        std::snprintf(text, sizeof text, "%s %+d SEMITONE%s", transposed_ == 0 ? "BACK:" : "MOVED", transposed_, transposed_ == 1 || transposed_ == -1 ? "" : "S");
+        if (transposed_ == 0) std::snprintf(text, sizeof text, "BACK WHERE IT WAS");
+    } else if (done == Session::kOutOfRange) {
+        std::snprintf(text, sizeof text, "NO ROOM: C0 TO C8 ONLY");
+    } else {
+        std::snprintf(text, sizeof text, "%s", project_.tracks[column_].kind == TrackKind::Drums ? "DRUMS DO NOT TRANSPOSE" : "NO NOTES TO MOVE");
+    }
+    session_.say(text);
+}
+
 // A cell's length: 1, 2, 4 or 8 bars. One step along that row each time.
 void SongScreen::stepBars(int by) {
     static const int lengths[4] = {1, 2, 4, 8};
@@ -387,6 +404,8 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
                 holding_ = true;
                 turned_ = trackHold_ && input.held(Button::B);
                 saved_ = 0.f;
+                savedY_ = 0.f, stickWasYHeld_ = false;
+                transposed_ = 0;
             } else if (column_ == addColumn()) {
                 choosing_ = true;
                 changing_ = -1;
@@ -439,6 +458,9 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             // A held on a cell: left and right make it shorter or longer.
             if (b == Button::Right) stepBars(1), turned_ = true;
             if (b == Button::Left) stepBars(-1), turned_ = true;
+            // ...and up and down move its notes a semitone (TRANSPOSE).
+            if (b == Button::Up) transpose(1);
+            if (b == Button::Down) transpose(-1);
         } else if (holding_) {
             // A held on a repeat count: up and down change it by one.
             if (b == Button::Up) setRepeats(project_.repeats[scene_] + 1), turned_ = true;
@@ -529,6 +551,13 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
             stickWasX_ = true;
             for (; saved_ >= 1.f; saved_ -= 1.f) stepBars(x > 0.f ? 1 : -1), turned_ = true;
         }
+        // ...and up / down an octave (TRANSPOSE): one at once, then slowly.
+        if (y == 0.f) savedY_ = 0.f, stickWasYHeld_ = false;
+        else {
+            savedY_ += stickWasYHeld_ ? std::fabs(y) * 2.f * dt : 1.f;
+            stickWasYHeld_ = true;
+            for (; savedY_ >= 1.f; savedY_ -= 1.f) transpose(y < 0.f ? 12 : -12);
+        }
         stickX_ = stickY_ = 0.f;
         stickWasY_ = false;
     } else if (holding_) {
@@ -560,6 +589,8 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
         repeatAt_ = nowMs + kRepeatEveryMs;
         if (mixing_) {
             mixStep(repeating_);
+        } else if (holding_ && onCell()) {
+            // (A held on a cell: a D-pad held does not run on. TRANSPOSE is a semitone a press, the stick an octave.)
         } else if (holding_) {
             if (repeating_ == Button::Up) setRepeats(project_.repeats[scene_] + 1);
             if (repeating_ == Button::Down) setRepeats(project_.repeats[scene_] - 1);
@@ -987,7 +1018,8 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else if (copying_) {
         hint("DRAG", "copy this bar into every cell crossed");
     } else if (holding_ && onCell()) {
-        hint("LEFT / RIGHT", "how long this cell is: 1, 2, 4 or 8 bars");
+        hint("LEFT / RIGHT", "bars: 1, 2, 4, 8");
+        if (isSynth(project_.tracks[column_].kind)) hint("UP / DOWN", "transpose"); // (the stick: an octave)
     } else if (holding_) {
         hint("UP / DOWN", "times the scene plays");
         hint("TAP A", "1 > 2 > 4 > 8");

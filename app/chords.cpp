@@ -211,6 +211,38 @@ bool parseChordPack(const std::string& json, ChordPack& pack) {
     return true;
 }
 
+namespace {
+// The key a name starts at `at` with (0..11) and how many letters it takes, or -1.
+int keyAt(const char* name, int at, int* letters) {
+    static const int natural[7] = {9, 11, 0, 2, 4, 5, 7}; // A B C D E F G
+    const char c = name[at];
+    if (c < 'A' || c > 'G') return -1;
+    int key = natural[c - 'A'];
+    *letters = 1;
+    if (name[at + 1] == '#') key += 1, *letters = 2;
+    else if (name[at + 1] == 'b') key += 11, *letters = 2;
+    return key % 12;
+}
+} // namespace
+
+void transposeChordName(char name[16], int by) {
+    static const char* keys[12] = {"C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"};
+    std::string out;
+    int letters = 0;
+    const std::string was = name;
+    for (std::size_t i = 0; i < was.size(); ++i) {
+        const bool keyHere = i == 0 || was[i - 1] == '/';
+        const int key = keyHere ? keyAt(was.c_str(), static_cast<int>(i), &letters) : -1;
+        if (key < 0) {
+            out += was[i];
+            continue;
+        }
+        out += keys[((key + by) % 12 + 12) % 12];
+        i += static_cast<std::size_t>(letters - 1);
+    }
+    setName(name, out);
+}
+
 const ChordPack& builtInPack() {
     static const ChordPack pack = [] {
         ChordPack p;

@@ -1611,6 +1611,7 @@ int main(int argc, char** argv) {
 
     bool running = true;
     bool startedFine = false;
+    Uint32 stillClock = 0; // (stills: the App's clock, a frame a pass at most)
     bool reported = false;
     float loudest = 0.f;
     const Uint32 start = SDL_GetTicks();
@@ -1679,7 +1680,15 @@ int main(int argc, char** argv) {
                 learning = false;
             }
         }
-        if (!learning) app.update(input, SDL_GetTicks());
+        // A still's clock goes at most a frame a pass: a desk that stalls a pass for half a second must not
+        // let a hold that the still shows filling (B on a MOD, a song, an effect) finish before the picture.
+        Uint32 appNow = SDL_GetTicks();
+        if (smoke || shot) {
+            if (stillClock == 0 || appNow < stillClock) stillClock = appNow;
+            else if (appNow - stillClock > 16) stillClock += 16, appNow = stillClock;
+            else stillClock = appNow;
+        }
+        if (!learning) app.update(input, appNow);
         if (!learning && app.settings().takeRelearn()) learnAgain("asked for on the SETUP screen");
         // Three seconds in and still going: this start worked. (After an
         // update, that is what tells the launcher to keep the new program.)

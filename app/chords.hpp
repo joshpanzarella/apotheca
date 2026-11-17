@@ -72,6 +72,11 @@ struct PackFacts {
 };
 bool readPackFacts(const std::string& json, PackFacts& facts); // false: not JSON, or no chords
 
+// A chord's name moved `by` semitones: a name that starts with a key (C, F#, Bb...) takes the key it
+// moves to, as the packs spell keys (C C# D Eb E F F# G Ab A Bb B); so does one after a "/" (a slash
+// chord's bass). Any other name (a roman numeral) is left as it is. TRANSPOSE and SCALE use it.
+void transposeChordName(char name[16], int by);
+
 // A chord from a shape, with its root on the key nearest to `nearPitch`.
 ChordEvent makeChord(const ChordShape& shape, int nearPitch, int step, float length, float velocity, int inversion);
 

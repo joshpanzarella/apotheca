@@ -133,3 +133,43 @@ back, refused out of range. `testTheSetPage` steps the row. Still `setup-light-c
 
 **Only the owner can tell**: how the colours look on the ring (the order R G B is still not known
 there: a RED that shows green says the order is wrong), and whether RAINBOW's turn is too busy.
+
+## Batch 3: TRANSPOSE
+
+**What**: every note and chord of a synth (or sampler) track's cell in a scene moved by semitones.
+
+**The gesture**: on the SONG screen, **hold A on a cell + UP / DOWN**: a semitone a press. **The
+stick up / down with A held: an octave a push** (stick for big moves, D-pad for exact). Left / right
+with A held is still the cell's length. Up / down with A held on a cell did nothing before. The box
+above the bar says how far this hold has moved it (MOVED +3 SEMITONES, BACK WHERE IT WAS). The bar
+says UP / DOWN transpose on a synth cell (`gHintsOver` 0).
+
+**The rule** (`Session::transposeCell`):
+
+- every bar of the cell, the hidden ones too (a cell made shorter keeps them, and they come back
+  as they were moved);
+- a chord moves its root, and its NAME (`transposeChordName`: a name that starts with a key, and the
+  bass after a "/", take the key moved to, spelt as the packs spell keys; a roman numeral is left);
+- **all or nothing**: if any key, a chord's inversions included, would pass C0 or C8 (the roll's
+  keys), nothing moves and the box says NO ROOM: C0 TO C8 ONLY;
+- a drum track does not move (DRUMS DO NOT TRANSPOSE); an empty cell says NO NOTES TO MOVE, and no
+  scene is made for it (64 scenes: a scene's patterns are made when first written);
+- the engine gets the cell (`sendNotePattern`), and it is a step of undo, as any edit. A hold's moves
+  fall in one burst of edits, so one undo takes the hold back.
+
+| Call | Taken |
+| --- | --- |
+| Where | **SONG, hold A on a cell** (the roll has no free direction with A held; a cell is what is moved) |
+| One track or the whole scene | **One cell**. The whole scene's synth tracks would need a gesture on the scene's row, and the repeat count's A + up / down is taken |
+| Out of range | **Nothing moves**, rather than a note held at the edge (that would change the line) |
+| A held D-pad | **Does not run on**: a semitone a press; the stick is the big move |
+| Chord names | **Moved with the chord** (Am up 3 is Cm) |
+
+**Tests**: `easy_test transpose`: chord names (sharps, flats, slash chords, numerals); a cell's two
+bars and its chord moved, moved back to the byte, undone, refused at C8 and at C0, a drum track, an
+empty scene (none made); the engine's sound beside a cell written moved by hand, to the bit; through
+SONG: UP twice, DOWN, the stick an octave, the words, LEFT still the length, letting go not opening
+the cell, BACK WHERE IT WAS, a drum cell, one undo for the hold. Mutants tried: the turned flag, each
+end of the range, the chord's name, the bars, the slash: each fails a check.
+
+**Only the owner can tell**: whether a semitone a press and an octave a push are the right steps.

@@ -699,6 +699,36 @@ void Session::sendNotePattern(int track, int scene) {
         if (!project.tracks[track].notes[scene][bar].empty()) sendNoteBar(track, scene, bar);
 }
 
+Session::Transposed Session::transposeCell(int track, int scene, int by) {
+    if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes || by == 0) return kNothingToMove;
+    const TrackData& t = project.tracks[track];
+    if (!isSynth(t.kind) || !t.notes.has(scene)) return kNothingToMove; // (asked of a scene with none: none is made)
+    int lo = 1000, hi = -1000;
+    for (int bar = 0; bar < kMaxBars; ++bar) {
+        const NotePattern& p = t.notes[scene][bar];
+        for (const NoteEvent& n : p.notes)
+            if (n.velocity > 0.f) lo = n.pitch < lo ? n.pitch : lo, hi = n.pitch > hi ? n.pitch : hi;
+        for (const ChordEvent& c : p.chords) {
+            if (c.velocity <= 0.f) continue;
+            int keys[kChordNotes];
+            const int count = c.pitches(keys);
+            for (int i = 0; i < count; ++i) lo = keys[i] < lo ? keys[i] : lo, hi = keys[i] > hi ? keys[i] : hi;
+        }
+    }
+    if (hi < lo) return kNothingToMove;
+    if (lo + by < kRollLowest || hi + by > kRollHighest) return kOutOfRange;
+    TrackData& w = project.tracks[track];
+    for (int bar = 0; bar < kMaxBars; ++bar) {
+        NotePattern& p = w.notes[scene][bar];
+        for (NoteEvent& n : p.notes)
+            if (n.velocity > 0.f) n.pitch += by;
+        for (ChordEvent& c : p.chords)
+            if (c.velocity > 0.f) c.root += by, transposeChordName(c.name, by);
+    }
+    sendNotePattern(track, scene); // (and a step of undo)
+    return kTransposed;
+}
+
 void Session::sendNoteBar(int track, int scene, int bar) {
     noteEdit();
     NoteEvent notes[kMaxNotes]; // chords written out as their notes

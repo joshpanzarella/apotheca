@@ -3,6 +3,8 @@
 //   click      the METRONOME and the COUNT IN: the engine (where each click falls, the song as it was
 //              with it off, any blocks, the count's end on its sample, Stop and the tempo meanwhile), the
 //              SET rows and settings.txt, when the Session tells the engine, a bounce without it.
+//   transpose  TRANSPOSE: chord names, Session::transposeCell (every bar, all or nothing, undo, the
+//              engine told), and hold A + UP / DOWN / the stick on a SONG cell, its words and hints.
 //
 // `easy_test NAME...` runs just those sections.
 
@@ -18,6 +20,8 @@
 
 #include "apotheca/engine.hpp"
 #include "app.hpp"
+#include "canvas.hpp"
+#include "chords.hpp"
 #include "tap_tempo.hpp"
 #include "song_file.hpp"
 #include "temp_folder.hpp"
@@ -459,6 +463,154 @@ void testTheClickInTheApp() {
     }
 }
 
+// ---- batch 3: TRANSPOSE -------------------------------------------------------------------------
+
+std::string moved(const char* name, int by) {
+    char n[16] = {};
+    std::snprintf(n, sizeof n, "%s", name);
+    transposeChordName(n, by);
+    return n;
+}
+
+void testChordNames() {
+    CHECK(moved("C", 2) == "D" && moved("Am7", 3) == "Cm7" && moved("F#m", 1) == "Gm" && moved("Bb7", -1) == "A7");
+    CHECK(moved("C/E", 2) == "D/F#" && moved("IV", 5) == "IV" && moved("Eb", 12) == "Eb" && moved("Bdim", 1) == "Cdim");
+    CHECK(moved("G7sus4", -7) == "C7sus4" && moved("Ab", 1) == "A" && moved("E", 1) == "F" && moved("Cmaj7", -1) == "Bmaj7");
+}
+
+// A Phazed track (track 1) with notes in two bars of scene 0 and a chord.
+int synthWithNotes(Rig& rig) {
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Phazed));
+    const int t = 1;
+    session.setCellBars(t, 0, 2);
+    TrackData& track = rig.track(t);
+    NoteEvent n;
+    n.step = 0, n.pitch = 60, n.length = 1.f, n.velocity = 0.9f;
+    track.notes[0][0].notes[0] = n;
+    n.step = 4, n.pitch = 67;
+    track.notes[0][1].notes[0] = n;
+    ChordEvent c = makeChord(builtInPack().chords[5], 57, 8, 4.f, 0.9f, 0); // Am
+    track.notes[0][0].chords[0] = c;
+    session.sendNotePattern(t, 0);
+    rig.settle();
+    return t;
+}
+
+void testTransposeACell() {
+    Rig rig;
+    Session& session = rig.session();
+    const int t = synthWithNotes(rig);
+    const std::string before = songText(rig.project());
+    CHECK(session.transposeCell(t, 0, 3) == Session::kTransposed);
+    const TrackData& track = rig.track(t);
+    CHECK(track.notes[0][0].notes[0].pitch == 63 && track.notes[0][1].notes[0].pitch == 70);
+    CHECK(track.notes[0][0].chords[0].root == 60 && std::string(track.notes[0][0].chords[0].name) == "Cm");
+    rig.settle();
+    // Back: the same song as before, to the byte.
+    CHECK(session.transposeCell(t, 0, -3) == Session::kTransposed);
+    rig.settle();
+    CHECK(songText(rig.project()) == before);
+    // One step of undo: a move of 5 taken back.
+    session.transposeCell(t, 0, 5);
+    rig.settle();
+    rig.undo();
+    rig.settle();
+    CHECK(rig.track(t).notes[0][0].notes[0].pitch == 60 && songText(rig.project()) == before);
+    // All or nothing: a key that would pass C8 moves nothing.
+    rig.track(t).notes[0][1].notes[1] = rig.track(t).notes[0][1].notes[0];
+    rig.track(t).notes[0][1].notes[1].pitch = kRollHighest - 2;
+    CHECK(session.transposeCell(t, 0, 3) == Session::kOutOfRange && rig.track(t).notes[0][0].notes[0].pitch == 60);
+    CHECK(session.transposeCell(t, 0, 2) == Session::kTransposed && rig.track(t).notes[0][1].notes[1].pitch == kRollHighest);
+    CHECK(session.transposeCell(t, 0, -60) == Session::kOutOfRange); // (the chord's A3 would pass C0)
+    // A drum track, an empty scene (none is made), nothing to move.
+    CHECK(session.transposeCell(0, 0, 1) == Session::kNothingToMove);
+    CHECK(session.transposeCell(t, 5, 1) == Session::kNothingToMove && !rig.track(t).notes.has(5));
+    CHECK(session.transposeCell(t, 0, 0) == Session::kNothingToMove);
+    // The engine hears it: a song played with the cell moved is the song written moved by hand.
+    {
+        Rig a, b;
+        const int ta = synthWithNotes(a), tb = synthWithNotes(b);
+        a.session().transposeCell(ta, 0, 7);
+        for (int bar = 0; bar < 2; ++bar) {
+            NotePattern& p = b.track(tb).notes[0][bar];
+            for (NoteEvent& n : p.notes)
+                if (n.velocity > 0.f) n.pitch += 7;
+            for (ChordEvent& c : p.chords)
+                if (c.velocity > 0.f) c.root += 7, transposeChordName(c.name, 7);
+        }
+        b.session().sendNotePattern(tb, 0);
+        a.settle(), b.settle();
+        CHECK(songText(a.project()) == songText(b.project()));
+        a.session().togglePlay(false), b.session().togglePlay(false);
+        std::vector<float> x(2 * 4096), y(2 * 4096);
+        bool same = true;
+        float loud = 0.f;
+        for (int i = 0; i < 60; ++i) {
+            a.engine->render(x.data(), 4096), b.engine->render(y.data(), 4096);
+            same = same && x == y;
+            for (float v : x) loud = std::fmax(loud, std::fabs(v));
+        }
+        CHECK(same && loud > 0.01f);
+    }
+}
+
+void testTransposeOnSong() {
+    Canvas canvas;
+    Rig rig;
+    Session& session = rig.session();
+    const int t = synthWithNotes(rig);
+    session.view = View::Song;
+    rig.frames(1);
+    rig.app.song().moveCursorTo(0, t);
+    rig.frames(1);
+    rig.key(A, true);
+    rig.frames(2);
+    // The bar says it (and fits).
+    if (canvas.ok) {
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(ui::gHintsOver == 0.f);
+    }
+    rig.tap(UP), rig.tap(UP);
+    CHECK(rig.track(t).notes[0][0].notes[0].pitch == 62 && rig.said() == "MOVED +2 SEMITONES");
+    rig.tap(DOWN);
+    CHECK(rig.track(t).notes[0][0].notes[0].pitch == 61 && rig.said() == "MOVED +1 SEMITONE");
+    // The stick: an octave a push.
+    rig.key(SDLK_i, true); // (the stick up)
+    rig.frames(2);
+    rig.key(SDLK_i, false);
+    rig.frames(2);
+    CHECK(rig.track(t).notes[0][0].notes[0].pitch == 73 && rig.said() == "MOVED +13 SEMITONES");
+    rig.tap(LEFT); // (and its length, as before)
+    CHECK(rig.track(t).bars[0] == 1);
+    rig.key(A, false);
+    rig.frames(2);
+    CHECK(session.view == View::Song); // a hold that turned something does not open the cell
+    // A fresh hold counts from 0; back to where it began says so.
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(DOWN);
+    rig.tap(UP);
+    CHECK(rig.said() == "BACK WHERE IT WAS");
+    rig.key(A, false);
+    rig.frames(2);
+    // On a drum cell: nothing moves, and it says why.
+    rig.app.song().moveCursorTo(0, 0);
+    rig.app.drums().setStep(0, 0, 1.f);
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(UP);
+    CHECK(rig.said() == "DRUMS DO NOT TRANSPOSE" && rig.track(0).drums[0][0].level[0][0] == 1.f);
+    rig.key(A, false);
+    rig.frames(2);
+    // Undo takes the whole hold's moves back as one step (one burst of edits).
+    rig.settle();
+    rig.undo();
+    rig.settle();
+    CHECK(rig.track(t).notes[0][0].notes[0].pitch == 60);
+}
+
 struct Section {
     const char* name;
     std::function<void()> run;
@@ -471,6 +623,7 @@ int main(int argc, char** argv) {
     const Section sections[] = {
         {"taptempo", [] { testTheTapRule(), testTapOnTheDrumGrid(), testTapOnTheSetPage(); }},
         {"click", [] { testTheClick(), testTheCountIn(), testTheClickInTheApp(); }},
+        {"transpose", [] { testChordNames(), testTransposeACell(), testTransposeOnSong(); }},
     };
     for (const Section& s : sections) {
         bool wanted = argc < 2;

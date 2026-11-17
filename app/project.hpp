@@ -60,6 +60,8 @@ struct NoteEvent {
 // The level a hit, a note or a chord starts at when it is placed (owner, 2026-11-15: 90%, it was
 // 80%), and what X and A hear a sound at on every screen, so what is heard is what is placed.
 constexpr float kPlacedLevel = 0.9f;
+// The keys the piano roll reaches, C0 to C8 (NoteScreen::kLowest, kHighest). TRANSPOSE keeps a cell inside them.
+constexpr int kRollLowest = 12, kRollHighest = 108;
 
 // A chord placed in a bar. It stays one thing: one level, one length, one
 // name, and it can be swapped for another chord later. Its notes are worked

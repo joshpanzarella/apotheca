@@ -354,6 +354,7 @@ void App::update(const Input& input, Uint32 nowMs) {
     // An effect being tried on the FX screen (A held on a slot's line) is called off when another screen is up.
     if (&screenNow() != &fx_) fx_.callOff();
     screenNow().update(input, nowMs);
+    takeSessionSaid(); // (what a screen's update said: the stick's TRANSPOSE)
 }
 
 unsigned App::stirring() const {

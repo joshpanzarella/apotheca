@@ -9,6 +9,8 @@
 
 namespace apotheca {
 
+static_assert(NoteScreen::kLowest == kRollLowest && NoteScreen::kHighest == kRollHighest, "TRANSPOSE keeps a cell on the roll's keys");
+
 using namespace ui;
 
 namespace {

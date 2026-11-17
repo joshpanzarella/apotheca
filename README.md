@@ -1303,7 +1303,7 @@ The track columns share the width of the screen: with few tracks they are wide.
 
 | On | A | Hold A + stick | B | Hold R1 and drag |
 | --- | --- | --- | --- | --- |
-| A cell | Opens it on PATTERN | | Empties it | Copies it into every cell crossed |
+| A cell | Opens it on PATTERN | Left / right: how long it is (1, 2, 4 or 8 bars). **Up / down: TRANSPOSE** its notes and chords a semitone (the stick up / down: an octave), every bar of it; the box above the bar says how far (MOVED +3 SEMITONES). A drum cell does not move. If a key would pass C0 or C8 nothing moves (NO ROOM). One step of undo | Empties it | Copies it into every cell crossed |
 | A track's head (up from the top scene, with the D-pad) | **A** (a quick tap) types its name. Held, it is the mixer: once its card is up, letting go never names the track, turned or not. **R1** changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go, and the list says so: this cannot be undone. **Hold B** two seconds deletes the track. Y and X work there as on its cells. | | | |
 | A track (any of its cells) | **Y** mutes it and **X** solos it, each a tap, at once, playing or not; again to undo. X does not hear the track here: on its DEVICE page it does. L1 does nothing on a track. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. | | | |
 | A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted. The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |

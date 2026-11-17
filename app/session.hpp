@@ -612,6 +612,12 @@ public:
     void sendDrumPattern(int track, int scene);
     void sendDrumHit(int track, int scene, int bar, int lane, int step); // one hit of it, all of what it is: what a keyboard records
     void sendNotePattern(int track, int scene);
+    // TRANSPOSE (easywins batch 3): every note and chord of a synth or sampler track's cell in a scene
+    // (every bar of it, hidden ones too) `by` semitones, a chord's name with it (transposeChordName).
+    // All or nothing: kTransposed, kNothingToMove (a drum track, an empty cell, no track), or
+    // kOutOfRange (a key would pass C0 or C8: nothing moves). A step of undo, as any edit.
+    enum Transposed { kTransposed, kNothingToMove, kOutOfRange };
+    Transposed transposeCell(int track, int scene, int by);
     void sendNoteBar(int track, int scene, int bar); // one bar of it: what the piano roll changes
     // How long a track's cell is in a scene: 1, 2, 4 or 8 bars.
     // How many steps a bar of a scene has, 1 to 16, for every track. Thirteen makes a thirteen-step loop.
