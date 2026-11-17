@@ -11,9 +11,10 @@ one of the files in device_trees/:
 
 dtb-in-use.txt says which one this card was made with.
 
-COLOURED STRIPES WHEN IT STARTS ARE NORMAL. The screen shows stripes from
-power-on until Linux sets the screen up, about 5 to 10 seconds. Then text
-scrolls, then Apotheca comes up. Give it 30 seconds before deciding it
+A BLACK SCREEN, OR A MOMENT OF COLOURED STRIPES, WHEN IT STARTS IS NORMAL.
+The screen shows stripes when it has power but no start-up commands; the
+boot loader turns it off within about a second, and Linux sets it up a few
+seconds later. Then text scrolls, then Apotheca comes up. Give it 30 seconds before deciding it
 did not start, and do not switch it off during the first start (it
 makes the APOTHECA drive then).
 

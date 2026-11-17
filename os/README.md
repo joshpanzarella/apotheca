@@ -57,11 +57,14 @@ handheld as before.** Keep the stock card in a drawer and use a spare one.
 3. **What you should see**, in order:
    - **The light** by the screen comes on within a second or two: the boot
      loader (U-Boot) is running.
-   - **Coloured vertical stripes** (or a black screen) from power-on: this
-     is normal. The screen shows stripes until Linux sends it its start-up
-     commands; U-Boot cannot drive this screen. **Wait**: it lasts about 5
-     to 10 seconds. Do not switch off in this time, above all on the first
-     start (a boot switched off here writes no log).
+   - **A black screen**, perhaps after a moment of **coloured vertical
+     stripes**: this is normal. The screen shows stripes when it is powered
+     with no start-up commands; U-Boot cannot drive this screen, so it turns
+     the screen off within about a second and Linux turns it on with its
+     start-up commands a few seconds later. (Cards made before 2026-11-17
+     showed the stripes for 5 to 10 seconds.) **Wait.** Do not switch off in
+     this time, above all on the first start (a boot switched off here
+     writes no log).
    - **Text scrolls on the screen** when the stripes go: the Linux kernel
      starting.
    - The first start only: a line `apotheca: DATA: first boot, growing ...`.

@@ -519,6 +519,31 @@ and the boot partition's README.txt now say to wait 30 seconds.
   trees (H and V) on 2026-04-04 (commit `765c0e53f`, Philippe Simons); its
   `next` branch on 2026-11-17 has no newer RG40XX panel.
 
+**A faint ghost of the stripes in dark pictures** (the owner, 2026-11-17,
+with the v2 tree). Two causes are possible, and the owner's eyes tell them
+apart:
+
+1. **Image sticking** from the seconds the panel spent powered, lit and
+   driven with no start-up commands (the stripes). An LCD held like that can
+   keep a faint copy for a while. **Now cut short**: U-Boot's `PREBOOT`
+   (`uboot.fragment`) turns the backlight off (PD28), holds the panel in
+   reset (PI14) and turns its power off (PI15) as soon as U-Boot runs, which
+   is the state Linux keeps the panel in until its driver powers it up and
+   sends the start-up commands (about 3 s into the kernel). The boot ROM and
+   the SPL run first, so a fraction of a second of stripes may remain; doing
+   it in the SPL would need a U-Boot patch (not done). **Not tried on the
+   handheld.** If it works the screen goes black within about a second of the
+   power key and stays black until the text.
+2. **The v2 start-up commands not quite right for this unit's panel** (its
+   VCOM, gamma or inversion settings). The display ID reads `000000` (the bus
+   cannot read), so nothing says this panel is exactly ROCKNIX's v2.
+
+**What tells them apart**: a ghost that **fades over some minutes** of
+Apotheca running, and is weaker or gone with the new card, is (1). A ghost
+that is **the same on every start and never fades** is (2); then the panel's
+own settings are needed: the stock card's (a backup of it holds them: its
+boot loader, as muOS's has, carries both panels' start-up commands).
+
 **A way to tell the screens apart without asking the owner (not built):**
 the stock boot loader reads PE6. Our kernel or an early init script could
 read the same pin and pick the panel file, so one card would fit both
