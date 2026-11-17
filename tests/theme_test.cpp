@@ -440,6 +440,16 @@ struct Explain {
         for (const SDL_Color& over : ten)
             for (const SDL_Color& under : ten)
                 for (int a : kAlphas) once.push_back(mix(over, under, a));
+        // A drum hit's body is the lettering (teal on the hit being turned) over its cell at ANY alpha:
+        // how solid is its CHANCE (0.12 + 0.88 c^2 of full, pattern_screen.cpp), which the stick turns
+        // to any value. (The demo's ghost hits at CHANCE 50% passed only by sitting within kSlack of 90.)
+        for (const SDL_Color& hit : {t.text, t.teal})
+            for (const SDL_Color& cell : {t.panel, t.panel2})
+                for (int a = 1; a < 255; ++a) once.push_back(mix(hit, cell, a));
+        // The play line's glow (kPurple at 76) lies over whatever the step playing holds: a cell, a hit,
+        // a ghost hit. Where it is depends on the clock (the stills play the demo), so a still that
+        // caught it over a ghost hit failed now and then (2026-11-17: RIM's at step 4, 218,321).
+        for (std::size_t u = 0, n = once.size(); u < n; ++u) once.push_back(mix(t.purple, once[u], 76));
         const auto mark = [&](SDL_Color c) {
             for (int r = c.r - kSlack; r <= c.r + kSlack; ++r)
                 for (int g = c.g - kSlack; g <= c.g + kSlack; ++g)
