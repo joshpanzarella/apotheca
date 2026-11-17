@@ -49,7 +49,9 @@ def test_preboot(pre):
     pre = pre.replace("gpio input PE6", "test -e virtio 0:1 pe6-low")
     pre = re.sub(r"gpio (set|clear) (P[A-Z][0-9]+)", r"echo gpio \1 \2", pre)
     assert "gpio" not in pre.replace("echo gpio", ""), pre
-    return "virtio scan; " + pre
+    # fdt_addr_r: where extlinux loads a tree (sunxi's environment sets it;
+    # qemu's does not, and without it U-Boot passes qemu's own tree).
+    return "virtio scan; setenv fdt_addr_r 0x48000000; " + pre
 
 
 def build_uboot(pre):
@@ -67,8 +69,9 @@ def build_uboot(pre):
     subprocess.run(make + ["qemu_arm64_defconfig"], check=True, env=env, stdout=subprocess.DEVNULL)
     config = os.path.join(out, "src", ".config")
     lines = [l for l in open(config).read().splitlines()
-             if not l.startswith(("CONFIG_PREBOOT=", "CONFIG_BOOTDELAY="))]
-    lines += ['CONFIG_PREBOOT="%s"' % pre, "CONFIG_BOOTDELAY=0"]
+             if not l.startswith(("CONFIG_PREBOOT=", "CONFIG_BOOTDELAY=", "CONFIG_TOOLS_MKEFICAPSULE="))]
+    # (mkeficapsule, a host tool this test does not need, wants GnuTLS's headers)
+    lines += ['CONFIG_PREBOOT="%s"' % pre, "CONFIG_BOOTDELAY=0", "# CONFIG_TOOLS_MKEFICAPSULE is not set"]
     open(config, "w").write("\n".join(lines) + "\n")
     subprocess.run(make + ["olddefconfig"], check=True, env=env, stdout=subprocess.DEVNULL)
     subprocess.run(make + ["-j%d" % (os.cpu_count() or 4)], check=True, env=env,
