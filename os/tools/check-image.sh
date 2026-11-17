@@ -10,7 +10,10 @@
 #     and U-Boot proper (a FIT image) after it, all ending before partition 1
 #   - partition 1: FAT, holding Image, dtb.img (a device tree), the two
 #     RG40XXV trees and extlinux/extlinux.conf naming the right root
-#   - partition 2: a squashfs that fits its partition
+#   - partition 2: a squashfs that fits its partition; with unsquashfs (on the
+#     PATH, or the one the image build made) also what batch 4 put in it:
+#     apotheca-power started by inittab, S95apotheca, the off mark handed to
+#     Apotheca and read by apotheca-keep, Apotheca that knows the mark
 #   - partition 3: empty (the second system slot)
 #   - partition 4: zeros (the first boot grows it and makes it exFAT)
 #
@@ -31,8 +34,9 @@ case "$img" in
     ;;
 esac
 
-python3 -I - "$img" <<'EOF'
-import struct, subprocess, shutil, sys
+here=$(cd "$(dirname "$0")/../.." && pwd)
+python3 -I - "$img" "$here/build-image/output/host/bin/unsquashfs" <<'EOF'
+import os, struct, subprocess, shutil, sys, tempfile
 
 path = sys.argv[1]
 data = open(path, 'rb')
@@ -125,6 +129,36 @@ used = struct.unpack_from('<Q', sb, 40)[0]
 check(used <= plen, "p2's squashfs (%.1f MiB) fits its partition" % (used / MiB))
 comp = struct.unpack_from('<H', sb, 20)[0]
 check(comp == 5, "p2 is compressed with LZ4 (id %d)" % comp)
+unsquashfs = shutil.which('unsquashfs') or (sys.argv[2] if os.access(sys.argv[2], os.X_OK) else None)
+if unsquashfs:
+    with tempfile.TemporaryDirectory(prefix='apotheca-check-') as t:
+        root = os.path.join(t, 'root.squashfs')
+        with open(root, 'wb') as f:
+            f.write(read(off, used))
+        listing = subprocess.run([unsquashfs, '-lls', root], capture_output=True, text=True).stdout
+        def mode(name):
+            for line in listing.splitlines():
+                if line.endswith('squashfs-root' + name):
+                    return line.split()[0]
+            return ''
+        def cat(name):
+            return subprocess.run([unsquashfs, '-cat', root, name], capture_output=True).stdout
+        for f in ['/usr/sbin/apotheca-power', '/usr/sbin/apotheca-keep', '/usr/sbin/apotheca-start',
+                  '/etc/init.d/S95apotheca', '/usr/libexec/apotheca/run', '/usr/libexec/apotheca/fakepad']:
+            check(mode(f).startswith('-rwx'), "p2 holds %s, executable (%s)" % (f, mode(f) or "missing"))
+        inittab = cat('/etc/inittab').decode('utf-8', 'replace')
+        check('::respawn:/usr/sbin/apotheca-power' in inittab, "inittab starts apotheca-power (and again if it stops)")
+        check('::respawn:/usr/sbin/apotheca-keep apotheca /usr/libexec/apotheca/run' in inittab,
+              "inittab starts Apotheca under apotheca-keep")
+        check('::shutdown:/etc/init.d/rcK' in inittab, "inittab runs rcK going down (S95apotheca stops Apotheca)")
+        check(b'export APOTHECA_OFF_MARK=/run/apotheca/apotheca.off' in cat('/usr/libexec/apotheca/run'),
+              "run hands Apotheca the off mark's place")
+        check(b'KEEP_OFF:-poweroff' in cat('/usr/sbin/apotheca-keep'), "apotheca-keep turns the handheld off on the mark")
+        check(b'APOTHECA_OFF_MARK' in cat('/usr/lib/apotheca/apotheca'), "the Apotheca on the card knows the off mark")
+        check(any(l.endswith('/test_power.ko') for l in listing.splitlines()),
+              "the kernel's made-up battery (test_power) is there for the desk test, as a module")
+else:
+    print("skip  p2's files (no unsquashfs)")
 
 # --- p3: empty
 off = parts[2][2]

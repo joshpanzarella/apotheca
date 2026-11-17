@@ -12,6 +12,14 @@
 #     from the shell: touch it, kill the program, do the work, remove it).
 #   - Every start and stop is written to $KEEP_LOG/NAME.log.
 #   - The program gets KEEP_FAILS: how many starts in a row stopped too soon.
+#   - A program that wants the handheld off writes the file $KEEP_RUN/NAME.off
+#     (any words: why) before it stops. It is not started again: KEEP_OFF
+#     (default: poweroff) is run instead, and this waits to be stopped. The
+#     file is deleted before every start, so only the run that wrote it counts;
+#     a program that stops without it (a crash, a kill) is started again.
+#     Apotheca writes it after saving its song, when quit or left idle
+#     (app/power_off.hpp: /usr/libexec/apotheca/run tells it where).
+#   - Its own pid is in $KEEP_RUN/NAME.keep.pid (for S95apotheca at shutdown).
 #   - Sent TERM or INT (shutdown), it stops the program and then itself.
 
 name=$1
@@ -24,6 +32,8 @@ logdir=${KEEP_LOG:-/data/apotheca/logs}
 mkdir -p "$run"
 log="$logdir/$name.log"
 hold="$run/$name.hold"
+off="$run/$name.off"
+echo $$ > "$run/$name.keep.pid"
 
 now() { cut -d. -f1 /proc/uptime; }
 note() { echo "[$(cut -d' ' -f1 /proc/uptime)] $name: $*" >> "$log"; }
@@ -31,7 +41,10 @@ note() { echo "[$(cut -d' ' -f1 /proc/uptime)] $name: $*" >> "$log"; }
 child=
 stop() {
     note "told to stop"
-    [ -n "$child" ] && kill "$child" 2>/dev/null && wait "$child"
+    if [ -n "$child" ] && kill "$child" 2>/dev/null; then
+        wait "$child"
+        note "it stopped with code $?"
+    fi
     note "stopped"
     exit 0
 }
@@ -45,6 +58,7 @@ while :; do
         note "hold lifted"
         fails=0
     fi
+    rm -f "$off"
     began=$(now)
     # The program is told how many times in a row it stopped too soon
     # (/usr/libexec/apotheca/run falls back to drawing with the CPU on 2).
@@ -55,6 +69,15 @@ while :; do
     code=$?
     child=
     ran=$(( $(now) - began ))
+    if [ -f "$off" ]; then
+        why=$(head -c 64 "$off" | tr -d '\n')
+        note "stopped with code $code after ${ran}s, asking for the handheld off ($why)"
+        echo "apotheca-keep: $name asked for the handheld off ($why)" > /dev/console 2>/dev/null
+        sync
+        ${KEEP_OFF:-poweroff}
+        # Going down: wait here to be stopped (TERM), starting nothing.
+        while :; do sleep 60; done
+    fi
     if [ "$ran" -lt "$quick" ]; then
         fails=$((fails + 1))
         wait_s=1

@@ -10,7 +10,16 @@
  *   axis ABS_X 3600
  *
  * so a test can line what SDL saw (padprobe) up with what was sent.
- * fakepad [SECONDS-BEFORE] (default 3). Needs /dev/uinput. */
+ * fakepad [SECONDS-BEFORE] (default 3). Needs /dev/uinput.
+ *
+ * fakepad --serve FIFO: makes the joypad and a stand-in for the AXP717's
+ * power key ("axp20x-pek", KEY_POWER, as mainline's axp20x-pek declares it),
+ * then reads lines from FIFO (opened again whenever a writer closes it) and
+ * does them, until "end":
+ *   down NAME / up NAME   a key down or up (NAME as above, or POWER)
+ *   tap NAME              down, 150 ms, up
+ *   wait MS
+ * printing "did LINE" after each. */
 #include <fcntl.h>
 #include <linux/uinput.h>
 #include <stdio.h>
@@ -50,8 +59,75 @@ static void absAxis(int fd, int code) {
     if (ioctl(fd, UI_ABS_SETUP, &a) < 0) perror("fakepad: UI_ABS_SETUP");
 }
 
+static int codeOf(const char* name) {
+    if (strcmp(name, "POWER") == 0) return KEY_POWER;
+    for (int i = 0; i < kKeyCount; ++i)
+        if (strcmp(kKeys[i].name, name) == 0) return kKeys[i].code;
+    return -1;
+}
+
+static int makePowerKey(void) {
+    int fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
+    if (fd < 0) { perror("fakepad: /dev/uinput"); return -1; }
+    ioctl(fd, UI_SET_EVBIT, EV_KEY);
+    ioctl(fd, UI_SET_KEYBIT, KEY_POWER);
+    struct uinput_setup setup;
+    memset(&setup, 0, sizeof setup);
+    setup.id.bustype = BUS_HOST;
+    strcpy(setup.name, "axp20x-pek");
+    if (ioctl(fd, UI_DEV_SETUP, &setup) < 0 || ioctl(fd, UI_DEV_CREATE) < 0) {
+        perror("fakepad: create the power key");
+        return -1;
+    }
+    return fd;
+}
+
+/* --serve: do what the FIFO says, on the joypad (pad) and the power key (power). */
+static int serve(int pad, const char* fifo) {
+    const int power = makePowerKey();
+    if (power < 0) return 1;
+    printf("made axp20x-pek\nready\n");
+    fflush(stdout);
+    for (;;) {
+        FILE* in = fopen(fifo, "r");
+        if (!in) { perror("fakepad: the fifo"); return 1; }
+        char line[128];
+        while (fgets(line, sizeof line, in)) {
+            char verb[16], name[16];
+            line[strcspn(line, "\r\n")] = 0;
+            const int n = sscanf(line, "%15s %15s", verb, name);
+            if (n >= 1 && strcmp(verb, "end") == 0) {
+                fclose(in);
+                ioctl(power, UI_DEV_DESTROY);
+                return 0;
+            }
+            if (n == 2 && strcmp(verb, "wait") == 0) {
+                usleep((useconds_t)atoi(name) * 1000);
+            } else if (n == 2) {
+                const int code = codeOf(name);
+                const int fd = code == KEY_POWER ? power : pad;
+                const int down = strcmp(verb, "down") == 0, up = strcmp(verb, "up") == 0, tap = strcmp(verb, "tap") == 0;
+                if (code < 0 || !(down || up || tap)) {
+                    printf("not understood: %s\n", line);
+                    fflush(stdout);
+                    continue;
+                }
+                if (down || tap) emit(fd, EV_KEY, code, 1), emit(fd, EV_SYN, SYN_REPORT, 0);
+                if (tap) usleep(150000);
+                if (up || tap) emit(fd, EV_KEY, code, 0), emit(fd, EV_SYN, SYN_REPORT, 0);
+            } else {
+                continue;
+            }
+            printf("did %s\n", line);
+            fflush(stdout);
+        }
+        fclose(in);
+    }
+}
+
 int main(int argc, char** argv) {
-    int before = argc > 1 ? atoi(argv[1]) : 3;
+    const char* fifo = argc > 2 && strcmp(argv[1], "--serve") == 0 ? argv[2] : NULL;
+    int before = !fifo && argc > 1 ? atoi(argv[1]) : 3;
     int fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
     if (fd < 0) { perror("fakepad: /dev/uinput"); return 1; }
     ioctl(fd, UI_SET_EVBIT, EV_KEY);
@@ -78,6 +154,7 @@ int main(int argc, char** argv) {
     }
     printf("made H700 Gamepad\n");
     fflush(stdout);
+    if (fifo) return serve(fd, fifo);
     sleep(before);
     for (int i = 0; i < kKeyCount; ++i) {
         printf("press 0x%x %s\n", kKeys[i].code, kKeys[i].name);

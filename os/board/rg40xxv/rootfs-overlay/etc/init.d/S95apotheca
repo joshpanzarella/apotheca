@@ -1,0 +1,44 @@
+#!/bin/sh
+# Apotheca at shutdown. It is started by /etc/inittab (under apotheca-keep),
+# not here; this only stops it, first of everything (rcK runs the scripts in
+# reverse, so S95 goes before S05data unmounts the card).
+#
+# Every way the handheld goes off comes through here: `poweroff` from the
+# shell, the power key held, a low battery (apotheca-power), and Apotheca's
+# own quit and idle (apotheca-keep runs poweroff). BusyBox init runs rcK
+# BEFORE it sends TERM to everything, so without this Apotheca would still
+# be running when the card is made read-only, and its last save would fail.
+#
+# Stopping: hold restarts, then TERM to apotheca-keep, which hands it on
+# (apotheca-start) to Apotheca; Apotheca saves its song and ends, as when
+# it is quit. If it has not gone in 15 s the shutdown goes on without it.
+
+. /usr/lib/apotheca/common.sh
+
+stop() {
+    touch "$APOTHECA_RUN/apotheca.hold"
+    pid=$(pidof apotheca)
+    keep=$(cat "$APOTHECA_RUN/apotheca.keep.pid" 2>/dev/null)
+    if [ -n "$keep" ] && kill -TERM "$keep" 2>/dev/null; then
+        : # it hands the TERM on to Apotheca
+    elif [ -n "$pid" ]; then
+        kill -TERM $pid 2>/dev/null
+    fi
+    i=0
+    while pidof apotheca > /dev/null && [ "$i" -lt 150 ]; do
+        sleep 0.1
+        i=$((i + 1))
+    done
+    if pidof apotheca > /dev/null; then
+        say "Apotheca did not stop within 15 s: going down without it"
+    elif [ -n "$pid" ]; then
+        say "Apotheca stopped (in $((i / 10)).$((i % 10)) s), its song saved"
+    fi
+    sync
+}
+
+case "$1" in
+    start) ;;
+    stop) stop ;;
+    *) echo "usage: $0 start|stop" ;;
+esac

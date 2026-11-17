@@ -15,6 +15,8 @@
 #     comes back. Exactly the rules of scripts/Apotheca.sh.
 #
 # ARGS default to --handheld. Its output goes to /data/apotheca/apotheca.log.
+# A TERM sent to this script is handed on to Apotheca, which then saves its
+# song and ends (SDL turns TERM into a quit).
 
 system=/usr/lib/apotheca
 dir=/data/apotheca
@@ -54,8 +56,18 @@ if [ -f apotheca.new ]; then
     sync
 fi
 
-./apotheca "$@" > apotheca.log 2>&1
-code=$?
+# Run in the background so a TERM (apotheca-keep stopping it, at shutdown)
+# can be handed on: Apotheca saves its song on TERM, as when it is quit.
+./apotheca "$@" > apotheca.log 2>&1 &
+pid=$!
+trap 'kill -TERM "$pid" 2>/dev/null' TERM INT HUP
+while :; do
+    wait "$pid"
+    code=$?
+    # A signal ends the wait early (code over 128) with the program still there.
+    [ "$code" -ne 127 ] && kill -0 "$pid" 2>/dev/null || break
+done
+trap - TERM INT HUP
 
 if [ -f update-trying ]; then
     rm -f update-trying

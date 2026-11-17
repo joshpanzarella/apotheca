@@ -13,3 +13,8 @@ back and power on. This is the same choice ROCKNIX makes you take.
 
 Nothing else here needs changing. The songs and the boot logs are on
 the other partition, APOTHECA.
+
+To turn the handheld off: SEL + START in Apotheca, or hold the power
+key for 2 seconds. Either way the song is saved first. A short press
+of the power key turns the screen off (the song plays on, the buttons
+do nothing) and on again. At 5% battery it saves and turns itself off.

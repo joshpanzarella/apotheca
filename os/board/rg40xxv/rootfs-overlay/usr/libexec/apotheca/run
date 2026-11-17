@@ -10,8 +10,14 @@
 #   sound    ALSA straight to the card: plughw on the first card that is not
 #            HDMI (the SoC's codec on the handheld; qemu's virtio card on the
 #            desk). /data/apotheca/sound-card overrides it (a card's id).
-#   buttons  the joypad is a joystick SDL finds by itself; the power and
-#            volume keys are handed to SDL as keyboards (there is no udev).
+#   buttons  the joypad is a joystick SDL finds by itself; the volume keys
+#            are handed to SDL as a keyboard (there is no udev). The power
+#            key is not Apotheca's: apotheca-power has it.
+#   off      SEL + START, or nothing to show for idle-off minutes, turns the
+#            handheld off: Apotheca saves, writes /run/apotheca/apotheca.off
+#            and ends, and apotheca-keep runs poweroff (app/power_off.hpp).
+#            The minutes are the "idle-off MINUTES" line of
+#            /data/apotheca/power.txt (default 15; 0 never).
 
 dir=/data/apotheca
 log=$dir/logs/apotheca-start.log
@@ -42,17 +48,21 @@ if [ -z "$card" ]; then
 fi
 [ -n "$card" ] && export AUDIODEV="plughw:CARD=$card,DEV=0"
 
-# The keys that are keyboards to the kernel: the power key (axp20x-pek) and
-# the volume keys (gpio-keys), as "2:/dev/input/eventN" (2: a keyboard).
+# The keys that are keyboards to the kernel: the volume keys (gpio-keys), as
+# "2:/dev/input/eventN" (2: a keyboard). Not the power key: apotheca-power's.
 keys=
 for e in /sys/class/input/event*; do
     name=$(cat "$e/device/name" 2>/dev/null)
     case "$name" in
-    *gpio-keys*|*axp20x-pek*|*Power*Key*|*power*key*)
-        keys="${keys:+$keys,}2:/dev/input/$(basename "$e")" ;;
+    *gpio-keys*) keys="${keys:+$keys,}2:/dev/input/$(basename "$e")" ;;
     esac
 done
 [ -n "$keys" ] && export SDL_EVDEV_DEVICES="$keys"
 
-say "start: $mode drawing, sound ${AUDIODEV:-none found}, keys ${keys:-none}, fails before ${KEEP_FAILS:-0}"
+# Quitting turns the handheld off; so does idling (app/power_off.hpp).
+export APOTHECA_OFF_MARK=/run/apotheca/apotheca.off
+idle=$(sed -n 's/^idle-off[[:space:]]\{1,\}\([0-9]\{1,4\}\)[[:space:]]*$/\1/p' "$dir/power.txt" 2>/dev/null | tail -n 1)
+export APOTHECA_IDLE_OFF_MINUTES=${idle:-15}
+
+say "start: $mode drawing, sound ${AUDIODEV:-none found}, keys ${keys:-none}, idle off after ${APOTHECA_IDLE_OFF_MINUTES} min, fails before ${KEEP_FAILS:-0}"
 exec /usr/sbin/apotheca-start --handheld

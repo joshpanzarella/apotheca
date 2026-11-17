@@ -57,6 +57,14 @@ public:
     // the sound's share of its own time, WORST its worst call in that second, CPU the whole program's
     // share of the processor (all its threads, over every core).
     static std::string loadWords(const int load[3]);
+    // On our own firmware for the RG40XXV quitting turns the handheld off (power_off.hpp), and the
+    // help card and the update notice say so. Elsewhere it quits, as it always did.
+    void setQuitTurnsOff(bool off) { quitTurnsOff_ = off; }
+    bool quitTurnsOff() const { return quitTurnsOff_; }
+    static const char* quitWords(bool turnsOff) { return turnsOff ? "turn off" : "quit Apotheca"; }
+    static const char* updateNowWords(bool turnsOff) {
+        return turnsOff ? "To update now: SEL + START turns off; then turn it on." : "To update now: SEL + START quits; then start it again.";
+    }
     static constexpr float kLoadClear = 10.f; // its room on the help card ends this far right of the words to its left
     const int* loadShown() const { return load_; }
     // For the stills and the tests: the line says these numbers, whatever is measured (-1: none).
@@ -127,6 +135,7 @@ private:
     ModScreen mods_;
     SamplerScreen sampler_;
     SettingsScreen settings_;
+    bool quitTurnsOff_ = false; // setQuitTurnsOff
     std::string batteryRoot_;  // where to read it from, if not the usual place (for stills and tests)
     int battery_ = -1;         // percent, or -1 if the device has none to read
     bool charging_ = false;

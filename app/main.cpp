@@ -5,7 +5,8 @@
 //
 // Everything is written against the handheld's buttons (input.hpp). The
 // keyboard only stands in for them; see the README for the key map.
-// SELECT + START quits.
+// SELECT + START quits. On our own firmware for the RG40XXV it turns the
+// handheld off (power_off.hpp: the system says so in the environment).
 //
 // For checks and stills:
 //   --smoke        place a hit and press play through the keyboard stand-in,
@@ -73,6 +74,7 @@
 #include "apotheca/engine.hpp"
 #include "app.hpp"
 #include "drum_voices.hpp"
+#include "power_off.hpp"
 #include "redraw.hpp"
 #include "bench_run.hpp"
 #include "controls.hpp"
@@ -466,6 +468,10 @@ int main(int argc, char** argv) {
     static SdlInput recordingInput;
     App app(engine);
     if (batteryFolder) app.useBatteryFolder(batteryFolder);
+    // On our own firmware, quitting (and the idle rule) turns the handheld off. Not for a still or a check.
+    PowerOff powerOff = smoke || shot || demo ? PowerOff() : PowerOff::fromEnvironment();
+    app.setQuitTurnsOff(powerOff.turnsOff());
+    if (powerOff.turnsOff()) std::printf("quitting turns the handheld off; idle: %s\n", powerOff.idleMs ? (std::to_string(powerOff.idleMs / 60000) + " minutes").c_str() : "never");
     app.session().useAudioInput(&recordingInput);
     {
         // Chord packs: a "chords" folder beside the program, or the one in
@@ -1561,6 +1567,8 @@ int main(int argc, char** argv) {
     // the app still moves on every pass, at the same pace.
     Redraw redraw;
     int drawnTheme = -1;
+    const char* offWhy = nullptr; // set: the program ends to turn the handheld off ("quit", "idle")
+    powerOff.busy(SDL_GetTicks());
     while (running) {
         SDL_Event event;
         bool stirred = false; // a button, or anything of the window, this pass (a stick's motion counts by where it is)
@@ -1588,7 +1596,7 @@ int main(int argc, char** argv) {
             ButtonEvent press;
             if (!input.handle(event, press)) continue;
             stirred = true;
-            if (input.held(Button::Select) && input.held(Button::Start)) running = false;
+            if (input.held(Button::Select) && input.held(Button::Start)) running = false, offWhy = "quit";
             else app.onButton(press, input);
         }
         if (learning) {
@@ -1626,7 +1634,11 @@ int main(int argc, char** argv) {
         }
         if (app.session().theme() != drawnTheme) drawnTheme = app.session().theme(), redraw.forget();
         // Drawn this pass? Asked every pass, so it keeps count; a still is drawn on every pass.
-        const bool draw = redraw.wanted(app, input, stirred, SDL_GetTicks()) || learning || smoke || shot || everyFrame;
+        const bool wanted = redraw.wanted(app, input, stirred, SDL_GetTicks());
+        const bool draw = wanted || learning || smoke || shot || everyFrame;
+        // Nothing to show for the idle time (no button, the song stopped, nothing moving by itself): off.
+        if (wanted || learning) powerOff.busy(SDL_GetTicks());
+        else if (powerOff.idleDue(SDL_GetTicks()) && running) running = false, offWhy = "idle";
         if (learning) redraw.forget(); // the setup is drawn every pass, and the app's picture the pass after it
         ui::useTheme(app.session().theme()); // (App::draw does the same; the setup draws without it)
         if (learning) learner.draw(renderer, fonts); // (always at LARGE: it asks for the fixed set itself)
@@ -1688,6 +1700,11 @@ int main(int argc, char** argv) {
     }
 
     app.session().saveNow(); // the last couple of seconds of changes
+    // Saved: now the system may turn the handheld off (its supervisor reads the mark once we have gone).
+    if (offWhy && powerOff.turnsOff()) {
+        if (powerOff.writeMark(offWhy)) std::printf("turning the handheld off (%s)\n", offWhy);
+        else std::fprintf(stderr, "could not write %s: the handheld will start Apotheca again\n", powerOff.mark.c_str());
+    }
     SDL_CloseAudioDevice(device);
     if (pad) SDL_GameControllerClose(pad);
     for (SDL_Joystick* stick : opened) SDL_JoystickClose(stick);

@@ -27,6 +27,7 @@
 #include "controls.hpp"
 #include "instruments.hpp"
 #include "mods.hpp"
+#include "power_off.hpp"
 #include "samples.hpp"
 #include "song_file.hpp"
 #include "synth_spec.hpp"
@@ -2364,6 +2365,89 @@ void testTheHelpCardSaysTheLoad() {
     rig.key(SDLK_TAB, false);
     std::remove(stat.c_str());
     rmdir(folder.c_str());
+}
+
+// On our own firmware for the RG40XXV quitting turns the handheld off (power_off.hpp; firmware plan
+// batch 4): the system sets two environment variables, the program writes a mark once the song is
+// saved. The port sets neither, and quitting quits.
+void testQuittingTurnsTheHandheldOff() {
+    const auto nothing = [](const char*) -> const char* { return nullptr; };
+    const PowerOff port = PowerOff::from(nothing);
+    CHECK(!port.turnsOff() && port.idleMs == 0 && !port.idleDue(4000000000u) && !port.writeMark("quit"));
+    const std::string folder = tempFolder("poweroff"), mark = folder + "/apotheca.off";
+    const char* minutes = "15";
+    const char* markAt = mark.c_str();
+    const auto firmware = [&](const char* name) -> const char* {
+        if (std::strcmp(name, "APOTHECA_OFF_MARK") == 0) return markAt;
+        if (std::strcmp(name, "APOTHECA_IDLE_OFF_MINUTES") == 0) return minutes;
+        return nullptr;
+    };
+    PowerOff off = PowerOff::from(firmware);
+    CHECK(off.turnsOff() && off.idleMs == 15u * 60000u);
+    off.busy(1000);
+    CHECK(!off.idleDue(1000) && !off.idleDue(1000 + 899999) && off.idleDue(1000 + 900000));
+    off.busy(0xFFFFFF00u); // the clock going round (49 days) is no harm
+    CHECK(!off.idleDue(0xFFFFFF00u + 100u) && off.idleDue(0xFFFFFF00u + 900000u));
+    // Whole minutes, a day at most; anything else is never.
+    const char* never[] = {"0", "-3", "abc", "", "nan", "1e300", "0.5", "1441"};
+    for (const char* n : never) {
+        minutes = n;
+        CHECK(PowerOff::from(firmware).idleMs == 0);
+    }
+    minutes = "2.5";
+    CHECK(PowerOff::from(firmware).idleMs == 2u * 60000u);
+    minutes = "1440";
+    CHECK(PowerOff::from(firmware).idleMs == 1440u * 60000u);
+    // No mark, nobody to turn it off: never ends by itself, whatever the minutes.
+    markAt = nullptr;
+    minutes = "15";
+    CHECK(!PowerOff::from(firmware).turnsOff() && PowerOff::from(firmware).idleMs == 0);
+    markAt = mark.c_str();
+    // The mark says why.
+    CHECK(off.writeMark("idle"));
+    std::string text;
+    CHECK(readTextFile(mark, text) && text == "idle\n");
+    CHECK(off.writeMark("quit") && readTextFile(mark, text) && text == "quit\n");
+    std::remove(mark.c_str());
+    PowerOff nowhere = off;
+    nowhere.mark = folder + "/no such folder/apotheca.off";
+    CHECK(!nowhere.writeMark("quit"));
+    rmdir(folder.c_str());
+
+    // The words: the help card's START line and the update notice say what SEL + START does.
+    CHECK(std::string(App::quitWords(false)) == "quit Apotheca" && std::string(App::quitWords(true)) == "turn off");
+    CHECK(std::string(App::updateNowWords(false)) == "To update now: SEL + START quits; then start it again.");
+    CHECK(std::string(App::updateNowWords(true)) == "To update now: SEL + START turns off; then turn it on.");
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (canvas.ok) {
+        // No longer than what it replaces: the load line beside it keeps its room, and the notice its width.
+        CHECK(canvas.fonts->small.width(App::quitWords(true)) <= canvas.fonts->small.width(App::quitWords(false)));
+        CHECK(canvas.fonts->small.width(App::updateNowWords(true)) <= canvas.fonts->small.width(App::updateNowWords(false)));
+        // Drawn: the card with the firmware's words differs from the port's, and only in the START line's words.
+        Rig rig;
+        rig.app.session().view = View::Pattern;
+        rig.frames(2);
+        rig.key(SDLK_TAB, true); // MENU held: the card
+        rig.frames(1);
+        rig.app.draw(canvas.r, *canvas.fonts);
+        const std::vector<Uint32> quits = canvas.all();
+        CHECK(!rig.app.quitTurnsOff());
+        rig.app.setQuitTurnsOff(true);
+        rig.frames(1);
+        rig.app.draw(canvas.r, *canvas.fonts);
+        const std::vector<Uint32> offs = canvas.all();
+        CHECK(quits != offs);
+        int first = ui::kScreenH, last = -1;
+        for (int i = 0; i < ui::kScreenW * ui::kScreenH; ++i)
+            if (quits[i] != offs[i]) first = std::min(first, i / ui::kScreenW), last = std::max(last, i / ui::kScreenW);
+        CHECK(last >= first && last - first < 20); // one line of the card
+        rig.app.setQuitTurnsOff(false);
+        rig.frames(1);
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(canvas.all() == quits);
+        rig.key(SDLK_TAB, false);
+    }
 }
 
 void testTheHelpCard() {
@@ -10748,6 +10832,7 @@ int main(int argc, char** argv) {
     testTheHelpCard();
     testTheHelpCardDrawsSel();
     testTheHelpCardSaysTheLoad();
+    testQuittingTurnsTheHandheldOff();
     testUndoAndRedo();
     testHoldBErasesDrumHits();
     testFm6OnATrack();
