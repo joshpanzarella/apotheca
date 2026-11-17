@@ -97,7 +97,6 @@ reading each second while it is open:
 | Word | Means |
 | --- | --- |
 | SOUND 43% | Over the last second, making the sound took 43% of the time that sound lasts. At 100% or over it cannot keep up, and the sound stutters |
-| WORST 88% | The one slice of that second (about 5 ms of sound) that took the most of its own time. Over 100%: that slice was late, a click or a gap |
 | CPU 37% | The whole program (the sound, its helpers, the screen, the WiFi page) as a share of the whole processor, all its cores together. 25% on a four-core handheld is one core kept busy. Shown from a second after the card opens |
 
 Measuring costs nothing you could notice: two looks at the clock for each

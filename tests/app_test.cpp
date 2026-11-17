@@ -2314,8 +2314,8 @@ void testTheHelpCardDrawsSel() {
 void testTheHelpCardSaysTheLoad() {
     const int none[3] = {-1, -1, -1}, all[3] = {43, 88, 37}, sound[3] = {43, 88, -1}, program[3] = {-1, -1, 37};
     CHECK(App::loadWords(none).empty());
-    CHECK(App::loadWords(all) == "SOUND 43%  WORST 88%  CPU 37%");
-    CHECK(App::loadWords(sound) == "SOUND 43%  WORST 88%");
+    CHECK(App::loadWords(all) == "SOUND 43%  CPU 37%"); // WORST is not shown (owner, 2026-11-17)
+    CHECK(App::loadWords(sound) == "SOUND 43%");
     CHECK(App::loadWords(program) == "CPU 37%");
     const std::string folder = tempFolder("cpu"), stat = folder + "/stat";
     const auto ticks = [&](long utime) {
@@ -2352,7 +2352,7 @@ void testTheHelpCardSaysTheLoad() {
         rig.app.pretendLoad(43, 88, 37);
         rig.frames(1);
         rig.app.draw(canvas.r, *canvas.fonts);
-        const char* words = "SOUND 43%  WORST 88%  CPU 37%";
+        const char* words = "SOUND 43%  CPU 37%";
         const int x = (ui::kScreenW - 560) / 2, y = ui::kTopBarH + 4, w = 560, h = 440;
         const int right = x + w - 18, top = y + h - 64, wide = static_cast<int>(canvas.fonts->small.width(words)) + 2;
         Canvas plain;

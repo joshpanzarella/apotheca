@@ -838,7 +838,7 @@ std::uint32_t Session::soundMark() const {
         mix(track.send, sizeof track.send);
         mix(&track.glideFrom, sizeof track.glideFrom);
         mix(track.mods, sizeof track.mods);
-        if (track.kind == TrackKind::Drums) mix(track.laneFeel, sizeof track.laneFeel), mix(track.laneChoke, sizeof track.laneChoke), mix(track.laneEdit, sizeof track.laneEdit);
+        if (track.kind == TrackKind::Drums) mix(track.laneFeel, sizeof track.laneFeel), mix(track.laneChoke, sizeof track.laneChoke), mix(track.laneEdit, sizeof track.laneEdit), mix(track.laneSynth, sizeof track.laneSynth);
         if (const SynthSpec* spec = specFor(track.kind)) {
             mix(&track.preset, sizeof track.preset);
             mix(spec->values(const_cast<TrackData&>(track)), sizeof(int) * static_cast<std::size_t>(settingCount(track.kind)));
@@ -955,6 +955,13 @@ void Session::restoreSounds(const StepRead& was, const bool same[kNumTracks]) {
         if (now.kind == TrackKind::Drums)
             for (int lane = 0; lane < kDrumLanes; ++lane)
                 if (now.laneEdit[lane] != then.laneEdit[lane]) setLaneEdit(t, lane, then.laneEdit[lane]);
+        if (now.kind == TrackKind::Drums)
+            for (int lane = 0; lane < kDrumLanes; ++lane)
+                if (now.laneSynth[lane] != then.laneSynth[lane]) {
+                    const LaneEdit edit = then.laneEdit[lane];
+                    setLaneSynth(t, lane, then.laneSynth[lane]);
+                    setLaneEdit(t, lane, edit); // (another model put START and END back to the whole: the step's are put back)
+                }
         // (After the slots: the step's MODs fit the step's effects. Compared as the file writes them.)
         for (int m = 0; m < kModsPerTrack; ++m) {
             if (modText(now.mods[m], m) == modText(then.mods[m], m)) continue;

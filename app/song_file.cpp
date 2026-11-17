@@ -561,6 +561,16 @@ void putTrack(std::string& out, const TrackData& track) {
             out += track.laneSample[lane];
             out += "\n";
         }
+        // lanesynth LANE WORD v1..v8: a lane's DRUM SYNTH voice (apotheca/drum_synth.hpp), its model by its
+        // word and its eight dials in place order. Left out when the lane has none.
+        for (int lane = 0; lane < kDrumLanes; ++lane) {
+            const drumsynth::Voice& v = track.laneSynth[lane];
+            if (!v.on()) continue;
+            put(out, "lanesynth %.0f ", lane + 1);
+            out += drumsynth::modelWord(v.model);
+            for (int p = 0; p < drumsynth::kPlaces; ++p) put(out, " %.0f", v.dial[p]);
+            out += "\n";
+        }
         // oneslice LANE...: the lanes whose hits play one slice of their sound and stop
         bool anySliced = false;
         for (bool on : track.laneOneSlice) anySliced = anySliced || on;
@@ -956,6 +966,24 @@ void readLines(SongReading& r, const std::string& text, std::size_t from, std::s
             const int l = static_cast<int>(lane) - 1;
             std::snprintf(track->laneSample[l], sizeof track->laneSample[l], "%s", name.c_str());
             track->laneFit[l] = wholeIn(fit, 0, 64);
+            track->laneSynth[l] = drumsynth::Voice(); // (a lane is one or the other: the later line wins)
+        } else if (word == "lanesynth" && track->kind == TrackKind::Drums) {
+            // A model nobody knows: the line is skipped. Each dial held as a double first; one missing
+            // or not a number ends the line there, the rest the model's usual.
+            double lane = 0;
+            std::string model;
+            if (!(in >> lane >> model) || !(lane >= 1) || lane > kDrumLanes) continue;
+            const int m = drumsynth::modelFromWord(model.c_str());
+            if (m == drumsynth::kNone) continue;
+            drumsynth::Voice v = drumsynth::usualVoice(m);
+            for (int p = 0; p < drumsynth::kPlaces; ++p) {
+                double read = 0;
+                if (!(in >> read)) break;
+                v.dial[p] = static_cast<std::uint8_t>(wholeIn(read, 0, drumsynth::kDialMost));
+            }
+            const int l = static_cast<int>(lane) - 1;
+            track->laneSynth[l] = drumsynth::voiceHeld(v);
+            track->laneSample[l][0] = 0;
         } else if (word == "oneslice" && track->kind == TrackKind::Drums) {
             double lane;
             while (in >> lane)

@@ -338,10 +338,7 @@ std::string App::loadWords(const int load[3]) {
         std::snprintf(part, sizeof part, "SOUND %d%%", load[0]);
         words += part;
     }
-    if (load[1] >= 0) {
-        std::snprintf(part, sizeof part, "%sWORST %d%%", words.empty() ? "" : "  ", load[1]);
-        words += part;
-    }
+    // load[1], the worst call, is still measured but not shown (owner, 2026-11-17: not that helpful).
     if (load[2] >= 0) {
         std::snprintf(part, sizeof part, "%sCPU %d%%", words.empty() ? "" : "  ", load[2]);
         words += part;
