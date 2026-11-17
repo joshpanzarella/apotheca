@@ -9,6 +9,7 @@
 #include "apotheca/fm6.hpp"
 #include "instruments.hpp"
 #include "mods.hpp"
+#include "samples.hpp"
 #include "song_file.hpp"
 
 namespace apotheca {
@@ -129,6 +130,11 @@ bool readPresetFile(TrackKind kind, const std::string& text, UserPreset& out) {
         if (word == "macros") while (out.macros.size() < static_cast<std::size_t>(kSynthMacros) && (in >> v)) out.macros.push_back(macroHeld(v));
         else if (word == "settings") while (out.values.size() < static_cast<std::size_t>(presetSettingCount(kind)) && (in >> v)) out.values.push_back(std::isfinite(v) ? wholeHeld(v) : 0);
         else if (word == "whole") out.sound.whole = true;
+        else if (word == "sound" && holdsRecording(kind)) { // CLOUD's recording, as the song file says it
+            std::string name;
+            std::getline(in >> std::ws, name);
+            if (sampleNameOk(name)) out.recording = name;
+        }
         else if (soundLine(kind, word, in, out.sound) == SoundLine::Taken) out.sound.whole = true;
     }
     finishSound(kind, out.sound);
@@ -151,6 +157,9 @@ std::string presetFileText(const TrackData& track) {
     // The track's whole sound past the synth: "whole" says so even when it holds nothing (then picking
     // it empties the track's slots, sends and MODs, as they were when it was saved).
     text += "\nwhole\n";
+    // A synth that plays the track's recording (CLOUD) keeps its name: picked, the preset puts it back
+    // if the card has it (Session::putPresetRecording).
+    if (holdsRecording(track.kind) && track.sample[0]) text += std::string("sound ") + track.sample + "\n";
     text += soundText(track.kind, track.effects, track.send, track.glideFrom, track.mods);
     return text;
 }

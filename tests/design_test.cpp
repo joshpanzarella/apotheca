@@ -4,7 +4,7 @@
 //
 // Set APOTHECA_DESIGN_HOLD=seconds to leave the server up after the tests,
 // with a synth track ready, for looking at the page in a real browser
-// (APOTHECA_DESIGN_SAMPLER=1, _PHYSIC, _JAXEP or _KIT for another kind of track;
+// (APOTHECA_DESIGN_SAMPLER=1, _PHYSIC, _JAXEP, _KIT or _CLOUD for another kind of track;
 // a KIT's lanes are printed as the handheld has them whenever one changes).
 
 #include <SDL.h>
@@ -1072,6 +1072,51 @@ void testJaxepFromThePage() {
 
 } // namespace
 
+
+// CLOUD's page (granular-plan.md, batch 4): a synth's page, and its recording as the sampler's is: the
+// list to pick from once the page looks, `sample NAME` (only a name offered), the picture (the TONE's
+// outline with none) and its band (POSITION a mark, SPRAY the lit width: the two settings), ROLL.
+void testCloudFromThePage() {
+    Rig rig;
+    Session& session = rig.app.session();
+    mkdir((rig.root + "/samples").c_str(), 0755);
+    CHECK(writeWav(rig.root + "/samples/stepped.wav", steppedSine(), 48000));
+    CHECK(session.addTrack(TrackKind::Cloud));
+    const int track = rig.app.project().trackCount() - 1;
+    rig.app.project().track = track;
+    rig.frames(1);
+    std::string spec = rig.get("/design/spec").body;
+    CHECK(has(spec, "\"name\":\"CLOUD\",\"roll\":true,") && has(spec, "\"page\":\"synth\"") && has(spec, "\"recordings\":[]"));
+    CHECK(has(spec, "\"hear\":60,\"waves\":[{\"seconds\":2.000,\"missing\":false,\"tone\":true,\"recording\":\"\",\"marks\":[],\"band\":[0,1],\"peaks\":["));
+    std::vector<int> peaks = peaksOf(spec);
+    CHECK(peaks.size() == 512 && *std::max_element(peaks.begin(), peaks.end()) == 500); // the TONE's outline: its peak is 0.5
+    CHECK(has(spec, "{\"name\":\"POSITION\",\"id\":0,\"min\":0,\"max\":100,\"texts\":[\"0%\"") && has(spec, "\"FREEZE\"") && has(spec, "\"+-50%\"]"));
+    // Once the page looks, the card's recordings are offered; one picked from the page goes on.
+    rig.get("/design/state");
+    rig.frames(1);
+    spec = rig.get("/design/spec").body;
+    CHECK(has(spec, "\"recordings\":[\"stepped\"]"));
+    CHECK(!rig.tell("sample ../stepped") || !rig.track().sample[0]);
+    CHECK(rig.tell("sample stepped") && std::string(rig.track().sample) == "stepped");
+    rig.frames(1);
+    spec = rig.get("/design/spec").body;
+    CHECK(has(spec, "\"tone\":false,\"recording\":\"stepped\"") && has(spec, "\"seconds\":1.000"));
+    peaks = peaksOf(spec);
+    CHECK(peaks.size() == 512 && *std::max_element(peaks.begin(), peaks.end()) == 800);
+    CHECK(rig.tell("sample nothere") && std::string(rig.track().sample) == "stepped"); // not offered: nothing
+    // The band's two settings from the page, and the values say them.
+    CHECK(rig.tell("set 0 70") && rig.tell("set 1 40") && rig.track().cloud.value[cloud::Position] == 70 && rig.track().cloud.value[cloud::Spray] == 40);
+    CHECK(has(rig.get("/design/state").body, "\"values\":[70,40,"));
+    // ROLL from the page: a new cloud, the recording and POSITION kept.
+    const CloudPatch before = rig.track().cloud;
+    CHECK(rig.tell("roll 12345"));
+    bool moved = false;
+    for (int id : {cloud::Spray, cloud::Size, cloud::Density, cloud::Scatter, cloud::Shape, cloud::Stereo}) moved = moved || rig.track().cloud.value[id] != before.value[id];
+    CHECK(moved && rig.track().cloud.value[cloud::Position] == 70 && std::string(rig.track().sample) == "stepped");
+    // None from the page: the TONE again.
+    CHECK(rig.tell("sample") && !rig.track().sample[0]);
+}
+
 int main() {
     // The engine's own presets only: the tests here are of their tables. The presets the app's data
     // adds (and any track sound it gives a built-in) are presets_test's.
@@ -1086,6 +1131,7 @@ int main() {
     testJaxepFromThePage();
     testSamplerFromThePage();
     testKitFromThePage();
+    testCloudFromThePage();
     if (const char* hold = std::getenv("APOTHECA_DESIGN_HOLD")) {
         Rig rig;
         if (std::getenv("APOTHECA_DESIGN_SAMPLER")) { // (a SAMPLER track, on a recording of four hits; two more on the card)
@@ -1118,6 +1164,12 @@ int main() {
             rig.app.session().setLaneSample(0, 1, "four hits");
             rig.app.session().setLaneSample(0, 5, "stepped");
             rig.frames(1);
+        } else if (std::getenv("APOTHECA_DESIGN_CLOUD")) { // (a CLOUD track on the TONE; a stepped sine on the card)
+            mkdir((rig.root + "/samples").c_str(), 0755);
+            writeWav(rig.root + "/samples/stepped.wav", steppedSine(), 48000);
+            rig.app.session().addTrack(TrackKind::Cloud);
+            rig.app.project().track = rig.app.project().trackCount() - 1;
+            rig.frames(1);
         } else if (std::getenv("APOTHECA_DESIGN_PHYSIC")) { // (a PHYSIC track, on its first preset)
             rig.app.session().addTrack(TrackKind::Physic);
             rig.app.project().track = rig.app.project().trackCount() - 1;
@@ -1129,7 +1181,8 @@ int main() {
         std::printf("open http://127.0.0.1:%d%s/design\n", rig.port, rig.door.c_str());
         std::fflush(stdout);
         bool sounding = false;
-        const bool kit = rig.track().kind == TrackKind::Drums;
+        const bool kit = rig.track().kind == TrackKind::Drums, cloudTrack = rig.track().kind == TrackKind::Cloud;
+        std::string cloudWas;
         std::vector<std::string> lanesWere(kDrumLanes);
         for (int i = 0; i < std::atoi(hold) * 60; ++i) {
             rig.frames(1);
@@ -1142,6 +1195,12 @@ int main() {
                               lane + 1, t.laneSample[lane], e.start, e.end, e.gain, e.fadeIn, e.fadeOut, e.pitch, e.fine, e.reverse, t.laneFit[lane], t.laneChoke[lane], static_cast<double>(t.laneLevel[lane]), t.laneFeel[lane].time, t.laneFeel[lane].level);
                 if (lanesWere[static_cast<std::size_t>(lane)] != line) std::printf("%s\n", line), std::fflush(stdout);
                 lanesWere[static_cast<std::size_t>(lane)] = line;
+            }
+            if (cloudTrack) { // (for a browser test: what the page did to CLOUD's recording and band)
+                char line[160];
+                std::snprintf(line, sizeof line, "cloud sample '%s' position %d spray %d", rig.track().sample, rig.track().cloud.value[cloud::Position], rig.track().cloud.value[cloud::Spray]);
+                if (cloudWas != line) std::printf("%s\n", line), std::fflush(stdout);
+                cloudWas = line;
             }
             const bool now = rig.peak(800) > 0.001f;
             if (now != sounding) std::printf(now ? "sounding\n" : "silent\n"), std::fflush(stdout); // (for a browser test: the page's key was heard)

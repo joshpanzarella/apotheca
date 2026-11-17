@@ -416,3 +416,47 @@ the picture's brass line and ticks off the drawn screen), `idle_test`'s part, `t
 batches 3 to 5**: the 24 presets and a whole preset's recording (3), the designer page's picture,
 POSITION mark and SPRAY band, `sample NAME`, ROLL (4), the review, mutants of the app side, README's
 page and bench again (5).
+
+## As built: batch 3, the presets (2026-11-17, branch `cloud`)
+
+**24 presets in four folders of six; nobody has heard any of them.** STILL is the engine's own table
+(`engine/src/cloud.cpp`: Soft Cloud, Glass Hold, Breath Pad, Frozen Shimmer, Still Water, Halo), so its
+three engine presets of batch 1 (Dust, Fifths Choir) moved into the data's folders: a folder the data
+adds after the engine's must have a name of its own, or the folder step finds two runs of it. DRIFT,
+DUST and CHOIR are `app/presets/cloud.inc`. Made to differ, not to be one pad six ways: SCAN walking
+forward, backward, stepped and swung; an LFO walking POSITION; DUST from specks of 6 ms to backwards
+embers with their DENSITY flaring; CHOIR on fifths, octaves, an octave down, with SHIMMER, ENSEMBLE,
+WEAR, ECHO or SPACE where a sound wants one. Six carry a MOD, eight an effect or a send.
+
+`presets_test --heard-cloud` (ctest `presets_heard_cloud`, about 7 s): a phrase of five overlapping
+keys at 120 BPM twice round, then Stop, through the TONE and through a recording the test makes (a sine
+rising 200 to 800 Hz, then noise). Measured: loudest -28.2 to -15.4 dB on the TONE, -23.5 to -13.4 dB
+on the recording; peak 0.55 at most; tails 0 to 4.7 s; every MOD moving and heard (the phrase without it
+-2 to +4 dB apart: the rolls change with it). Held: -30 to -8 dB, peak under 0.9, a tail ending in 30 s,
+the presets on one source within 14 dB, each MOD heard at -40 dB or more.
+
+**A player's own preset keeps its recording** (`UserPreset::recording`, `sound NAME` after `whole`):
+picked, it goes in by its name, else by its base name where exactly one has it, else the track keeps its
+own and RECORDING NOT FOUND is said. `presets_test` `testACloudPresetBringsItsRecording`; its five
+mutants killed. Not done: a pick's recording is not a step of undo (as the sampler's is not).
+
+## As built: batch 4, the designer page (2026-11-17, branch `cloud`)
+
+**The WiFi page's synth page knows CLOUD's recording.** A spec with `SynthSpec::recording` (CLOUD's
+alone) adds to the synth's spec `"hear":60`, one `"waves"` entry and `"recordings"` (`Session::designSpec`):
+the recording's 512 peaks, or the TONE's outline (`cloudToneOutline()`, moved to synth_spec.cpp so MAIN's
+picture and the page share it) with `"tone":true`; `"band"` names the two settings the picture marks,
+POSITION and SPRAY, whose values the page reads from the state as it does any setting. The list of
+recordings is read on the app thread while the page looks, as for a sampler (`serveDesigner`).
+- **The page draws the sampler's recording section** above the macros (`recordingSection`, the same
+  `wave()`): with a band, the part SPRAY reaches about POSITION lit (round the ends, as the engine reads),
+  POSITION a brass line, the two read under it; a click or a drag sets POSITION. The list's first choice
+  reads THE BUILT-IN TONE (a sampler's NONE). `sample NAME` (only a name offered) and ROLL go through what
+  the page already sent; ROLL keeps POSITION and the recording, as on the handheld.
+- `design_test` `testCloudFromThePage`; its five mutants in `designSpec` and `serveDesigner`: four
+  killed, one survives (`peaks.empty()` beside `missing`: a guard no state reaches, kept).
+  `APOTHECA_DESIGN_CLOUD=1` with `APOTHECA_DESIGN_HOLD` holds the page open and prints the recording,
+  POSITION and SPRAY whenever they change.
+- **Tried in a browser** (Playwright and Chromium, 2026-11-17): the list offered THE BUILT-IN TONE and
+  the test's recording, picking it put it on the track, a click at 30% of the picture set POSITION 30,
+  ROLL changed SPRAY and kept POSITION, no error in the page. The page's script has no test in `ctest`.

@@ -14,6 +14,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
 
@@ -23,6 +24,7 @@
 #include "instruments.hpp"
 #include "mods.hpp"
 #include "presets.hpp"
+#include "samples.hpp"
 #include "song_file.hpp"
 #include "synth_spec.hpp"
 #include "temp_folder.hpp"
@@ -1361,6 +1363,240 @@ void testAcidPresetsAsHeard(bool measure) {
     }
 }
 
+
+// ---- CLOUD (granular-plan.md, batch 3) ------------------------------------------------------------
+
+struct CloudHeard {
+    double loudestDb = -200.0; // the loudest tenth of a second, RMS of the louder side, dB of full scale
+    float peak = 0.f;          // the largest sample at the master, the tail too
+    double tail = 0.0;         // seconds from Stop to the last tenth over -80 dB
+    bool ended = false;        // silent for 12 s before the cap
+    bool numbers = true;
+    float modSwing[kModsPerTrack] = {};
+    double modHeardDb[kModsPerTrack] = {-200.0, -200.0};
+    double cost = 0.0;         // the engine's time over the sound's while it played
+};
+
+// THE PHRASE: at 120 BPM, round twice (4 s), then Stop and the tail: a low key held through, a key
+// over it, a fifth, an octave up, and one more, overlapping, so a cloud a key and the pool's sharing
+// are heard. {step, key, length in steps}
+const int kCloudPhrase[][3] = {{0, 48, 8}, {2, 60, 6}, {4, 67, 10}, {8, 72, 6}, {12, 55, 4}};
+
+// The recording the test makes (as a track would hold one): two seconds of a sine rising from 200 Hz to
+// 800 Hz, then half a second of noise, at 0.5. With "" the track plays the TONE.
+const std::string& cloudRecordingFolder() {
+    static std::string folder;
+    if (folder.empty()) {
+        folder = tempFolder("cloudrec");
+        std::vector<float> v(48000 * 5 / 2);
+        double phase = 0.0;
+        std::uint32_t x = 7;
+        for (std::size_t i = 0; i < v.size(); ++i) {
+            if (i < 96000) {
+                phase += 6.283185307179586 * (200.0 + 600.0 * static_cast<double>(i) / 96000.0) / 48000.0;
+                v[i] = static_cast<float>(0.5 * std::sin(phase));
+            } else {
+                x = x * 1664525u + 1013904223u;
+                v[i] = (static_cast<float>(x >> 8) / 8388608.f - 1.f) * 0.5f;
+            }
+        }
+        CHECK(writeWav(folder + "/sweep.wav", v, 48000));
+    }
+    return folder;
+}
+
+CloudHeard hearCloudPreset(int preset, const std::string& recording, int without = -1, std::vector<float>* out = nullptr) {
+    CloudHeard h;
+    Rig rig;
+    Session& session = rig.session();
+    session.useSampleFolder(cloudRecordingFolder());
+    CHECK(session.addTrack(TrackKind::Cloud));
+    const int track = rig.project().trackCount() - 1;
+    if (!recording.empty()) session.setTrackSample(track, recording);
+    session.chooseSynthPreset(track, preset);
+    rig.settle();
+    if (without >= 0) {
+        CHECK(session.setMod(track, without, ModSettings()));
+        rig.settle();
+    }
+    NotePattern& bar = rig.project().tracks[track].notes[0][0];
+    int slot = 0;
+    for (const auto& n : kCloudPhrase) bar.notes[slot++] = NoteEvent{n[0], n[1], static_cast<float>(n[2]), 0.f, kPlacedLevel};
+    session.sendNotePattern(track, 0);
+    rig.settle();
+    rig.render(48000 * 2);
+    const int window = 4800;
+    std::vector<float> block(2 * 768);
+    double sumL = 0.0, sumR = 0.0;
+    int inWindow = 0;
+    long frame = 0, lastLoud = 0, stopAt = -1;
+    float least[kModsPerTrack], most[kModsPerTrack];
+    for (int m = 0; m < kModsPerTrack; ++m) least[m] = 1e9f, most[m] = -1e9f;
+    double busy = 0.0;
+    const long playFrames = 4 * 48000, cap = playFrames + 120L * 48000;
+    session.togglePlay(false);
+    rig.frames(1);
+    while (frame < cap) {
+        if (frame >= playFrames && stopAt < 0) {
+            session.togglePlay(false);
+            stopAt = frame;
+            if (out) break;
+        }
+        const auto start = std::chrono::steady_clock::now();
+        rig.engine->render(block.data(), 768);
+        if (stopAt < 0) busy += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        rig.frames(1);
+        if (out) out->insert(out->end(), block.begin(), block.end());
+        for (int i = 0; i < 768; ++i) {
+            const float l = block[2 * i], r = block[2 * i + 1];
+            h.numbers = h.numbers && std::isfinite(l) && std::isfinite(r);
+            h.peak = std::max(h.peak, std::max(std::fabs(l), std::fabs(r)));
+            sumL += static_cast<double>(l) * l, sumR += static_cast<double>(r) * r;
+            if (++inWindow == window) {
+                const double rms = std::sqrt(std::max(sumL, sumR) / window);
+                h.loudestDb = std::max(h.loudestDb, 20.0 * std::log10(rms + 1e-12));
+                if (rms > 1e-4) lastLoud = frame + i + 1;
+                sumL = sumR = 0.0, inWindow = 0;
+            }
+        }
+        frame += 768;
+        if (stopAt < 0)
+            for (int m = 0; m < kModsPerTrack; ++m) {
+                const float shown = rig.engine->modShown(track, m);
+                if (std::isfinite(shown)) least[m] = std::min(least[m], shown), most[m] = std::max(most[m], shown);
+            }
+        if (stopAt >= 0 && frame - lastLoud > 12L * 48000) {
+            h.ended = true;
+            break;
+        }
+    }
+    for (int m = 0; m < kModsPerTrack; ++m) h.modSwing[m] = most[m] > least[m] ? most[m] - least[m] : 0.f;
+    h.tail = (lastLoud > stopAt ? lastLoud - stopAt : 0) / 48000.0;
+    h.cost = busy / (playFrames / 48000.0);
+    return h;
+}
+
+// Every MOD of a preset, heard on the recording (the TONE is too even for a MOD on POSITION to show):
+// the phrase with it off against the phrase with both on.
+void hearCloudMods(int preset, CloudHeard& h) {
+    const TrackSound* sound = presetSound(TrackKind::Cloud, preset);
+    if (!sound) return;
+    std::vector<float> all;
+    hearCloudPreset(preset, "sweep", -1, &all);
+    double signal = 0.0;
+    for (float v : all) signal += static_cast<double>(v) * v;
+    for (int m = 0; m < kModsPerTrack; ++m) {
+        if (sound->mods[m].kind == kModOff) continue;
+        std::vector<float> without;
+        hearCloudPreset(preset, "sweep", m, &without);
+        double apart = 0.0;
+        for (std::size_t i = 0; i < all.size() && i < without.size(); ++i) apart += (static_cast<double>(all[i]) - without[i]) * (static_cast<double>(all[i]) - without[i]);
+        h.modHeardDb[m] = 10.0 * std::log10((apart + 1e-30) / (signal + 1e-30));
+    }
+}
+
+// The limits every CLOUD preset is held to, the engine's own six too, through the TONE and through
+// the recording. Nothing is pinned by checksum: the owner tunes them by ear. (Measured 2026-11-17:
+// granular-plan.md, batch 3.)
+constexpr double kCloudQuietestDb = -30.0, kCloudLoudestDb = -8.0;
+constexpr float kCloudPeakMost = 0.9f;
+constexpr double kCloudTailMost = 30.0;
+constexpr double kCloudModHeardDb = -40.0;
+constexpr double kCloudSpreadDb = 14.0; // the loudest and the quietest presets on one source, apart at most
+
+void testCloudPresetsAsHeard(bool measure) {
+    const TrackKind kind = TrackKind::Cloud;
+    const SynthSpec& spec = *specFor(kind);
+    if (measure) std::printf("  %-3s %-6s %-16s %18s %16s %7s %6s  %s\n", "", "folder", "name", "TONE loud / peak", "rec loud / peak", "tail", "cost", "MODs swing / heard");
+    double lo[2] = {1e9, 1e9}, hi[2] = {-1e9, -1e9};
+    for (int i = 0; i < builtInPresets(kind); ++i) {
+        const CloudHeard tone = hearCloudPreset(i, "");
+        CloudHeard rec = hearCloudPreset(i, "sweep");
+        hearCloudMods(i, rec);
+        const TrackSound* sound = presetSound(kind, i);
+        bool modsMove = true;
+        char swing[96] = "";
+        for (int m = 0; m < kModsPerTrack; ++m) {
+            if (!sound || sound->mods[m].kind == kModOff) continue;
+            modsMove = modsMove && rec.modSwing[m] > 0.005f && rec.modHeardDb[m] >= kCloudModHeardDb;
+            char one[40];
+            std::snprintf(one, sizeof one, " %d:%.2f/%.0fdB", m + 1, rec.modSwing[m], rec.modHeardDb[m]);
+            std::strcat(swing, one);
+        }
+        if (measure)
+            std::printf("  %-3d %-6s %-16s %8.1f dB %6.3f %7.1f dB %6.3f %5.1fs %5.2f%% %s\n", i + 1, spec.presetCategory(i), spec.presetName(i), tone.loudestDb, tone.peak, rec.loudestDb,
+                        rec.peak, std::max(tone.tail, rec.tail), std::max(tone.cost, rec.cost) * 100.0, swing);
+        const CloudHeard* both[2] = {&tone, &rec};
+        for (const CloudHeard* h : both) {
+            const bool fine = h->numbers && h->loudestDb >= kCloudQuietestDb && h->loudestDb <= kCloudLoudestDb && h->peak < kCloudPeakMost && h->ended && h->tail <= kCloudTailMost;
+            if (!fine) std::printf("  CLOUD %d %s / %s on %s: loudest %.1f dB, peak %.3f, tail %.1f s%s%s\n", i + 1, spec.presetCategory(i), spec.presetName(i), h == &tone ? "the TONE" : "the recording", h->loudestDb, h->peak, h->tail, h->ended ? "" : " (not ended)", h->numbers ? "" : ", NOT A NUMBER");
+            CHECK(fine);
+            const int which = h == &tone ? 0 : 1;
+            lo[which] = std::min(lo[which], h->loudestDb), hi[which] = std::max(hi[which], h->loudestDb);
+        }
+        if (!modsMove) std::printf("  CLOUD %d %s / %s: MODs%s\n", i + 1, spec.presetCategory(i), spec.presetName(i), swing);
+        CHECK(modsMove);
+    }
+    for (int which = 0; which < 2; ++which) {
+        if (measure) std::printf("  on %s: %.1f to %.1f dB\n", which ? "the recording" : "the TONE", lo[which], hi[which]);
+        CHECK(hi[which] - lo[which] <= kCloudSpreadDb);
+    }
+    CHECK(builtInPresets(kind) == 24 && Cloud::presetCount() == 6);
+    // Four folders of six, each a run of its own (the folder step walks them).
+    const char* const folders[4] = {"STILL", "DRIFT", "DUST", "CHOIR"};
+    for (int i = 0; i < 24; ++i) CHECK(std::strcmp(spec.presetCategory(i), folders[i / 6]) == 0);
+}
+
+// A player's own CLOUD preset keeps its recording: written with it, read back, and picked it puts it
+// in if the card has it (by its name, else by its base name where only one has it); where none or two
+// have it, the track keeps its own and RECORDING NOT FOUND is said.
+void testACloudPresetBringsItsRecording() {
+    Rig rig;
+    Session& session = rig.session();
+    const std::string folder = folderMade();
+    session.useSampleFolder(folder + "/samples");
+    session.usePresetFolder(folder + "/presets");
+    mkdir((folder + "/samples").c_str(), 0755);
+    mkdir((folder + "/samples/pads").c_str(), 0755);
+    mkdir((folder + "/samples/old").c_str(), 0755);
+    const std::vector<float> wave(4800, 0.25f);
+    CHECK(writeWav(folder + "/samples/hum.wav", wave, 48000) && writeWav(folder + "/samples/pads/air.wav", wave, 48000));
+    CHECK(session.addTrack(TrackKind::Cloud));
+    const int track = rig.project().trackCount() - 1;
+    TrackData& t = rig.project().tracks[track];
+    session.setTrackSample(track, "hum");
+    rig.settle();
+    const std::string text = presetFileText(t);
+    CHECK(text.find("\nwhole\nsound hum\n") != std::string::npos);
+    UserPreset read;
+    CHECK(readPresetFile(TrackKind::Cloud, text, read) && read.recording == "hum" && read.sound.whole);
+    UserPreset bad;
+    CHECK(readPresetFile(TrackKind::Cloud, "apotheca-preset 1\nsynth cloud\nsettings 1 2\nsound ../x\n", bad) && bad.recording.empty());
+    // Saved and picked on a track holding another: it comes back.
+    CHECK(session.savePreset(track, "MY HUM"));
+    session.setTrackSample(track, "pads/air");
+    const int mine = builtInPresets(TrackKind::Cloud);
+    CHECK(std::string(cloudSpec().presetName(mine)) == "MY HUM");
+    const unsigned saidBefore = session.saidCount();
+    session.chooseSynthPreset(track, mine);
+    CHECK(std::string(t.sample) == "hum" && session.saidCount() == saidBefore);
+    // Gone from the card but its base name in one folder: that one.
+    setUserPresets(TrackKind::Cloud, {UserPreset{"AIR ONCE", {25}, {}, "", TrackSound(), "air"}});
+    session.chooseSynthPreset(track, builtInPresets(TrackKind::Cloud));
+    CHECK(std::string(t.sample) == "pads/air" && session.saidCount() == saidBefore);
+    // Its base name in two folders: no guess; nowhere: the same. The track keeps its own, and it is said.
+    CHECK(writeWav(folder + "/samples/old/hum.wav", wave, 48000));
+    setUserPresets(TrackKind::Cloud, {UserPreset{"TWO HUMS", {25}, {}, "", TrackSound(), "lost/hum"}, UserPreset{"NONE", {25}, {}, "", TrackSound(), "nowhere"}});
+    session.chooseSynthPreset(track, builtInPresets(TrackKind::Cloud));
+    CHECK(std::string(t.sample) == "pads/air" && session.saidCount() == saidBefore + 1 && std::string(session.saidText()) == "RECORDING NOT FOUND");
+    session.chooseSynthPreset(track, builtInPresets(TrackKind::Cloud) + 1);
+    CHECK(std::string(t.sample) == "pads/air" && session.saidCount() == saidBefore + 2);
+    // A built-in names none: picking one leaves the track's recording.
+    session.chooseSynthPreset(track, 7);
+    CHECK(std::string(t.sample) == "pads/air");
+    setUserPresets(TrackKind::Cloud, {});
+}
+
 // FM-6's `op N` line: one operator's 21 settings in order, refused for another synth or cut short.
 void testFm6sOpLine() {
     const std::string text =
@@ -1412,6 +1648,13 @@ int main(int argc, char** argv) {
             std::printf(failures ? "%d check(s) failed\n" : "ACID's presets as heard: passed\n", failures);
             return failures ? 1 : 0;
         }
+        // --heard-cloud: CLOUD's presets, through the TONE and a recording, each MOD heard (its own ctest
+        // entry, presets_heard_cloud). --measure-cloud: every one's figures, printed.
+        if (std::strcmp(argv[a], "--heard-cloud") == 0 || std::strcmp(argv[a], "--measure-cloud") == 0) {
+            testCloudPresetsAsHeard(std::strcmp(argv[a], "--measure-cloud") == 0);
+            std::printf(failures ? "%d check(s) failed\n" : "CLOUD's presets as heard: passed\n", failures);
+            return failures ? 1 : 0;
+        }
         // --heard-jaxep: JAX-EP's added presets the same way, the VCA's clip counted too (its own ctest
         // entry, presets_heard_jaxep). --measure-jaxep: their figures, and the booklet's 32 under every phrase.
         if (std::strcmp(argv[a], "--heard-jaxep") == 0 || std::strcmp(argv[a], "--measure-jaxep") == 0) {
@@ -1431,6 +1674,7 @@ int main(int argc, char** argv) {
     testBrowsingMany();
     testTheSongFileIsAsItWas();
     testFm6sOpLine();
+    testACloudPresetBringsItsRecording();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

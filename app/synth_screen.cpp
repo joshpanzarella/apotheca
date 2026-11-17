@@ -454,22 +454,6 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
 
 // ---- drawing ----------------------------------------------------------------------------
 
-namespace {
-// The built-in TONE's outline (Cloud::tone at the engine's rate), made once: what MAIN draws, dim,
-// for a CLOUD with no recording.
-const std::vector<float>& toneOutline() {
-    static std::vector<float> peaks;
-    if (peaks.empty()) {
-        const std::vector<float>& tone = Cloud::tone(48000.f);
-        peaks.assign(512, 0.f);
-        for (std::size_t i = 0; i < tone.size(); ++i) {
-            float& peak = peaks[i * peaks.size() / tone.size()];
-            peak = std::fabs(tone[i]) > peak ? std::fabs(tone[i]) : peak;
-        }
-    }
-    return peaks;
-}
-} // namespace
 
 // CLOUD's picture on MAIN: the recording's outline (the TONE's, dim, with none), lit within SPRAY of
 // POSITION (both as the knobs have them now, macros on), POSITION a brass line, and each grain
@@ -480,7 +464,7 @@ void SynthScreen::drawPicture(SDL_Renderer* r, const Fonts& fonts) const {
     const TrackData& t = trk();
     const Session::LaneSound& sound = session_.trackSound(project_.track);
     const bool tone = !t.sample[0] || sound.missing || sound.peaks.empty();
-    const std::vector<float>& peaks = tone ? toneOutline() : sound.peaks;
+    const std::vector<float>& peaks = tone ? cloudToneOutline() : sound.peaks;
     const float position = static_cast<float>(cloud::positionShare(cloud::macroBent(static_cast<float>(t.cloud.value[cloud::Position]), session_.automated(project_.track, cloud::MacroPosition, t.macro[cloud::MacroPosition]), 0.f, 100.f)));
     const float spray = static_cast<float>(cloud::sprayShare(cloud::macroBent(static_cast<float>(t.cloud.value[cloud::Spray]), session_.automated(project_.track, cloud::MacroSpray, t.macro[cloud::MacroSpray]), 0.f, 100.f)));
     const int px = x + 2, py = y + 2 + kTickH, pw = w - 4, ph = h - 4 - 2 * kTickH;

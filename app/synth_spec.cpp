@@ -800,6 +800,19 @@ const SynthSpec& cloudSpec() {
     return spec;
 }
 
+const std::vector<float>& cloudToneOutline() {
+    static std::vector<float> peaks;
+    if (peaks.empty()) {
+        const std::vector<float>& tone = Cloud::tone(48000.f);
+        peaks.assign(512, 0.f);
+        for (std::size_t i = 0; i < tone.size(); ++i) {
+            float& peak = peaks[i * peaks.size() / tone.size()];
+            peak = std::fabs(tone[i]) > peak ? std::fabs(tone[i]) : peak;
+        }
+    }
+    return peaks;
+}
+
 const SynthSpec* specFor(TrackKind kind) {
     return kind == TrackKind::Phazed ? &phazedSpec() : kind == TrackKind::Jx3p ? &jx3pSpec() : kind == TrackKind::Fm6 ? &fm6Spec()
          : kind == TrackKind::Physic ? &physicSpec() : kind == TrackKind::Acid ? &acidSpec() : kind == TrackKind::Cloud ? &cloudSpec() : nullptr;

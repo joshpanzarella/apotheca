@@ -64,6 +64,9 @@ const SynthSpec& fm6Spec();
 const SynthSpec& physicSpec();
 const SynthSpec& acidSpec();
 const SynthSpec& cloudSpec();
+// The built-in TONE's outline (Cloud::tone at the engine's rate), 512 loudest points, made once: what
+// CLOUD's picture shows with no recording, on the handheld and on the designer page.
+const std::vector<float>& cloudToneOutline();
 
 // What a preset may hold past its synth (docs/plans/presets-plan.md): the track's three effects, its
 // two sends, its GLIDE FROM and its two MODs, "the track's sound". A preset that holds it is WHOLE:
@@ -89,6 +92,7 @@ struct UserPreset {
     std::vector<float> macros; // the eight macros as they were when it was saved
     std::string folder;        // a built-in's folder; empty for the player's own (USER)
     TrackSound sound;          // the track's sound past its synth (`whole` if the preset holds it)
+    std::string recording;     // CLOUD's: the track's recording when the player saved it ("" none). A built-in never names one
 };
 void setUserPresets(TrackKind kind, std::vector<UserPreset> presets);
 const std::vector<UserPreset>& userPresets(TrackKind kind);

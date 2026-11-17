@@ -471,6 +471,27 @@ void Session::loadTrackSample(int track) {
     engine.setTrackSample(track, std::move(data));
 }
 
+bool Session::putPresetRecording(int track, const std::string& name) {
+    if (track < 0 || track >= kNumTracks || !holdsRecording(project.tracks[track].kind) || !sampleNameOk(name)) return false;
+    if (name == project.tracks[track].sample) return true;
+    std::string found;
+    int alike = 0;
+    for (const std::string& have : sampleNames()) {
+        if (have == name) {
+            found = have;
+            alike = 1;
+            break;
+        }
+        if (sampleLabel(have) == sampleLabel(name) && ++alike == 1) found = have;
+    }
+    if (alike != 1) { // none, or two of its base name: never a guess
+        say("RECORDING NOT FOUND");
+        return false;
+    }
+    setTrackSample(track, found);
+    return true;
+}
+
 void Session::setTrackSample(int track, const std::string& name) {
     if (track < 0 || track >= kNumTracks || !holdsRecording(project.tracks[track].kind)) return;
     std::snprintf(project.tracks[track].sample, sizeof project.tracks[track].sample, "%s", name.c_str());
