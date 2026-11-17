@@ -361,6 +361,14 @@ def main():
         check("boot-0001.txt" in out and "Apotheca boot log" in out, "boot log written to DATA")
         out, _ = m.run("grep -c '^\\[' /data/apotheca/logs/boot-0001.txt")
         check(int(out or 0) > 20, "the boot log holds the kernel's messages (%s lines)" % out)
+        # The same log on the BOOT partition (the FAT one), beside U-Boot's
+        # report: the one place to look on a card out of a dark handheld.
+        out, _ = m.run("mkdir -p /tmp/b && mount -t vfat -o ro /dev/vda1 /tmp/b && "
+                       "head -n 1 /tmp/b/linux-report.txt; grep -c . /tmp/b/linux-report.txt; "
+                       "cmp /tmp/b/linux-report.txt /data/apotheca/logs/boot-latest.txt && echo same; "
+                       "ls /tmp/b/README.txt; umount /tmp/b; grep -c 'could not copy' /run/apotheca/boot.log")
+        check("Apotheca boot log" in out and "same" in out and "/tmp/b/README.txt" in out and out.strip().endswith("0"),
+              "the boot log is also on the boot partition, as linux-report.txt (%s)" % " | ".join(out.split("\n"))[:120])
         out, _ = m.run("awk '{print $4}' /proc/$$/stat")
         # (the last line: a kernel message can land on the console in between)
         check(out.splitlines()[-1].strip() == "1" if out else False,

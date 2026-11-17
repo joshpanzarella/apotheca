@@ -707,6 +707,137 @@ right password gets an address, with the wrong one says so, `forget` and
 the 8821CS loading its firmware and joining the owner's network, the
 transfer rate, and whether the radio is heard in the sound.
 
+## 15. BLACK: the first-screen unit that would not start (2026-11-17)
+
+**Not solved: nobody knows yet why BLACK shows nothing with our card. The
+next card is built to say where it stops, and takes out the likeliest cause.
+Nothing of it has run on a handheld.**
+
+The owner has two RG40XXVs. WHITE (the newer screen) starts with every one
+of our cards. BLACK (the first screen):
+
+| When | Card | BLACK did |
+| --- | --- | --- |
+| earlier in the day | an older card of ours (the v2 tree put there by hand) | **the backlight lit, no picture** |
+| later | the card of section 13 (PE6 picks the tree) | nothing: no light, no backlight |
+| later still | the older card again | nothing; on a charger its charging light came on |
+| after that | **a stock Anbernic card** | **starts with no problem** |
+| after that | our newest card again | **no light at all, not even for a moment; no backlight; no boot log written** |
+
+### What the facts allow
+
+**A lit backlight does not show that anything of ours ran.** The backlight is
+on by the board itself from the moment the power chip brings the rails up:
+on WHITE the stripes showed from power-on, seconds before Linux's driver
+touched the backlight, and nothing in the SPL, Trusted Firmware or mainline
+U-Boot drives PD28 (section 13's PREBOOT turned it off for that reason). So
+the first row fits both "Linux ran with the wrong tree" and "the SPL hung".
+
+**"Nothing, not even for a moment" is not a hang.** A start that hangs
+anywhere (the memory set-up, U-Boot, the kernel) leaves the rails up, so the
+backlight stays lit as in the first row. Dark from the first moment means
+the rails never stayed up: the power was cut within a fraction of a second,
+or never came on.
+
+### The causes, ranked
+
+| # | Cause | For | Against | Told apart by |
+| --- | --- | --- | --- | --- |
+| 1 | **Our SPL turns the power off at once: the "started by a charger" rule.** `CONFIG_AXP_DISABLE_BOOT_ON_POWERON` with ROCKNIX's U-Boot patch 0002: in the SPL, if the AXP717's power-on cause register (0x20) reads exactly "VBUS", VBUS is good and a battery is there, it writes the power-off bit. About 0.2 s after the key, before any light | The only code in the whole chain that cuts the power, and it gives exactly "nothing, not for a moment". BLACK went on a charger when a flat battery was suspected, and everything of ours has been dead on it since. The stock boot loader has no such rule. Both of our cards have it (it is from batch 1), which fits the older card dying too | ROCKNIX ships it, so a key press on a charger must work on its testers' units: for BLACK it needs the register to still read "VBUS" after a key press (a stale cause, or a power chip that starts again by the charger after our power-off, so every key press lands in a start "by VBUS"). **Not known whether the charger was in at each try** | **No new card needed**: charger out, hold the power key 15 s (the power chip's own cut), let go, wait, press it with our newest card. If it starts, this is it |
+| 2 | **The battery was flat, and our cards were never tried on a charged BLACK without the charger** (the first row ran Linux behind a dark screen until it turned itself off or the owner did; a card that never shows a picture invites that) | Fits rows 2 and 3 | The last row was after the stock card ran, so the battery had charge, unless the charger was the only thing keeping it up, which is cause 1 again | The same test |
+| 3 | **Something in section 13's PREBOOT or the first screen's tree** (what changed between the first row and the second) | The time order | U-Boot's PREBOOT only runs about a second in: the board's own backlight would have shown for that second, and U-Boot's status light (PI11) before it; the same commands run on WHITE; a failed command does not stop the list (`;`), and a tree is always chosen (desk test, PE6 "high" included). Whatever tree is loaded, Linux lights the green light a second in; the first screen's tree gave WHITE everything but the picture (section 11) | The new card's lights and `uboot-report.txt` |
+| 4 | **BLACK's memory is another part** (LPDDR3, or an LPDDR4 our fixed timings do not train): the SPL stops in `sunxi_dram_init` | H700 handhelds exist with both kinds (ROCKNIX builds two U-Boots and tells them apart by the memory rail, 1.1 or 1.2 V); mainline's SPL has the kind and timings fixed at build time (`CONFIG_SUNXI_DRAM_H616_LPDDR4`, `CONFIG_DRAM_CLK=672`, the TPR values), only the size is found | It is a hang: the backlight would stay lit, which the last row does not have (the first row does). ROCKNIX, muOS and Knulli list the RG40XX V as LPDDR4 with no second kind; none of the three reports one | The new card: green light on, never the red, no `uboot-report.txt`. Then `scripts/build-image.sh --dram lpddr3`, and `stock-probe.sh` below reads the rail |
+| 5 | The boot ROM does not take our card in BLACK (slot TF2, a card it reads badly, the SPL's place) | "No light" fits | The stock card starts from the same slot; the older card lit the backlight (which the stock boot ROM alone does too, so this is weak) | The new card: no green light either |
+
+**Other chips inside?** Possible, and not to be seen from outside. What is
+known to vary on this board family: the screen (two kinds, told by PE6),
+and on other H700 models the memory. The WiFi chip, the power chip (AXP717)
+and the SoC are the same in every report found. `os/tools/stock-probe.sh`
+run on the stock system (below) writes down what BLACK has.
+
+### What the new card does about it
+
+| Part | Change |
+| --- | --- |
+| **Cause 1 taken out** | `CONFIG_AXP_DISABLE_BOOT_ON_POWERON` is off (`uboot.fragment`). ROCKNIX's patch 0002 is still applied and does nothing. **A charger plugged in while off now starts the handheld** (Apotheca turns itself off after 15 idle minutes); whether it then goes on charging off is not tried |
+| **The lights say how far it got** | Green (PI12): lit by the SPL as its first act, before the PMIC and the memory (**U-Boot patch 0003**, `CONFIG_SPL_EARLY_LED_GPIO=268`, six lines in `board_init_f`). Red (PI11): U-Boot's status LED, lit when U-Boot itself runs (it was: ROCKNIX's setting, bit 267). Linux's LED driver puts the red out and **blinks the green** (`linux,default-trigger = "heartbeat"`, put into every tree by `post-image.sh`). `apotheca-power` makes it steady once a button is pressed |
+| **U-Boot leaves a note on the card** | PREBOOT ends by writing `uboot-report.txt` to the boot partition (`env export -t`, `fatwrite`): `apotheca_pe6` (low / high), `apotheca_screen`, `apotheca_why` (PE6, a file's name, dtb.img), `fdtfile`, and `apotheca_starts`, a count read back from the last report (hexadecimal). A card taken out of a handheld that showed nothing says whether U-Boot ran |
+| **Linux's log on the same partition** | `S90bootlog` copies the boot log to the boot partition as `linux-report.txt` (mounted for the copy only), with U-Boot's report in it, and writes it there even when DATA could not be made or mounted |
+| **The backlight on from U-Boot** | After the PE6 read U-Boot turns the panel off and **the backlight on** (it turned it off until now): a lit, empty screen until Linux's driver takes it over. A start that stops after U-Boot is never dark |
+| **The screen by hand, without a tree** | `screen-first.txt` or `screen-v2.txt` at the top of the boot partition (any content) overrides PE6; `dtb.img` still wins over both |
+| **Never running behind a dark screen** | Nothing can see the picture (the panel's SPI is write-only), so the owner's hands say it. `apotheca-power`: a device tree counts as **seen working** once a joypad button is pressed while it runs (`/data/apotheca/screen-seen` keeps its name). Until then, **off after 300 s with no button** (`screen-check SECONDS` in `power.txt`; 0 never). **Off after 60 s when `/sys` has no backlight or no display.** Only where the tree names itself (`rocknix-dt-id`: not under qemu). The app's 15-minute idle rule stays behind it |
+
+**What a start looks like now**, and where it stopped if it goes no further:
+
+| Seen | Reached | If it stops here |
+| --- | --- | --- |
+| nothing, the screen dark | not even the SPL | causes 1 (should be gone), 2, 5: the battery, the slot, the card |
+| **green light**, the screen as the board leaves it (lit) | the SPL | the PMIC or the memory set-up: cause 4. No `uboot-report.txt` |
+| **green and red** (perhaps one orange light), the screen lit and empty | U-Boot; `uboot-report.txt` written, its count one up | the kernel did not start or stopped in its first second |
+| **red out, green blinking**; dark a moment, text, Apotheca | Linux | a dark or garbage screen here is the wrong screen kind: `screen-first.txt` / `screen-v2.txt`. `linux-report.txt` has everything. Off by itself after 5 minutes with no button |
+| green steady | a button was pressed with this screen | - |
+
+### Tested on the desk
+
+| Test | Result |
+| --- | --- |
+| `uboot-pick-test.py` (the card's PREBOOT in mainline U-Boot under qemu, the gpio commands echoed, the card's own boot partition) | **every check passes (24)**: five ways (PE6 low, PE6 high, `screen-first.txt` over a low pin, `screen-v2.txt` over a high pin, `dtb.img` over both): the right tree loaded and the kernel started each time; the green light's command first, the backlight off for the pulse and on after it; `uboot-report.txt` read back from the card after each start with the count 1 to 5, the pin, the tree and why; the FAT sound after the five writes (one wart, below) and `Image`, `extlinux.conf` and the trees byte for byte as made |
+| `power-test.py` | **every check passes (50)**, 17 of them new: no check where the tree does not name itself; a tree not seen: off after `screen-check` seconds, nothing kept; the stick's readings and a button let go are not a press; a press keeps the tree's name and makes the light steady (trigger `none`, on); the next start is "seen before"; another tree is checked again; a press with the screen turned off by the power key does not count; `screen-check 0` never; no display, or no backlight, in `/sys`: off. **Mutants** (seven: the turn-off taken out, a let-go counted as a press, "or" made "and" in the no-screen rule, any old name counted as seen, the screen-off guard taken out, the stick counted, the trigger left blinking): each fails the test |
+| `check-image.sh` | **every check passes (93)**. New: the PREBOOT in the image's U-Boot (the green light first, the backlight on after the read, the two override files inside the "by PE6" branch, the report written last); **the text "Power on by plug-in" is not in the image's U-Boot** (the charger rule is compiled out); every tree on the boot partition has the heartbeat; README.txt names the three files; `apotheca-power` and `S90bootlog` in the root hold the new rules |
+| `qemu-test.py` | **every check passes (94)**, the one gap of batch 2 said again. New: on the first boot `linux-report.txt` is on the boot partition, the same bytes as `boot-latest.txt`. (qemu's tree does not name itself, so the screen rules do not run there: `power-test.py` has them.) **Not tested**: the log written to the boot partition alone when DATA is not there |
+| The SPL's new lines | read in the built SPL's code: `gpio_direction_output(268, 1)` straight after `gpio_init()`, before `spl_init()`, the console, the I2C bus and `sunxi_board_init()` (the PMIC and the DRAM). **Not run**: qemu has no H700 |
+| Reproducible | **the same `img.gz` to the bit** from two builds, U-Boot and the tools rebuilt in between |
+
+**One wart**: U-Boot's FAT code does not keep the FSInfo sector's
+"free clusters" note, so after its write `fsck.fat` says "Free cluster
+summary wrong" (by one or two clusters) and nothing else; Linux, Windows and
+mtools count for themselves. With it put right, `fsck.fat` finds nothing.
+
+**The image** was built from commit `7d2cc6d`: `apotheca-rg40xxv.img.gz`,
+32.7 MB (32,660,090 bytes), sha256
+`ee7c3bdfe563dfeaf1708ff3ff62209f1b6d3ca3a46b57e54091a2e19aaf5735`.
+
+### Only the handheld can tell
+
+Everything in the table of lights: that PI12 is the green light and PI11
+the red on the RG40XXV (from the RG35XX tree ROCKNIX builds on; WHITE's
+boot log lists `green:power` and a red one), that the SPL's write lights
+it, that U-Boot's `fatwrite` works on the H700's card reader (the desk used
+qemu's disk; U-Boot's own "save the settings to FAT" uses the same code on
+this board), what an unpowered panel with the backlight on looks like, and
+that Linux's pwm-backlight driver takes PD28 over from a GPIO driven high.
+**And the cause itself.**
+
+### What is possible for a kernel that stops before its own programs
+
+Not built, because both units run the same kernel and nothing points
+there. If the lights ever say "U-Boot ran, Linux did not": the kernel's
+`ramoops` (`CONFIG_PSTORE_RAM` is off in ROCKNIX's config; a kernel rebuild)
+keeps its messages in a fixed piece of memory that survives a reset, though
+not reliably a power cut, and U-Boot can write that piece to the boot
+partition at the next start with the `fatwrite` already there. The other
+way is the UART pads inside the case (115200), which needs the case open.
+
+### The stock card can say what is inside BLACK
+
+`os/tools/stock-probe.sh`: copied to the stock card's `Roms/APPS` folder
+and run from the stock system's App Center > APPS, it writes
+`stock-probe.txt` beside itself: the memory's rail (1.1 V LPDDR4, 1.2 V
+LPDDR3) and size, the power chip's rails and readings, the screen's driver
+and **pin PE6 as the stock kernel reads it**, the WiFi chip, the card's
+`boot0` header, the kernel's messages. It changes nothing else. **Not
+tried**: written from what is known of Allwinner's 4.9 system; whether that
+menu runs a `.sh` put there is from other people's stock mods, not seen.
+Run on WHITE too, the two files side by side say every difference.
+
+### To undo later
+
+The report writes (U-Boot's and Linux's, on the boot partition at every
+start) are for this hunt: a power cut in the middle of one can leave the
+FAT needing a check. Take them out, or write only on a start that failed,
+once BLACK starts. Whether a charger should start the handheld is the
+owner's call once cause 1 is proved or cleared.
+
 ## Sources
 
 - Anbernic, RG 40XXV product page (SoC, RAM, screen, battery, WiFi, BT): https://anbernic.com/products/rg-40xxv
