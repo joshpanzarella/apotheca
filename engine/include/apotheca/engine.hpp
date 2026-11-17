@@ -111,7 +111,8 @@ constexpr float kMinTempo = 40.f;
 constexpr float kLongestEchoGapSeconds = 2.f * 8.f * 15.f / kMinTempo;
 static_assert(kBusRestSeconds > kLongestEchoGapSeconds + 1.f, "a bus at rest must have waited longer than any gap in a tail");
 constexpr float kMaxTempo = 240.f;
-constexpr int kMaxScenes = 16;
+constexpr int kMaxScenes = 64;    // a song's scenes (scenes-plan.md: it was 16; one with nothing in it costs next to nothing)
+constexpr int kOldSceneCount = 16; // what it was: a song file's `repeats` and `length` still have sixteen numbers at least
 static_assert(kMaxScenes <= 64, "the engine keeps which scenes it has handed a store a bit a scene, in 64 bits (Engine::given_)");
 constexpr int kMaxRepeats = 16;
 constexpr int kMaxBars = 8;       // the longest a cell (one track in one scene) can be

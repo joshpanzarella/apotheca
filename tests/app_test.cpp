@@ -429,14 +429,14 @@ void testTheCopyBrushLifts() {
 void testTheSongScreenScrolls() {
     Rig rig;
     rig.tap(L2);
-    rig.tap(DOWN, 40);
-    CHECK(rig.app.song().cursorScene() == kMaxScenes - 1);
-    rig.tap(UP, 40);
+    rig.tap(DOWN, kMaxScenes + 4);
+    CHECK(rig.app.song().cursorScene() == kMaxScenes - 1 && rig.app.song().topScene() == kMaxScenes - 8);
+    rig.tap(UP, kMaxScenes + 4);
     CHECK(rig.app.song().cursorScene() == 0);
     rig.tap(DOWN); // (the last of those presses went up onto the track's head: back down off it)
     CHECK(rig.app.song().cursorScene() == 0 && !rig.app.song().cursorOnHead());
     rig.key(STICK_DOWN, true);
-    rig.frames(40);
+    rig.frames(200); // (24 rows a second at full: 64 rows in under three)
     rig.key(STICK_DOWN, false);
     CHECK(rig.app.song().cursorScene() == kMaxScenes - 1);
 }
@@ -8545,8 +8545,8 @@ void testUndoIsAsItWasReadWhole() {
         for (int i = 0; i < kNumTracks; ++i) {
             const TrackData& u = x.tracks[i];
             const TrackData& v = y.tracks[i];
-            same = same && u.kind == v.kind && std::memcmp(u.bars, v.bars, sizeof u.bars) == 0 && std::memcmp(u.drums, v.drums, sizeof u.drums) == 0 &&
-                   std::memcmp(u.notes, v.notes, sizeof u.notes) == 0 && std::memcmp(u.automation, v.automation, sizeof u.automation) == 0;
+            same = same && u.kind == v.kind && std::memcmp(u.bars, v.bars, sizeof u.bars) == 0 && u.drums.sameAs(v.drums) &&
+                   u.notes.sameAs(v.notes) && u.automation.sameAs(v.automation);
         }
         same = same && a.app.session().undoSteps() == b.app.session().undoSteps() && a.app.session().redoSteps() == b.app.session().redoSteps() &&
                a.app.session().imagesSent() == b.app.session().imagesSent();
@@ -8561,9 +8561,9 @@ void testUndoIsAsItWasReadWhole() {
                         const TrackData& v = y.tracks[i];
                         if (u.kind != v.kind) std::printf("     track %d kind %d %d\n", i, int(u.kind), int(v.kind));
                         if (std::memcmp(u.bars, v.bars, sizeof u.bars)) std::printf("     track %d bars\n", i);
-                        if (std::memcmp(u.drums, v.drums, sizeof u.drums)) std::printf("     track %d drums\n", i);
-                        if (std::memcmp(u.notes, v.notes, sizeof u.notes)) std::printf("     track %d notes\n", i);
-                        if (std::memcmp(u.automation, v.automation, sizeof u.automation)) std::printf("     track %d auto\n", i);
+                        if (!u.drums.sameAs(v.drums)) std::printf("     track %d drums\n", i);
+                        if (!u.notes.sameAs(v.notes)) std::printf("     track %d notes\n", i);
+                        if (!u.automation.sameAs(v.automation)) std::printf("     track %d auto\n", i);
                     }
                     std::printf("     steps %d repeats %d undo %d %d redo %d %d images %u %u text %d\n", std::memcmp(x.steps, y.steps, sizeof x.steps), std::memcmp(x.repeats, y.repeats, sizeof x.repeats),
                                 a.app.session().undoSteps(), b.app.session().undoSteps(), a.app.session().redoSteps(), b.app.session().redoSteps(), a.app.session().imagesSent(), b.app.session().imagesSent(), songText(x) == songText(y));

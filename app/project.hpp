@@ -4,6 +4,9 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstring>
+#include <memory>
+#include <type_traits>
 
 #include "apotheca/engine.hpp"
 #include "apotheca/physic.hpp"
@@ -214,12 +217,90 @@ inline bool isSynth(TrackKind kind) { return kind != TrackKind::None && kind != 
 // asks for the sampler.
 inline bool holdsRecording(TrackKind kind) { return kind == TrackKind::Sampler || kind == TrackKind::Cloud; }
 
-struct TrackData {
+// The patterns of every scene of a track, one piece a scene, MADE THE FIRST TIME SOMETHING IS
+// WRITTEN THERE (scenes-plan.md: a song of kMaxScenes scenes uses a few, and fixed arrays at 64 were
+// 4 MB a track, copied by every copy of it). Read, a scene with no piece is the one blank piece.
+// So `t.drums[scene][bar]` reads and writes as an array did; a non-const track makes the piece even
+// to read it, so whatever only looks takes the track `const` (or asks `has` first). A piece made and
+// emptied again stays made: it is only memory, and reads as what it holds.
+template <class Piece>
+class SceneCells {
+    static_assert(std::is_trivially_copyable<Piece>::value, "a piece is copied and compared as bytes");
+
+public:
+    using Value = decltype(Piece::v);
+    SceneCells() = default;
+    SceneCells(const SceneCells& other) { *this = other; }
+    SceneCells& operator=(const SceneCells& other) {
+        // Byte for byte, as the track's other fields. A piece here stays where it is (the blank one
+        // copied in where `other` has none), so what holds a bar of it still holds that bar.
+        for (int s = 0; s < kMaxScenes && this != &other; ++s)
+            if (other.at_[s] || at_[s]) std::memcpy(static_cast<void*>(&made(s)), other.at_[s] ? other.at_[s].get() : &blank(), sizeof(Piece));
+        return *this;
+    }
+    SceneCells(SceneCells&&) = default;
+    SceneCells& operator=(SceneCells&&) = default;
+    Value& operator[](int s) { return made(s).v; }
+    const Value& operator[](int s) const { return at_[s] ? at_[s]->v : blank().v; }
+    bool has(int s) const { return at_[s] != nullptr; }
+    int held() const { // how many pieces are made
+        int n = 0;
+        for (const auto& p : at_) n += p ? 1 : 0;
+        return n;
+    }
+    void clear() {
+        for (auto& p : at_) p.reset();
+    }
+    void drop(int s) { at_[s].reset(); }                // back to none
+    void take(int to, int from) { at_[to] = std::move(at_[from]); } // `to` has `from`'s piece, `from` none
+    // Is scene `s` here as scene `t` of `other` is, byte for byte (no piece is the blank piece)?
+    bool same(int s, const SceneCells& other, int t) const {
+        if (!at_[s] && !other.at_[t]) return true;
+        return std::memcmp(&(*this)[s], &other[t], sizeof(Piece)) == 0;
+    }
+    bool sameAs(const SceneCells& other) const { // every scene
+        for (int s = 0; s < kMaxScenes; ++s)
+            if (!same(s, other, s)) return false;
+        return true;
+    }
+    // Every scene in turn, read (a scene with no piece is the blank one: going through makes none).
+    struct Reading {
+        const SceneCells* cells;
+        int s;
+        const Value& operator*() const { return (*cells)[s]; }
+        Reading& operator++() { return ++s, *this; }
+        bool operator!=(const Reading& other) const { return s != other.s; }
+    };
+    Reading begin() const { return {this, 0}; }
+    Reading end() const { return {this, kMaxScenes}; }
+    static const Piece& blank() {
+        static const Piece none;
+        return none;
+    }
+
+private:
+    Piece& made(int s) {
+        if (!at_[s]) at_[s].reset(new Piece(blank()));
+        return *at_[s];
+    }
+    std::unique_ptr<Piece> at_[kMaxScenes];
+};
+struct DrumBars { DrumPattern v[kMaxBars]; };
+struct NoteBars { NotePattern v[kMaxBars]; };
+struct AutoLanes { // automation: [lane][bar * 16 + step], kAutoNone where nothing is written
+    float v[kAutoLanes][kAutoSteps];
+    AutoLanes() {
+        for (auto& lane : v)
+            for (float& x : lane) x = kAutoNone;
+    }
+};
+
+// Everything a track holds but its patterns: one block of bytes, copied and compared so (the
+// song's text cache, makeBlank), padding and all.
+struct TrackFields {
     TrackKind kind = TrackKind::None;
     // A cell (this track in one scene) is 1 to 8 bars long. Bars past its
     // length are kept but not played.
-    DrumPattern drums[kMaxScenes][kMaxBars];
-    NotePattern notes[kMaxScenes][kMaxBars];
     int bars[kMaxScenes];
     EffectData effects[kTrackSlots]; // on this track, one after the other
     float send[kBuses] = {};         // how much of it goes to the ECHO and the SPACE bus, 0..1
@@ -252,24 +333,56 @@ struct TrackData {
     CloudPatch cloud;            // when it is CLOUD (the same: its first preset, Soft Cloud). Room for 24, 17 used
     MorphPatch morph;            // when it is MORPH (the same: its first preset, Analog Sweep). Room for 40, 29 used
     float macro[kSynthMacros];
-    // Automation: [scene][lane][bar * 16 + step], or kAutoNone (see the engine's kAutoLanes).
-    float automation[kMaxScenes][kAutoLanes][kAutoSteps];
     char name[11] = {};  // what the player calls the track ("BASS"); empty: its instrument's name
     bool muted = false;  // silent until unmuted; kept with the song
     bool solo = false;   // only soloed tracks are heard while any is; not kept with the song
     char sample[64] = {};           // when it is a sampler or a CLOUD (holdsRecording): its recording's file name (as a lane's), or empty
     int sampler[sampler::kSettings]; // ...and its settings
 
-    TrackData() {
+    TrackFields() {
         for (float& v : laneLevel) v = 1.f;
         for (float& m : macro) m = 0.5f;
         for (int& b : bars) b = 1;
         for (int i = 0; i < sampler::kSettings; ++i) sampler[i] = sampler::settingDefault(i);
-        for (auto& scene : automation)
-            for (auto& lane : scene)
-                for (float& v : lane) v = kAutoNone;
     }
+};
+static_assert(std::is_trivially_copyable<TrackFields>::value, "a track's fields are kept and compared as bytes");
+
+struct TrackData : TrackFields {
+    // Its patterns, a piece a scene (SceneCells): the hits of a drum track, the notes of a synth
+    // track (each only where written), and the automation, [scene][lane][bar * 16 + step], or
+    // kAutoNone (see the engine's kAutoLanes).
+    SceneCells<DrumBars> drums;
+    SceneCells<NoteBars> notes;
+    SceneCells<AutoLanes> automation;
+
+    TrackData() = default;
+    // A copy is the fields byte for byte and the patterns piece for piece.
+    TrackData(const TrackData& other) : TrackFields(), drums(other.drums), notes(other.notes), automation(other.automation) { fieldsFrom(other); }
+    TrackData& operator=(const TrackData& other) {
+        if (this == &other) return *this;
+        fieldsFrom(other);
+        drums = other.drums;
+        notes = other.notes;
+        automation = other.automation;
+        return *this;
+    }
+    TrackFields& fields() { return *this; }
+    const TrackFields& fields() const { return *this; }
+    void fieldsFrom(const TrackFields& other) { std::memcpy(static_cast<void*>(&fields()), &other, sizeof(TrackFields)); }
+    bool sameFields(const TrackFields& other) const { return std::memcmp(&fields(), &other, sizeof(TrackFields)) == 0; }
+    // Does scene `s` have a piece of any kind (else it has nothing, whatever its length says)?
+    bool holdsPieces(int s) const { return drums.has(s) || notes.has(s) || automation.has(s); }
+    int piecesHeld() const { return drums.held() + notes.held() + automation.held(); }
+    // Are every scene's patterns here those of `other`, byte for byte (no piece is the blank piece)?
+    bool samePatternsAs(const TrackData& other) const {
+        for (int s = 0; s < kMaxScenes; ++s)
+            if (!drums.same(s, other.drums, s) || !notes.same(s, other.notes, s) || !automation.same(s, other.automation, s)) return false;
+        return true;
+    }
+
     bool sceneEmpty(int scene) const {
+        if (!drums.has(scene) && !notes.has(scene)) return true;
         for (int bar = 0; bar < bars[scene]; ++bar) {
             if (kind == TrackKind::Drums && !drums[scene][bar].empty()) return false;
             if (isSynth(kind) && !notes[scene][bar].empty()) return false;
@@ -277,6 +390,9 @@ struct TrackData {
         return true;
     }
 };
+// (fieldsFrom copies the fields over the base: the patterns must start past its last byte, which
+// they do when they are not aligned more loosely than it.)
+static_assert(alignof(TrackFields) <= alignof(SceneCells<DrumBars>), "the patterns may not stand in the fields' last padding");
 
 // A new kit's CHOKE groups: the built-in kit's two hats in CHOKE 1, so the closed hat cuts the open one
 // (the owner's case, 2026-11-15), every other lane in none. The project only: Session::chokeNewKit tells

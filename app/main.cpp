@@ -1472,6 +1472,34 @@ int main(int argc, char** argv) {
         pushKey(SDLK_BACKSPACE, true); // SELECT, held
         tapKey(SDLK_a, std::strcmp(view + 10, "-full") == 0 ? kMaxScenes : 1); // Y
         pushKey(SDLK_BACKSPACE, false);
+    } else if (std::strncmp(view, "scenes", 6) == 0) {
+        // A song past sixteen scenes (scenes-plan.md): the demo's last scene copied with NEXT SCENE up to 48
+        // ("scenes-full": all 64). On SONG with the cursor on scene 48 (rows 41 to 48); "-end" on the row past
+        // the last scene (AT END); "-full" on scene 64; "-grid" and "-roll" the drum grid and the piano roll on
+        // scene 48, its cells eight bars long, on the eighth, just after SEL + L2 ("SCENE 48: 127 STEPS OF 128");
+        // "-playing" SONG with scene 48 playing (the top bar's scene).
+        const char* kind = view + 6;
+        const int want = std::strcmp(kind, "-full") == 0 ? kMaxScenes : 48;
+        for (int i = 0; i < kMaxScenes && app.project().sceneCount() < want; ++i) {
+            app.project().scene = app.project().sceneCount() - 1;
+            app.session().nextScene();
+        }
+        const int last = want - 1;
+        app.project().scene = last;
+        if (std::strcmp(kind, "-grid") == 0 || std::strcmp(kind, "-roll") == 0) {
+            app.project().track = kind[1] == 'r' ? 1 : 0;
+            app.session().setCellBars(app.project().track, last, kMaxBars);
+            app.project().bar = kMaxBars - 1;
+            if (kind[1] == 'r') app.notes().moveCursorTo(57, 6);
+            pushKey(SDLK_BACKSPACE, true); // SELECT, held
+            tapKey(SDLK_1);                // L2: a step shorter
+            pushKey(SDLK_BACKSPACE, false);
+        } else {
+            app.session().view = View::Song;
+            if (std::strcmp(kind, "-end") == 0) app.song().moveCursorTo(app.song().songEndRow(), -1);
+            else app.song().moveCursorTo(last, 0);
+            if (std::strcmp(kind, "-playing") == 0) tapKey(SDLK_RETURN); // START: from the scene worked on
+        }
     } else if (std::strncmp(view, "copy-bar", 8) == 0) {
         // COPY A BAR: L1 held (the bar says what R1 and A do) just after R1 copied the bar (BAR 1 COPIED),
         // on the drum grid; on the piano roll ("copy-bar-notes"); and a drum bar refused on a synth track

@@ -39,7 +39,7 @@ bool changeEffectType(Session& session, int track, int slot, EffectKind to) {
             if (had < 0) continue;
             std::map<float, float> known; // a lane is mostly a few values many times
             for (int scene = 0; scene < kMaxScenes; ++scene)
-                for (int step = 0; step < kAutoSteps; ++step) {
+                for (int step = 0; step < kAutoSteps && t.automation.has(scene); ++step) {
                     const float v = t.automation[scene][autoLaneOfEffect(slot, had)][step];
                     if (!(v >= 0.f)) continue;
                     auto found = known.find(v);

@@ -461,45 +461,47 @@ void testNoRoom() {
     Rig rig;
     fill(rig);
     Project& p = rig.project();
-    // Something in the fifteenth scene: there is room for exactly one more.
-    p.tracks[0].drums[14][0].level[0][0] = 0.8f;
+    const int last = kMaxScenes - 1;
+    const std::string full = "NO ROOM: " + std::to_string(kMaxScenes) + " SCENES", lastCopy = "SCENE " + std::to_string(kMaxScenes) + ": COPY OF " + std::to_string(last);
+    // Something in the last scene but one: there is room for exactly one more.
+    p.tracks[0].drums[last - 1][0].level[0][0] = 0.8f;
     rig.session().applyProject();
     rig.session().view = View::Pattern;
     rig.settle();
-    CHECK(p.sceneCount() == 15);
-    p.scene = 14; // on the fifteenth: its copy is the sixteenth, the last there is
+    CHECK(p.sceneCount() == last);
+    p.scene = last - 1; // on the last but one: its copy is the last there is
     rig.settle();
     rig.nextScene();
-    CHECK(p.scene == 15 && p.sceneCount() == 16 && rig.said() == "SCENE 16: COPY OF 15" && p.tracks[0].drums[15][0].level[0][0] == 0.8f);
+    CHECK(p.scene == last && p.sceneCount() == kMaxScenes && rig.said() == lastCopy && p.tracks[0].drums[last][0].level[0][0] == 0.8f);
     rig.settle();
 
     // Full. From the first scene, from the last: it says so and nothing at all changes.
-    for (int scene : {0, 15}) {
+    for (int scene : {0, last}) {
         p.scene = scene;
         rig.settle();
         const std::string was = songText(p);
         const int steps = rig.session().undoSteps(), redos = rig.session().redoSteps();
         rig.nextScene();
-        CHECK(rig.said() == "NO ROOM: 16 SCENES");
+        CHECK(rig.said() == full);
         CHECK(p.scene == scene && songText(p) == was && rig.session().undoSteps() == steps && rig.session().redoSteps() == redos);
         CHECK(rig.session().view == View::Pattern);
         rig.settle();
         CHECK(songText(p) == was && rig.session().undoSteps() == steps);
     }
 
-    // On the sixteenth scene of a short song (nothing in it, nothing after scene 3): no room either, there is no "after".
+    // On the last scene of a short song (nothing in it, nothing after scene 3): no room either, there is no "after".
     Rig other;
     fill(other);
-    other.project().scene = 15;
+    other.project().scene = last;
     other.settle();
     const std::string was = songText(other.project());
     other.nextScene();
-    CHECK(other.said() == "NO ROOM: 16 SCENES" && other.project().scene == 15 && songText(other.project()) == was);
-    // ...but on the fifteenth of that song there is: an empty scene copied is an empty scene, and the player moves.
-    other.project().scene = 14;
+    CHECK(other.said() == full && other.project().scene == last && songText(other.project()) == was);
+    // ...but on the last but one of that song there is: an empty scene copied is an empty scene, and the player moves.
+    other.project().scene = last - 1;
     other.settle();
     other.nextScene();
-    CHECK(other.said() == "SCENE 16: COPY OF 15" && other.project().scene == 15 && other.project().sceneCount() == 3);
+    CHECK(other.said() == lastCopy && other.project().scene == last && other.project().sceneCount() == 3);
 }
 
 // ---- undo ------------------------------------------------------------------------------------------
@@ -1074,24 +1076,24 @@ void testUndoWhileTheFirstOfTheTwoPlays() {
     CHECK(rig.engine->playScene() == 1 && p.playScene == 1);
 }
 
-// The sixteenth scene, with nothing in it, is going round, and a copy is made further up: there is
-// no seventeenth to move to. The playing stays, and so does what the screens are told.
+// The last scene (kMaxScenes), with nothing in it, is going round, and a copy is made further up:
+// there is no scene after it to move to. The playing stays, and so does what the screens are told.
 void testTheLastSceneIsPlaying() {
     Rig rig;
     fill(rig);
     Project& p = rig.project();
-    p.scene = 15;
+    p.scene = kMaxScenes - 1;
     rig.session().togglePlay(false);
     p.scene = 0;
     rig.frames(1);
     rig.render(3 * kStep);
     rig.frames(1);
-    CHECK(p.playScene == 15);
+    CHECK(p.playScene == kMaxScenes - 1);
     rig.nextScene();
-    CHECK(p.scene == 1 && p.playScene == 15);
+    CHECK(p.scene == 1 && p.playScene == kMaxScenes - 1);
     rig.render(kStep);
     rig.frames(1);
-    CHECK(rig.engine->playScene() == 15 && p.playScene == 15);
+    CHECK(rig.engine->playScene() == kMaxScenes - 1 && p.playScene == kMaxScenes - 1);
 }
 
 // The song's last scene is playing, the copy is made, and the bar ends before another frame is
@@ -1338,22 +1340,22 @@ void testTheSongScreensCursorFollows() {
     CHECK(song.cursorScene() == 2 && p.sceneCount() == 3);
 
     // No room: nothing moved, the cursor neither. An ordinary undo: neither.
-    goTo(15);
-    song.moveCursorTo(15, 0);
+    goTo(kMaxScenes - 1);
+    song.moveCursorTo(kMaxScenes - 1, 0);
     rig.nextScene();
-    CHECK(song.cursorScene() == 15 && rig.said() == "NO ROOM: 16 SCENES");
+    CHECK(song.cursorScene() == kMaxScenes - 1 && rig.said() == "NO ROOM: " + std::to_string(kMaxScenes) + " SCENES");
     goTo(0);
-    song.moveCursorTo(15, 0);
-    rig.nextScene(); // the cursor on the sixteenth scene, which is empty and falls off the end: there is no seventeenth
-    CHECK(song.cursorScene() == 15 && p.scene == 1);
+    song.moveCursorTo(kMaxScenes - 1, 0);
+    rig.nextScene(); // the cursor on the last scene, which is empty and falls off the end: there is none after it
+    CHECK(song.cursorScene() == kMaxScenes - 1 && p.scene == 1);
     rig.undo();
-    CHECK(song.cursorScene() == 14); // (it was on the last row; the row it is on now was that one's neighbour)
-    p.tracks[0].drums[15][0].level[0][0] = 1.f; // the sixteenth in use
+    CHECK(song.cursorScene() == kMaxScenes - 2); // (it was on the last row; the row it is on now was that one's neighbour)
+    p.tracks[0].drums[kMaxScenes - 1][0].level[0][0] = 1.f; // the last in use
     goTo(0);
     song.moveCursorTo(4, 0);
     rig.nextScene();
-    CHECK(song.cursorScene() == 4 && p.scene == 0 && rig.said() == "NO ROOM: 16 SCENES");
-    p.tracks[0].drums[15][0].level[0][0] = 0.f;
+    CHECK(song.cursorScene() == 4 && p.scene == 0 && rig.said() == "NO ROOM: " + std::to_string(kMaxScenes) + " SCENES");
+    p.tracks[0].drums[kMaxScenes - 1][0].level[0][0] = 0.f;
     goTo(0);
     song.moveCursorTo(4, 0);
     rig.app.drums().moveCursorTo(6, 9);
@@ -1405,7 +1407,7 @@ void testTheCommand() {
     };
     CHECK(at(3, 3, 1) == 4 && at(3, 0, 1) == 4 && at(3, 4, 1) == 3); // itself and those after it; not one before
     CHECK(at(3, 3, -1) == 2 && at(3, 4, -1) == 3 && at(3, 1, -1) == 2);
-    CHECK(at(15, 0, 1) == 15 && at(14, 0, 1) == 15); // not off the end
+    CHECK(at(kMaxScenes - 1, 0, 1) == kMaxScenes - 1 && at(kMaxScenes - 2, 0, 1) == kMaxScenes - 1); // not off the end
     CHECK(at(0, 0, -1) == 0 && at(1, 0, -1) == 0);   // nor off the top
     CHECK(at(3, 0, 2) == 3 && at(3, 0, 0) == 3 && at(3, 0, -2) == 3 && at(3, 0, 12) == 3); // one place, down or up: nothing else
     CHECK(at(3, -1, 1) == 3 && at(3, kMaxScenes, -1) == 3 && at(3, -5, -1) == 3);           // from a scene there is
@@ -1571,33 +1573,33 @@ void testARealAudioThread() {
     }
 }
 
-// The fifteenth scene has something in it, so the copy pushes it into the sixteenth; taken back,
-// it is the fifteenth again and the sixteenth is as empty as it was, in the song and in the
+// The last scene but one has something in it, so the copy pushes it into the last; taken back,
+// it is the last but one again and the last is as empty as it was, in the song and in the
 // engine, and no track was sent whole to make it so.
-void testTheSixteenthSceneIsGivenBack() {
+void testTheLastSceneIsGivenBack() {
     Rig rig, plain;
     for (Rig* r : {&rig, &plain}) {
         fill(*r);
         Project& p = r->project();
-        p.tracks[0].bars[14] = 2;
-        p.tracks[0].drums[14][0].level[2][3] = 0.8f;
-        p.tracks[0].drums[14][1].level[1][1] = 0.5f;
-        p.tracks[1].notes[14][0].notes[0] = NoteEvent{4, 65, 2.f, 0.f, 0.7f, 0, 0, 0, 0};
-        p.tracks[1].automation[14][1][2] = 0.6f;
-        p.repeats[14] = 4;
-        p.steps[14] = 9;
-        // The sixteenth has no hit in it (there is room for the copy), but it is not as a new
+        p.tracks[0].bars[kMaxScenes - 2] = 2;
+        p.tracks[0].drums[kMaxScenes - 2][0].level[2][3] = 0.8f;
+        p.tracks[0].drums[kMaxScenes - 2][1].level[1][1] = 0.5f;
+        p.tracks[1].notes[kMaxScenes - 2][0].notes[0] = NoteEvent{4, 65, 2.f, 0.f, 0.7f, 0, 0, 0, 0};
+        p.tracks[1].automation[kMaxScenes - 2][1][2] = 0.6f;
+        p.repeats[kMaxScenes - 2] = 4;
+        p.steps[kMaxScenes - 2] = 9;
+        // The last has no hit in it (there is room for the copy), but it is not as a new
         // scene is: a cell two bars long, played three times, cut to eleven steps.
-        p.tracks[0].bars[15] = 2;
-        p.repeats[15] = 3;
-        p.steps[15] = 11;
+        p.tracks[0].bars[kMaxScenes - 1] = 2;
+        p.repeats[kMaxScenes - 1] = 3;
+        p.steps[kMaxScenes - 1] = 11;
         r->session().applyProject();
         r->frames(2);
         r->render(512);
         r->heard.clear();
     }
     Project& p = rig.project();
-    CHECK(p.sceneCount() == 15);
+    CHECK(p.sceneCount() == kMaxScenes - 1);
     const std::string was = songText(p);
     const std::unique_ptr<Project> before = copyOf(p);
     const unsigned images = rig.session().imagesSent();
@@ -1617,19 +1619,19 @@ void testTheSixteenthSceneIsGivenBack() {
     // (Each time the song left alone plays the same scene the same number of times before: a
     // synth's second note is not its first to the bit.)
     rig.nextScene();
-    CHECK(p.sceneCount() == 16 && sameScene(p, 15, *before, 14) && sameScene(p, 14, *before, 13));
-    CHECK(apart(round(rig, 15), round(plain, 14)) == 0.f && loudest(rig.heard, 0, 2 * kBar) > 0.05f);
-    CHECK(loudest(round(rig, 14), 0, 2 * kBar) == 0.f && loudest(round(plain, 15), 0, 2 * kBar) == 0.f);
+    CHECK(p.sceneCount() == kMaxScenes && sameScene(p, kMaxScenes - 1, *before, kMaxScenes - 2) && sameScene(p, kMaxScenes - 2, *before, kMaxScenes - 3));
+    CHECK(apart(round(rig, kMaxScenes - 1), round(plain, kMaxScenes - 2)) == 0.f && loudest(rig.heard, 0, 2 * kBar) > 0.05f);
+    CHECK(loudest(round(rig, kMaxScenes - 2), 0, 2 * kBar) == 0.f && loudest(round(plain, kMaxScenes - 1), 0, 2 * kBar) == 0.f);
     rig.undo();
-    CHECK(songText(p) == was && sameScene(p, 15, *before, 15) && sameScene(p, 14, *before, 14) && p.sceneCount() == 15);
-    CHECK(loudest(round(rig, 15), 0, 2 * kBar) == 0.f && loudest(round(plain, 15), 0, 2 * kBar) == 0.f);
-    CHECK(apart(round(rig, 14), round(plain, 14)) == 0.f && loudest(rig.heard, 0, 2 * kBar) > 0.05f);
+    CHECK(songText(p) == was && sameScene(p, kMaxScenes - 1, *before, kMaxScenes - 1) && sameScene(p, kMaxScenes - 2, *before, kMaxScenes - 2) && p.sceneCount() == kMaxScenes - 1);
+    CHECK(loudest(round(rig, kMaxScenes - 1), 0, 2 * kBar) == 0.f && loudest(round(plain, kMaxScenes - 1), 0, 2 * kBar) == 0.f);
+    CHECK(apart(round(rig, kMaxScenes - 2), round(plain, kMaxScenes - 2)) == 0.f && loudest(rig.heard, 0, 2 * kBar) > 0.05f);
     rig.redo();
-    CHECK(sameScene(p, 15, *before, 14) && p.sceneCount() == 16);
-    CHECK(apart(round(rig, 15), round(plain, 14)) == 0.f && loudest(rig.heard, 0, 2 * kBar) > 0.05f);
+    CHECK(sameScene(p, kMaxScenes - 1, *before, kMaxScenes - 2) && p.sceneCount() == kMaxScenes);
+    CHECK(apart(round(rig, kMaxScenes - 1), round(plain, kMaxScenes - 2)) == 0.f && loudest(rig.heard, 0, 2 * kBar) > 0.05f);
     rig.undo();
     CHECK(songText(p) == was && rig.session().imagesSent() == images && rig.engine->dropped() == 0);
-    CHECK(p.tracks[0].bars[15] == 2 && p.repeats[15] == 3 && p.steps[15] == 11);
+    CHECK(p.tracks[0].bars[kMaxScenes - 1] == 2 && p.repeats[kMaxScenes - 1] == 3 && p.steps[kMaxScenes - 1] == 11);
 }
 
 // The queue is full (the audio thread has stood still for seconds) and scene moves are lost. When
@@ -1996,12 +1998,12 @@ void arpChord(Bare& bare, int scene, float velocity) {
 //     as in a song where no scene moved;
 //   - something written in the scene that has its old number now: the arpeggio does not look there;
 //   - a scene that does not move (it is before the one put in): the arpeggio stays;
-//   - a scene with no place to go to (the sixteenth, when one is put in; the one taken out): the
+//   - a scene with no place to go to (the last, when one is put in; the one taken out): the
 //     playing stays on that number, where another scene is now, and the arpeggio ends if its
 //     chord is not in it.
 void testAnArpeggioGoesWithItsScene() {
     struct Case { int scene, from, by, now, gone; }; // the scene the chord is in, the move, where that scene is then (gone: it has no place)
-    const Case kCases[] = {{2, 0, 1, 3, 0}, {2, 2, 1, 3, 0}, {2, 3, 1, 2, 0}, {3, 1, -1, 2, 0}, {3, 3, -1, 2, 0}, {1, 3, -1, 1, 0}, {15, 0, 1, 15, 1}, {1, 2, -1, 1, 1}};
+    const Case kCases[] = {{2, 0, 1, 3, 0}, {2, 2, 1, 3, 0}, {2, 3, 1, 2, 0}, {3, 1, -1, 2, 0}, {3, 3, -1, 2, 0}, {1, 3, -1, 1, 0}, {kMaxScenes - 1, 0, 1, kMaxScenes - 1, 1}, {1, 2, -1, 1, 1}};
     for (const Case& k : kCases) {
         for (int then = 0; then < 3; ++then) { // 0: nothing more; 1: the chord is taken away where it is; 2: a note is written where it was
             if (k.gone && then != 0) continue;
@@ -2179,7 +2181,7 @@ void testTheEnginesMove() {
         hits(*one, 0, 0, 4);
         hits(*one, 1, 2, 2);
         hits(*one, 2, 1, 8);
-        hits(*one, 14, 7, 4); // (past the song's end: the last scene but one, which becomes the last)
+        hits(*one, kMaxScenes - 2, 7, 4); // (past the song's end: the last scene but one, which becomes the last)
         one->bars[1] = 2;
         one->level[1 * kMaxBars + 1][3][5] = 0.9f;
         hits(*two, 0, 4, 3);
@@ -2194,7 +2196,7 @@ void testTheEnginesMove() {
     const int kWhole = (2 * 16 + 21 + 3 * 16) * 2; // more than once through, with a scene more or less
 
     // A scene put in at the top. Track 1 is handed the new scene; track 2 is handed none, and gets
-    // the sixteenth scene, which went (it is empty), so its scene 1 moves down like the rest.
+    // the last scene, which went (it is empty), so its scene 1 moves down like the rest.
     Bare moved, told, plain;
     for (Bare* b : {&moved, &told, &plain}) song(*b);
     {
@@ -2213,7 +2215,7 @@ void testTheEnginesMove() {
         hits(*one, 1, 0, 4);
         hits(*one, 2, 2, 2);
         hits(*one, 3, 1, 8);
-        hits(*one, 15, 7, 4);
+        hits(*one, kMaxScenes - 1, 7, 4);
         one->bars[2] = 2;
         one->level[2 * kMaxBars + 1][3][5] = 0.9f;
         hits(*two, 1, 4, 3);
@@ -2230,11 +2232,11 @@ void testTheEnginesMove() {
     const std::vector<float> was = plain.play(0, kWhole);
     CHECK(apart(moved.play(0, kWhole), told.play(0, kWhole)) == 0.f && loudest(moved.heard, 0, moved.heard.size() / 2) > 0.1f);
     CHECK(apart(moved.heard, was) > 0.01f);
-    const std::vector<float> wasLast = plain.play(14, 20, true);
-    CHECK(apart(moved.play(15, 20, true), wasLast) == 0.f && loudest(wasLast, 0, 20 * kStep) > 0.1f); // the last scene but one is the last now
-    CHECK(loudest(moved.play(14, 20, true), 0, 20 * kStep) == 0.f);
+    const std::vector<float> wasLast = plain.play(kMaxScenes - 2, 20, true);
+    CHECK(apart(moved.play(kMaxScenes - 1, 20, true), wasLast) == 0.f && loudest(wasLast, 0, 20 * kStep) > 0.1f); // the last scene but one is the last now
+    CHECK(loudest(moved.play(kMaxScenes - 2, 20, true), 0, 20 * kStep) == 0.f);
 
-    // ...and taken out again: the song as it was, but for the sixteenth scene, which is the one handed over.
+    // ...and taken out again: the song as it was, but for the last scene, which is the one handed over.
     {
         std::unique_ptr<SceneImage> scenes[kNumTracks];
         scenes[0] = hitsScene(6, 2);
@@ -2242,19 +2244,19 @@ void testTheEnginesMove() {
         CHECK(moved.engine->moveScenes(1, -1, scenes, 3, 5, 9));
         moved.render(256);
         CHECK(apart(moved.play(0, kWhole), was) == 0.f);
-        CHECK(apart(moved.play(14, 20, true), wasLast) == 0.f);
+        CHECK(apart(moved.play(kMaxScenes - 2, 20, true), wasLast) == 0.f);
         moved.say(Command::SetSceneCount, 0, kMaxScenes);
         std::unique_ptr<TrackImage> one(new TrackImage), two(new TrackImage);
-        hits(*one, 15, 6, 2);
-        hits(*two, 15, 7, 4);
+        hits(*one, kMaxScenes - 1, 6, 2);
+        hits(*two, kMaxScenes - 1, 7, 4);
         Bare last;
         last.engine->setTrackImage(0, std::move(one));
         last.engine->setTrackImage(1, std::move(two));
         last.say(Command::SetSceneCount, 0, kMaxScenes);
-        last.say(Command::SetSceneRepeats, 15, 5);
-        last.say(Command::SetSceneSteps, 15, 9);
+        last.say(Command::SetSceneRepeats, kMaxScenes - 1, 5);
+        last.say(Command::SetSceneSteps, kMaxScenes - 1, 9);
         last.render(256);
-        CHECK(apart(moved.play(15, 5 * 9), last.play(15, 5 * 9)) == 0.f && loudest(last.heard, 0, last.heard.size() / 2) > 0.1f); // (five times its nine steps, and not a step of the top)
+        CHECK(apart(moved.play(kMaxScenes - 1, 5 * 9), last.play(kMaxScenes - 1, 5 * 9)) == 0.f && loudest(last.heard, 0, last.heard.size() / 2) > 0.1f); // (five times its nine steps, and not a step of the top)
         CHECK(loudest(moved.heard, 2 * 9 * kStep, 5 * 9 * kStep) > 0.1f);
         moved.say(Command::SetSceneCount, 0, 3);
         moved.render(256);
@@ -2274,7 +2276,7 @@ void testTheEnginesMove() {
     moved.engine->playScene(&heard);
     CHECK(heard == 9 && apart(moved.play(0, kWhole), was) == 0.f);
 
-    // Numbers that cannot be are held to what can: 99 scenes are 16, 99 plays 16, fewer than one, one.
+    // Numbers that cannot be are held to what can: 99 scenes are kMaxScenes, 99 plays 16, fewer than one, one.
     Bare wild, mild;
     for (Bare* b : {&wild, &mild}) song(*b);
     {
@@ -2286,7 +2288,7 @@ void testTheEnginesMove() {
         for (Bare* b : {&wild, &mild}) b->render(256);
         CHECK(apart(wild.play(2, 20 * 16), mild.play(2, 20 * 16)) == 0.f);
         CHECK(wild.engine->playScene() == 4 && wild.engine->playRepeat() == 0); // sixteen plays of the new scene, three of the next, and into the empty ones
-        CHECK(apart(wild.play(15, 20), mild.play(15, 20)) == 0.f && wild.engine->playScene() == 0); // the sixteenth is in the song: one bar of it, then the top
+        CHECK(apart(wild.play(kMaxScenes - 1, 20), mild.play(kMaxScenes - 1, 20)) == 0.f && wild.engine->playScene() == 0); // the last is in the song: one bar of it, then the top
         // ...and a cell 99 bars long is eight: the scene goes round after its eighth bar (only its first has hits).
         scenes[0] = hitsScene(5, 1);
         scenes[0]->bars = 99;
@@ -2587,6 +2589,65 @@ void testTheSongDoesGlideFromOtherKeys() {
     CHECK(apart(heard[0], heard[1]) > 0.001f && apart(heard[0], heard[2]) > 0.001f && apart(heard[1], heard[2]) > 0.001f);
 }
 
+// A scene move makes no piece of a scene that holds nothing (scenes-plan.md): the song's pieces, and
+// the engine's stores, are the scenes that hold something, before the move, after it, after its undo
+// and its redo, with the copy at the far end of the cap too.
+void testAMoveMakesNothingNew() {
+    Rig rig;
+    fill(rig);
+    Project& p = rig.project();
+    rig.settle();
+    const auto pieces = [&] {
+        int n = 0;
+        for (const TrackData& t : p.tracks) n += t.piecesHeld();
+        return n;
+    };
+    const auto given = [&] {
+        int n = 0;
+        for (int t = 0; t < kNumTracks; ++t) n += rig.engine->scenesGiven(t);
+        return n;
+    };
+    const auto holding = [&] { // the scenes of each track that have something in them, or a cell longer than a bar
+        int n = 0;
+        for (const TrackData& t : p.tracks)
+            for (int s = 0; s < kMaxScenes; ++s) {
+                bool any = t.bars[s] != 1;
+                for (int bar = 0; bar < kMaxBars && !any; ++bar) any = !t.drums[s][bar].empty() || !t.notes[s][bar].empty();
+                for (int lane = 0; lane < kAutoLanes && !any; ++lane)
+                    for (float v : t.automation[s][lane]) any = any || v >= 0.f;
+                n += any ? 1 : 0;
+            }
+        return n;
+    };
+    const int was = pieces(), wasGiven = given(), wasHolding = holding();
+    CHECK(wasHolding > 3 && wasGiven == wasHolding && was >= wasHolding && was <= 3 * wasHolding);
+    p.scene = 1;
+    rig.nextScene();
+    rig.settle();
+    const int perScene = holding() - wasHolding; // the copy: as many as scene 2 has
+    CHECK(perScene > 0 && given() == holding() && pieces() <= was + 3 * perScene);
+    rig.undo();
+    rig.settle();
+    CHECK(given() == wasGiven && holding() == wasHolding && pieces() <= was + 3 * perScene);
+    rig.redo();
+    rig.settle();
+    CHECK(given() == holding() && holding() == wasHolding + perScene);
+    rig.undo();
+    rig.settle();
+    // The last scene but one gets the copy of scene 2, and the last one is copied into by nothing.
+    p.tracks[0].drums[kMaxScenes - 2][0].level[0][0] = 0.8f;
+    rig.session().applyProject();
+    rig.settle();
+    const int full = given();
+    p.scene = kMaxScenes - 2;
+    rig.nextScene();
+    rig.settle();
+    CHECK(p.sceneCount() == kMaxScenes && given() == full + 1 && given() == holding());
+    rig.undo();
+    rig.settle();
+    CHECK(given() == full && given() == holding() && Engine::blankStillBlank());
+}
+
 int main(int argc, char** argv) {
     ui::gStickSpeed = 1.f;
     if (argc > 1 && std::strcmp(argv[1], "--measure") == 0) {
@@ -2599,7 +2660,7 @@ int main(int argc, char** argv) {
     }
     struct Test { const char* name; void (*run)(); bool sound; }; // sound: its proof is of the sound, and is made again on three helper threads
     const Test kTests[] = {
-        {"testTheSceneIsCopied", testTheSceneIsCopied, false}, {"testOnlyOnTheGrids", testOnlyOnTheGrids, false}, {"testNoRoom", testNoRoom, false}, {"testUndo", testUndo, false},
+        {"testTheSceneIsCopied", testTheSceneIsCopied, false}, {"testOnlyOnTheGrids", testOnlyOnTheGrids, false}, {"testNoRoom", testNoRoom, false}, {"testAMoveMakesNothingNew", testAMoveMakesNothingNew, false}, {"testUndo", testUndo, false},
         {"testUndoPutsThePlayerOnABarThatIsThere", testUndoPutsThePlayerOnABarThatIsThere, false}, {"testUndoIsOneStep", testUndoIsOneStep, false}, {"testTheChordTrackIsHeard", testTheChordTrackIsHeard, false},
         {"testPlayingGoesOnUnbroken", testPlayingGoesOnUnbroken, true}, {"testTheSongGoesOnUnbroken", testTheSongGoesOnUnbroken, true}, {"testAnotherSceneIsPlaying", testAnotherSceneIsPlaying, false},
         {"testUndoWhileTheFirstOfTheTwoPlays", testUndoWhileTheFirstOfTheTwoPlays, false}, {"testTheLastSceneIsPlaying", testTheLastSceneIsPlaying, false},
@@ -2607,7 +2668,7 @@ int main(int argc, char** argv) {
         {"testWriteGoesToTheNewScene", testWriteGoesToTheNewScene, false}, {"testTheFramesBeforeTheEngineHears", testTheFramesBeforeTheEngineHears, false}, {"testTheCommand", testTheCommand, false},
         {"testTheEnginesMove", testTheEnginesMove, false}, {"testNothingFreedOnTheAudioThreadAndAllOfItComesBack", testNothingFreedOnTheAudioThreadAndAllOfItComesBack, false}, {"testASceneHandedOverIsWhatTheCommandsWrite", testASceneHandedOverIsWhatTheCommandsWrite, false},
         {"testAnArpeggioGoesWithItsScene", testAnArpeggioGoesWithItsScene, true}, {"testTakenBackOnTheLastStep", testTakenBackOnTheLastStep, true}, {"testOnceThroughAfterAMove", testOnceThroughAfterAMove, true},
-        {"testTheCopyIsWhatTheRollWrites", testTheCopyIsWhatTheRollWrites, true}, {"testTheSixteenthSceneIsGivenBack", testTheSixteenthSceneIsGivenBack, false},
+        {"testTheCopyIsWhatTheRollWrites", testTheCopyIsWhatTheRollWrites, true}, {"testTheLastSceneIsGivenBack", testTheLastSceneIsGivenBack, false},
         {"testMovesLostToAFullQueue", testMovesLostToAFullQueue, false}, {"testTakenBackAfterSomethingUndoDoesNotKnow", testTakenBackAfterSomethingUndoDoesNotKnow, false},
         {"testTheSongBesideTheFinishedSong", [] { testTheSongBesideTheFinishedSong(false); }, false}, {"testTheSongBesideTheFinishedSongLater", [] { testTheSongBesideTheFinishedSong(true); }, true},
         {"testTakenBackWhileTheCopyPlaysInItsTurn", testTakenBackWhileTheCopyPlaysInItsTurn, false}, {"testTheSongScreensCursorFollows", testTheSongScreensCursorFollows, false},

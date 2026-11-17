@@ -135,9 +135,9 @@ bool Session::setTrackKind(int track, TrackKind kind) {
     t.preset = 0;
     for (float& m : t.macro) m = 0.5f;
     if (const SynthSpec* spec = specFor(kind)) spec->loadPreset(t, 0);
-    for (auto& scene : t.automation)
-        for (int lane = 0; lane < kSynthMacros; ++lane) // the macros' lanes; the effects' are still the same effects
-            for (float& v : scene[lane]) v = kAutoNone;
+    for (int scene = 0; scene < kMaxScenes; ++scene)
+        for (int lane = 0; lane < kSynthMacros && t.automation.has(scene); ++lane) // the macros' lanes; the effects' are still the same effects
+            for (float& v : t.automation[scene][lane]) v = kAutoNone;
     for (ModSettings& m : t.mods) // a MOD on a macro goes with the macros; one on an effect or a send stays
         if (modTargetIsMacro(m.target)) m = ModSettings();
     if (!holdsRecording(kind)) t.sample[0] = '\0'; // (a sampler and a CLOUD pass theirs to each other; nothing else keeps one)
@@ -739,6 +739,7 @@ void Session::setVolume(float volume) {
 void Session::setAutomation(int track, int scene, int lane, int index, float value) {
     if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes || lane < 0 || lane >= kAutoLanes || index < 0 || index >= kAutoSteps || value != value) return;
     value = value < 0.f ? kAutoNone : (value > 1.f ? 1.f : value);
+    if (value < 0.f && !project.tracks[track].automation.has(scene)) return; // nothing there to empty (and no piece made for it)
     float& now = project.tracks[track].automation[scene][lane][index];
     if (now == value) return;
     now = value;
@@ -755,6 +756,7 @@ void Session::setAutomation(int track, int scene, int lane, int index, float val
 
 void Session::clearAutomation(int track, int scene, int lane) {
     if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes || lane >= kAutoLanes) return;
+    if (!project.tracks[track].automation.has(scene)) return; // nothing written in that scene
     bool any = false;
     for (int l = 0; l < kAutoLanes; ++l)
         if (lane < 0 || lane == l)
@@ -1031,35 +1033,50 @@ void Session::scenesMoved(int from, int by) {
 // taken out (by = -1) and the sixteenth, which is new then, as it is in `last` (a track that
 // is another kind there, or with no `last`: with nothing in it).
 void Session::moveScenesHere(int from, int by, const StepRead* last) {
+    // Each scene's pieces move with it (pointers: nothing copied); its length, repeats and steps too.
     const auto carry = [this](int to, int scene) {
         for (TrackData& t : project.tracks) {
             t.bars[to] = t.bars[scene];
-            for (int bar = 0; bar < kMaxBars; ++bar) {
-                t.drums[to][bar] = t.drums[scene][bar];
-                t.notes[to][bar] = t.notes[scene][bar];
-            }
-            std::memcpy(t.automation[to], t.automation[scene], sizeof t.automation[to]);
+            t.drums.take(to, scene);
+            t.notes.take(to, scene);
+            t.automation.take(to, scene);
         }
         project.repeats[to] = project.repeats[scene];
         project.steps[to] = project.steps[scene];
     };
     if (by > 0) {
-        // Everything a scene holds, moved down one from the end; then `from + 1` is still what `from` is.
+        // Everything a scene holds, moved down one from the end (the last falls off); then `from` is
+        // made what `from + 1` is now, a copy.
+        for (TrackData& t : project.tracks) { // (the last scene's pieces go)
+            t.drums.drop(kMaxScenes - 1);
+            t.notes.drop(kMaxScenes - 1);
+            t.automation.drop(kMaxScenes - 1);
+        }
         for (int scene = kMaxScenes - 1; scene > from; --scene) carry(scene, scene - 1);
+        for (TrackData& t : project.tracks) {
+            t.bars[from] = t.bars[from + 1];
+            if (t.drums.has(from + 1)) std::memcpy(t.drums[from], t.drums[from + 1], sizeof t.drums[from]);
+            if (t.notes.has(from + 1)) std::memcpy(t.notes[from], t.notes[from + 1], sizeof t.notes[from]);
+            if (t.automation.has(from + 1)) std::memcpy(t.automation[from], t.automation[from + 1], sizeof t.automation[from]);
+        }
         return;
     }
     const int end = kMaxScenes - 1;
+    for (TrackData& t : project.tracks) { // (the scene taken out: its pieces go)
+        t.drums.drop(from - 1);
+        t.notes.drop(from - 1);
+        t.automation.drop(from - 1);
+    }
     for (int scene = from - 1; scene < end; ++scene) carry(scene, scene + 1);
     for (int t = 0; t < kNumTracks; ++t) {
         TrackData& now = project.tracks[t];
         const bool has = last && last->kind[t] == now.kind && last->read[t]; // (a scene move reads the step whole)
         now.bars[end] = has ? last->track(t).bars[end] : 1;
-        for (int bar = 0; bar < kMaxBars; ++bar) {
-            now.drums[end][bar] = has ? last->track(t).drums[end][bar] : DrumPattern();
-            now.notes[end][bar] = has ? last->track(t).notes[end][bar] : NotePattern();
-        }
-        for (int lane = 0; lane < kAutoLanes; ++lane)
-            for (int step = 0; step < kAutoSteps; ++step) now.automation[end][lane][step] = has ? last->track(t).automation[end][lane][step] : kAutoNone;
+        if (!has) continue; // (nothing in it: no piece)
+        const TrackData& then = last->track(t);
+        if (then.drums.has(end)) std::memcpy(now.drums[end], then.drums[end], sizeof now.drums[end]);
+        if (then.notes.has(end)) std::memcpy(now.notes[end], then.notes[end], sizeof now.notes[end]);
+        if (then.automation.has(end)) std::memcpy(now.automation[end], then.automation[end], sizeof now.automation[end]);
     }
     project.repeats[end] = last ? last->head.repeats[end] : 1;
     project.steps[end] = last ? last->head.steps[end] : 0;
@@ -1132,18 +1149,16 @@ bool Session::patternsAre(const StepRead& was) const {
 // own lines can differ (patternText: no 1 MB copy, no whole track written twice).
 bool Session::patternsSameAsText(const TrackData& now, const TrackData& then) {
     if (now.kind == then.kind) return patternText(now) == patternText(then);
-    std::unique_ptr<TrackData> here(new TrackData(then)); // `then`, with the patterns of `now` (large: not on the stack)
+    std::unique_ptr<TrackData> here(new TrackData(then)); // `then`, with the patterns of `now`
     std::memcpy(here->bars, now.bars, sizeof here->bars);
-    for (int scene = 0; scene < kMaxScenes; ++scene)
-        for (int bar = 0; bar < kMaxBars; ++bar) {
-            here->drums[scene][bar] = now.drums[scene][bar];
-            here->notes[scene][bar] = now.notes[scene][bar];
-        }
-    std::memcpy(here->automation, now.automation, sizeof here->automation);
+    here->drums = now.drums;
+    here->notes = now.notes;
+    here->automation = now.automation;
     return trackText(*here) == trackText(then);
 }
 
 int Session::undoSteps() const { return static_cast<int>(undo_.size()); }
+
 
 // A step of undo read back into `was`. A track whose text in the step is its text now (most are:
 // an edit is to one track) is not read: `was` has only its kind, and `same` says so. The rest is
@@ -1242,23 +1257,16 @@ void Session::restorePatterns(const std::string& text, int movedFrom, int movedB
         const TrackData& then = was.track(t);
         // A track that is the same then as now is left alone. Most are: an edit is
         // to one track, and sending a track's every pattern again is the costly part.
-        if (std::memcmp(now.bars, then.bars, sizeof now.bars) == 0 && std::memcmp(now.drums, then.drums, sizeof now.drums) == 0 &&
-            std::memcmp(now.notes, then.notes, sizeof now.notes) == 0 && std::memcmp(now.automation, then.automation, sizeof now.automation) == 0) {
-            continue;
-        }
+        if (std::memcmp(now.bars, then.bars, sizeof now.bars) == 0 && now.samePatternsAs(then)) continue;
         // Numbers that differ only as the text rounds them (a keyboard's 90/127, a setting
         // written with WRITE on) are the same patterns: the track is as it was, and is left
         // alone, unrounded. Compared as above, every such track was sent whole on an undo
         // of one hit on another, and its values rounded.
         if (patternsSameAsText(now, then)) continue;
-        for (int scene = 0; scene < kMaxScenes; ++scene) {
-            now.bars[scene] = then.bars[scene];
-            for (int bar = 0; bar < kMaxBars; ++bar) {
-                now.drums[scene][bar] = then.drums[scene][bar];
-                now.notes[scene][bar] = then.notes[scene][bar];
-            }
-        }
-        std::memcpy(now.automation, then.automation, sizeof now.automation);
+        std::memcpy(now.bars, then.bars, sizeof now.bars);
+        now.drums = then.drums;
+        now.notes = then.notes;
+        now.automation = then.automation;
         sendTrackImage(t);
     }
     Command c;
@@ -1670,6 +1678,7 @@ namespace {
 // Does a scene of a track hold anything the engine plays: a hit, a note or a step of automation, in
 // any of its bars (the hidden ones too)?
 bool sceneHolds(const TrackData& track, int scene) {
+    if (!track.holdsPieces(scene)) return false;
     for (int bar = 0; bar < kMaxBars; ++bar)
         if (!track.drums[scene][bar].empty() || !track.notes[scene][bar].empty()) return true;
     for (const auto& lane : track.automation[scene])

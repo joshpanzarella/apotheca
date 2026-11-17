@@ -56,7 +56,7 @@ New screens and gestures keep these; do not invent a variant.
 | Build | `cmake -S . -B build && cmake --build build -j8` |
 | All tests (66) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`, `idle_test` as `idle1` to `idle3`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them). `./build/bench --profile NAME [SECONDS]` renders one setup with no clock for callgrind (`--toggle-collect='*profiledRender*'`; NAME empty lists them; `docs/plans/speed-plan.md`) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-switch` (COMP, on its second setting; with `--hold-a` the heading shows the key that switches its TYPE), `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling); the list of recordings: `picker` (SAMPLES, on a folder), `picker-in` (in a folder), `picker-deep` (two folders down), `picker-deleting`, `picker-new` (on + NEW FOLDER), `picker-typing` (its name being typed), `picker-carrying` (R1 held, steered onto a folder), `picker-folder-deleting` (B held on an empty folder), `sampler-picker`; the help card: `help` (with SOUND 43%, CPU 37%: pretended, `App::pretendLoad`), `help-load` (its longest line); the sampler: `sampler` (on START), `sampler-end` (on END; both with START 12% and END 80% marked; the demo's last track becomes the sampler, all twelve being used), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`, and at rest: `bounce-ready`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; JAX-EP's panel and pages: `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank` (MAIN on B7 Distortion Guitar, in BANK B: the longest of the 32 names), `jaxep-held` (a knob, A held); FM-6's: `fm6` (MAIN), `fm6-1` to `fm6-8` (its pages), `fm6-long` (HARPSICH 1, the widest name), `fm6-fixed` (an operator at a FIXED pitch, on FINE), `fm6-off` (an operator OFF); PHYSIC's: `physic` (MAIN), `physic-1` to `physic-5` (SOUND, RING, PLAY, DICE, BODY: on Vibes, PAIR and BUZZ up), `physic-long` (its widest preset name), `physic-string` (RING on Steel: STRETCH reads B), `physic-noise` (SOUND on Hand Drum: HARDNESS reads a NOISE burst's length); a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); FEEL on the drum grid: `feel` (lanes with their marks, the cursor on a name), `feel-held` (X held: the strip is the lane's feel), `feel-off-held`, `feel-same-held` (every lane at 100%, the strip at its widest), `feel-said` (L1 on a built-in drum with a feel: the message has the row), `slices-name-feel` (the slice view's name with its mark; needs `--samples`); X held on a knob, its MOD: `device-mod-held` (an LFO on Phazed's TONE), `device-mod-stepper`, `device-mod-new` (none yet), `device-mod-full` (MODS FULL), `device-mod-deleting` (B held), `fx-mod-held` (an LFO on TAPE's FEEDBACK), `fx-mod-stepper`, `fx-mod-new`, `fx-mod-full`, `fx-sends-mod-held` (on ECHO: the panel in SPACE's row); the brass mark with the song playing: `device-modded`, `fx-modded`; the MOD tab: `mod` (an LFO on TONE, a STEPPER on ECHO; the demo plays, so the dots move), `mod-lfo` (on DEPTH), `mod-steps` (MOD 2's row, on step 5), `mod-depth` (MOD 1's DEPTH lane written, the demo playing), `mod-mixer` (LEVEL and PAN as targets), `mod-target` and `mod-drums` (each with `--hold-a`: the list of targets), `mod-off`, `mod-deleting`, `mod-12`, `mod-free` (a free LFO: SPEED in Hz), `device-mod-free`; any view with `--no-menu` is as on a handheld with no MENU button) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-switch` (COMP, on its second setting; with `--hold-a` the heading shows the key that switches its TYPE), `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling); the list of recordings: `picker` (SAMPLES, on a folder), `picker-in` (in a folder), `picker-deep` (two folders down), `picker-deleting`, `picker-new` (on + NEW FOLDER), `picker-typing` (its name being typed), `picker-carrying` (R1 held, steered onto a folder), `picker-folder-deleting` (B held on an empty folder), `sampler-picker`; the help card: `help` (with SOUND 43%, CPU 37%: pretended, `App::pretendLoad`), `help-load` (its longest line); the sampler: `sampler` (on START), `sampler-end` (on END; both with START 12% and END 80% marked; the demo's last track becomes the sampler, all twelve being used), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`, and at rest: `bounce-ready`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; a song past sixteen scenes (48 made with NEXT SCENE): `scenes` (SONG on scene 48), `scenes-end` (on the AT END row), `scenes-full` (all 64, on the last), `scenes-grid` and `scenes-roll` (scene 48's cells eight bars, SCENE 48: 127 STEPS OF 128 said), `scenes-playing`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; JAX-EP's panel and pages: `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank` (MAIN on B7 Distortion Guitar, in BANK B: the longest of the 32 names), `jaxep-held` (a knob, A held); FM-6's: `fm6` (MAIN), `fm6-1` to `fm6-8` (its pages), `fm6-long` (HARPSICH 1, the widest name), `fm6-fixed` (an operator at a FIXED pitch, on FINE), `fm6-off` (an operator OFF); PHYSIC's: `physic` (MAIN), `physic-1` to `physic-5` (SOUND, RING, PLAY, DICE, BODY: on Vibes, PAIR and BUZZ up), `physic-long` (its widest preset name), `physic-string` (RING on Steel: STRETCH reads B), `physic-noise` (SOUND on Hand Drum: HARDNESS reads a NOISE burst's length); a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); FEEL on the drum grid: `feel` (lanes with their marks, the cursor on a name), `feel-held` (X held: the strip is the lane's feel), `feel-off-held`, `feel-same-held` (every lane at 100%, the strip at its widest), `feel-said` (L1 on a built-in drum with a feel: the message has the row), `slices-name-feel` (the slice view's name with its mark; needs `--samples`); X held on a knob, its MOD: `device-mod-held` (an LFO on Phazed's TONE), `device-mod-stepper`, `device-mod-new` (none yet), `device-mod-full` (MODS FULL), `device-mod-deleting` (B held), `fx-mod-held` (an LFO on TAPE's FEEDBACK), `fx-mod-stepper`, `fx-mod-new`, `fx-mod-full`, `fx-sends-mod-held` (on ECHO: the panel in SPACE's row); the brass mark with the song playing: `device-modded`, `fx-modded`; the MOD tab: `mod` (an LFO on TONE, a STEPPER on ECHO; the demo plays, so the dots move), `mod-lfo` (on DEPTH), `mod-steps` (MOD 2's row, on step 5), `mod-depth` (MOD 1's DEPTH lane written, the demo playing), `mod-mixer` (LEVEL and PAN as targets), `mod-target` and `mod-drums` (each with `--hold-a`: the list of targets), `mod-off`, `mod-deleting`, `mod-12`, `mod-free` (a free LFO: SPEED in Hz), `device-mod-free`; any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -1107,12 +1107,28 @@ effect in those two groups and fails one that does not.
 - **A new `Session` tells the engine what the buses hold** (its constructor).
   The engine starts as a new song in every other way, but with empty buses;
   without this a handheld with no saved song had sends that did nothing.
-- **`Project` is about 12 MB. Never put one on the stack**, nor a `TrackData`
-  (about 1 MB; measured 2026-11-14: 12,061,000 and 1,005,060 bytes).
-  `std::unique_ptr<Project>`. Not even a temporary: `x = TrackData()` is one
-  on the stack (`parseSong` took 1 MB of stack that way, and it runs on the
-  WiFi server's thread too); copy a blank one kept on the heap.
-  `save_test` reads a song on a thread with a 256 KB stack.
+- **`Project` is 58 KB and a `TrackData` 4.8 KB, plus the scenes' pieces on
+  the heap** (2026-11-17, scenes-plan.md: they were 12 MB and 1 MB with
+  sixteen scenes in fixed arrays). The house way still holds:
+  `std::unique_ptr<Project>`, and a blank track copied from one kept on the
+  heap (`parseSong` runs on the WiFi server's thread too). `save_test` reads a
+  song on a thread with a 256 KB stack.
+- **A track's scenes are pieces made when something is written there**
+  (`SceneCells` in project.hpp; `kMaxScenes` 64, scenes-plan.md): `drums`,
+  `notes` and `automation` each a pointer a scene, read as `t.drums[s][bar]`
+  as an array was. **A scene with no piece reads as the one blank piece; a
+  NON-CONST track makes the piece even to read it**, so whatever goes through
+  every scene takes the track `const` or asks `has(s)` first (`sceneEmpty`,
+  `sceneCount`, the song's text and its cache, `clearAutomation`,
+  `changeEffectType`'s lanes: `testAMoveMakesNothingNew`, `testScenesPastSixteen`).
+  A drum track makes no notes pieces, a synth track no drums pieces. A piece
+  made and emptied stays (memory only, and what holds a bar of it still holds
+  it: an assignment copies into a piece that is there, never frees it).
+  **`TrackData` is `TrackFields` (one block of bytes, copied and compared so:
+  `fieldsFrom`, `sameFields`) and the three `SceneCells`**, whose pieces are
+  compared and copied a scene at a time (`samePatternsAs`, `SceneCells::same`,
+  `sameAs`). A new field goes in `TrackFields`; never `memcpy` a whole
+  `TrackData`. A scene move moves pieces (`take`, `drop`), copying nothing.
 - **Every screen's `update()` re-reads held buttons from `input` each frame**
   and drops its own "held" flags when they are not held. Trusting the release
   event left A "stuck down" after a screen change.
@@ -1149,16 +1165,16 @@ effect in those two groups and fails one that does not.
   (first by one `memcmp` against an empty one: `levelsEmpty`, `notesEmpty`,
   `laneEmpty`). Exact, because `putTrack` writes nothing for such a piece. The
   autosave, the end of a burst of edits and undo all use it, so with nothing
-  changed the autosave is a compare of memory. The copies it keeps cost about
-  1 MB a track (11.8 MB for twelve). **An undo reads back only the tracks
+  changed the autosave is a compare of memory. The copies it keeps cost what
+  the song's tracks hold (a scene with no piece is passed over at once). **An undo reads back only the tracks
   whose text differs from the step's, and builds no `Project`** (speed plan
   batch 4: `Session::readStep` into a `StepRead`: the song's own lines, and
-  the tracks read into `TrackData` made once and kept, a megabyte a track ever
-  needed; `SongReader` reads a part at a time as `parseSong` reads the whole,
+  the tracks read into `TrackData` made once and kept (`makeBlank` lets their
+  pieces go: the step's text makes those it writes); `SongReader` reads a part at a time as `parseSong` reads the whole,
   `cutSongAt` gives the parts' places). The text of each track now is what
   undo or redo just made (`patternsNow`), not compared again: **only they call
   `restorePatterns`**. A scene move reads the step whole (it takes the
-  sixteenth scene from it). `readUndoWhole(true)` reads every step whole:
+  last scene from it). `readUndoWhole(true)` reads every step whole:
   `app_test` (`testUndoIsAsItWasReadWhole`) holds the two the same, and
   `save_test` (`testASongReadInPartsIsAsReadWhole`) the reader. **A track whose
   numbers differ from the step's but whose text is the same is left alone**
@@ -1175,8 +1191,7 @@ effect in those two groups and fails one that does not.
   fast path). `save_test` holds both to the library over millions of values
   and lines (every float was checked once, outside the tests). **`parseSong`
   reads in place** (`Project` is a `ProjectHead` and the tracks; a track is
-  made blank piece by piece, `makeBlank`), so it is never handed a second
-  12 MB Project. A new format in the song file goes through `put`'s three, or
+  made blank, `makeBlank`), so it is never handed a second Project. A new format in the song file goes through `put`'s three, or
   snprintf; a new way to read goes through `LineIn`'s operations.
 - **Scenes are numbered by their place, so a scene put in moves the ones
   after it** (NEXT SCENE, SELECT + Y: `Session::nextScene`). Whatever holds a
@@ -1187,7 +1202,7 @@ effect in those two groups and fails one that does not.
   is how undo and redo know to move them). Its tests: `tests/nextscene_test.cpp`.
 - **A scene move is ONE command, and the audio thread copies nothing**
   (`Engine::moveScenes`, which sends `Command::ScenesMoved`). The engine keeps
-  each scene of each track as a piece of its own (`Track::scenes`: sixteen
+  each scene of each track as a piece of its own (`Track::scenes`: kMaxScenes
   pointers to a `SceneStore`; `drumScenes`, `notes`, `bars` and `automation`
   read them as the one run they used to be). The command moves the pointers,
   takes in the one scene that is new for each track (made on the app thread:
@@ -1270,6 +1285,23 @@ effect in those two groups and fails one that does not.
   (`Session::syncSong`: `sentSceneCount_`). Set before, a scene move lost to a
   full queue left the engine with the old song length for good: the song sent
   again found nothing to send. `nextscene_test` fills the queue to hold it.
+- **A scene nobody has written is the engine's ONE blank store, never written**
+  (`Engine::blankScene`, scenes-plan.md batch 1). **Every audio-thread write into a
+  scene goes through `writable(c)`** and does nothing on the blank one; **`Engine::send`
+  (the app thread) hands a scene its store first** (`Command::GiveScene`, appended) for
+  any write that leaves something (`leavesBlank` says which do not), both or neither
+  (`SpscQueue::hasRoom`). It keeps which scenes it has handed over in `given_` (a bit a
+  scene: so `kMaxScenes` <= 64), moved by `moveScenes` as the command moves the stores
+  (`moveGiven`) and cleared with a track taken away. **`SetTrackImage` carries stores made
+  on the app thread** (`SceneSet`, made in `send` from the `TrackImage`, which it frees on
+  success): the audio thread swaps pointers and hands the old ones back in the same holder
+  (it copied 0.8 MB a track before). **`RemoveInstrument` brings a holder** (from `send`,
+  when the track has stores) that `takeAway` hands the track's stores back in: one thing in
+  the trash. `TrackImage` is a `SceneImage` for each scene that holds something (nullptr:
+  nothing; read and written by slot as before, a slot written makes its scene), and
+  `Session::sceneImage` is nullptr for a scene with nothing and a cell of one bar. A test
+  that wants the engine's count reads `Engine::scenesGiven(track)`; `blankStillBlank()`
+  says the blank one was never written (`engine_test` `testScenesHaveStoresWhenWritten`).
 - **`sceneIn` (engine.cpp) is the one place a pattern is read into the
   engine**, for a whole track (`SetTrackImage`) and for one scene. A new
   field of a note or a hit is copied there, once; `sceneInto` (session.cpp)
@@ -1285,7 +1317,7 @@ effect in those two groups and fails one that does not.
   So a chord effect in scene 2 or later rolls other numbers than it did
   before the join (scene 1 is the same to the bit). `Track::Arp::slot` is a
   bar of the song, so `ScenesMoved` moves it by the rule the playing moves by;
-  an arpeggio whose scene has no place to go to (the sixteenth when one goes
+  an arpeggio whose scene has no place to go to (the last when one goes
   in, the one taken out) stays and looks whether its chord is still there
   (`Arp::look`). Waiting notes, `chordAsked`, `strokes` and the `GlideTrail`
   hold no scene number: time is steps since Play. **Anything new that the

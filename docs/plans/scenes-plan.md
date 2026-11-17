@@ -95,7 +95,7 @@ it.** Then the cap costs a few pointers and small numbers a scene, and 64 costs 
 - **Old songs load unchanged, and a song of 16 scenes or fewer is written byte for byte as now**:
   `repeats` and `length` keep their sixteen numbers, and grow only to the last scene past the sixteenth
   that is not at its usual; `scene N` and `auto N` go to 64.
-- **A song past 16 scenes on an older program** (0.737 and before): it loads, with its first sixteen
+- **A song past 16 scenes on an older program** (0.737 and any build without this change): it loads, with its first sixteen
   scenes; the lines of scene 17 and on are skipped (a scene number past 16 is not taken), and the
   `repeats` past sixteen are not read. Saved there, those scenes are gone from that file. Nothing is
   released, so old programs are owed nothing; README says it.
