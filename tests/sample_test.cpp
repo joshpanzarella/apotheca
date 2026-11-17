@@ -754,9 +754,11 @@ void testTheKitScreen() {
     rig.tap(UP, 3);
     CHECK(std::strcmp(track.laneSample[2], "beta") == 0); // the last one: it stops
     rig.tap(DOWN, 2);
-    CHECK(track.laneSample[2][0] == 0); // down past the first: the built-in drum
-    rig.tap(DOWN);
-    CHECK(track.laneSample[2][0] == 0);
+    CHECK(track.laneSample[2][0] == 0 && !track.laneSynth[2].on()); // down past the first: the built-in drum
+    rig.tap(DOWN); // ...and on down: the synth models (drumsynthapp_test), the first KICK
+    CHECK(track.laneSample[2][0] == 0 && track.laneSynth[2].model == drumsynth::kKick);
+    rig.tap(UP);
+    CHECK(track.laneSample[2][0] == 0 && !track.laneSynth[2].on());
     rig.tap(LEFT); // sideways does nothing while A is held
     CHECK(kit.cursorColumn() == KitScreen::kSound);
     rig.key(STICK_RIGHT, true);

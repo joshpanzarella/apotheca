@@ -10,9 +10,9 @@
 //   between SOUND, FIT, CHOKE and EDIT (round the ends).
 //   SOUND   tap A: the list of recordings (sample_picker.hpp), to pick one
 //           quickly; on a lane with a synth voice, its VOICE view (below). Or
-//           hold A + up / down: the built-in drum, then the twelve synth models
-//           (KICK ... NOISE, each at its usual knobs), then each recording, one
-//           at a time. B: the drum back.
+//           hold A + up / down: from the built-in drum UP each recording, one at
+//           a time, and DOWN the twelve synth models (KICK ... NOISE, each at its
+//           usual knobs). B: the drum back.
 //   FIT     hold A + up / down: OFF, 1, 2, 4, 8, 16 (one bar), 32, 64 steps.
 //           B: off.
 //   CHOKE   hold A + up / down: NONE, 1, 2. A hit on a lane in a group cuts

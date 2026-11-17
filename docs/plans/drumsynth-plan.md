@@ -1,8 +1,8 @@
 # DRUM SYNTH plan (a drum lane's sound made from oscillators and noise)
 
 Written 2026-11-17 from the code at `main` 85a0565 (0.669), branch `drumsynth`.
-Batches 0 and 1 (the generator and its twelve models) are built on that branch;
-"As built" at the end says what they came to. **The owner cannot hear**: every
+Batches 0, 1 and 2 (the generator, its twelve models, the app) are built on that
+branch; "As built" at the end says what they came to. **The owner cannot hear**: every
 claim about the sound is a test or a still. Every figure for a recipe is SELF
 (this plan's own; no drum machine's service notes were opened).
 
@@ -149,8 +149,9 @@ stale one).
 
 ### The KIT page
 
-- **SOUND, hold A + up / down**: the built-in drum, **then KICK ... NOISE
-  (SYNTH)**, then the recordings by name, as now. A synth lane's row reads the
+- **SOUND, hold A + up / down**: from the built-in drum UP the recordings by
+  name, as now, and **DOWN KICK ... NOISE (SYNTH)**, so each is one press from
+  the drum and the recordings are where they were. A synth lane's row reads the
   model's name and SYNTH where a built-in reads BUILT IN. The ends stop.
 - **Tap A on a synth lane's SOUND opens the VOICE view** (on any other lane it
   opens the list of recordings, as now; from a synth lane the list is reached
@@ -192,7 +193,8 @@ eight dials in place order (an unused place written as its usual).
 skipped (the lane plays what else it has). Each number is held as a double
 first (`wholeIn(v, 0, 100)`); a number missing or not a number ends the line
 there, the rest the model's usual. **A lane with both a `sample` and a
-`lanesynth` line is a synth** (the name is dropped after the track is read).
+`lanesynth` line is what the LATER line says** (each empties the other; the
+program never writes both).
 
 ### Undo
 
@@ -264,3 +266,64 @@ Each with the pick. A later "no" changes one constant or one row.
 | 10 | Undo | **The voice is a step**; a recording replacing it is not (as today) |
 | 11 | A new kit | **Stays the built-in drums**; synth voices are chosen lane by lane |
 | 12 | The designer page | **A model choice and the knobs on each lane's card** |
+
+## As built: batches 0 to 2 (2026-11-17, branch `drumsynth`)
+
+**The generator, the twelve models and the app are built and tested. Nobody has heard any of
+it; it has not run on the handheld.** Every recipe figure is SELF. The owner's calls (section 9)
+were not answered: built at the picks.
+
+### What is where
+
+| File | Holds |
+| --- | --- |
+| `engine/include/apotheca/drum_synth.hpp` | the rule: `Model`, `Place`, the table of knobs (name, unit, range, log, usual), the readings, words, `usualVoice`, `voiceHeld`, `seedOf`, `noiseAt` |
+| `engine/src/drum_synth.cpp` | the recipes (`recipeOf`), `lengthOf`, `work`, `make`, `sineTurn`, `soft` |
+| `app/project.hpp` | `TrackData::laneSynth` |
+| `app/session_samples.cpp` | `Session::setLaneSynth`, `madeLane`; `loadLane` makes a voice (or `LaneSound::making`, the helper thread's `Job::make`); `setLaneSample` takes a voice off |
+| `app/song_file.cpp`, `app/session.cpp` | `lanesynth`; `soundMark` / `restoreSounds` |
+| `app/kit_screen.cpp/.hpp` | the SOUND column's models, the VOICE view |
+| `tests/drumsynth_test.cpp` | `ctest -R drumsynth`: the rule and the sound (0.4 s) |
+| `tests/drumsynthapp_test.cpp` | `ctest -R drumsynthapp`: the app (1 s) |
+| `app/bench_run.cpp` | "the drum synth, a voice made": KICK, OP HAT, CYMBAL at 6 s |
+
+### Where it differs from the plan
+
+| Plan | Built | Why |
+| --- | --- | --- |
+| a filter's tan from the library | **tan from the voice's own sine** (`sineTurn(u) / sineTurn(u + 1/4)`) | the handheld's glibc gives another last bit for `tan` (found under qemu): with it the bits are the desk's |
+| the usual values read round (50 HZ, 500 MS) | **the dial nearest them** (KICK: TUNE 50 HZ at dial 32, DECAY 492 MS at dial 62) | a dial is a whole number 0..100 on a log scale |
+| SNAP's click as remembered | **every filtered noise set back to white noise's level** (`whiteAgain`), clicks 1.5 to 2.5 times the snap | at the first levels KICK's NOISE and SNAP changed nothing measurable |
+| both lines in a file: a synth | **the later line wins** | simpler; the program writes only one |
+| the models between the drum and the recordings | **the models DOWN from the drum, the recordings UP as before** | twelve presses more to the first recording was slow, and `sample_test`'s steps stayed as they were |
+
+### Measured (`drumsynth_test --measure`, the desk)
+
+| What | Figure |
+| --- | --- |
+| Pitch | KICK, TOM, ZAP, CLAVE, RIM at TUNE 0, 30, 70, 100: within 0.01 cent of TUNE (zero crossings after the sweep) |
+| SWEEP | the first cycle 30 to 120 cents under `TUNE x 2^(SWEEP/12)` (the fall inside the cycle), 0 at SWEEP 0 |
+| DECAY | the level falls 60 dB in DECAY within 5% (the sines) and 15% (the noisy ones), DECAY 20, 60, 90 |
+| The sine | 6.6e-10 from the library's at worst |
+| Peak / end | every model at its usual, at every dial 0, every dial 100 and 12 rolls: peak 0.891 (-1 dB), the last sample 0, the last 5 ms under -40 dB, no number under 1e-38 but 0, the same bits with flush-to-zero on |
+| The bits | the twelve usual voices and 72 rolled ones: **the same checksums under qemu-aarch64 with the handheld's build** (clang, -O2 -mcpu=cortex-a53, its sysroot) as on the desk |
+| Cost, a voice made | 8 to 20 ns a sample: KICK as it starts 0.38 ms, OP HAT 0.57 ms, CYMBAL at 6 s 4.7 ms (`bench`). Handheld at x13 to 17: about 5 to 10 ms, and 60 to 80 ms for the longest (on the helper thread) |
+| `kWorkInAFrame` | 7e5 units, about 1.5 ms on the desk (2.1 ns a unit at most): KICK at 2 s, OP HAT past about 1 s and CYMBAL past about 1.3 s go to the helper thread |
+| At play | nothing: a sample, as any recording |
+
+### Tests and mutants
+
+- **The generator: 27 mutants, 24 killed**, 3 equivalent (a phase wrap's `>=` for `>`; a line that set
+  the dial's low end, taken out; the reading's ms-or-seconds edge no dial reaches). Five of the kills
+  were by the checksums alone at first; a high pass test was added for one.
+- **The app: 16 mutants, 15 killed**; the one left (the helper's voice checked beside its version) is
+  a belt: any voice change moves the version. A ROLL test of the spread was added for one.
+- `idle_test` has a part (a CYMBAL at 6 s made on the helper thread, rolled, put back); `textsize`
+  holds the VOICE view at its widest (14.0 KHZ, 2.00 S, +60 ST, 300 MS) and its hints at 0 over.
+
+### Left
+
+- **Batch 3**: the named voices (data, on MODEL with hold A + LEFT / RIGHT).
+- **Batch 4**: the designer page (a model choice and the knobs on a lane's card).
+- **Batch 5**: a fresh review, README's DRUM SYNTH section.
+- Not done: a still of a voice MAKING IT... (it lands within a frame or two on the desk).

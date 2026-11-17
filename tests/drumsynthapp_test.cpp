@@ -403,27 +403,25 @@ void testTheSoundColumn() {
     rig.frames(2);
     KitScreen& kit = rig.app.kit();
     kit.goTo(kLane, KitScreen::kSound);
-    // Hold A + up: from the built-in drum, the twelve models at their usual knobs, then the recordings.
+    // Hold A + down: from the built-in drum, the twelve models at their usual knobs; up, the recordings.
     rig.key(A, true);
     rig.frames(1);
-    rig.tap(Up);
+    rig.tap(Down);
     CHECK(rig.kit().laneSynth[kLane] == voiceOf(drumsynth::kKick));
-    rig.tap(Up);
+    rig.tap(Down);
     CHECK(rig.kit().laneSynth[kLane] == voiceOf(drumsynth::kSnare));
-    rig.tap(Up, drumsynth::kModels - 3);
+    rig.tap(Down, drumsynth::kModels - 3);
     CHECK(rig.kit().laneSynth[kLane] == voiceOf(drumsynth::kNoiseBurst));
+    rig.tap(Down); // the last: the end stops
+    CHECK(rig.kit().laneSynth[kLane] == voiceOf(drumsynth::kNoiseBurst));
+    rig.tap(Up, drumsynth::kModels - 1);
+    CHECK(!rig.kit().laneSynth[kLane].on() && rig.kit().laneSample[kLane][0] == 0); // the drum
     rig.tap(Up);
     CHECK(!rig.kit().laneSynth[kLane].on() && std::strcmp(rig.kit().laneSample[kLane], "hit") == 0);
-    rig.tap(Up); // the last: the end stops
+    rig.tap(Up); // the last recording: the end stops
     CHECK(std::strcmp(rig.kit().laneSample[kLane], "hit") == 0);
-    rig.tap(Down);
-    CHECK(rig.kit().laneSynth[kLane] == voiceOf(drumsynth::kNoiseBurst) && rig.kit().laneSample[kLane][0] == 0);
-    rig.tap(Down, drumsynth::kModels - 1);
-    CHECK(!rig.kit().laneSynth[kLane].on() && rig.kit().laneSample[kLane][0] == 0); // the drum
-    rig.tap(Down);
-    CHECK(!rig.kit().laneSynth[kLane].on());
-    rig.tap(Up, 3);
-    CHECK(rig.kit().laneSynth[kLane].model == drumsynth::kTom);
+    rig.tap(Down, 4);
+    CHECK(rig.kit().laneSynth[kLane].model == drumsynth::kTom && rig.kit().laneSample[kLane][0] == 0);
     rig.key(A, false);
     rig.frames(1);
     CHECK(!kit.voicing() && !kit.picker().isOpen()); // (A let go after a step: no tap)

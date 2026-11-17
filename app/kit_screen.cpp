@@ -64,19 +64,18 @@ void KitScreen::hearFromList(SamplePicker::Hear how) {
     head_.lasts = how == SamplePicker::Hear::Preview ? static_cast<float>(lasts) / 1000.f : 0.f; // the line: to where it stops (Rest: to the end)
 }
 
-// The built-in drum is the first choice, then the twelve synth models (each at its usual knobs);
-// the recordings follow by name.
+// The built-in drum in the middle: UP the recordings by name, DOWN the twelve synth models (KICK
+// first, each at its usual knobs). So each is a press away, and the recordings are where they were.
 void KitScreen::stepSound(int by) {
-    const int models = drumsynth::kModels - 1;
-    const int count = static_cast<int>(names_.size()) + 1 + models;
+    const int models = drumsynth::kModels - 1, count = static_cast<int>(names_.size());
     const drumsynth::Voice& voice = trk().laneSynth[lane_];
-    int now = voice.on() ? voice.model : 0;
-    for (int i = 0; i < static_cast<int>(names_.size()) && !voice.on(); ++i)
-        if (names_[static_cast<std::size_t>(i)] == trk().laneSample[lane_]) now = models + 1 + i;
+    int now = voice.on() ? -voice.model : 0; // -1 KICK ... -12 NOISE, 0 the drum, 1.. the recordings
+    for (int i = 0; i < count && !voice.on(); ++i)
+        if (names_[static_cast<std::size_t>(i)] == trk().laneSample[lane_]) now = i + 1;
     const int to = now + by;
-    if (to < 0 || to >= count) return; // the ends stop
-    if (to >= 1 && to <= models) session_.setLaneSynth(project_.track, lane_, drumsynth::usualVoice(to));
-    else session_.setLaneSample(project_.track, lane_, to == 0 ? "" : names_[static_cast<std::size_t>(to - models - 1)]);
+    if (to < -models || to > count) return; // the ends stop
+    if (to < 0) session_.setLaneSynth(project_.track, lane_, drumsynth::usualVoice(-to));
+    else session_.setLaneSample(project_.track, lane_, to == 0 ? "" : names_[static_cast<std::size_t>(to - 1)]);
     if (!project_.playing) hear();
 }
 
@@ -841,7 +840,7 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (holding_ && column_ == kEdit) {
         hint("A", "edit"); // (opens when it is let go)
     } else if (holding_) {
-        hint("UP / DOWN", column_ == kSound ? "next / previous sound" : column_ == kFit ? "longer / shorter" : "next / previous group");
+        hint("UP / DOWN", column_ == kSound ? "recordings / synths" : column_ == kFit ? "longer / shorter" : "next / previous group");
     } else if (column_ == kEdit) {
         hint("A", "edit");
     } else {
