@@ -206,7 +206,13 @@ is (a recording picked again is one press).
 
 ## 5. Presets (batch 3)
 
-**Minimal: each model's usual is its sound, and a short list of NAMED VOICES
+**As built (batch 3): 73 named voices, 5 to 8 a model, CLASSIC (the usual) first**,
+in `app/presets/drumvoices.inc` read by `app/drum_voices.cpp` (`voice WORD NAME`, then `set PLACE
+DIAL ...`). **A lane keeps its dials, not the voice's name or place**, so the list is NOT append-only.
+`drumsynthapp_test` (`testTheNamedVoices`) fails a line it cannot read, a voice that is the usual or
+another's, and two voices of a model that are alike (length within 1.3 times, brightness within 1.2
+and crest within 1.3: it caught seven pairs in the first draft). The VOICE view writes the voice's name
+in brass after the model while the dials are its. Planned below: **Minimal: each model's usual is its sound, and a short list of NAMED VOICES
 a model** as built-in data (`app/presets/drumvoices.inc`: `voice MODEL NAME
 v1..v8`, read by the presets reader's rules, append-only, `presets_test` reads
 it): KICK BOOM, PUNCH, DEEP, CLICK...; four to six a model, about 50 in
@@ -216,6 +222,14 @@ one is 8 to 16 presses; a whole drum track's preset is a later thing for every
 kind of lane, not just synth ones.
 
 ## 6. The designer page (batch 4)
+
+**As built**: the SOUND choice lists the models in a SYNTH group (`lanesynth L WORD`); a synth lane's
+card has VOICE (its named voices, `lanevoice L N`, TURNED BY HAND when the dials are no voice's) and
+its knobs as sliders with the handheld's readings. **The stride was NOT changed**: a knob is the id
+`kKitKnobs + lane * 8 + place` (128 on), so every id before stayed where it was (`design_test` had them
+as numbers). **A synth lane's picture, length and least gap come in the state, not the spec**, so a knob
+turned does not rebuild the page under the slider. Tried in Chromium with Playwright: no script errors.
+Planned:
 
 The KIT page (`Session::serveKit`, `kitSpec`) gives each lane card a SOUND
 choice that lists the models after the built-in drum; a synth lane's card
@@ -327,3 +341,27 @@ were not answered: built at the picks.
 - **Batch 4**: the designer page (a model choice and the knobs on a lane's card).
 - **Batch 5**: a fresh review, README's DRUM SYNTH section.
 - Not done: a still of a voice MAKING IT... (it lands within a frame or two on the desk).
+
+## As built: batches 3 to 5 (2026-11-17, branch `drumsynth`, after main's join)
+
+- **Batch 3, named voices**: 73 in `app/presets/drumvoices.inc` (5 to 8 a model past CLASSIC), read by
+  `app/drum_voices.cpp`; picked on MODEL with hold A + LEFT / RIGHT; the name in brass while the dials
+  are its; still `kit-voice-named`. **The test holds them apart** (`testTheNamedVoices`: no two of a
+  model alike in length, brightness and crest, and each model's list reaching 3 times in length or 2 in
+  brightness); the first draft had seven pairs too alike, re-made. Nobody has heard any of them.
+- **Batch 4, the designer page**: section 6's "As built". Tried in Chromium with Playwright.
+- **Batch 5, the review** (by the same agent, read afresh; no second agent was there to ask):
+  - **Found and mended: a long voice with the designer page open never landed.** The page (and the VOICE
+    view) asks `readyLane` each frame; a lane whose voice was on the helper thread has no source yet, so
+    it was read again, its version moved, and the job's sound was thrown away every time.
+    `readyLane` now passes a lane that is `making` by; `testALongVoiceWaits` asks it every frame and
+    failed without the mend.
+  - **Mended: LEFT / RIGHT on MODEL went on from another lane's pick** (`voicePicked_` was the
+    screen's): `openVoice` takes it from the lane's own voice.
+  - Mutants since batch 2: the reader 8 (7 killed after a test was strengthened, 1 equivalent:
+    `shown()` is `name != nullptr`), the VOICE view's picking 3 (2 killed, 1 equivalent line taken out),
+    the page 6 (5 killed after a test was added, 1 equivalent line taken out).
+  - `bench`: "all 85 named voices" made one after another: 68 ms on the desk (0.8 ms each; the slowest
+    RIDE 4.4 ms; 11 go to the helper thread). **A song of eight synth lanes opened makes eight on the
+    app thread**: about 1 to 6 ms on the desk, so about 15 to 90 ms on the handheld, once, at open.
+  - README: the KIT section's DRUM SYNTH part, and the sound designer's.

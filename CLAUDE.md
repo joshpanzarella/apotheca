@@ -1469,7 +1469,10 @@ effect in those two groups and fails one that does not.
   - **`ctest -R theme` holds it.** `themeviews` has the program draw every
     still in all six (`--themes PREFIX`) and finds, by pixels, any colour
     that is not the theme's or one of its laid over another (`Explain`); a
-    new alpha given to `faded()` goes in its list there. A still in a theme:
+    new alpha given to `faded()` goes in its list there. **A drum hit's body (its CHANCE: any alpha)
+    and the play line's glow over anything are in it** (2026-11-17: the stills play the demo, so the
+    glow lands where the clock puts it, and over a ghost hit it failed now and then); a new
+    translucent thing that moves with the clock is added the same way. A still in a theme:
     `--theme paper`.
 - **The SET page shows twelve rows and moves one row at a time**
   (`SettingsScreen::firstShown`, `rowNowY`): thirteen since THEME. A new row
@@ -1761,7 +1764,15 @@ effect in those two groups and fails one that does not.
     Stills `kit-synth`, `kit-voice`, `-held`, `-deleting`, `-clap`; `textsize`, `idle_test` have it.
   - Tests: `tests/drumsynth_test.cpp` (pitch, sweep, decay, every knob, peak, the end, the bits, the
     cost with `--measure`; `--print` remakes the sums only from code known right) and
-    `tests/drumsynthapp_test.cpp`. Not built yet: named voices (batch 3), the designer page (batch 4).
+    `tests/drumsynthapp_test.cpp`.
+  - **Named voices** (batch 3; `app/drum_voices.hpp`, data `app/presets/drumvoices.inc`): CLASSIC (the
+    usual) then 5 to 8 a model, picked on MODEL with hold A + LEFT / RIGHT, named in brass while the dials
+    are its (`voicePlaceOf`). **A lane keeps its dials, never a voice's name or place, so the list is not
+    append-only.** `testTheNamedVoices` fails a line the reader cannot take, a voice that is the usual or
+    another's, and two voices of a model alike in length, brightness and crest: a new voice must sound
+    unlike the others by those numbers.
+  - **`readyLane` passes a lane whose voice is being made** (`LaneSound::making`): it has no source yet,
+    and read again every frame (the designer page, the VOICE view) its job was never let land.
 - **An `Engine` is 1.4 MB: a test does not stand many on the stack.** `engine_test`'s
   `testNudgeMovesAHitOffTheGrid` had six in one frame, 8.37 MB of the 8 MB there is, with 20 KB
   to spare by luck; an Engine a kilobyte bigger (FEEL) and it crashed one run in three, before
@@ -2562,6 +2573,15 @@ effect in those two groups and fails one that does not.
     in the browser, 2026-11-16). So an edit changes no spec; another sound does: the spec is made
     again when any lane's `LaneSound::version` moves (their sum), and its number goes up only when its
     text changes.
+  - **A synth lane on the page (DRUM SYNTH, batch 4)**: the SOUND choice lists the twelve models after the
+    built-in drum (`lanesynth L WORD`), a synth lane's card has its named voices (`lanevoice L N`) and its
+    knobs. **A knob's id is `kKitKnobs + lane * 8 + place`** (designer.hpp: after every lane's fields, so
+    the ids before stayed); its name is in the spec's wave (`"synth"`), its reading in the state. **A synth
+    lane's picture, length and least gap are in the STATE (`lanes[].synth`), not the spec**: a knob turned
+    changes the sound, and with the picture in the spec every turn sent a new spec and the page was built
+    again under the slider being dragged. `design_test` `testKitSynthFromThePage`; the script was tried in
+    Chromium with Playwright (2026-11-17: the choice, a named voice, a knob, a recording made a CLAP, the
+    drum back, no script errors).
   - **PLAY held is `hearLaneHeld` with the Designer as its owner**, and `keepHearing` leaves that one
     to the page (X is not held for it): it is let go by `hear L 0`, by the page going away, or by
     another track on the handheld.
@@ -2684,6 +2704,7 @@ effect in those two groups and fails one that does not.
 | JAX-EP with the VCA straight and its clip counted (2026-11-15, `bench`'s three rows, the two quieter of five runs on a desk shared with another build; Phazed 1.0 to 1.2% in them). **Not yet run on the handheld** | 0.56% / 1.05 to 1.11% / 1.79 to 1.81% |
 | JAX-EP after the resonance was mended (2026-11-16; the read-ahead and the low end given back), `bench`'s three rows timed in turns against the build before, each the best of 60 half seconds, on a busy desk: before 0.51 to 0.54% / 0.98 to 1.02% / 1.72 to 1.78%. **Over on resonant patches (+15%, +13%), under at RESONANCE 0 (-7%)**. Not run on the handheld | 0.49 to 0.50% / 1.14 to 1.19% / 1.92 to 2.01% |
 | Drums, 8 lanes | 0.1% |
+| DRUM SYNTH, all 85 named voices made one after another (2026-11-17, `bench`): the whole / each / the slowest (RIDE) | 68 ms / 0.8 ms / 4.4 ms; 11 on the helper thread |
 | DRUM SYNTH, a voice made on the app's thread when a knob turns (2026-11-17, `bench`; nothing while playing): KICK as it starts / OP HAT / CYMBAL at 6 s (the helper thread); 8 to 20 ns a sample. **Not yet run on the handheld** (x13 to 17: 5 to 10 ms, the longest 60 to 80) | 0.38 / 0.57 / 4.7 ms |
 | FILTER / DRIVE / DELAY / REVERB / CRUSH, one each | 0.03% / 0.12% / 0.02% / 0.07% / 0.01% |
 | TAPE / HALL / HALL with TONE above 50% (a later, slower run: REVERB read 0.09% in it) | 0.13% / 0.18% / 0.21% |
@@ -2777,7 +2798,7 @@ watch again, it is in git (the commit before batch 8b).
    through SDL2's Android side (sound, files, the WiFi page, which core the sound runs on).
    Keep the engine free of Linux-only calls where it costs nothing.
 10. **Our own firmware for the RG40XXV, Apotheca and nothing else** (owner, 2026-11-16; `docs/plans/firmware-plan.md`): a Buildroot image on the mainline kernel with ROCKNIX's H700 patches. **Planned only; batch 0 (ROCKNIX on a spare card, SPEED TEST there) is the first step.**
-11. **A drum synth** (owner, 2026-11-17): a kit lane's sound made from knobs. **Batches 0 to 2 built on branch `drumsynth`** (`docs/plans/drumsynth-plan.md`: the generator, twelve models, the KIT page's SOUND column and VOICE view, the song file, undo); not joined, not heard, not run on the handheld. Next: batch 3 (named voices), 4 (the designer page), 5 (review, README).
+11. **A drum synth** (owner, 2026-11-17): a kit lane's sound made from knobs. **Batches 0 to 5 built** (`docs/plans/drumsynth-plan.md`: twelve models, the KIT page's SOUND column and VOICE view, 73 named voices, the designer page, the review); 0 to 2 joined to main, 3 to 5 on branch `drumsynth`. Not heard, not run on the handheld; the owner's twelve calls are with the owner.
 12. **A wavetable synth, after the drum synth** (owner, 2026-11-17). Not planned yet.
 
 Open: FM-6's banks ROM2A, 3A and 4A (in the same archive; not taken: the job asked for the B sides), which chord packs ship, more presets, own WiFi hotspot, an automation

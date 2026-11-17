@@ -46,7 +46,9 @@
 // two rows of four (a place the model does not use is an empty box the cursor passes by).
 //   the stick or D-pad moves among the boxes (up from the first row: the MODEL)
 //   hold A + up / down: turns the box by a step (the stick through its range in about a second, by
-//           the square of its push). On MODEL: the model before / after, at its usual knobs
+//           the square of its push). On MODEL: the model before / after, at its usual knobs.
+//           Hold A + left / right on MODEL: the model's named voice before / after (drum_voices.hpp:
+//           CLASSIC, then the built-in data's), written in brass after the model while the dials are its
 //   B       the box to its usual value; on a box already there, or on MODEL, back to the kit.
 //           HELD: every knob to the model's usual, as the bar fills (undo brings them back)
 //   Y       ROLL: the knobs shown rolled, each inside the middle of its range (25 to 75); the model stays
@@ -168,6 +170,7 @@ private:
     bool voicing_ = false;
     int voicePlace_ = kVoiceModel;
     unsigned rolls_ = 0; // ROLL's count: the next roll is another
+    int voicePicked_ = 0; // the named voice last picked on MODEL (where LEFT / RIGHT go on from when the dials are turned)
     float turnedVoice_ = 0.f; // the stick's part-turned knob
 };
 

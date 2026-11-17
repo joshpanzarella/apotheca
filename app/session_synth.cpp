@@ -19,6 +19,7 @@
 #include "samples.hpp"
 #include "session_parts.hpp"
 #include "presets.hpp"
+#include "drum_voices.hpp"
 #include "kit_screen.hpp"
 #include "lane_edit.hpp"
 #include "lane_feel.hpp"
@@ -373,15 +374,34 @@ std::string Session::kitSpec(int track) const {
     const auto feel = [](int v, char* into) { feelAmountText(v, into, 64); };
     out += "," + kitField("HUMAN TIME", kKitHumanTime, (stops(kAmountAt, kAmountClicks, feel) + "}").c_str());
     out += "," + kitField("HUMAN LEVEL", kKitHumanLevel, (stops(kAmountAt, kAmountClicks, feel) + "}").c_str());
+    // DRUM SYNTH: a synth lane's knob P is kKitKnobs + lane * 8 + P (designer.hpp), 0..100, its name in the
+    // wave's "synth", its reading in the state. And the models, for the SOUND choice.
+    std::snprintf(text, sizeof text, "],\"knobs\":%d", kKitKnobs);
+    out += text;
+    out += ",\"models\":[";
+    for (int m = drumsynth::kNone + 1; m < drumsynth::kModels; ++m)
+        out += std::string(m > 1 ? "," : "") + "{\"word\":" + jsonText(drumsynth::modelWord(m)) + ",\"name\":" + jsonText(drumsynth::modelName(m)) + "}";
     out += "],\"waves\":[";
     for (int lane = 0; lane < kDrumLanes; ++lane) {
         const LaneSound& sound = sounds_[track][lane];
         std::snprintf(text, sizeof text, "%s{\"lane\":%d,\"drum\":", lane ? "," : "", lane);
         out += text + jsonText(DrumKit::laneName(lane));
-        std::snprintf(text, sizeof text, ",\"seconds\":%.3f,\"missing\":%s,\"recording\":", sound.sourceSeconds, sound.missing ? "true" : "false");
+        // A synth lane: its model, its places' names and its named voices. Its picture, its length and the
+        // least gap of START and END move with every knob, so they come in the state (lanes[].synth), and
+        // a knob turned changes no spec (the page would be built again under the slider being dragged).
+        const drumsynth::Voice& voice = t.laneSynth[lane];
+        const float seconds = voice.on() ? 0.f : sound.sourceSeconds;
+        std::snprintf(text, sizeof text, ",\"seconds\":%.3f,\"missing\":%s,\"recording\":", seconds, sound.missing ? "true" : "false");
         out += text + jsonText(t.laneSample[lane]);
-        std::snprintf(text, sizeof text, ",\"marks\":[%d,%d],\"least\":%d,\"units\":%d,\"peaks\":[", lane * kKitStride + kEditStart, lane * kKitStride + kEditEnd, leastSpan(sound.sourceSeconds), kEditUnits);
-        out += text + peaksText(sound.sourcePeaks) + "]}";
+        if (voice.on()) {
+            out += ",\"synth\":{\"word\":" + jsonText(drumsynth::modelWord(voice.model)) + ",\"name\":" + jsonText(drumsynth::modelName(voice.model)) + ",\"places\":[";
+            for (int p = 0; p < drumsynth::kPlaces; ++p) out += std::string(p ? "," : "") + (drumsynth::shown(voice.model, p) ? jsonText(drumsynth::knob(voice.model, p).name) : "null");
+            out += "],\"voices\":[";
+            for (int v = 0; v < voiceCount(voice.model); ++v) out += std::string(v ? "," : "") + jsonText(voiceName(voice.model, v));
+            out += "]}";
+        }
+        std::snprintf(text, sizeof text, ",\"marks\":[%d,%d],\"least\":%d,\"units\":%d,\"peaks\":[", lane * kKitStride + kEditStart, lane * kKitStride + kEditEnd, voice.on() ? 1 : leastSpan(sound.sourceSeconds), kEditUnits);
+        out += text + (voice.on() ? std::string() : peaksText(sound.sourcePeaks)) + "]}";
     }
     out += "],\"recordings\":[";
     for (std::size_t i = 0; i < designRecordings_.size(); ++i) out += (i ? "," : "") + jsonText(designRecordings_[i].c_str());
@@ -413,6 +433,8 @@ std::string Session::designState() const {
             v[kKitHumanLevel] = t.laneFeel[lane].level;
             for (int f = 0; f < kKitStride; ++f) std::snprintf(text, sizeof text, lane || f ? ",%d" : "%d", v[f]), out += text;
         }
+        for (int lane = 0; lane < kDrumLanes; ++lane) // a synth lane's knobs, from kKitKnobs (0 where it is none)
+            for (int p = 0; p < drumsynth::kPlaces; ++p) std::snprintf(text, sizeof text, ",%d", t.laneSynth[lane].dial[p]), out += text;
         out += "],\"lanes\":[";
         for (int lane = 0; lane < kDrumLanes; ++lane) {
             const LaneSound& sound = sounds_[project.track][lane];
@@ -421,8 +443,21 @@ std::string Session::designState() const {
                 laneEditText(t.laneEdit[lane], row, sound.sourceSeconds, text, sizeof text);
                 out += (row ? "," : "") + jsonText(text);
             }
-            std::snprintf(text, sizeof text, "],\"plays\":%.2f,\"making\":%s,\"fitting\":%s}", sound.seconds, sound.shaping ? "true" : "false", sound.waiting && !sound.shaping ? "true" : "false");
+            std::snprintf(text, sizeof text, "],\"plays\":%.2f,\"making\":%s,\"fitting\":%s", sound.seconds, sound.shaping ? "true" : "false", sound.waiting && !sound.shaping ? "true" : "false");
             out += text;
+            // A synth lane: what each knob reads, the named voice its dials are (-1: turned by hand), and
+            // its picture, length and START / END's least gap (in the spec for any other lane).
+            const drumsynth::Voice& voice = t.laneSynth[lane];
+            if (voice.on()) {
+                out += ",\"synth\":{\"readings\":[";
+                for (int p = 0; p < drumsynth::kPlaces; ++p) {
+                    drumsynth::knobText(voice.model, p, voice.dial[p], text, sizeof text);
+                    out += (p ? "," : "") + jsonText(text);
+                }
+                std::snprintf(text, sizeof text, "],\"voice\":%d,\"seconds\":%.3f,\"least\":%d,\"peaks\":[", voicePlaceOf(voice), sound.sourceSeconds, leastSpan(sound.sourceSeconds));
+                out += text + peaksText(sound.sourcePeaks) + "]}";
+            }
+            out += "}";
         }
         return out + "]}";
     }
@@ -488,7 +523,8 @@ void Session::serveDesigner() {
         case DesignRequest::Save: savePreset(project.track, r.name); break;
         case DesignRequest::Name: setTrackName(project.track, r.name); break;
         case DesignRequest::Roll: rollSynth(project.track, now_ * 2654435761u + static_cast<unsigned>(r.a)); break;
-        case DesignRequest::LaneSample: case DesignRequest::Hear: case DesignRequest::Normalize: case DesignRequest::Trim: break; // (a kit's: above)
+        case DesignRequest::LaneSample: case DesignRequest::Hear: case DesignRequest::Normalize: case DesignRequest::Trim:
+        case DesignRequest::LaneSynth: case DesignRequest::LaneVoice: break; // (a kit's: above)
         case DesignRequest::Note: {
             if (designHeldTrack_ != project.track) letGo(); // another track now: the old keys come up first
             designHeldTrack_ = project.track;
@@ -547,6 +583,14 @@ void Session::serveKit(const DesignRequest& r) {
     const TrackData& t = project.tracks[track];
     switch (r.kind) {
     case DesignRequest::Set: {
+        if (r.a >= kKitKnobs && r.a < kKitKnobs + kDrumLanes * drumsynth::kPlaces) { // a synth lane's knob
+            const int lane = (r.a - kKitKnobs) / drumsynth::kPlaces, place = (r.a - kKitKnobs) % drumsynth::kPlaces;
+            if (!t.laneSynth[lane].on()) return; // (a place its model does not use is put back to 0 there: voiceHeld)
+            drumsynth::Voice v = t.laneSynth[lane];
+            v.dial[place] = static_cast<std::uint8_t>(r.b < 0 ? 0 : r.b > drumsynth::kDialMost ? drumsynth::kDialMost : r.b);
+            setLaneSynth(track, lane, v);
+            return;
+        }
         if (r.a < 0 || r.a >= kDrumLanes * kKitStride) return;
         const int lane = r.a / kKitStride, field = r.a % kKitStride;
         if (field < kEditRows) setLaneEdit(track, lane, laneEditWith(t.laneEdit[lane], field, r.b)); // (held to its limits there)
@@ -563,6 +607,10 @@ void Session::serveKit(const DesignRequest& r) {
     case DesignRequest::Hear: // as X held on the KIT page: heard until let go (a tap: as a tap is)
         if (r.b) hearLaneHeld(track, r.a, kPlacedLevel, &designer_);
         else if (hearingHeld() && heard_.owner == &designer_ && heard_.lane == r.a) letGoHeard();
+        return;
+    case DesignRequest::LaneSynth: setLaneSynth(track, r.a, drumsynth::usualVoice(drumsynth::modelFromWord(r.name.c_str()))); return;
+    case DesignRequest::LaneVoice: // a named voice of the lane's model (none on a lane that is no synth)
+        if (t.laneSynth[r.a].on() && r.b < voiceCount(t.laneSynth[r.a].model)) setLaneSynth(track, r.a, voiceAt(t.laneSynth[r.a].model, r.b));
         return;
     case DesignRequest::Normalize: normalizeLane(track, r.a); return;
     case DesignRequest::Trim: trimLaneSilence(track, r.a); return;

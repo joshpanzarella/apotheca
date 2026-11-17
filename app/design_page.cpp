@@ -348,7 +348,7 @@ function levelAt(v, b, at, seconds) {
 // while a mark is dragged; the handheld's own reading takes its place when it comes.
 function timeText(v, seconds) { const s = v / 100000 * seconds; return s < 1 ? (s * 1000).toFixed(1) + ' MS' : s.toFixed(3) + ' S'; }
 function buildKit(all) {
-  const help = el('div', '', 'PLAY a lane: hold its PLAY, or hold 1 to 8 on the computer\'s keyboard. Drag START and END on a picture. The files on the card are never changed.');
+  const help = el('div', '', 'PLAY a lane: hold its PLAY, or hold 1 to 8 on the computer\'s keyboard. Drag START and END on a picture. A lane\'s SOUND may be a SYNTH voice, made from its knobs. The files on the card are never changed.');
   help.id = 'kithelp'; all.append(help);
   const lanes = el('div', 'lanes');
   for (const w of spec.waves) lanes.append(laneCard(w));
@@ -361,7 +361,17 @@ function laneCard(w) {
   const pick = el('select'), play = el('button', '', 'PLAY');
   pick.id = 'sound' + lane; play.id = 'play' + lane;
   recordingOptions(pick, 'BUILT-IN ' + w.drum, w.recording);
-  pick.addEventListener('change', () => { tell('lanesample' + lane, ('lanesample ' + lane + ' ' + pick.value).trim()); pick.blur(); });
+  // DRUM SYNTH: the twelve models after the built-in drum (value "synth:WORD"), as on the handheld.
+  const synths = el('optgroup'); synths.label = 'SYNTH';
+  for (const m of spec.models || []) { const o = el('option', '', m.name); o.value = 'synth:' + m.word; synths.append(o); }
+  pick.insertBefore(synths, pick.children[1] || null);
+  pick.value = soundOf(w);
+  pick.addEventListener('change', () => {
+    const v = pick.value;
+    if (v.startsWith('synth:')) tell('lanesample' + lane, 'lanesynth ' + lane + ' ' + v.slice(6));
+    else tell('lanesample' + lane, ('lanesample ' + lane + ' ' + v).trim());
+    pick.blur();
+  });
   play.addEventListener('pointerdown', e => { hear(lane, true); play.setPointerCapture(e.pointerId); e.preventDefault(); });
   for (const up of ['pointerup', 'pointercancel']) play.addEventListener(up, () => hear(lane, false));
   top.append(el('span', 'num', String(lane + 1)), pick, play);
@@ -379,7 +389,8 @@ function laneCard(w) {
   w.emptyText = w.missing ? 'NOT ON THE CARD: ' + w.recording + '. THE DRUM PLAYS.' : 'NO SOUND';
   w.noteText = () => {
     const s = laneState(), fit = state && state.values ? state.values[base + kFit] : 0;
-    const what = (w.recording || w.drum + ', BUILT IN') + ' · ' + w.seconds.toFixed(2) + ' S';
+    const voice = w.synth && s && s.synth ? (s.synth.voice >= 0 ? w.synth.voices[s.synth.voice] : 'TURNED BY HAND') : '';
+    const what = (w.synth ? w.synth.name + ', SYNTH, ' + voice : w.recording || w.drum + ', BUILT IN') + ' · ' + w.seconds.toFixed(2) + ' S';
     if (!s) return what;
     return what + ' · ' + (s.making ? 'MAKING IT...' : s.fitting ? 'FITTING...' : 'PLAYS ' + s.plays.toFixed(2) + ' S' + (fit > 0 && w.recording ? ', FITTED' : ''));
   };
@@ -387,10 +398,12 @@ function laneCard(w) {
   const g = el('div', 'grid five');
   for (const f of [kVolume, kChoke, kFit, kHumanTime, kHumanLevel]) {
     const box = control(item(f));
-    if (f === kFit && !w.recording) { box.querySelector('select').disabled = true; box.title = 'FIT stretches a recording: a built-in drum has none.'; }
+    if (f === kFit && !w.recording && !w.synth) { box.querySelector('select').disabled = true; box.title = 'FIT stretches a recording: a built-in drum has none.'; }
     g.append(box);
   }
-  card.append(g, el('h3', '', 'EDIT'));
+  card.append(g);
+  if (w.synth) card.append(synthBox(w, lane, laneState));
+  card.append(el('h3', '', 'EDIT'));
   const e = el('div', 'grid');
   for (const f of [kEdit.start, kEdit.end, kEdit.fadeIn, kEdit.fadeOut, kEdit.gain, kEdit.pitch, kEdit.fine, kEdit.reverse]) e.append(control(item(f)));
   const acts = el('div', 'acts'), norm = el('button', 'quiet', 'NORMALIZE'), trim = el('button', 'quiet', 'TRIM SILENCE');
@@ -402,6 +415,32 @@ function laneCard(w) {
   acts.append(norm, trim);
   card.append(e, acts);
   return card;
+}
+// What a lane's SOUND choice shows: its synth model, else its recording ('' : the built-in drum).
+function soundOf(w) { return w.synth ? 'synth:' + w.synth.word : w.recording; }
+// A synth lane's VOICE (DRUM SYNTH): its named voices, then its knobs, each a dial 0..100 whose reading
+// the handheld gives (it hangs on the model), shown as the number while it is on its way.
+function synthBox(w, lane, laneState) {
+  const box = el('div'); box.append(el('h3', '', 'VOICE: ' + w.synth.name));
+  const row = el('div', 'acts'), pick = el('select');
+  pick.id = 'voice' + lane;
+  const turned = el('option', '', 'TURNED BY HAND'); turned.value = -1; turned.disabled = true; pick.append(turned);
+  w.synth.voices.forEach((name, i) => { const o = el('option', '', name); o.value = i; pick.append(o); });
+  pick.addEventListener('change', () => {
+    tell('lanevoice' + lane, 'lanevoice ' + lane + ' ' + pick.value);
+    for (let p = 0; p < 8; ++p) touched[spec.knobs + lane * 8 + p] = 0; // the knobs take what the handheld made of it
+    pick.blur(); setTimeout(look, 250);
+  });
+  row.append(pick); box.append(row);
+  const g = el('div', 'grid');
+  w.synth.places.forEach((name, p) => {
+    if (!name) return; // a place this model does not use
+    const it = {name, id: spec.knobs + lane * 8 + p, min: 0, max: 100}; // (ids from spec.knobs: designer.hpp's kKitKnobs)
+    it.reading = v => { const s = laneState(); return s && s.synth && state.values[it.id] === v ? s.synth.readings[p] : String(v); };
+    g.append(control(it, name));
+  });
+  box.append(g);
+  return box;
 }
 // A lane heard for as long as it is held, as X on the handheld.
 const lanesDown = new Set();
@@ -443,7 +482,12 @@ function fill() {
   $('what').textContent = 'TRACK ' + state.track + ' · ' + state.name;
   const pick = $('recording');
   if (pick && spec.waves && document.activeElement !== pick) pick.value = spec.waves[0].recording; // (a pick refused: back to what is on)
-  if (spec.page === 'kit') for (const w of spec.waves) { const p = $('sound' + w.lane); if (p && document.activeElement !== p) p.value = w.recording; }
+  if (spec.page === 'kit') for (const w of spec.waves) {
+    const p = $('sound' + w.lane); if (p && document.activeElement !== p) p.value = soundOf(w);
+    const s = state.lanes && state.lanes[w.lane]; // a synth lane's picture, length and least gap move with its knobs: the state's
+    if (w.synth && s && s.synth) { w.peaks = s.synth.peaks; w.seconds = s.synth.seconds; w.least = s.synth.least; }
+    const v = $('voice' + w.lane); if (v && s && s.synth && document.activeElement !== v) v.value = s.synth.voice;
+  }
   drawEnvs(); drawWaves();
 }
 async function look() {

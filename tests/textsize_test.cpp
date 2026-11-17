@@ -1570,7 +1570,7 @@ void testTheOtherScreens() {
         rig.app.kit().openVoice(drumsynth::kTune);
         rig.frames(2);
         CHECK(holds(rig, "a lane's VOICE, NOISE at its widest") > 8);
-        CHECK(drew("14.0 KHZ") && drew("2.00 S") && drew("NOISE, SYNTH"));
+        CHECK(drew("14.0 KHZ") && drew("2.00 S") && drew("NOISE,") && drew("SYNTH"));
         CHECK(ui::gHintsOver == 0);
         rig.app.kit().goTo(3, KitScreen::kSound);
         rig.app.kit().openVoice(drumsynth::kOwn);
