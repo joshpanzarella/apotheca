@@ -13,9 +13,10 @@ drive, in its `apotheca` folder.
 turns the screen off, and a low battery turns it off before it goes flat.
 See "Turning it off" below.
 
-**Nobody has started it on a handheld yet.** Only the desk tests below have
-run: the screen, the sound, the buttons and the GPU are the handheld's to
-show. The card writes down everything it finds (the boot log, below), so
+**It has started on the owner's handheld** (2026-11-17): with the newer
+screen's device tree, text and then Apotheca came up. The boot log there
+found the sound card, the buttons and the battery. Everything else below
+(sound heard, the GPU, power) has been tried only on the desk. The card writes down everything it finds (the boot log, below), so
 whatever happens can be sent back.
 
 ## The device cannot be bricked by this
@@ -55,10 +56,14 @@ handheld as before.** Keep the stock card in a drawer and use a spare one.
 2. Press the power key.
 3. **What you should see**, in order:
    - **The light** by the screen comes on within a second or two: the boot
-     loader (U-Boot) is running. The screen is still black: U-Boot cannot
-     drive this screen.
-   - **Text scrolls on the screen** after about 2 to 5 seconds: the Linux
-     kernel starting.
+     loader (U-Boot) is running.
+   - **Coloured vertical stripes** (or a black screen) from power-on: this
+     is normal. The screen shows stripes until Linux sends it its start-up
+     commands; U-Boot cannot drive this screen. **Wait**: it lasts about 5
+     to 10 seconds. Do not switch off in this time, above all on the first
+     start (a boot switched off here writes no log).
+   - **Text scrolls on the screen** when the stripes go: the Linux kernel
+     starting.
    - The first start only: a line `apotheca: DATA: first boot, growing ...`.
      It makes the APOTHECA part of the card, filling the rest of the card.
      It happens once.
@@ -138,21 +143,32 @@ Whatever you see is useful. Send:
   `touch /run/apotheca/apotheca.hold` and stop Apotheca with
   `kill $(pidof apotheca)`; it is not started again until the hold file goes.
 
-## If the screen stays black or shows garbage
+## If the screen stays striped, black or shows garbage
 
-Later units of the RG40XXV have another screen ("v2 panel"), which needs
-the other device tree. To try it:
+The RG40XXV has had **two screens**, and each needs its own device tree.
+**The card starts with the newer one** (`rg40xx-v-v2-panel`), which the
+owner's unit has (it gave a picture with it on 2026-11-17; the other tree
+left only the stripes). Units from before the change need the first one.
+
+| Tree | Screen | Units |
+| --- | --- | --- |
+| `sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb` (the card's default) | the newer screen | later units: Knulli and muOS users reported new RG40XXVs with only stripes from November 2025, and ROCKNIX added this tree in April 2026 |
+| `sun50i-h700-anbernic-rg40xx-v.dtb` | the first screen | earlier units |
+
+**First wait 30 seconds**: the stripes before Linux are normal (above). If
+they stay, try the other tree:
 
 1. Card into the computer, open **APOTHBOOT**.
-2. Copy `device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb` to the top
+2. Copy `device_trees/sun50i-h700-anbernic-rg40xx-v.dtb` to the top
    of APOTHBOOT, and rename the copy to **`dtb.img`**, replacing the one
-   there.
-3. Card back in, power on.
+   there. (On a Mac: check with **Get Info** that the name is exactly
+   `dtb.img`, with no ending added.)
+3. Card back in, power on, and wait 30 seconds.
 
 (`dtb-in-use.txt` says which one the card was made with. To go back, copy
-`sun50i-h700-anbernic-rg40xx-v.dtb` over `dtb.img` the same way.) If
-ROCKNIX's batch 0 shows which tree your unit needs, the card can be built
-with that one: `scripts/build-image.sh --dtb rg40xx-v-v2-panel`.
+`sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb` over `dtb.img` the same way.)
+A card can be built with the first tree as its default:
+`scripts/build-image.sh --dtb rg40xx-v`.
 
 ## A shell from the computer (optional)
 

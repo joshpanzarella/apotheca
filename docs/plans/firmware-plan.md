@@ -131,7 +131,7 @@ but it is room for long recordings later.
 | --- | --- | --- |
 | **Bricking** (a device that will not start again) | **Very low.** There is no eMMC or SPI flash for software to overwrite; the boot code is on the card. With no bootable card the chip's BROM waits for a USB computer ("FEL" mode) | Keep the **stock card untouched in a drawer**. Every experiment is on a spare card |
 | Hardware harm from wrong power settings | Low but real: the boot loader sets the PMIC's voltages, and the battery's charge limits are in the device tree | Use the values mainline U-Boot and ROCKNIX already ship for the H700 family; change none of them; no overclock |
-| A board revision our device tree does not fit | Medium: Anbernic changed panels and RAM in later units | Batch 0 finds which of ROCKNIX's RG40XXV trees works on the owner's unit |
+| A board revision our device tree does not fit | Medium: Anbernic changed panels and RAM in later units | **Met and answered** (section 11): the owner's unit has the newer screen; the card starts with ROCKNIX's `rg40xx-v-v2-panel` tree and carries the other |
 | Screen or sound do not come up on our image | Medium | ROCKNIX's patches are the reference; route a's kernel is the fallback |
 | WiFi hotspot not possible with `rtw88` | Unknown | The hotspot is a later wish; joining a network is enough to ship |
 | Upkeep | Ongoing | Pin one kernel line (an LTS); move only when a fix or feature is wanted |
@@ -208,7 +208,8 @@ The port zip stays as it is for anyone on another firmware.
 **Built and tested on the desk only. Nobody has started it on a handheld.**
 Batch 0 (ROCKNIX on a spare card) has not happened, so which RG40XXV device
 tree the owner's unit needs is not known: the card carries both, and either
-can be the one it starts with (`--dtb`, or a copy over `dtb.img`).
+can be the one it starts with (`--dtb`, or a copy over `dtb.img`). **Since answered: the owner's unit has the
+newer screen, and the card starts with that tree (section 11).**
 
 ### What was found
 
@@ -477,6 +478,55 @@ sleeps, wakes on the key, and comes back with sound and screen.
 - `idle-off` and `low-battery` as rows of the SET page instead of a file.
 - Suspend tried on the handheld; if it works, it may become what a tap does.
 
+## 11. The owner's first start: the newer screen (2026-11-17)
+
+**The owner's RG40XXV has the newer screen, and works with ROCKNIX's
+`rg40xx-v-v2-panel` tree.** With the first tree (`rg40xx-v`) it showed only
+coloured vertical stripes, though the boot log said everything else came up
+(sound card, joypad, battery; the panel driver loaded `rg40xx-panel.panel`
+and read the display ID as `000000`). With the v2 tree, after a longer wait,
+text scrolled and Apotheca came up. **The card now starts with the v2 tree**
+(`scripts/build-image.sh`'s and `post-image.sh`'s default); `rg40xx-v` stays
+in `device_trees/` for units with the first screen, and `--dtb rg40xx-v`
+builds a card that starts with it. `check-image.sh` now also checks that
+`dtb.img` is the tree `dtb-in-use.txt` names.
+
+**The stripes before Linux are normal on this unit, with either tree.** The
+panel shows them from power-on until Linux's panel driver sends its
+start-up commands (about 2.9 s into the kernel, a few seconds after the
+power key). U-Boot has no driver for this SPI-set-up RGB panel, so it cannot
+show anything earlier; holding the backlight off from U-Boot would only turn
+the stripes black, and was not done. The owner's first try of the v2 tree
+wrote no boot log because it was switched off during the stripes. os/README.md
+and the boot partition's README.txt now say to wait 30 seconds.
+
+**Evidence that later units have the newer screen** (no maker's statement):
+
+- Knulli issue 455 (November 2025 on): several new RG40XXVs showing only
+  coloured vertical lines with sound playing; the stock OS worked; muOS
+  2508.4 worked.
+- muOS commit `a55cdbe` ("Updated 40H/V device u-boot variants") replaced
+  the RG40XX H and V stock-style `u-boot.fex` (one file now for both). Its new
+  `u-boot.fex` holds **both** panels' start-up commands as code (the first:
+  NV3052C-style page selects `FF 30`, `FF 52`, `FF 01`; the second starts
+  `D7 61 74 97`, `D0 10`, `60..6F FF`: the same sequence as ROCKNIX's v2
+  file), and code that reads **pin PE6** (H616 pin controller, port E data
+  register `0x0300B0A0`, bit 6, after setting PE6's function) to pick
+  `lcd_type`; it prints `--allen--PE_data[31:0] = 0x%x,lcd_type = %d`. The
+  u-boot before that commit has neither sequence nor the PE6 read. Its
+  string table names one driver, `fog_fj035fhd05_v1`, for both.
+- ROCKNIX added `anbernic,rg40xx-v2-panel.panel` and the two `-v2-panel`
+  trees (H and V) on 2026-04-04 (commit `765c0e53f`, Philippe Simons); its
+  `next` branch on 2026-11-17 has no newer RG40XX panel.
+
+**A way to tell the screens apart without asking the owner (not built):**
+the stock boot loader reads PE6. Our kernel or an early init script could
+read the same pin and pick the panel file, so one card would fit both
+screens. Which level means which screen was not worked out (the code sets
+`lcd_type = !PE6`; which `lcd_type` runs which sequence was not traced), and
+it needs a unit of each kind to try. The display ID cannot do it: the panel's
+SPI is write-only here (`spi-gpio` with no MISO), so it reads `000000`.
+
 ## Sources
 
 - Anbernic, RG 40XXV product page (SoC, RAM, screen, battery, WiFi, BT): https://anbernic.com/products/rg-40xxv
@@ -505,3 +555,6 @@ sleeps, wakes on the key, and comes back with sound and screen.
 - Bootlin toolchains: https://toolchains.bootlin.com
 - Mainline U-Boot v2026.01's H700 defconfig: https://github.com/u-boot/u-boot/blob/v2026.01/configs/anbernic_rg35xx_h700_defconfig
 - Apotheca's own: `app/main.cpp`, `app/realtime.hpp`, `app/battery.hpp`, `app/transfer.cpp`, `scripts/Apotheca.sh`, `scripts/build-handheld.sh`, `docs/plans/speed-plan.md`, commit 9ff2f8e (the owner's SPEED TEST on 0.573)
+- Knulli issue 455, new RG40XXVs show only vertical lines: https://github.com/knulli-cfw/distribution/issues/455
+- muOS commit a55cdbe, "Updated 40H/V device u-boot variants" (binaries; read with `strings` and a Thumb disassembler): https://github.com/MustardOS/internal/commit/a55cdbe8ed13472d9b2d54c3ff74e47b9a6c454c
+- ROCKNIX, "h700: add support for rg40xx v2 panel": https://github.com/ROCKNIX/distribution/commit/765c0e53ffa946b3ca7ef0a0d8460dc6ac49a9f7

@@ -9,8 +9,9 @@
 #
 #   --dtb    which device tree the card starts with (dtb.img on its boot
 #            partition; both are on it, and the other can be copied over).
-#            Default rg40xx-v. Batch 0 on ROCKNIX tells which one the owner's
-#            unit needs.
+#            Default rg40xx-v-v2-panel: the owner's unit has the newer screen
+#            (it showed a picture with it, 2026-11-17; the first tree left
+#            only coloured stripes). rg40xx-v is for units with the first screen.
 #   --dram   the memory type U-Boot sets up. Default lpddr4 (ROCKNIX lists
 #            the RG40XX V under its DDR4 image).
 #   --tidy   after the build, delete the biggest build folders (the kernel,
@@ -37,7 +38,7 @@ br="$work/buildroot-$BR_VERSION"
 out="$work/output"
 external="$here/os"
 
-dtb=rg40xx-v
+dtb=rg40xx-v-v2-panel
 dram=lpddr4
 tidy=no
 while [ $# -gt 0 ]; do

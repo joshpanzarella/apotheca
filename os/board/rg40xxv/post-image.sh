@@ -4,12 +4,13 @@
 #
 # Environment (from scripts/build-image.sh):
 #   APOTHECA_DTB   which RG40XXV device tree becomes dtb.img:
-#                  "rg40xx-v" (default) or "rg40xx-v-v2-panel"
+#                  "rg40xx-v-v2-panel" (default: the newer screen, the
+#                  owner's unit) or "rg40xx-v" (the first screen)
 set -eu
 
 board="$(cd "$(dirname "$0")" && pwd)"
 images="$BINARIES_DIR"
-dtb="${APOTHECA_DTB:-rg40xx-v}"
+dtb="${APOTHECA_DTB:-rg40xx-v-v2-panel}"
 
 # The boot partition's files
 rm -rf "$images/boot"

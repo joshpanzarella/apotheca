@@ -116,6 +116,10 @@ if shutil.which('mdir') and shutil.which('mtype'):
     check('FDT /dtb.img' in conf and 'LINUX /Image' in conf, "extlinux.conf: LINUX /Image, FDT /dtb.img")
     r = subprocess.run(['mtype', '-i', spec, '::dtb.img'], capture_output=True, env=env)
     check(r.stdout[:4] == b'\xd0\x0d\xfe\xed', "dtb.img is a device tree")
+    inuse = mt('mtype', '-i', spec, '::dtb-in-use.txt').stdout.strip()
+    named = subprocess.run(['mtype', '-i', spec, '::device_trees/' + inuse], capture_output=True, env=env)
+    check(inuse.endswith('.dtb') and named.returncode == 0 and named.stdout == r.stdout,
+          "dtb.img is device_trees/%s, as dtb-in-use.txt says" % inuse)
     r = subprocess.run(['mtype', '-i', spec, '::Image'], capture_output=True, env=env)
     check(r.stdout[56:60] == b'ARM\x64', "Image is an arm64 kernel")
 else:
