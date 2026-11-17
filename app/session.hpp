@@ -271,7 +271,13 @@ public:
     int followFailures() const { return followFailures_; } // files that named one and could not be written, since the program started
     static constexpr int kFollowReadsAFrame = 8;
     static const char* const kOwedFile;                 // "renames-owed.txt"
-    void setLaneSample(int track, int lane, const std::string& name); // "" brings the drum back
+    void setLaneSample(int track, int lane, const std::string& name); // "" brings the drum back (and takes a synth voice off)
+    // DRUM SYNTH (apotheca/drum_synth.hpp): the lane's sound made from a voice, in place of a recording
+    // (its name is emptied) or the built-in drum. Made here, or on the helper thread past
+    // drumsynth::kWorkInAFrame, and handed to the engine as a recording is. A voice that is not on puts
+    // the built-in drum back. Another model (or a voice where there was none) puts START and END back
+    // to the whole, as another recording does; a knob turned keeps them. A step of undo (soundMark).
+    void setLaneSynth(int track, int lane, const drumsynth::Voice& voice);
     void setLaneFit(int track, int lane, int steps);                  // 0: as recorded
     // A lane's sound as slices, for chopping a break. How many there are: sixteen,
     // or one to a step if the recording is fitted to more than a bar (32 for two
@@ -308,6 +314,7 @@ public:
         bool missing = false;     // the song names a file that is not here
         bool waiting = false;     // a fitted (or shaped) version is wanted and not yet in the engine
         bool shaping = false;     // its shape is wanted from the helper thread (too costly for a frame)
+        bool making = false;      // ...and before that its synth voice is made there (DRUM SYNTH: shaping is set too)
         float fittedTempo = 0.f;  // the tempo the one in the engine was made for
         int fittedSteps = 0;
         unsigned version = 0;     // goes up whenever the lane's sound changes
@@ -774,6 +781,7 @@ private:
     std::string lastRecorded_;
     void loadTrackSample(int track);
     void install(int track, int lane, const std::vector<float>& samples);
+    void madeLane(int track, int lane, std::vector<float> made); // a synth voice made: the lane's recording, then shapeLane
     void shapeLane(int track, int lane);   // the lane's sound made again from its source, from the cut on (then FIT, then installLane)
     void installLane(int track, int lane); // the fades, GAIN and the guard on what is shaped (or fitted), into the engine
     bool wantsFitting(int track, int lane) const;
@@ -784,6 +792,8 @@ private:
         unsigned version = 0;
         float tempo = 0.f;
         bool shape = false; // made from the source first (a costly shape: shapeLane)
+        bool make = false;  // the lane's synth voice made, and nothing more (collectJob then shapes it)
+        drumsynth::Voice voice;
         LaneEdit edit;
         std::shared_ptr<const std::vector<float>> in;
         std::vector<float> shaped, out;

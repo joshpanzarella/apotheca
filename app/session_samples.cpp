@@ -233,6 +233,17 @@ void Session::loadLane(int track, int lane) {
     sound = LaneSound();
     sound.version = version;
     const char* name = project.tracks[track].laneSample[lane];
+    const drumsynth::Voice& voice = project.tracks[track].laneSynth[lane];
+    if (voice.on()) {
+        // DRUM SYNTH: the voice made, and from then on it is the lane's recording (FIT, EDIT, the picture).
+        // Too costly for a frame, it is made on the helper thread, and the lane plays what it had till then.
+        if (drumsynth::work(voice, kSampleRate) > drumsynth::kWorkInAFrame) {
+            sound.making = sound.shaping = sound.waiting = true;
+            return;
+        }
+        madeLane(track, lane, drumsynth::make(voice, kSampleRate));
+        return;
+    }
     if (!name[0]) {
         // The built-in drum: the kit's own sound, never copied unless an edit makes something of it.
         const std::vector<float>& drum = DrumKit::builtIn(kSampleRate).samples[lane];
@@ -246,6 +257,15 @@ void Session::loadLane(int track, int lane) {
         }
         sound.recording = sound.source = recording;
     }
+    sound.sourceSeconds = static_cast<float>(sound.source->size()) / kSampleRate;
+    outlineOf(*sound.source, sound.sourcePeaks);
+    shapeLane(track, lane);
+}
+
+void Session::madeLane(int track, int lane, std::vector<float> made) {
+    LaneSound& sound = sounds_[track][lane];
+    sound.making = sound.shaping = sound.waiting = false;
+    sound.recording = sound.source = std::make_shared<const std::vector<float>>(std::move(made));
     sound.sourceSeconds = static_cast<float>(sound.source->size()) / kSampleRate;
     outlineOf(*sound.source, sound.sourcePeaks);
     shapeLane(track, lane);
@@ -306,13 +326,28 @@ void Session::setLaneSample(int track, int lane, const std::string& name) {
     std::snprintf(t.laneSample[lane], sizeof t.laneSample[lane], "%s", name.c_str());
     // Another sound: START and END were parts of the last one, and go back to the whole. The rest of
     // the lane's edits stay. Not a step of undo by itself (as the sound is not): undo would put the
-    // old cut on the new sound.
+    // old cut on the new sound. A synth voice goes with it (a recording or the drum in its place).
     LaneEdit& edit = t.laneEdit[lane];
-    if (edit.start != 0 || edit.end != kEditUnits) {
+    if (edit.start != 0 || edit.end != kEditUnits || t.laneSynth[lane].on()) {
         const bool unmarked = undoReady_ && soundMark() == soundMark_;
         edit.start = 0;
         edit.end = kEditUnits;
+        t.laneSynth[lane] = drumsynth::Voice();
         if (unmarked) soundMark_ = soundMark();
+    }
+    loadLane(track, lane);
+}
+
+void Session::setLaneSynth(int track, int lane, const drumsynth::Voice& wanted) {
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums) return;
+    TrackData& t = project.tracks[track];
+    const drumsynth::Voice now = drumsynth::voiceHeld(wanted), was = t.laneSynth[lane];
+    if (now == was && (now.on() || !t.laneSample[lane][0])) return;
+    t.laneSynth[lane] = now;
+    t.laneSample[lane][0] = 0; // a synth, or the built-in drum: no recording
+    if (now.model != was.model) { // another sound: START and END go back to the whole (the rest of EDIT stays)
+        t.laneEdit[lane].start = 0;
+        t.laneEdit[lane].end = kEditUnits;
     }
     loadLane(track, lane);
 }
@@ -559,7 +594,7 @@ void Session::setLaneFit(int track, int lane, int steps) {
 // for the tempo now.
 bool Session::wantsFitting(int track, int lane) const {
     const LaneSound& sound = sounds_[track][lane];
-    if (sound.shaping) return true;
+    if (sound.shaping) return true; // (a synth voice to be made too)
     const int steps = project.tracks[track].laneFit[lane];
     return sound.recording && sound.shaped && steps > 0 && (sound.fittedTempo != steadyTempo_ || sound.fittedSteps != steps);
 }
@@ -573,13 +608,20 @@ void Session::startJob(int track, int lane) {
     job->lane = lane;
     job->version = sound.version;
     job->tempo = steadyTempo_;
-    job->shape = sound.shaping;
+    job->make = sound.making;
+    job->voice = project.tracks[track].laneSynth[lane];
+    job->shape = sound.shaping && !sound.making;
     job->edit = project.tracks[track].laneEdit[lane];
     job->in = sound.shaping ? sound.source : sound.shaped; // the edited sound is what is fitted
     // A step is a sixteenth note: a quarter of a beat. (A shape is fitted in the same go once the tempo is known.)
     const int steps = sound.recording ? project.tracks[track].laneFit[lane] : 0;
     job->frames = steps > 0 && steadyTempo_ > 0.f ? static_cast<int>(std::lround(steps * 15.0 / steadyTempo_ * kSampleRate)) : 0;
     job->thread = std::thread([job] {
+        if (job->make) { // a synth voice: made, and the rest is the app's (collectJob)
+            job->out = drumsynth::make(job->voice, kSampleRate);
+            job->done.store(true);
+            return;
+        }
         if (job->shape) job->shaped = makeShape(*job->in, job->edit, kSampleRate);
         const std::vector<float>& from = job->shape ? job->shaped : *job->in;
         // As good as the right length already (a bar caught at this tempo): leave it be.
@@ -594,6 +636,11 @@ void Session::collectJob(bool wait) {
     job_->thread.join();
     LaneSound& sound = sounds_[job_->track][job_->lane];
     const int track = job_->track, lane = job_->lane;
+    if (job_->make) { // a synth voice made: the lane's recording, then shaped as any (it may want the thread again)
+        if (sound.version == job_->version && sound.making && project.tracks[track].laneSynth[lane] == job_->voice) madeLane(track, lane, std::move(job_->out));
+        job_.reset();
+        return;
+    }
     if (sound.version == job_->version && (job_->shape ? sound.source : sound.shaped) == job_->in) { // else the lane has moved on
         if (job_->shape) {
             sound.shaping = false;
