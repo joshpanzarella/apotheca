@@ -491,6 +491,59 @@ void SynthScreen::drawPicture(SDL_Renderer* r, const Fonts& fonts) const {
     fonts.fixed().small.draw(r, x + 8.f, y + 2.f + kTickH, label.c_str(), tone ? kDim : kText); // (a text over a picture: the tight row's lettering)
 }
 
+// MORPH's picture on MAIN (wavetable-plan.md, section 5): the wave POSITION A reads, teal, and B's
+// behind it, purple, when B is on, each one cycle across the box; under them a strip with a mark a
+// frame and POSITION A in brass (the knob as it is now, macro on). While a key sounds the waves are the
+// ones the newest key reads (the MOD ENV and a MOD on POSITION move them: Engine::grainPlaces, MORPH's
+// places), and its place is a teal tick on the strip: a player who cannot hear sees the morph.
+// (The tables are made on a helper thread as the program starts; drawn before that is done, this
+// waits for it, as a MORPH track added before then does.)
+void SynthScreen::drawTablePicture(SDL_Renderer* r, const Fonts& fonts) const {
+    const int x = 8, y = kPictureY, w = kScreenW - 16, h = kPictureH;
+    box(r, x, y, w, h, kPanel, kLine);
+    Morph::makeTables();
+    const TrackData& t = trk();
+    const int* v = t.morph.value;
+    const int tableA = v[morph::TableA], tableB = morph::tableOfB(v[morph::TableB]);
+    const int frames = Morph::tableFrames(tableA);
+    const float macro = session_.automated(project_.track, morph::MacroPosition, t.macro[morph::MacroPosition]);
+    const auto knob = [&](int id) { return morph::positionPlace(morph::macroBent(static_cast<float>(v[id]), macro, 0.f, 100.f), frames); };
+    const double knobA = knob(morph::PositionA);
+    double placeA = knobA, placeB = knob(morph::PositionB);
+    float places[kGrainsShown];
+    const int n = session_.engine.grainPlaces(project_.track, places, kGrainsShown);
+    const bool sounding = n >= 2;
+    if (sounding) {
+        placeA = places[0] * (frames - 1);
+        if (places[n / 2] >= 0.f) placeB = places[n / 2] * (frames - 1);
+    }
+    // The waves, each a line across the box.
+    const int wx = x + 2, ww = w - 4, wy = y + 3, wh = h - 6 - kFrameStripH;
+    fill(r, wx, wy + wh / 2, ww, 1, kLine);
+    const auto wave = [&](int table, double place, SDL_Color c) {
+        SDL_SetRenderDrawColor(r, c.r, c.g, c.b, 255);
+        int lastX = wx, lastY = 0;
+        for (int i = 0; i <= ww - 1; ++i) {
+            const float s = Morph::tableRead(table, place, static_cast<double>(i) / (ww - 1));
+            const int px = wx + i, py = wy + wh / 2 - static_cast<int>(std::lround(s * (wh / 2 - 1)));
+            if (i > 0) SDL_RenderDrawLine(r, lastX, lastY, px, py);
+            lastX = px, lastY = py;
+        }
+    };
+    if (tableB >= 0) wave(tableB, placeB, kPurple);
+    wave(tableA, placeA, kTeal);
+    // The strip: a dim mark a frame, POSITION A in brass, the sounding place a teal tick.
+    const int sx = x + 2, sw = w - 4, sy = y + h - 2 - kFrameStripH;
+    fill(r, sx, sy, sw, 1, kLine);
+    for (int f = 0; f < frames; ++f) fill(r, sx + (sw - 2) * f / (frames - 1), sy + 2, 1, kFrameStripH - 4, kDim);
+    fill(r, sx + static_cast<int>(knobA / (frames - 1) * (sw - 2)), sy, 2, kFrameStripH, kBrass);
+    if (sounding) fill(r, sx + static_cast<int>(places[0] * (sw - 2)), sy + 1, 2, kFrameStripH - 2, kTeal);
+    char label[40];
+    if (tableB >= 0) std::snprintf(label, sizeof label, "%s / %s", morph::tableName(tableA), morph::tableName(tableB));
+    else std::snprintf(label, sizeof label, "%s", morph::tableName(tableA));
+    fonts.fixed().small.draw(r, x + 8.f, y + 4.f, label, kText); // (a text over a picture: the tight row's lettering)
+}
+
 void SynthScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     drawScreen(r, fonts);
     if (picker_.isOpen()) picker_.draw(r, fonts); // CLOUD's list of recordings, over everything
@@ -545,6 +598,7 @@ void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
                         modMarkAt(session_, project_.track, kModFirstMacro + m, v));
         }
         if (spec_.recording) drawPicture(r, fonts);
+        if (spec_.table) drawTablePicture(r, fonts);
         const int advancedTop = advancedY();
         box(r, 8, advancedTop, kMacroW, kAdvancedH, kPanel2, kLine);
         fonts.medium.draw(r, 20.f, advancedTop + (kAdvancedH - fonts.medium.capHeight()) / 2.f, "ADVANCED  >", cursor_ == kAdvanced ? kTeal : kText);

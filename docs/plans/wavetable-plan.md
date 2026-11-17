@@ -526,3 +526,41 @@ envelope is after it).
 
 **Not done**: the desk and the handheld's bits compared under qemu (the tables use no library call
 and the voice has `fp contract(off)`, as PHYSIC's; not run); the 24 data presets (batch 3).
+
+## 11. Batch 2, as built (2026-11-17): the app
+
+**Built and tested on the desk; nobody has heard it, not run on the handheld.** CLAUDE.md's "MORPH in
+the app" says what is where.
+
+| Plan | Built | Why |
+| --- | --- | --- |
+| A picture kind (NONE, RECORDING, TABLE) in `SynthSpec` | **`SynthSpec::table`**, a flag beside `recording` (every spec given it) | the smallest change: `SynthScreen::picture()` asks either |
+| KEYS n beside UNISON | **UNISON reads "2, 6 KEYS"** (`mo::readingIn`: the keys `keysFor` leaves, B on or not) | the box has room; no new place on the page |
+| The tables made on the helper thread at start, if the handheld's figure is over 0.1 s | **always, a thread of their own from `main()`'s first line**, joined at its end | 130 to 200 ms on the desk already; MAIN's picture and a track added wait on the same lock if it is not done |
+| "MAKING THE TABLES" while they are made | **none: MAIN's picture waits for them** | a state that cannot come back in a process (the tables are never unmade) cannot be held by `idle_test`, so it would be a picture the redraw might leave stale |
+| TABLE, UNISON or B changed while X is held strikes the audition again | **not built** | the key sounding keeps what it was struck with; letting X go and holding it again hears the change |
+
+**The picture** (`SynthScreen::drawTablePicture`, in CLOUD's room on MAIN): A's wave across the box in
+teal, B's in purple behind it, a strip of 32 frame marks with POSITION A in brass; while a key sounds
+the wave the NEWEST key reads (the MOD ENV or a MOD moving it) and a teal tick on the strip, through
+CLOUD's readout (`Engine::grainPlaces`, `kStirGrains`), so the redraw needed nothing new. The table names
+over it in the fixed lettering ("ANALOG / VOWEL").
+
+**Tests**: `app_test --morph` (`testMorphOnATrack`: the track from the SONG screen, the list's ninth row,
+the engine plays it, the pages and every item once, every reading, **every click of all 29 settings reads
+another way**, UNISON's keys, the macros take MODs, ROLL's 200 seeds in range and what it keeps, ROLL a
+step of undo, a player's preset over preset 0, the song file; `testMorphsHintsAndPicture`: every stop of
+every page at 0 over with either help, A held and not, Y and HOLD X on MAIN, the brass mark, teal and
+purple in the picture, a sounding key's tick, the sine frame crossing the middle). `idle_test` has a part
+(the MOD ENV moving POSITION while a key sounds). The tests' lists: `textsize`, `scope_test`, `save_test`,
+`modapp_test`, `design_test`, `presets_test`. Stills `morph`, `morph-b`, `morph-1` to `morph-5`,
+`morph-keys`, `morph-long`, `morph-sounding` (in `kViews`: `textviews` and `themeviews` draw them at every
+size and theme).
+
+**The list of instruments, nine rows**: they close up to 41 adding a track and 36 with the words under
+them. At 36 the large name ran into the line under it at every size (the still showed it; `textviews`
+did not catch it: the two texts are one row's), so a box under 44 draws its name in the medium lettering
+and both lines by their own heights in its middle (`SongScreen::kListLineGap` 4, with `kListTailRoom` 5 kept for the tails and the outline), held at LARGE's at XL.
+
+**Not done here**: the 24 data presets (batch 3), the designer page's picture (batch 4: today the generic
+synth page serves every setting and ROLL), README's page and the review (batch 5).

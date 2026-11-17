@@ -551,6 +551,29 @@ MorphPatch Morph::presetPatch(int i) {
     return patch;
 }
 double Morph::tablesSeconds() { return builtInTablesSeconds(); }
+void Morph::makeTables() { makeBuiltInTables(); }
+bool Morph::tablesReady() { return builtInTablesMade(); }
+int Morph::tableFrames(int table) {
+    (void)table; // (every built-in table has as many)
+    return kTableFrames;
+}
+float Morph::tableRead(int table, double place, double x) {
+    if (!builtInTablesMade()) return 0.f;
+    const Table& t = builtInTable(table);
+    int j = 0;
+    double toward = 0.0;
+    framePlace(place, t.frames, &j, &toward);
+    x = x - std::floor(x);
+    const int length = sizeLength(0);
+    const double at = x * length;
+    int i = static_cast<int>(at);
+    if (i >= length) i = length - 1;
+    const double f = at - i;
+    const float* a = t.at(j, 0);
+    const float* b = t.at(j + 1, 0);
+    const double va = a[i] + f * (a[i + 1] - a[i]), vb = b[i] + f * (b[i + 1] - b[i]);
+    return static_cast<float>(va + toward * (vb - va));
+}
 
 void Morph::prepare(float sampleRate) {
     State& s = *state_;

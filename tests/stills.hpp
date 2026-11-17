@@ -49,6 +49,7 @@ inline const char* const kViews[] = {
     "physic", "physic-1", "physic-2", "physic-3", "physic-4", "physic-5", "physic-long", "physic-string", "physic-noise",
     "acid", "acid-1", "acid-2", "acid-fixed", "acid-long", "acid-roll",
     "cloud", "cloud-1", "cloud-2", "cloud-3", "cloud-long", "cloud-sounding",
+    "morph", "morph-b", "morph-1", "morph-2", "morph-3", "morph-4", "morph-5", "morph-keys", "morph-long", "morph-sounding",
     "next-scene", "next-scene-notes", "next-scene-full", "copy-bar", "copy-bar-notes", "copy-bar-refused", "volume", "update-ready", "update-ready-drums", "update-accepted", "nomenu", "help-nomenu", "kit-old",
     "", " --dice", " --paint", " --paint-random", " --on-name", " --on-tempo", " --hold-a", " --hold-y",
     "help --no-menu", "song --no-menu", "setup --no-menu",

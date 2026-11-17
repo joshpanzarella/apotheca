@@ -14,9 +14,9 @@ namespace apotheca {
 namespace {
 
 std::vector<UserPreset>& userList(TrackKind kind) {
-    static std::vector<UserPreset> phazedOnes, jx3pOnes, fm6Ones, physicOnes, acidOnes, cloudOnes;
+    static std::vector<UserPreset> phazedOnes, jx3pOnes, fm6Ones, physicOnes, acidOnes, cloudOnes, morphOnes;
     return kind == TrackKind::Jx3p ? jx3pOnes : kind == TrackKind::Fm6 ? fm6Ones : kind == TrackKind::Physic ? physicOnes : kind == TrackKind::Acid ? acidOnes
-         : kind == TrackKind::Cloud ? cloudOnes : phazedOnes;
+         : kind == TrackKind::Cloud ? cloudOnes : kind == TrackKind::Morph ? morphOnes : phazedOnes;
 }
 
 // The preset functions every spec uses: the engine's built-in presets first, then the ones the app's
@@ -701,6 +701,143 @@ void roll(TrackData& t, unsigned seed) {
     v[Stereo] = ps::between(seed, 11, 10, 90);
 }
 } // namespace cl
+
+// ---- MORPH -----------------------------------------------------------------------------
+// The plan: docs/plans/wavetable-plan.md, sections 1 and 5. Twenty-nine settings on five pages, OSC,
+// VOICE, FILTER, AMP and ENV, each read in its unit. MAIN shows the wave POSITION reads
+// (SynthSpec::table).
+
+namespace mo {
+using namespace morph;
+
+const char* const kPages[6] = {"MAIN", "OSC", "VOICE", "FILTER", "AMP", "ENV"};
+struct Item { int id; const char* name; };
+const Item kOsc[] = {{TableA, "TABLE A"}, {PositionA, "POSITION A"}, {TableB, "TABLE B"}, {PositionB, "POSITION B"},
+                     {Mix, "MIX"}, {BSemi, "B SEMI"}, {BFine, "B FINE"}, {Sub, "SUB"}};
+const Item kVoice[] = {{Octave, "OCTAVE"}, {Tune, "TUNE"}, {Unison, "UNISON"}, {Detune, "DETUNE"}, {Width, "WIDTH"}, {Velocity, "VELOCITY"}, {Level, "LEVEL"}};
+const Item kFilter[] = {{morph::Filter, "FILTER"}, {Cutoff, "CUTOFF"}, {Resonance, "RESONANCE"}, {KeyTrack, "KEY TRACK"}};
+const Item kAmp[] = {{Attack, "ATTACK"}, {Decay, "DECAY"}, {Sustain, "SUSTAIN"}, {Release, "RELEASE"}};
+const Item kEnv[] = {{EnvAttack, "ATTACK"}, {EnvDecay, "DECAY"}, {EnvSustain, "SUSTAIN"}, {EnvRelease, "RELEASE"}, {EnvPosition, "> POSITION"}, {EnvCutoff, "> CUTOFF"}};
+struct Page { const Item* items; int count; };
+const Page kPageItems[6] = {{nullptr, 0}, {kOsc, 8}, {kVoice, 7}, {kFilter, 4}, {kAmp, 4}, {kEnv, 6}};
+static_assert(8 + 7 + 4 + 4 + 6 == kSettings, "every setting is on one page");
+
+// A player's own preset is written over the FIRST preset's sound (as PHYSIC's, ACID's, CLOUD's).
+void loadPreset(TrackData& t, int index) {
+    if (const std::vector<int>* own = Presets<Morph, TrackKind::Morph>::own(index)) {
+        t.morph = Morph::presetPatch(0);
+        for (int id = 0; id < kSettings && id < static_cast<int>(own->size()); ++id) t.morph.value[id] = settingHeld(id, (*own)[id]);
+    } else {
+        t.morph = Morph::presetPatch(index);
+    }
+}
+int* values(TrackData& t) { return t.morph.value; }
+
+void secondsText(double s, char* out, std::size_t n) { // "2.1 MS", "120 MS", "1.0 S": each click its own reading
+    if (s < 0.09995) std::snprintf(out, n, "%.1f MS", s * 1000.0);
+    else if (s < 0.9995) std::snprintf(out, n, "%.0f MS", s * 1000.0);
+    else std::snprintf(out, n, "%.1f S", s);
+}
+void settingText(int id, int value, char* out, int size) {
+    const std::size_t n = static_cast<std::size_t>(size);
+    switch (id) {
+    case TableA: std::snprintf(out, n, "%s", tableName(value)); return;
+    case TableB: std::snprintf(out, n, "%s", tableBName(value)); return;
+    case PositionA: case PositionB: std::snprintf(out, n, "FRAME %.1f", positionFrame(value, kTableFrames)); return;
+    case Mix:
+        if (value <= 0) std::snprintf(out, n, "A ONLY");
+        else if (value >= 100) std::snprintf(out, n, "B ONLY");
+        else std::snprintf(out, n, "A %d / B %d", 100 - value, value);
+        return;
+    case BSemi: std::snprintf(out, n, "%+d ST", value); return;
+    case BFine: case Tune: std::snprintf(out, n, "%+d CENTS", value); return;
+    case Sub:
+        if (value <= 0) std::snprintf(out, n, "OFF");
+        else std::snprintf(out, n, subDb(value) > -9.995 ? "%.2f DB" : "%.1f DB", subDb(value));
+        return;
+    case Octave: std::snprintf(out, n, "%+d", value); return;
+    case Unison: std::snprintf(out, n, "%d", value); return;
+    case Detune: { // squared: as many figures as it takes for every click to read another way
+        const double c = detuneCents(value);
+        if (value <= 0) std::snprintf(out, n, "OFF");
+        else std::snprintf(out, n, c < 0.0995 ? "+-%.3f CENTS" : (c < 9.995 ? "+-%.2f CENTS" : "+-%.1f CENTS"), c);
+        return;
+    }
+    case morph::Filter: std::snprintf(out, n, "%s", filterName(value)); return;
+    case Cutoff: {
+        const double hz = cutoffHz(value);
+        if (hz < 9999.5) std::snprintf(out, n, "%.0f HZ", hz);
+        else std::snprintf(out, n, "%.1f KHZ", hz / 1000.0);
+        return;
+    }
+    case Attack: case EnvAttack: return secondsText(envelope::attackSeconds(static_cast<float>(value)), out, n);
+    case Decay: case Release: case EnvDecay: case EnvRelease: return secondsText(envelope::fallSeconds(static_cast<float>(value)), out, n);
+    case EnvPosition:
+        if (value == 0) std::snprintf(out, n, "OFF");
+        else std::snprintf(out, n, "%+.1f FRAMES", envPositionFrames(value, kTableFrames));
+        return;
+    case EnvCutoff:
+        if (value == 0) std::snprintf(out, n, "OFF");
+        else std::snprintf(out, n, "%+.2f OCT", envCutoffOctaves(value));
+        return;
+    case Velocity:
+        if (value <= 0) std::snprintf(out, n, "OFF");
+        else std::snprintf(out, n, "%d%%", value);
+        return;
+    case Level: std::snprintf(out, n, "%+d DB", value); return;
+    default: std::snprintf(out, n, "%d%%", value); return; // WIDTH, RESONANCE, KEY TRACK, the SUSTAINs
+    }
+}
+// UNISON reads with the keys the pool leaves at it (B on takes twice the streams): "2, 6 KEYS".
+void readingIn(const int* values, int id, int value, char* out, int size) {
+    if (id == Unison) {
+        const int keys = keysFor(value, tableOfB(values[TableB]) >= 0);
+        std::snprintf(out, static_cast<std::size_t>(size), "%d, %d KEY%s", value, keys, keys == 1 ? "" : "S");
+        return;
+    }
+    settingText(id, value, out, size);
+}
+// No macro is a choice: each reads -100 to +100 about the patch.
+void macroText(int, float v, char* out, int size) { plusMinus(v, out, size); }
+bool envelopePage(int) { return false; }
+int itemCount(int page) { return page >= 1 && page < 6 ? kPageItems[page].count : 0; }
+void item(int page, int index, int& id, const char*& name) {
+    const Item& it = kPageItems[page].items[index];
+    id = it.id;
+    name = it.name;
+}
+
+// ROLL (Y on MAIN, the plan's section 5): a new sound from the dice, by a hash of the seed and each
+// one's place (PHYSIC's rule). Both TABLEs (B off one time in four), both POSITIONs, MIX, B's tuning (on
+// octaves and fifths mostly, a few cents off), SUB (off half the time), UNISON (one mostly), DETUNE,
+// WIDTH, the FILTER (a low-pass mostly), CUTOFF, RESONANCE (low mostly), the MOD ENV and its two
+// amounts. OCTAVE, TUNE, the AMP envelope (a pad stays a pad), KEY TRACK, VELOCITY and LEVEL stay.
+void roll(TrackData& t, unsigned seed) {
+    int* v = t.morph.value;
+    static const int kSemis[8] = {0, 0, 0, 12, -12, 7, 19, 5};
+    v[TableA] = ps::between(seed, 0, 0, kTables - 1);
+    v[TableB] = ps::unit(seed, 1) < 0.25 ? 0 : 1 + ps::between(seed, 2, 0, kTables - 1);
+    v[PositionA] = ps::between(seed, 3, 0, 100);
+    v[PositionB] = ps::between(seed, 4, 0, 100);
+    v[Mix] = ps::between(seed, 5, 20, 80);
+    v[BSemi] = kSemis[ps::between(seed, 6, 0, 7)];
+    v[BFine] = ps::between(seed, 7, -12, 12);
+    v[Sub] = ps::unit(seed, 8) < 0.5 ? 0 : ps::between(seed, 9, 20, 60);
+    v[Unison] = ps::unit(seed, 10) < 0.6 ? 1 : ps::between(seed, 11, 2, 3);
+    v[Detune] = ps::between(seed, 12, 5, 50);
+    v[Width] = ps::between(seed, 13, 20, 90);
+    const double f = ps::unit(seed, 14);
+    v[morph::Filter] = f < 0.45 ? kLow12 : (f < 0.85 ? kLow24 : (f < 0.95 ? kBand : kHigh));
+    v[Cutoff] = ps::between(seed, 15, 45, 100);
+    v[Resonance] = ps::unit(seed, 16) < 0.6 ? ps::between(seed, 17, 0, 30) : ps::between(seed, 17, 30, 70);
+    v[EnvAttack] = ps::between(seed, 18, 0, 60);
+    v[EnvDecay] = ps::between(seed, 19, 30, 85);
+    v[EnvSustain] = ps::between(seed, 20, 0, 60);
+    v[EnvRelease] = ps::between(seed, 21, 20, 70);
+    v[EnvPosition] = ps::between(seed, 22, -60, 60);
+    v[EnvCutoff] = ps::between(seed, 23, -30, 60);
+}
+} // namespace mo
 } // namespace
 
 const char* const kJaxepBankNote = "1983 BOOKLET, SPEEDS GUESSED";
@@ -711,7 +848,7 @@ const SynthSpec& phazedSpec() {
     static const SynthSpec spec = {"PHAZED", Presets<Phazed, TrackKind::Phazed>::count, Presets<Phazed, TrackKind::Phazed>::name, Presets<Phazed, TrackKind::Phazed>::category, pz::loadPreset, pz::values,
                                    phazed::settingMin, phazed::settingMax, pz::settingText,
                                    {"TONE", "MOTION", "ATTACK", "RELEASE", "DETUNE", "VIBRATO", "CHORUS", "OCTAVE"}, pz::macroText,
-                                   10, pz::kPages, pz::itemCount, pz::item, pz::envelopePage, nullptr, false, nullptr, nullptr, nullptr, false};
+                                   10, pz::kPages, pz::itemCount, pz::item, pz::envelopePage, nullptr, false, nullptr, nullptr, nullptr, false, false};
     return spec;
 }
 
@@ -719,7 +856,7 @@ const SynthSpec& jx3pSpec() {
     static const SynthSpec spec = {"JAX-EP", Presets<Jx3p, TrackKind::Jx3p>::count, Presets<Jx3p, TrackKind::Jx3p>::name, Presets<Jx3p, TrackKind::Jx3p>::category, jx::loadPreset, jx::values,
                                    jx3p::settingMin, jx3p::settingMax, jx::settingText,
                                    {"CUTOFF", "RESO", "ENV", "TUNE", "MIX", "LFO", "ATTACK", "RELEASE"}, jx::macroText,
-                                   6, jx::kPages, jx::itemCount, jx::item, jx::envelopePage, jx::folderNote, true, nullptr, nullptr, nullptr, false};
+                                   6, jx::kPages, jx::itemCount, jx::item, jx::envelopePage, jx::folderNote, true, nullptr, nullptr, nullptr, false, false};
     return spec;
 }
 
@@ -727,7 +864,8 @@ void setUserPresets(TrackKind kind, std::vector<UserPreset> presets) { userList(
 const std::vector<UserPreset>& userPresets(TrackKind kind) { return userList(kind); }
 int enginePresets(TrackKind kind) {
     return kind == TrackKind::Jx3p ? Jx3p::presetCount() : kind == TrackKind::Phazed ? Phazed::presetCount() : kind == TrackKind::Fm6 ? Fm6::presetCount()
-         : kind == TrackKind::Physic ? Physic::presetCount() : kind == TrackKind::Acid ? Acid::presetCount() : kind == TrackKind::Cloud ? Cloud::presetCount() : 0;
+         : kind == TrackKind::Physic ? Physic::presetCount() : kind == TrackKind::Acid ? Acid::presetCount() : kind == TrackKind::Cloud ? Cloud::presetCount()
+         : kind == TrackKind::Morph ? Morph::presetCount() : 0;
 }
 int builtInPresets(TrackKind kind) { return specFor(kind) ? enginePresets(kind) + static_cast<int>(builtInData(kind).added.size()) : 0; }
 const UserPreset* listedPreset(TrackKind kind, int index) {
@@ -742,7 +880,7 @@ const UserPreset* listedPreset(TrackKind kind, int index) {
 int settingCount(TrackKind kind) {
     return kind == TrackKind::Jx3p ? static_cast<int>(jx3p::kSettings) : kind == TrackKind::Phazed ? static_cast<int>(phazed::kSettings) : kind == TrackKind::Fm6 ? static_cast<int>(fm6::kSettings)
          : kind == TrackKind::Physic ? static_cast<int>(physic::kSettings) : kind == TrackKind::Acid ? static_cast<int>(acid::kSettings)
-         : kind == TrackKind::Cloud ? static_cast<int>(cloud::kSettings) : 0;
+         : kind == TrackKind::Cloud ? static_cast<int>(cloud::kSettings) : kind == TrackKind::Morph ? static_cast<int>(morph::kSettings) : 0;
 }
 int shownSettingCount(TrackKind kind) { return kind == TrackKind::Fm6 ? fm::kShownSettings : settingCount(kind); }
 
@@ -775,7 +913,7 @@ const SynthSpec& fm6Spec() {
     static const SynthSpec spec = {"FM-6", Presets<Fm6, TrackKind::Fm6>::count, Presets<Fm6, TrackKind::Fm6>::name, Presets<Fm6, TrackKind::Fm6>::category, fm::loadPreset, fm::values,
                                    fm::shownMin, fm::shownMax, fm::settingText,
                                    {"BRIGHT", "FEEDBACK", "ATTACK", "DECAY", "RELEASE", "DETUNE", "LFO", "PITCH ENV"}, fm::macroText,
-                                   9, fm::kPages, fm::itemCount, fm::item, fm::envelopePage, nullptr, false, fm::bitOf, fm::readingIn, nullptr, false};
+                                   9, fm::kPages, fm::itemCount, fm::item, fm::envelopePage, nullptr, false, fm::bitOf, fm::readingIn, nullptr, false, false};
     return spec;
 }
 
@@ -785,7 +923,7 @@ const SynthSpec& physicSpec() {
     static const SynthSpec spec = {"PHYSIC", Presets<Physic, TrackKind::Physic>::count, Presets<Physic, TrackKind::Physic>::name, Presets<Physic, TrackKind::Physic>::category, ps::loadPreset, ps::values,
                                    physic::settingMin, physic::settingMax, ps::settingText,
                                    {"TONE", "POSITION", "DECAY", "MATERIAL", "STRETCH", "RELEASE", "DICE", "OCTAVE"}, ps::macroText,
-                                   6, ps::kPages, ps::itemCount, ps::item, ps::envelopePage, nullptr, true, nullptr, ps::readingIn, ps::roll, false};
+                                   6, ps::kPages, ps::itemCount, ps::item, ps::envelopePage, nullptr, true, nullptr, ps::readingIn, ps::roll, false, false};
     return spec;
 }
 
@@ -795,7 +933,7 @@ const SynthSpec& acidSpec() {
     static const SynthSpec spec = {"ACID", Presets<Acid, TrackKind::Acid>::count, Presets<Acid, TrackKind::Acid>::name, Presets<Acid, TrackKind::Acid>::category, ac::loadPreset, ac::values,
                                    acid::settingMin, acid::settingMax, ac::settingText,
                                    {"CUTOFF", "RESO", "ENV MOD", "DECAY", "ACCENT", "DRIVE", "SWEEP", "TUNE"}, ac::macroText,
-                                   3, ac::kPages, ac::itemCount, ac::item, ac::envelopePage, nullptr, true, nullptr, nullptr, nullptr, false};
+                                   3, ac::kPages, ac::itemCount, ac::item, ac::envelopePage, nullptr, true, nullptr, nullptr, nullptr, false, false};
     return spec;
 }
 
@@ -805,7 +943,17 @@ const SynthSpec& cloudSpec() {
     static const SynthSpec spec = {"CLOUD", Presets<Cloud, TrackKind::Cloud>::count, Presets<Cloud, TrackKind::Cloud>::name, Presets<Cloud, TrackKind::Cloud>::category, cl::loadPreset, cl::values,
                                    cloud::settingMin, cloud::settingMax, cl::settingText,
                                    {"POSITION", "SPRAY", "SIZE", "DENSITY", "SCAN", "PITCH", "SHAPE", "REVERSE"}, cl::macroText,
-                                   4, cl::kPages, cl::itemCount, cl::item, cl::envelopePage, nullptr, true, nullptr, nullptr, cl::roll, true};
+                                   4, cl::kPages, cl::itemCount, cl::item, cl::envelopePage, nullptr, true, nullptr, nullptr, cl::roll, true, false};
+    return spec;
+}
+
+// MORPH's macros are the engine's eight (morph::Macro), none a choice. Its WiFi page reads every
+// setting as the device does. Y on MAIN rolls a new sound (mo::roll); MAIN shows the wave POSITION reads.
+const SynthSpec& morphSpec() {
+    static const SynthSpec spec = {"MORPH", Presets<Morph, TrackKind::Morph>::count, Presets<Morph, TrackKind::Morph>::name, Presets<Morph, TrackKind::Morph>::category, mo::loadPreset, mo::values,
+                                   morph::settingMin, morph::settingMax, mo::settingText,
+                                   {"POSITION", "MIX", "CUTOFF", "RESO", "ENV POS", "ENV CUT", "DETUNE", "RELEASE"}, mo::macroText,
+                                   6, mo::kPages, mo::itemCount, mo::item, mo::envelopePage, nullptr, true, nullptr, mo::readingIn, mo::roll, false, true};
     return spec;
 }
 
@@ -824,7 +972,7 @@ const std::vector<float>& cloudToneOutline() {
 
 const SynthSpec* specFor(TrackKind kind) {
     return kind == TrackKind::Phazed ? &phazedSpec() : kind == TrackKind::Jx3p ? &jx3pSpec() : kind == TrackKind::Fm6 ? &fm6Spec()
-         : kind == TrackKind::Physic ? &physicSpec() : kind == TrackKind::Acid ? &acidSpec() : kind == TrackKind::Cloud ? &cloudSpec() : nullptr;
+         : kind == TrackKind::Physic ? &physicSpec() : kind == TrackKind::Acid ? &acidSpec() : kind == TrackKind::Cloud ? &cloudSpec() : kind == TrackKind::Morph ? &morphSpec() : nullptr;
 }
 
 } // namespace apotheca

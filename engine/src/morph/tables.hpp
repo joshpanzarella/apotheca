@@ -45,8 +45,9 @@ const Table& builtInTable(int t);
 // All 16 made now (a synth's prepare(): never on the audio thread). Returns the seconds it took
 // (0 when they were made already).
 double makeBuiltInTables();
-// How long they took to make (0 until they are).
+// How long they took to make (0 until they are), and whether they are.
 double builtInTablesSeconds();
+bool builtInTablesMade();
 
 // A sine and a cosine of a number of TURNS, from the house's polynomials (no library call, so
 // the same bits on every machine).

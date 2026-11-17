@@ -9,6 +9,7 @@
 #include "apotheca/physic.hpp"
 #include "apotheca/acid.hpp"
 #include "apotheca/cloud.hpp"
+#include "apotheca/morph.hpp"
 #include "apotheca/drum_synth.hpp"
 #include "lane_edit.hpp"
 
@@ -203,7 +204,7 @@ inline float panAmount(int pan) { return static_cast<float>(pan) / static_cast<f
 // and stands where Twin Analog stood, whose tracks it takes: docs/plans/jx3p-plan.md, section 5. Fm6 is
 // FM-6 and stands where QMOD stood, whose tracks it takes too: docs/plans/fm6-plan.md. Physic is PHYSIC,
 // appended: docs/plans/physic-plan.md. Acid is ACID, appended after it: docs/plans/acid-plan.md.)
-enum class TrackKind { None, Drums, Phazed, Jx3p, Sampler, Fm6, Physic, Acid, Cloud }; // (Cloud: CLOUD, appended: docs/plans/granular-plan.md)
+enum class TrackKind { None, Drums, Phazed, Jx3p, Sampler, Fm6, Physic, Acid, Cloud, Morph }; // (Cloud: CLOUD, appended: docs/plans/granular-plan.md; Morph: MORPH, after it: docs/plans/wavetable-plan.md)
 // Played from the piano roll: everything but the drums. (What else there is
 // to know about each instrument is in instruments.hpp.)
 inline bool isSynth(TrackKind kind) { return kind != TrackKind::None && kind != TrackKind::Drums; }
@@ -247,6 +248,7 @@ struct TrackData {
     PhysicPatch physic;          // when it is PHYSIC (the same: its first preset, MARIMBA). Room for 26, 23 used
     AcidPatch acid;              // when it is ACID (the same: its first preset, Classic Saw). Room for 20, 14 used
     CloudPatch cloud;            // when it is CLOUD (the same: its first preset, Soft Cloud). Room for 24, 17 used
+    MorphPatch morph;            // when it is MORPH (the same: its first preset, Analog Sweep). Room for 40, 29 used
     float macro[kSynthMacros];
     // Automation: [scene][lane][bar * 16 + step], or kAutoNone (see the engine's kAutoLanes).
     float automation[kMaxScenes][kAutoLanes][kAutoSteps];

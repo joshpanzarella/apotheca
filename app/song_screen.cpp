@@ -935,8 +935,22 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             if (info.countPresets) std::snprintf(about, sizeof about, "%s, %d presets", info.about, builtInPresets(info.kind));
             else std::snprintf(about, sizeof about, "%s", info.about);
             box(r, x + 12, by, w - 24, bh, kPanel2, kLine);
-            fonts.large.draw(r, x + 24.f, by + 9.f * bh / 46.f, info.listName, i == choice_ ? kTeal : kText);
-            fonts.within(&Fonts::small, about, w - 48.f).draw(r, x + 24.f, by + bh - 17.f, about, kDim); // (the longest at XL: held at LARGE)
+            if (bh >= 44) { // (the usual box: as it always was)
+                fonts.large.draw(r, x + 24.f, by + 9.f * bh / 46.f, info.listName, i == choice_ ? kTeal : kText);
+                fonts.within(&Fonts::small, about, w - 48.f).draw(r, x + 24.f, by + bh - 17.f, about, kDim); // (the longest at XL: held at LARGE)
+            } else {
+                // Nine instruments (MORPH's) close the rows up to 40 adding a track and 35 with the words under
+                // them: the name in the medium lettering, both lines placed by their own heights in the box's
+                // middle, each held at LARGE's where the size chosen would not fit (the box is a tight row).
+                const Font& about2 = fonts.within(&Fonts::small, about, w - 48.f);
+                const Font* name = &fonts.medium;
+                if (name->capHeight() + about2.capHeight() + kListLineGap > bh - kListTailRoom) name = &fonts.fixed().medium;
+                const Font& aboutFont = name == &fonts.medium ? about2 : fonts.fixed().small;
+                const float used = name->capHeight() + kListLineGap + aboutFont.capHeight();
+                const float top = by + (bh - kListTailRoom - used) / 2.f + 1.f; // (the second line's tails, "g" and "p", stay inside)
+                name->draw(r, x + 24.f, top, info.listName, i == choice_ ? kTeal : kText);
+                aboutFont.draw(r, x + 24.f, top + name->capHeight() + kListLineGap, about, kDim);
+            }
             if (i == choice_) outline(r, x + 11, by - 1, w - 22, bh + 2, kTeal, 2);
         }
         if (changing_ >= 0 && kInstruments[choice_].kind != project_.tracks[changing_].kind) { // (A on the one it has changes nothing)

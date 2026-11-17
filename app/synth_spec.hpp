@@ -50,6 +50,9 @@ struct SynthSpec {
     // The synth plays the track's recording (CLOUD: holdsRecording): MAIN shows its picture, and its
     // first page's first stop is RECORDING (the list of recordings, CATCH and RECORD, as the sampler's).
     bool recording;
+    // The synth plays wavetables (MORPH): MAIN shows its picture of the wave POSITION reads, in the room
+    // a recording's picture takes.
+    bool table;
 };
 
 // What JAX-EP's folders say (jx3p-plan.md, section 4): the two banks are from a booklet of 1983 and may
@@ -64,6 +67,7 @@ const SynthSpec& fm6Spec();
 const SynthSpec& physicSpec();
 const SynthSpec& acidSpec();
 const SynthSpec& cloudSpec();
+const SynthSpec& morphSpec();
 // The built-in TONE's outline (Cloud::tone at the engine's rate), 512 loudest points, made once: what
 // CLOUD's picture shows with no recording, on the handheld and on the designer page.
 const std::vector<float>& cloudToneOutline();

@@ -6375,7 +6375,7 @@ void testAddingJaxep() {
     const InstrumentInfo* info = instrument(TrackKind::Jx3p);
     CHECK(info && std::string(info->listName) == "JAX-EP" && std::string(info->name) == "JAX-EP" && std::string(info->word) == "jaxep" &&
           std::string(info->presetEnding) == ".jaxep" && info->synth == SynthKind::Jx3p);
-    CHECK(kInstrumentCount == 8);
+    CHECK(kInstrumentCount == 9);
     for (int i = 0; i < kInstrumentCount; ++i) CHECK(std::string(kInstruments[i].word) != "twin");
     bool old = false;
     CHECK(trackKindFromWord("twin", &old) == TrackKind::Jx3p && old);
@@ -6396,12 +6396,12 @@ void testAddingJaxep() {
     rig->tap(RIGHT);
     rig->tap(A);
     CHECK(rig->app.song().choosing());
-    rig->tap(DOWN, 7); // PHAZED > JAX-EP > SAMPLER > FM-6 > PHYSIC > ACID > CLOUD > DRUMS
+    rig->tap(DOWN, 8); // PHAZED > JAX-EP > SAMPLER > FM-6 > PHYSIC > ACID > CLOUD > MORPH > DRUMS
     rig->tap(A);
     CHECK(rig->project().tracks[2].kind == TrackKind::Drums);
     rig->tap(RIGHT);
     rig->tap(A);
-    rig->tap(UP, 6); // PHAZED > DRUMS > CLOUD > ACID > PHYSIC > FM-6 > SAMPLER
+    rig->tap(UP, 7); // PHAZED > DRUMS > MORPH > CLOUD > ACID > PHYSIC > FM-6 > SAMPLER
     rig->tap(A);
     CHECK(rig->project().tracks[3].kind == TrackKind::Sampler);
 
@@ -9345,9 +9345,14 @@ void testChangingAnInstrumentSaysWhatGoes() {
     CHECK(ly + 20 + fonts.small.capHeight() < top + SongScreen::listH(kInstrumentCount, true));
     // Adding a track: seven rows (ACID's) stand higher too, at the usual pitch; the words make them close up.
     CHECK(SongScreen::listTop(kInstrumentCount, false) == SongScreen::kListBottom - SongScreen::listH(kInstrumentCount, false) && SongScreen::listTop(kInstrumentCount, false) > ui::kTopBarH);
-    // (Eight since CLOUD: they close up adding a track too, to 46, and to 41 with the words, each box a pixel short.)
+    // (Eight since CLOUD: they close up adding a track too, to 46, and to 41 with the words, each box a pixel short.
+    // Nine since MORPH: 41 and 36, and a box that short draws its name in the medium lettering, both lines
+    // placed by their heights: SongScreen::kListLineGap, kListTailRoom.)
     CHECK(SongScreen::listPitch(7, false) == SongScreen::kInstrumentPitch && SongScreen::listPitch(7, true) == 47 && SongScreen::listPitch(6, true) == SongScreen::kInstrumentPitch);
-    CHECK(SongScreen::listPitch(kInstrumentCount, false) == 46 && SongScreen::listPitch(kInstrumentCount, true) == 41 && SongScreen::rowH(kInstrumentCount, true) == 40 && SongScreen::rowH(6, false) == 46);
+    CHECK(SongScreen::listPitch(8, false) == 46 && SongScreen::listPitch(8, true) == 41 && SongScreen::rowH(8, true) == 40 && SongScreen::rowH(6, false) == 46);
+    CHECK(SongScreen::listPitch(kInstrumentCount, false) == 41 && SongScreen::listPitch(kInstrumentCount, true) == 36 && SongScreen::rowH(kInstrumentCount, true) == 35);
+    // Both lines at LARGE (what XL is held at) fit the shortest box, the tails and the outline too.
+    CHECK(fonts.fixed().medium.capHeight() + SongScreen::kListLineGap + fonts.fixed().small.capHeight() <= SongScreen::rowH(kInstrumentCount, true) - SongScreen::kListTailRoom);
     rig.tap(B);
     CHECK(!says() && rig.project().tracks[1].kind == TrackKind::Phazed);
     // Adding a track loses nothing: nothing said.
@@ -9415,7 +9420,7 @@ void testPhysicOnATrack() {
     CHECK(std::string(text) == "2 PHYSIC" && isSynth(track.kind));
     const InstrumentInfo* info = instrument(TrackKind::Physic);
     CHECK(info && std::string(info->word) == "physic" && std::string(info->presetEnding) == ".physic" && info->synth == SynthKind::Physic);
-    CHECK(&kInstruments[kInstrumentCount - 3] == info && trackKindFromWord("physic") == TrackKind::Physic); // (ACID and CLOUD after it)
+    CHECK(&kInstruments[kInstrumentCount - 4] == info && trackKindFromWord("physic") == TrackKind::Physic); // (ACID, CLOUD and MORPH after it)
     // On MARIMBA, its first preset, and it plays.
     const PhysicPatch first = Physic::presetPatch(0);
     CHECK(track.preset == 0 && std::string(physicSpec().presetName(0)) == "Marimba" && std::equal(first.value, first.value + physic::kSettings, track.physic.value));
@@ -9744,7 +9749,7 @@ void testAcidOnATrack() {
     CHECK(std::string(text) == "2 ACID" && isSynth(track.kind));
     const InstrumentInfo* info = instrument(TrackKind::Acid);
     CHECK(info && std::string(info->word) == "acid" && std::string(info->presetEnding) == ".acid" && info->synth == SynthKind::Acid);
-    CHECK(&kInstruments[kInstrumentCount - 2] == info && trackKindFromWord("acid") == TrackKind::Acid); // (CLOUD after it)
+    CHECK(&kInstruments[kInstrumentCount - 3] == info && trackKindFromWord("acid") == TrackKind::Acid); // (CLOUD and MORPH after it)
     CHECK(std::string(info->about) == "mono bass, after a classic bass line box");
     const AcidPatch first = Acid::presetPatch(0);
     CHECK(track.preset == 0 && std::string(acidSpec().presetName(0)) == "Classic Saw" && std::equal(first.value, first.value + acid::kSettings, track.acid.value));
@@ -9907,7 +9912,7 @@ void testCloudOnATrack() {
     CHECK(std::string(text) == "2 CLOUD" && isSynth(track.kind) && holdsRecording(track.kind) && holdsRecording(TrackKind::Sampler) && !holdsRecording(TrackKind::Acid));
     const InstrumentInfo* info = instrument(TrackKind::Cloud);
     CHECK(info && std::string(info->word) == "cloud" && std::string(info->presetEnding) == ".cloud" && info->synth == SynthKind::Cloud);
-    CHECK(&kInstruments[kInstrumentCount - 1] == info && trackKindFromWord("cloud") == TrackKind::Cloud);
+    CHECK(&kInstruments[kInstrumentCount - 2] == info && trackKindFromWord("cloud") == TrackKind::Cloud); // (MORPH after it)
     CHECK(std::string(info->about) == "clouds of grains from your recordings");
     const CloudPatch first = Cloud::presetPatch(0);
     CHECK(track.preset == 0 && std::string(cloudSpec().presetName(0)) == "Soft Cloud" && std::equal(first.value, first.value + cloud::kSettings, track.cloud.value));
@@ -10192,6 +10197,232 @@ void testCloudsHintsFit() {
     CHECK(SynthScreen::kPicAdvancedY + SynthScreen::kAdvancedH <= ui::kAboveScope && SynthScreen::kPicMacroH >= 60);
 }
 
+// MORPH (wavetable-plan.md, batch 2): the ninth instrument, last in the list. A new track is on Analog
+// Sweep; its five pages and their readings (every click of a setting reads another way), UNISON's keys,
+// its macros (none a choice), ROLL on Y, undo, a player's own preset, the song file.
+void testMorphOnATrack() {
+    Rig rig;
+    Session& session = rig.app.session();
+    session.view = View::Song;
+    rig.app.song().moveCursorTo(0, rig.project().trackCount());
+    rig.tap(A);
+    rig.tap(DOWN, 7); // PHAZED > JAX-EP > SAMPLER > FM-6 > PHYSIC > ACID > CLOUD > MORPH
+    rig.tap(A);
+    CHECK(rig.project().trackCount() == 2 && rig.project().tracks[1].kind == TrackKind::Morph);
+    TrackData& track = rig.project().tracks[1];
+    rig.project().track = 1;
+    char text[48];
+    ui::trackName(rig.project(), 1, text, sizeof text);
+    CHECK(std::string(text) == "2 MORPH" && isSynth(track.kind) && !holdsRecording(track.kind));
+    const InstrumentInfo* info = instrument(TrackKind::Morph);
+    CHECK(info && std::string(info->word) == "morph" && std::string(info->presetEnding) == ".morph" && info->synth == SynthKind::Morph);
+    CHECK(&kInstruments[kInstrumentCount - 1] == info && trackKindFromWord("morph") == TrackKind::Morph);
+    CHECK(std::string(info->about) == "wavetables, swept from wave to wave" && std::string(info->shortName) == "MRPH");
+    const MorphPatch first = Morph::presetPatch(0);
+    CHECK(track.preset == 0 && std::string(morphSpec().presetName(0)) == "Analog Sweep" && std::equal(first.value, first.value + morph::kSettings, track.morph.value));
+    CHECK(settingCount(TrackKind::Morph) == 29 && presetSettingCount(TrackKind::Morph) == 29 && shownSettingCount(TrackKind::Morph) == 29);
+    CHECK(builtInPresets(TrackKind::Morph) >= Morph::presetCount());
+    session.audition(1, 60, 0.9f);
+    CHECK(rig.listen(4000) > 0.01f);
+    rig.render(48000);
+
+    // The device screen: MAIN, then ADVANCED: OSC (TABLE A first), VOICE, FILTER, AMP, ENV.
+    session.view = View::Device;
+    rig.frames(2);
+    SynthScreen& screen = rig.app.morph();
+    screen.goTo(0, SynthScreen::kAdvanced);
+    rig.tap(A);
+    CHECK(screen.page() == 1 && screen.pageCount() == 6 && screen.settingHere() == morph::TableA);
+    rig.key(A, true);
+    rig.tap(UP); // ANALOG > PULSE: a choice, a click a press
+    rig.key(A, false);
+    CHECK(track.morph.value[morph::TableA] == morph::Pulse);
+    rig.tap(R1);
+    CHECK(screen.page() == 2 && screen.settingHere() == morph::Octave);
+    const SynthSpec& spec = morphSpec();
+    int seen[morph::kSettings] = {};
+    for (int page = 1; page < spec.pages; ++page)
+        for (int i = 0; i < spec.itemCount(page); ++i) {
+            int id = -1;
+            const char* name = "";
+            spec.item(page, i, id, name);
+            CHECK(id >= 0 && id < morph::kSettings && name[0]);
+            if (id >= 0 && id < morph::kSettings) ++seen[id];
+        }
+    for (int id = 0; id < morph::kSettings; ++id) CHECK(seen[id] == 1);
+    CHECK(spec.pages == 6 && std::string(spec.pageNames[1]) == "OSC" && std::string(spec.pageNames[5]) == "ENV" && spec.table && !spec.recording);
+    const char* const lanes[kSynthMacros] = {"POSITION", "MIX", "CUTOFF", "RESO", "ENV POS", "ENV CUT", "DETUNE", "RELEASE"}; // the engine's lanes (morph::Macro)
+    for (int m = 0; m < kSynthMacros; ++m) CHECK(std::string(spec.macroNames[m]) == lanes[m]);
+    CHECK(morph::macroSetting(morph::MacroEnvCutoff) == morph::EnvCutoff && morph::macroSetting(morph::MacroRelease) == morph::Release);
+    for (int id = 0; id < morph::kSettings; ++id) CHECK(spec.settingMin(id) == morph::settingMin(id) && spec.settingMax(id) == morph::settingMax(id));
+
+    // Its settings read in their units, and every click of a setting reads another way.
+    const auto reads = [&](int id, int value) { spec.settingText(id, value, text, sizeof text); return std::string(text); };
+    CHECK(reads(morph::TableA, morph::Analog) == "ANALOG" && reads(morph::TableA, morph::Glass) == "GLASS" && reads(morph::TableB, 0) == "OFF" && reads(morph::TableB, 1) == "ANALOG");
+    CHECK(reads(morph::PositionA, 0) == "FRAME 1.0" && reads(morph::PositionA, 100) == "FRAME 32.0" && reads(morph::PositionB, 50) == "FRAME 16.5");
+    CHECK(reads(morph::Mix, 0) == "A ONLY" && reads(morph::Mix, 100) == "B ONLY" && reads(morph::Mix, 30) == "A 70 / B 30");
+    CHECK(reads(morph::BSemi, -24) == "-24 ST" && reads(morph::BFine, 7) == "+7 CENTS" && reads(morph::Sub, 0) == "OFF" && reads(morph::Sub, 100) == "0.00 DB");
+    CHECK(reads(morph::Cutoff, 0) == "20 HZ" && reads(morph::Cutoff, 100) == "20.0 KHZ" && reads(morph::Detune, 0) == "OFF" && reads(morph::Detune, 100) == "+-50.0 CENTS");
+    CHECK(reads(morph::Filter, morph::kLow24) == "LOW 24" && reads(morph::EnvPosition, 0) == "OFF" && reads(morph::EnvPosition, -100) == "-31.0 FRAMES");
+    CHECK(reads(morph::EnvCutoff, 50) == "+3.00 OCT" && reads(morph::Level, -24) == "-24 DB" && reads(morph::Velocity, 0) == "OFF" && reads(morph::Attack, 8) == "2.1 MS");
+    for (int id = 0; id < morph::kSettings; ++id) {
+        std::string last;
+        for (int v = morph::settingMin(id); v <= morph::settingMax(id); ++v) {
+            const std::string now = reads(id, v);
+            CHECK(!now.empty() && now != last);
+            if (now == last) std::printf("  MORPH setting %d reads %s at %d and %d\n", id, now.c_str(), v - 1, v);
+            last = now;
+        }
+    }
+    // UNISON reads with the keys the pool leaves: B on takes twice the streams.
+    const int* v = track.morph.value;
+    spec.readingIn(v, morph::Unison, 1, text, sizeof text);
+    CHECK(std::string(text) == "1, 6 KEYS");
+    track.morph.value[morph::TableB] = 1 + morph::Fm;
+    spec.readingIn(v, morph::Unison, 4, text, sizeof text);
+    CHECK(std::string(text) == "4, 3 KEYS");
+    spec.readingIn(v, morph::Unison, 3, text, sizeof text);
+    CHECK(std::string(text) == "3, 4 KEYS");
+    track.morph.value[morph::TableB] = 0;
+    // The macros: none a choice, each -100 to +100, each takes a MOD.
+    spec.macroText(morph::MacroPosition, 1.f, text, sizeof text);
+    CHECK(std::string(text) == "+100");
+    for (int m = 0; m < kSynthMacros; ++m) CHECK(!macroIsChoice(TrackKind::Morph, m) && modTargetFits(track, kModFirstMacro + m));
+
+    // Y on MAIN rolls a new sound: the AMP envelope, OCTAVE, TUNE and the levels stay, every roll in
+    // range; one step of undo.
+    std::unique_ptr<TrackData> rolled(new TrackData(track)); // (a megabyte: never on the stack)
+    for (unsigned seed = 0; seed < 200; ++seed) {
+        spec.roll(*rolled, seed);
+        for (int id = 0; id < morph::kSettings; ++id) CHECK(rolled->morph.value[id] >= morph::settingMin(id) && rolled->morph.value[id] <= morph::settingMax(id));
+        for (int id : {morph::Octave, morph::Tune, morph::Attack, morph::Decay, morph::Sustain, morph::Release, morph::KeyTrack, morph::Velocity, morph::Level})
+            CHECK(rolled->morph.value[id] == track.morph.value[id]);
+    }
+    rig.tap(B);
+    screen.goTo(0, SynthScreen::kPreset);
+    rig.frames(60);
+    const MorphPatch before = track.morph;
+    const int stepsWere = session.undoSteps();
+    rig.tap(Y);
+    rig.frames(60);
+    CHECK(!std::equal(before.value, before.value + morph::kSettingRoom, track.morph.value) && session.undoSteps() == stepsWere + 1);
+    CHECK(session.undo());
+    rig.frames(2);
+    CHECK(std::equal(before.value, before.value + morph::kSettingRoom, track.morph.value));
+
+    // A player's own preset goes over the FIRST preset's sound.
+    setUserPresets(TrackKind::Morph, {UserPreset{"SHORT ONE", {morph::Glass, 70, 1 + morph::Fm}, {0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f}}});
+    session.chooseSynthPreset(1, 3);
+    session.chooseSynthPreset(1, builtInPresets(TrackKind::Morph));
+    CHECK(std::string(morphSpec().presetCategory(track.preset)) == "USER");
+    CHECK(track.morph.value[morph::TableA] == morph::Glass && track.morph.value[morph::PositionA] == 70 && track.morph.value[morph::TableB] == 1 + morph::Fm);
+    for (int id = morph::PositionB; id < morph::kSettingRoom; ++id) CHECK(track.morph.value[id] == first.value[id]);
+    setUserPresets(TrackKind::Morph, {});
+
+    // A song keeps a MORPH track: its kind, its preset and every number of its sound.
+    session.chooseSynthPreset(1, 2);
+    session.setSynthSetting(1, morph::Unison, 3);
+    session.setSynthSetting(1, morph::EnvPosition, -40);
+    track.macro[morph::MacroPosition] = 0.8f;
+    std::unique_ptr<Project> again(new Project);
+    const std::string written = songText(rig.project());
+    CHECK(written.find("\ntrack morph\n") != std::string::npos);
+    CHECK(parseSong(written, *again));
+    CHECK(again->tracks[1].kind == TrackKind::Morph && again->tracks[1].preset == 2 && std::equal(track.morph.value, track.morph.value + morph::kSettingRoom, again->tracks[1].morph.value));
+    CHECK(near(again->tracks[1].macro[morph::MacroPosition], 0.8f));
+}
+
+// MORPH's hints fit the bar at 0 over on MAIN and every page, A held and not, with either help; MAIN
+// says Y new sound off the macros and HOLD X on every macro. MAIN's picture: the wave in teal, B's in
+// purple when B is on, POSITION in brass on the strip; a key sounding puts its teal tick there.
+void testMorphsHintsAndPicture() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    std::unique_ptr<Rig> rig(new Rig);
+    CHECK(rig->app.session().addTrack(TrackKind::Morph));
+    rig->project().track = 1;
+    rig->app.session().view = View::Device;
+    SynthScreen& screen = rig->app.morph();
+    CHECK(screen.pageCount() == 6);
+    int states = 0;
+    for (int menu = 0; menu < 2; ++menu)
+        for (int page = 0; page < screen.pageCount(); ++page) {
+            const int stops = page == 0 ? SynthScreen::kMainStops : morphSpec().itemCount(page);
+            for (int cursor = 0; cursor < stops; ++cursor)
+                for (int held = 0; held < 2; ++held) {
+                    screen.goTo(page, cursor);
+                    if (held) rig->key(A, true);
+                    rig->frames(1);
+                    ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP";
+                    canvas.clear();
+                    rig->app.draw(canvas.r, fonts);
+                    ++states;
+                    if (ui::gHintsOver != 0.f) {
+                        std::printf("FAIL MORPH's hints: page %d stop %d, A %s: %.0f pixels over\n", page, cursor, held ? "held" : "up", static_cast<double>(ui::gHintsOver));
+                        ++failures;
+                    }
+                    if (!held && page == 0) {
+                        const bool macro = cursor >= SynthScreen::kFirstMacro && cursor < SynthScreen::kAdvanced;
+                        CHECK(hintKeyed(canvas, scratch, "Y", "new sound") == !macro);
+                        if (macro) CHECK(hintKeyed(canvas, scratch, "HOLD X", "mod"));
+                    }
+                    if (held) rig->key(A, false);
+                    rig->frames(1);
+                }
+        }
+    CHECK(states == 2 * 2 * (SynthScreen::kMainStops + morph::kSettings));
+
+    // The picture: POSITION A's brass mark on the strip where the knob puts it (Analog Sweep: 30, frame
+    // 10.3 of 32); the wave teal somewhere in each column's room; no purple with B off, purple with it on.
+    TrackData& t = rig->project().tracks[1];
+    screen.goTo(0, SynthScreen::kPreset);
+    const auto drawn = [&] { rig->frames(1); canvas.clear(); rig->app.draw(canvas.r, fonts); };
+    const auto inRoom = [&](SDL_Color c) {
+        int n = 0;
+        const int y0 = SynthScreen::kPictureY + 3, y1 = SynthScreen::kPictureY + SynthScreen::kPictureH - 3 - SynthScreen::kFrameStripH;
+        for (int x = 10; x < ui::kScreenW - 10; x += 3)
+            for (int y = y0; y < y1; ++y)
+                if (canvas.is(x, y, c)) { ++n; break; }
+        return n;
+    };
+    drawn();
+    const int sx = 10, sw = ui::kScreenW - 20, stripY = SynthScreen::kPictureY + SynthScreen::kPictureH - 2 - SynthScreen::kFrameStripH;
+    const double place = morph::positionPlace(t.morph.value[morph::PositionA], 32);
+    CHECK(canvas.is(sx + static_cast<int>(place / 31.0 * (sw - 2)), stripY + SynthScreen::kFrameStripH / 2, ui::kBrass));
+    CHECK(inRoom(ui::kTeal) > 150 && inRoom(ui::kPurple) == 0);
+    rig->app.session().setSynthSetting(1, morph::TableB, 1 + morph::Vowel);
+    drawn();
+    CHECK(inRoom(ui::kPurple) > 40);
+    // A key sounding: its place a teal tick on the strip (the readout through the engine).
+    int ticks = 0;
+    const auto countTicks = [&] {
+        int n = 0;
+        for (int x = sx; x < sx + sw; ++x) n += canvas.is(x, stripY + 1, ui::kTeal) ? 1 : 0;
+        return n;
+    };
+    ticks = countTicks();
+    CHECK(ticks == 0);
+    Command c;
+    c.type = Command::NoteOn, c.track = 1, c.a = 60, c.value = 0.9f;
+    rig->engine->send(c);
+    rig->render(4800);
+    drawn();
+    CHECK(countTicks() >= 2);
+    // The waves follow POSITION: another place, other pixels.
+    rig->app.session().setSynthSetting(1, morph::TableB, 0);
+    c.type = Command::NoteOff;
+    rig->engine->send(c);
+    rig->render(48000 * 3);
+    t.morph.value[morph::PositionA] = 0; // a sine: the wave crosses the middle at the box's middle
+    drawn();
+    const int midX = 10 + (ui::kScreenW - 20) / 2, midY = SynthScreen::kPictureY + 3 + (SynthScreen::kPictureH - 6 - SynthScreen::kFrameStripH) / 2;
+    bool nearMiddle = false;
+    for (int dy = -2; dy <= 2; ++dy) nearMiddle = nearMiddle || canvas.is(midX, midY + dy, ui::kTeal);
+    CHECK(nearMiddle);
+}
+
 // ACID's hints fit the bar at 0 over, on MAIN and both pages, A held and not, with either help; MAIN
 // says HOLD X on every macro (none is a choice) and no Y.
 void testAcidsHintsFit() {
@@ -10374,6 +10605,12 @@ int main(int argc, char** argv) {
         std::printf(failures ? "%d check(s) failed\n" : "ACID's tests passed\n", failures);
         return failures ? 1 : 0;
     }
+    if (argc > 1 && std::string(argv[1]) == "--morph") { // just MORPH's own
+        testMorphOnATrack();
+        testMorphsHintsAndPicture();
+        std::printf(failures ? "%d check(s) failed\n" : "MORPH's tests passed\n", failures);
+        return failures ? 1 : 0;
+    }
     if (argc > 1 && std::string(argv[1]) == "--cloud") { // just CLOUD's own
         testCloudOnATrack();
         testCloudsHintsFit();
@@ -10534,6 +10771,8 @@ int main(int argc, char** argv) {
     testPhysicsHintsFit();
     testAcidOnATrack();
     testAcidsHintsFit();
+    testMorphOnATrack();
+    testMorphsHintsAndPicture();
     testAcidsAccentMark();
     testAnAcidLine();
     testCloudOnATrack();

@@ -322,6 +322,11 @@ double makeBuiltInTables() {
     return gSeconds;
 }
 
+bool builtInTablesMade() {
+    std::lock_guard<std::mutex> lock(gMade);
+    return gTables != nullptr;
+}
+
 double builtInTablesSeconds() {
     std::lock_guard<std::mutex> lock(gMade);
     return gSeconds;

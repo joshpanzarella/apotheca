@@ -73,6 +73,16 @@ public:
     float smallestState() const; // the smallest envelope, fade or filter state held (not 0): 0 if none
     static double tablesSeconds(); // how long the built-in tables took to make (0 if not yet)
 
+    // The built-in tables, for the app: made now (the app makes them on a helper thread as the
+    // program starts, so the first MORPH track does not wait: not for the audio thread); whether
+    // they are made; a table's frames; and its wave at a place along it (frames, 0 .. frames - 1:
+    // the two either side crossfaded, as a key reads them) and a place in its cycle (x, 0 .. 1), read
+    // from the largest size straight between points. tableRead gives 0 until the tables are made.
+    static void makeTables();
+    static bool tablesReady();
+    static int tableFrames(int table);
+    static float tableRead(int table, double place, double x);
+
 private:
     struct State;
     std::unique_ptr<State> state_;
