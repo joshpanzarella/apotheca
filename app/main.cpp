@@ -1315,6 +1315,12 @@ int main(int argc, char** argv) {
             app.session().view = View::Pattern;
             app.notes().moveCursorTo(62, 2);
         }
+    } else if (std::strcmp(view, "even") == 0) {
+        // EVEN (easywins batch 5): Y held on the open hat's name, R1 five times: five hits spread evenly.
+        app.session().view = View::Pattern;
+        app.drums().moveCursorTo(3, -1);
+        pushKey(SDLK_a, true);
+        tapKey(SDLK_w, 4);
     } else if (std::strcmp(view, "tap-tempo") == 0) {
         // TAP TEMPO (easywins batch 1): two taps half a second apart, the cursor on the drum grid's tempo row.
         app.session().view = View::Pattern;

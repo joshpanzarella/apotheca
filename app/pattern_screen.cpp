@@ -771,7 +771,6 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
             setChance(lane_, step_, now > 0.76f ? 0.75f : now > 0.51f ? 0.5f : now > 0.26f ? 0.25f : 1.f);
         }
         dicing_ = event.down;
-        evening_ = false; // (a new hold of Y starts with the dice's own jobs)
         diceSaved_ = 0.f;
         axis_ = Axis::None;
         if (!event.down && !shaping_) turning_ = Turning::Nothing;
@@ -1262,9 +1261,9 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("R1 / L1", "more / fewer, even");
         hint("LEFT / RIGHT", "turn it a step");
     } else if (dicing_ && onName) {
-        hint("UP / DOWN", "more / fewer hits");
-        hint("RIGHT", "roll the starts");
-        hint("LEFT", "starts to the top");
+        hint("UP / DOWN", "hits");
+        hint("RIGHT", "roll starts");
+        hint("LEFT", "to the top");
         hint("R1 / L1", "even");
         hint("TAP Y", "reshuffle");
     } else if (shaping_) {

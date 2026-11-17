@@ -44,7 +44,7 @@ inline const char* const kViews[] = {
     "feel", "feel-held", "feel-off-held", "feel-same-held", "feel-said", "feel-swing", "feel-swing-held",
     "choke", "kit-choke", "kit-choke-held", "kit-edit", "kit-edit-held", "kit-edit-deleting", "kit-edit-column",
     "kit-synth", "kit-voice", "kit-voice-held", "kit-voice-deleting", "kit-voice-clap", "kit-voice-named",
-    "setup", "setup-click", "tap-tempo", "scale-roll", "setup-scale", "buttons", "typing", "help", "help-load",
+    "setup", "setup-click", "tap-tempo", "even", "scale-roll", "setup-scale", "buttons", "typing", "help", "help-load",
     "fm6", "fm6-1", "fm6-2", "fm6-3", "fm6-4", "fm6-5", "fm6-6", "fm6-7", "fm6-8", "fm6-long", "fm6-fixed", "fm6-off",
     "physic", "physic-1", "physic-2", "physic-3", "physic-4", "physic-5", "physic-long", "physic-string", "physic-noise",
     "acid", "acid-1", "acid-2", "acid-fixed", "acid-long", "acid-roll",

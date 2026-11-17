@@ -1609,6 +1609,14 @@ they leave; tap Y to reshuffle). **The dice work on every hit of the lane,
 yours too**: down takes any hit away, a tap rolls the lane's hits anew (as
 many as it has; an empty lane gets four, a full one eight). Undo puts yours
 back. A full lane says THE LANE IS FULL, an empty one THE LANE IS EMPTY.
+
+**EVEN** (a Euclidean rhythm): with Y held on a lane's name, **R1 is one hit
+more and L1 one fewer, spread as evenly over the bar as sixteen steps allow**
+(3 hits: steps 1, 7, 12; 4: every beat; 5: 1, 5, 8, 11, 14). From then until Y
+is let go, **left / right turn the pattern a step** later or earlier. It writes
+over the lane's bar as the dice do (a hit that stays where one was keeps its
+level and effects; a new one is placed at 90%), the box says EVEN: 5 HITS,
+TURNED 2, and undo puts the lane back.
 Up from the top lane is the tempo: hold A + up / down turns it, and **A tapped in
 time sets it** (from the second tap: the beat of the last five taps; a pause of
 two seconds starts again). SETUP's TEMPO row taps the same way.

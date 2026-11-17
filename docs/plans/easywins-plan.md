@@ -221,3 +221,36 @@ chord in hand in D major, A minor, off, and placed with Y. `app_test` steps the 
 **Only the owner can tell**: whether the dim keys read well on the handheld's screen, and whether
 moving the pack into the key is what "fit" meant (the other reading, each chord bent to the scale,
 changes chords' kinds).
+
+## Batch 5: EVEN (a Euclidean fill on a drum lane)
+
+**What**: N hits spread as evenly over the bar as sixteen steps allow, turned by any number of steps.
+
+**The gesture**, in the dice's family: **Y held on a lane's name, R1 one hit more, L1 one fewer,
+even**. (With Y held on a name L1 and R1 did nothing: the slices and the brush wait for Y.) The first
+press counts from the hits the lane has. **From then until Y is let go, LEFT / RIGHT turn the pattern
+a step** (before EVEN they are the dice's starts, and UP / DOWN stay the dice's one hit more or
+fewer). The box says EVEN: 5 HITS, TURNED 2; the bar says R1 / L1 even, and once even, LEFT / RIGHT
+turn it a step.
+
+**The rule** (`euclidHit` in project.hpp): step `s` is a hit when `(s * N) % 16 < N`, the first on
+step 1. Every count from 0 to 16 has gaps that differ by one step at most. `PatternScreen::evenLane`
+writes the lane's bar shown: a hit that stays where one was keeps its level, chance, nudge and
+effects; a new one is placed at 90%; the rest go. One burst of edits, so one undo takes a hold back.
+
+| Call | Taken |
+| --- | --- |
+| Where | **Y held on a lane's name + R1 / L1**: the dice's hold, two buttons that were free there |
+| The turn | **LEFT / RIGHT while Y is still held after EVEN**; a new hold starts unturned |
+| Hits that were there | **Kept as they are where the pattern has a hit**, the others emptied (undo brings them back) |
+| How far | **The bar shown**, as the dice |
+| Y let go after | **No tap**: nothing is reshuffled |
+
+**Tests**: `easy_test even`: the rule for every count (the number of hits, gaps within one), 3, 4,
+5 by hand; through the grid: R1 from two hits, a kept hit's level, RIGHT and LEFT turning, L1 keeping
+the turn, UP still the dice's, Y let go no tap, L1 to none, R1 to full, a new hold unturned, three
+steps of undo, a step (not a name) untouched, the hints at 0 over before and after. Mutants tried:
+Y's tap after, the turn kept across holds, a kept hit written over: each fails. Still `even`.
+
+**Only the owner can tell**: whether R1 / L1 with Y held is found without being told, and whether
+the turn wants to be on L1 / R1 and the count on the D-pad instead.

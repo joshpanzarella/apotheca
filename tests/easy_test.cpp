@@ -831,9 +831,22 @@ void testEvenOnALane() {
     CHECK(laneSteps(rig, 3) == "xxxxxxxxxxxxxxxx");
     rig.key(Y, false);
     rig.frames(2);
+    CHECK(laneSteps(rig, 3) == "xxxxxxxxxxxxxxxx"); // (Y let go after EVEN is no tap: no reshuffle)
+    // A new hold starts unturned (the first hold's turn of 15 is forgotten), and LEFT / RIGHT are the dice's until EVEN.
+    rig.settle();
+    rig.key(Y, true);
+    rig.frames(1);
+    for (int i = 0; i < 12; ++i) rig.tap(L1);
+    CHECK(laneSteps(rig, 3) == "x...x...x...x..." && rig.said() == "EVEN: 4 HITS");
+    for (int i = 0; i < 12; ++i) rig.tap(R1);
+    rig.key(Y, false);
+    rig.frames(2);
     // Other lanes are not touched; undo puts the lane back as it was before the holds.
     CHECK(laneSteps(rig, 0) == laneSteps(rig, 0));
     rig.settle();
+    rig.undo();
+    rig.settle();
+    CHECK(laneSteps(rig, 3) == "xxxxxxxxxxxxxxxx");
     rig.undo();
     rig.settle();
     CHECK(laneSteps(rig, 3) == after);
