@@ -439,3 +439,24 @@ the presets on one source within 14 dB, each MOD heard at -40 dB or more.
 picked, it goes in by its name, else by its base name where exactly one has it, else the track keeps its
 own and RECORDING NOT FOUND is said. `presets_test` `testACloudPresetBringsItsRecording`; its five
 mutants killed. Not done: a pick's recording is not a step of undo (as the sampler's is not).
+
+## As built: batch 4, the designer page (2026-11-17, branch `cloud`)
+
+**The WiFi page's synth page knows CLOUD's recording.** A spec with `SynthSpec::recording` (CLOUD's
+alone) adds to the synth's spec `"hear":60`, one `"waves"` entry and `"recordings"` (`Session::designSpec`):
+the recording's 512 peaks, or the TONE's outline (`cloudToneOutline()`, moved to synth_spec.cpp so MAIN's
+picture and the page share it) with `"tone":true`; `"band"` names the two settings the picture marks,
+POSITION and SPRAY, whose values the page reads from the state as it does any setting. The list of
+recordings is read on the app thread while the page looks, as for a sampler (`serveDesigner`).
+- **The page draws the sampler's recording section** above the macros (`recordingSection`, the same
+  `wave()`): with a band, the part SPRAY reaches about POSITION lit (round the ends, as the engine reads),
+  POSITION a brass line, the two read under it; a click or a drag sets POSITION. The list's first choice
+  reads THE BUILT-IN TONE (a sampler's NONE). `sample NAME` (only a name offered) and ROLL go through what
+  the page already sent; ROLL keeps POSITION and the recording, as on the handheld.
+- `design_test` `testCloudFromThePage`; its five mutants in `designSpec` and `serveDesigner`: four
+  killed, one survives (`peaks.empty()` beside `missing`: a guard no state reaches, kept).
+  `APOTHECA_DESIGN_CLOUD=1` with `APOTHECA_DESIGN_HOLD` holds the page open and prints the recording,
+  POSITION and SPRAY whenever they change.
+- **Tried in a browser** (Playwright and Chromium, 2026-11-17): the list offered THE BUILT-IN TONE and
+  the test's recording, picking it put it on the track, a click at 30% of the picture set POSITION 30,
+  ROLL changed SPRAY and kept POSITION, no error in the page. The page's script has no test in `ctest`.

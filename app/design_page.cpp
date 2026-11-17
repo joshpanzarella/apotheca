@@ -170,9 +170,13 @@ function wave(w) {
     if (k < w.marks.length - 1) v = Math.min(v, at(w.marks[k + 1]) - w.least);
     const it = item(w.marks[k]); return Math.max(it.min ?? 0, Math.min(it.max ?? units, v));
   }
-  function move(e) { const v = held(drag, place(e)); if (v !== at(w.marks[drag])) setValue(w.marks[drag], v); }
+  function move(e) {
+    if (w.band) { const v = place(e); if (v !== at(w.band[0])) setValue(w.band[0], v); return; } // CLOUD: POSITION goes where it is put
+    const v = held(drag, place(e)); if (v !== at(w.marks[drag])) setValue(w.marks[drag], v);
+  }
   cv.addEventListener('pointerdown', e => {
     if (!state || !w.peaks.length) return;
+    if (w.band) { drag = 0; cv.setPointerCapture(e.pointerId); move(e); e.preventDefault(); return; }
     const v = place(e); let best = 0;
     // The nearest mark; where two stand together, the one on the side the pointer is.
     w.marks.forEach((id, k) => { const d = Math.abs(at(id) - v), b = Math.abs(at(w.marks[best]) - v); if (d < b || (d === b && v > at(id))) best = k; });
@@ -190,6 +194,7 @@ function wave(w) {
       g.fillText(w.emptyText || (w.missing ? 'MISSING FROM THE CARD: ' + w.recording : 'NO RECORDING: PICK ONE ABOVE'), W / 2, H / 2);
       note.textContent = ''; return;
     }
+    if (w.band) return drawBand(g, c, dpr, W, H);
     const x = id => at(id) / units * W, lo = x(w.marks[0]), hi = x(w.marks[w.marks.length - 1]), mid = H / 2, n = w.peaks.length;
     for (let px = 0; px < W; ++px) {
       const i = Math.min(n - 1, Math.floor(px / W * n)), played = px >= lo && px <= hi;
@@ -214,6 +219,29 @@ function wave(w) {
     if (w.noteText) { note.textContent = w.noteText(); return; }
     note.textContent = w.recording + ' · ' + s.toFixed(2) + ' S · a note plays ' + (s * (at(w.marks[w.marks.length - 1]) - at(w.marks[0])) / 100).toFixed(2) + ' S of it (at its own pitch). Drag a mark, or click to move the nearer one.';
   }
+  // CLOUD's picture: the recording (the TONE's, dim), lit within SPRAY of POSITION and round the ends
+  // (cloud_rule.hpp's sprayShare: half the recording either way at 100, squared), POSITION a brass mark.
+  function drawBand(g, c, dpr, W, H) {
+    const pos = at(w.band[0]) / 100, x = Math.min(1, Math.max(0, at(w.band[1]) / 100)), spray = 0.5 * x * x, mid = H / 2, n = w.peaks.length;
+    for (let px = 0; px < W; ++px) {
+      const i = Math.min(n - 1, Math.floor(px / W * n));
+      let off = (px + 0.5) / W - pos;
+      if (off > 0.5) off -= 1; if (off < -0.5) off += 1;
+      const lit = Math.abs(off) <= spray + 0.5 / W, h = Math.max(1, w.peaks[i] / 1000 * (mid - 6 * dpr));
+      g.fillStyle = lit ? (w.tone ? c('--dim') : c('--teal')) : c('--line');
+      g.fillRect(px, mid - h, 1, 2 * h);
+    }
+    const mx = Math.min(W - 2 * dpr, Math.max(0, pos * W - dpr));
+    g.fillStyle = c('--brass'); g.fillRect(mx, 0, 2 * dpr, H); g.fillRect(mx - 4 * dpr, 0, 10 * dpr, 10 * dpr);
+    g.font = (11 * dpr) + 'px system-ui,sans-serif'; g.textBaseline = 'top';
+    const label = 'POSITION ' + at(w.band[0]) + '%  SPRAY ' + (spray * 100).toFixed(spray < 0.0995 ? 1 : 0) + '%', right = pos > 0.6;
+    g.textAlign = right ? 'right' : 'left';
+    const lx = right ? mx - 6 * dpr : mx + 8 * dpr, lw = g.measureText(label).width;
+    g.fillStyle = c('--bg'); g.fillRect(right ? lx - lw - 3 * dpr : lx - 3 * dpr, H - 18 * dpr, lw + 6 * dpr, 15 * dpr);
+    g.fillStyle = c('--brass'); g.fillText(label, lx, H - 16 * dpr);
+    note.textContent = (w.tone ? (w.missing ? w.recording + ' is missing from the card: the built-in TONE plays' : 'No recording: the built-in TONE plays') : w.recording) + ' · ' +
+      w.seconds.toFixed(2) + ' S · the grains come from the lit part, the brass mark is POSITION. Click or drag to move it.';
+  }
   waves.push({draw});
   return box;
 }
@@ -228,7 +256,7 @@ function build() {
   for (const id of ['presetbox', 'name', 'save']) $(id).hidden = none || sampler || kit;
   if (none) return;
   if (kit) return buildKit(all);
-  if (sampler) for (const w of spec.waves) all.append(recordingSection(w));
+  if (sampler || spec.waves) for (const w of spec.waves) all.append(recordingSection(w)); // (a CLOUD's too)
   // presets, in their folders
   const sel = $('preset'); sel.textContent = ''; let group = null, folder = null;
   spec.presets.forEach((p, i) => {
@@ -275,7 +303,7 @@ function recordingSection(w) {
   const s = el('section'), top = el('div', 'wavetop'), pick = el('select'), play = el('button');
   s.append(el('h2', '', 'RECORDING'));
   pick.id = 'recording';
-  recordingOptions(pick, 'NONE', w.recording);
+  recordingOptions(pick, w.band ? 'THE BUILT-IN TONE' : 'NONE', w.recording);
   pick.addEventListener('change', () => { tell('sample', ('sample ' + pick.value).trim()); pick.blur(); });
   play.id = 'play'; play.textContent = 'PLAY  (hold, or hold the space bar)';
   play.addEventListener('pointerdown', e => { note(spec.hear, true); play.setPointerCapture(e.pointerId); e.preventDefault(); });

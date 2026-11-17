@@ -241,7 +241,7 @@ std::string Session::designSpec(int track) const {
     std::string out = "{\"name\":" + jsonText(spec->name) + (spec->roll ? ",\"roll\":true" : "") + ",\"macros\":[";
     for (int m = 0; m < kSynthMacros; ++m) out += (m ? "," : "") + jsonText(spec->macroNames[m]);
     out += "],\"pages\":[";
-    char text[48];
+    char text[128];
     for (int page = 1; page < spec->pages; ++page) {
         out += (page > 1 ? ",{\"name\":" : "{\"name\":") + jsonText(spec->pageNames[page]) + ",\"env\":" + (spec->envelopePage(page) ? "true" : "false") + ",\"items\":[";
         for (int i = 0; i < spec->itemCount(page); ++i) {
@@ -268,7 +268,22 @@ std::string Session::designSpec(int track) const {
     out += "],\"presets\":[";
     for (int i = 0; i < spec->presetCount(); ++i)
         out += (i ? ",{\"name\":" : "{\"name\":") + jsonText(spec->presetName(i)) + ",\"folder\":" + jsonText(spec->presetCategory(i)) + "}";
-    return out + "],\"page\":\"synth\"}";
+    out += "]";
+    if (spec->recording) {
+        // CLOUD: its recording (or the TONE's outline, "tone"), the list to pick one from, the key a PLAY
+        // holds, and its picture's band: POSITION a mark, SPRAY the lit width about it (both settings;
+        // the page reads their values from the state, as the device draws them, the macros left out).
+        const LaneSound& sound = sounds_[track][0];
+        const bool tone = !project.tracks[track].sample[0] || sound.missing || sound.peaks.empty();
+        std::snprintf(text, sizeof text, ",\"hear\":60,\"waves\":[{\"seconds\":%.3f,\"missing\":%s,\"tone\":%s,\"recording\":", tone ? cloud::kToneSeconds : static_cast<double>(sound.seconds),
+                      sound.missing ? "true" : "false", tone ? "true" : "false");
+        out += text + jsonText(project.tracks[track].sample);
+        std::snprintf(text, sizeof text, ",\"marks\":[],\"band\":[%d,%d],\"peaks\":[", cloud::Position, cloud::Spray);
+        out += text + peaksText(tone ? cloudToneOutline() : sound.peaks) + "]}],\"recordings\":[";
+        for (std::size_t i = 0; i < designRecordings_.size(); ++i) out += (i ? "," : "") + jsonText(designRecordings_[i].c_str());
+        out += "]";
+    }
+    return out + ",\"page\":\"synth\"}";
 }
 
 // A SAMPLER's page: its eight settings in the order its screen shows them, each with every reading
@@ -497,7 +512,7 @@ void Session::serveDesigner() {
     // The recordings a sampler's or a kit's page offers: read from the card here, never by the server's thread.
     const bool looking = now_ - designSeenAt_ <= 3000 && designLooks_ != 0;
     bool listed = false;
-    if ((sampler || kit) && looking && (!designListed_ || now_ - designListAt_ >= kDesignListEveryMs || transfer_.received() != designReceived_)) {
+    if ((sampler || kit || holdsRecording(kind)) && looking && (!designListed_ || now_ - designListAt_ >= kDesignListEveryMs || transfer_.received() != designReceived_)) {
         designRecordings_ = sampleNames();
         designListAt_ = now_;
         designReceived_ = transfer_.received();

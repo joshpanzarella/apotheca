@@ -64,6 +64,9 @@ const SynthSpec& fm6Spec();
 const SynthSpec& physicSpec();
 const SynthSpec& acidSpec();
 const SynthSpec& cloudSpec();
+// The built-in TONE's outline (Cloud::tone at the engine's rate), 512 loudest points, made once: what
+// CLOUD's picture shows with no recording, on the handheld and on the designer page.
+const std::vector<float>& cloudToneOutline();
 
 // What a preset may hold past its synth (docs/plans/presets-plan.md): the track's three effects, its
 // two sends, its GLIDE FROM and its two MODs, "the track's sound". A preset that holds it is WHOLE:
