@@ -1035,7 +1035,8 @@ void testAFreeLengthReachesTheEngine() {
     CHECK(Rig::peak(free) > 0.01f);
     CHECK(free != whole && free != three);
     CHECK(bar(2.5f, true) == free);
-    // With the cursor inside a long note, the stick cannot pull its end back past the cursor.
+    // With the cursor inside a long note, the stick pulls its end back past the cursor, which comes
+    // back with it (owner, 2026-11-17: shorten from anywhere, not only from the start).
     std::unique_ptr<Rig> rig(onNotes());
     NoteScreen& notes = rig->app.notes();
     notes.moveCursorTo(60, 4);
@@ -1050,7 +1051,40 @@ void testAFreeLengthReachesTheEngine() {
     rig->key(STICK_UP, false);
     rig->frames(1);
     rig->key(A, false);
-    CHECK(notes.noteHere() && near(notes.noteHere()->length, 2.1f)); // a tenth of the cursor's step is left
+    CHECK(notes.noteHere() && near(notes.noteHere()->length, 0.1f) && notes.cursorStep() == 4); // never to nothing
+}
+
+// L3 (the stick pressed in), from any screen: SONG with MASTER under the cursor; hold A + up turns
+// the output up; L3 again goes back where it came from (owner, 2026-11-17).
+void testL3IsTheMaster() {
+    std::unique_ptr<Rig> rig(onNotes());
+    const SDL_Keycode L3 = SDLK_3;
+    App& app = rig->app;
+    app.session().view = View::Effects;
+    rig->frames(1);
+    rig->tap(L3);
+    rig->frames(1);
+    CHECK(app.session().view == View::Song && app.song().cursorOnMaster());
+    const int db = app.project().masterDb;
+    rig->key(A, true);
+    rig->frames(25); // (the card comes up)
+    rig->tap(SDLK_UP);
+    rig->key(A, false);
+    rig->frames(1);
+    CHECK(app.project().masterDb == db + 1);
+    CHECK(app.session().view == View::Song && app.song().cursorOnMaster());
+    rig->tap(L3); // still on MASTER: back to FX
+    rig->frames(1);
+    CHECK(app.session().view == View::Effects);
+    // Moved off MASTER, L3 brings it back there rather than leaving.
+    rig->tap(L3);
+    rig->frames(1);
+    rig->tap(SDLK_LEFT);
+    rig->frames(1);
+    CHECK(app.session().view == View::Song && !app.song().cursorOnMaster());
+    rig->tap(L3);
+    rig->frames(1);
+    CHECK(app.session().view == View::Song && app.song().cursorOnMaster());
 }
 
 void testAllFourShoulderButtonsIsPanic() {
@@ -10143,7 +10177,7 @@ void testCloudOnATrack() {
     CHECK(reads(cloud::PitchSpray, 0) == "OFF" && reads(cloud::PitchSpray, 50) == "+-300 CENTS" && reads(cloud::PitchSpray, 2) == "+-0.5 CENTS" && reads(cloud::PitchSpray, 100) == "+-1200 CENTS");
     CHECK(reads(cloud::PitchSteps, 0) == "FREE" && reads(cloud::PitchSteps, 1) == "OCTAVES" && reads(cloud::PitchSteps, 2) == "FIFTHS");
     CHECK(reads(cloud::Scan, 50) == "FREEZE" && reads(cloud::Scan, 75) == "+1.00X" && reads(cloud::Scan, 0) == "-2.00X");
-    CHECK(reads(cloud::Root, 60) == "C4" && reads(cloud::Root, 69) == "A4" && reads(cloud::Tune, -100) == "-100 CENTS");
+    CHECK(reads(cloud::Root, 60) == "0" && reads(cloud::Root, 69) == "+9" && reads(cloud::Root, 48) == "-12" && reads(cloud::Tune, -100) == "-100 CENTS");
     CHECK(reads(cloud::Attack, 8) == "2.1 MS" && reads(cloud::Release, 54) == "289 MS" && reads(cloud::Level, 100) == "0.00 DB" && reads(cloud::Level, 80) == "-1.9 DB" && reads(cloud::Level, 0) == "OFF");
     CHECK(reads(cloud::Reverse, 0) == "OFF" && reads(cloud::Velocity, 50) == "50%" && reads(cloud::Stereo, 40) == "40%");
     // Every click of the D-pad reads another way (SPRAY 1 to 3 read +-0.0%, as if off, until the review).
@@ -10818,6 +10852,7 @@ int main(int argc, char** argv) {
     testNudgingWithTheOuterShoulderButtons();
     testAFreeLengthReachesTheEngine();
     testAllFourShoulderButtonsIsPanic();
+    testL3IsTheMaster();
     testMuteSoloAndNames();
     testHoldBAndDragErases();
     testNothingStaysHeld();

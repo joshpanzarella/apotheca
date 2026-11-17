@@ -1009,7 +1009,7 @@ static void measureCost() {
     const double one = costOf({}, 1, noise, &g1);
     const double chord = costOf({}, 4, noise, &g4);
     const double full = costOf({{Density, 100}, {Size, 80}, {PitchSpray, 30}}, 6, noise, &gFull);
-    const double plain = costOf({{Density, 100}, {Size, 80}, {Root, 48}}, 1, noise, &gPlain);
+    const double plain = costOf({{Density, 100}, {Size, 80}, {Root, kPitchRootAt - 48}}, 1, noise, &gPlain);
     std::printf("  cost: one key of preset 0 %.3f%% of a core (%d grains; target 0.08%%)\n", one, g1);
     std::printf("  cost: a 4-key chord of preset 0 %.3f%% (%d grains)\n", chord, g4);
     std::printf("  cost: the pool full %.3f%% (%d grains; target 0.5%%, ceiling 0.7%%)\n", full, gFull);

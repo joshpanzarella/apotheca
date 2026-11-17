@@ -33,12 +33,14 @@ licence; its branding is CC BY-NC-SA 4.0 (**none of the branding is here**).
 | `patches/uboot/uboot.hash` | ours | - |
 
 Everything else in `os/` (the scripts, the init, `genimage.cfg`, the
-fragments' comments, the tools) is Apotheca's own. Two of those are made
+fragments' comments, the tools) is Apotheca's own. Four of those are made
 from ROCKNIX's files and keep their licence:
 
 | Here | Made from | Licence |
 | --- | --- | --- |
+| `patches/linux/0170-apotheca-panel-mipi-a-panel-file-in-the-device-tree.patch` | ours, a change to kikuchan's driver (patch 0110): a panel file may be the device tree's `apotheca,panel-firmware` | GPL-2.0, as the driver |
 | `firmware/panels/anbernic,rg40xx-v2-stock-panel.panel` | ROCKNIX's `anbernic,rg40xx-v2-panel.panel`, written by `os/tools/make-v2-stock-panel.py`: the same start-up commands, the pixel clock edge and the timings set to the values of Anbernic's own device tree for the RG40XX (`lcd0` in the boot package muOS ships, read on 2026-11-17; numbers, not code) | GPL-2.0, as ROCKNIX's file |
+| `firmware/panels-to-try/v2-dither.panel`, `v2-stock-dither.panel` | ROCKNIX's v2 file and the stock-panel file above, their pixel format set to RGB666_PACKED (`make-v2-stock-panel.py`); put into the trees in `device_trees/try/` by `post-image.sh`, not built into the kernel | GPL-2.0, as ROCKNIX's file |
 | `dts/allwinner/sun50i-h700-anbernic-rg40xx-v-v2-stock-panel.dts` | ROCKNIX's v2-panel tree, pointing at that file | GPL-2.0-only OR BSD-2-Clause, as ROCKNIX's tree |
 
 **What Buildroot fetches** (each at a pinned version, each sum checked:

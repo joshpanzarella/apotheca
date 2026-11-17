@@ -65,7 +65,7 @@ new CHOIR / Cathedral
 set 0 55  1 25  2 95  3 70  5 70  6 80  7 2  8 20  9 100  13 60  14 85  15 70
 send 2 0.3                       # into SPACE (a new song's HALL)
 new CHOIR / Low Choir
-set 0 30  1 15  2 90  3 60  5 80  6 80  7 1  9 70  11 72  13 50  14 75
+set 0 30  1 15  2 90  3 60  5 80  6 80  7 1  9 70  11 48  13 50  14 75
 new CHOIR / Bloom Choir
 set 0 60  1 30  2 95  3 65  5 90  6 75  7 2  9 90  13 80  14 85  15 70
 send 2 0.45

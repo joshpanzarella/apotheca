@@ -35,7 +35,8 @@ enum Setting {
     Reverse,     // 0..100: the chance a grain plays backwards
     Stereo,      // 0..100: how far each grain's side is rolled
     Scan,        // 0..100: x-2.00 to x2.00, x0 at 50 (scanTimes); x0 is FREEZE
-    Root,        // 0..127: the key that plays the recording at its own pitch
+    Root,        // 0..127: PITCH, 60 none; up is higher. The key that plays the recording at its own
+                 // pitch is kPitchRootAt less it (owner, 2026-11-17: it was that key, and ran the wrong way)
     Tune,        // -100..100 cents
     Attack,      // 0..100: the sampler's scale (envelope::attackSeconds)
     Release,     // 0..100: the sampler's scale (envelope::fallSeconds)
@@ -207,6 +208,7 @@ inline double steppedSemitones(double semis, int steps) {
 // A grain's pitch roll in semitones: within +-PITCH SPRAY, on its grid.
 inline double pitchRoll(double sprayCents, int steps, double u) { return steppedSemitones(sprayCents / 100.0 * (2.0 * u - 1.0), steps); }
 // How fast a grain reads the recording: 1 at ROOT, an octave up twice as fast.
+constexpr int kPitchRootAt = 120; // PITCH 60 is ROOT 60, middle C
 inline double grainRatio(int key, int root, double tuneCentsValue, double slideSemis, double rollSemis) {
     return std::pow(2.0, (static_cast<double>(key - root) + slideSemis + rollSemis) / 12.0 + tuneCentsValue / 1200.0);
 }

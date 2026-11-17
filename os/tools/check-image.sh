@@ -35,8 +35,8 @@ case "$img" in
 esac
 
 here=$(cd "$(dirname "$0")/../.." && pwd)
-python3 -I - "$img" "$here/build-image/output/host/bin/unsquashfs" <<'EOF'
-import os, struct, subprocess, shutil, sys, tempfile
+python3 -I - "$img" "$here/build-image/output/host/bin/unsquashfs" "$here" <<'EOF'
+import os, re, struct, subprocess, shutil, sys, tempfile
 
 path = sys.argv[1]
 data = open(path, 'rb')
@@ -96,6 +96,20 @@ end = fit + fitsize
 check(end <= parts[0][2], "U-Boot ends at %d KiB, before p1 at %d KiB" % (end // 1024, parts[0][2] // 1024))
 fitdata = read(fit, fitsize)
 check(b'bl31' in fitdata or b'atf' in fitdata, "U-Boot's FIT holds Trusted Firmware (BL31)")
+# U-Boot's start (uboot.fragment's CONFIG_PREBOOT): the backlight off first,
+# dtb.img when there is one, else the tree by PE6, then the panel off.
+uboot = read(8 * 1024, 4088 * 1024)
+pre = re.search(rb'gpio clear PD28;[^\0]*gpio clear PI15', uboot)
+pre = pre.group(0).decode() if pre else ''
+check(pre.startswith('gpio clear PD28;') and pre.endswith('gpio clear PI14; gpio clear PI15'),
+      "U-Boot turns the backlight off first and the panel off last")
+check('if test -e mmc 0:1 dtb.img; then setenv fdtfile dtb.img;' in pre,
+      "U-Boot takes dtb.img when the boot partition has one")
+check('if gpio input PE6; then setenv apotheca_screen v2;' in pre
+      and 'setenv fdtfile device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb' in pre
+      and 'setenv fdtfile device_trees/sun50i-h700-anbernic-rg40xx-v.dtb' in pre
+      and pre.index('gpio set PI14; sleep 0.1;') < pre.index('gpio input PE6'),
+      "else it reads PE6 after the panel's reset pulse: low the v2 tree, high the first")
 
 # --- p1: FAT boot partition
 off = parts[0][2]
@@ -106,23 +120,67 @@ if shutil.which('mdir') and shutil.which('mtype'):
     env = {'MTOOLS_SKIP_CHECK': '1', 'PATH': '/usr/bin:/bin:/usr/local/bin'}
     def mt(*a):
         return subprocess.run(a, capture_output=True, text=True, env=env)
-    for f in ['Image', 'dtb.img', 'extlinux/extlinux.conf', 'README.txt', 'dtb-in-use.txt',
+    inuse = mt('mtype', '-i', spec, '::dtb-in-use.txt').stdout.strip()
+    auto = inuse.startswith('auto')
+    for f in ['Image', 'extlinux/extlinux.conf', 'README.txt', 'dtb-in-use.txt',
               'device_trees/sun50i-h700-anbernic-rg40xx-v.dtb',
               'device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb',
-              'device_trees/sun50i-h700-anbernic-rg40xx-v-v2-stock-panel.dtb']:
+              'device_trees/sun50i-h700-anbernic-rg40xx-v-v2-stock-panel.dtb',
+              'device_trees/try/1-pins-40ma/dtb.img', 'device_trees/try/2-backlight-50khz/dtb.img',
+              'device_trees/try/3-dither/dtb.img', 'device_trees/try/4-all-as-stock/dtb.img']:
         r = mt('mdir', '-b', '-i', spec, '::' + f)
         check(r.returncode == 0, "p1 holds %s" % f)
     conf = mt('mtype', '-i', spec, '::extlinux/extlinux.conf').stdout
     check('root=PARTUUID=41504f54-02' in conf, "extlinux.conf: root=PARTUUID=41504f54-02")
-    check('FDT /dtb.img' in conf and 'LINUX /Image' in conf, "extlinux.conf: LINUX /Image, FDT /dtb.img")
+    check('FDTDIR /' in conf and 'LINUX /Image' in conf and 'FDT ' not in conf.replace('FDTDIR', ''),
+          "extlinux.conf: LINUX /Image, FDTDIR / (the tree is $fdtfile, which U-Boot sets)")
     r = subprocess.run(['mtype', '-i', spec, '::dtb.img'], capture_output=True, env=env)
-    check(r.stdout[:4] == b'\xd0\x0d\xfe\xed', "dtb.img is a device tree")
-    inuse = mt('mtype', '-i', spec, '::dtb-in-use.txt').stdout.strip()
-    named = subprocess.run(['mtype', '-i', spec, '::device_trees/' + inuse], capture_output=True, env=env)
-    check(inuse.endswith('.dtb') and named.returncode == 0 and named.stdout == r.stdout,
-          "dtb.img is device_trees/%s, as dtb-in-use.txt says" % inuse)
+    if auto:
+        check(r.returncode != 0, "no dtb.img: U-Boot picks the tree by the screen (dtb-in-use.txt: %s)" % inuse)
+    else:
+        check(r.stdout[:4] == b'\xd0\x0d\xfe\xed', "dtb.img is a device tree")
+        named = subprocess.run(['mtype', '-i', spec, '::device_trees/' + inuse], capture_output=True, env=env)
+        check(inuse.endswith('.dtb') and named.returncode == 0 and named.stdout == r.stdout,
+              "dtb.img is device_trees/%s, as dtb-in-use.txt says" % inuse)
+    tries = {}
+    for t in ['1-pins-40ma', '2-backlight-50khz', '3-dither', '4-all-as-stock']:
+        tries[t] = subprocess.run(['mtype', '-i', spec, '::device_trees/try/%s/dtb.img' % t],
+                                  capture_output=True, env=env).stdout
+    v2 = subprocess.run(['mtype', '-i', spec, '::device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb'],
+                        capture_output=True, env=env).stdout
+    panel_dir = os.path.join(sys.argv[3], 'os', 'board', 'rg40xxv', 'firmware', 'panels-to-try')
+    dither = open(os.path.join(panel_dir, 'v2-dither.panel'), 'rb').read()
+    stock_dither = open(os.path.join(panel_dir, 'v2-stock-dither.panel'), 'rb').read()
+    check(all(d[:4] == b'\xd0\x0d\xfe\xed' and d != v2 for d in tries.values()),
+          "the four trees to try are device trees, each changed from the v2 tree")
+    fdtget = os.path.join(sys.argv[3], 'build-image', 'output', 'host', 'bin', 'fdtget')
+    if os.access(fdtget, os.X_OK):
+        with tempfile.TemporaryDirectory(prefix='apotheca-check-') as t:
+            def prop(name, node, key):
+                path = os.path.join(t, name + '.dtb')
+                with open(path, 'wb') as f:
+                    f.write(tries[name] if name in tries else v2)
+                return subprocess.run([fdtget, path, node, key], capture_output=True, text=True).stdout.strip()
+            pins = '/soc/pinctrl@300b000/lcd0-rgb888-pins'
+            check(prop('1-pins-40ma', pins, 'drive-strength') == '40' and prop('v2', pins, 'drive-strength') == '',
+                  "try 1 drives the RGB pins at 40 mA (the v2 tree sets nothing)")
+            check(prop('2-backlight-50khz', '/backlight', 'pwms').split()[2:3] == ['20000']
+                  and prop('v2', '/backlight', 'pwms').split()[2:3] == ['40000'],
+                  "try 2's backlight PWM period is 20000 ns, 50 kHz (the v2 tree's 40000)")
+            check(prop('4-all-as-stock', pins, 'drive-strength') == '40'
+                  and prop('4-all-as-stock', '/backlight', 'pwms').split()[2:3] == ['20000'],
+                  "try 4 has both too")
+    else:
+        print("skip  the trees' values (no fdtget in build-image/output/host/bin)")
+    check(dither in tries['3-dither'] and stock_dither in tries['4-all-as-stock'],
+          "tries 3 and 4 carry their panel files, byte for byte")
     r = subprocess.run(['mtype', '-i', spec, '::Image'], capture_output=True, env=env)
     check(r.stdout[56:60] == b'ARM\x64', "Image is an arm64 kernel")
+    check(b'apotheca,panel-firmware' in r.stdout,
+          "the kernel's panel driver takes a panel file from the device tree (patch 0170)")
+    for f in ['anbernic,rg40xx-panel.panel', 'anbernic,rg40xx-v2-panel.panel', 'anbernic,rg40xx-v2-stock-panel.panel']:
+        panel_bytes = open(os.path.join(sys.argv[3], 'os', 'board', 'rg40xxv', 'firmware', 'panels', f), 'rb').read()
+        check(panel_bytes in r.stdout, "the kernel holds %s, byte for byte" % f)
 else:
     print("skip  p1's files (mtools not installed)")
 
@@ -161,10 +219,32 @@ if unsquashfs:
         check(b'export APOTHECA_OWNS_SCREEN=1' in cat('/usr/libexec/apotheca/run') and b'export APOTHECA_STICK_LIGHT=' in cat('/usr/libexec/apotheca/run'),
               "run gives Apotheca the backlight and the stick's light (app/lights.hpp)")
         check(b'APOTHECA_STICK_LIGHT' in cat('/usr/lib/apotheca/apotheca'), "the Apotheca on the card knows the stick's light")
+        # The owner's boot log (Linux 7.2): ttyS2's device is the port below the UART.
+        run = cat('/usr/libexec/apotheca/run').decode('utf-8', 'replace')
+        pattern = re.search(r'^\s*(\S*5001400\.serial\S*)\)', run, re.M)
+        found = []
+        if pattern:
+            for path in ['/sys/devices/platform/soc/5001400.serial/5001400.serial:0/5001400.serial:0.0',
+                         '/sys/devices/platform/soc/5001400.serial',
+                         '/sys/devices/platform/soc/5000000.serial/5000000.serial:0/5000000.serial:0.0']:
+                r = subprocess.run(['sh', '-c', 'case "$1" in %s) echo yes ;; *) echo no ;; esac' % pattern.group(1), 'sh', path],
+                                   capture_output=True, text=True)
+                found.append(r.stdout.strip())
+        check(found == ['yes', 'yes', 'no'],
+              "run finds the stick light's serial line as Linux 7.2 places it, and as before (%s)" % found)
         check(b'KEEP_OFF:-poweroff' in cat('/usr/sbin/apotheca-keep'), "apotheca-keep turns the handheld off on the mark")
         check(b'APOTHECA_OFF_MARK' in cat('/usr/lib/apotheca/apotheca'), "the Apotheca on the card knows the off mark")
         check(any(l.endswith('/test_power.ko') for l in listing.splitlines()),
               "the kernel's made-up battery (test_power) is there for the desk test, as a module")
+        check(any(l.endswith('/gpio-sim.ko') for l in listing.splitlines()),
+              "the simulated GPIO chip (gpio-sim) is there for the desk test of the panel driver, as a module")
+        start = cat('/usr/sbin/apotheca-start')
+        check(b'a program copied onto the card' in start and b'program.md5' in start,
+              "apotheca-start runs a program copied onto the card by hand (found by its sum)")
+        check(b'7f454c460201????????????????????????b700' in start,
+              "and runs it only if it is an arm64 program")
+        check(b'apotheca.rolledback' in cat('/usr/libexec/apotheca/run'),
+              "run does not fall back to the CPU for the program put back after a new one failed")
 else:
     print("skip  p2's files (no unsquashfs)")
 

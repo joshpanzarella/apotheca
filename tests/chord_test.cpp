@@ -398,7 +398,8 @@ void testShapingAndRemovingAWholeChord() {
     CHECK(std::fabs(rig.chordOn(0)->velocity - 1.f) < 1e-4f);
     CHECK(rig.chordOn(4)->velocity == 0.9f); // only this chord
     rig.tap(SDLK_UP, 5);
-    CHECK(rig.chordOn(0)->length == 2); // never out from under the cursor
+    CHECK(rig.chordOn(0)->length == 1 && rig.notes().cursorStep() == 0); // from anywhere: the cursor comes back with its end
+    CHECK(rig.notes().chordHere() && rig.notes().cursorPitch() == 64);
     rig.tap(SDLK_DOWN, 9);
     CHECK(rig.chordOn(0)->length == 4); // up to the next chord, no further
     rig.tap(SDLK_UP);

@@ -45,6 +45,7 @@ Button fromKey(SDL_Keycode k) {
     case SDLK_w: return Button::R1;
     case SDLK_1: return Button::L2;
     case SDLK_2: return Button::R2;
+    case SDLK_3: return Button::L3; // (the stick pressed in: on the desk, 3)
     case SDLK_RETURN: return Button::Start;
     case SDLK_BACKSPACE: return Button::Select;
     case SDLK_TAB: return Button::Menu;

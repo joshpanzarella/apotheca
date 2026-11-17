@@ -1835,6 +1835,9 @@ effect in those two groups and fails one that does not.
     rows of four, an unused one an empty box the cursor passes by): hold A turns (the stick by the
     square of its push), B default / back, hold B every knob to the usual, Y ROLL (`kRollLow` 25 to
     `kRollHigh` 75, by a hash of the voice and a count), L1 / R1 the synth lane before / after, X hears.
+    **A turned box (VOICE and EDIT views) is heard ONCE, when the turn is done** (owner, 2026-11-17: heard at
+    every step it "sounds odd and you can't really hear what has changed"; `KitScreen::hearWhenDone`): A let go,
+    the D-pad and stick at rest, `kHearAfterMs` (300) since the last change, and the sound made (not MAKING).
     Stills `kit-synth`, `kit-voice`, `-held`, `-deleting`, `-clap`; `textsize`, `idle_test` have it.
   - Tests: `tests/drumsynth_test.cpp` (pitch, sweep, decay, every knob, peak, the end, the bits, the
     cost with `--measure`; `--print` remakes the sums only from code known right) and

@@ -597,7 +597,7 @@ using namespace cloud;
 
 const char* const kPages[4] = {"MAIN", "SOURCE", "GRAINS", "PLAY"};
 struct Item { int id; const char* name; };
-const Item kSource[] = {{Position, "POSITION"}, {Spray, "SPRAY"}, {Scan, "SCAN"}, {Root, "ROOT"}, {Tune, "TUNE"}};
+const Item kSource[] = {{Position, "POSITION"}, {Spray, "SPRAY"}, {Scan, "SCAN"}, {Root, "PITCH"}, {Tune, "TUNE"}};
 const Item kGrains[] = {{Size, "SIZE"}, {Density, "DENSITY"}, {Scatter, "SCATTER"}, {Shape, "SHAPE"}, {Reverse, "REVERSE"}, {Stereo, "STEREO"}};
 const Item kPlay[] = {{PitchSpray, "PITCH SPRAY"}, {PitchSteps, "PITCH STEPS"}, {Attack, "ATTACK"}, {Release, "RELEASE"}, {Level, "LEVEL"}, {Velocity, "VELOCITY"}};
 struct Page { const Item* items; int count; };
@@ -663,7 +663,7 @@ void settingText(int id, int value, char* out, int size) {
         if (value == 50) std::snprintf(out, n, "FREEZE");
         else std::snprintf(out, n, "%+.2fX", scanTimes(value));
         return;
-    case Root: std::snprintf(out, n, "%s%d", kNoteNames[((value % 12) + 12) % 12], value / 12 - 1); return;
+    case Root: if (value == 60) std::snprintf(out, n, "0"); else std::snprintf(out, n, "%+d", value - 60); return; // PITCH: semitones, up higher
     case Tune: std::snprintf(out, n, "%+d CENTS", value); return;
     case Attack: return secondsText(envelope::attackSeconds(static_cast<float>(value)), out, n);
     case Release: return secondsText(envelope::fallSeconds(static_cast<float>(value)), out, n);

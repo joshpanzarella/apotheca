@@ -114,6 +114,22 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
 
+    // L3 (the stick pressed in), from any screen: the SONG screen with MASTER under the cursor, so
+    // hold A + up / down is the output's level at once (owner, 2026-11-17). Pressed again while the
+    // cursor is still on MASTER: back to the screen it came from.
+    if (b == Button::L3 && !panicking_) {
+        if (!event.down) return;
+        if (cameByL3_ && session_.view == View::Song && song_.cursorOnMaster()) {
+            session_.view = viewBeforeL3_;
+        } else {
+            viewBeforeL3_ = session_.view;
+            session_.view = View::Song;
+            song_.moveToMaster();
+        }
+        cameByL3_ = session_.view == View::Song;
+        selectAlone_ = false;
+        return;
+    }
     // SELECT tapped by itself, away from the SONG screen: go there. (On the
     // SONG screen the same tap opens the list of songs.) A second way to
     // SONG, for when L2 cannot be trusted.
@@ -270,6 +286,7 @@ void App::volumeKey(bool up, const Input& input) {
 
 void App::update(const Input& input, Uint32 nowMs) {
     now_ = nowMs;
+    if (session_.view != View::Song || !song_.cursorOnMaster()) cameByL3_ = false; // (moved away: L3 goes to MASTER again)
     // The battery, looked at every ten seconds (and at once, the first time).
     if (batteryReadAt_ == 0 || nowMs - batteryReadAt_ >= 10000) {
         batteryReadAt_ = nowMs ? nowMs : 1;
