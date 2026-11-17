@@ -47,6 +47,11 @@ void Session::setSynthSetting(int track, int id, int value) {
     c.a = realId;
     c.b = realValue;
     engine.send(c);
+    // MORPH reads TABLE A, TABLE B (B on or off) and UNISON at a key's strike: a key X holds on this track
+    // is struck again, so the change is heard (wavetable-plan.md, call 13). It stays held.
+    if (t.kind == TrackKind::Morph && (realId == morph::TableA || realId == morph::TableB || realId == morph::Unison) && hearingHeld() &&
+        heard_.lane < 0 && heard_.track == track)
+        audition(track, heard_.pitch, kPlacedLevel);
 }
 
 void Session::setSynthMacro(int track, int macro, float value) {

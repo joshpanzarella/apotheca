@@ -1048,6 +1048,43 @@ static void measureCost() {
 
 struct Named { const char* name; void (*run)(); };
 
+// THE BITS (--sums): a checksum of every built-in table as made, of the busy song in blocks of 256, of
+// a phrase of each of the engine's presets, and of the engine's song. Run on the desk and under
+// qemu-aarch64 with the handheld's build: the two lists must be the same (wavetable-plan.md, batch 5).
+static std::uint64_t bitsOf(const void* data, std::size_t bytes, std::uint64_t h = 1469598103934665603ull) {
+    const unsigned char* p = static_cast<const unsigned char*>(data);
+    for (std::size_t i = 0; i < bytes; ++i) h = (h ^ p[i]) * 1099511628211ull;
+    return h;
+}
+static std::uint64_t bitsOf(const std::vector<float>& v) { return bitsOf(v.data(), v.size() * sizeof(float)); }
+static void printSums() {
+    Morph::makeTables();
+    for (int t = 0; t < kTables; ++t) {
+        const morph::Table& table = morph::builtInTable(t);
+        std::printf("table %-9s %016llx %016llx\n", tableName(t), static_cast<unsigned long long>(bitsOf(table.data.data(), table.data.size() * sizeof(float))),
+                    static_cast<unsigned long long>(bitsOf(table.amp.data(), table.amp.size() * sizeof(float))));
+    }
+    std::printf("busy song    %016llx\n", static_cast<unsigned long long>(bitsOf(busySong(256))));
+    for (int p = 0; p < Morph::presetCount(); ++p) {
+        std::unique_ptr<Morph> m = synth({}, p);
+        std::vector<float> all;
+        const int keys[] = {48, 55, 60, 64};
+        for (int k = 0; k < 4; ++k) {
+            m->noteOn(keys[k], 0.6f + 0.1f * k);
+            std::vector<float> r, l = run(*m, 6000, &r);
+            all.insert(all.end(), l.begin(), l.end()), all.insert(all.end(), r.begin(), r.end());
+        }
+        m->setMacro(MacroPosition, 0.8f), m->setMacro(MacroCutoff, 0.3f);
+        std::vector<float> r, l = run(*m, 24000, &r);
+        all.insert(all.end(), l.begin(), l.end()), all.insert(all.end(), r.begin(), r.end());
+        m->stopNotes();
+        l = run(*m, 48000, &r);
+        all.insert(all.end(), l.begin(), l.end()), all.insert(all.end(), r.begin(), r.end());
+        std::printf("preset %-13s %016llx\n", Morph::presetName(p), static_cast<unsigned long long>(bitsOf(all)));
+    }
+    std::printf("engine song  %016llx\n", static_cast<unsigned long long>(bitsOf(engineSong(0, 256))));
+}
+
 int main(int argc, char** argv) {
     const Named tests[] = {
         {"testSettings", testSettings},
@@ -1083,6 +1120,7 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         if (a == "--measure") gPrint = true;
+        else if (a == "--sums") return printSums(), 0;
         else only.push_back(a);
     }
     for (const Named& t : tests) {

@@ -100,9 +100,11 @@ has presets and macros, and its DEVICE screen in `App::screenNow()`. Then the
 places that list the synths by name: `userList`, `builtInPresets`,
 `settingCount`, `specFor` (synth_spec.cpp), `macroIsChoice` (mods.hpp, for a
 threshold macro), its stills in `main.cpp` and `kViews`, and the tests'
-lists (`textsize`, `scope_test`, `save_test`, `modapp_test`). CLOUD was the
-last added (2026-11-17, batch 2 of granular-plan.md: a roll, and a recording as the sampler's); ACID's
-commit is the plainest pattern.
+lists (`textsize`, `scope_test`, `save_test`, `modapp_test`). **An engine source in a folder of its
+own (`engine/src/morph/tables.cpp`) also goes in `scripts/build-handheld.sh`**, which builds only
+`engine/src/*.cpp` and `fx/*.cpp` by name (MORPH's tables were missing there from batch 1 to batch 5:
+the handheld build would not have linked). MORPH was the last added (2026-11-17, wavetable-plan.md: a
+picture of its tables, a roll); ACID's commit is the plainest pattern.
 
 Where effects are, in the engine:
 
@@ -2308,14 +2310,19 @@ effect in those two groups and fails one that does not.
 - **MORPH** (2026-11-17, the engine only: batches 0 and 1 of `docs/plans/wavetable-plan.md`;
   `engine/include/apotheca/morph.hpp`, `morph_rule.hpp`, `engine/src/morph.cpp`, `engine/src/morph/tables.*`;
   `tests/morph_test.cpp`). `SynthKind::Morph` appended. **Every figure is SELF. Nobody has heard it, not
-  run on the handheld; no app side yet.** The owner's 17 calls are at the plan's picks.
+  run on the handheld.** The owner's 17 calls are at the plan's picks.
   - **A table is 32 frames kept at 18 sizes, one a half octave**; a stream reads the first size whose top
     harmonic is at or under rate - 20 kHz, so a size change drops nothing under 19.85 kHz and needs no
     crossfade. **32 points a harmonic (capped at 2048)**: at 8 a straight-line read aliased -39 dB on
     FOLD at key 96; at 32, -64 dB at worst. 80 KB a frame, **41 MB for the 16 built-ins**, made once
     in `prepare` (130 to 200 ms on the desk), shared, never freed.
   - **The tables use no maths library** (`turnSin` / `turnCos` from the house polynomials, `exp2Poly`;
-    `#pragma clang fp contract(off)`), so the handheld makes the desk's tables. Not yet checked under qemu.
+    floor, fabs and sqrt only, which are exact), so the handheld makes the desk's tables. **The handheld
+    plays the desk's bits** (batch 5): `morph_test --sums` (every table's bits, the busy song, a phrase of
+    each preset, the engine's song) is the same built with the handheld's flags under qemu-aarch64, and
+    all of `morph_test` passes there. **`#pragma clang fp contract(off)` stands ABOVE every `#include`**
+    in `morph.cpp` and `morph/tables.cpp`: below them, `jx3p/ir3109.hpp`'s polynomials were fused into
+    multiply-adds on ARM and nine tables and every sound came out other.
   - **A key works on a 16-sample tick counted from its strike**; every setting the patch and macros give
     slides in over 512 samples counted from when it changed (a MOD on POSITION is a line), at once when
     no key sounds. The MOD ENV steps once a tick (its shape made at rate / 16). TABLE A, TABLE B and
@@ -2325,7 +2332,11 @@ effect in those two groups and fails one that does not.
   - **The only roll is a unison stream's start** (`streamPhase`: the strike's seed); one stream alone
     starts at 0. The readout is CLOUD's `grainPlaces` path: each key's place in A, newest first, then B's.
   - Cost (`bench`, a quiet desk): 6 keys 0.47%, the pool full 0.67%, asleep 0; 53 M / 87 M instructions
-    a second (about 5% / 9% of a handheld core by the speed plan's rule, not run there).
+    a second (about 5% / 9% of a handheld core by the speed plan's rule, not run there). Batch 5,
+    `morph_test --measure cost`, a busy desk: 0.45% / 0.62 to 0.66%.
+  - **A key X holds is struck again when TABLE A, TABLE B or UNISON changes** (`Session::setSynthSetting`:
+    `audition` on the held key; the plan's call 13); any other setting changes the key as it sounds.
+    `Morph::strikes()` counts strikes for the test.
 - **MORPH in the app** (batch 2, 2026-11-17; `mo` in `app/synth_spec.cpp`, `app_test` `testMorphOnATrack`
   and `testMorphsHintsAndPicture`, `app_test --morph`). `TrackKind::Morph` appended, its row LAST (word `morph`,
   presets `NAME.morph`, short name MRPH, "wavetables, swept from wave to wave"), `TrackData::morph` a
@@ -2740,6 +2751,7 @@ effect in those two groups and fails one that does not.
 | PHYSIC, 8 notes struck again every half second, none asleep (2026-11-15, `bench` in a container whose Phazed row read 0.7%): MARIMBA / STEEL (a string) / the worst (CHURCH BELL, DICE 100, every note gliding) / asleep. **Not yet run on the handheld** (x 13 to 17: physic-plan.md, section 14) | 0.21% / 0.23 to 0.37% / 0.40 to 0.59% / 0.01% |
 | PHYSIC with batch 10 (2026-11-16, `physic_test --measure`, the same container): Twelve (PAIR: two strings a note) / every BODY page setting on, not gliding (BELL, DRUM, STRING, MARIMBA) / the same, every note gliding (BELL, STRING) / NOISE 2 s bursts on GLASS, STRING. **Not yet run on the handheld** | 0.44% / 0.43 to 0.57% / 0.73 to 0.77% / 0.48%, 0.64% |
 | ACID, one voice playing a busy 16-step line at 130 BPM (accents, slides, RESONANCE 85, ENV MOD 70: its cutoff moving all the while; batch 1, 2026-11-16): `acid_test --measure cost` / `bench`'s row / with the cutoff still / asleep. The plan's target was 0.15%. **Not yet run on the handheld** | 0.13% / 0.14% / 0.10% / 0.00% |
+| MORPH (2026-11-17, `morph_test --measure cost`, each the best of 15 runs of 2 s): 6 keys, A and B, SUB, LOW 12, MOD ENV on POSITION / 6 keys, A alone / the pool full (UNISON 2, A and B, LOW 24) / UNISON 4 (3 keys) / asleep. 53 M / 87 M instructions a second for the first and the pool full. Its presets while they play (`presets_test --measure-morph`): 0.14% (a bass) to 1.0% (Harmonic Bloom, with BLOOM). **Not yet run on the handheld** | 0.45% / 0.30% / 0.62 to 0.66% / 0.41 to 0.43% / 0.00% |
 | CLOUD (batch 1, 2026-11-16, a busy desk: load 5 to 7; in the same `bench` run PHYSIC 8 notes 0.31%, ACID 0.21%, JAX-EP 6 notes 0.64%, a third over their usual): one key of preset 0 (two grains) / a 4-key chord / the pool full (six keys at 200 grains a second, SIZE 0.35 s, PITCH SPRAY on: 24 grains, all Hermite). The plan's targets 0.08% / 0.5% (ceiling 0.7%). `cloud_test --measure cost` / `bench`. **Not yet run on the handheld** | 0.05 to 0.07% / 0.19 to 0.24% / 0.53 to 0.55%; `bench` 0.06% / - / 0.65% |
 | ...`bench`'s rows after batch 10 (one run, its Phazed row 1.0%): Marimba / Twelve / breathed (Wine Glass, NOISE) / the worst (Church Bell, DICE 100, gliding, PAIR, GUITAR, MOTOR, BUZZ) / asleep | 0.21% / 0.44% / 0.48% / 0.66% / 0.01% |
 | FM-6, 8 notes of E.PIANO 1 / 16 of STRINGS 1, keys again every half second (2026-11-15, `bench`; the plan's three runs 0.49 to 0.63% / 1.02 to 1.30%). QMOD's 8 were 2.6 to 3.4%. **Not yet run on the handheld** (estimated 6 to 10% of a core there for 8, QMOD's measured 57%: fm6-plan.md, section 6) | 0.67% / 1.22% |
@@ -2846,7 +2858,7 @@ watch again, it is in git (the commit before batch 8b).
    Keep the engine free of Linux-only calls where it costs nothing.
 10. **Our own firmware for the RG40XXV, Apotheca and nothing else** (owner, 2026-11-16; `docs/plans/firmware-plan.md`): a Buildroot image on the mainline kernel with ROCKNIX's H700 patches. Batch 0 (ROCKNIX on a spare card, SPEED TEST there) is the owner's and has not happened. **Batch 1 is built on branch `firmware` (2026-11-17)**, tested on the desk only (section 8 of the plan): `os/` is a Buildroot external tree, `scripts/build-image.sh` writes `build-image/apotheca-rg40xxv.img.gz`, `os/tools/check-image.sh` and `os/tools/qemu-test.py` are its desk tests, `os/README.md` is the owner's page. ROCKNIX's kernel patches are vendored in `os/board/rg40xxv/patches/linux` (eight refreshed so they apply with no fuzz: the same tree to the byte; `os/board/rg40xxv/README.md` says where every file came from and its licence). **The image must stay reproducible** (the same `img.gz` from two builds): nothing made at build time may write the clock in.
 11. **A drum synth** (owner, 2026-11-17): a kit lane's sound made from knobs. **Batches 0 to 5 built** (`docs/plans/drumsynth-plan.md`: twelve models, the KIT page's SOUND column and VOICE view, 73 named voices, the designer page, the review); all joined to main (0.700). Not heard, not run on the handheld; the owner's twelve calls are with the owner.
-12. **A wavetable synth, MORPH** (owner, 2026-11-17: "let's do the wavetable after that"; `docs/plans/wavetable-plan.md`): batches 0 to 2 (the rule, the tables and the voice, the app) built and joined to main; batches 3 (the 32 presets) and 4 (the designer page's picture) on branch `wavetable`; next: 5 (review, README). Not heard, not run on the handheld; the owner's 17 calls are at the plan's picks.
+12. **A wavetable synth, MORPH** (owner, 2026-11-17: "let's do the wavetable after that"; `docs/plans/wavetable-plan.md`): batches 0 to 2 (the rule, the tables and the voice, the app) built and joined to main; batches 3 (the 32 presets), 4 (the designer page's picture) and 5 (the review, the qemu bit check, README) on branch `wavetable`. Left: batch 6, a player's own table from a recording (the owner's call 7). Not heard, not run on the handheld; the owner's 17 calls are at the plan's picks.
 
 Open: FM-6's banks ROM2A, 3A and 4A (in the same archive; not taken: the job asked for the B sides), which chord packs ship, more presets, own WiFi hotspot, an automation
 step-editor, a picture of FM-6's ALGORITHM (its wiring; msfa's table says each). **Twin Analog is gone** (owner, 2026-11-11: rethink it; 2026-11-13: it

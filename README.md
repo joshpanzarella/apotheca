@@ -6,12 +6,12 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 ## Status
 
 A small song machine that runs, at 48 kHz. Up to twelve tracks, each a drum
-kit, a sampler, or one of six synths: Phazed (phase distortion, 65 presets), JAX-EP
+kit, a sampler, or one of seven synths: Phazed (phase distortion, 65 presets), JAX-EP
 (a virtual analog synth modeled after a popular DCO synth, 142 presets), FM-6 (six-operator
 FM, after a classic 80s synth, 209 presets), PHYSIC (plucked and struck sounds that ring by
 themselves: strings, mallets, bells, 96 presets), ACID (a mono bass with accent and slide,
-after a classic bass line box, 32 presets) or CLOUD (clouds of grains from your recordings,
-24 presets). Up to sixteen scenes of
+after a classic bass line box, 32 presets), CLOUD (clouds of grains from your recordings,
+24 presets) or MORPH (wavetables, swept from wave to wave, 32 presets). Up to sixteen scenes of
 one to eight bars, each with its own repeat count. Four screens:
 
 - **SONG**: tracks across, scenes down. Add tracks, set how many times each
@@ -20,7 +20,7 @@ one to eight bars, each with its own repeat count. Four screens:
   a synth, a piano roll on its side (keys across, time down) with chords
   from chord packs.
 - **DEVICE**: for a synth, a main panel of folder, preset and eight macros,
-  with advanced pages behind it (nine for Phazed, five for JAX-EP, eight for FM-6, five for PHYSIC, three for CLOUD).
+  with advanced pages behind it (nine for Phazed, five for JAX-EP, eight for FM-6, five for PHYSIC, three for CLOUD, five for MORPH).
   For drums, the kit: each lane plays its built-in drum or a recording.
 - **FX**: three effects on each track, two on the master, and two shared ones (ECHO and SPACE) that every track can send to.
 
@@ -1127,6 +1127,92 @@ one key about 0.05% of one core, the 24 grains all sounding about 0.55%; the
 handheld is about 13 to 17 times slower (not run there). The plan:
 `docs/plans/granular-plan.md`.
 
+### MORPH
+
+**Wavetables, swept from wave to wave.** A table is 32 single waves (FRAMES)
+in a row: a sine growing into a saw, a pulse narrowing, a vowel changing.
+POSITION picks where in the row a key reads, and between two frames it hears
+both, crossfaded. Turn POSITION, or let the MOD ENV or a MOD move it, and the
+sound walks through the table while the note plays.
+
+- **Two oscillators, A and B**, each on its own table and POSITION; MIX
+  crossfades them. B can be tuned against A (B SEMI, B FINE) or be OFF. A
+  SUB, a sine an octave under A, sits under both.
+- **16 built-in tables**: ANALOG, PULSE, SYNC, VOWEL, ORGAN, HARMONIC, FOLD,
+  BEND, FM, RATIO, DRIVE, STEPS, GRIT, COMB, BELL, GLASS. They are made when
+  the program starts (about a fifth of a second on a desk).
+- **MAIN shows the waves**, between PRESET and the macros: A's wave in teal,
+  B's in purple behind it, and under them a strip of the 32 frames with
+  POSITION A in brass. While a key sounds, the wave is the one the newest key
+  reads, so you see the MOD ENV or a MOD moving it.
+- **UNISON** stacks up to four copies of each oscillator, spread by DETUNE and
+  WIDTH. Six keys sound at once, fewer with UNISON up: the box says how many
+  ("2, 6 KEYS"; "4, 3 KEYS" with B on).
+- **A filter** (OFF, LOW 12, LOW 24, BAND, HIGH) with CUTOFF, RESONANCE and
+  KEY TRACK, an AMP envelope, and a MOD ENV that moves POSITION (both tables)
+  and CUTOFF.
+- **Y on MAIN rolls a new sound**: both tables and POSITIONs, MIX, B's tuning,
+  SUB, UNISON, DETUNE, WIDTH, the filter, the MOD ENV and its two amounts.
+  OCTAVE, TUNE, the AMP envelope, KEY TRACK, VELOCITY and LEVEL stay. One step
+  of undo.
+- **32 presets in five folders**: BASIC (one table each, played plainly: Analog
+  Sweep, Pulse Width, Sync Rise, Vowel Talk, Organ Stops, Harmonic Walk, Fold
+  Grow, FM Bell), PADS, LEADS, BASS and MOVING (a MOD on POSITION in each: a
+  table played as a sequence of waves, a free LFO, a step with chance). **A new
+  MORPH track starts on Analog Sweep.** Eight carry a MOD, fifteen an effect or
+  a send.
+- **On the WiFi page** the TABLES section draws A's and B's: every frame of the
+  table stacked, the one POSITION reads bright. Click or drag to move POSITION.
+
+The macros. Each at +0 is the patch as it is; a preset puts all eight back.
+None is a choice, so each takes a MOD (hold X on it).
+
+| Macro | Moves |
+| --- | --- |
+| POSITION | A's and B's POSITION together |
+| MIX | A against B |
+| CUTOFF | the filter's cutoff |
+| RESO | its resonance |
+| ENV POS | how far the MOD ENV moves POSITION |
+| ENV CUT | how far the MOD ENV moves CUTOFF |
+| DETUNE | the unison's spread |
+| RELEASE | the AMP envelope's release |
+
+ADVANCED is five pages. L1 and R1 turn them.
+
+| Page | Setting | Reads |
+| --- | --- | --- |
+| OSC | TABLE A | the table's name |
+| | POSITION A | FRAME 1.00 to FRAME 32.00 |
+| | TABLE B | OFF, or the table's name |
+| | POSITION B | FRAME 1.00 to FRAME 32.00 |
+| | MIX | A ONLY, A 50 / B 50, B ONLY |
+| | B SEMI | -24 to +24 ST |
+| | B FINE | -50 to +50 CENTS |
+| | SUB | OFF, or its level in DB |
+| VOICE | OCTAVE | -2 to +2 |
+| | TUNE | -100 to +100 CENTS |
+| | UNISON | 1 to 4, and the keys that leaves |
+| | DETUNE | OFF to +-50.0 CENTS (the outer copies) |
+| | WIDTH | 0% (all in the middle) to 100% (spread to both sides) |
+| | VELOCITY | OFF: every key one level; 100%: a key's level is its velocity |
+| | LEVEL | -24 to +6 DB |
+| FILTER | FILTER | OFF, LOW 12, LOW 24, BAND, HIGH |
+| | CUTOFF | 20 HZ to 20.0 KHZ |
+| | RESONANCE | 0% to 100% |
+| | KEY TRACK | 0%: the cutoff stays put; 100%: it follows the key an octave an octave |
+| AMP | ATTACK, DECAY, SUSTAIN, RELEASE | the envelope below |
+| ENV | ATTACK, DECAY, SUSTAIN, RELEASE | the MOD ENV, the same scale |
+| | > POSITION | OFF, or +- up to 31 FRAMES at the envelope's top |
+| | > CUTOFF | OFF, or +- up to 6 OCT at the envelope's top |
+
+**Nobody has heard it**, on the desk or the handheld: the tests and the stills
+have seen it. The handheld makes the same tables and the same sound to the
+bit (tested under an emulator with its build, not on the device). Its cost on
+the desk: six keys about 0.5% of one core, every stream sounding about 0.7%;
+the handheld is about 13 to 17 times slower (not run there). The plan:
+`docs/plans/wavetable-plan.md`.
+
 ### The envelope
 
 The sampler has one volume envelope (and any synth added later can use
@@ -1194,7 +1280,7 @@ The track columns share the width of the screen: with few tracks they are wide.
 | A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted. The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
 | A repeat count | Tap: 1, 2, 4, 8 | Times the scene plays, 1 to 16 | Back to 1 | |
 | The song's end (the PLAYS box of the first empty row, just past the last scene) | Switches what the song does at its end: LOOP (a loop arrow) or STOP (a square) | | Back to LOOP | |
-| + TRACK | Pick DRUMS, PHAZED, JAX-EP, SAMPLER, FM-6 or PHYSIC | | | |
+| + TRACK | Pick DRUMS, PHAZED, JAX-EP, SAMPLER, FM-6, PHYSIC, ACID, CLOUD or MORPH | | | |
 | MASTER (the head at the right-hand end, right of + TRACK) | | Its level and pan, as a track's (below) | | |
 
 The song runs to the last scene with anything in it. Then, by its **song end**:
@@ -2011,7 +2097,8 @@ MAIN: folder, preset, eight macros and ADVANCED. Phazed's macros are TONE,
 MOTION, ATTACK, RELEASE, DETUNE, VIBRATO, CHORUS, OCTAVE. JAX-EP's are
 CUTOFF, RESO, ENV, TUNE, MIX, LFO, ATTACK, RELEASE. FM-6's are BRIGHT,
 FEEDBACK, ATTACK, DECAY, RELEASE, DETUNE, LFO, PITCH ENV. PHYSIC's are TONE, POSITION,
-DECAY, MATERIAL, STRETCH, RELEASE, DICE, OCTAVE. Hold A + stick turns the one under
+DECAY, MATERIAL, STRETCH, RELEASE, DICE, OCTAVE. MORPH's are POSITION, MIX,
+CUTOFF, RESO, ENV POS, ENV CUT, DETUNE, RELEASE. Hold A + stick turns the one under
 the cursor; B puts a macro back in the middle. Each macro has a small picture
 of what it does and a colour for its kind (teal: the sound's colour; purple:
 movement and width; cream: time), and stays dim until it is turned. Macros bend the sound and

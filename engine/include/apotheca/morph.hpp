@@ -68,6 +68,7 @@ public:
 
     // For the tests and the timings.
     int keysSounding() const;    // keys on, fading ones too
+    long strikes() const;        // keys struck since it was made
     bool sounds(int note) const; // a key of that note on and not fading
     int streamsInUse() const;    // the pool's streams the keys not fading hold
     float smallestState() const; // the smallest envelope, fade or filter state held (not 0): 0 if none

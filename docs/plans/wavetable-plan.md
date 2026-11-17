@@ -562,7 +562,7 @@ them. At 36 the large name ran into the line under it at every size (the still s
 did not catch it: the two texts are one row's), so a box under 44 draws its name in the medium lettering
 and both lines by their own heights in its middle (`SongScreen::kListLineGap` 4, with `kListTailRoom` 5 kept for the tails and the outline), held at LARGE's at XL.
 
-**Not done here**: README's page and the review (batch 5).
+**Not done here**: README's page and the review (batch 5, section 14).
 
 ## 12. Batch 3, as built (2026-11-17): the 32 presets
 
@@ -613,3 +613,38 @@ The WiFi page's synth page draws A's and B's tables (TABLES, above the macros), 
 not the spec, ROLL from the page). `APOTHECA_DESIGN_MORPH=1` with `APOTHECA_DESIGN_HOLD=SECONDS` holds the
 page open. **The script was tried in Chromium with Playwright** (2026-11-17): two pictures, a drag
 across A moved POSITION A from 30 to 80, B turned on to VOWEL drawn in purple, no script errors.
+
+## 14. Batch 5, as built (2026-11-17): the review
+
+**Two faults found and mended. Neither was heard; neither had reached the handheld.**
+
+| Found | Mended |
+| --- | --- |
+| **The handheld build would not have linked**: `scripts/build-handheld.sh` builds `engine/src/*.cpp` and `fx/*.cpp` by name, and MORPH's tables are `engine/src/morph/tables.cpp` (on `main` since batches 1 and 2 were joined) | the script takes `engine/src/morph/*.cpp` too; CLAUDE.md's "Adding an instrument" says so. **No handheld build was run** (the job said not to); the qemu test binary below links the same list |
+| **The handheld did not play the desk's bits**: `#pragma clang fp contract(off)` stood below the `#include`s, so `jx3p/ir3109.hpp`'s polynomials (`sinPoly`, `cosPoly`, `exp2Poly`) were fused into multiply-adds by clang on ARM; nine of the sixteen tables (those made from a wave: ANALOG, PULSE, SYNC, FOLD, BEND, FM, RATIO, DRIVE, STEPS) and every sound came out other | the pragma stands above every `#include` in `morph.cpp` and `morph/tables.cpp`. The desk's bits did not move |
+| Call 13's second half, **the X audition struck again** when TABLE A, TABLE B or UNISON changes, was not built in batch 2 | `Session::setSynthSetting` strikes the held key again (`audition`, which keeps it held); `app_test --morph` holds it (UNISON 2 heard as two streams, B on as four, CUTOFF strikes nothing: `Morph::strikes()`) |
+
+**The bits, desk and handheld**: `morph_test --sums` prints a checksum of every built-in table (its
+frames and its harmonics as made), the busy song in blocks of 256, a phrase of each of the engine's
+eight presets (four keys, two macros, Stop, the tail) and the engine's song. Built with the
+handheld's flags (clang, `-O2 -mcpu=cortex-a53`, its Ubuntu 20.04 sysroot, `-static-libstdc++`) and run
+under qemu-aarch64: **the same 26 lines as the desk's**. All of `morph_test` passes there too (7 min
+under the emulator). Not run on the handheld itself.
+
+**Mutants** (batches 2 to 5's code): the page's spec, four (the points' place, B's POSITION id, the
+scale, the tables left out): all killed. The strike again, three (none, B left out, every setting):
+all killed once `strikes()` was added (the third survived before). MORPH's spec, six: the keys B
+leaves, ROLL keeping LEVEL and OCTAVE, a player's preset over preset 0, a reading's scale: all killed
+once three times were pinned by value (DECAY 50 "200 MS", RELEASE 80 "3.2 S", MOD ENV ATTACK 60
+"220 MS"; the scale's mutant survived before). One compile-time check (`static_assert` on the pages)
+is no mutant. Batch 1's 22 on the voice stand (21 killed, the filter's settle a guard).
+
+**Cost again** (`morph_test --measure cost`, a busy desk, three runs): 6 keys with A, B, SUB and the MOD
+ENV 0.45%, A alone 0.30%, the pool full 0.62 to 0.66%, UNISON 4 0.41 to 0.43%, asleep 0: as batch 1.
+
+**README**: MORPH's page (what a table is, the two oscillators, the 16 tables, MAIN's picture, UNISON's
+keys, the filter and envelopes, ROLL, the 32 presets, the WiFi page, the macros, every setting's
+reading); the list of instruments at the top and + TRACK's row name it.
+
+**Left**: batch 6 (a player's own table from a recording, the owner's call 7). The owner's 17 calls
+(section 7) are at their picks; any "no" is one constant or one row.

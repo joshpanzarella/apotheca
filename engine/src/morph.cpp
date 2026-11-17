@@ -6,6 +6,13 @@
 // the slides move on by the block's length. So each sample is the same sum in the same order however
 // the sound is cut into blocks.
 
+// No multiply and add joined, in this file and in everything it includes (the house polynomials in
+// jx3p/ir3109.hpp too): the handheld's bits are the desk's. Above every #include, or what they hold is
+// compiled without it (it was below them, and nine tables came out other on the handheld).
+#if defined(__clang__)
+#pragma clang fp contract(off)
+#endif
+
 #include "apotheca/morph.hpp"
 
 #include <algorithm>
@@ -16,10 +23,6 @@
 #include "jx3p/ir3109.hpp" // exp2Poly, sinPoly, cosPoly: the house's own polynomials
 #include "morph/tables.hpp"
 
-// (No multiply and add joined: the handheld's bits are the desk's.)
-#if defined(__clang__)
-#pragma clang fp contract(off)
-#endif
 
 namespace apotheca {
 
@@ -157,6 +160,7 @@ struct Morph::State {
     Key keys[kKeySlots];
     std::uint32_t nextSeed = 0, liveCount = 0;
     bool seedGiven = false;
+    long strikes = 0; // keys struck since made (for the tests)
     unsigned ageClock = 0;
 
     State() {
@@ -625,6 +629,7 @@ void Morph::noteOn(int note, float velocity) {
         return;
     }
     if (s.dirty) s.refresh();
+    ++s.strikes;
     const std::uint32_t seed = s.seedGiven ? s.nextSeed : liveSeed(s.liveCount++);
     s.seedGiven = false;
     const int unison = clampi(s.choice[Unison], 1, kUnisonMost);
@@ -748,6 +753,7 @@ int Morph::grainPlaces(float* places, int most) const {
     return 2 * n;
 }
 
+long Morph::strikes() const { return state_->strikes; }
 int Morph::keysSounding() const {
     int n = 0;
     for (const State::Key& key : state_->keys) n += key.on ? 1 : 0;

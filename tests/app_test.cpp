@@ -10225,6 +10225,30 @@ void testMorphOnATrack() {
     session.audition(1, 60, 0.9f);
     CHECK(rig.listen(4000) > 0.01f);
     rig.render(48000);
+    // A key X holds is struck again when TABLE A, TABLE B or UNISON changes (each read at the strike):
+    // UNISON 2 heard on the held key at once, as two streams. Any other setting changes the key as it sounds.
+    {
+        const Morph* synth = dynamic_cast<const Morph*>(rig.engine->synthForTests(1));
+        CHECK(synth != nullptr);
+        session.auditionHeld(1, 60, kPlacedLevel, &rig);
+        rig.render(2048);
+        CHECK(synth && synth->streamsInUse() == 1);
+        session.setSynthSetting(1, morph::Unison, 2);
+        rig.render(2048);
+        CHECK(synth && synth->streamsInUse() == 2 && synth->sounds(60) && session.hearingHeld());
+        session.setSynthSetting(1, morph::TableB, 1 + morph::Pulse); // B on: two streams more
+        rig.render(2048);
+        CHECK(synth && synth->streamsInUse() == 4);
+        const long struck = synth ? synth->strikes() : 0;
+        session.setSynthSetting(1, morph::Cutoff, 40); // not read at the strike: no new strike
+        rig.render(2048);
+        CHECK(synth && synth->streamsInUse() == 4 && synth->keysSounding() == 1 && synth->strikes() == struck);
+        session.letGoHeard();
+        session.setSynthSetting(1, morph::Unison, 1);
+        session.setSynthSetting(1, morph::TableB, 0);
+        session.setSynthSetting(1, morph::Cutoff, first.value[morph::Cutoff]);
+        rig.frames(1), rig.render(48000);
+    }
 
     // The device screen: MAIN, then ADVANCED: OSC (TABLE A first), VOICE, FILTER, AMP, ENV.
     session.view = View::Device;
@@ -10265,6 +10289,7 @@ void testMorphOnATrack() {
     CHECK(reads(morph::Cutoff, 0) == "20 HZ" && reads(morph::Cutoff, 100) == "20.0 KHZ" && reads(morph::Detune, 0) == "OFF" && reads(morph::Detune, 100) == "+-50.0 CENTS");
     CHECK(reads(morph::Filter, morph::kLow24) == "LOW 24" && reads(morph::EnvPosition, 0) == "OFF" && reads(morph::EnvPosition, -100) == "-31.0 FRAMES");
     CHECK(reads(morph::EnvCutoff, 50) == "+3.00 OCT" && reads(morph::Level, -24) == "-24 DB" && reads(morph::Velocity, 0) == "OFF" && reads(morph::Attack, 8) == "2.1 MS");
+    CHECK(reads(morph::Decay, 50) == "200 MS" && reads(morph::Release, 80) == "3.2 S" && reads(morph::EnvAttack, 60) == "220 MS");
     for (int id = 0; id < morph::kSettings; ++id) {
         std::string last;
         for (int v = morph::settingMin(id); v <= morph::settingMax(id); ++v) {

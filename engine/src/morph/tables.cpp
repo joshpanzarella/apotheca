@@ -1,6 +1,13 @@
 // MORPH's tables (tables.hpp says what a table is). Made on the app's thread, never on the audio
 // thread; every sum the table's own, so the handheld makes the desk's tables to the bit.
 
+// No multiply and add joined, in this file and in everything it includes (the house polynomials in
+// jx3p/ir3109.hpp too): the handheld's bits are the desk's. Above every #include, or what they hold is
+// compiled without it (it was below them, and nine tables came out other on the handheld).
+#if defined(__clang__)
+#pragma clang fp contract(off)
+#endif
+
 #include "tables.hpp"
 
 #include <chrono>
@@ -10,10 +17,6 @@
 
 #include "../jx3p/ir3109.hpp" // exp2Poly, sinPoly, cosPoly: the house's own polynomials
 
-// (No multiply and add joined: the handheld's bits are the desk's.)
-#if defined(__clang__)
-#pragma clang fp contract(off)
-#endif
 
 namespace apotheca {
 namespace morph {
