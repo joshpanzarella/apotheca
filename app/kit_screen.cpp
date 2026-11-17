@@ -482,8 +482,9 @@ void KitScreen::openVoice(int place) {
     session_.readyLane(project_.track, lane_);
     voicing_ = true;
     editing_ = false;
-    const int model = trk().laneSynth[lane_].model;
+    const int model = trk().laneSynth[lane_].model, named = voicePlaceOf(trk().laneSynth[lane_]);
     voicePlace_ = drumsynth::shown(model, place) ? place : kVoiceModel;
+    voicePicked_ = named >= 0 ? named : 0; // (this lane's: another lane's pick means nothing here)
     holding_ = deleting_ = bBack_ = false;
     deletePart_ = 0.f;
     repeating_ = Button::None;
@@ -537,7 +538,6 @@ void KitScreen::voicePress(Button b) {
     if (voicePlace_ == kVoiceModel) {
         const int to = v.model + by;
         if (to <= drumsynth::kNone || to >= drumsynth::kModels) return; // the ends stop
-        voicePicked_ = 0;
         setVoice(drumsynth::usualVoice(to));
         return;
     }

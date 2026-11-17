@@ -270,6 +270,7 @@ void testALongVoiceWaits() {
     CHECK(rig.hit(kLane, 9000) == drum.hit(kLane, 9000)); // meanwhile: what it had (the built-in drum)
     for (int i = 0; i < 5000 && rig.session().stretching(); ++i) {
         rig.frames(1);
+        rig.session().readyLane(0, kLane); // (as the designer page and the VOICE view ask every frame: it must still land)
         usleep(2000);
     }
     CHECK(!sound.making && !sound.shaping && !sound.waiting && sound.recording && sound.recording->size() == drumsynth::lengthOf(longest, kRate));
@@ -643,8 +644,8 @@ void testTheNamedVoices() {
     const char* bad[] = {
         "set TUNE 3\n",                              // no voice
         "voice bongo LOW\n",                         // no such model
-        "voice kick low\n",                          // not capitals
-        "voice kick A NAME FAR TOO LONG\n",          // too long
+        "voice kick low\nset TUNE 2\n",               // not capitals (each with a set: not the usual voice either)
+        "voice kick A NAME FAR TOO LONG\nset TUNE 2\n", // too long
         "voice kick CLASSIC\nset TUNE 1\n",           // the usual's name
         "voice kick ONE\nset TUNE 2\nvoice kick ONE\nset TUNE 4\n", // twice
         "voice kick ONE\nset SPREAD 2\n",            // not KICK's
@@ -728,6 +729,20 @@ void testPickingAVoice() {
     CHECK(rig.session().undo());
     rig.frames(4);
     CHECK(rig.kit().laneSynth[2] == voiceAt(drumsynth::kSnare, 1));
+    // Opened on another lane whose dials are its third voice, then turned: RIGHT goes on from that voice.
+    rig.session().setLaneSynth(0, 5, voiceAt(drumsynth::kZap, 3));
+    kit.goTo(5, KitScreen::kSound);
+    kit.openVoice(drumsynth::kTune);
+    rig.key(A, true);
+    rig.tap(Up);
+    rig.key(A, false);
+    rig.frames(1);
+    rig.tap(Up); // MODEL
+    rig.key(A, true);
+    rig.tap(Right);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(rig.kit().laneSynth[5] == voiceAt(drumsynth::kZap, 4));
 }
 
 } // namespace

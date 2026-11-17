@@ -477,17 +477,19 @@ designer".
   handheld's own: undo, the song file and the SAMPLER screen follow.
 - **A DRUMS track** shows its kit: **all eight lanes**, each a card (two
   side by side on a computer, one under another on a phone). A lane's card
-  has its sound (the built-in drum, or a recording from the card, picked
-  from its list), its picture with **START and END to drag**, **PLAY** (held:
+  has its sound (the built-in drum, a synth model, or a recording from the
+  card, picked from its list; a synth lane also has its named voices and
+  its knobs, read as the handheld reads them), its picture with **START and END to drag**, **PLAY** (held:
   heard until it is let go; or hold 1 to 8 on the computer's keyboard), its
   VOLUME, CHOKE, FIT TO and FEEL (HUMAN TIME, HUMAN LEVEL), and its EDIT:
   START, END, FADE IN, FADE OUT, GAIN, PITCH, FINE, REVERSE, with
   **NORMALIZE** and **TRIM SILENCE**. Everything reads as the handheld
   reads it. The picture is what the KIT page's EDIT view draws: the whole
   file (or the built-in drum), the part played lit, as loud as GAIN and the
-  fades make it. FIT is for a recording: a built-in drum has none. As on the
-  handheld, the file on the card is never changed, and a lane's EDIT, CHOKE
-  and FEEL are undone with undo; its sound, FIT and VOLUME are not.
+  fades make it. FIT is for a recording or a synth voice: a built-in drum has none. As on the
+  handheld, the file on the card is never changed, and a lane's EDIT, CHOKE,
+  FEEL and synth voice are undone with undo; a recording picked, FIT and
+  VOLUME are not.
 - Every setting of the synth is on the page, in the same groups as the
   handheld's pages, with the eight macros at the top. Phazed's envelopes
   are drawn as lines. Turn something on the handheld and the page shows it.
@@ -1573,17 +1575,57 @@ move to a step and press up or down until it plays the slice you want.
 
 ### DEVICE, drums: the kit
 
-A row for each lane. Each lane plays its built-in drum or a **recording**: a
-WAV file from the `samples` folder beside the program. A kit can mix the two.
+A row for each lane. Each lane plays its built-in drum, a **recording** (a
+WAV file from the `samples` folder beside the program) or a **synth voice**
+(a drum made from knobs: below). A kit can mix all three.
 Left / right moves between the columns, SOUND, FIT TO, CHOKE and the sound's
 picture, EDIT (round the ends).
 
 | On | Hold A + stick up / down | B |
 | --- | --- | --- |
-| SOUND | The built-in drum, then each recording by name. Heard as it changes. | The drum back |
+| SOUND | From the built-in drum: UP each recording by name, DOWN the twelve synth models. Heard as it changes. | The drum back |
 | FIT TO | Off, 1, 2, 4, 8 steps, 1 bar, 2 bars, 4 bars | Off |
 | CHOKE | None, 1, 2 | None |
 | EDIT | (A opens the lane's EDIT view, below) | |
+
+**DRUM SYNTH: a lane's drum made from knobs.** Hold A + DOWN on SOUND from
+the built-in drum steps through twelve models: KICK, SNARE, TOM, CLAP, CL
+HAT, OP HAT, CYMBAL, RIM, COWBELL, CLAVE, ZAP and NOISE. The row reads the
+model and SYNTH. **A tap of A on a synth lane's SOUND opens its VOICE
+view**: the model and the sound's picture on top, its knobs under it (4 to
+8 of them, each read in its unit; an empty box is a knob the model does not
+have).
+
+| Knob | What it does |
+| --- | --- |
+| TUNE | The drum's pitch (a kick 30 to 150 HZ, a hat's metal 100 to 600 HZ, a noise's filter 200 HZ to 14 KHZ) |
+| DECAY | How long it takes to fall 60 dB |
+| TONE | Brighter or darker: the click, the wires, the hats' high pass, a clap's or a noise's width |
+| SNAP | The front: a beater's click, a snare's crack, a hat's first tick; on NOISE how fast it starts |
+| NOISE | Noise mixed in: a snare's wires, the hats' noise against their metal, breath under a kick |
+| SWEEP | How far the pitch falls at the start, in semitones |
+| DRIVE | Pushed into a soft curve: louder body, flatter peaks |
+| BEND, BODY, SPREAD | A model's own: how fast the SWEEP falls (KICK, TOM, ZAP), the snare's shell, the clap's bursts apart |
+
+In the VOICE view: hold A + up / down turns a knob (the stick through its
+whole range in about a second); on the model's box it steps the model, and
+**hold A + left / right steps the model's named voices**: CLASSIC first,
+then five to eight more, some the classic machines' kind, some odd (BOOM,
+SUB DROP, BREATH, CLICKER, FINGER SNAP, GONG, WASH, ALARM, ROCKET, WIND...).
+The voice's name stands in brass after the model while the knobs are its.
+**Y rolls** the knobs (each somewhere in the middle of its range), B puts a
+knob back (B again: back to the kit), **hold B** puts every knob back, L1 /
+R1 go to the synth lane before / after, X hears it.
+
+Every voice comes out at the same peak (-1 dB): the lane's VOLUME, EDIT's
+GAIN and the mixer set how loud it is. **It is made into a sound when a knob
+turns, and the engine plays that as it plays a recording**, so it costs
+nothing while the song plays, and FIT, slices, EDIT, CHOKE, FEEL, THROW and
+a bounce all work on it. A long one (a six-second cymbal) is made on a
+helper thread and the lane plays what it had until it is ready. The song
+keeps the model and its knobs, not a file. **Nobody has heard these drums
+yet**: they are tested by numbers (pitch, decay, peak, how each knob moves
+the sound), not by ear.
 
 **EDIT: cut, turn round, pitch and level a lane's sound, without touching
 the file.** A on the sound's picture opens the lane's EDIT view: the whole
