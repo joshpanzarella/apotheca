@@ -332,7 +332,7 @@ and tested on the desk only; nobody has started it on a handheld.**
 | **SDL2 on a system with no desktop needs Mesa** | SDL2's KMSDRM driver (the kernel's display API) needs GBM and EGL and an OpenGL ES (or GL) library: Buildroot's `BR2_PACKAGE_SDL2_KMSDRM` depends on them, and SDL2 has no plain-framebuffer driver any more. Even SDL's software renderer presents through a GLES texture there. So batch 2 brings in Mesa, and with it most of batch 3's GPU drawing |
 | **Buildroot 2026.02 ties panfrost to LLVM and clang on the card** | Its `mesa3d` package makes the panfrost driver depend on target LLVM and its shader compiler select target OpenCL (target clang, libclc, SPIRV-LLVM-Translator): four LLVM-sized builds and over 100 MB on the card. Mesa itself needs none of that on the target: Buildroot already configures it with `-Dmesa-clc=system -Dprecomp-compiler=system`, so the shaders are compiled at build time by `host-mesa3d` (built with host LLVM and clang). `os/patches-to-buildroot/0001-...` drops the target side; the build script applies it to the Buildroot tree once |
 | **No udev, and SDL copes** | SDL2 finds joysticks with no udev by watching `/dev/input` (inotify). Keyboards it does not look for, so the power key (`axp20x-pek`) and the volume keys (`gpio-keys`) are handed to it in `SDL_EVDEV_DEVICES` (`/usr/libexec/apotheca/run`) |
-| **The joypad as SDL numbers it** | SDL numbers a joystick's buttons by their key codes from `BTN_JOYSTICK` (0x120) up. The RG40XXV's device tree gives the driver these codes, so the buttons come out B 0, A 1, X 2, Y 3, L1 4, R1 5, L2 6, R2 7, SELECT 8, START 9, MENU (F) 10, L3 11, R3 12, UP 13, DOWN 14, LEFT 15, RIGHT 16, and the axes ABS_X 0, ABS_Y 1, ABS_RX 2, ABS_RY 3. That is `usr/share/apotheca/controls-rg40xxv.txt`. **Which ADC channel the RG40XXV's one stick is on is a guess** (X and Y, the left stick's codes); the device tree declares four |
+| **The joypad as SDL numbers it** | SDL numbers a joystick's buttons by their key codes from `BTN_JOYSTICK` (0x120) up. The RG40XXV's device tree gives the driver these codes, so the buttons come out B 0, A 1, X 3, Y 2 (**on the handheld the X button sends the tree's BTN_WEST and Y its BTN_NORTH**, the reverse of the tree's labels: the owner, 2026-11-17; it was X 2, Y 3 until then), L1 4, R1 5, L2 6, R2 7, SELECT 8, START 9, MENU (F) 10, L3 11, R3 12, UP 13, DOWN 14, LEFT 15, RIGHT 16, and the axes ABS_X 0, ABS_Y 1, ABS_RX 2, ABS_RY 3. That is `usr/share/apotheca/controls-rg40xxv.txt`. **Which ADC channel the RG40XXV's one stick is on is a guess** (X and Y, the left stick's codes); the device tree declares four |
 | **The codec's mixer** | `sun4i-codec`'s H616 controls: DAC Playback Volume, Line Out Playback Volume and Switch, Line Out Source Playback Route, the mixers' DAC Playback Switch, and the card's Speaker pin switch. `/etc/init.d/S20sound` sets them to full (Apotheca's own VOLUME is on top), and the boot log lists every control the card has |
 
 ### What was built
@@ -513,7 +513,7 @@ and the boot partition's README.txt now say to wait 30 seconds.
   file), and code that reads **pin PE6** (H616 pin controller, port E data
   register `0x0300B0A0`, bit 6, after setting PE6's function) to pick
   `lcd_type`; it prints `--allen--PE_data[31:0] = 0x%x,lcd_type = %d`. The
-  u-boot before that commit has neither sequence nor the PE6 read. Its
+  u-boot before that commit has neither sequence in that form nor the PE6 read. Its
   string table names one driver, `fog_fj035fhd05_v1`, for both.
 - ROCKNIX added `anbernic,rg40xx-v2-panel.panel` and the two `-v2-panel`
   trees (H and V) on 2026-04-04 (commit `765c0e53f`, Philippe Simons); its
@@ -539,17 +539,46 @@ apart:
    cannot read), so nothing says this panel is exactly ROCKNIX's v2.
 
 **What tells them apart**: a ghost that **fades over some minutes** of
-Apotheca running, and is weaker or gone with the new card, is (1). A ghost
-that is **the same on every start and never fades** is (2); then the panel's
-own settings are needed: the stock card's (a backup of it holds them: its
-boot loader, as muOS's has, carries both panels' start-up commands).
+Apotheca running is (1). **The owner's does not fade over 10 to 15 minutes**,
+so it is (2) or the panel itself. What was then found:
+
+- **The start-up commands are Anbernic's own, to the byte.** Decoded from the
+  muOS `u-boot.fex` above (every call to its command and data writers on the
+  `lcd_type == 1` path), the 98 commands are exactly ROCKNIX's v2 file, then
+  `11`, 120 ms, `29`, 20 ms, which the driver sends itself. So VCOM, gamma
+  and inversion are as Anbernic sets them.
+- **What differs is the SoC's side, the TCON** (the display controller). The
+  stock boot package's device tree has one `lcd0` node for both screens:
+  `lcd_hv_clk_phase = 2` (Allwinner's TCON code makes that `clk_inv = 1`,
+  the bit mainline sets for `DRM_BUS_FLAG_PIXDATA_DRIVE_NEGEDGE`),
+  `lcd_hv_sync_polarity = 3` (both active high), 24 MHz, `lcd_ht` 768,
+  `lcd_hbp` 46, `lcd_hspw` 20, `lcd_vt` 521, `lcd_vbp` 15, `lcd_vspw` 4,
+  `lcd_frm 1` (dither to 18 bits). **ROCKNIX's v2 file drives the pixel
+  data on the other clock edge** (its bus flags 0x46: `PIXDATA_DRIVE_POSEDGE`;
+  its first-screen file has NEGEDGE, as stock) and uses 27 MHz, 750 x 600.
+  Data latched on the wrong edge is the classic cause of faint column
+  patterns, so this is the leading suspect, not a proven one.
+- **A third tree to compare**, `rg40xx-v-v2-stock-panel` (not the default):
+  ROCKNIX's v2 start-up commands unchanged, the clock edge NEGEDGE (bus flags
+  `0x0a`: DE high, data driven on the falling edge) and the stock timings
+  (24 MHz; horizontal 640 + 82 + 20 + 26 = 768; vertical 480 + 26 + 4 + 11 =
+  521; sync both active high; 59.98 Hz). Written by
+  `os/tools/make-v2-stock-panel.py` from ROCKNIX's file. The stock `lcd_frm`
+  dithering is not copied: the panel takes 24 bits here (`3A 70`, the RGB888
+  pins), so there is nothing to dither. **Not tried on the handheld.**
+- **What the owner can tell us**: whether the stripes are gone, fainter or the
+  same with the third tree; and whether **the stock card** shows them in a
+  dark picture (then it is the panel, and nothing in software is wrong).
+
+On the stock boot loader's choice: the code reads PE6 and sets
+`lcd_type = !PE6`, and `lcd_type == 1` runs the v2 commands, so **PE6 low
+means the newer screen** (read from the code, not tried).
 
 **A way to tell the screens apart without asking the owner (not built):**
-the stock boot loader reads PE6. Our kernel or an early init script could
-read the same pin and pick the panel file, so one card would fit both
-screens. Which level means which screen was not worked out (the code sets
-`lcd_type = !PE6`; which `lcd_type` runs which sequence was not traced), and
-it needs a unit of each kind to try. The display ID cannot do it: the panel's
+the stock boot loader reads PE6 (low: the newer screen, read from its
+code). Our kernel or an early init script could read the same pin and pick
+the panel file, so one card would fit both screens. It needs a unit of each
+kind to try. The display ID cannot do it: the panel's
 SPI is write-only here (`spi-gpio` with no MISO), so it reads `000000`.
 
 ## Sources

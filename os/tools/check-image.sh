@@ -8,7 +8,7 @@
 #   - U-Boot's SPL at 8 KiB, where the H700's boot ROM reads it: the eGON.BT0
 #     header, its length and its checksum (the boot ROM refuses a bad one),
 #     and U-Boot proper (a FIT image) after it, all ending before partition 1
-#   - partition 1: FAT, holding Image, dtb.img (a device tree), the two
+#   - partition 1: FAT, holding Image, dtb.img (a device tree), the three
 #     RG40XXV trees and extlinux/extlinux.conf naming the right root
 #   - partition 2: a squashfs that fits its partition; with unsquashfs (on the
 #     PATH, or the one the image build made) also what batch 4 put in it:
@@ -108,7 +108,8 @@ if shutil.which('mdir') and shutil.which('mtype'):
         return subprocess.run(a, capture_output=True, text=True, env=env)
     for f in ['Image', 'dtb.img', 'extlinux/extlinux.conf', 'README.txt', 'dtb-in-use.txt',
               'device_trees/sun50i-h700-anbernic-rg40xx-v.dtb',
-              'device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb']:
+              'device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb',
+              'device_trees/sun50i-h700-anbernic-rg40xx-v-v2-stock-panel.dtb']:
         r = mt('mdir', '-b', '-i', spec, '::' + f)
         check(r.returncode == 0, "p1 holds %s" % f)
     conf = mt('mtype', '-i', spec, '::extlinux/extlinux.conf').stdout

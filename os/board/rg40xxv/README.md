@@ -33,7 +33,13 @@ licence; its branding is CC BY-NC-SA 4.0 (**none of the branding is here**).
 | `patches/uboot/uboot.hash` | ours | - |
 
 Everything else in `os/` (the scripts, the init, `genimage.cfg`, the
-fragments' comments, the tools) is Apotheca's own.
+fragments' comments, the tools) is Apotheca's own. Two of those are made
+from ROCKNIX's files and keep their licence:
+
+| Here | Made from | Licence |
+| --- | --- | --- |
+| `firmware/panels/anbernic,rg40xx-v2-stock-panel.panel` | ROCKNIX's `anbernic,rg40xx-v2-panel.panel`, written by `os/tools/make-v2-stock-panel.py`: the same start-up commands, the pixel clock edge and the timings set to the values of Anbernic's own device tree for the RG40XX (`lcd0` in the boot package muOS ships, read on 2026-11-17; numbers, not code) | GPL-2.0, as ROCKNIX's file |
+| `dts/allwinner/sun50i-h700-anbernic-rg40xx-v-v2-stock-panel.dts` | ROCKNIX's v2-panel tree, pointing at that file | GPL-2.0-only OR BSD-2-Clause, as ROCKNIX's tree |
 
 **What Buildroot fetches** (each at a pinned version, each sum checked:
 `BR2_DOWNLOAD_FORCE_CHECK_HASHES`): Linux 7.2 (GPL-2.0), U-Boot 2026.01

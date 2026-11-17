@@ -5,7 +5,9 @@
 # Environment (from scripts/build-image.sh):
 #   APOTHECA_DTB   which RG40XXV device tree becomes dtb.img:
 #                  "rg40xx-v-v2-panel" (default: the newer screen, the
-#                  owner's unit) or "rg40xx-v" (the first screen)
+#                  owner's unit), "rg40xx-v" (the first screen) or
+#                  "rg40xx-v-v2-stock-panel" (the newer screen, Anbernic's
+#                  clock edge and timings)
 set -eu
 
 board="$(cd "$(dirname "$0")" && pwd)"

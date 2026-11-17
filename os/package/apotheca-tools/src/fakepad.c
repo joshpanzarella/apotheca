@@ -29,10 +29,13 @@
 
 struct Key { int code; const char* name; };
 
-/* The device tree's buttons, by their labels there (sun50i-h700-anbernic-rg40xx-v). */
+/* The device tree's buttons (sun50i-h700-anbernic-rg40xx-v), by the button
+ * they are on the owner's RG40XXV. The tree labels BTN_NORTH (0x133) "X" and
+ * BTN_WEST (0x134) "Y", but on the handheld the X button sends BTN_WEST and Y
+ * BTN_NORTH (the owner, 2026-11-17). */
 static const struct Key kKeys[] = {
     {0x220, "UP"},     {0x221, "DOWN"},   {0x222, "LEFT"},  {0x223, "RIGHT"},
-    {0x131, "A"},      {0x130, "B"},      {0x133, "X"},     {0x134, "Y"},
+    {0x131, "A"},      {0x130, "B"},      {0x134, "X"},     {0x133, "Y"},
     {0x136, "L1"},     {0x137, "R1"},     {0x138, "L2"},    {0x139, "R2"},
     {0x13b, "START"},  {0x13a, "SELECT"}, {0x13c, "MENU"},  {0x13d, "L3"},
     {0x13e, "R3"},

@@ -74,7 +74,9 @@ handheld as before.** Keep the stock card in a drawer and use a spare one.
      first time it starts a new song.
    - **The buttons are set up already** (no "press A" setup). If they do
      the wrong things, delete `apotheca/controls.txt` on the APOTHECA drive:
-     the next start asks for each button, as on the stock card.
+     the next start asks for each button, as on the stock card. (Cards made
+     before 2026-11-17 had **X and Y the wrong way round**; the new system
+     puts them right by itself if `controls.txt` is still the one it wrote.)
 4. To turn it off: see the next section.
 
 ## Turning it off, the power key, the battery
@@ -156,6 +158,7 @@ left only the stripes). Units from before the change need the first one.
 | Tree | Screen | Units |
 | --- | --- | --- |
 | `sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb` (the card's default) | the newer screen | later units: Knulli and muOS users reported new RG40XXVs with only stripes from November 2025, and ROCKNIX added this tree in April 2026 |
+| `sun50i-h700-anbernic-rg40xx-v-v2-stock-panel.dtb` | the newer screen, with the pixel clock edge and the timings Anbernic's own system uses (ROCKNIX's v2 file's start-up commands, unchanged) | **to compare** on the newer screen: try it if a dark picture shows faint vertical stripes |
 | `sun50i-h700-anbernic-rg40xx-v.dtb` | the first screen | earlier units |
 
 **First wait 30 seconds**: the stripes before Linux are normal (above). If
@@ -170,8 +173,14 @@ they stay, try the other tree:
 
 (`dtb-in-use.txt` says which one the card was made with. To go back, copy
 `sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb` over `dtb.img` the same way.)
-A card can be built with the first tree as its default:
-`scripts/build-image.sh --dtb rg40xx-v`.
+Any of the three is tried the same way. A card can be built with another
+as its default: `scripts/build-image.sh --dtb rg40xx-v` (or
+`rg40xx-v-v2-stock-panel`).
+
+**Faint vertical stripes in a dark picture** (seen on the owner's unit with
+the v2 tree, not fading over 15 minutes): try the `v2-stock-panel` tree and
+compare. Also worth a look: does **the stock card** show the same faint
+stripes in a dark picture? If it does, it is the panel itself.
 
 ## A shell from the computer (optional)
 
