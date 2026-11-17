@@ -69,6 +69,16 @@ struct Rig {
         ButtonEvent press;
         if (input.handle(event, press)) app.onButton(press, input);
     }
+    void stick(int x, int y) {
+        for (int axis = 0; axis < 2; ++axis) {
+            SDL_Event event = {};
+            event.type = SDL_CONTROLLERAXISMOTION;
+            event.caxis.axis = static_cast<Uint8>(axis == 0 ? SDL_CONTROLLER_AXIS_LEFTX : SDL_CONTROLLER_AXIS_LEFTY);
+            event.caxis.value = static_cast<Sint16>((axis == 0 ? x : y) * 32767);
+            ButtonEvent press;
+            if (input.handle(event, press)) app.onButton(press, input);
+        }
+    }
     void tap(SDL_Keycode code, int times = 1) {
         for (int i = 0; i < times; ++i) {
             key(code, true);
@@ -383,6 +393,180 @@ void testUndo() {
     CHECK(rig.hit(kLane, 20000) == byHand.hit(kLane, 20000));
 }
 
+// ---- the KIT page ------------------------------------------------------------------------------------
+
+void testTheSoundColumn() {
+    Folder folder;
+    Rig rig(folder.path);
+    Session& session = rig.session();
+    session.view = View::Device;
+    rig.frames(2);
+    KitScreen& kit = rig.app.kit();
+    kit.goTo(kLane, KitScreen::kSound);
+    // Hold A + up: from the built-in drum, the twelve models at their usual knobs, then the recordings.
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(Up);
+    CHECK(rig.kit().laneSynth[kLane] == voiceOf(drumsynth::kKick));
+    rig.tap(Up);
+    CHECK(rig.kit().laneSynth[kLane] == voiceOf(drumsynth::kSnare));
+    rig.tap(Up, drumsynth::kModels - 3);
+    CHECK(rig.kit().laneSynth[kLane] == voiceOf(drumsynth::kNoiseBurst));
+    rig.tap(Up);
+    CHECK(!rig.kit().laneSynth[kLane].on() && std::strcmp(rig.kit().laneSample[kLane], "hit") == 0);
+    rig.tap(Up); // the last: the end stops
+    CHECK(std::strcmp(rig.kit().laneSample[kLane], "hit") == 0);
+    rig.tap(Down);
+    CHECK(rig.kit().laneSynth[kLane] == voiceOf(drumsynth::kNoiseBurst) && rig.kit().laneSample[kLane][0] == 0);
+    rig.tap(Down, drumsynth::kModels - 1);
+    CHECK(!rig.kit().laneSynth[kLane].on() && rig.kit().laneSample[kLane][0] == 0); // the drum
+    rig.tap(Down);
+    CHECK(!rig.kit().laneSynth[kLane].on());
+    rig.tap(Up, 3);
+    CHECK(rig.kit().laneSynth[kLane].model == drumsynth::kTom);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(!kit.voicing() && !kit.picker().isOpen()); // (A let go after a step: no tap)
+    // B: the drum back.
+    rig.tap(B);
+    CHECK(!rig.kit().laneSynth[kLane].on());
+    // A tap on a lane with a recording or the drum: the list; on a synth lane: its knobs.
+    rig.tap(A);
+    CHECK(kit.picker().isOpen() && !kit.voicing());
+    rig.tap(B); // (the list closes, as it was)
+    CHECK(!kit.picker().isOpen());
+    session.setLaneSynth(0, kLane, voiceOf(drumsynth::kRim));
+    rig.tap(A);
+    CHECK(kit.voicing() && !kit.picker().isOpen() && kit.voicePlace() == KitScreen::kVoiceModel);
+    // The KIT page's bar holds every hint, on a synth lane, A held and not.
+    rig.tap(B);
+    CHECK(!kit.voicing());
+    for (int held = 0; held < 2; ++held) {
+        if (held) rig.key(A, true);
+        rig.frames(1);
+        Canvas canvas;
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(ui::gHintsOver == 0);
+    }
+    rig.key(A, false);
+    rig.frames(1);
+}
+
+void testTheVoiceView() {
+    Rig rig;
+    Session& session = rig.session();
+    session.view = View::Device;
+    session.setLaneSynth(0, 2, voiceOf(drumsynth::kKick));
+    session.setLaneSynth(0, kLane, voiceOf(drumsynth::kClap));
+    rig.frames(2);
+    KitScreen& kit = rig.app.kit();
+    kit.goTo(2, KitScreen::kSound);
+    rig.tap(A);
+    CHECK(kit.voicing() && kit.voicePlace() == KitScreen::kVoiceModel);
+    // Down: the first knob; hold A + up / down turns it a step.
+    rig.tap(Down);
+    CHECK(kit.voicePlace() == drumsynth::kTune);
+    const int tune = rig.kit().laneSynth[2].dial[drumsynth::kTune];
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(Up, 2);
+    rig.tap(Down);
+    CHECK(rig.kit().laneSynth[2].dial[drumsynth::kTune] == tune + 1);
+    // The stick turns it through its range in about a second.
+    rig.stick(0, -1);
+    rig.frames(70);
+    rig.stick(0, 0);
+    CHECK(rig.kit().laneSynth[2].dial[drumsynth::kTune] == drumsynth::kDialMost);
+    rig.key(A, false);
+    rig.frames(1);
+    // B: its usual value; B again (there already): back to the kit.
+    rig.tap(B);
+    CHECK(rig.kit().laneSynth[2].dial[drumsynth::kTune] == tune && kit.voicing());
+    rig.tap(B);
+    CHECK(!kit.voicing());
+    rig.tap(A);
+    CHECK(kit.voicing() && kit.voicePlace() == KitScreen::kVoiceModel); // (opened on MODEL)
+    // Along a row, between the rows; the ends stop.
+    rig.tap(Down);
+    rig.tap(Right, 5);
+    CHECK(kit.voicePlace() == drumsynth::kSweep - 2); // (KICK's first row: TUNE, DECAY, TONE, SNAP)
+    rig.tap(Down);
+    CHECK(kit.voicePlace() == drumsynth::kOwn);
+    rig.tap(Down);
+    CHECK(kit.voicePlace() == drumsynth::kOwn);
+    rig.tap(Up, 2);
+    CHECK(kit.voicePlace() == KitScreen::kVoiceModel);
+    // Hold A on MODEL: the model after, at its usual knobs.
+    rig.key(A, true);
+    rig.tap(Up);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(rig.kit().laneSynth[2] == voiceOf(drumsynth::kSnare));
+    // Y: ROLL, the model kept, every shown knob in 25..75, another voice.
+    const drumsynth::Voice before = rig.kit().laneSynth[2];
+    rig.tap(Y);
+    const drumsynth::Voice rolled = rig.kit().laneSynth[2];
+    CHECK(rolled.model == drumsynth::kSnare && rolled != before);
+    for (int p = 0; p < drumsynth::kPlaces; ++p)
+        if (drumsynth::shown(rolled.model, p)) CHECK(rolled.dial[p] >= KitScreen::kRollLow && rolled.dial[p] <= KitScreen::kRollHigh);
+    rig.tap(Y);
+    CHECK(rig.kit().laneSynth[2] != rolled); // (another roll)
+    // Twenty rolls spread over the whole of 25..75: neither end piled up, both halves reached.
+    int top = 0, low = 0, high = 0, dials = 0;
+    for (int i = 0; i < 20; ++i) {
+        rig.tap(Y);
+        const drumsynth::Voice v = rig.kit().laneSynth[2];
+        for (int p = 0; p < drumsynth::kPlaces; ++p)
+            if (drumsynth::shown(v.model, p)) {
+                ++dials;
+                top += v.dial[p] == KitScreen::kRollHigh || v.dial[p] == KitScreen::kRollLow ? 1 : 0;
+                low += v.dial[p] < 50 ? 1 : 0;
+                high += v.dial[p] > 50 ? 1 : 0;
+            }
+    }
+    CHECK(top * 10 < dials && low * 4 > dials && high * 4 > dials);
+    // Hold B: the bar fills, and at a second every knob is the model's usual; the view stays.
+    rig.tap(Down);
+    rig.key(B, true);
+    rig.frames(30);
+    CHECK(kit.deletePart() > 0.3f && rig.kit().laneSynth[2] != voiceOf(drumsynth::kSnare));
+    rig.frames(40);
+    CHECK(rig.kit().laneSynth[2] == voiceOf(drumsynth::kSnare) && kit.deletePart() == 0.f);
+    rig.key(B, false);
+    rig.frames(2);
+    CHECK(kit.voicing());
+    // R1 / L1: the synth lane after / before; the ends stop.
+    rig.tap(R1);
+    CHECK(kit.cursorLane() == kLane && kit.voicing());
+    rig.tap(R1);
+    CHECK(kit.cursorLane() == kLane);
+    // On CLAP the empty places are passed by: from TUNE down is SPREAD's row (DRIVE).
+    kit.openVoice(drumsynth::kTune);
+    rig.tap(Down);
+    CHECK(kit.voicePlace() == drumsynth::kDrive);
+    rig.tap(Left);
+    CHECK(kit.voicePlace() == drumsynth::kDrive);
+    rig.tap(L1);
+    CHECK(kit.cursorLane() == 2);
+    // The bar holds every hint, on every box, A held and not.
+    for (int place = KitScreen::kVoiceModel; place < drumsynth::kPlaces; ++place) {
+        kit.openVoice(place);
+        for (int held = 0; held < 2; ++held) {
+            if (held) rig.key(A, true);
+            rig.frames(1);
+            Canvas canvas;
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(ui::gHintsOver == 0);
+            if (held) rig.key(A, false);
+            rig.frames(1);
+        }
+    }
+    // The voice taken off (a recording picked, an undo): back to the kit.
+    session.setLaneSample(0, 2, "");
+    rig.frames(2);
+    CHECK(!kit.voicing());
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -394,6 +578,7 @@ int main(int argc, char** argv) {
     const Test tests[] = {
         {"testTheEnginePlaysIt", testTheEnginePlaysIt}, {"testOneOrTheOther", testOneOrTheOther}, {"testEditAndFit", testEditAndFit},
         {"testALongVoiceWaits", testALongVoiceWaits}, {"testTheSongFile", testTheSongFile}, {"testASongOpens", testASongOpens}, {"testUndo", testUndo},
+        {"testTheSoundColumn", testTheSoundColumn}, {"testTheVoiceView", testTheVoiceView},
     };
     for (const Test& test : tests) {
         bool wanted = argc < 2;

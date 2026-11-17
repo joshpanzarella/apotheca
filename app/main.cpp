@@ -35,6 +35,9 @@
 //                  of recordings in its columns: on SAMPLES, in a folder, two folders down, B held, the sampler's)
 //                  kit-edit, kit-edit-held, kit-edit-deleting, kit-edit-column (a lane's EDIT view: with --samples
 //                  on a recording, else on the built-in kick)
+//                  kit-synth (the KIT page with four lanes of synth voices), kit-voice, kit-voice-held,
+//                  kit-voice-deleting, kit-voice-clap (a lane's VOICE view: KICK on TUNE, A held, B held;
+//                  CLAP, its empty places, on SPREAD)
 //                  sampler, sampler-end (with --samples: a sampler track, START 12% and END 80%, the cursor on START / END)
 //   --hold-a, --hold-y, --on-name, --on-tempo, --dice, --paint, --paint-random
 //                  with --demo: a gesture held on the drum grid
@@ -559,6 +562,28 @@ int main(int argc, char** argv) {
             session.view = View::Device;
             app.kit().goTo(3, KitScreen::kChoke);
             if (std::strstr(view, "-held")) pushKey(SDLK_x, true); // A held
+        }
+    } else if (std::strncmp(view, "kit-synth", 9) == 0 || std::strncmp(view, "kit-voice", 9) == 0) {
+        // DRUM SYNTH: the first four lanes synth voices (KICK with its TUNE turned, SNARE, CL HAT, OP HAT),
+        // lane 6 a CLAP. kit-synth: the KIT page on lane 1's SOUND. kit-voice: lane 1's VOICE view on TUNE;
+        // -held: A held there; -deleting: B held (its bar filling); kit-voice-clap: lane 6's, on SPREAD.
+        Session& session = app.session();
+        drumsynth::Voice kick = drumsynth::usualVoice(drumsynth::kKick);
+        kick.dial[drumsynth::kTune] = 40;
+        session.setLaneSynth(0, 0, kick);
+        session.setLaneSynth(0, 1, drumsynth::usualVoice(drumsynth::kSnare));
+        session.setLaneSynth(0, 2, drumsynth::usualVoice(drumsynth::kClHat));
+        session.setLaneSynth(0, 3, drumsynth::usualVoice(drumsynth::kOpHat));
+        session.setLaneSynth(0, 5, drumsynth::usualVoice(drumsynth::kClap));
+        session.finishStretching();
+        session.view = View::Device;
+        const bool clap = std::strcmp(view, "kit-voice-clap") == 0;
+        app.kit().goTo(clap ? 5 : 0, KitScreen::kSound);
+        if (view[4] == 'v') app.kit().openVoice(clap ? drumsynth::kOwn : drumsynth::kTune);
+        if (std::strcmp(view, "kit-voice-held") == 0) pushKey(SDLK_x, true); // A held
+        if (std::strcmp(view, "kit-voice-deleting") == 0) {
+            pushKey(SDLK_z, true); // B held
+            if (stillMs > 600) stillMs = 600; // (the picture is taken before the second is up)
         }
     } else if (std::strncmp(view, "kit-edit", 8) == 0) {
         // EDIT on a lane: with --samples the first recording on lane 6, else lane 1's built-in kick; cut

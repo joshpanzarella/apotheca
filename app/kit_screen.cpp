@@ -64,15 +64,19 @@ void KitScreen::hearFromList(SamplePicker::Hear how) {
     head_.lasts = how == SamplePicker::Hear::Preview ? static_cast<float>(lasts) / 1000.f : 0.f; // the line: to where it stops (Rest: to the end)
 }
 
-// The built-in drum is the first choice; the recordings follow by name.
+// The built-in drum is the first choice, then the twelve synth models (each at its usual knobs);
+// the recordings follow by name.
 void KitScreen::stepSound(int by) {
-    const int count = static_cast<int>(names_.size()) + 1;
-    int now = 0;
-    for (int i = 0; i < count - 1; ++i)
-        if (names_[static_cast<std::size_t>(i)] == trk().laneSample[lane_]) now = i + 1;
+    const int models = drumsynth::kModels - 1;
+    const int count = static_cast<int>(names_.size()) + 1 + models;
+    const drumsynth::Voice& voice = trk().laneSynth[lane_];
+    int now = voice.on() ? voice.model : 0;
+    for (int i = 0; i < static_cast<int>(names_.size()) && !voice.on(); ++i)
+        if (names_[static_cast<std::size_t>(i)] == trk().laneSample[lane_]) now = models + 1 + i;
     const int to = now + by;
     if (to < 0 || to >= count) return; // the ends stop
-    session_.setLaneSample(project_.track, lane_, to == 0 ? "" : names_[static_cast<std::size_t>(to - 1)]);
+    if (to >= 1 && to <= models) session_.setLaneSynth(project_.track, lane_, drumsynth::usualVoice(to));
+    else session_.setLaneSample(project_.track, lane_, to == 0 ? "" : names_[static_cast<std::size_t>(to - models - 1)]);
     if (!project_.playing) hear();
 }
 
@@ -135,9 +139,18 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (editing_) return editButton(event, input);
+    if (voicing_) return voiceButton(event, input);
     if (b == Button::A) {
         // Held, with up / down: one at a time. A plain tap on SOUND: the list; on the picture: EDIT.
-        if (!event.down && holding_ && !stepped_ && column_ == kSound) openPicker();
+        if (!event.down && holding_ && !stepped_ && column_ == kSound) {
+            if (trk().laneSynth[lane_].on()) { // a synth lane: its knobs
+                openVoice();
+                holding_ = false;
+                repeating_ = Button::None;
+                return;
+            }
+            openPicker();
+        }
         if (!event.down && holding_ && !stepped_ && column_ == kEdit) {
             openEdit(editRow_);
             holding_ = false;
@@ -204,9 +217,9 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
     }
     picker_.update(input, nowMs, project_.playing);
     if (picker_.isOpen()) return;
-    if (editing_) {
+    if (editing_ || voicing_) {
         if (!said_.empty() && nowMs >= saidUntil_) said_.clear();
-        return editUpdate(input, nowMs, dt);
+        return editing_ ? editUpdate(input, nowMs, dt) : voiceUpdate(input, nowMs, dt);
     }
     // While recording, the line says how it is going.
     const Session::Rec rec = session_.recording();
@@ -452,6 +465,248 @@ void KitScreen::drawEdit(SDL_Renderer* r, const Fonts& fonts) const {
     }
 }
 
+// ---- VOICE ------------------------------------------------------------------------------
+
+namespace {
+// The shown knob nearest `column` in a row of four (the column itself first, then one either side,
+// the left one first), or -1.
+int shownNear(int model, int row, int column) {
+    for (int off = 0; off < 4; ++off)
+        for (int c : {column - off, column + off})
+            if (c >= 0 && c < 4 && drumsynth::shown(model, row * 4 + c)) return row * 4 + c;
+    return -1;
+}
+}
+
+void KitScreen::openVoice(int place) {
+    session_.readyLane(project_.track, lane_);
+    voicing_ = true;
+    editing_ = false;
+    const int model = trk().laneSynth[lane_].model;
+    voicePlace_ = drumsynth::shown(model, place) ? place : kVoiceModel;
+    holding_ = deleting_ = bBack_ = false;
+    deletePart_ = 0.f;
+    repeating_ = Button::None;
+}
+
+void KitScreen::setVoice(const drumsynth::Voice& voice) {
+    const drumsynth::Voice before = trk().laneSynth[lane_];
+    session_.setLaneSynth(project_.track, lane_, voice);
+    if (trk().laneSynth[lane_] == before || project_.playing || lastMs_ - heardAt_ < kHearEveryMs) return;
+    heardAt_ = lastMs_;
+    hear();
+}
+
+void KitScreen::voicePress(Button b) {
+    drumsynth::Voice v = trk().laneSynth[lane_];
+    if (!v.on()) return;
+    if (!holding_) {
+        // The MODEL on top; under it two rows of four, the empty places passed by. The ends stop.
+        if (voicePlace_ == kVoiceModel) {
+            if (b == Button::Down) {
+                const int first = shownNear(v.model, 0, 0);
+                voicePlace_ = first >= 0 ? first : shownNear(v.model, 1, 0);
+            }
+            return;
+        }
+        const int row = voicePlace_ / 4, column = voicePlace_ % 4;
+        if (b == Button::Left || b == Button::Right) {
+            const int by = b == Button::Left ? -1 : 1;
+            for (int c = column + by; c >= 0 && c < 4; c += by)
+                if (drumsynth::shown(v.model, row * 4 + c)) {
+                    voicePlace_ = row * 4 + c;
+                    break;
+                }
+        }
+        if (b == Button::Up) voicePlace_ = row == 0 ? kVoiceModel : (shownNear(v.model, 0, column) >= 0 ? shownNear(v.model, 0, column) : kVoiceModel);
+        if (b == Button::Down && row == 0 && shownNear(v.model, 1, column) >= 0) voicePlace_ = shownNear(v.model, 1, column);
+        return;
+    }
+    if (b != Button::Up && b != Button::Down) return;
+    const int by = b == Button::Up ? 1 : -1;
+    if (voicePlace_ == kVoiceModel) {
+        const int to = v.model + by;
+        if (to <= drumsynth::kNone || to >= drumsynth::kModels) return; // the ends stop
+        setVoice(drumsynth::usualVoice(to));
+        return;
+    }
+    const int to = v.dial[voicePlace_] + by;
+    if (to < 0 || to > drumsynth::kDialMost) return;
+    v.dial[voicePlace_] = static_cast<std::uint8_t>(to);
+    setVoice(v);
+}
+
+void KitScreen::voiceButton(const ButtonEvent& event, const Input& input) {
+    const Button b = event.button;
+    if (b == Button::A) {
+        holding_ = event.down;
+        turnedVoice_ = 0.f;
+        saved_ = 0.f;
+        stickWas_ = reversePushed_ = false;
+        return;
+    }
+    if (event.down && b != Button::B) deleting_ = bBack_ = false; // any other button calls a held B off
+    if (!event.down) {
+        if (b == Button::B) {
+            if (deleting_ && bBack_) voicing_ = false; // a tap on MODEL, or on a knob at its usual value: back to the kit
+            deleting_ = bBack_ = false;
+        }
+        if (b == repeating_) repeating_ = Button::None;
+        return;
+    }
+    drumsynth::Voice v = trk().laneSynth[lane_];
+    if (!v.on()) { // (it was taken off from elsewhere: the page's view, an undo)
+        voicing_ = false;
+        return;
+    }
+    if (isDirection(b)) {
+        voicePress(b);
+        repeating_ = b;
+        repeatAt_ = 0;
+    } else if (b == Button::B && !holding_) {
+        // The knob to its usual value at once; held on, the bar fills and every knob goes back (update).
+        if (voicePlace_ == kVoiceModel) {
+            bBack_ = true;
+        } else {
+            const int usual = drumsynth::usualVoice(v.model).dial[voicePlace_];
+            bBack_ = v.dial[voicePlace_] == usual;
+            v.dial[voicePlace_] = static_cast<std::uint8_t>(usual);
+            if (!bBack_) setVoice(v);
+        }
+        deleting_ = true;
+        deleteTimed_ = false;
+        deletePart_ = 0.f;
+    } else if (b == Button::Y && !holding_) {
+        // ROLL: each knob shown somewhere in the middle of its range, by a hash of the voice and a count.
+        const std::uint32_t seed = drumsynth::seedOf(v) ^ (++rolls_ * 0x9E3779B9u);
+        const drumsynth::Voice was = v;
+        for (std::uint32_t turn = 0; v == was && turn < 8; ++turn)
+            for (int p = 0; p < drumsynth::kPlaces; ++p)
+                if (drumsynth::shown(v.model, p)) {
+                    const float unit = (drumsynth::noiseAt(seed + turn, static_cast<std::uint32_t>(p)) + 1.f) * 0.5f; // 0..1
+                    const int dial = kRollLow + static_cast<int>(unit * static_cast<float>(kRollHigh - kRollLow + 1));
+                    v.dial[p] = static_cast<std::uint8_t>(dial > kRollHigh ? kRollHigh : dial);
+                }
+        heardAt_ = 0; // (heard at once, however soon after the last)
+        setVoice(v);
+    } else if ((b == Button::L1 || b == Button::R1) && !holding_ && !input.held(Button::Select)) {
+        // The synth lane before / after; the ends stop.
+        const int by = b == Button::L1 ? -1 : 1;
+        for (int lane = lane_ + by; lane >= 0 && lane < kDrumLanes; lane += by)
+            if (trk().laneSynth[lane].on()) {
+                lane_ = lane;
+                openVoice(voicePlace_);
+                break;
+            }
+    } else if (b == Button::X) {
+        hear(true);
+    } else if (b == Button::Start && !input.held(Button::Select)) {
+        session_.togglePlay(false);
+    }
+}
+
+void KitScreen::voiceUpdate(const Input& input, Uint32 nowMs, float dt) {
+    const drumsynth::Voice& v = trk().laneSynth[lane_];
+    if (!v.on()) { // taken off from elsewhere (an undo, the page): back to the kit
+        voicing_ = false;
+        return;
+    }
+    // B held: the bar fills for a second, then every knob goes back to the model's usual.
+    if (!input.held(Button::B) || holding_) deleting_ = bBack_ = false;
+    if (!deleting_) {
+        deletePart_ = 0.f;
+    } else {
+        if (!deleteTimed_) deleteTimed_ = true, deleteSince_ = nowMs;
+        deletePart_ = static_cast<float>(nowMs - deleteSince_) / static_cast<float>(kDeleteHoldMs);
+        if (deletePart_ >= 1.f) {
+            deleting_ = bBack_ = false; // (let go now, B does not go back)
+            deletePart_ = 0.f;
+            setVoice(drumsynth::usualVoice(v.model));
+        }
+    }
+    const float x = input.stickX(), y = input.stickY();
+    if (holding_) {
+        if (voicePlace_ == kVoiceModel) { // a choice: once a push
+            if (std::fabs(y) > 0.5f && !reversePushed_) voicePress(y < 0.f ? Button::Up : Button::Down);
+            reversePushed_ = std::fabs(y) > 0.5f;
+        } else {
+            // A knob: the stick turns it through its whole range in about a second, by the square of the push.
+            turnedVoice_ += -y * std::fabs(y) * static_cast<float>(drumsynth::kDialMost) * dt;
+            const int whole = static_cast<int>(turnedVoice_);
+            if (whole != 0) {
+                turnedVoice_ -= static_cast<float>(whole);
+                drumsynth::Voice to = v;
+                const int dial = to.dial[voicePlace_] + whole;
+                to.dial[voicePlace_] = static_cast<std::uint8_t>(dial < 0 ? 0 : dial > drumsynth::kDialMost ? drumsynth::kDialMost : dial);
+                setVoice(to);
+            }
+            if (y == 0.f) turnedVoice_ = 0.f;
+        }
+    } else {
+        const bool sideways = std::fabs(x) > std::fabs(y);
+        const float push = sideways ? x : y;
+        if (push == 0.f) {
+            saved_ = 0.f;
+            stickWas_ = false;
+        } else {
+            saved_ += stickWas_ ? std::fabs(push) * kEditMovesPerSecond * dt : 1.f;
+            stickWas_ = true;
+            for (; saved_ >= 1.f; saved_ -= 1.f) {
+                deleting_ = bBack_ = false;
+                voicePress(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
+            }
+        }
+    }
+    if (repeating_ != Button::None && repeatAt_ == 0) {
+        repeatAt_ = nowMs + (holding_ ? ui::kListDelayMs : ui::kCursorDelayMs);
+    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
+        repeatAt_ = nowMs + (holding_ ? ui::kListEveryMs : ui::kCursorEveryMs);
+        voicePress(repeating_);
+    }
+}
+
+void KitScreen::drawVoice(SDL_Renderer* r, const Fonts& fonts) const {
+    char text[80];
+    const drumsynth::Voice& v = trk().laneSynth[lane_];
+    const Session::LaneSound& sound = session_.laneSound(project_.track, lane_);
+
+    // ---- the model and its sound --------------------------------------------------
+    const int sx = 8, sy = kEditY, sw = 624, sh = kEditH;
+    box(r, sx, sy, sw, sh, kPanel, kLine);
+    if (deletePart_ > 0.f) {
+        fill(r, sx + 1, sy + sh - 6, static_cast<int>((sw - 2) * (deletePart_ > 1.f ? 1.f : deletePart_)), 5, faded(kStop, 150));
+        fonts.within(&Fonts::small, kVoiceDeletingWords, sw - 120.f).draw(r, sx + 7.f, sy + 7.f, kVoiceDeletingWords, kText);
+    } else if (!said_.empty()) {
+        fonts.within(&Fonts::small, said_.c_str(), sw - 120.f).draw(r, sx + 7.f, sy + 7.f, said_.c_str(), kBrass);
+    } else {
+        std::snprintf(text, sizeof text, "LANE %d. A SOUND MADE FROM ITS KNOBS", lane_ + 1);
+        fonts.within(&Fonts::small, text, sw - 120.f).draw(r, sx + 7.f, sy + 7.f, text, kDim);
+    }
+    std::snprintf(text, sizeof text, "%s, SYNTH", drumsynth::modelName(v.model));
+    fonts.within(&Fonts::large, text, sw - 14.f).draw(r, sx + 7.f, sy + 23.f, text, kText);
+    if (sound.making || sound.shaping) std::snprintf(text, sizeof text, "MAKING IT...");
+    else std::snprintf(text, sizeof text, "PLAYS %.2f S", static_cast<double>(sound.seconds));
+    fonts.small.drawRight(r, sx + sw - 8.f, sy + 7.f, text, sound.making || sound.shaping ? kBrass : kDim);
+    if (!sound.sourcePeaks.empty()) {
+        const int wx = sx + 7, wy = kEditWaveY, ww = sw - 14, wh = kEditWaveH;
+        wavePicture(r, sound.sourcePeaks, wx, wy, ww, wh, 0.f, 1.f);
+        const float at = headLane_ == lane_ ? head_.at(lastMs_) : -1.f;
+        if (at >= 0.f) fill(r, wx + static_cast<int>((at > 1.f ? 1.f : at) * static_cast<float>(ww - 2)), wy - 2, 2, wh + 4, kBrass);
+    }
+    if (voicePlace_ == kVoiceModel) outline(r, sx - 1, sy - 1, sw + 2, sh + 2, holding_ ? kBrass : kTeal, 2);
+
+    // ---- the knobs ----------------------------------------------------------------
+    for (int p = 0; p < drumsynth::kPlaces; ++p) {
+        const int x = kEditBoxX + (p % 4) * kEditBoxStep, y = kEditRowY + (p / 4) * (kEditRowH + kEditRowGap);
+        if (!drumsynth::shown(v.model, p)) {
+            box(r, x, y, kEditBoxW, kEditRowH, kPanel, kLine); // a place this model does not use
+            continue;
+        }
+        drumsynth::knobText(v.model, p, v.dial[p], text, sizeof text);
+        valueBox(r, fonts, x, y, kEditBoxW, kEditRowH, drumsynth::knob(v.model, p).name, text, static_cast<float>(v.dial[p]) / drumsynth::kDialMost, p == voicePlace_, holding_);
+    }
+}
+
 void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char text[64], name[24];
     trackName(project_, project_.track, name, sizeof name);
@@ -469,6 +724,28 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             hint("HOLD A", "turn");
             hint("B", laneEditValue(trk().laneEdit[lane_], editRow_) == laneEditValue(LaneEdit(), editRow_) ? "back" : "default");
             hint("Y", editRow_ == kEditStart || editRow_ == kEditEnd ? "trim silence" : "normalize");
+            hint("START", project_.playing ? "stop" : "play");
+        }
+        hints(r, fonts, list, count);
+        return;
+    }
+    if (voicing_) {
+        std::snprintf(text, sizeof text, "%s / LANE %d VOICE", name, lane_ + 1);
+        topBar(r, fonts, View::Device, text, project_);
+        drawVoice(r, fonts);
+        scopeStrip(r, fonts, session_.engine);
+        Hint list[6];
+        int count = 0;
+        const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
+        const drumsynth::Voice& v = trk().laneSynth[lane_];
+        const bool onModel = voicePlace_ == kVoiceModel;
+        if (holding_) {
+            hint("UP / DOWN", onModel ? "next / previous model" : "turn it");
+        } else {
+            hint("HOLD A", onModel ? "model" : "turn");
+            hint("B", onModel || v.dial[voicePlace_] == drumsynth::usualVoice(v.model).dial[voicePlace_] ? "back" : "default");
+            hint("Y", "roll");
+            hint("L1 / R1", "lane");
             hint("START", project_.playing ? "stop" : "play");
         }
         hints(r, fonts, list, count);
@@ -494,10 +771,14 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const bool here = lane == lane_;
         const float textY = y + (h - fonts.medium.capHeight()) / 2.f;
 
-        box(r, soundX, y, soundW, h, file[0] ? kPanel2 : kPanel, kLine);
+        const drumsynth::Voice& voice = trk().laneSynth[lane];
+        box(r, soundX, y, soundW, h, file[0] || voice.on() ? kPanel2 : kPanel, kLine);
         std::snprintf(text, sizeof text, "%d", lane + 1);
         fonts.small.draw(r, soundX + 7.f, y + (h - fonts.small.capHeight()) / 2.f, text, kDim);
-        if (file[0]) {
+        if (voice.on()) { // a synth voice: its model's name, and SYNTH where a built-in drum says BUILT IN
+            fonts.medium.draw(r, soundX + 26.f, textY, drumsynth::modelName(voice.model), kText);
+            fonts.small.drawRight(r, soundX + soundW - 8.f, y + (h - fonts.small.capHeight()) / 2.f, "SYNTH", kDim);
+        } else if (file[0]) {
             // Its own name, and the folder it is in (if any) small on the right.
             std::string upper = sampleLabel(file), folder = sampleLabel(sampleFolderOf(file)); // (the folder it is in: of two, the inner one)
             for (char& c : upper) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
@@ -518,9 +799,10 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
 
         const int fit = trk().laneFit[lane];
         box(r, fitX, y, fitW, h, kPanel, kLine);
-        if (!file[0]) std::snprintf(text, sizeof text, "-");
+        const bool fits = file[0] || voice.on(); // (a synth voice is fitted as a recording; the built-in drum is not)
+        if (!fits) std::snprintf(text, sizeof text, "-");
         else laneFitText(fit, text, sizeof text);
-        fonts.medium.draw(r, fitX + 9.f, textY, text, fit > 0 && file[0] ? kPurple : kDim);
+        fonts.medium.draw(r, fitX + 9.f, textY, text, fit > 0 && fits ? kPurple : kDim);
         if (here && column_ == kFit) outline(r, fitX - 1, y - 1, fitW + 2, h + 2, cursorColor, 2);
 
         // CHOKE: NONE, or the group, in the colour of the mark on the drum grid's lane name.
@@ -563,7 +845,7 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else if (column_ == kEdit) {
         hint("A", "edit");
     } else {
-        hint(column_ == kSound ? "A" : "HOLD A", column_ == kSound ? "pick from list" : column_ == kFit ? "fit to steps" : "choke group");
+        hint(column_ == kSound ? "A" : "HOLD A", column_ == kSound ? (trk().laneSynth[lane_].on() ? "knobs" : "pick from list") : column_ == kFit ? "fit to steps" : "choke group");
         hint("B", column_ == kSound ? "default drum" : column_ == kFit ? "fit off" : "no choke");
     }
     if (!holding_) {

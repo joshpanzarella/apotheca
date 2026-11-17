@@ -413,6 +413,22 @@ void theSession(Rig& rig, const std::string& samples) {
     rig.press(RIGHT); // SOUND again
     rig.run(500);
 
+    rig.part = "the kit: a synth voice made on the helper thread, its knobs rolled";
+    rig.byHand([&] {
+        drumsynth::Voice cymbal = drumsynth::usualVoice(drumsynth::kCymbal);
+        cymbal.dial[drumsynth::kDecay] = drumsynth::kDialMost; // too long for a frame: MAKING, then its picture
+        s.setLaneSynth(rig.project().track, rig.app->kit().cursorLane(), cymbal);
+    });
+    rig.run(1500);
+    rig.press(A); // its VOICE view
+    rig.press(DOWN); // TUNE
+    rig.press(Y);    // ROLL: made again (on the helper thread if it is long), heard
+    rig.run(1500);
+    rig.hold(B, 1200); // the bar fills, every knob back to its usual: made again
+    rig.run(1500);
+    rig.press(B); // (TUNE at its usual value: back to the kit)
+    rig.run(300);
+
     rig.part = "the sampler: a recording heard";
     rig.byHand([&] {
         s.addTrack(TrackKind::Sampler);

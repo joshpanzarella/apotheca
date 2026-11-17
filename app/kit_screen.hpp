@@ -9,8 +9,10 @@
 //   the stick or D-pad moves: up / down through the lanes, left / right
 //   between SOUND, FIT, CHOKE and EDIT (round the ends).
 //   SOUND   tap A: the list of recordings (sample_picker.hpp), to pick one
-//           quickly. Or hold A + up / down: the built-in drum, then each
-//           recording, one at a time. B: the drum back.
+//           quickly; on a lane with a synth voice, its VOICE view (below). Or
+//           hold A + up / down: the built-in drum, then the twelve synth models
+//           (KICK ... NOISE, each at its usual knobs), then each recording, one
+//           at a time. B: the drum back.
 //   FIT     hold A + up / down: OFF, 1, 2, 4, 8, 16 (one bar), 32, 64 steps.
 //           B: off.
 //   CHOKE   hold A + up / down: NONE, 1, 2. A hit on a lane in a group cuts
@@ -38,6 +40,18 @@
 //   Y       on START or END: TRIM SILENCE (START and END at the first and last sound). Elsewhere
 //           NORMALIZE: GAIN so the part played peaks at -1 dB
 //   X       hear the lane as edited (held: to its end). A box turned is heard, with the song stopped
+//
+// The VOICE view (DRUM SYNTH, docs/plans/drumsynth-plan.md; apotheca/drum_synth.hpp): laid out as the
+// EDIT view. The top box is the MODEL, with the made sound's picture; under it the eight knob places,
+// two rows of four (a place the model does not use is an empty box the cursor passes by).
+//   the stick or D-pad moves among the boxes (up from the first row: the MODEL)
+//   hold A + up / down: turns the box by a step (the stick through its range in about a second, by
+//           the square of its push). On MODEL: the model before / after, at its usual knobs
+//   B       the box to its usual value; on a box already there, or on MODEL, back to the kit.
+//           HELD: every knob to the model's usual, as the bar fills (undo brings them back)
+//   Y       ROLL: the knobs shown rolled, each inside the middle of its range (25 to 75); the model stays
+//   L1 / R1 the synth lane before / after (the ends stop)
+//   X       hear the lane (held: to its end). A knob turned is heard, with the song stopped
 
 #include "redraw.hpp"
 #include "screen.hpp"
@@ -98,6 +112,14 @@ public:
     static constexpr const char* kDeletingWords = "PUTTING EVERY EDIT BACK TO NONE"; // in the heading while the bar fills
     static constexpr Uint32 kHearEveryMs = 150; // a box being turned is heard this often at most
 
+    // The VOICE view: on a synth lane, its model and knobs (the EDIT view's layout). A place of -1 is
+    // the MODEL box; 0 to 7 the knobs (drumsynth::Place).
+    bool voicing() const { return voicing_; }
+    void openVoice(int place = -1);
+    int voicePlace() const { return voicePlace_; }
+    static constexpr int kVoiceModel = -1;
+    static constexpr const char* kVoiceDeletingWords = "PUTTING EVERY KNOB BACK TO ITS USUAL";
+    static constexpr int kRollLow = 25, kRollHigh = 75; // ROLL: each knob somewhere in here
 private:
     TrackData& trk() { return project_.current(); }
     const TrackData& trk() const { return project_.current(); }
@@ -110,6 +132,11 @@ private:
     void editUpdate(const Input& input, Uint32 nowMs, float dt);
     void setEdit(const LaneEdit& edit); // kept, and heard if the song is stopped
     void drawEdit(SDL_Renderer* r, const Fonts& fonts) const;
+    void voiceButton(const ButtonEvent& event, const Input& input);
+    void voicePress(Button direction);
+    void voiceUpdate(const Input& input, Uint32 nowMs, float dt);
+    void setVoice(const drumsynth::Voice& voice); // kept, and heard if the song is stopped
+    void drawVoice(SDL_Renderer* r, const Fonts& fonts) const;
     void hear(bool held = false); // held: X is down, and it sounds until X is let go
     void hearFromList(SamplePicker::Hear how); // the list of recordings' preview (SamplePicker::Hear)
 
@@ -138,6 +165,10 @@ private:
     bool deleting_ = false, deleteTimed_ = false, bBack_ = false; // B held; bBack_: its tap goes back to the kit
     Uint32 deleteSince_ = 0, heardAt_ = 0;
     float deletePart_ = 0.f;
+    bool voicing_ = false;
+    int voicePlace_ = kVoiceModel;
+    unsigned rolls_ = 0; // ROLL's count: the next roll is another
+    float turnedVoice_ = 0.f; // the stick's part-turned knob
 };
 
 } // namespace apotheca

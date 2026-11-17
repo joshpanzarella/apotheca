@@ -1554,6 +1554,44 @@ void testTheOtherScreens() {
         CHECK(!rig.app.kit().editing());
         session.setLaneEdit(0, 2, LaneEdit());
     }
+    {
+        // DRUM SYNTH: synth lanes on the kit, and a VOICE view at its widest readings (NOISE's TUNE at
+        // 14.0 KHZ, its DECAY at 2.00 S; ZAP's SWEEP at +60 ST and BEND at 300 MS).
+        drumsynth::Voice noise = drumsynth::usualVoice(drumsynth::kNoiseBurst), zap = drumsynth::usualVoice(drumsynth::kZap);
+        noise.dial[drumsynth::kTune] = noise.dial[drumsynth::kDecay] = drumsynth::kDialMost;
+        zap.dial[drumsynth::kSweep] = zap.dial[drumsynth::kOwn] = zap.dial[drumsynth::kDecay] = drumsynth::kDialMost;
+        session.setLaneSynth(0, 2, noise);
+        session.setLaneSynth(0, 3, zap);
+        session.finishStretching();
+        rig.app.kit().goTo(2, KitScreen::kSound);
+        rig.frames(2);
+        holds(rig, "the kit, two synth lanes");
+        CHECK(ui::gHintsOver == 0);
+        rig.app.kit().openVoice(drumsynth::kTune);
+        rig.frames(2);
+        CHECK(holds(rig, "a lane's VOICE, NOISE at its widest") > 8);
+        CHECK(drew("14.0 KHZ") && drew("2.00 S") && drew("NOISE, SYNTH"));
+        CHECK(ui::gHintsOver == 0);
+        rig.app.kit().goTo(3, KitScreen::kSound);
+        rig.app.kit().openVoice(drumsynth::kOwn);
+        rig.frames(2);
+        holds(rig, "a lane's VOICE, ZAP at its widest");
+        CHECK(drew("+60 ST") && drew("300 MS"));
+        rig.key(SDLK_x, true); // A held
+        rig.frames(1);
+        holds(rig, "a lane's VOICE, A held");
+        rig.key(SDLK_x, false);
+        rig.frames(1);
+        rig.key(SDLK_z, true); // B held: the bar fills
+        rig.frames(30);
+        holds(rig, "a lane's VOICE, its knobs being put back");
+        rig.key(SDLK_z, false);
+        rig.frames(2);
+        rig.tap(SDLK_z); // back to the kit
+        CHECK(!rig.app.kit().voicing());
+        session.setLaneSample(0, 2, "");
+        session.setLaneSample(0, 3, "");
+    }
     rig.app.kit().goTo(2, KitScreen::kSound);
     // The list, in columns: in the long folder, on the long name; then every place it can be, and
     // the hints bar holding all it says at each.
