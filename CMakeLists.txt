@@ -216,8 +216,10 @@ if(APOTHECA_BUILD_APP)
     set_tests_properties(presets_heard_fm6 PROPERTIES TIMEOUT 120)
     # JAX-EP's added presets the same way, each with its folder's phrase, and the synth's own VCA clip
     # held at 0, at a placed note's level and at full velocity (docs/plans/jx3p-plan.md, "The second set").
-    add_test(NAME presets_heard_jaxep COMMAND presets_test --heard-jaxep)
-    set_tests_properties(presets_heard_jaxep PROPERTIES TIMEOUT 120)
+    # In two halves (every other preset), each well inside the two-minute limit on a busy desk.
+    add_test(NAME presets_heard_jaxep COMMAND presets_test --heard-jaxep --part 1/2)
+    add_test(NAME presets_heard_jaxep2 COMMAND presets_test --heard-jaxep --part 2/2)
+    set_tests_properties(presets_heard_jaxep presets_heard_jaxep2 PROPERTIES TIMEOUT 120)
     # ACID's (acid-plan.md, batch 4): an acid line of accents and slides, each MOD heard, the synth's clip at 0.
     add_test(NAME presets_heard_acid COMMAND presets_test --heard-acid)
     set_tests_properties(presets_heard_acid PROPERTIES TIMEOUT 120)

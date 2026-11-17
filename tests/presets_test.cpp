@@ -14,6 +14,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
@@ -182,6 +183,16 @@ void testTheShippedData(bool print) {
                 if (a.folder != b.folder) continue;
                 const bool same = a.values == b.values && a.macros == b.macros && trackSoundText(kind, a.sound) == trackSoundText(kind, b.sound);
                 if (same) std::printf("  %s %s: \"%s\" and \"%s\" are one sound\n", instrument(kind)->word, a.folder.c_str(), a.name.c_str(), b.name.c_str());
+                CHECK(!same);
+            }
+    }
+    // An added preset's name is no built-in's before it, capitals not counted: `base NAME` finds one.
+    for (TrackKind kind : kSynths) {
+        const SynthSpec& spec = *specFor(kind);
+        for (int i = enginePresets(kind); i < builtInPresets(kind); ++i)
+            for (int j = 0; j < i; ++j) {
+                const bool same = strcasecmp(spec.presetName(i), spec.presetName(j)) == 0;
+                if (same) std::printf("  %s %d %s / %s: the name of %d %s\n", instrument(kind)->word, i + 1, spec.presetCategory(i), spec.presetName(i), j + 1, spec.presetCategory(j));
                 CHECK(!same);
             }
     }
@@ -913,7 +924,7 @@ const char* const kJaxepPhraseNames[] = {"notes", "pad", "bass", "lead", "seq"};
 JaxepPhrase jaxepPhraseFor(const std::string& folder) {
     if (folder == "BASS") return JaxepPhrase::Bass;
     if (folder == "LEAD") return JaxepPhrase::Lead;
-    if (folder == "PADS" || folder == "STRINGS" || folder == "ATMOS") return JaxepPhrase::Pad;
+    if (folder == "PADS" || folder == "STRINGS" || folder == "ATMOS" || folder == "ORGAN") return JaxepPhrase::Pad;
     if (folder == "SEQUENCE") return JaxepPhrase::Sequence;
     return JaxepPhrase::Notes;
 }

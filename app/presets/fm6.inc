@@ -597,7 +597,7 @@ new BRASS / Organ Brass
 base ROM 4B / ORG-BRS BC
 fx 1 chorus 0.35 0.5 0.125 0.45
 mod 1 1 9 0.75 9 0 0 0             # the CHORUS's DEPTH, +50%, 2 BARS, SINE
-new BRASS / Brass Stab
+new BRASS / Brass Hits
 base ROM 4B / PERC BRASS
 fx 1 comp 0.45 0.5833 0.35 1       # THRESHOLD, RATIO, SPEED, MIX
 fx 2 plate 0.15 0.45 0.55 0.2

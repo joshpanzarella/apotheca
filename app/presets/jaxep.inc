@@ -708,4 +708,70 @@ fx 1 ping 0.3125 0.35 0.5 0.2           # 1/8
 mod 1 2 32 1 0 0 0 0                    # a STEPPER on LEVEL, each half step
 modsteps 1 16 0 0 0 -1 0 -1 0 0 -1 0 -1 0 0 -1 0 -1 0 0
 mod 2 1 0 0.7 10 0 0 0                  # CUTOFF opens over 4 BARS
+# ---- More presets (2026-11-17, presets-plan.md, "More presets") --------------------------------------
+# ORGAN is heard with the pad phrase (a chord held), BELLS with the notes.
+
+# ORGAN: squares and pulses an octave or a fifth apart, the VCA on the GATE.
+
+new ORGAN / Drawbar Organ
+settings 0 2 0 0  1 2 0 50 50 0 0  0 0 0  50 0 85 0 0 0 0 98  1 40  0 0 60  0 50 100 15  1
+fx 1 chorus 0.45 0.6 0.625 0.7          # VIBRATO: a turning speaker
+fx 2 drive 0.25 0.5 0.5 0.6             # DRIVE, TONE, MIX, OUTPUT
+mod 1 1 8 0.75 10 0 0 0                 # the VIBRATO's RATE, +50%, 4 BARS: slow and fast
+new ORGAN / Fifth Organ
+settings 1 2 0 0  1 2 0 79 50 0 0  0 0 0  45 0 80 0 0 0 0 98  1 40  0 0 60  0 50 100 15  0
+fx 1 chorus 0.35 0.5 0.125 0.5
+fx 2 reverb 0.4 0.5 0.2                 # SIZE, DAMPING, MIX
+new ORGAN / Harmonium
+settings 1 1 0 0  2 0 0 50 52 0 0  0 0 0  40 0 55 10 0 0 0 98  1 60  0 0 60  0 50 100 15  0
+fx 1 tremolo 0.55 0.3 0.125 0.5         # RATE 1/8 DOT, SINE
+new ORGAN / Combo Organ
+settings 2 2 0 0  1 1 0 50 50 0 0  0 0 0  50 40 90 0 0 0 0 98  1 40  0 0 60  0 50 100 10  0
+fx 1 spring 0.45 0.45 0.5 0.25          # DRIP, DECAY, TONE, MIX
+mod 1 1 33 0.7 9 0 0 0                  # PAN, +40%, 2 BARS
+new ORGAN / Pipe Organ
+settings 0 0 0 0  2 2 0 50 50 0 0  0 0 0  50 0 60 0 0 0 0 98  0 40  0 0 60  40 50 100 45  0
+fx 1 hall 0.85 0.7 0.4 0.35             # SIZE, DECAY, TONE, MIX
+new ORGAN / Church Organ
+settings 0 2 0 0  0 2 0 100 50 0 0  0 0 0  50 0 75 0 0 0 0 98  0 35  0 0 60  35 50 100 50  1
+fx 1 hall 0.9 0.75 0.35 0.4
+send 2 0.2
+new ORGAN / Perc Organ
+settings 1 2 0 0  1 2 0 100 50 0 0  0 0 0  50 0 60 0 0 40 0 98  0 45  0 0 60  0 45 70 15  1
+fx 1 chorus 0.4 0.55 0.625 0.6
+new ORGAN / Dirty Organ
+settings 1 2 0 0  1 0 0 50 51 0 0  0 0 0  50 10 80 15 0 0 0 98  1 35  0 0 60  0 50 100 15  0
+fx 1 saturate 0.5 0.375 0.55 0.7        # TUBE
+fx 2 wear 0.3 0.45 0.15 0.45            # WOW, DIRT, DROPS, TONE
+mod 1 1 0 0.65 9 0 0 0                  # CUTOFF, +30%, 2 BARS
+
+# BELLS: METAL or SYNC, nothing held, long rings.
+
+new BELLS / Metal Bell
+settings 1 2 0 0  2 2 2 71 50 0 0  0 0 0  50 0 70 0 0 20 0 98  0 50  0 0 0  0 72 0 70  0
+fx 1 hall 0.65 0.6 0.5 0.3
+new BELLS / Sync Bell
+settings 1 0 0 0  2 0 1 88 50 0 0  0 0 0  70 0 70 0 0 30 0 98  0 50  0 0 0  0 70 0 68  0
+fx 1 plate 0.2 0.6 0.55 0.3
+new BELLS / Glass Bell
+settings 2 2 0 0  2 0 2 86 53 0 0  0 0 0  50 20 80 0 0 0 0 98  0 50  0 0 0  0 74 0 72  1
+fx 1 shimmer 0.4 0.55 0.6 0.25          # SHIMMER, DECAY, TONE, MIX
+new BELLS / Tine Bell
+settings 1 2 0 0  1 2 2 64 50 0 0  0 0 0  35 0 65 0 0 25 0 98  0 40  0 0 0  0 66 0 62  1
+fx 1 chorus 0.3 0.4 0.125 0.35
+new BELLS / Toy Bell
+settings 2 2 0 0  2 2 2 75 50 0 0  0 0 0  50 0 75 0 0 0 0 98  0 50  0 0 0  0 55 0 50  0
+fx 1 ping 0.3125 0.4 0.55 0.3           # TIME 1/8, FEEDBACK, TONE, MIX
+new BELLS / Gong Bell
+settings 0 2 0 0  1 2 2 57 46 0 0  0 0 0  50 0 60 10 0 20 0 98  0 50  0 0 0  0 80 0 78  0
+fx 1 tape 0.6875 0.35 0.4 0.25          # TIME 1/4
+mod 1 1 0 0.65 9 0 0 0                  # CUTOFF, +30%, 2 BARS
+new BELLS / Chime Bloom
+settings 1 2 0 0  2 2 2 79 50 0 0  0 0 0  45 0 70 0 0 15 0 98  0 45  0 0 0  10 76 0 74  1
+fx 1 bloom 0.5 0.6 0.5 0.3              # BLOOM, DECAY, TONE, MIX
+new BELLS / Step Bell
+settings 1 2 0 0  2 2 2 71 50 0 0  0 0 0  50 0 70 0 0 20 0 98  0 50  0 0 0  0 62 0 55  0
+mod 1 2 3 0.8 3 0 0 0                   # a STEPPER on TUNE (DCO-2), +60%, an eighth each: another bell each
+modsteps 1 8 0 0 -1 0.5 0 1 -0.5 0.8 -0.8 0.2 0 0 0 0 0 0 0 0
+send 1 0.2
 )presets"
