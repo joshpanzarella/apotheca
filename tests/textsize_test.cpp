@@ -723,7 +723,7 @@ void testTheRow() {
     session.view = View::Settings;
     S& setup = rig.app.settings();
     // Among the handheld's rows, after STICK SPEED; thirteen rows now, THEME after it (tests/theme_test.cpp).
-    CHECK(S::kRows == 17 && S::kTextSize == S::kStick + 1 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kTextSize > S::kVolume);
+    CHECK(S::kRows == 18 && S::kTextSize == S::kStick + 1 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kTextSize > S::kVolume);
     setup.goTo(S::kStick);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kTextSize && session.textSize() == kTextLarge);

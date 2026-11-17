@@ -1520,7 +1520,7 @@ effect in those two groups and fails one that does not.
     `--theme paper`.
 - **The SET page shows twelve rows and moves one row at a time**
   (`SettingsScreen::firstShown`, `rowNowY`): thirteen since THEME, fifteen since
-  CLICK and COUNT IN (easywins batch 2), seventeen on our own firmware. A new row costs nothing more than its place in `Row`. **The page
+  CLICK and COUNT IN (easywins batch 2), eighteen on our own firmware (LIGHT COLOUR). A new row costs nothing more than its place in `Row`. **The page
   counts PLACES, not rows** (`here`, `placeOf`, `rowAt`; `firstShown` is a place):
   a row that is not on this handheld is passed by. Only rows after VOLUME may be
   missing, so the HANDHELD gap stays at VOLUME.
@@ -1541,7 +1541,13 @@ effect in those two groups and fails one that does not.
   a GPIO switch (`rgb:kbd_backlight`, on/off) plus a controller on UART5 that takes
   ROCKNIX's 51-byte frame; every file is written only when what it should say
   changes, on the app thread (`Session::update`). MENU + a volume key is the
-  brightness (`App::volumeKey`). **Nobody has seen the ring light.**
+  brightness (`App::volumeKey`). **The owner has seen ON and BEAT work** (2026-11-17).
+  **STEPS goes round once a SCENE** (owner: once a bar it "completes all the steps before the scene
+  is up"): `RingPlace` carries the scene's step and its length (`Project::sceneSteps`), the lit LED is
+  the share played, brass on a bar's first step; a one-bar scene is as it was. **LIGHT COLOUR**
+  (`LightColour`, `ringColours`; a row shown only where STICK LIGHT is; `lightcolour N` in
+  settings.txt, left out at THEME): premade colours, TRACK (twelve hues, the track up) and RAINBOW (a
+  hue a LED, turning a LED a beat). Not yet seen on the ring.
   A row's bar starts after its value's words and ends short of what is said
   at the right, at every text size (`SettingsScreen::barPlace`: BOUNCE's
   WORKING 37% / TAIL 12 S; VOLUME's and STICK's stay at 250, 110 wide).

@@ -96,6 +96,58 @@ struct RingFrame {
 
 inline int ringLedOf(int step) { return ((kRingStart + kRingTurn * step) % kRingLeds + kRingLeds) % kRingLeds; }
 
+// LIGHT COLOUR (easywins, owner 2026-11-17: "some type of color control for it, even if it's premade
+// colors"). The numbers are kept in settings.txt (`lightcolour N`, left out at THEME): appended, never
+// reordered. THEME is the theme's cursor colour (as before the row); TRACK a hue for the track up, the
+// twelve tracks round the colour wheel (track 1 red); RAINBOW each LED its own hue, turning a LED a beat
+// while the song plays.
+enum LightColour { kLightTheme, kLightTeal, kLightPurple, kLightBrass, kLightRed, kLightOrange, kLightYellow, kLightGreen,
+                   kLightBlue, kLightPink, kLightWhite, kLightTrack, kLightRainbow, kLightColours };
+// A hue at full brightness: 0 red, 256 yellow, 512 green, 768 cyan, 1024 blue, 1280 magenta, round at 1536.
+constexpr int kHueRound = 1536;
+inline Rgb hueRgb(int hue) {
+    hue = (hue % kHueRound + kHueRound) % kHueRound;
+    const int part = hue % 256, up = part, down = 255 - part;
+    Rgb c;
+    switch (hue / 256) {
+    case 0: c.r = 255, c.g = static_cast<std::uint8_t>(up); break;
+    case 1: c.r = static_cast<std::uint8_t>(down), c.g = 255; break;
+    case 2: c.g = 255, c.b = static_cast<std::uint8_t>(up); break;
+    case 3: c.g = static_cast<std::uint8_t>(down), c.b = 255; break;
+    case 4: c.b = 255, c.r = static_cast<std::uint8_t>(up); break;
+    default: c.b = static_cast<std::uint8_t>(down), c.r = 255; break;
+    }
+    return c;
+}
+// The premade colours (TEAL to WHITE); the others are worked out by ringColours.
+inline Rgb lightColourOf(int which) {
+    static const std::uint8_t kSet[kLightColours][3] = {{0, 0, 0},       {0, 255, 180},   {180, 0, 255}, {255, 170, 30},
+                                                        {255, 0, 0},     {255, 90, 0},    {255, 210, 0}, {0, 255, 40},
+                                                        {0, 60, 255},    {255, 40, 160},  {255, 255, 255}, {0, 0, 0}, {0, 0, 0}};
+    Rgb c;
+    if (which < 0 || which >= kLightColours) return c;
+    c.r = kSet[which][0], c.g = kSet[which][1], c.b = kSet[which][2];
+    return c;
+}
+// The sixteen LEDs' colours for LIGHT COLOUR `which`: `theme` for THEME, the track up (0..11) for TRACK,
+// the beats played since Play (-1 stopped) for RAINBOW's turn.
+inline void ringColours(int which, Rgb theme, int track, int beats, Rgb out[kRingLeds]) {
+    for (int i = 0; i < kRingLeds; ++i) {
+        if (which == kLightRainbow) out[i] = hueRgb((i + (beats > 0 ? beats : 0)) * kHueRound / kRingLeds);
+        else if (which == kLightTrack) out[i] = hueRgb((track < 0 ? 0 : track) * kHueRound / 12);
+        else if (which <= kLightTheme || which >= kLightColours) out[i] = theme;
+        else out[i] = lightColourOf(which);
+    }
+}
+
+// Where the song is, for the ring: `step` the step of its bar (0..15; -1 stopped), and for STEPS the step
+// of the scene playing (its bar times 16 plus the step) out of how many steps the scene has.
+struct RingPlace {
+    int step = -1;
+    int sceneStep = -1;
+    int sceneSteps = 16;
+};
+
 // The ring for STICK LIGHT `mode` at BRIGHTNESS `percent`, the song at `step` of its bar (0..15; -1
 // stopped). `colour` is the theme's cursor colour; `first` the bar's first step (the theme's brass).
 //   OFF    unpowered
@@ -103,19 +155,33 @@ inline int ringLedOf(int step) { return ((kRingStart + kRingTurn * step) % kRing
 //   BEAT   all sixteen flash for the first step of each beat (the bar's first in `first`); dim between,
 //          and dim while stopped
 //   STEPS  the step's LED lit (the bar's first in `first`), the rest dim; all dim while stopped
-inline RingFrame ringPicture(int mode, int percent, int step, Rgb colour, Rgb first) {
+//   STEPS  goes round once a SCENE (owner, 2026-11-17: once a bar it "completes all the steps before the
+//          scene is up"): the sixteen LEDs are the scene's length, the one lit is the share of it played;
+//          in `first` on the step a bar begins. A one-bar scene is a LED a step, as it was. All dim stopped.
+// `colours` is each LED's own (LIGHT COLOUR: ringColours).
+inline RingFrame ringPicture(int mode, int percent, const RingPlace& at, const Rgb colours[kRingLeds], Rgb first) {
     RingFrame f;
     if (mode <= kRingOff || mode >= kRingModes) return f;
     f.on = true;
     f.level = ringLevelFor(percent);
-    const Rgb dim = dimmed(colour, kRingDim);
-    for (Rgb& led : f.leds) led = mode == kRingOn ? colour : dim;
-    if (step < 0 || mode == kRingOn) return f;
-    const Rgb lit = step == 0 ? first : colour;
-    if (mode == kRingBeat && step % 4 == 0)
-        for (Rgb& led : f.leds) led = lit;
-    if (mode == kRingSteps) f.leds[ringLedOf(step)] = lit;
+    for (int i = 0; i < kRingLeds; ++i) f.leds[i] = mode == kRingOn ? colours[i] : dimmed(colours[i], kRingDim);
+    if (at.step < 0 || mode == kRingOn) return f;
+    if (mode == kRingBeat && at.step % 4 == 0)
+        for (int i = 0; i < kRingLeds; ++i) f.leds[i] = at.step == 0 ? first : colours[i];
+    if (mode == kRingSteps && at.sceneStep >= 0) {
+        const int steps = at.sceneSteps > 0 ? at.sceneSteps : 16;
+        const int place = (at.sceneStep % steps) * kRingLeds / steps, led = ringLedOf(place);
+        f.leds[led] = at.sceneStep % 16 == 0 ? first : colours[led];
+    }
     return f;
+}
+// One colour for every LED, the song in a one-bar scene at `step`: the picture as it was before LIGHT COLOUR.
+inline RingFrame ringPicture(int mode, int percent, int step, Rgb colour, Rgb first) {
+    Rgb colours[kRingLeds];
+    for (Rgb& c : colours) c = colour;
+    RingPlace at;
+    at.step = at.sceneStep = step;
+    return ringPicture(mode, percent, at, colours, first);
 }
 
 // The 51 bytes the ring's controller is sent for a frame (which must be on).

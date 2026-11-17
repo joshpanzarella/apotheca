@@ -99,3 +99,37 @@ neither. `app_test` steps through the two rows. Stills `setup-click`.
 
 **Only the owner can tell**: whether the click is too loud, too thin or too bright beside the songs,
 and whether a bar is enough to come in on.
+
+## Batch 2b: the STICK LIGHT (owner's feedback, 2026-11-17)
+
+The owner, on the handheld: ON and BEAT work; "STEPS is a little weird, it seems to complete all the
+steps before the scene is up"; "is there a way that we can get some type of color control for it?
+even if it's premade colors."
+
+**STEPS once round a SCENE.** The sixteen LEDs are the scene's length (its bars x 16, or the steps it
+is cut to); the lit LED is the share of the scene played (`RingPlace`: the bar's step, the scene's
+step, the scene's steps). A one-bar scene is a LED a step, as before. **The brass mark is on the step
+a bar begins** (the lit LED is brass for that step), so a four-bar scene shows its four bar lines as
+the ring goes round.
+
+**LIGHT COLOUR**, a SET row after STICK LIGHT, shown only where STICK LIGHT is: THEME (as before: the
+theme's cursor colour), TEAL, PURPLE, BRASS, RED, ORANGE, YELLOW, GREEN, BLUE, PINK, WHITE, TRACK,
+RAINBOW. LEFT / RIGHT step it, as every choice on the SET page (the coordinator wrote "hold A +
+left / right"; no SET row takes A for a choice, so the page's own pattern was kept). Kept in
+settings.txt as `lightcolour N` (appended), **left out at THEME**.
+
+| Call | Taken |
+| --- | --- |
+| Where the brass goes in STEPS | **The step a bar begins** (one step of brass at each bar line) |
+| TRACK | **Twelve hues round the wheel, by the track's number** (track 1 red): there was no colour of a track to take |
+| RAINBOW | **A hue a LED, turned a LED a beat while the song plays**, still while stopped |
+| The bar's first in BEAT and STEPS on BRASS | **White** (brass on brass could not be seen) |
+
+**Tests**: `lights_test testScenesAndColours`: a four-bar scene step by step, a scene cut to 24
+steps, a one-bar scene as the old picture to the LED (BEAT too), each colour, TRACK's and RAINBOW's
+hues and RAINBOW's turn, ON and the dim LEDs in RAINBOW; through the Session a two-bar scene round
+once in two bars in RED with brass at the bar lines; `lightcolour` written, left out at THEME, read
+back, refused out of range. `testTheSetPage` steps the row. Still `setup-light-colour`.
+
+**Only the owner can tell**: how the colours look on the ring (the order R G B is still not known
+there: a RED that shows green says the order is wrong), and whether RAINBOW's turn is too busy.

@@ -331,7 +331,7 @@ void testTheRow() {
     S& setup = rig.app.settings();
     // After TEXT SIZE, among the handheld's rows.
     // (Fifteen rows since BRIGHTNESS and STICK LIGHT, which show only on our own firmware: thirteen here.)
-    CHECK(S::kRows == 17 && setup.places() == 15 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kRowsShown == 12);
+    CHECK(S::kRows == 18 && setup.places() == 15 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kRowsShown == 12);
     setup.goTo(S::kTextSize);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kTheme && session.theme() == kThemeBrown);

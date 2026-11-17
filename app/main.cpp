@@ -1539,7 +1539,14 @@ int main(int argc, char** argv) {
     } else if (std::strcmp(view, "volume") == 0) {
         app.session().view = View::Settings;
         app.settings().goTo(SettingsScreen::kVolume);
-    } else if (std::strcmp(view, "setup-lights") == 0 || std::strcmp(view, "setup-light") == 0 || std::strcmp(view, "brightness") == 0) {
+    } else if (std::strcmp(view, "setup-light-colour") == 0) {
+        // LIGHT COLOUR (easywins, the stick light's colours): on RAINBOW, the ring on STEPS. The files pretended.
+        app.session().useLights(Lights::pretend());
+        app.session().view = View::Settings;
+        app.session().setStickLight(kRingSteps);
+        app.session().setLightColour(kLightRainbow);
+        app.settings().goTo(SettingsScreen::kLightColour);
+  } else if (std::strcmp(view, "setup-lights") == 0 || std::strcmp(view, "setup-light") == 0 || std::strcmp(view, "brightness") == 0) {
         // On our own firmware: the SET page's BRIGHTNESS ("setup-lights") and STICK LIGHT on STEPS
         // ("setup-light"), and the box MENU + a volume key shows, over the drum grid ("brightness": over
         // the SET page its bar would lie on a row's words). The files pretended.

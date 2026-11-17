@@ -62,7 +62,7 @@ void SettingsScreen::typeButton(Button b) {
 
 bool SettingsScreen::here(int row) const {
     if (row == kBrightness) return session_.screenHere();
-    if (row == kLight) return session_.ringHere();
+    if (row == kLight || row == kLightColour) return session_.ringHere();
     return row >= 0 && row < kRows;
 }
 
@@ -114,6 +114,7 @@ void SettingsScreen::change(int by) {
     case kVolume: session_.setVolume(session_.volume() + 0.05f * static_cast<float>(by)); break;
     case kBrightness: session_.setBrightness(session_.brightness() + kBrightStep * by); break;
     case kLight: session_.setStickLight(session_.stickLight() + by); break; // (a choice with ends)
+    case kLightColour: session_.setLightColour(session_.lightColour() + by); break; // (so is this)
     case kStick: session_.setStickSpeed(session_.stickSpeed() + 0.05f * static_cast<float>(by)); break;
     case kTextSize: session_.setTextSize(session_.textSize() + by); break; // (it has ends, as PIANO ROLL has)
     case kTheme: session_.setTheme(session_.theme() + by); break;       // (so has this; the colours change from the next frame)
@@ -320,7 +321,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         return;
     }
 
-    const char* names[kRows] = {"TEMPO", "CHORD PACK", "TRACK NAME", "BOUNCE", "VOLUME", "BRIGHTNESS", "STICK LIGHT", "STICK SPEED", "TEXT SIZE", "THEME", "PIANO ROLL", "USB KEYBOARD", "CLICK", "COUNT IN", "WIFI PAGE", "BUTTONS", "CONTROLS"};
+    const char* names[kRows] = {"TEMPO", "CHORD PACK", "TRACK NAME", "BOUNCE", "VOLUME", "BRIGHTNESS", "STICK LIGHT", "LIGHT COLOUR", "STICK SPEED", "TEXT SIZE", "THEME", "PIANO ROLL", "USB KEYBOARD", "CLICK", "COUNT IN", "WIFI PAGE", "BUTTONS", "CONTROLS"};
     const int rowH = kRowH, w = kRowW; // (twelve rows shown: 34 a row, as it was with eleven, would run into the hints bar)
     fonts.small.draw(r, 16.f, 34.f, "PROJECT", kDim);
     // A row out of sight above (the page has moved down) or below: an arrow after its section's name.
@@ -379,11 +380,19 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             break;
         case kLight: {
             static const char* const what[kRingModes] = {"OFF", "ON", "BEAT", "STEPS"};
-            static const char* const says[kRingModes] = {"the light round the stick", "steady, in the theme's colour",
-                                                         "a flash on every beat", "the step playing goes round"};
+            static const char* const says[kRingModes] = {"the light round the stick", "steady, in LIGHT COLOUR",
+                                                         "a flash on every beat", "once round a scene"};
             const int mode = session_.stickLight();
             std::snprintf(text, sizeof text, "%s", what[mode]);
             note = says[mode];
+            break;
+        }
+        case kLightColour: {
+            static const char* const what[kLightColours] = {"THEME", "TEAL", "PURPLE", "BRASS", "RED", "ORANGE", "YELLOW",
+                                                            "GREEN", "BLUE", "PINK", "WHITE", "TRACK", "RAINBOW"};
+            const int which = session_.lightColour();
+            std::snprintf(text, sizeof text, "%s", what[which]);
+            note = which == kLightTheme ? "the theme's cursor colour" : which == kLightTrack ? "a colour for each track" : which == kLightRainbow ? "turns a light a beat" : "";
             break;
         }
         case kStick:

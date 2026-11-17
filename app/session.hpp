@@ -421,6 +421,8 @@ public:
     int brightness() const { return brightness_; }
     void setBrightness(int percent);
     int stickLight() const { return stickLight_; }
+    int lightColour() const { return lightColour_; } // LIGHT COLOUR (lights.hpp: LightColour)
+    void setLightColour(int which);
     void setStickLight(int mode);
     // What the ring shows now (ringPicture with the song's step and the theme's colours).
     RingFrame ringNow() const;
@@ -716,6 +718,7 @@ private:
     Lights lights_;
     int brightness_ = kBrightUsual;
     int stickLight_ = kRingOn;
+    int lightColour_ = kLightTheme;
     struct BounceJob {
         std::unique_ptr<Project> song;
         Bounce what = Bounce::Song;

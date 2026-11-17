@@ -293,7 +293,8 @@ void Session::keepSettings() const {
                                                         std::to_string(octaves_) + "\nmidirec " + (midiRecord_ ? "1" : "0") + "\ntext " + std::to_string(textSize_) +
                                                         "\ntheme " + std::to_string(theme_) + "\nbrightness " + std::to_string(brightness_) +
                                                         "\nlight " + std::to_string(stickLight_) + "\nclick " + std::to_string(click_) +
-                                                        "\ncountin " + (countIn_ ? "1" : "0") + "\n");
+                                                        "\ncountin " + (countIn_ ? "1" : "0") + "\n" +
+                                                        (lightColour_ != kLightTheme ? "lightcolour " + std::to_string(lightColour_) + "\n" : ""));
 }
 
 void Session::setBrightness(int percent) {
@@ -307,10 +308,25 @@ void Session::setStickLight(int mode) {
     keepSettings();
 }
 
+void Session::setLightColour(int which) {
+    lightColour_ = which < 0 ? 0 : (which >= kLightColours ? kLightColours - 1 : which); // a choice with ends
+    keepSettings();
+}
+
 RingFrame Session::ringNow() const {
     const Theme& t = kThemeTable[theme_ >= 0 && theme_ < kThemes ? theme_ : kThemeBrown];
-    const int step = project.playing ? project.playStep : -1;
-    return ringPicture(stickLight_, brightness_, step, fullest(t.teal.r, t.teal.g, t.teal.b), fullest(t.brass.r, t.brass.g, t.brass.b));
+    RingPlace at;
+    if (project.playing && project.playStep >= 0) {
+        at.step = project.playStep;
+        at.sceneStep = (project.playBar < 0 ? 0 : project.playBar) * kSteps + project.playStep;
+        at.sceneSteps = project.playScene >= 0 ? project.sceneSteps(project.playScene) : kSteps;
+    }
+    Rgb colours[kRingLeds];
+    const int beats = at.sceneStep < 0 ? -1 : (project.playRepeat * at.sceneSteps + at.sceneStep) / 4;
+    ringColours(lightColour_, fullest(t.teal.r, t.teal.g, t.teal.b), project.track, beats, colours);
+    // A bar's first step in the theme's brass; in white where the ring is brass already.
+    const Rgb first = lightColour_ == kLightBrass ? lightColourOf(kLightWhite) : fullest(t.brass.r, t.brass.g, t.brass.b);
+    return ringPicture(stickLight_, brightness_, at, colours, first);
 }
 
 void Session::setStickSpeed(float speed) {
@@ -353,6 +369,7 @@ void Session::loadSettings() {
         if (name == "light" && value >= 0 && value < kRingModes) setStickLight(value); // (none: ON)
         if (name == "click" && value >= 0 && value < kClickModes) setClick(value); // (none: OFF)
         if (name == "countin" && (value == 0 || value == 1)) setCountIn(value == 1);
+        if (name == "lightcolour" && value >= 0 && value < kLightColours) setLightColour(value); // (none: THEME)
     }
     programFolder_ = folder;
 }

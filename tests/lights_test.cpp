@@ -306,7 +306,7 @@ void testTheSetPage() {
     Rig rig;
     rig.session().useLights(sys.both());
     S& setup = rig.setup();
-    CHECK(setup.here(S::kBrightness) && setup.here(S::kLight) && setup.places() == 17);
+    CHECK(setup.here(S::kBrightness) && setup.here(S::kLight) && setup.here(S::kLightColour) && setup.places() == 18);
     // After VOLUME, among the handheld's rows.
     setup.goTo(S::kVolume);
     rig.tap(DOWN);
@@ -331,16 +331,25 @@ void testTheSetPage() {
     CHECK(rig.session().stickLight() == kRingOff && got(sys.power) == "0\n");
     rig.tap(A); // A does nothing to it
     CHECK(rig.session().stickLight() == kRingOff && setup.cursorRow() == S::kLight && !setup.testing() && !setup.typing());
+    // LIGHT COLOUR: a choice with ends, THEME to RAINBOW.
+    rig.tap(DOWN);
+    CHECK(setup.cursorRow() == S::kLightColour && rig.session().lightColour() == kLightTheme);
+    rig.tap(RIGHT);
+    CHECK(rig.session().lightColour() == kLightTeal);
+    rig.tap(RIGHT, kLightColours + 2);
+    CHECK(rig.session().lightColour() == kLightRainbow);
+    rig.tap(LEFT, kLightColours + 2);
+    CHECK(rig.session().lightColour() == kLightTheme);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kStick);
-    // Seventeen rows (CLICK and COUNT IN since easywins batch 2): the page shows twelve, one place at a time.
+    // Eighteen rows (CLICK and COUNT IN since easywins batch 2, LIGHT COLOUR): the page shows twelve, one place at a time.
     setup.goTo(S::kTempo);
     for (int place = 1; place < setup.places(); ++place) {
         rig.tap(DOWN);
         CHECK(setup.placeOf(setup.cursorRow()) == place && setup.shown(setup.cursorRow()));
         CHECK(setup.firstShown() == (place < S::kRowsShown ? 0 : place - S::kRowsShown + 1));
     }
-    CHECK(setup.cursorRow() == S::kControls && setup.firstShown() == 5);
+    CHECK(setup.cursorRow() == S::kControls && setup.firstShown() == 6);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kControls);
     for (int place = setup.firstShown(); place < setup.firstShown() + S::kRowsShown; ++place) {
@@ -499,6 +508,111 @@ void testTheRingFollowsTheSong() {
     CHECK(got(ringOnly.bl + "/brightness") == "1250\n"); // (the screen left alone)
 }
 
+// ---- STEPS once round a SCENE, and LIGHT COLOUR (easywins) -------------------------------------------
+void testScenesAndColours() {
+    const Rgb teal = rgb(0, 255, 200), brass = rgb(255, 180, 0);
+    Rgb one[kRingLeds];
+    for (Rgb& c : one) c = teal;
+    // A scene of four bars: a LED every four steps, the lit one the share played; brass on a bar's first step.
+    for (int step = 0; step < 64; ++step) {
+        RingPlace at;
+        at.step = step % 16, at.sceneStep = step, at.sceneSteps = 64;
+        const RingFrame f = ringPicture(kRingSteps, 70, at, one, brass);
+        for (int i = 0; i < kRingLeds; ++i)
+            CHECK(f.leds[i] == (i == ringLedOf(step / 4) ? (step % 16 == 0 ? brass : teal) : dimmed(teal, kRingDim)));
+    }
+    // A scene cut to 24 steps: the sixteen LEDs share them (step 23 is the last LED; step 16, a bar's first, in brass).
+    {
+        RingPlace at;
+        at.step = 7, at.sceneStep = 23, at.sceneSteps = 24;
+        CHECK(ringPicture(kRingSteps, 70, at, one, brass).leds[ringLedOf(15)] == teal);
+        at.step = 0, at.sceneStep = 16;
+        CHECK(ringPicture(kRingSteps, 70, at, one, brass).leds[ringLedOf(10)] == brass);
+    }
+    // A one-bar scene is as it was: the old picture to the LED.
+    for (int step = 0; step < 16; ++step) {
+        RingPlace at;
+        at.step = at.sceneStep = step;
+        CHECK(ringPicture(kRingSteps, 70, at, one, brass) == ringPicture(kRingSteps, 70, step, teal, brass));
+        CHECK(ringPicture(kRingBeat, 70, at, one, brass) == ringPicture(kRingBeat, 70, step, teal, brass));
+    }
+    // The colours: THEME is the theme's; the premade ones their own; TRACK a hue a track; RAINBOW a hue a LED, turning a LED a beat.
+    Rgb c[kRingLeds];
+    ringColours(kLightTheme, teal, 3, -1, c);
+    for (const Rgb& x : c) CHECK(x == teal);
+    for (int which = kLightTeal; which <= kLightWhite; ++which) {
+        ringColours(which, teal, 3, -1, c);
+        for (const Rgb& x : c) CHECK(x == lightColourOf(which) && (x.r | x.g | x.b) != 0);
+        for (int other = kLightTeal; other < which; ++other) CHECK(lightColourOf(other) != lightColourOf(which));
+    }
+    ringColours(kLightTrack, teal, 0, -1, c);
+    CHECK(c[0] == rgb(255, 0, 0) && c[15] == rgb(255, 0, 0));
+    ringColours(kLightTrack, teal, 4, -1, c);
+    CHECK(c[0] == rgb(0, 255, 0) && c[9] == rgb(0, 255, 0));
+    ringColours(kLightRainbow, teal, 0, -1, c);
+    CHECK(c[0] == rgb(255, 0, 0) && c[4] == hueRgb(384) && c[8] == rgb(0, 255, 255));
+    Rgb turned[kRingLeds];
+    ringColours(kLightRainbow, teal, 0, 3, turned);
+    for (int i = 0; i < kRingLeds; ++i) CHECK(turned[i] == c[(i + 3) % kRingLeds]);
+    CHECK(hueRgb(0) == rgb(255, 0, 0) && hueRgb(256) == rgb(255, 255, 0) && hueRgb(1024) == rgb(0, 0, 255) && hueRgb(kHueRound) == hueRgb(0) && hueRgb(-256) == hueRgb(1280));
+    // ON in RAINBOW: every LED its own hue; dim ones dimmed each by its own.
+    ringColours(kLightRainbow, teal, 0, -1, c);
+    RingPlace stopped;
+    const RingFrame on = ringPicture(kRingOn, 70, stopped, c, brass), dim = ringPicture(kRingSteps, 70, stopped, c, brass);
+    for (int i = 0; i < kRingLeds; ++i) CHECK(on.leds[i] == c[i] && dim.leds[i] == dimmed(c[i], kRingDim));
+
+    // Through the Session: a two-bar scene goes round once in two bars; LIGHT COLOUR kept in settings.txt.
+    const std::string folder = tempFolder("lightcolour");
+    {
+        Sys sys;
+        Rig rig;
+        rig.session().useLights(sys.both());
+        rig.session().useProgramFolder(folder);
+        rig.session().setStickLight(kRingSteps);
+        rig.session().setLightColour(kLightRed);
+        rig.session().setCellBars(0, 0, 2);
+        rig.frames(2);
+        rig.session().togglePlay(false);
+        int seen = 0, lastPlace = -1;
+        for (int i = 0; i < 900; ++i) { // (a step is 23 frames here: 256 samples a frame)
+            rig.frames(1);
+            const Project& p = rig.app.project();
+            if (p.playStep < 0) continue;
+            const int place = p.playBar * 16 + p.playStep;
+            if (place == lastPlace) continue;
+            lastPlace = place;
+            ++seen;
+            const std::vector<unsigned char> last = sys.last();
+            const int lit = ringLedOf(place / 2);
+            const Rgb want = place % 16 == 0 ? fullest(kThemeTable[kThemeBrown].brass.r, kThemeTable[kThemeBrown].brass.g, kThemeTable[kThemeBrown].brass.b) : rgb(255, 0, 0);
+            CHECK(last.size() == 51 && last[static_cast<std::size_t>(2 + 3 * lit)] == want.r && last[static_cast<std::size_t>(3 + 3 * lit)] == want.g &&
+                  last[static_cast<std::size_t>(4 + 3 * lit)] == want.b);
+            const int other = (lit + 8) % kRingLeds;
+            CHECK(last[static_cast<std::size_t>(2 + 3 * other)] == dimmed(rgb(255, 0, 0), kRingDim).r);
+        }
+        CHECK(seen >= 33); // round the scene and on into its next time
+        rig.session().togglePlay(false);
+        const std::string text = got(folder + "/settings.txt");
+        CHECK(text.find("\nlightcolour 4\n") != std::string::npos);
+        rig.session().setLightColour(kLightTheme);
+        CHECK(got(folder + "/settings.txt").find("lightcolour") == std::string::npos); // (left out at THEME)
+        rig.session().setLightColour(kLightRainbow);
+    }
+    {
+        Rig rig;
+        rig.session().useProgramFolder(folder);
+        rig.session().loadSettings();
+        CHECK(rig.session().lightColour() == kLightRainbow);
+    }
+    put(folder + "/settings.txt", "lightcolour 13\n");
+    {
+        Rig rig;
+        rig.session().useProgramFolder(folder);
+        rig.session().loadSettings();
+        CHECK(rig.session().lightColour() == kLightTheme);
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -510,7 +624,7 @@ int main(int argc, char** argv) {
     const Test tests[] = {
         {"testTheRules", testTheRules}, {"testFromTheEnvironment", testFromTheEnvironment}, {"testTheFiles", testTheFiles},
         {"testTheSetPage", testTheSetPage}, {"testKept", testKept}, {"testTheVolumeKeys", testTheVolumeKeys},
-        {"testTheRingFollowsTheSong", testTheRingFollowsTheSong},
+        {"testTheRingFollowsTheSong", testTheRingFollowsTheSong}, {"testScenesAndColours", testScenesAndColours},
     };
     for (const Test& test : tests) {
         bool wanted = argc < 2;

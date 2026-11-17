@@ -82,3 +82,8 @@ Apotheca runs as root on our firmware (inittab, no user), so no file needed anot
 - The controller's colour order and LED order, and whether it misses the first frame after power
   (the two resends are a guess at the cure).
 - No light on the stock firmware's port (the OS has it there).
+
+## Since (easywins batch 2b, 2026-11-17)
+
+The owner saw ON and BEAT work. STEPS now goes round once a SCENE, and a LIGHT COLOUR row was added:
+see `docs/plans/easywins-plan.md`, "Batch 2b".
