@@ -143,6 +143,10 @@ if(APOTHECA_BUILD_TESTS)
   target_link_libraries(drumsynth_test PRIVATE apotheca_engine)
   target_include_directories(drumsynth_test PRIVATE tests)
   add_test(NAME drumsynth COMMAND drumsynth_test)
+  # MORPH (docs/plans/wavetable-plan.md): batch 0, the rule header (no sound yet).
+  add_executable(morph_test tests/morph_test.cpp)
+  target_link_libraries(morph_test PRIVATE apotheca_engine)
+  add_test(NAME morph COMMAND morph_test)
   add_executable(mod_test tests/mod_test.cpp)
   target_link_libraries(mod_test PRIVATE apotheca_engine)
   add_test(NAME mod COMMAND mod_test)
@@ -150,7 +154,7 @@ if(APOTHECA_BUILD_TESTS)
   # never followed; and no test source makes one another way (33,000 left behind filled the disk).
   add_executable(temp_test tests/temp_test.cpp)
   add_test(NAME temp COMMAND temp_test ${CMAKE_SOURCE_DIR})
-  set_tests_properties(engine phazed song effects1 effects2 throw feel choke glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets fm6 mod physic acid cloud drumsynth load temp PROPERTIES TIMEOUT 120)
+  set_tests_properties(engine phazed song effects1 effects2 throw feel choke glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets fm6 mod physic acid cloud drumsynth morph load temp PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.
