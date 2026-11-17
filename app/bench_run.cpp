@@ -42,6 +42,7 @@
 #include "apotheca/drum_synth.hpp"
 #include "app.hpp"
 #include "bench_run.hpp"
+#include "drum_voices.hpp"
 #include "realtime.hpp"
 #include "song_file.hpp"
 #include "text.hpp"
@@ -1046,6 +1047,26 @@ static void drumSynthRows() {
         }
         std::printf("  %-28s %7.2f ms (%s)\n", row.name, best, drumsynth::work(v, 48000.f) > drumsynth::kWorkInAFrame ? "on the helper thread" : "in a frame");
     }
+    // The named voices (drum_voices.hpp): every one made once (a song of synth lanes opened is a few of
+    // them), the slowest, and how many a frame cannot hold (they go to the helper thread).
+    double all = 0.0, slowest = 0.0;
+    int voices = 0, helped = 0;
+    const char* slowName = "";
+    for (int m = drumsynth::kNone + 1; m < drumsynth::kModels; ++m)
+        for (int place = 0; place < voiceCount(m); ++place) {
+            const drumsynth::Voice v = voiceAt(m, place);
+            const auto t0 = std::chrono::steady_clock::now();
+            const std::vector<float> sound = drumsynth::make(v, 48000.f);
+            const double took = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+            all += took;
+            ++voices;
+            helped += drumsynth::work(v, 48000.f) > drumsynth::kWorkInAFrame ? 1 : 0;
+            if (took > slowest) slowest = took, slowName = voiceName(m, place);
+            if (sound.empty()) all = -1.0;
+        }
+    char name[48];
+    std::snprintf(name, sizeof name, "all %d named voices", voices);
+    std::printf("  %-28s %7.2f ms, %.2f each; the slowest %s %.2f ms; %d on the helper thread\n", name, all, all / voices, slowName, slowest, helped);
 }
 
 static int appRows(bool all);

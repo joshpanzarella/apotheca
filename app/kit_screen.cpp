@@ -1,4 +1,5 @@
 #include "kit_screen.hpp"
+#include "drum_voices.hpp"
 #include "samples.hpp"
 
 #include <cmath>
@@ -481,8 +482,9 @@ void KitScreen::openVoice(int place) {
     session_.readyLane(project_.track, lane_);
     voicing_ = true;
     editing_ = false;
-    const int model = trk().laneSynth[lane_].model;
+    const int model = trk().laneSynth[lane_].model, named = voicePlaceOf(trk().laneSynth[lane_]);
     voicePlace_ = drumsynth::shown(model, place) ? place : kVoiceModel;
+    voicePicked_ = named >= 0 ? named : 0; // (this lane's: another lane's pick means nothing here)
     holding_ = deleting_ = bBack_ = false;
     deletePart_ = 0.f;
     repeating_ = Button::None;
@@ -519,6 +521,16 @@ void KitScreen::voicePress(Button b) {
         }
         if (b == Button::Up) voicePlace_ = row == 0 ? kVoiceModel : (shownNear(v.model, 0, column) >= 0 ? shownNear(v.model, 0, column) : kVoiceModel);
         if (b == Button::Down && row == 0 && shownNear(v.model, 1, column) >= 0) voicePlace_ = shownNear(v.model, 1, column);
+        return;
+    }
+    if (voicePlace_ == kVoiceModel && (b == Button::Left || b == Button::Right)) {
+        // The model's named voices (drum_voices.hpp): the one before / after the voice it is, or, turned
+        // by hand, the one before / after the last picked. The ends stop.
+        const int now = voicePlaceOf(v), from = now >= 0 ? now : voicePicked_;
+        const int to = from + (b == Button::Right ? 1 : -1);
+        if (to < 0 || to >= voiceCount(v.model)) return;
+        voicePicked_ = to;
+        setVoice(voiceAt(v.model, to));
         return;
     }
     if (b != Button::Up && b != Button::Down) return;
@@ -681,8 +693,15 @@ void KitScreen::drawVoice(SDL_Renderer* r, const Fonts& fonts) const {
         std::snprintf(text, sizeof text, "LANE %d. A SOUND MADE FROM ITS KNOBS", lane_ + 1);
         fonts.within(&Fonts::small, text, sw - 120.f).draw(r, sx + 7.f, sy + 7.f, text, kDim);
     }
-    std::snprintf(text, sizeof text, "%s, SYNTH", drumsynth::modelName(v.model));
-    fonts.within(&Fonts::large, text, sw - 14.f).draw(r, sx + 7.f, sy + 23.f, text, kText);
+    // The model, and the named voice its dials are (brass), or SYNTH when they are turned by hand.
+    const int named = voicePlaceOf(v);
+    std::snprintf(text, sizeof text, "%s,", drumsynth::modelName(v.model));
+    const char* second = named >= 0 ? voiceName(v.model, named) : "SYNTH";
+    char both[80];
+    std::snprintf(both, sizeof both, "%s %s", text, second);
+    const Font& big = fonts.within(&Fonts::large, both, sw - 14.f);
+    big.draw(r, sx + 7.f, sy + 23.f, text, kText);
+    big.draw(r, sx + 7.f + big.width(text) + big.width(" "), sy + 23.f, second, named >= 0 ? kBrass : kDim);
     if (sound.making || sound.shaping) std::snprintf(text, sizeof text, "MAKING IT...");
     else std::snprintf(text, sizeof text, "PLAYS %.2f S", static_cast<double>(sound.seconds));
     fonts.small.drawRight(r, sx + sw - 8.f, sy + 7.f, text, sound.making || sound.shaping ? kBrass : kDim);
@@ -739,7 +758,8 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const drumsynth::Voice& v = trk().laneSynth[lane_];
         const bool onModel = voicePlace_ == kVoiceModel;
         if (holding_) {
-            hint("UP / DOWN", onModel ? "next / previous model" : "turn it");
+            hint("UP / DOWN", onModel ? "model" : "turn it");
+            if (onModel) hint("LEFT / RIGHT", "voice");
         } else {
             hint("HOLD A", onModel ? "model" : "turn");
             hint("B", onModel || v.dial[voicePlace_] == drumsynth::usualVoice(v.model).dial[voicePlace_] ? "back" : "default");

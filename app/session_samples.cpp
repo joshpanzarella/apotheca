@@ -369,7 +369,7 @@ void Session::setLaneEdit(int track, int lane, const LaneEdit& wanted) {
 void Session::readyLane(int track, int lane) {
     if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums) return;
     const LaneSound& sound = sounds_[track][lane];
-    if (!sound.source && !sound.missing) loadLane(track, lane);
+    if (!sound.source && !sound.missing && !sound.making) loadLane(track, lane); // (a synth voice on its way has no source yet: read again, it was never let land) // (a synth voice on its way has no source yet: read again, it was never let land)
 }
 
 bool Session::normalizeLane(int track, int lane) {

@@ -43,7 +43,7 @@ inline const char* const kViews[] = {
     "kit", "slices", "slices-32", "slices-name", "slices-name-feel", "slices-throw", "starts", "picker", "picker-in", "picker-deep", "picker-deleting", "picker-new", "picker-typing", "picker-carrying", "picker-folder-deleting", "sampler-picker",
     "feel", "feel-held", "feel-off-held", "feel-same-held", "feel-said",
     "choke", "kit-choke", "kit-choke-held", "kit-edit", "kit-edit-held", "kit-edit-deleting", "kit-edit-column",
-    "kit-synth", "kit-voice", "kit-voice-held", "kit-voice-deleting", "kit-voice-clap",
+    "kit-synth", "kit-voice", "kit-voice-held", "kit-voice-deleting", "kit-voice-clap", "kit-voice-named",
     "setup", "buttons", "typing", "help", "help-load",
     "fm6", "fm6-1", "fm6-2", "fm6-3", "fm6-4", "fm6-5", "fm6-6", "fm6-7", "fm6-8", "fm6-long", "fm6-fixed", "fm6-off",
     "physic", "physic-1", "physic-2", "physic-3", "physic-4", "physic-5", "physic-long", "physic-string", "physic-noise",

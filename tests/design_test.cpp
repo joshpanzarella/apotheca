@@ -30,6 +30,7 @@
 #include "presets.hpp"
 #include "app.hpp"
 #include "designer.hpp"
+#include "drum_voices.hpp"
 #include "samples.hpp"
 #include "apotheca/sampler.hpp"
 #include "song_file.hpp"
@@ -832,8 +833,8 @@ void testKitFromThePage() {
     // The state: every lane's settings by its ids, and what the handheld reads for its EDIT rows.
     std::string state = rig.get("/design/state").body;
     std::vector<int> v = numbersOf(state);
-    CHECK(has(state, "\"name\":\"KIT\",") && v.size() == static_cast<std::size_t>(kDrumLanes * kKitStride));
-    if (v.size() == static_cast<std::size_t>(kDrumLanes * kKitStride)) {
+    CHECK(has(state, "\"name\":\"KIT\",") && v.size() == static_cast<std::size_t>(kKitKnobs + kDrumLanes * drumsynth::kPlaces));
+    if (v.size() == static_cast<std::size_t>(kKitKnobs + kDrumLanes * drumsynth::kPlaces)) {
         CHECK(v[kitId(0, kEditEnd)] == kEditUnits && v[kitId(7, kEditEnd)] == kEditUnits && v[kitId(4, kKitVolume)] == 100 && v[kitId(4, kKitFit)] == 0);
         CHECK(v[kitId(2, kKitChoke)] == 1 && v[kitId(3, kKitChoke)] == 1 && v[kitId(1, kKitChoke)] == 0); // a new kit: its hats in CHOKE 1
     }
@@ -897,7 +898,7 @@ void testKitFromThePage() {
     CHECK(rig.tell("set 27 0") && kit.laneFeel[1].time == 0 && kit.laneFeel[1].level == 50);
     CHECK(rig.tell("set 26 400") && kit.laneLevel[1] == 1.f && rig.tell("set 26 -4") && kit.laneLevel[1] == 0.f);
     v = numbersOf(rig.get("/design/state").body);
-    CHECK(v.size() == 128 && v[24] == 16 && v[25] == 0 && v[26] == 0 && v[27] == 0 && v[28] == 50 && v[kitId(2, kKitFit)] == 0);
+    CHECK(v.size() == static_cast<std::size_t>(kKitKnobs + kDrumLanes * drumsynth::kPlaces) && v[24] == 16 && v[25] == 0 && v[26] == 0 && v[27] == 0 && v[28] == 50 && v[kitId(2, kKitFit)] == 0);
     // Nothing else is touched: lane 0's and lane 2's settings as they were.
     CHECK(kit.laneEdit[0].atRest() && kit.laneEdit[2].atRest() && kit.laneLevel[0] == 1.f && kit.laneChoke[2] == 1 && kit.laneFit[0] == 0 && kit.laneFeel[0].atRest());
     // An id with no lane or no setting changes nothing; nor do a synth's or a sampler's requests.
@@ -997,6 +998,63 @@ void testKitFromThePage() {
     rig.app.project().track = 0;
     rig.frames(1);
     CHECK(has(rig.get("/design/spec").body, "\"page\":\"kit\""));
+}
+
+// DRUM SYNTH on the KIT page (drumsynth-plan.md, batch 4): a lane's SOUND may be a model, its knobs
+// and its named voices set from the page through the calls the handheld makes; a knob turned changes
+// no spec (the page is not built again under the slider), its picture and readings come in the state.
+void testKitSynthFromThePage() {
+    Rig rig;
+    Session& session = rig.app.session();
+    TrackData& kit = rig.track();
+    std::string spec = rig.get("/design/spec").body;
+    CHECK(has(spec, "\"knobs\":128,\"models\":[{\"word\":\"kick\",\"name\":\"KICK\"}") && has(spec, "{\"word\":\"noise\",\"name\":\"NOISE\"}]"));
+    CHECK(!has(spec, "\"synth\":") && !has(rig.get("/design/state").body, "\"synth\":"));
+    CHECK(kKitKnobs == kDrumLanes * kKitStride);
+    // A model for lane 3: its usual voice.
+    CHECK(rig.tell("lanesynth 2 snare") && kit.laneSynth[2] == drumsynth::usualVoice(drumsynth::kSnare) && kit.laneSample[2][0] == 0);
+    rig.frames(2);
+    spec = rig.get("/design/spec").body;
+    CHECK(has(laneOf(spec, 2), "\"synth\":{\"word\":\"snare\",\"name\":\"SNARE\",\"places\":[\"TUNE\",\"DECAY\",\"TONE\",\"SNAP\",\"NOISE\",\"SWEEP\",\"DRIVE\",\"BODY\"],\"voices\":[\"CLASSIC\","));
+    CHECK(lanePeaksOf(spec, 2).empty() && has(laneOf(spec, 2), "\"seconds\":0.000")); // (in the state, not the spec)
+    std::string state = rig.get("/design/state").body;
+    char tune[32];
+    drumsynth::knobText(drumsynth::kSnare, drumsynth::kTune, kit.laneSynth[2].dial[drumsynth::kTune], tune, sizeof tune);
+    CHECK(has(state, std::string("\"synth\":{\"readings\":[\"") + tune + "\",") && has(state, "\"voice\":0,"));
+    std::vector<int> v = numbersOf(state);
+    CHECK(v.size() == static_cast<std::size_t>(kKitKnobs + kDrumLanes * drumsynth::kPlaces));
+    if (v.size() == static_cast<std::size_t>(kKitKnobs + kDrumLanes * drumsynth::kPlaces))
+        for (int p = 0; p < drumsynth::kPlaces; ++p) CHECK(v[static_cast<std::size_t>(kKitKnobs + 2 * 8 + p)] == kit.laneSynth[2].dial[p] && v[static_cast<std::size_t>(kKitKnobs + p)] == 0);
+    // A knob: the dial, held to 0..100; a place the model does not use, or a lane that is no synth: nothing.
+    const int serial = specNumber(state);
+    const std::size_t picture = state.find("\"peaks\":[");
+    CHECK(rig.tell("set " + std::to_string(kKitKnobs + 2 * 8 + drumsynth::kDecay) + " 90") && kit.laneSynth[2].dial[drumsynth::kDecay] == 90);
+    rig.frames(2);
+    state = rig.get("/design/state").body;
+    CHECK(specNumber(state) == serial && rig.get("/design/spec").body == spec); // the page keeps its slider
+    CHECK(has(state, "\"voice\":-1,") && picture != std::string::npos && state.find("\"peaks\":[") != std::string::npos);
+    CHECK(rig.tell("set " + std::to_string(kKitKnobs + 2 * 8 + drumsynth::kTune) + " 500") && kit.laneSynth[2].dial[drumsynth::kTune] == 100);
+    CHECK(rig.tell("set " + std::to_string(kKitKnobs + 2 * 8 + drumsynth::kTune) + " -5") && kit.laneSynth[2].dial[drumsynth::kTune] == 0);
+    CHECK(rig.tell("set " + std::to_string(kKitKnobs + 3 * 8 + drumsynth::kTune) + " 50") && !kit.laneSynth[3].on());
+    CHECK(rig.tell("lanesynth 4 clap") && rig.tell("set " + std::to_string(kKitKnobs + 4 * 8 + drumsynth::kNoise) + " 50") && kit.laneSynth[4] == drumsynth::usualVoice(drumsynth::kClap));
+    CHECK(rig.tell("set " + std::to_string(kKitKnobs + 8 * 8) + " 50")); // (past the knobs: nothing)
+    // A named voice of the lane's model; one past the list, or on a lane that is no synth: nothing.
+    CHECK(rig.tell("lanevoice 2 1") && kit.laneSynth[2] == voiceAt(drumsynth::kSnare, 1));
+    CHECK(rig.tell("lanevoice 2 999") && kit.laneSynth[2] == voiceAt(drumsynth::kSnare, 1));
+    CHECK(rig.tell("lanevoice 3 1") && !kit.laneSynth[3].on());
+    rig.frames(1);
+    CHECK(has(rig.get("/design/state").body, "\"voice\":1,"));
+    // Refused: a model nobody knows, a lane out of range, a voice not a number.
+    CHECK(rig.post("lanesynth 2 bongo").status == 400 && rig.post("lanesynth 8 kick").status == 400 && rig.post("lanesynth 2").status == 400);
+    CHECK(rig.post("lanevoice 2 x").status == 400 && rig.post("lanevoice -1 0").status == 400 && rig.post("lanevoice 2 -1").status == 400 && rig.post("lanesynth 2 kick x").status == 400);
+    // A step of undo, as on the handheld; and the drum back takes the voice off.
+    for (int i = 0; i < 4; ++i) rig.frames(30);
+    CHECK(rig.tell("lanevoice 2 2") && kit.laneSynth[2] == voiceAt(drumsynth::kSnare, 2));
+    for (int i = 0; i < 4; ++i) rig.frames(30);
+    CHECK(session.undo() && kit.laneSynth[2] == voiceAt(drumsynth::kSnare, 1));
+    CHECK(rig.tell("lanesample 2") && !kit.laneSynth[2].on());
+    rig.frames(2);
+    CHECK(!has(laneOf(rig.get("/design/spec").body, 2), "\"synth\":"));
 }
 
 // JAX-EP (jx3p-plan.md, batch 6a).
@@ -1131,6 +1189,7 @@ int main() {
     testJaxepFromThePage();
     testSamplerFromThePage();
     testKitFromThePage();
+    testKitSynthFromThePage();
     testCloudFromThePage();
     if (const char* hold = std::getenv("APOTHECA_DESIGN_HOLD")) {
         Rig rig;
@@ -1163,6 +1222,9 @@ int main() {
             rig.app.project().track = 0;
             rig.app.session().setLaneSample(0, 1, "four hits");
             rig.app.session().setLaneSample(0, 5, "stepped");
+            rig.app.session().setLaneSynth(0, 0, drumsynth::usualVoice(drumsynth::kKick)); // (and two DRUM SYNTH lanes)
+            rig.app.session().setLaneSynth(0, 3, voiceAt(drumsynth::kOpHat, 2));
+            rig.app.session().finishStretching();
             rig.frames(1);
         } else if (std::getenv("APOTHECA_DESIGN_CLOUD")) { // (a CLOUD track on the TONE; a stepped sine on the card)
             mkdir((rig.root + "/samples").c_str(), 0755);
