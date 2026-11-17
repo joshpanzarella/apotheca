@@ -207,7 +207,7 @@ is (a recording picked again is one press).
 **Minimal: each model's usual is its sound, and a short list of NAMED VOICES
 a model** as built-in data (`app/presets/drumvoices.inc`: `voice MODEL NAME
 v1..v8`, read by the presets reader's rules, append-only, `presets_test` reads
-it): KICK 808 BOOM, 909 PUNCH, DEEP, CLICK...; four to six a model, about 50 in
+it): KICK BOOM, PUNCH, DEEP, CLICK...; four to six a model, about 50 in
 all. **Picked on the MODEL box with hold A + LEFT / RIGHT** (UP / DOWN stays
 the model). **No "synth kit" command in version 1**: eight lanes set one by
 one is 8 to 16 presses; a whole drum track's preset is a later thing for every

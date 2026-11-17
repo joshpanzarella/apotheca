@@ -39,6 +39,7 @@
 #include "apotheca/physic.hpp"
 #include "apotheca/acid.hpp"
 #include "apotheca/cloud.hpp"
+#include "apotheca/drum_synth.hpp"
 #include "app.hpp"
 #include "bench_run.hpp"
 #include "realtime.hpp"
@@ -1025,6 +1026,28 @@ static void cloudRow(const char* name, bool full) {
     std::printf("  %-28s %5.2f%% of one core, %.1f grains\n", name, 100.0 * each / (256.0 / 48.0), blocks ? static_cast<double>(grains) / blocks : 0.0);
 }
 
+// DRUM SYNTH (docs/plans/drumsynth-plan.md): a voice is made on the app's thread when a knob turns
+// (the helper thread past drumsynth::kWorkInAFrame), never while the song plays. The time to make
+// one, the best of five: a KICK as it starts, an OP HAT as it starts, and the longest there is (a
+// CYMBAL at DECAY 6 s). A frame of the program is 16 ms.
+static void drumSynthRows() {
+    std::printf("the drum synth, a voice made (the app's thread, when a knob turns; nothing while playing):\n");
+    struct One { const char* name; int model; bool longest; };
+    const One rows[] = {{"KICK as it starts", drumsynth::kKick, false}, {"OP HAT as it starts", drumsynth::kOpHat, false}, {"CYMBAL at 6 s", drumsynth::kCymbal, true}};
+    for (const One& row : rows) {
+        drumsynth::Voice v = drumsynth::usualVoice(row.model);
+        if (row.longest) v.dial[drumsynth::kDecay] = drumsynth::kDialMost;
+        double best = 1e9;
+        for (int i = 0; i < 5; ++i) {
+            const auto t0 = std::chrono::steady_clock::now();
+            const std::vector<float> sound = drumsynth::make(v, 48000.f);
+            best = std::min(best, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
+            if (sound.empty()) best = -1.0;
+        }
+        std::printf("  %-28s %7.2f ms (%s)\n", row.name, best, drumsynth::work(v, 48000.f) > drumsynth::kWorkInAFrame ? "on the helper thread" : "in a frame");
+    }
+}
+
 static int appRows(bool all);
 
 int apotheca::runBench() {
@@ -1049,6 +1072,7 @@ int apotheca::runBench() {
     cloudRow("CLOUD, one key", false);
     cloudRow("CLOUD, full pool", true);
     instrument("Sampler (no recording)", SynthKind::Sampler, 8);
+
     {
         std::unique_ptr<Engine> engine(new Engine);
         Command c;
@@ -1069,6 +1093,7 @@ int apotheca::runBench() {
         const double block = ms([&] { engine->render(out.data(), 256); }, 2000);
         std::printf("  %-28s %5.1f%% of one core\n", "an empty song", 100.0 * block / (256.0 / 48.0));
     }
+    drumSynthRows();
     wholeSongRows();
     sharingRows();
     wholeSongModRows();
