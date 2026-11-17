@@ -1168,6 +1168,33 @@ A **cell** (one track in one scene) can be **1, 2, 4 or 8 bars** long.
 - While it plays, the top bar shows the bar of the scene (2/4) beside the
   progress blocks.
 
+#### Copy a bar, paste it on another
+
+On the drum grid (the slice view too) and the piano roll:
+
+| Gesture | Does |
+| --- | --- |
+| **Hold L1, press R1** | **Copy** the bar on screen: BAR 1 COPIED |
+| **Hold L1, press A** | **Paste** it over the bar on screen: PASTED ON BAR 2 |
+
+So steps 1-16 onto 17-32: on bar 1, hold L1 and press R1; run the cursor on
+into bar 2; hold L1 and press A.
+
+- **A paste replaces the whole bar.** On the drum grid every lane: each hit
+  with its level, nudge, chance, start, step effects and THROW. On the roll
+  its notes and chords, with everything they do.
+- **It can go anywhere**: another bar of the cell, another cell, another
+  scene, another track. The copy stays until the next copy, a new song too.
+- **A drum bar only goes on a drum track. Notes go on any synth or sampler
+  track.** Otherwise it says so and nothing changes.
+- **A note that runs over the bar line keeps its length**, but stops at the
+  end of the cell it lands in.
+- **Automation goes with it only onto the same track.** Another track's lanes
+  are other knobs, so there they are left as they were.
+- **One step of undo** (SELECT + B). A paste onto a bar that is already the
+  same does nothing and is no step.
+- While L1 is held the bar at the bottom says what R1 and A do.
+
 **SELECT** lists the songs: start a new one, or open another.
 
 In the list:
@@ -1355,6 +1382,9 @@ moment). On a hit X is heard as the pattern plays it, whole.
 
 Hold **B** and drag to delete every hit the cursor crosses.
 
+**Hold L1 and press R1** to copy the bar on screen, **hold L1 and press A**
+to paste it over the bar on screen (see "Copy a bar, paste it on another").
+
 Hold **R1** and drag to paint hits at one level (the level of the hit you
 started on, or 90%). **Add R2 while R1 is held** and the brush paints
 random levels for as long as R2 is down. R2 by itself is "next screen", at
@@ -1505,7 +1535,9 @@ or the note and press **A**: OFF, ECHO, SPACE, BOTH, and round again.
 ### Slices: chopping a break
 
 **L1 on a lane that plays a recording** zooms the grid into that one lane.
-L1 again goes back. (L1 on the kit screen goes straight there too.)
+L1 again goes back. (L1 on the kit screen goes straight there too.) It acts
+when L1 is let go: held, L1 is the key a bar is copied and pasted with (see
+"Copy a bar, paste it on another"), and then letting go opens nothing.
 
 The recording is drawn large and cut into **slices**: sixteen of them, or
 one to a step if it is fitted to more than a bar (32 for two bars, 64 for
@@ -1683,6 +1715,7 @@ is loud; holding A shapes it the way it is drawn.
 | **Hold X on a note**, L1 / R1 | **GLIDE FROM**, for the whole track: which key of a chord its glides come from. R1 is the next of TOP, PAIRED, NEAREST, RANDOM; L1 the one before. It stops at each end |
 | **Hold R1 on a note** and move | Carry the note (or the whole chord) under the cursor. **D-pad:** to another key, or a whole step. **Stick up / down:** it slides freely in time, off the grid. It stops at the ends of the bar and will not land on another note. |
 | L1 | Zoom. A tap goes closer: 2 octaves, 1, then round to 3. Held, up is closer and down is further. |
+| Hold L1, R1 / A | **Copy** the bar on screen / **paste** it over the bar on screen (see "Copy a bar, paste it on another"). The tap's zoom does not happen as well |
 
 A note runs at most to the end of the bar, or to the next note on that key.
 It can be as short as a tenth of a step. The engine lets go of each note on

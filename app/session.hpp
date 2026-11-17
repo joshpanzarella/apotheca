@@ -574,6 +574,39 @@ public:
     void setSceneSteps(int scene, int steps);
     void setCellBars(int track, int scene, int bars);
 
+    // ---- copy a bar ----------------------------------------------------------------------
+    // One bar of a cell (16 steps) held to be put on another bar: of the same cell, another cell,
+    // scene or track (on the grids: hold L1, R1 copies the bar shown, A pastes over it). In memory
+    // only, never in the song file; a new song keeps it. A drum bar holds every hit with all it is
+    // (level, nudge, chance, start, step effects, THROW); a note bar its notes and chords (a note
+    // that runs over the bar line keeps its length, held to the end of the cell it lands in). Its
+    // 16 steps of every automation lane go too, but only onto the SAME track: another track's lanes
+    // are other knobs. A paste REPLACES the bar and is one step of undo; onto a bar that is already
+    // the same, nothing is done and it is no step.
+    enum class BarCopy { Done, Same, NothingCopied, DrumsOnDrums, NotesOnNotes, NoTrack };
+    struct BarClip {
+        bool has = false;
+        bool drums = false;              // a drum bar (else notes)
+        int track = -1, scene = 0, bar = 0; // where it came from
+        DrumPattern drumBar;
+        NotePattern noteBar;
+        float automation[kAutoLanes][kSteps] = {};
+    };
+    BarCopy copyBar(int track, int scene, int bar);
+    BarCopy pasteBar(int track, int scene, int bar);
+    // ...on the bar the grids show (project.track, scene, bar), and what was done said (say()):
+    // BAR 1 COPIED, PASTED ON BAR 2, and why not.
+    BarCopy copyBarHere();
+    BarCopy pasteBarHere();
+    static std::string barCopyWords(BarCopy answer, bool paste, int bar); // (bar from 0)
+    const BarClip& barClip() const { return clip_; }
+    void setBarClip(const BarClip& clip) { clip_ = clip; } // (the App, putting it back after a panic began with L1 + R1)
+    unsigned barCopies() const { return barCopies_; }      // how many copies have been made (the App: did one come in a panic?)
+    // A line for the App to say for a moment (its box above the hints bar): what a copy or a paste did.
+    void say(const char* text);
+    unsigned saidCount() const { return saidCount_; }
+    const char* saidText() const { return saidText_; }
+
 private:
     // What rememberType keeps: for each slot (every track's, the master's, the buses'), each kind's settings.
     struct TypeMemory {
@@ -611,6 +644,10 @@ private:
     Uint32 now_ = 0;
     unsigned droppedSeen_ = 0; // engine.dropped() when the song was last sent whole
     int resyncs_ = 0;
+    BarClip clip_;           // what copyBar holds (memory only)
+    unsigned barCopies_ = 0;
+    char saidText_[64] = "";
+    unsigned saidCount_ = 0;
     int sentSceneCount_ = 1;
     int sentSongEnd_ = -1;    // what the engine was last told of AT END (-1: nothing yet)
     unsigned playsSent_ = 0;  // Command::Play sent and taken into the queue (Engine::songEnded)
