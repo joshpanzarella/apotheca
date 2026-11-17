@@ -1469,7 +1469,10 @@ effect in those two groups and fails one that does not.
   - **`ctest -R theme` holds it.** `themeviews` has the program draw every
     still in all six (`--themes PREFIX`) and finds, by pixels, any colour
     that is not the theme's or one of its laid over another (`Explain`); a
-    new alpha given to `faded()` goes in its list there. A still in a theme:
+    new alpha given to `faded()` goes in its list there. **A drum hit's body (its CHANCE: any alpha)
+    and the play line's glow over anything are in it** (2026-11-17: the stills play the demo, so the
+    glow lands where the clock puts it, and over a ghost hit it failed now and then); a new
+    translucent thing that moves with the clock is added the same way. A still in a theme:
     `--theme paper`.
 - **The SET page shows twelve rows and moves one row at a time**
   (`SettingsScreen::firstShown`, `rowNowY`): thirteen since THEME. A new row
