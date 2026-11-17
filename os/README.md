@@ -162,31 +162,34 @@ Whatever you see is useful. Send:
 ## If the screen stays striped, black or shows garbage
 
 The RG40XXV has had **two screens**, and each needs its own device tree.
-**The card starts with the newer one** (`rg40xx-v-v2-panel`), which the
-owner's unit has (it gave a picture with it on 2026-11-17; the other tree
-left only the stripes). Units from before the change need the first one.
+**The card picks the tree by itself** (since 2026-11-17): as it starts,
+U-Boot reads pin PE6, the way Anbernic's own boot loader tells the screens
+apart (low: the newer screen), and loads the matching tree from
+`device_trees/`. **A `dtb.img` at the top of APOTHBOOT overrides it** (used
+whatever the screen); a new card has none (`dtb-in-use.txt` says `auto`).
+The owner has one unit of each. **Not yet tried on either**: which way PE6
+reads on each is from the stock boot loader's code, not seen. The boot log's
+"screen:" line gives PE6 and the tree U-Boot chose.
 
 | Tree | Screen | Units |
 | --- | --- | --- |
-| `sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb` (the card's default) | the newer screen | later units: Knulli and muOS users reported new RG40XXVs with only stripes from November 2025, and ROCKNIX added this tree in April 2026 |
-| `sun50i-h700-anbernic-rg40xx-v-v2-stock-panel.dtb` | the newer screen, with the pixel clock edge and the timings Anbernic's own system uses (ROCKNIX's v2 file's start-up commands, unchanged) | **to compare** on the newer screen: try it if a dark picture shows faint vertical stripes |
-| `sun50i-h700-anbernic-rg40xx-v.dtb` | the first screen | earlier units |
+| `sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb` | the newer screen (PE6 low) | later units: Knulli and muOS users reported new RG40XXVs with only stripes from November 2025, and ROCKNIX added this tree in April 2026 |
+| `sun50i-h700-anbernic-rg40xx-v.dtb` | the first screen (PE6 high) | earlier units |
+| `sun50i-h700-anbernic-rg40xx-v-v2-stock-panel.dtb` | the newer screen, with the pixel clock edge and the timings Anbernic's own system uses | never chosen by itself: to compare |
 
-**First wait 30 seconds**: the stripes before Linux are normal (above). If
-they stay, try the other tree:
+**First wait 30 seconds.** If the screen stays black or striped, the card
+may have guessed wrong; give it the other tree by hand:
 
 1. Card into the computer, open **APOTHBOOT**.
-2. Copy `device_trees/sun50i-h700-anbernic-rg40xx-v.dtb` to the top
-   of APOTHBOOT, and rename the copy to **`dtb.img`**, replacing the one
-   there. (On a Mac: check with **Get Info** that the name is exactly
-   `dtb.img`, with no ending added.)
+2. Copy `device_trees/sun50i-h700-anbernic-rg40xx-v.dtb` (or the v2 one) to
+   the top of APOTHBOOT, and rename the copy to **`dtb.img`**. (On a Mac:
+   check with **Get Info** that the name is exactly `dtb.img`, with no
+   ending added.)
 3. Card back in, power on, and wait 30 seconds.
 
-(`dtb-in-use.txt` says which one the card was made with. To go back, copy
-`sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb` over `dtb.img` the same way.)
-Any of the three is tried the same way. A card can be built with another
-as its default: `scripts/build-image.sh --dtb rg40xx-v` (or
-`rg40xx-v-v2-stock-panel`).
+To go back to the card's own choice, delete `dtb.img`. A card can be built
+with a `dtb.img` already in place: `scripts/build-image.sh --dtb rg40xx-v`
+(or `rg40xx-v-v2-panel`, `rg40xx-v-v2-stock-panel`).
 
 **Faint vertical lines in a dark picture** (seen on the owner's unit with
 the v2 tree and with `v2-stock-panel`, not fading over 15 minutes). Four
@@ -202,7 +205,7 @@ things to try, each a whole `dtb.img` in its own folder, so no renaming:
 Mac: open **APOTHBOOT**, then `device_trees`, `try`, the folder; drag its
 `dtb.img` to the top of APOTHBOOT, **Replace**. Eject, power on, look at a
 dark picture. Try them one at a time; say which, if any, takes the lines
-away. Also worth a look: does **the stock card** show the same faint lines
+away; delete `dtb.img` afterwards to go back to the card's own choice. Also worth a look: does **the stock card** show the same faint lines
 in a dark picture? If it does, it is the panel itself.
 
 ## A shell from the computer (optional)

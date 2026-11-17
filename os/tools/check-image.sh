@@ -96,6 +96,20 @@ end = fit + fitsize
 check(end <= parts[0][2], "U-Boot ends at %d KiB, before p1 at %d KiB" % (end // 1024, parts[0][2] // 1024))
 fitdata = read(fit, fitsize)
 check(b'bl31' in fitdata or b'atf' in fitdata, "U-Boot's FIT holds Trusted Firmware (BL31)")
+# U-Boot's start (uboot.fragment's CONFIG_PREBOOT): the backlight off first,
+# dtb.img when there is one, else the tree by PE6, then the panel off.
+uboot = read(8 * 1024, 4088 * 1024)
+pre = re.search(rb'gpio clear PD28;[^\0]*gpio clear PI15', uboot)
+pre = pre.group(0).decode() if pre else ''
+check(pre.startswith('gpio clear PD28;') and pre.endswith('gpio clear PI14; gpio clear PI15'),
+      "U-Boot turns the backlight off first and the panel off last")
+check('if test -e mmc 0:1 dtb.img; then setenv fdtfile dtb.img;' in pre,
+      "U-Boot takes dtb.img when the boot partition has one")
+check('if gpio input PE6; then setenv apotheca_screen v2;' in pre
+      and 'setenv fdtfile device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb' in pre
+      and 'setenv fdtfile device_trees/sun50i-h700-anbernic-rg40xx-v.dtb' in pre
+      and pre.index('gpio set PI14; sleep 0.1;') < pre.index('gpio input PE6'),
+      "else it reads PE6 after the panel's reset pulse: low the v2 tree, high the first")
 
 # --- p1: FAT boot partition
 off = parts[0][2]
@@ -106,7 +120,9 @@ if shutil.which('mdir') and shutil.which('mtype'):
     env = {'MTOOLS_SKIP_CHECK': '1', 'PATH': '/usr/bin:/bin:/usr/local/bin'}
     def mt(*a):
         return subprocess.run(a, capture_output=True, text=True, env=env)
-    for f in ['Image', 'dtb.img', 'extlinux/extlinux.conf', 'README.txt', 'dtb-in-use.txt',
+    inuse = mt('mtype', '-i', spec, '::dtb-in-use.txt').stdout.strip()
+    auto = inuse.startswith('auto')
+    for f in ['Image', 'extlinux/extlinux.conf', 'README.txt', 'dtb-in-use.txt',
               'device_trees/sun50i-h700-anbernic-rg40xx-v.dtb',
               'device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb',
               'device_trees/sun50i-h700-anbernic-rg40xx-v-v2-stock-panel.dtb',
@@ -116,13 +132,16 @@ if shutil.which('mdir') and shutil.which('mtype'):
         check(r.returncode == 0, "p1 holds %s" % f)
     conf = mt('mtype', '-i', spec, '::extlinux/extlinux.conf').stdout
     check('root=PARTUUID=41504f54-02' in conf, "extlinux.conf: root=PARTUUID=41504f54-02")
-    check('FDT /dtb.img' in conf and 'LINUX /Image' in conf, "extlinux.conf: LINUX /Image, FDT /dtb.img")
+    check('FDTDIR /' in conf and 'LINUX /Image' in conf and 'FDT ' not in conf.replace('FDTDIR', ''),
+          "extlinux.conf: LINUX /Image, FDTDIR / (the tree is $fdtfile, which U-Boot sets)")
     r = subprocess.run(['mtype', '-i', spec, '::dtb.img'], capture_output=True, env=env)
-    check(r.stdout[:4] == b'\xd0\x0d\xfe\xed', "dtb.img is a device tree")
-    inuse = mt('mtype', '-i', spec, '::dtb-in-use.txt').stdout.strip()
-    named = subprocess.run(['mtype', '-i', spec, '::device_trees/' + inuse], capture_output=True, env=env)
-    check(inuse.endswith('.dtb') and named.returncode == 0 and named.stdout == r.stdout,
-          "dtb.img is device_trees/%s, as dtb-in-use.txt says" % inuse)
+    if auto:
+        check(r.returncode != 0, "no dtb.img: U-Boot picks the tree by the screen (dtb-in-use.txt: %s)" % inuse)
+    else:
+        check(r.stdout[:4] == b'\xd0\x0d\xfe\xed', "dtb.img is a device tree")
+        named = subprocess.run(['mtype', '-i', spec, '::device_trees/' + inuse], capture_output=True, env=env)
+        check(inuse.endswith('.dtb') and named.returncode == 0 and named.stdout == r.stdout,
+              "dtb.img is device_trees/%s, as dtb-in-use.txt says" % inuse)
     tries = {}
     for t in ['1-pins-40ma', '2-backlight-50khz', '3-dither', '4-all-as-stock']:
         tries[t] = subprocess.run(['mtype', '-i', spec, '::device_trees/try/%s/dtb.img' % t],
@@ -134,8 +153,25 @@ if shutil.which('mdir') and shutil.which('mtype'):
     stock_dither = open(os.path.join(panel_dir, 'v2-stock-dither.panel'), 'rb').read()
     check(all(d[:4] == b'\xd0\x0d\xfe\xed' and d != v2 for d in tries.values()),
           "the four trees to try are device trees, each changed from the v2 tree")
-    check(b'drive-strength' in tries['1-pins-40ma'] and b'drive-strength' not in v2,
-          "try 1 sets the RGB pins' drive strength")
+    fdtget = os.path.join(sys.argv[3], 'build-image', 'output', 'host', 'bin', 'fdtget')
+    if os.access(fdtget, os.X_OK):
+        with tempfile.TemporaryDirectory(prefix='apotheca-check-') as t:
+            def prop(name, node, key):
+                path = os.path.join(t, name + '.dtb')
+                with open(path, 'wb') as f:
+                    f.write(tries[name] if name in tries else v2)
+                return subprocess.run([fdtget, path, node, key], capture_output=True, text=True).stdout.strip()
+            pins = '/soc/pinctrl@300b000/lcd0-rgb888-pins'
+            check(prop('1-pins-40ma', pins, 'drive-strength') == '40' and prop('v2', pins, 'drive-strength') == '',
+                  "try 1 drives the RGB pins at 40 mA (the v2 tree sets nothing)")
+            check(prop('2-backlight-50khz', '/backlight', 'pwms').split()[2:3] == ['20000']
+                  and prop('v2', '/backlight', 'pwms').split()[2:3] == ['40000'],
+                  "try 2's backlight PWM period is 20000 ns, 50 kHz (the v2 tree's 40000)")
+            check(prop('4-all-as-stock', pins, 'drive-strength') == '40'
+                  and prop('4-all-as-stock', '/backlight', 'pwms').split()[2:3] == ['20000'],
+                  "try 4 has both too")
+    else:
+        print("skip  the trees' values (no fdtget in build-image/output/host/bin)")
     check(dither in tries['3-dither'] and stock_dither in tries['4-all-as-stock'],
           "tries 3 and 4 carry their panel files, byte for byte")
     r = subprocess.run(['mtype', '-i', spec, '::Image'], capture_output=True, env=env)
@@ -143,8 +179,8 @@ if shutil.which('mdir') and shutil.which('mtype'):
     check(b'apotheca,panel-firmware' in r.stdout,
           "the kernel's panel driver takes a panel file from the device tree (patch 0170)")
     for f in ['anbernic,rg40xx-panel.panel', 'anbernic,rg40xx-v2-panel.panel', 'anbernic,rg40xx-v2-stock-panel.panel']:
-        data = open(os.path.join(sys.argv[3], 'os', 'board', 'rg40xxv', 'firmware', 'panels', f), 'rb').read()
-        check(data in r.stdout, "the kernel holds %s, byte for byte" % f)
+        panel_bytes = open(os.path.join(sys.argv[3], 'os', 'board', 'rg40xxv', 'firmware', 'panels', f), 'rb').read()
+        check(panel_bytes in r.stdout, "the kernel holds %s, byte for byte" % f)
 else:
     print("skip  p1's files (mtools not installed)")
 

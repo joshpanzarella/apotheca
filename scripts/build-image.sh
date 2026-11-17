@@ -1,19 +1,20 @@
 #!/bin/sh
 # Build Apotheca's own system image for the Anbernic RG40XXV.
 #
-#   scripts/build-image.sh [--dtb rg40xx-v|rg40xx-v-v2-panel|rg40xx-v-v2-stock-panel] [--dram lpddr4|lpddr3]
+#   scripts/build-image.sh [--dtb auto|rg40xx-v|rg40xx-v-v2-panel|rg40xx-v-v2-stock-panel] [--dram lpddr4|lpddr3]
 #                          [--tidy|--tidy-all] [-- MAKE-ARGS...]
 #
 # Output: build-image/apotheca-rg40xxv.img.gz (and its .sha256), ready for
 # balenaEtcher or Raspberry Pi Imager. os/README.md says how to use it.
 #
-#   --dtb    which device tree the card starts with (dtb.img on its boot
-#            partition; both are on it, and the other can be copied over).
-#            Default rg40xx-v-v2-panel: the owner's unit has the newer screen
-#            (it showed a picture with it, 2026-11-17; the first tree left
-#            only coloured stripes). rg40xx-v is for units with the first screen;
-#            rg40xx-v-v2-stock-panel is the newer screen with Anbernic's own
-#            pixel clock edge and timings (a choice to compare, not the default).
+#   --dtb    which device tree the card starts with. Default auto: no
+#            dtb.img on the boot partition, and U-Boot picks the tree by the
+#            screen the handheld has (pin PE6, as Anbernic's own boot loader
+#            does: uboot.fragment); the owner has a unit of each screen. Any
+#            other value puts that tree there as dtb.img, which wins whatever
+#            the screen: rg40xx-v-v2-panel (the newer screen), rg40xx-v (the
+#            first), rg40xx-v-v2-stock-panel (the newer screen with Anbernic's
+#            own pixel clock edge and timings).
 #   --dram   the memory type U-Boot sets up. Default lpddr4 (ROCKNIX lists
 #            the RG40XX V under its DDR4 image).
 #   --tidy   after the build, delete the work files of the biggest folders
@@ -46,7 +47,7 @@ br="$work/buildroot-$BR_VERSION"
 out="$work/output"
 external="$here/os"
 
-dtb=rg40xx-v-v2-panel
+dtb=auto
 dram=lpddr4
 tidy=no
 while [ $# -gt 0 ]; do
@@ -59,7 +60,7 @@ while [ $# -gt 0 ]; do
     *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
 done
-case "$dtb" in rg40xx-v|rg40xx-v-v2-panel|rg40xx-v-v2-stock-panel) ;; *) echo "--dtb: rg40xx-v, rg40xx-v-v2-panel or rg40xx-v-v2-stock-panel" >&2; exit 2 ;; esac
+case "$dtb" in auto|rg40xx-v|rg40xx-v-v2-panel|rg40xx-v-v2-stock-panel) ;; *) echo "--dtb: auto, rg40xx-v, rg40xx-v-v2-panel or rg40xx-v-v2-stock-panel" >&2; exit 2 ;; esac
 case "$dram" in lpddr4|lpddr3) ;; *) echo "--dram: lpddr4 or lpddr3" >&2; exit 2 ;; esac
 
 mkdir -p "$work/dl"

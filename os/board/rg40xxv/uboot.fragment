@@ -12,14 +12,22 @@ CONFIG_LED_STATUS_GPIO=y
 CONFIG_LED_STATUS0=y
 CONFIG_LED_STATUS_BIT=267
 CONFIG_LED_STATUS_STATE=2
-# Ours, not ROCKNIX's: the panel's backlight off (PD28), the panel held in
-# reset (PI14) and its power off (PI15) as soon as U-Boot runs, so the panel
-# is not left lit and powered with no picture and no start-up commands (the
-# coloured stripes) until Linux's panel driver powers it up properly, about
-# 3 s into the kernel. The pins are the device tree's (backlight, the
-# panel's reset-gpios, and the vdd-lcd regulator), and low is the state
-# Linux leaves them in with the panel off. Tried in the hope that it ends the
-# faint ghost of the stripes the owner saw in dark pictures (an LCD left
-# driven with no set-up can hold an image for a while). The SPL and the boot
-# ROM run before this, so a fraction of a second of stripes may remain.
-CONFIG_PREBOOT="gpio clear PD28; gpio clear PI14; gpio clear PI15"
+# Ours, not ROCKNIX's (2026-11-17), as soon as U-Boot runs:
+#
+# 1. The screen's kind, as Anbernic's own boot loader tells it (decoded from
+#    the u-boot.fex muOS ships, commit a55cdbe): the panel powered (PI15)
+#    and taken through a reset pulse (PI14: high 15 ms, low 50 ms, high
+#    100 ms), then pin PE6 read. PE6 LOW is the newer screen (the stock code
+#    runs the v2 start-up commands when lcd_type = !PE6 is 1), HIGH the first.
+#    The device tree to use is set in fdtfile: dtb.img on the boot partition
+#    when there is one (a tree copied there by hand always wins), else the
+#    matching tree in device_trees/. extlinux.conf's FDTDIR / reads it. If
+#    the read goes wrong (gpio input fails) it counts as HIGH.
+# 2. Then the backlight off (PD28), the panel held in reset (PI14) and its
+#    power off (PI15), so the panel is not left lit and powered with no
+#    picture and no start-up commands (the coloured stripes) until Linux's
+#    panel driver powers it up properly, about 3 s into the kernel. The pins
+#    are the device tree's (backlight, the panel's reset-gpios, vdd-lcd);
+#    low is the state Linux keeps them in with the panel off. The backlight
+#    goes off first of all, so the reset pulse shows nothing.
+CONFIG_PREBOOT="gpio clear PD28; if test -e mmc 0:1 dtb.img; then setenv fdtfile dtb.img; echo apotheca: dtb.img chosen by hand; fi; gpio set PI15; gpio set PI14; sleep 0.015; gpio clear PI14; sleep 0.05; gpio set PI14; sleep 0.1; if gpio input PE6; then setenv apotheca_screen v2; else setenv apotheca_screen first; fi; echo apotheca: PE6 says the ${apotheca_screen} screen; if test ${fdtfile} != dtb.img; then if test ${apotheca_screen} = v2; then setenv fdtfile device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb; else setenv fdtfile device_trees/sun50i-h700-anbernic-rg40xx-v.dtb; fi; fi; echo apotheca: device tree ${fdtfile}; gpio clear PI14; gpio clear PI15"

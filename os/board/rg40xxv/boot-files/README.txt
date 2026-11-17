@@ -1,21 +1,15 @@
 APOTHECA SYSTEM - BOOT PARTITION
 
-dtb.img is the device tree in use: the description of the handheld's
-parts (screen, buttons, sound) the system starts with. It is a copy of
-one of the files in device_trees/:
+The RG40XXV has had two screens. THE CARD FINDS WHICH ONE THIS HANDHELD
+HAS BY ITSELF (the way Anbernic's own system does) and starts with the
+matching device tree, the description of the handheld's parts:
 
-  sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb   the newer screen (later
-                                               units; reported from late 2025).
-                                               The card starts with this.
-  sun50i-h700-anbernic-rg40xx-v-v2-stock-panel.dtb
-                                               the newer screen, with the
-                                               pixel clock edge and timings
-                                               Anbernic's own system uses.
-                                               Try it if a dark picture shows
-                                               faint vertical stripes.
-  sun50i-h700-anbernic-rg40xx-v.dtb            the first RG40XXV screen
+  device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb   the newer screen
+  device_trees/sun50i-h700-anbernic-rg40xx-v.dtb            the first screen
 
-dtb-in-use.txt says which one this card was made with.
+A file named dtb.img at the top of this drive overrides that: when there
+is one, it is used whatever the screen. There is none on a new card
+(dtb-in-use.txt says "auto"). To take an override away, delete dtb.img.
 
 A BLACK SCREEN, OR A MOMENT OF COLOURED STRIPES, WHEN IT STARTS IS NORMAL.
 The screen shows stripes when it has power but no start-up commands; the
@@ -24,11 +18,12 @@ seconds later. Then text scrolls, then Apotheca comes up. Give it 30 seconds bef
 did not start, and do not switch it off during the first start (it
 makes the APOTHECA drive then).
 
-If the stripes stay for a minute, or the picture is garbage, the unit
-may have the first screen: copy device_trees/sun50i-h700-anbernic-rg40xx-v.dtb
-to the top of this drive, rename the copy to dtb.img (replace the one
-there), put the card back and power on. This is the same choice ROCKNIX
-makes you take. Any of the three is tried the same way.
+If the screen stays black or striped for a minute, or the picture is
+garbage, the card may have guessed the screen wrong: copy the other tree
+from device_trees/ to the top of this drive and rename the copy to
+dtb.img, put the card back and power on. (The third,
+sun50i-h700-anbernic-rg40xx-v-v2-stock-panel.dtb, is the newer screen with
+the pixel clock edge and timings Anbernic's own system uses.)
 
 FAINT VERTICAL LINES ON THE NEWER SCREEN: four things to try, one at a
 time, each already named dtb.img in its own folder under device_trees/try/.
@@ -40,11 +35,10 @@ dark picture, and note which, if any, takes the lines away:
   3-dither            18-bit colour with dithering (as stock)
   4-all-as-stock      all three, and the stock clock edge and timings
 
-To go back: copy device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb
-over dtb.img (renaming the copy dtb.img).
+To go back: delete dtb.img from the top of this drive.
 
 A screen change sent to you as a file (a new dtb.img) is put in the same
-way: copy it to the top of this drive over dtb.img. The screen's start-up
+way: copy it to the top of this drive as dtb.img. The screen's start-up
 settings can be inside it, so no new card is needed.
 
 Nothing else here needs changing. The songs and the boot logs are on

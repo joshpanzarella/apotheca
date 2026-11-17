@@ -615,6 +615,49 @@ one file:
 | **A screen change, one file** | **Patch 0170**: the panel driver uses the device tree's `apotheca,panel-firmware` (a whole panel file's bytes) when it is there, before `panels/<compatible>.panel`. A loose panel file on APOTHBOOT could not work: a built-in firmware file always wins over one on a file system (`firmware_request_builtin_buf` first, `drivers/base/firmware_loader/main.c`), and the panel probes about 2 s in, before any file system is mounted; making the driver a module loaded after a mount would delay the screen and risk it, untestable here. So the panel file travels in `dtb.img`. `os/tools/panel-dtb.sh` puts one in (fdtput, read back to the byte). The driver's log line now gives the panel data's size and CRC-32 | `qemu-test.py`, a sixth boot on qemu's own device tree with a simulated GPIO chip (`gpio-sim`, `CONFIG_GPIO_SIM=m`: loaded only where a tree asks for `gpio-simulator`), two bit-banged SPI buses and a panel on each: one takes the built-in v2 file (its CRC-32 and 27 MHz mode), the other the stock-timings file `panel-dtb.sh` put in its node (its CRC-32 and 24 MHz mode). `check-image.sh`: the kernel holds the three panel files byte for byte and the property's name |
 | **Kernel and U-Boot rebuilds in minutes** | `build-image.sh --tidy` keeps their build folders (`--tidy-all` does not); it also clears host-spirv-tools' work files (1.7 GB). After every build, when the kernel's built mark is newer than the joypad module's, the module and the image are made again (a module from before a kernel rebuild is refused: the qemu test caught it once) | timed by hand: see below |
 
+## 13. One card for both screens: the tree picked by PE6 (2026-11-17)
+
+The owner has a second RG40XXV: with the v2 tree the backlight comes on and
+the screen stays black, so it most likely has the first screen. Anbernic's
+own boot loader tells the two apart by pin PE6 (section 11); now ours does.
+
+**How** (uboot.fragment's `CONFIG_PREBOOT`, run as U-Boot starts, before it
+reads extlinux.conf):
+
+1. The backlight off (PD28), so nothing below shows.
+2. `fdtfile` is `dtb.img` if the boot partition has one (`test -e mmc 0:1
+   dtb.img`): **a tree copied there by hand always wins**.
+3. The panel powered (PI15) and taken through the stock code's reset pulse
+   (PI14 high 15 ms, low 50 ms, high 100 ms), then `gpio input PE6`: its exit
+   status is the pin's level, so `if gpio input PE6` is "PE6 low", the newer
+   screen. A failed read counts as high.
+4. Without a `dtb.img`, `fdtfile` becomes
+   `device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb` (low) or
+   `device_trees/sun50i-h700-anbernic-rg40xx-v.dtb` (high).
+5. The panel off (PI14, PI15), as before.
+
+`extlinux.conf` says `FDTDIR /`, so U-Boot loads `/$fdtfile` (pxe_utils:
+FDTDIR plus `$fdtfile`); one label, the kernel loaded once. The image is
+made with no `dtb.img` (`--dtb auto`, the default; `dtb-in-use.txt` says
+`auto`); `--dtb NAME` still puts one there. U-Boot says what it did on its
+console (the UART, not the screen): "apotheca: PE6 says the v2 screen",
+"apotheca: device tree ...". The boot log's "screen:" line reads PE6 again
+from Linux (`devmem`, port E's data register) beside `rocknix-dt-id`.
+
+**Tested on the desk**: `os/tools/uboot-pick-test.py` builds mainline U-Boot
+v2026.01 for qemu with the card's own PREBOOT text (the disk `virtio 0:1`,
+the gpio set and clear only echoed, `gpio input PE6` replaced by a file on
+the boot partition standing for "low") and boots the card's own boot
+partition three ways: no `dtb.img` and "low" loads the v2 tree, "high" the
+first, a `dtb.img` wins. `check-image.sh` reads the PREBOOT in the image's
+U-Boot and the extlinux.conf.
+
+**Only the two handhelds can show**: that PE6 reads low on the newer screen
+and high on the first (from the stock code, not seen), that the reset pulse
+is what the pin needs (PE6 may be driven by the panel only once it is out of
+reset), that `gpio input PE6` reads it on the H700 (U-Boot's sunxi gpio
+names), and that the pulse shows nothing with the backlight off.
+
 ## Sources
 
 - Anbernic, RG 40XXV product page (SoC, RAM, screen, battery, WiFi, BT): https://anbernic.com/products/rg-40xxv

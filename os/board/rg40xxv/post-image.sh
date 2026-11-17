@@ -3,26 +3,37 @@
 # makes the empty data partition and writes the SD card image.
 #
 # Environment (from scripts/build-image.sh):
-#   APOTHECA_DTB   which RG40XXV device tree becomes dtb.img:
-#                  "rg40xx-v-v2-panel" (default: the newer screen, the
-#                  owner's unit), "rg40xx-v" (the first screen) or
+#   APOTHECA_DTB   "auto" (default): no dtb.img, so U-Boot picks the tree
+#                  by the screen this handheld has (pin PE6: uboot.fragment);
+#                  or the RG40XXV device tree that becomes dtb.img and is
+#                  used whatever the screen: "rg40xx-v-v2-panel" (the newer
+#                  screen), "rg40xx-v" (the first screen) or
 #                  "rg40xx-v-v2-stock-panel" (the newer screen, Anbernic's
 #                  clock edge and timings)
 set -eu
 
 board="$(cd "$(dirname "$0")" && pwd)"
 images="$BINARIES_DIR"
-dtb="${APOTHECA_DTB:-rg40xx-v-v2-panel}"
+dtb="${APOTHECA_DTB:-auto}"
 
 # The boot partition's files
 rm -rf "$images/boot"
 mkdir -p "$images/boot/device_trees"
 cp "$images/Image" "$images/boot/Image"
 cp "$images"/allwinner/sun50i-h700-anbernic-rg40xx-v*.dtb "$images/boot/device_trees/"
-cp "$images/boot/device_trees/sun50i-h700-anbernic-$dtb.dtb" "$images/boot/dtb.img"
 cp -r "$board/boot-files/extlinux" "$images/boot/"
 cp "$board/boot-files/README.txt" "$images/boot/README.txt"
-echo "sun50i-h700-anbernic-$dtb.dtb" > "$images/boot/dtb-in-use.txt"
+genimage_cfg="$BUILD_DIR/genimage-apotheca.cfg"
+if [ "$dtb" = auto ]; then
+    echo "auto: U-Boot picks the tree by the screen (pin PE6), unless a dtb.img is put here" \
+        > "$images/boot/dtb-in-use.txt"
+    # No dtb.img on the card: genimage is not asked for one.
+    grep -v '"boot/dtb.img",' "$board/genimage.cfg" > "$genimage_cfg"
+else
+    cp "$images/boot/device_trees/sun50i-h700-anbernic-$dtb.dtb" "$images/boot/dtb.img"
+    echo "sun50i-h700-anbernic-$dtb.dtb" > "$images/boot/dtb-in-use.txt"
+    cp "$board/genimage.cfg" "$genimage_cfg"
+fi
 
 # Changes to try for the faint vertical lines on the newer screen (the
 # owner, 2026-11-17), each a whole dtb.img in a folder of its own, so trying
@@ -69,7 +80,7 @@ rm -rf "$tmp"
     --tmppath "$tmp" \
     --inputpath "$images" \
     --outputpath "$images" \
-    --config "$board/genimage.cfg"
+    --config "$genimage_cfg"
 rm -rf "$tmp"
 
 gzip -n -f -k -6 "$images/apotheca-rg40xxv.img"
