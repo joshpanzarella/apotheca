@@ -688,6 +688,13 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (onHead_ && t == column_ && !listing_ && !choosing_) outline(r, x - 1, kGridTop - 1, colW + 2, kHeadH + 2, cursorColor, 2);
         // Muted, or soloed: a mark in the corner of the head, and a silent track's head goes dark.
         if (!sounding && !deleting) fill(r, x + 1, kGridTop + 1, colW - 2, kHeadH - 2, faded(kBg, 150));
+        // LIGHT COLOUR at TRACK: the track's ring colour along the head's foot (drawn after the dark wash: a muted track's is as bright).
+        if (!deleting && session_.trackColoursShown()) {
+            const Rgb hue = ringTrackColour(t);
+            const int my = kGridTop + kHeadH - kHueMarkFoot - kHueMarkH;
+            fill(r, x + kHueMarkInset, my - 1, colW - 2 * kHueMarkInset, 1, kDim);
+            fill(r, x + kHueMarkInset, my, colW - 2 * kHueMarkInset, kHueMarkH, SDL_Color{hue.r, hue.g, hue.b, 255});
+        }
         // Not at its usual level or pan (the mixer): a brass mark in the other corner.
         if (!deleting && (project_.tracks[t].mixDb != 0 || project_.tracks[t].mixPan != 0)) fill(r, x + kMixMarkInset, kGridTop + kMixMarkInset, kMixMarkSize, kMixMarkSize, kBrass);
         // The mark's box is made to its letter (2 pixels clear all round), in the lettering every head was

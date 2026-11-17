@@ -60,6 +60,11 @@ class SongScreen : public Screen {
 public:
     // A head not at its usual level or pan: a brass square this big, this far in from its top left corner.
     static constexpr int kMixMarkSize = 6, kMixMarkInset = 3;
+    // LIGHT COLOUR at TRACK (Session::trackColoursShown): a bar of the track's ring colour along the foot of
+    // its head, kHueMarkH high and ending kHueMarkFoot above the head's lower edge, kHueMarkInset in from each
+    // side, a line of the dim lettering over it (so it has an edge on a light theme). Under the name, clear
+    // of the M / S mark and the mixer's mark, which are at the head's top.
+    static constexpr int kHueMarkH = 2, kHueMarkFoot = 1, kHueMarkInset = 3;
     // B held this long on a track deletes it; the warning bar starts after the wait.
     static constexpr Uint32 kTrackHoldWaitMs = 500, kTrackHoldMs = 2000;
     // A held this long on a head is the mixer, not a tap: its card comes up, and letting go then never

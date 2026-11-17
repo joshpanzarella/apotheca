@@ -1547,7 +1547,19 @@ effect in those two groups and fails one that does not.
   the share played, brass on a bar's first step; a one-bar scene is as it was. **LIGHT COLOUR**
   (`LightColour`, `ringColours`; a row shown only where STICK LIGHT is; `lightcolour N` in
   settings.txt, left out at THEME): premade colours, TRACK (twelve hues, the track up) and RAINBOW (a
-  hue a LED, turning a LED a beat). Not yet seen on the ring.
+  hue a LED, turning a LED a beat). **The owner has seen the colours and likes them** (2026-11-17).
+  **THEME's colour is picked for the ring, theme by theme** (`ringThemeColour`: BROWN's is BRASS, the
+  owner's word; the other five are unseen picks; a new theme must be given one, a `static_assert`
+  counts). A bar's first step is brass, or white where the ring is too near brass (`ringFirstFor`).
+- **The one colour on the screen that is not the theme's: a track's ring colour on its SONG head**
+  (owner, 2026-11-17: "a little color identifier to the tracks"; a deliberate exception to "a colour
+  goes through the ten names"). Only while LIGHT COLOUR is TRACK on a ring that is here and lit
+  (`Session::trackColoursShown`): a bar `kHueMarkH` high along the head's foot in
+  `ringTrackColour(track)`, a dim line over it for an edge on a light theme, drawn AFTER a muted
+  head's dark wash (so it is flat and as bright), clear of the M / S and mixer marks at the top.
+  `themeviews`' `Explain` knows the twelve hues as flat colours; `lights_test` `testTrackColours`
+  reads the heads in BROWN and PAPER at 2 and 12 tracks. Not on the top bar's track name (no room
+  that is not a tight row). Anything else that wants a track's colour asks `ringTrackColour`.
   A row's bar starts after its value's words and ends short of what is said
   at the right, at every text size (`SettingsScreen::barPlace`: BOUNCE's
   WORKING 37% / TAIL 12 S; VOLUME's and STICK's stay at 250, 110 wide).

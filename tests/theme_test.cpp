@@ -34,6 +34,7 @@
 
 #include "apotheca/engine.hpp"
 #include "app.hpp"
+#include "lights.hpp"
 #include "canvas.hpp"
 #include "samples.hpp"
 #include "song_file.hpp"
@@ -462,6 +463,12 @@ struct Explain {
                     }
         };
         for (const SDL_Color& c : once) mark(c);
+        // LIGHT COLOUR at TRACK: the twelve tracks' ring colours, flat, on the SONG screen's heads (the one
+        // colour that is not the theme's: lights.hpp, ringTrackColour). Never under a wash.
+        for (int track = 0; track < 12; ++track) {
+            const Rgb hue = ringTrackColour(track);
+            mark(SDL_Color{hue.r, hue.g, hue.b, 255});
+        }
         // A wash over that is always the background's (a list or a card over a screen, the steps a
         // scene does not reach): faded(kBg, ...).
         static const int kWashes[] = {150, 170, 185, 190, 200, 215};
@@ -494,6 +501,11 @@ struct Explain {
     bool edge(Uint32 pixel, const std::vector<SDL_Color>& onScreen) const {
         const double p[3] = {double((pixel >> 16) & 255), double((pixel >> 8) & 255), double(pixel & 255)};
         if (between(p, onScreen, kSlack)) return true;
+        // A track's ring colour as it is (its bar on a SONG head is two pixels high: never a flat part).
+        for (int track = 0; track < 12; ++track) {
+            const Rgb hue = ringTrackColour(track);
+            if (std::fabs(p[0] - hue.r) <= kSlack && std::fabs(p[1] - hue.g) <= kSlack && std::fabs(p[2] - hue.b) <= kSlack) return true;
+        }
         static const int kAlphas[] = {60, 76, 90, 110, 120, 150, 170, 185, 190, 200, 215};
         for (const SDL_Color& over : ten)
             for (int a : kAlphas) {
@@ -587,7 +599,7 @@ void testTheColourCheck() {
         // A line in a colour no theme has: found too. (A thin line in a colour that lies between two of
         // the theme's is not: the edge of a letter looks the same. Flat parts are where the check is strict.)
         c.clear();
-        SDL_SetRenderDrawColor(c.r, 255, 0, 255, 255);
+        SDL_SetRenderDrawColor(c.r, 190, 30, 255, 255); // (no theme's, and no track's ring colour: 255,0,255 is track 11's)
         SDL_RenderDrawLine(c.r, 10, 200, 300, 260);
         SDL_RenderPresent(c.r);
         bad = c.all();

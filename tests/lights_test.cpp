@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -22,6 +23,8 @@
 
 #include "apotheca/engine.hpp"
 #include "app.hpp"
+#include "canvas.hpp"
+#include "song_screen.hpp"
 #include "lights.hpp"
 #include "settings_screen.hpp"
 #include "temp_folder.hpp"
@@ -624,6 +627,91 @@ void testScenesAndColours() {
     }
 }
 
+// ---- LIGHT COLOUR at TRACK: each head on SONG wears its track's colour (owner's ask B) ---------------
+void testTrackColours() {
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    const auto hueOf = [](int track) {
+        const Rgb c = ringTrackColour(track);
+        return SDL_Color{c.r, c.g, c.b, 255};
+    };
+    // The twelve are all different, track 1 red, and the ring's TRACK colour is the same one.
+    for (int a = 0; a < kNumTracks; ++a)
+        for (int b = 0; b < a; ++b) CHECK(ringTrackColour(a) != ringTrackColour(b));
+    Rgb ring[kRingLeds];
+    ringColours(kLightTrack, rgb(1, 2, 3), 7, -1, ring);
+    CHECK(ringTrackColour(0) == rgb(255, 0, 0) && ring[5] == ringTrackColour(7));
+    for (int tracks : {2, kNumTracks}) {
+        Sys sys;
+        Rig rig;
+        Session& session = rig.session();
+        session.useLights(sys.both());
+        while (rig.app.project().trackCount() < tracks) session.addTrack(TrackKind::Phazed);
+        session.view = View::Song;
+        session.setMuted(tracks - 2, true);
+        session.setSolo(tracks - 1, true);
+        session.setMix(0, -6, 10); // (the mixer's mark on track 1)
+        typedef SongScreen G;
+        // How many pixels of each head's foot are the track's colour: the whole bar, or none.
+        const auto marked = [&](int track) {
+            rig.frames(1);
+            ui::useTheme(session.theme());
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            const SDL_Rect head = rig.app.song().headRect(track);
+            int n = 0;
+            for (int y = head.y; y < head.y + head.h; ++y)
+                for (int x = head.x; x < head.x + head.w; ++x) n += canvas.is(x, y, hueOf(track)) ? 1 : 0;
+            // Where it is: the foot of the head, and nowhere else in it.
+            const int top = head.y + head.h - G::kHueMarkFoot - G::kHueMarkH;
+            int inBar = 0;
+            for (int y = top; y < top + G::kHueMarkH; ++y) inBar += canvas.run(head.x + G::kHueMarkInset, y, hueOf(track));
+            CHECK(n == inBar);
+            return n;
+        };
+        for (int theme : {static_cast<int>(kThemeBrown), static_cast<int>(kThemePaper)}) {
+            session.setTheme(theme);
+            session.setStickLight(kRingOn);
+            session.setLightColour(kLightTrack);
+            for (int t = 0; t < tracks; ++t) {
+                const SDL_Rect head = rig.app.song().headRect(t);
+                CHECK(marked(t) == (head.w - 2 * G::kHueMarkInset) * G::kHueMarkH); // muted and soloed heads too, as bright
+                // A line of the dim lettering over it (its edge on a light theme).
+                CHECK(canvas.run(head.x + G::kHueMarkInset, head.y + head.h - G::kHueMarkFoot - G::kHueMarkH - 1, ui::kDim) >= head.w - 2 * G::kHueMarkInset);
+                // Clear of the marks at the head's top: the M / S box and the mixer's square end above it.
+                const int markFoot = head.y + 2 + static_cast<int>(std::ceil(canvas.fonts->fixed().small.capHeight())) + 4;
+                CHECK(markFoot < head.y + head.h - G::kHueMarkFoot - G::kHueMarkH - 1 && head.y + G::kMixMarkInset + G::kMixMarkSize < markFoot + 20);
+            }
+            // The M and S marks and the mixer's are still drawn (brass on the first head's corner).
+            const SDL_Rect first = rig.app.song().headRect(0);
+            CHECK(canvas.is(first.x + G::kMixMarkInset + 1, first.y + G::kMixMarkInset + 1, ui::kBrass));
+            // Only at TRACK, and only with the ring lit.
+            session.setLightColour(kLightRed);
+            CHECK(marked(0) == 0 && marked(tracks - 1) == 0);
+            session.setLightColour(kLightRainbow);
+            CHECK(marked(0) == 0);
+            session.setLightColour(kLightTrack);
+            session.setStickLight(kRingOff);
+            CHECK(marked(0) == 0 && !session.trackColoursShown());
+            session.setStickLight(kRingSteps);
+            CHECK(marked(1) > 0 && session.trackColoursShown());
+        }
+        // No ring on this handheld (the stock firmware): never, whatever settings.txt says.
+        Rig stock;
+        stock.session().view = View::Song;
+        stock.session().setLightColour(kLightTrack);
+        stock.frames(1);
+        canvas.clear();
+        stock.app.draw(canvas.r, *canvas.fonts);
+        const SDL_Rect head = stock.app.song().headRect(0);
+        int n = 0;
+        for (int y = head.y; y < head.y + head.h; ++y)
+            for (int x = head.x; x < head.x + head.w; ++x) n += canvas.is(x, y, hueOf(0)) ? 1 : 0;
+        CHECK(n == 0 && !stock.session().trackColoursShown());
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -635,7 +723,7 @@ int main(int argc, char** argv) {
     const Test tests[] = {
         {"testTheRules", testTheRules}, {"testFromTheEnvironment", testFromTheEnvironment}, {"testTheFiles", testTheFiles},
         {"testTheSetPage", testTheSetPage}, {"testKept", testKept}, {"testTheVolumeKeys", testTheVolumeKeys},
-        {"testTheRingFollowsTheSong", testTheRingFollowsTheSong}, {"testScenesAndColours", testScenesAndColours},
+        {"testTheRingFollowsTheSong", testTheRingFollowsTheSong}, {"testScenesAndColours", testScenesAndColours}, {"testTrackColours", testTrackColours},
     };
     for (const Test& test : tests) {
         bool wanted = argc < 2;

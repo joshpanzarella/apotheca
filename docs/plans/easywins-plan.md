@@ -273,3 +273,27 @@ A new theme must be given a ring colour (a `static_assert` counts them).
 Tests: `lights_test`: BROWN's is BRASS, the six all differ, out of range is BROWN's, which colours
 get white; the ring through the Session on PAPER (amber, white on the bar). Mutants: the theme
 passed, the first's rule.
+
+### B. A track's colour on its head
+
+With LIGHT COLOUR at TRACK the ring shows the colour of the track up, but nothing on the screen said
+which colour is which track's. Now, **while LIGHT COLOUR is TRACK and the ring is here and not OFF,
+each track's head on SONG has a thin bar of its ring colour along its foot** (2 pixels, 3 in from
+each side, a dim line over it). It is the one colour on the screen that does not come from the
+theme: a deliberate exception, written in CLAUDE.md, and `themeviews` is taught the twelve hues.
+
+- Under the name, so it is clear of the M / S mark and the mixer's mark (both at the head's top),
+  in the narrowest heads too (twelve tracks).
+- Drawn after a muted head's dark wash: every track's bar is as bright.
+- **Not on the top bar's track name**: that row is tight and full (six tabs); the owner may ask.
+
+| Call | Taken |
+| --- | --- |
+| The mark | **A bar along the head's foot** (a square in a corner would meet the mixer's or the M / S mark) |
+| On light themes | **A dim line over it** gives yellow an edge on PAPER |
+| Elsewhere | **SONG only** |
+
+Tests: `lights_test testTrackColours`: the twelve differ and are the ring's; at 2 and 12 tracks, in
+BROWN and PAPER: the whole bar in each head's foot and nowhere else in the head, the dim line, the
+mixer's mark still there; none at RED, RAINBOW, the ring OFF or on a handheld with no ring. Mutants:
+the OFF check, the ring-here check, the track's own hue. Stills `song-track-colours`, `-12`.

@@ -1029,6 +1029,19 @@ int main(int argc, char** argv) {
         }
         app.session().setMuted(1, true);
         app.session().setSolo(2, true);
+    } else if (std::strncmp(view, "song-track-colours", 18) == 0) {
+        // LIGHT COLOUR at TRACK: each head wears its track's ring colour along its foot; "-12" the narrow
+        // heads, tracks 11 muted and 12 soloed and track 1's mixer mark on. The files pretended.
+        app.session().useLights(Lights::pretend());
+        app.session().setLightColour(kLightTrack);
+        app.session().view = View::Song;
+        if (std::strstr(view, "-12")) {
+            const TrackKind kinds[3] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Drums};
+            for (int i = 0; app.project().trackCount() < kNumTracks; ++i) app.session().addTrack(kinds[i % 3]);
+            app.session().setMuted(10, true);
+            app.session().setSolo(11, true);
+            app.session().setMix(0, -6, 10);
+        }
     } else if (std::strcmp(view, "song-head") == 0) {
         // The cursor on track 2's head: its hints (A name, HOLD A mix, R1 instrument, HOLD B delete, Y mute, X solo).
         app.session().view = View::Song;

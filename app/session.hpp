@@ -422,6 +422,8 @@ public:
     void setBrightness(int percent);
     int stickLight() const { return stickLight_; }
     int lightColour() const { return lightColour_; } // LIGHT COLOUR (lights.hpp: LightColour)
+    // LIGHT COLOUR is TRACK on a ring that is here and lit: the SONG screen marks each head with its track's colour.
+    bool trackColoursShown() const { return ringHere() && stickLight_ != kRingOff && lightColour_ == kLightTrack; }
     void setLightColour(int which);
     void setStickLight(int mode);
     // What the ring shows now (ringPicture with the song's step and the theme's colours).

@@ -119,6 +119,10 @@ inline Rgb hueRgb(int hue) {
     }
     return c;
 }
+// TRACK: the colour of a track (0..11), twelve hues round the wheel, track 1 red. The ring shows the
+// track up in it, and the SONG screen marks each head with its own (SongScreen: the one colour on
+// the screen that is not the theme's, so a head can be told by the ring).
+inline Rgb ringTrackColour(int track) { return hueRgb((track < 0 ? 0 : track) * kHueRound / 12); }
 // The premade colours (TEAL to WHITE); the others are worked out by ringColours.
 inline Rgb lightColourOf(int which) {
     static const std::uint8_t kSet[kLightColours][3] = {{0, 0, 0},       {0, 255, 180},   {180, 0, 255}, {255, 170, 30},
@@ -156,7 +160,7 @@ inline Rgb ringFirstFor(Rgb colour) {
 inline void ringColours(int which, Rgb theme, int track, int beats, Rgb out[kRingLeds]) {
     for (int i = 0; i < kRingLeds; ++i) {
         if (which == kLightRainbow) out[i] = hueRgb((i + (beats > 0 ? beats : 0)) * kHueRound / kRingLeds);
-        else if (which == kLightTrack) out[i] = hueRgb((track < 0 ? 0 : track) * kHueRound / 12);
+        else if (which == kLightTrack) out[i] = ringTrackColour(track);
         else if (which <= kLightTheme || which >= kLightColours) out[i] = theme;
         else out[i] = lightColourOf(which);
     }
