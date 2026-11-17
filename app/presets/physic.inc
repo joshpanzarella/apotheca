@@ -484,4 +484,77 @@ set 4 72  7 100  12 0
 fx 1 plate 0.1 0.6 0.5 0.3
 mod 1 2 32 1 0 0 0 0                    # a STEPPER on LEVEL, +100%, every half step: a gate (-1 is silence)
 modsteps 1 6 0 0 0 -1 0 0 -1 -1 0 0 0 0 0 0 0 0 0 0
+# ---- More presets (2026-11-17, presets-plan.md, "More presets") --------------------------------------
+
+# BASS: plucked, struck and buzzing, an octave or two down.
+
+new BASS / Round Bass
+base Plucked Bass
+set 2 25  3 30  4 50  12 -2
+fx 1 comp 0.45 0.4167 0.4 1             # THRESHOLD, RATIO, SPEED, MIX: held level
+new BASS / Upright
+base Plucked Bass Box
+set 2 40  4 45  20 1  21 70  12 2       # the guitar's body, bigger
+fx 1 eq 0.6 0.45 0.4 0.4                # LOW, MID, MID FREQ, HIGH
+new BASS / Log Bass
+base Log Drum
+set 4 45  12 2
+fx 1 saturate 0.35 0.375 0.5 0.5        # DRIVE, TUBE, TONE, MIX
+new BASS / Marimba Bass
+base Marimba
+set 9 -1  4 50  12 2
+mod 1 1 0 0.7 8 1 0 0                   # TONE, +40%, a bar, TRIANGLE
+new BASS / Deep Tom
+base Tom
+set 4 55  2 40  12 2
+fx 1 filter 0.5 0.35 0.1 1              # CUTOFF, RESONANCE, LOW 12, MIX
+new BASS / Buzz Bass
+base Plucked Bass
+set 22 40  4 55  12 0                   # BUZZ: a fret's rattle
+send 1 0.2
+new BASS / Steel Bass
+base Steel
+set 9 -1  2 60  4 45  12 0
+fx 1 phaser 0.2 0.5 0.4 0.4             # RATE, DEPTH, FEEDBACK, MIX
+new BASS / Muted Bass
+base Nylon
+set 9 -1  3 20  4 35  12 0
+fx 1 comp 0.5 0.5833 0.3 1
+mod 1 1 1 0.7 5 5 0 0                   # POSITION, +40%, a quarter, RANDOM: every pluck in another place
+
+# KEYS: struck strings, tines and bars, played as keys.
+
+new KEYS / Tine Piano
+base Kalimba
+set 2 50  4 65  20 2  21 60  12 0
+fx 1 tremolo 0.45 0.3 0.125 0.7         # RATE 1/8, DEPTH, SINE, SPREAD
+new KEYS / Hammer Keys
+base Dulcimer
+set 1 1  2 55  4 62  20 2  21 55  12 0  # struck, not plucked
+fx 1 plate 0.15 0.5 0.5 0.2             # PRE, DECAY, TONE, MIX
+new KEYS / Celeste Keys
+base Celesta
+set 4 70  12 0
+fx 1 chorus 0.3 0.4 0.125 0.35          # RATE, DEPTH, TYPE, MIX
+new KEYS / Plectrum Keys
+base Steel
+set 2 85  3 12  4 52  20 2  21 60  12 -2
+fx 1 eq 0.45 0.55 0.65 0.6
+new KEYS / Vibe Keys
+base Vibes Still
+set 19 30  12 0                         # MOTOR: the fans turning
+fx 1 chorus 0.25 0.35 0.125 0.3
+new KEYS / Glass Keys
+base Crystal
+set 4 70  12 -1
+fx 1 hall 0.55 0.5 0.55 0.25            # SIZE, DECAY, TONE, MIX
+new KEYS / Bell Keys
+base Glockenspiel
+set 9 -1  4 60  2 70  12 0
+mod 1 1 0 0.65 9 0 0 0                  # TONE, +30%, 2 BARS, SINE
+new KEYS / Felt Piano
+base Dulcimer
+set 1 1  2 15  4 66  20 2  21 60  12 6  # a soft felt hammer
+fx 1 wear 0.25 0.3 0.1 0.4              # WOW, DIRT, DROPS, TONE: an old tape of it
+fx 2 plate 0.2 0.55 0.45 0.25
 )presets"
