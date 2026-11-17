@@ -18,6 +18,8 @@ kernel's input_event records), with its "off" a command that writes a file.
                voltage in millivolts (a test supply's): not read; the config's
                low-battery 0: never, 10: off at 8%
   sleep        power-key sleep: a short press writes "mem" to power/state
+  no folder    with no /dev/input at the start, it and its first device are
+               found when they appear
   stop         TERM: it says so and ends
 
 What it cannot show: EVIOCGRAB (a FIFO cannot be held; the qemu test holds a
@@ -69,6 +71,7 @@ class Rig:
         os.makedirs(os.path.join(d, "capabilities"))
         open(os.path.join(d, "name"), "w").write(name + "\n")
         open(os.path.join(d, "capabilities", "key"), "w").write(bitmap(keys) + "\n")
+        os.makedirs(self.dev, exist_ok=True)
         path = os.path.join(self.dev, "event%d" % n)
         os.mkfifo(path)
         # Read and write, so it never blocks and never reads as closed.
@@ -235,6 +238,20 @@ def main():
         state = open(os.path.join(r.sys, "power", "state")).read().strip()
         check(state == "mem" and "awake after" in r.logged(), "power-key sleep: a short press suspends (%r)" % state)
         check(r.backlight() == "0", "and the backlight is on again after")
+        check(r.stop() == 0, "stops")
+
+        # No /dev/input at all when it starts (qemu has no input device until a
+        # stand-in is made): it is found when it appears, with its first device.
+        r = Rig(program, os.path.join(work, "b"))
+        os.rmdir(r.dev)
+        r.supply("battery", type="Battery", capacity=60, status="Discharging")
+        r.start(poll=60)
+        r.device(0, "axp20x-pek", [KEY_POWER])
+        time.sleep(1)
+        check("event0 (axp20x-pek): the power key" in r.logged(),
+              "with no input folder at the start: the folder and its first device are found at once")
+        r.press(0.3)
+        check(r.backlight() == "4", "and its key works")
         check(r.stop() == 0, "stops")
     finally:
         if r and r.p and r.p.poll() is None:

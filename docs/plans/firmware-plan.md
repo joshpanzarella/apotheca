@@ -151,7 +151,7 @@ The build runs in Docker on Linux, as `build-handheld.sh` does today.
 | **1** (built on the desk, 2026-11-17: section 8) | **A minimal image that boots to a console.** Buildroot, mainline U-Boot, the kernel with ROCKNIX's H700 patches, BusyBox. A shell on the screen if the panel comes up, and on USB serial (the USB-C port acting as a serial device) or the UART pins | The image builds; the same root file system boots in qemu's generic arm64 machine | Flash, power on, report what the screen shows; if nothing, a photo, or the UART (section 6) | Medium: first contact |
 | **2** (built on the desk, 2026-11-17: section 9) | **Apotheca as the only program.** Display (KMSDRM), buttons and stick, sound through ALSA, a newer SDL2 built by Buildroot, Apotheca built by Buildroot's toolchain (no more Ubuntu 20.04 sysroot). A tiny init (BusyBox init or our own script; no systemd) that starts Apotheca and starts it again if it stops. Read-only system partition plus a data partition | Init and restart logic in qemu; the program starts with the software renderer under qemu's virtual screen | Play a song, press every button, plug headphones, run SPEED TEST | Medium: sound and buttons bring-up |
 | **3** | **GPU drawing.** Mesa with panfrost, SDL2's OpenGL ES 2 renderer; check every screen draws the same (our stills are the reference) | The stills drawn with Mesa's software GL (llvmpipe) match today's | Look at every tab; run SPEED TEST with the new present row | Low to medium: SDL's GL renderer differs from software in small ways (lines, blending) |
-| **4** | **Power.** Battery reading, charging screen with the device off, clean shutdown at low battery, auto power-off when idle, suspend and resume on the power key | The shutdown logic with a made-up battery file | Leave it asleep overnight; let it run flat on purpose with a song open (songs must survive); charge it off | Medium: suspend on the H700 is still young in mainline |
+| **4** (built on the desk, 2026-11-17: section 10) | **Power.** Battery reading, charging screen with the device off, clean shutdown at low battery, auto power-off when idle, suspend and resume on the power key | The shutdown logic with a made-up battery file | Leave it asleep overnight; let it run flat on purpose with a song open (songs must survive); charge it off | Medium: suspend on the H700 is still young in mainline |
 | **5** | **WiFi and updates.** `rtw88` with Realtek's firmware, `wpa_supplicant`, network choice on Apotheca's WiFi page; the program update as today; **whole-system update into slot B** with U-Boot's boot counter falling back to slot A; the hotspot tried | A/B and fallback under qemu (a bad image must fall back by itself) | Join the home network; send an update; send a deliberately broken one and see it fall back | Medium |
 | **6** | **Polish.** A boot splash (a still from Apotheca), boot time cut (no U-Boot wait, a trimmed kernel, Apotheca's first frame early), PREEMPT_RT tried against the plain kernel, core pinning and IRQ affinity, USB MIDI and USB audio in | Boot-time budget from the kernel's timestamps | Time the boot; play a long session with WiFi on; plug in a keyboard | Low |
 
@@ -390,6 +390,76 @@ SONG screen.
 - **Batch 4**: a real power-off and low-battery shutdown; what "quit" means
   on a dedicated device (today `apotheca-keep` starts it again at once).
 - The stick's ADC channel, if it is not X and Y.
+
+## 10. As built: batch 4 (2026-11-17)
+
+**Every way off now saves the song first, and quitting turns the handheld
+off. Built and tested on the desk only; nobody has started it on a
+handheld.** Suspend is in, off unless asked for, and **untried**. No
+charging screen (left over, below).
+
+### What was decided
+
+| Thing | Decided | Why |
+| --- | --- | --- |
+| **What QUIT means** | **SEL + START saves the song and turns the handheld off.** The help card's START line says "turn off", the update notice "SEL + START turns off; then turn it on" | On a device that runs only Apotheca there is nothing to quit to. An update accepted over WiFi is then put in at the next power on, as before |
+| **How the app tells the system** | **A file, not an exit code.** The system sets `APOTHECA_OFF_MARK` (`/run/apotheca/apotheca.off`); the app writes it AFTER `saveNow`, holding why (`quit`, `idle`). `apotheca-keep` deletes it before every start; finding it after a stop it runs `poweroff` and starts nothing. No mark (a crash, a kill, a TERM) is a restart, as before | An exit code cannot tell a quit from a TERM: SDL turns TERM into the same quit, and both end with 0. The port's launcher sets no variable, so **on stock firmware nothing changes** |
+| **The power key, held 2 s** | **Off**: the backlight off at once (the sign it was heard), then `poweroff`, the song saved on the way | The safe one. It acts while the key is still down, well before the AXP717 cuts the power by itself (about 10 s on stock: **a guess** for this PMIC's setting) |
+| **The power key, a tap** | **The screen off**: the backlight off (`bl_power` 4) and the joypad held (`EVIOCGRAB`), so nothing pressed in a pocket reaches Apotheca. The song plays on; the volume keys still work. Another tap: back | A real sleep, safe and testable. Suspend is young on the H700 in mainline (ROCKNIX's own page says "fake suspend"), so it is **opt-in**: `power-key sleep` in `power.txt` makes a tap write `mem` to `/sys/power/state` (s2idle on the H700). **Untried** |
+| **Low battery** | **5%, or under 3.25 V, on the battery, on two reads 20 s apart: off** (the song saved). On a charger (a supply `online`, or the battery `Charging`, `Full` or `Not charging`) never. No warning on screen | Two reads, so one dip of the gauge does not do it. 3.25 V is a backstop under the gauge (**a guess**, not measured). The AXP717's own cut-off, later, saves nothing |
+| **Idle** | **15 minutes with nothing to show: off** (the song saved). "Nothing to show" is the redraw's own idea (`redraw.hpp`): no button, the song stopped, nothing recording, bouncing, fitting or on WiFi, no MIDI | The app already knows, to the pass, whether anything is happening. A watcher outside would have turned off a song playing with nobody touching it |
+| **Settings** | A text file, `apotheca/power.txt` on the card: `idle-off MINUTES`, `low-battery PERCENT`, `power-key screen|sleep` (0 for never). Read at each start (idle) and each battery read | Cheap. A SET page row would be an app change; left over |
+| **Charging screen with the device off** | **Not built.** Plugged in while off, the AXP717 charges with the screen dark, as batch 1 set up (ROCKNIX's U-Boot patch: a start by the charger shuts straight back down) | Showing a picture means U-Boot starting Linux in a "charging" mode instead of shutting down, and a small program that draws and turns off at unplug or full. Not cheap |
+
+### What was built
+
+| Part | What |
+| --- | --- |
+| **App** (`app/power_off.hpp`, `main.cpp`, `app.hpp/.cpp`) | `PowerOff` reads the two variables (`APOTHECA_OFF_MARK`, `APOTHECA_IDLE_OFF_MINUTES`: whole minutes, 1 to 1440, else never; no mark, never). SEL + START, or the idle rule, ends the loop; after `saveNow` the mark is written. `App::setQuitTurnsOff` gives the help card and the update notice their words (no longer than the old ones, so the load line keeps its room). Not for `--smoke`, `--shot` or `--demo`. Test: `app_test` `testQuittingTurnsTheHandheldOff` (the rule, the clock going round, the mark, the words, the card as drawn changing on one line only) |
+| `apotheca-power` (`os/package/apotheca-tools/src`, C, no SDL; `/usr/sbin`, inittab respawn) | Finds the power key and the joypads from `/sys/class/input/*/device/capabilities/key` (KEY_POWER; a gamepad button or the D-pad's) and opens them, and any that appear later (inotify on `/dev/input`). Times the key itself on its own clock; reads the battery every 20 s; logs to `logs/power.log` (opened for each line, so it never keeps the card busy; the important lines to the console too). Turns the backlight on when it starts, whatever an earlier run left |
+| `S95apotheca` | **Every way off goes through `poweroff`**, so through rcK, and S95 is first there: holds restarts, TERMs `apotheca-keep`, which hands the TERM on through `apotheca-start` to Apotheca, which saves and ends (SDL makes TERM a quit). Waits up to 15 s. **Before this, a shell `poweroff` made the card read-only with Apotheca still running**: BusyBox init runs rcK before it TERMs everything, so the last save failed |
+| `apotheca-keep` | the off mark (above), its pid file, the stopped program's code in the log |
+| `apotheca-start` | runs Apotheca in the background and hands TERM on (it used to wait in the foreground, and TERM ended only the script) |
+| `run` | sets `APOTHECA_OFF_MARK` and the idle minutes from `power.txt` (CRLF read too); no longer hands the power key to SDL (it was a keyboard to Apotheca, which ignored it) |
+| Boot log | the backlight, `/sys/power/state` and `mem_sleep`, the end of `power.log` |
+| Kernel | `CONFIG_TEST_POWER=m`: a made-up battery for the desk test, loaded by hand only, never on the H700 |
+| `fakepad --serve FIFO` | the joypad and a stand-in `axp20x-pek` power key, driven by lines (`down`, `up`, `tap`, `wait`) |
+
+**Found while reading the kernel**: mainline names the AXP717's battery
+`axp20x-battery`, ROCKNIX's patch 0124 renames it `battery`; its status is
+`Charging`, `Discharging` or `Not charging` (on the charger, not charging:
+full). Apotheca's `battery.hpp` reads the first supply with a `capacity`,
+so the help card's battery works under mainline; it counts `Not charging`
+as not charging, which only matters for its red colour under 15%, where a
+full battery never is. The power key is mainline's `axp20x-pek` (KEY_POWER on
+press and release); ROCKNIX's 0157 drops the press that wakes it from suspend.
+
+IMAGE_LINE_PLACEHOLDER
+
+### Tested on the desk
+
+TESTS_PLACEHOLDER
+
+### Only the handheld can tell
+
+Whether the power key reaches `axp20x-pek` on this unit (and nothing else
+takes it), **whether `bl_power` turns the panel's backlight off** and back,
+whether `poweroff` really cuts the power (the AXP717's power-off, never run
+on a handheld, batch 1 and 2 included), how long the save at shutdown takes
+on the real card, the AXP717's own long-press cut-off time (if it is under
+about 4 s it could cut the power during the save), whether the gauge's 5% is
+near empty and 3.25 V a fair backstop (a run down to flat with `power.log`
+says), charging while off, and **suspend** (`power-key sleep`): whether it
+sleeps, wakes on the key, and comes back with sound and screen.
+
+### Left over
+
+- **A charging screen** with the device off (above).
+- **A warning on screen** before the low-battery turn-off (the app does not
+  know the system will turn it off; it shows the battery only on the help
+  card, red under 15%).
+- `idle-off` and `low-battery` as rows of the SET page instead of a file.
+- Suspend tried on the handheld; if it works, it may become what a tap does.
 
 ## Sources
 

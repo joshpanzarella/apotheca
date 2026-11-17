@@ -22,9 +22,25 @@ arm64 machine ("virt") and checks what can be checked without the handheld:
   supervisor   apotheca-keep backs off a program that keeps failing
                (1, 2, 4 s), starts a long-running one again at once, waits
                while held, and stops it with itself when told to
-  poweroff     the system goes down cleanly and qemu ends
+  power key    (batch 4) apotheca-power runs and finds a stand-in power
+               key and joypad (fakepad --serve) that appear later; a short
+               press holds the joypad (EVIOCGRAB: evtest is told it is
+               grabbed and sees no press), another lets it go
+  quit is off  apotheca-keep runs its off command, and does not start the
+               program again, when the program leaves the off mark; a stale
+               mark counts for nothing. Apotheca, quit with SEL + START on
+               the stand-in joypad, writes the mark after saving, and the
+               machine goes down
   second boot  DATA is NOT made again: a file written on the first boot is
-               still there, and the boot log count goes on
+               still there, and the boot log count goes on; the power key
+               held 2.6 s turns the machine off, Apotheca stopped first
+               (S95apotheca: TERM, handed on, saved)
+  third boot   a made-up battery (the kernel's test_power) at 4%: on a
+               charger nothing happens; unplugged, apotheca-power turns the
+               machine off after two reads, Apotheca stopped first
+  fourth boot  idle-off 1 in power.txt: Apotheca, left alone a minute,
+               saves, leaves the mark and the machine goes down; then a
+               shell poweroff, which also stops Apotheca first
 
 qemu cannot run the H700's U-Boot, screen, GPU, sound, buttons, PMIC, USB or
 WiFi: this boots the kernel straight from the image (no U-Boot) on qemu's
@@ -133,7 +149,7 @@ class Machine:
         return out[: out.rfind(tag + "-END")].replace("\r", "").strip(), code
 
     def wait_shell(self, timeout=120):
-        self.read_until(rb"Apotheca system, batch 2", timeout)
+        self.read_until(rb"Apotheca system, batch 4", timeout)
         self.read_until(rb"# ", 30)
         return time.time() - self.began
 
@@ -149,6 +165,27 @@ class Machine:
             self.p.wait()
             return False
         return True
+
+
+def start_stand_in(m):
+    """fakepad --serve: a stand-in joypad and power key, driven through /tmp/pad.
+    Returns the joypad's /dev/input node, once apotheca-power has found both."""
+    m.run("rm -f /tmp/pad; mkfifo /tmp/pad; /usr/libexec/apotheca/fakepad --serve /tmp/pad > /tmp/fp.txt 2>&1 & "
+          "echo $! > /tmp/fp.pid")
+    m.run("sleep 3")  # apotheca-power finds them at once (inotify); a margin for qemu
+    out, _ = m.run("for e in /sys/class/input/event*; do grep -q 'H700 Gamepad' $e/device/name && "
+                   "echo /dev/input/${e##*/}; done | tail -n 1")
+    return out
+
+
+def wait_running(m, seconds=180):
+    t0 = time.time()
+    while time.time() - t0 < seconds:
+        out, _ = m.run("pidof apotheca || echo none")
+        if out != "none":
+            return True
+        time.sleep(5)
+    return False
 
 
 def main():
@@ -193,13 +230,15 @@ def main():
         out, _ = m.run("grep -c '^\\[' /data/apotheca/logs/boot-0001.txt")
         check(int(out or 0) > 20, "the boot log holds the kernel's messages (%s lines)" % out)
         out, _ = m.run("awk '{print $4}' /proc/$$/stat")
-        check(out == "1", "the serial shell is init's own child (started by inittab, through getty)")
+        # (the last line: a kernel message can land on the console in between)
+        check(out.splitlines()[-1].strip() == "1" if out else False,
+              "the serial shell is init's own child (started by inittab, through getty)")
         out, _ = m.run("ps | grep -c '[s]leep 2147483647'")
         check(out == "2", "two absent consoles (ttyS0 and ttyGS0) asleep, not starting again (%s)" % out)
         out, _ = m.run("tty; awk '{print $7}' /proc/self/stat")
         check("/dev/ttyAMA0" in out and out.split()[-1] != "0", "the shell has the serial port as its terminal")
         out, _ = m.run("ls /etc/init.d | tr '\\n' ' '")
-        check(out == "S02modules S05data S10usbgadget S20sound S90bootlog rcK rcS",
+        check(out == "S02modules S05data S10usbgadget S20sound S90bootlog S95apotheca rcK rcS",
               "only our start-up scripts are there (%s)" % out)
         out, _ = m.run("ps -o comm | sort -u | tr '\\n' ' '")
         check(not any(d in out.split() for d in ("crond", "syslogd", "klogd", "udhcpc")),
@@ -247,6 +286,24 @@ def main():
         check("told to stop" in out and out.endswith("\n0"),
               "told to stop, it stops its program and itself")
         m.run("kill $(cat /tmp/k/fails.pid) $(cat /tmp/k/runs.pid)")
+        # Batch 4: a program that leaves the off mark is not started again;
+        # the off command is run instead. A mark left from before counts for nothing.
+        m.run("KEEP_QUICK=3 KEEP_LOG=/tmp/k KEEP_RUN=/tmp/k KEEP_OFF='touch /tmp/k/off-ran' "
+              "apotheca-keep offs sh -c 'sleep 1; echo quit > /tmp/k/offs.off' >/dev/null 2>&1 & echo $! > /tmp/k/offs.pid")
+        m.run("echo idle > /tmp/k/stale.off; KEEP_QUICK=1 KEEP_MOST_WAIT=1 KEEP_LOG=/tmp/k KEEP_RUN=/tmp/k "
+              "KEEP_OFF='touch /tmp/k/stale-ran' apotheca-keep stale sh -c 'sleep 2' >/dev/null 2>&1 & "
+              "echo $! > /tmp/k/stale.pid")
+        m.run("sleep 7", timeout=30)
+        out, _ = m.run("cat /tmp/k/offs.log; ls /tmp/k")
+        check("off-ran" in out and "asking for the handheld off (quit)" in out and out.count("started") == 1,
+              "a program that leaves the off mark: the off command runs, it is not started again")
+        check("stale-ran" not in out and "stale.off" not in out, "a mark left from before is deleted and counts for nothing")
+        out, _ = m.run("grep -c started /tmp/k/stale.log")
+        check(int(out or 0) >= 2, "that program is started again as usual (%s starts)" % out)
+        m.run("kill $(cat /tmp/k/offs.pid) $(cat /tmp/k/stale.pid)")
+        out, _ = m.run("pidof apotheca-power > /dev/null && echo running; head -2 /data/apotheca/logs/power.log")
+        check(out.startswith("running") and "started: a short press turns the screen off" in out,
+              "apotheca-power is running (inittab) and says what the key does")
 
         # Batch 2, desk side: Apotheca as built by Buildroot's toolchain,
         # drawing a still with SDL's offscreen driver (no screen, no GPU).
@@ -385,11 +442,51 @@ def main():
         down = [int(v) for a, v in axes if a == "1" and int(v) > 16000]
         check(right and down, "the stick right is axis 0 up, down is axis 1 up, as the file says")
 
-        # Something to find again after a power cycle
-        m.run("echo kept > /data/kept.txt")
-        m.send("poweroff")
-        check(m.end(60), "poweroff ends the machine")
+        # Batch 4: the power key and a joypad, made after apotheca-power
+        # started (it finds them), and held while the screen is off.
+        pad = start_stand_in(m)
+        out, _ = m.run("cat /data/apotheca/logs/power.log")
+        check("(axp20x-pek): the power key" in out and "(H700 Gamepad): a joypad" in out,
+              "apotheca-power found the stand-in power key and joypad, made after it started")
+
+        def grabbed():
+            # (--grab: evtest then ends on TERM and its output is written; without it,
+            # killed, its buffered lines are lost. It tries the grab first and says
+            # if another process holds it.)
+            out, _ = m.run("evtest --grab %s > /tmp/ev.txt 2>&1 & e=$!; sleep 1; echo 'tap A' > /tmp/pad; sleep 1; "
+                           "kill $e; wait $e; cat /tmp/ev.txt" % pad, timeout=30)
+            return "grabbed by another process" in out, re.search(r"code 305 \(\w+\), value 1", out) is not None
+        held, seen = grabbed()
+        check(not held and seen, "the screen on: the joypad is free, a press reaches a reader")
+        m.run("echo 'tap POWER' > /tmp/pad; sleep 1")
+        held, seen = grabbed()
+        out, _ = m.run("grep -c 'the screen off' /data/apotheca/logs/power.log")
+        check(out == "1" and held and not seen,
+              "a short press of the power key: the screen off, the joypad held (evtest is told so and sees no press)")
+        m.run("echo 'tap POWER' > /tmp/pad; sleep 1")
+        held, seen = grabbed()
+        check(not held and seen, "another short press: the joypad let go, presses reach a reader again")
+
+        # Quit is off: Apotheca, started again with the stand-in joypad there,
+        # quit with SEL + START: it saves, leaves the mark, and the machine goes down.
+        m.run("echo kept > /data/kept.txt")  # something to find again after the power cycle
+        m.run("kill $(pidof apotheca)")
+        opened = False
+        t0 = time.time()
+        while time.time() - t0 < 120:
+            m.run("sleep 3", timeout=30)
+            out, _ = m.run("grep -c 'H700 Gamepad' /data/apotheca/apotheca.log")
+            if out != "0":
+                opened = True
+                break
+        check(opened, "Apotheca started again and opened the stand-in joypad")
+        m.run("sleep 8", timeout=30)  # its first passes, and past apotheca-keep's 10 s
+        m.send("echo 'down SELECT' > /tmp/pad; echo 'wait 400' > /tmp/pad; echo 'tap START' > /tmp/pad; "
+               "echo 'wait 400' > /tmp/pad; echo 'up SELECT' > /tmp/pad")
+        check(m.end(120), "SEL + START: the machine went down by itself")
         out = open(os.path.join(work, "boot1.log"), "rb").read().decode("utf-8", "replace")
+        check("apotheca-keep: apotheca asked for the handheld off (quit)" in out,
+              "apotheca-keep was asked for the handheld off by Apotheca (quit)")
         check("reboot: Power down" in out, "the kernel powered down cleanly")
 
         # --- second boot
@@ -402,8 +499,66 @@ def main():
         check("growing" not in out, "DATA was not grown or made again")
         out, _ = m.run("cat /data/apotheca/logs/count; ls /data/apotheca/logs")
         check(out.startswith("2") and "boot-0002.txt" in out, "the second boot's log is boot-0002")
+        out, _ = m.run("grep 'asking for the handheld off' /data/apotheca/logs/apotheca.log")
+        check("code 0" in out and "(quit)" in out, "the first boot's quit is in apotheca-keep's log: code 0, quit (%s)" % out)
+        out, _ = m.run("grep -c 'turning the handheld off (quit)' /data/apotheca/logs/boot-0002.txt")
+        check(out != "0", "and Apotheca's own log (in the boot log) says it turned off after saving")
+        check(wait_running(m), "Apotheca started at boot again")
+
+        # The power key held: off, Apotheca stopped first (S95apotheca).
+        start_stand_in(m)
+        m.send("echo 'down POWER' > /tmp/pad; echo 'wait 2600' > /tmp/pad; echo 'up POWER' > /tmp/pad")
+        check(m.end(120), "the power key held 2.6 s: the machine went down")
+        out = open(os.path.join(work, "boot2.log"), "rb").read().decode("utf-8", "replace")
+        check("apotheca-power: power key held: turning off" in out, "apotheca-power said why")
+        check(re.search(r"Apotheca stopped \(in [0-9.]+ s\), its song saved", out) is not None,
+              "S95apotheca stopped Apotheca before the card went read-only")
+        check("reboot: Power down" in out, "the kernel powered down cleanly")
+
+        # --- third boot: a made-up battery
+        m = Machine(image, kernel, os.path.join(work, "boot3.log"))
+        m.wait_shell()
+        check(wait_running(m), "third boot: Apotheca running")
+        out, code = m.run("modprobe test_power && ls /sys/class/power_supply | tr '\\n' ' '")
+        check(code == 0 and "test_battery" in out, "the kernel's made-up battery is there (%s)" % out)
+        m.run("P=/sys/module/test_power/parameters; echo 4 > $P/battery_capacity; echo discharging > $P/battery_status")
+        m.run("sleep 50", timeout=90)
+        out, _ = m.run("cat /data/apotheca/logs/power.log")
+        check("battery 4%" in out and "on a charger" in out and "turning off" not in out,
+              "4% with the charger plugged in (test_ac online): nothing happens")
+        m.send("P=/sys/module/test_power/parameters; echo off > $P/ac_online; echo off > $P/usb_online")
+        check(m.end(120), "unplugged at 4%: the machine went down by itself")
+        out = open(os.path.join(work, "boot3.log"), "rb").read().decode("utf-8", "replace")
+        check("apotheca-power: battery low (4%), read 1 of 2" in out, "apotheca-power read it low once")
+        check("apotheca-power: battery low (4%): turning off" in out, "then again, and turned off")
+        check(re.search(r"Apotheca stopped \(in [0-9.]+ s\), its song saved", out) is not None,
+              "Apotheca stopped first")
+        check("reboot: Power down" in out, "the kernel powered down cleanly")
+
+        # --- fourth boot: idle-off
+        m = Machine(image, kernel, os.path.join(work, "boot4.log"))
+        m.wait_shell()
+        check(wait_running(m), "fourth boot: Apotheca running")
+        m.run("echo 'idle-off 1' > /data/apotheca/power.txt; kill $(pidof apotheca)")
+        t0 = time.time()
+        check(m.end(240), "idle-off 1: the machine went down by itself after %.0f s" % (time.time() - t0))
+        out = open(os.path.join(work, "boot4.log"), "rb").read().decode("utf-8", "replace")
+        check("apotheca-keep: apotheca asked for the handheld off (idle)" in out,
+              "Apotheca, left alone a minute, asked for the handheld off (idle)")
+        check("reboot: Power down" in out, "the kernel powered down cleanly")
+
+        # --- fifth boot: poweroff from the shell also stops Apotheca first
+        m = Machine(image, kernel, os.path.join(work, "boot5.log"))
+        m.wait_shell()
+        check(wait_running(m), "fifth boot: Apotheca running")
+        out, _ = m.run("grep -c 'idle off after 1 min' /data/apotheca/logs/apotheca-start.log")
+        check(out != "0", "run handed power.txt's idle-off to Apotheca")
+        m.run("rm /data/apotheca/power.txt")
         m.send("poweroff")
-        check(m.end(60), "poweroff ends the machine again")
+        check(m.end(60), "poweroff ends the machine")
+        out = open(os.path.join(work, "boot5.log"), "rb").read().decode("utf-8", "replace")
+        check(re.search(r"Apotheca stopped \(in [0-9.]+ s\), its song saved", out) is not None,
+              "a shell poweroff stops Apotheca first too")
     except TimeoutError as e:
         check(False, "timed out: %s" % e)
     finally:

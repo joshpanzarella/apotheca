@@ -399,8 +399,19 @@ int main(int argc, char** argv) {
         keySleeps ? "sleeps (untried)" : "turns the screen off", longMs, lowPercent, lowPercent ? "" : " (never)");
     backlight(1); /* whatever an earlier run left: the screen on */
 
+    /* New input devices: watched in /dev/input, and /dev/input watched for
+     * from its parent, since the kernel makes it only with the first device
+     * (none in qemu until a stand-in is made). */
     const int watch = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
-    if (watch >= 0 && inotify_add_watch(watch, devDir, IN_CREATE | IN_ATTRIB) < 0) say(0, "cannot watch %s", devDir);
+    int watching = 0;
+    if (watch >= 0) {
+        char parent[512];
+        snprintf(parent, sizeof parent, "%s", devDir);
+        char* slash = strrchr(parent, '/');
+        if (slash && slash != parent) *slash = 0;
+        inotify_add_watch(watch, parent, IN_CREATE);
+        watching = inotify_add_watch(watch, devDir, IN_CREATE | IN_ATTRIB) >= 0;
+    }
     findDevices();
     readBattery();
 
@@ -451,8 +462,13 @@ int main(int argc, char** argv) {
             longDone = 1;
             turnOff("power key held");
         }
-        if (findAt && now >= findAt) findAt = 0, findDevices();
+        if (findAt && now >= findAt) {
+            findAt = 0;
+            if (!watching && watch >= 0) watching = inotify_add_watch(watch, devDir, IN_CREATE | IN_ATTRIB) >= 0;
+            findDevices();
+        }
         if (now >= nextRead) {
+            if (!watching && watch >= 0) watching = inotify_add_watch(watch, devDir, IN_CREATE | IN_ATTRIB) >= 0;
             readConfig();
             readBattery();
             findDevices();

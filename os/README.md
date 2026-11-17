@@ -9,6 +9,10 @@ then Apotheca's SONG screen: no firmware menu, no Ports. The buttons are
 set up already. Songs, recordings and settings live on the card's APOTHECA
 drive, in its `apotheca` folder.
 
+**Batch 4 adds power**: turning it off saves the song first, the power key
+turns the screen off, and a low battery turns it off before it goes flat.
+See "Turning it off" below.
+
 **Nobody has started it on a handheld yet.** Only the desk tests below have
 run: the screen, the sound, the buttons and the GPU are the handheld's to
 show. The card writes down everything it finds (the boot log, below), so
@@ -63,14 +67,41 @@ handheld as before.** Keep the stock card in a drawer and use a spare one.
    - **The buttons are set up already** (no "press A" setup). If they do
      the wrong things, delete `apotheca/controls.txt` on the APOTHECA drive:
      the next start asks for each button, as on the stock card.
-4. **To turn it off: hold the power key about 10 seconds.** (There is no
-   shutdown in Apotheca yet. Songs are saved as you go; the system part
-   of the card is read-only.) Quitting Apotheca from its help card starts
-   it again at once.
+4. To turn it off: see the next section.
 
-**Do not let the battery run low with this card in.** There is no
-low-battery shutdown yet (batch 4); charging should work as
-usual (the charger chip does it), but that is not tested.
+## Turning it off, the power key, the battery
+
+On this card Apotheca is the whole handheld, so **quitting it turns the
+handheld off**. Every way off saves the song first.
+
+| You do | What happens |
+| --- | --- |
+| **SEL + START** in Apotheca (the help card's START line says "turn off") | the song is saved, the handheld turns off |
+| **Hold the power key 2 seconds** | the screen goes dark at once; the song is saved; off a moment later. **Let go when the screen goes dark** |
+| **Tap the power key** | **the screen off**: the song keeps playing, the buttons do nothing (safe in a pocket), the volume keys still work. Tap again: the screen is back |
+| Leave it alone **15 minutes**, the song stopped | it saves and turns itself off (not while a song plays, records, bounces or WiFi is on) |
+| The battery at **5%**, not on a charger | it saves and turns itself off. **There is no warning on screen yet** |
+| Hold the power key about 10 seconds | the power chip cuts the power by itself, whatever the system is doing (the last resort, as on stock: songs are saved as you go, but the last couple of seconds may be lost) |
+
+To turn it on again: press the power key. **Plugged in while off, it
+charges and stays off** (no charging picture on the screen yet; the power
+chip charges by itself).
+
+**Settings**, if you want other numbers: a text file `apotheca/power.txt`
+on the APOTHECA drive, one setting a line (any you leave out keep their
+usual value):
+
+```
+idle-off 30         minutes before it turns itself off when left alone (0: never; usual 15)
+low-battery 8       the battery percent it turns off at (0: never; usual 5)
+power-key sleep     a tap of the power key SLEEPS instead of turning the screen off
+```
+
+**`power-key sleep` has not been tried on any handheld.** Sleep (suspend) on
+this chip is new in the Linux kernel we use. If it does not wake, hold the
+power key 10 seconds and take the line out.
+
+What the power key and battery did is written to `apotheca/logs/power.log`.
 
 ## What to send back
 
@@ -87,7 +118,10 @@ Whatever you see is useful. Send:
 3. **What the light did** (on, off, blinking) and whether text appeared.
 4. If Apotheca came up: **does it draw right** (compare with the stock
    card), **is there sound** from the speaker and the headphones, **do the
-   buttons and the stick do what they should**. `apotheca/apotheca.log` on
+   buttons and the stick do what they should**. **Power**: does SEL + START
+   turn it off, does a tap of the power key turn the screen off and back,
+   does holding it 2 s turn it off; `apotheca/logs/power.log` says what the
+   battery read. `apotheca/apotheca.log` on
    the card says which way it draws (`screen: opengles2, accelerated` is the
    GPU) and how the sound card opened.
 
@@ -140,7 +174,8 @@ Press Enter for a `#` prompt. Useful there:
 | `evtest` | pick the gamepad, then press buttons: each press is printed |
 | `speaker-test -t sine -l 1` | a tone from each side (we cannot hear it on the desk) |
 | `/usr/libexec/apotheca/padprobe` | press buttons: prints each as Apotheca's `controls.txt` numbers it |
-| `poweroff` | turns the handheld off cleanly |
+| `cat /data/apotheca/logs/power.log` | what the power key and the battery did |
+| `poweroff` | turns the handheld off cleanly (Apotheca saves first) |
 
 If the USB serial port never appears, the handheld also has a serial port on
 four small holes inside (the plan's section 6); that needs opening the
@@ -154,21 +189,22 @@ device and a 3.3 V USB serial adapter. Only if needed.
 | 1 | APOTHBOOT (FAT32, 64 MB) | the kernel (`Image`), the device trees, `extlinux/extlinux.conf` |
 | 2 | (Linux, 256 MB) | the system, **read-only**: a flat battery cannot spoil it |
 | 3 | (Linux, 256 MB) | empty: room for a second system, for updates over WiFi later |
-| 4 | APOTHECA (exFAT, the rest) | made on the first start. Logs now; songs and recordings later. A Mac or PC reads it |
+| 4 | APOTHECA (exFAT, the rest) | made on the first start. Songs, recordings, settings (`power.txt` too) and logs, in `apotheca`. A Mac or PC reads it |
 
 ## For whoever builds it
 
 ```
 scripts/build-image.sh                       # build-image/apotheca-rg40xxv.img.gz
 os/tools/check-image.sh build-image/apotheca-rg40xxv.img.gz   # the image's layout
-python3 -I os/tools/qemu-test.py build-image/apotheca-rg40xxv.img.gz  # boots it in qemu
+python3 -I os/tools/qemu-test.py build-image/apotheca-rg40xxv.img.gz  # boots it in qemu (5 boots, about 15 min)
+python3 -I os/tools/power-test.py           # apotheca-power on the desk, a made-up /sys (about 1 min)
 ```
 
 `os/` is a Buildroot "external tree": `configs/apotheca_rg40xxv_defconfig`
 (what goes in), `board/rg40xxv/` (kernel patches and config, device trees,
 U-Boot settings, the card layout `genimage.cfg`, the files laid over the
 system in `rootfs-overlay/`), `package/` (our own packages: Apotheca, the
-joypad driver, padprobe and fakepad), `patches-to-buildroot/` (two changes to
+joypad driver, apotheca-power, padprobe and fakepad), `patches-to-buildroot/` (two changes to
 Buildroot's Mesa package, each saying why). The first build takes about three
 hours on four cores (LLVM and clang, for Mesa's shaders, are most of it) and
 about 13 GB; `--tidy` gives back the biggest part afterwards. Where every
