@@ -1,0 +1,114 @@
+From: Apotheca
+Subject: [PATCH] drm/panel: panel-mipi: a panel file may be in the device tree
+
+Apotheca's own (2026-11-17), on top of 0110 and 0162. The bytes of a
+whole panel file (kikuchan's panel-firmware format) may be given as the
+property "apotheca,panel-firmware" of the panel's node. When it is there
+it is used instead of panels/<compatible>.panel, so a change to the
+panel's start-up commands or timings is a new device tree on the boot
+partition (os/tools/panel-dtb.py writes one), with no new kernel: a
+built-in panel file always wins over one on a file system, and the panel
+probes before any file system is mounted. The log line that says where
+the panel came from now also gives the data's size and CRC-32, so a boot
+log tells which panel file ran.
+
+---
+diff --git a/drivers/gpu/drm/panel/panel-mipi.c b/drivers/gpu/drm/panel/panel-mipi.c
+index 98603c7..2b86361 100644
+--- a/drivers/gpu/drm/panel/panel-mipi.c
++++ b/drivers/gpu/drm/panel/panel-mipi.c
+@@ -21,6 +21,7 @@
+ #include <linux/firmware.h>
+ #include <linux/gpio/consumer.h>
+ #include <linux/media-bus-format.h>
++#include <linux/crc32.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
+ #include <linux/pinctrl/consumer.h>
+@@ -434,7 +435,10 @@ static int panel_mipi_read_firmware(const struct device *dev,
+ 
+ static struct panel_firmware *panel_mipi_load_firmware(struct device *dev)
+ {
+-	const struct firmware *blob;
++	const struct firmware *blob = NULL;
++	const u8 *data;
++	size_t size;
++	int len = 0;
+ 	const struct panel_firmware_header *hdr;
+ 	const struct panel_firmware_config *config;
+ 	const struct panel_firmware_panel_timing *timings;
+@@ -449,16 +453,32 @@ static struct panel_firmware *panel_mipi_load_firmware(struct device *dev)
+ 	if (err)
+ 		return ERR_PTR(err);
+ 
+-	snprintf(filename, sizeof(filename), "panels/%s.panel", firmware_name);
+-	err = request_firmware(&blob, filename, dev);
+-	if (err)
+-		return ERR_PTR(err);
++	/*
++	 * A whole panel file may be in the device tree itself, as the bytes of
++	 * "apotheca,panel-firmware": it is used instead of the file the
++	 * compatible names, so a panel can be changed by changing the device
++	 * tree alone (a file on the boot partition), with no new kernel.
++	 */
++	data = of_get_property(dev->of_node, "apotheca,panel-firmware", &len);
++	if (data && len > 0) {
++		size = len;
++		snprintf(filename, sizeof(filename),
++			 "the device tree's apotheca,panel-firmware");
++	} else {
++		snprintf(filename, sizeof(filename), "panels/%s.panel",
++			 firmware_name);
++		err = request_firmware(&blob, filename, dev);
++		if (err)
++			return ERR_PTR(err);
++		data = blob->data;
++		size = blob->size;
++	}
+ 
+-	hdr = (const struct panel_firmware_header *)blob->data;
++	hdr = (const struct panel_firmware_header *)data;
+ 
+-	if (blob->size < sizeof(*hdr)) {
++	if (size < sizeof(*hdr)) {
+ 		dev_err(dev, "firmware: %s: file size %zu is too small\n",
+-			filename, blob->size);
++			filename, size);
+ 		err = -EINVAL;
+ 		goto err;
+ 	}
+@@ -477,15 +497,15 @@ static struct panel_firmware *panel_mipi_load_firmware(struct device *dev)
+ 		goto err;
+ 	}
+ 
+-	config = (struct panel_firmware_config *)(blob->data + sizeof(*hdr));
+-	timings = (struct panel_firmware_panel_timing *)(blob->data +
++	config = (struct panel_firmware_config *)(data + sizeof(*hdr));
++	timings = (struct panel_firmware_panel_timing *)(data +
+ 							 sizeof(*hdr) +
+ 							 sizeof(*config));
+ 	command_offset = sizeof(*hdr) + sizeof(*config) +
+ 			 config->num_timings * sizeof(*timings);
+-	if (blob->size < command_offset) {
++	if (size < command_offset) {
+ 		dev_err(dev, "firmware: %s: file size %zu is too small\n",
+-			filename, blob->size);
++			filename, size);
+ 		err = -EINVAL;
+ 		goto err;
+ 	}
+@@ -499,10 +519,11 @@ static struct panel_firmware *panel_mipi_load_firmware(struct device *dev)
+ 	firmware->blob = blob;
+ 	firmware->config = config;
+ 	firmware->timings = timings;
+-	firmware->commands.data = blob->data + command_offset;
+-	firmware->commands.size = blob->size - command_offset;
++	firmware->commands.data = data + command_offset;
++	firmware->commands.size = size - command_offset;
+ 
+-	dev_info(dev, "firmware: %s: loaded successfully\n", filename);
++	dev_info(dev, "firmware: %s: loaded successfully (%zu bytes, crc32 %08x)\n",
++		 filename, size, crc32_le(~0, data, size) ^ ~0);
+ 
+ 	return firmware;
+ 

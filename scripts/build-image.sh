@@ -2,7 +2,7 @@
 # Build Apotheca's own system image for the Anbernic RG40XXV.
 #
 #   scripts/build-image.sh [--dtb rg40xx-v|rg40xx-v-v2-panel|rg40xx-v-v2-stock-panel] [--dram lpddr4|lpddr3]
-#                          [--tidy] [-- MAKE-ARGS...]
+#                          [--tidy|--tidy-all] [-- MAKE-ARGS...]
 #
 # Output: build-image/apotheca-rg40xxv.img.gz (and its .sha256), ready for
 # balenaEtcher or Raspberry Pi Imager. os/README.md says how to use it.
@@ -16,11 +16,16 @@
 #            pixel clock edge and timings (a choice to compare, not the default).
 #   --dram   the memory type U-Boot sets up. Default lpddr4 (ROCKNIX lists
 #            the RG40XX V under its DDR4 image).
-#   --tidy   after the build, delete the biggest build folders (the kernel,
-#            U-Boot, Mesa and the host LLVM and clang that build Mesa's
-#            shaders), and the joypad module built against the kernel. The
-#            kernel, U-Boot and the module are made again next time; the
-#            others keep their "done" marks and are not.
+#   --tidy   after the build, delete the work files of the biggest folders
+#            that are built once (Mesa, and the host LLVM, clang and SPIR-V
+#            tools that build Mesa's shaders); they keep their "done" marks and
+#            are not made again. **The kernel's and U-Boot's build folders are
+#            kept**, so a change to either (a patch, a device tree, a panel
+#            file, the config) rebuilds in minutes, not the hour a kernel from
+#            nothing takes (about 2 GB more on the disk).
+#   --tidy-all  as --tidy, and the kernel's and U-Boot's build folders too
+#            (and the joypad module built against the kernel): the next build
+#            makes all three from nothing.
 #   -- ARGS  passed to Buildroot's make (e.g. -- linux-menuconfig).
 #
 # Buildroot itself is fetched (a pinned release, its sum checked) into
@@ -49,6 +54,7 @@ while [ $# -gt 0 ]; do
     --dtb) dtb=$2; shift 2 ;;
     --dram) dram=$2; shift 2 ;;
     --tidy) tidy=yes; shift ;;
+    --tidy-all) tidy=all; shift ;;
     --) shift; break ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
@@ -98,19 +104,31 @@ fi
 
 make -C "$br" O="$out" -j"$(nproc)"
 
+# A kernel module built outside the kernel must be made again whenever the
+# kernel is: the new kernel refuses an old one (its symbol versions), and
+# Buildroot does not rebuild a package because one it needs was rebuilt.
+# The kernel's "built" mark newer than the joypad module's: make the module
+# again, and the image with it.
+kstamp=$(ls "$out"/build/linux-[0-9]*/.stamp_built 2>/dev/null | head -n 1)
+jstamp=$(ls "$out"/build/rocknix-joypad-*/.stamp_built 2>/dev/null | head -n 1)
+if [ -n "$kstamp" ] && [ -n "$jstamp" ] && [ "$kstamp" -nt "$jstamp" ]; then
+    echo "the kernel was built again: the joypad module too"
+    make -C "$br" O="$out" rocknix-joypad-rebuild
+    make -C "$br" O="$out" -j"$(nproc)"
+fi
+
 cp "$out/images/apotheca-rg40xxv.img.gz" "$work/apotheca-rg40xxv.img.gz"
 (cd "$work" && sha256sum apotheca-rg40xxv.img.gz > apotheca-rg40xxv.img.gz.sha256)
 
-if [ "$tidy" = yes ]; then
-    rm -rf "$out"/build/linux-[0-9]* "$out"/build/uboot-[0-9]*
-    # A kernel module built outside the kernel must be made again with it:
-    # an old one is refused by the new kernel (its symbol versions), and
-    # Buildroot does not rebuild a package because one it needs was rebuilt.
-    rm -rf "$out"/build/rocknix-joypad-*
+if [ "$tidy" = all ]; then
+    rm -rf "$out"/build/linux-[0-9]* "$out"/build/uboot-[0-9]* "$out"/build/rocknix-joypad-*
+fi
+if [ "$tidy" != no ]; then
     # These are kept as done (their stamps stay), so the next build does not
     # make LLVM and clang again; only their work files go.
     for d in "$out"/build/host-llvm-[0-9]* "$out"/build/host-clang-[0-9]* \
              "$out"/build/host-libclc-[0-9]* "$out"/build/host-spirv-llvm-translator-[0-9]* \
+             "$out"/build/host-spirv-tools-[0-9]* \
              "$out"/build/host-mesa3d-[0-9]* "$out"/build/mesa3d-[0-9]*; do
         [ -d "$d" ] && find "$d" -mindepth 1 -maxdepth 1 ! -name '.stamp_*' -exec rm -rf {} +
     done

@@ -35,7 +35,7 @@ case "$img" in
 esac
 
 here=$(cd "$(dirname "$0")/../.." && pwd)
-python3 -I - "$img" "$here/build-image/output/host/bin/unsquashfs" <<'EOF'
+python3 -I - "$img" "$here/build-image/output/host/bin/unsquashfs" "$here" <<'EOF'
 import os, struct, subprocess, shutil, sys, tempfile
 
 path = sys.argv[1]
@@ -123,6 +123,11 @@ if shutil.which('mdir') and shutil.which('mtype'):
           "dtb.img is device_trees/%s, as dtb-in-use.txt says" % inuse)
     r = subprocess.run(['mtype', '-i', spec, '::Image'], capture_output=True, env=env)
     check(r.stdout[56:60] == b'ARM\x64', "Image is an arm64 kernel")
+    check(b'apotheca,panel-firmware' in r.stdout,
+          "the kernel's panel driver takes a panel file from the device tree (patch 0170)")
+    for f in ['anbernic,rg40xx-panel.panel', 'anbernic,rg40xx-v2-panel.panel', 'anbernic,rg40xx-v2-stock-panel.panel']:
+        data = open(os.path.join(sys.argv[3], 'os', 'board', 'rg40xxv', 'firmware', 'panels', f), 'rb').read()
+        check(data in r.stdout, "the kernel holds %s, byte for byte" % f)
 else:
     print("skip  p1's files (mtools not installed)")
 
@@ -165,6 +170,15 @@ if unsquashfs:
         check(b'APOTHECA_OFF_MARK' in cat('/usr/lib/apotheca/apotheca'), "the Apotheca on the card knows the off mark")
         check(any(l.endswith('/test_power.ko') for l in listing.splitlines()),
               "the kernel's made-up battery (test_power) is there for the desk test, as a module")
+        check(any(l.endswith('/gpio-sim.ko') for l in listing.splitlines()),
+              "the simulated GPIO chip (gpio-sim) is there for the desk test of the panel driver, as a module")
+        start = cat('/usr/sbin/apotheca-start')
+        check(b'a program copied onto the card' in start and b'program.md5' in start,
+              "apotheca-start runs a program copied onto the card by hand (found by its sum)")
+        check(b'7f454c460201????????????????????????b700' in start,
+              "and runs it only if it is an arm64 program")
+        check(b'apotheca.rolledback' in cat('/usr/libexec/apotheca/run'),
+              "run does not fall back to the CPU for the program put back after a new one failed")
 else:
     print("skip  p2's files (no unsquashfs)")
 

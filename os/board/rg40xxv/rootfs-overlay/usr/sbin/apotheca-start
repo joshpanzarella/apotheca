@@ -11,9 +11,16 @@
 #     put it there (a new card image wins over an earlier WiFi update);
 #   - an update accepted on the handheld waits as apotheca.new: it is put in
 #     place and the old program kept; if the new one does not get going
-#     (the mark update-trying is still there when it stops) the old one
-#     comes back. Exactly the rules of scripts/Apotheca.sh.
+#     (the mark update-trying is still there when it stops), twice, the old
+#     one comes back. (scripts/Apotheca.sh, the port's, gives it one try.)
+#   - a program copied onto the card by hand, over /data/apotheca/apotheca
+#     (dist/firmware/apotheca, made by scripts/build-firmware-app.sh), is
+#     found by its sum differing from program.md5, the sum of the program
+#     this script last put in place. It must be an arm64 program, or it is
+#     not run (kept as apotheca.failed); if it is, it is run as an update
+#     is, with the system's own program as the one to come back to.
 #
+# What it did is written to /data/apotheca/logs/apotheca-start.log.
 # ARGS default to --handheld. Its output goes to /data/apotheca/apotheca.log.
 # A TERM sent to this script is handed on to Apotheca, which then saves its
 # song and ends (SDL turns TERM into a quit).
@@ -28,6 +35,17 @@ if ! mountpoint -q /data; then
 fi
 mkdir -p "$dir" || exit 1
 cd "$dir" || exit 1
+mkdir -p logs
+say() { echo "[$(cut -d' ' -f1 /proc/uptime)] program: $*" >> logs/apotheca-start.log; }
+sum() { md5sum "$1" 2>/dev/null | cut -d' ' -f1; }
+# An arm64 program: ELF, 64-bit, little-endian, machine 0xb7 (AArch64).
+arm64() {
+    [ "$(od -An -tx1 -N20 "$1" 2>/dev/null | tr -d ' \n')" ] || return 1
+    case "$(od -An -tx1 -N20 "$1" | tr -d ' \n')" in
+        7f454c460201????????????????????????b700) return 0 ;;
+    esac
+    return 1
+}
 
 if [ ! -x apotheca ] || [ "$(cat system-version 2>/dev/null)" != "$(cat "$system/VERSION")" ]; then
     cp "$system/apotheca" apotheca.part && mv apotheca.part apotheca && chmod +x apotheca
@@ -36,7 +54,9 @@ if [ ! -x apotheca ] || [ "$(cat system-version 2>/dev/null)" != "$(cat "$system
     cp "$system"/chords/*.json chords/
     cp "$system"/licences/* licences/
     cp "$system/VERSION" system-version
-    rm -f apotheca.new update-trying
+    rm -f apotheca.new update-trying update-tries
+    sum apotheca > program.md5
+    say "the system's program put in place (system $(cat system-version))"
     sync
 fi
 
@@ -54,15 +74,38 @@ fi
 [ -f controls.txt ] || cp /usr/share/apotheca/controls-rg40xxv.txt controls.txt
 
 if [ -f apotheca.new ]; then
-    rm -f apotheca.old
+    rm -f apotheca.old update-tries
     if mv apotheca apotheca.old && mv apotheca.new apotheca; then
         chmod +x apotheca
         : > update-trying
+        sum apotheca > program.md5
+        say "an update from WiFi put in place; the one before kept as apotheca.old"
     else
         [ -f apotheca ] || mv apotheca.old apotheca
     fi
     sync
 fi
+
+# A program copied onto the card by hand (its sum is not the one put here).
+now=$(sum apotheca)
+if [ ! -f program.md5 ]; then
+    echo "$now" > program.md5          # a card from before this rule: as it is
+elif [ "$now" != "$(cat program.md5)" ]; then
+    if arm64 apotheca; then
+        rm -f apotheca.old update-tries
+        cp "$system/apotheca" apotheca.old
+        : > update-trying
+        echo "$now" > program.md5
+        say "a program copied onto the card (md5 $now, $(wc -c < apotheca) bytes): running it; if it does not get going twice, the system's comes back"
+    else
+        mv apotheca apotheca.failed
+        cp "$system/apotheca" apotheca.part && mv apotheca.part apotheca && chmod +x apotheca
+        sum apotheca > program.md5
+        say "a file copied over the program is not an arm64 program (kept as apotheca.failed): the system's program runs"
+    fi
+    sync
+fi
+[ -f update-trying ] || rm -f update-tries
 
 # Run in the background so a TERM (apotheca-keep stopping it, at shutdown)
 # can be handed on: Apotheca saves its song on TERM, as when it is quit.
@@ -77,12 +120,23 @@ while :; do
 done
 trap - TERM INT HUP
 
+# A new program that stops before it said it started fine (the app takes
+# update-trying away after 3 s) has two tries; then the one before comes back.
 if [ -f update-trying ]; then
-    rm -f update-trying
-    if [ -f apotheca.old ]; then
+    tries=$(( $(cat update-tries 2>/dev/null || echo 0) + 1 ))
+    if [ "$tries" -lt 2 ] || [ ! -f apotheca.old ]; then
+        echo "$tries" > update-tries
+        say "the new program stopped before it got going (code $code, try $tries of 2)"
+    else
+        rm -f update-trying update-tries
         mv apotheca apotheca.failed
         mv apotheca.old apotheca
-        echo "the update did not start; back to the one before" >> apotheca.log
+        sum apotheca > program.md5
+        echo "the new program did not start twice; back to the one before" >> apotheca.log
+        say "the new program did not start twice (code $code): kept as apotheca.failed, the one before is back"
+        # Not the CPU-drawing fallback for the program that comes back
+        # (apotheca-keep counts the failed starts; run reads this).
+        : > /run/apotheca/apotheca.rolledback 2>/dev/null
     fi
 fi
 sync

@@ -30,6 +30,10 @@ to the top of this drive, rename the copy to dtb.img (replace the one
 there), put the card back and power on. This is the same choice ROCKNIX
 makes you take. Any of the three is tried the same way.
 
+A screen change sent to you as a file (a new dtb.img) is put in the same
+way: copy it to the top of this drive over dtb.img. The screen's start-up
+settings can be inside it, so no new card is needed.
+
 Nothing else here needs changing. The songs and the boot logs are on
 the other partition, APOTHECA.
 

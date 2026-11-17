@@ -4,7 +4,9 @@
 #
 #   screen   SDL's KMSDRM driver (the kernel's display API, no desktop), through
 #            Mesa: panfrost on the Mali GPU. If Apotheca has stopped within
-#            seconds twice in a row (KEEP_FAILS from apotheca-keep), or the file
+#            seconds twice in a row (KEEP_FAILS from apotheca-keep; not when
+#            apotheca-start has just put back the program before a new one that
+#            did not start, /run/apotheca/apotheca.rolledback), or the file
 #            /data/apotheca/gpu-off exists, Mesa draws with the CPU instead
 #            (softpipe) and SDL uses its own software renderer: the fallback.
 #   sound    ALSA straight to the card: plughw on the first card that is not
@@ -37,7 +39,14 @@ export SDL_AUDIODRIVER=alsa
 export HOME=/data/apotheca
 
 mode=gpu
-if [ -e "$dir/gpu-off" ] || [ "${KEEP_FAILS:-0}" -ge 2 ]; then
+fails=${KEEP_FAILS:-0}
+# A new program that did not get going was just put back by apotheca-start:
+# its failed starts are not this program's (no CPU-drawing fallback for it).
+if [ -e /run/apotheca/apotheca.rolledback ]; then
+    rm -f /run/apotheca/apotheca.rolledback
+    fails=0
+fi
+if [ -e "$dir/gpu-off" ] || [ "$fails" -ge 2 ]; then
     mode=software
     export LIBGL_ALWAYS_SOFTWARE=1
     export SDL_RENDER_DRIVER=software
