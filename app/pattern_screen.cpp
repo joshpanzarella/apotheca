@@ -710,6 +710,7 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
             if (step_ == kLaneName) audition(lane_, kNewHitLevel);
             else if (!hitHere()) placeHit(1.f);
         }
+        if (event.down && onTempo_) session_.tapTempo(lastMs_); // TAP TEMPO: A in time (held, with a direction, it still turns)
         shaping_ = event.down;
         axis_ = Axis::None; // a new hold is a new choice of job for the stick
         if (!event.down && !dicing_) turning_ = Turning::Nothing;
@@ -1224,6 +1225,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else if (shaping_) {
         hint("UP / DOWN", onTempo_ ? "tempo" : "drum volume");
     } else if (onTempo_) {
+        hint("A", "tap");
         hint("HOLD A", "tempo");
         hint("START", project_.playing ? "stop" : "play");
     } else if (onName) {

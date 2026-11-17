@@ -37,8 +37,19 @@ void Session::togglePlay(bool song) {
     c.type = project.playing ? Command::Play : Command::Stop;
     c.a = project.scene;
     c.b = song ? 0 : 1;
+    if (c.type == Command::Play && countsIn()) c.d = kSteps; // COUNT IN: a bar of clicks first
+    syncClick(); // (CLICK at RECORDING: on before the Play, so its first beat clicks)
     if (engine.send(c) && c.type == Command::Play) ++playsSent_;
     project.playLoop = !song;
+}
+
+// The METRONOME: the engine told whenever what is wanted changes (lost to a full queue: told again).
+void Session::syncClick() {
+    if (static_cast<int>(clickWanted()) == sentClick_) return;
+    Command c;
+    c.type = Command::SetClick;
+    c.a = clickWanted() ? 1 : 0;
+    if (engine.send(c)) sentClick_ = c.a;
 }
 
 void Session::setSongEnd(int end) {
@@ -323,6 +334,7 @@ void Session::update(Uint32 nowMs) {
     project.playBar = engine.playBar();
     // AT END STOP: the engine has stopped the playing it was last sent, by itself, at the song's end.
     if (project.playing && playsSent_ != 0 && engine.songEnded() == playsSent_) project.playing = false;
+    syncClick();
     project.silenced = engine.silenced();
     // The screen's brightness and the light round the stick (nothing, where they are not the program's).
     if (lights_.screenHere() || lights_.ringHere()) lights_.update(nowMs, brightness_, ringNow());

@@ -458,6 +458,19 @@ void Engine::sceneIn(SceneStore& to, const float (*level)[kDrumLanes][kSteps], c
 
 void Engine::prepare(float sampleRate) {
     sampleRate_ = sampleRate;
+    // The METRONOME's click: 30 ms of a sine, a beat at 1.5 kHz and a bar's first beat at 2.5 kHz and
+    // louder, a 0.5 ms rise and a 6 ms fall to nothing by its end.
+    clickLength_ = static_cast<int>(0.03f * sampleRate);
+    if (clickLength_ > kClickMost) clickLength_ = kClickMost;
+    clickAt_ = -1;
+    for (int which = 0; which < 2; ++which) {
+        const double hz = which ? 2500.0 : 1500.0, level = which ? 0.45 : 0.3;
+        for (int i = 0; i < kClickMost; ++i) {
+            const double t = i / static_cast<double>(sampleRate);
+            const double rise = t < 0.0005 ? t / 0.0005 : 1.0, fall = std::exp(-t / 0.006) * (1.0 - static_cast<double>(i) / clickLength_);
+            clickWave_[which][i] = i < clickLength_ ? static_cast<float>(level * rise * fall * std::sin(2.0 * 3.14159265358979 * hz * t)) : 0.f;
+        }
+    }
     samplesPerStep_ = static_cast<double>(sampleRate_) * 60.0 / tempo_ / 4.0;
     const DrumKit& kit = DrumKit::builtIn(sampleRate); // one for every engine at this rate
     for (int t = 0; t < kNumTracks; ++t) // a setup call: a track still fading out goes now
@@ -1021,6 +1034,32 @@ void setCutAndThrow(StepFx& fx, float packed) {
 }
 }
 
+// Command::Play, at once or where its COUNT IN ends (render()).
+void Engine::startPlaying(const Command& c) {
+    playing_ = true;
+    askedFollowing_ = -1; // nothing asked ahead yet in this playing
+    loopScene_ = c.b != 0;
+    once_ = c.c == 1 && !loopScene_;
+    scene_ = validScene(c.a) ? c.a : 0;
+    if (!loopScene_ && scene_ >= sceneCount_) scene_ = 0;
+    repeat_ = 0;
+    bar_ = 0;
+    nextStep_ = 0;
+    untilStep_ = 0.0;
+    firstStep_ = true;
+    clearPending();
+    letGoOfNotes();
+    stepsFired_ = 0;
+    sinceStep_ = 0; // (an audition gives way: every MOD runs from here, its first tick at once; Stop lets it go)
+    playedFor_ = 0; // a FREE LFO's clock: samples since Play
+    for (Track& track : tracks_) {
+        track.trail.clear(); // the song's first note has nothing to glide from
+        track.strokes = -1;  // ...and its first strum goes up
+        track.chordAsked = -1;
+        for (long& asked : track.feelAsked) asked = -1;
+    }
+}
+
 void Engine::apply(const Command& c) {
     // After a panic, with the buttons let go, the next thing asked for is heard.
     // Catch gives the last whole bar the song played. That bar stops being
@@ -1245,29 +1284,22 @@ void Engine::apply(const Command& c) {
         if (SceneStore* store = writable(c)) store->bars = static_cast<std::uint8_t>(c.a < 1 ? 1 : (c.a > kMaxBars ? kMaxBars : c.a));
         break;
     case Command::Play:
-        playing_ = true;
-        ++playsTaken_; // (songEnded says which one stopped at its end)
-        askedFollowing_ = -1; // nothing asked ahead yet in this playing
-        loopScene_ = c.b != 0;
-        once_ = c.c == 1 && !loopScene_;
-        scene_ = validScene(c.a) ? c.a : 0;
-        if (!loopScene_ && scene_ >= sceneCount_) scene_ = 0;
-        repeat_ = 0;
-        bar_ = 0;
-        nextStep_ = 0;
-        untilStep_ = 0.0;
-        firstStep_ = true;
-        clearPending();
-        letGoOfNotes();
-        stepsFired_ = 0;
-        sinceStep_ = 0; // (an audition gives way: every MOD runs from here, its first tick at once; Stop lets it go)
-        playedFor_ = 0; // a FREE LFO's clock: samples since Play
-        for (Track& track : tracks_) {
-            track.trail.clear(); // the song's first note has nothing to glide from
-            track.strokes = -1;  // ...and its first strum goes up
-            track.chordAsked = -1;
-            for (long& asked : track.feelAsked) asked = -1;
+        ++playsTaken_; // (songEnded says which one stopped at its end; a Play counted in is taken now)
+        if (c.d > 0) {
+            // A COUNT IN: the song waits for it (render()), and nothing of it plays meanwhile.
+            if (playing_) stopPlaying();
+            countPlay_ = c;
+            countPlay_.d = 0;
+            countSteps_ = c.d;
+            countAt_ = 0;
+            untilCount_ = 0.0;
+            break;
         }
+        countSteps_ = 0; // (a Play straight after one counting in starts at once)
+        startPlaying(c);
+        break;
+    case Command::SetClick:
+        clickOn_ = c.a != 0;
         break;
     case Command::Stop:
         stopPlaying();
@@ -1285,6 +1317,9 @@ void Engine::apply(const Command& c) {
         panicHeld_ = c.a != 0;
         if (!panicHeld_) break;
         playing_ = false;
+        countSteps_ = 0; // (a COUNT IN too)
+        countShown_.store(0, std::memory_order_relaxed);
+        clickAt_ = -1;
         clearPending();
         letGoOfNotes();
         for (Track& track : tracks_) stillMods(track); // as Stop: no MOD runs
@@ -1308,6 +1343,7 @@ void Engine::apply(const Command& c) {
             // same way, so the two agree: its notes stay on the beat.
             // So does everything else that waits for a place in the steps: a note nudged or asked a
             // step ahead, a note's end, a drum hit late or a ratchet's next piece.
+            if (was > 0.0 && countSteps_ > 0) untilCount_ *= samplesPerStep_ / was; // a COUNT IN keeps its place in the step too
             if (was > 0.0 && playing_) {
                 const double by = samplesPerStep_ / was;
                 untilStep_ *= by;
@@ -1745,6 +1781,8 @@ void Engine::barLine() {
 
 void Engine::stopPlaying() {
     playing_ = false;
+    countSteps_ = 0; // a COUNT IN under way is called off
+    countShown_.store(0, std::memory_order_relaxed);
     clearPending(); // a hit that was waiting for its moment does not come after the song has stopped
     letGoOfNotes(true); // (Stop: a note that rings after let go rings on, so a bounce's tail keeps it)
     for (Track& track : tracks_) stillMods(track); // no MOD runs while stopped: every knob is given its centre
@@ -1876,6 +1914,7 @@ void Engine::fireStep() {
     // step after Play, which is where the song starts).
     // Bar lines, for Catch: where the bar that has just ended began and ended.
     if (nextStep_ == 0) barLine();
+    if (clickOn_ && nextStep_ % 4 == 0) startClick(nextStep_ == 0); // the METRONOME: on the beat, from this step's first sample
     if (nextStep_ == 0 && !firstStep_) {
         const Position next = afterThisBar();
         scene_ = next.scene;
@@ -2129,8 +2168,22 @@ void Engine::render(float* interleaved, int frames) {
             stopPlaying();
             songEnded_.store(playsTaken_, std::memory_order_relaxed);
         }
+        // A COUNT IN: a click on each beat of it; where it ends the song begins, on that very sample.
+        if (countSteps_ > 0 && untilCount_ <= 0.0) {
+            if (countAt_ >= countSteps_) {
+                countSteps_ = 0;
+                countShown_.store(0, std::memory_order_relaxed);
+                startPlaying(countPlay_);
+            } else {
+                if (countAt_ % 4 == 0) startClick(countAt_ == 0);
+                countShown_.store((countSteps_ - countAt_ + 3) / 4, std::memory_order_relaxed);
+                ++countAt_;
+                untilCount_ += samplesPerStep_;
+            }
+        }
         firePending();
         double next = 1e18;
+        if (countSteps_ > 0 && untilCount_ < next) next = untilCount_;
         if (playing_) {
             fireNoteOffs(); // before the step, so a note that ends where the next begins is let go first
             firePendingNotes();
@@ -2183,6 +2236,7 @@ void Engine::render(float* interleaved, int frames) {
             if (kModTick - into < chunk) chunk = kModTick - into;
         }
         if (playing_) untilStep_ -= chunk;
+        if (countSteps_ > 0) untilCount_ -= chunk;
         for (Track& track : tracks_) {
             if (track.synth && playing_) {
                 track.keysHeld.each([&](int pitch) {
@@ -2708,6 +2762,17 @@ void Engine::runMaster(float* mixL, float* mixR, int frames) {
     }
 }
 
+// The METRONOME's click (and the COUNT IN's), added to both sides from where it has got to.
+void Engine::addClick(float* interleaved, int frames) {
+    if (clickAt_ < 0) return; // (nothing sounding: the output as it always was)
+    for (int i = 0; i < frames && clickAt_ < clickLength_; ++i, ++clickAt_) {
+        const float v = clickWave_[clickWhich_][clickAt_];
+        interleaved[2 * i] += v;
+        interleaved[2 * i + 1] += v;
+    }
+    if (clickAt_ >= clickLength_) clickAt_ = -1;
+}
+
 void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
     if (playing_) glideAutomation(frames);
     float mixL[kMaxBlock] = {};
@@ -2817,6 +2882,7 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
             interleaved[2 * i + 1] = ceiling(mixR[i]);
         }
         remember();
+        addClick(interleaved, frames); // after Catch, before the volume
         turnDown();
         return;
     }
@@ -2851,6 +2917,7 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
         interleaved[2 * i + 1] = ceiling(mixR[i]) * gateGain_;
     }
     remember();
+    addClick(interleaved, frames);
     turnDown();
     if (cutEverything_) {
         // Behind the shut gate: stop what rings by itself.

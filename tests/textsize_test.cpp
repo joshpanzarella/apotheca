@@ -659,7 +659,7 @@ void testTheSettingIsKept() {
         for (int size : {kTextXl, kTextSmall, kTextMedium, kTextLarge, kTextXl}) {
             session.setTextSize(size);
             CHECK(session.textSize() == size);
-            CHECK(readTextFile(file, kept) && kept == "stick " + std::to_string(static_cast<int>(std::round(ui::gStickSpeed * 100.f))) + "\noctaves 2\nmidirec 0\ntext " + std::to_string(size) + "\ntheme 0\nbrightness 70\nlight 1\n");
+            CHECK(readTextFile(file, kept) && kept == "stick " + std::to_string(static_cast<int>(std::round(ui::gStickSpeed * 100.f))) + "\noctaves 2\nmidirec 0\ntext " + std::to_string(size) + "\ntheme 0\nbrightness 70\nlight 1\nclick 0\ncountin 0\n");
         }
         // It has ends.
         session.setTextSize(99);
@@ -723,7 +723,7 @@ void testTheRow() {
     session.view = View::Settings;
     S& setup = rig.app.settings();
     // Among the handheld's rows, after STICK SPEED; thirteen rows now, THEME after it (tests/theme_test.cpp).
-    CHECK(S::kRows == 15 && S::kTextSize == S::kStick + 1 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kTextSize > S::kVolume);
+    CHECK(S::kRows == 17 && S::kTextSize == S::kStick + 1 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kTextSize > S::kVolume);
     setup.goTo(S::kStick);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kTextSize && session.textSize() == kTextLarge);

@@ -292,7 +292,8 @@ void Session::keepSettings() const {
     writeTextFile(programFolder_ + "/settings.txt", "stick " + std::to_string(static_cast<int>(std::round(ui::gStickSpeed * 100.f))) + "\noctaves " +
                                                         std::to_string(octaves_) + "\nmidirec " + (midiRecord_ ? "1" : "0") + "\ntext " + std::to_string(textSize_) +
                                                         "\ntheme " + std::to_string(theme_) + "\nbrightness " + std::to_string(brightness_) +
-                                                        "\nlight " + std::to_string(stickLight_) + "\n");
+                                                        "\nlight " + std::to_string(stickLight_) + "\nclick " + std::to_string(click_) +
+                                                        "\ncountin " + (countIn_ ? "1" : "0") + "\n");
 }
 
 void Session::setBrightness(int percent) {
@@ -350,6 +351,8 @@ void Session::loadSettings() {
         if (name == "theme" && value >= 0 && value < kThemeCount) setTheme(value); // (none: the look as it was built)
         if (name == "brightness" && value >= kBrightLeast && value <= kBrightMost) setBrightness(value); // (none: kBrightUsual)
         if (name == "light" && value >= 0 && value < kRingModes) setStickLight(value); // (none: ON)
+        if (name == "click" && value >= 0 && value < kClickModes) setClick(value); // (none: OFF)
+        if (name == "countin" && (value == 0 || value == 1)) setCountIn(value == 1);
     }
     programFolder_ = folder;
 }
@@ -376,6 +379,15 @@ void Session::setTempo(float bpm) {
     c.type = Command::SetTempo;
     c.value = bpm;
     engine.send(c);
+}
+
+void Session::tapTempo(Uint32 ms) {
+    const float bpm = taps_.tap(ms);
+    char text[48];
+    if (bpm <= 0.f) return; // the first of a run says nothing (A held to turn the tempo begins with one)
+    setTempo(bpm);
+    std::snprintf(text, sizeof text, "TAPPED: %d BPM", static_cast<int>(project.tempo));
+    say(text);
 }
 
 std::string Session::renameSong() {

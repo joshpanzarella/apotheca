@@ -418,13 +418,18 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         fill(renderer, x + 12, y + 28, w - 24, 8, kLine);
         fill(renderer, x + 12, y + 28, static_cast<int>((w - 24) * part), 8, kTeal);
     }
-    if (undoSaid()[0]) {
+    // COUNT IN (easywins batch 2): the beats to go, in the box above the bar, for as long as it lasts (the
+    // song is "playing" meanwhile, so every pass is drawn). It stands in for anything said there.
+    char counting[24] = "";
+    if (project_->playing && session_.engine.countingIn() > 0) std::snprintf(counting, sizeof counting, "COUNT IN  %d", session_.engine.countingIn());
+    if (undoSaid()[0] || counting[0]) {
         using namespace ui;
+        const char* said = counting[0] ? counting : undoSaid();
         const int w = 260, h = 34, x = (kScreenW - w) / 2, y = kScreenH - kHintsH - h - 12;
         box(renderer, x, y, w, h, kPanel, kTeal);
         // (Its longest at XL, "SCENE 10: 127 STEPS OF 128", is wider than the box: held at LARGE. Fonts::within.)
-        const Font& saidFont = fonts.within(&Fonts::medium, undoSaid(), w - 12.f);
-        saidFont.drawCentered(renderer, kScreenW / 2.f, y + (h - saidFont.capHeight()) / 2.f, undoSaid(), kText);
+        const Font& saidFont = fonts.within(&Fonts::medium, said, w - 12.f);
+        saidFont.drawCentered(renderer, kScreenW / 2.f, y + (h - saidFont.capHeight()) / 2.f, said, counting[0] ? kBrass : kText);
     }
     if (session_.updateWaiting() || updateSaid_ != 0) {
         using namespace ui;

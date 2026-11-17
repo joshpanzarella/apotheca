@@ -1296,6 +1296,19 @@ int main(int argc, char** argv) {
             pushKey(SDLK_w, true);
             pushKey(SDLK_l, true);
         }
+    } else if (std::strcmp(view, "setup-click") == 0) {
+        // The METRONOME's row (easywins batch 2): CLICK at RECORDING, COUNT IN at ONE BAR.
+        app.session().view = View::Settings;
+        app.session().setClick(Session::kClickRecording);
+        app.session().setCountIn(true);
+        app.settings().goTo(SettingsScreen::kClick);
+    } else if (std::strcmp(view, "tap-tempo") == 0) {
+        // TAP TEMPO (easywins batch 1): two taps half a second apart, the cursor on the drum grid's tempo row.
+        app.session().view = View::Pattern;
+        app.drums().moveCursorTo(0, 0);
+        app.session().tapTempo(1000);
+        app.session().tapTempo(1500);
+        tapKey(SDLK_UP); // (the App takes what was said with the next button)
     } else if (std::strcmp(view, "typing") == 0) {
         app.session().view = View::Settings;
         app.settings().goTo(SettingsScreen::kTrackName);

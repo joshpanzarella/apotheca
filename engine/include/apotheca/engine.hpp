@@ -166,6 +166,9 @@ struct Command {
         Play,           // start from step 1:         a = scene to start on, b = 1 to loop that scene alone,
                         //   c = 1: the song is played once through and then stopped (a bounce), so its last
                         //   step begins nothing early that belongs to its first
+                        //   d = a COUNT IN of that many steps first (easywins batch 2; 0: none): a click on each
+                        //   beat of it, nothing of the song, and the song's step 1 on the sample after its last.
+                        //   A Stop or a Panic meanwhile calls it off (and the Play is counted as taken)
         Stop,           // stop; drums ring out, synth notes are let go
         Panic,          // silence, now. a = 1: the output fades to nothing in 5 ms and stays shut;
                         //   playing stops, every drum is cut and every note let go. a = 0: it may
@@ -249,8 +252,12 @@ struct Command {
         SetLaneSwing,   // SWING, a drum lane's (feel_rule.hpp): track, a = lane, b = 0..100 (held there). Every
                         //   second sixteenth comes that much of a third of a step late. Live, as FEEL.
                         //   0: the lane plays as it always did.
-        GiveScene       // internal: sent by send() before the first command that writes into a scene with
+        GiveScene,      // internal: sent by send() before the first command that writes into a scene with
                         //   nothing in it (scenes-plan.md): track, scene, pointer = its store, made here
+        SetClick        // the METRONOME (easywins batch 2): a = 1 on, 0 off. On, every beat the song plays (steps 1,
+                        //   5, 9, 13 of a bar; step 1 higher) begins a short click on its first sample, added after
+                        //   Catch and before the volume. Off and no click sounding: the output is as it always was,
+                        //   to the bit. A bounce's engine is never told it. (Play's `d` is the COUNT IN.)
     };
     Type type = Trigger;
     int track = 0;
@@ -473,6 +480,9 @@ public:
     // says which Play it was (0: none yet). The app counts the Plays it sent: the two equal, the
     // playing it started has ended. (A Play sent after the end is a later number, so no race.)
     unsigned songEnded() const { return songEnded_.load(std::memory_order_relaxed); }
+    // COUNT IN: the beats of it still to come, the one sounding counted (4, 3, 2, 1), or 0: none under way.
+    int countingIn() const { return countShown_.load(std::memory_order_relaxed); }
+    bool clickOn() const { return clickOn_; } // what SetClick last said (for the tests: the audio thread's own)
     bool songStopsAtEnd() const { return songStop_; } // what SetSongEnd last said (for the tests: the audio thread's own)
     int playRepeat() const { return playRepeat_.load(std::memory_order_relaxed); } // 0-based pass through the scene
     int playBar() const { return playBar_.load(std::memory_order_relaxed); }       // 0-based bar of the scene
@@ -934,6 +944,22 @@ private:
     // The step after the song's last: a song that stops at its end stops here (render()).
     bool songEndsNow() const;
     void stopPlaying(); // Command::Stop, and a song stopping at its end
+    void startPlaying(const Command& c); // Command::Play, at once or at the end of its COUNT IN
+    // The METRONOME and the COUNT IN (easywins batch 2). The click is a table worked out once in
+    // prepare(), read a sample at a time from where it began, so it is the same in any blocks.
+    static constexpr int kClickMost = 4096;   // samples: 30 ms at up to 136 kHz
+    float clickWave_[2][kClickMost] = {};     // [0] a beat, [1] a bar's first beat (higher, louder)
+    int clickLength_ = 0;                     // samples of it at this rate
+    bool clickOn_ = false;                    // SetClick
+    int clickAt_ = -1;                        // the sample of the click sounding; -1: none
+    int clickWhich_ = 0;
+    void startClick(bool bar) { clickAt_ = 0, clickWhich_ = bar ? 1 : 0; }
+    void addClick(float* interleaved, int frames);
+    Command countPlay_;          // the Play waiting for the COUNT IN to end
+    int countSteps_ = 0;         // its steps; 0: no count under way
+    int countAt_ = 0;            // the step of it about to begin
+    double untilCount_ = 0.0;    // samples before it does
+    std::atomic<int> countShown_{0};
     void barLine();     // Catch: a bar has ended here (a bar's first step, or a song stopping at its end)
     bool firstStep_ = true; // the step about to fire is the first since Play
     bool telling_ = false;  // inside fireStep, for a PAIRED track: its notes are only told to the trail as coming, not begun
