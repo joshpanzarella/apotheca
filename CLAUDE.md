@@ -2656,6 +2656,8 @@ watch again, it is in git (the commit before batch 8b).
    through SDL2's Android side (sound, files, the WiFi page, which core the sound runs on).
    Keep the engine free of Linux-only calls where it costs nothing.
 10. **Our own firmware for the RG40XXV, Apotheca and nothing else** (owner, 2026-11-16; `docs/plans/firmware-plan.md`): a Buildroot image on the mainline kernel with ROCKNIX's H700 patches. **Planned only; batch 0 (ROCKNIX on a spare card, SPEED TEST there) is the first step.**
+11. **A drum synth** (owner, 2026-11-17): a kit lane's sound made from knobs (KICK, SNARE, HATS...) instead of a recording. Plan and engine on branch `drumsynth` (`docs/plans/drumsynth-plan.md`).
+12. **A wavetable synth, after the drum synth** (owner, 2026-11-17). Not planned yet.
 
 Open: FM-6's banks ROM2A, 3A and 4A (in the same archive; not taken: the job asked for the B sides), which chord packs ship, more presets, own WiFi hotspot, an automation
 step-editor, a picture of FM-6's ALGORITHM (its wiring; msfa's table says each). **Twin Analog is gone** (owner, 2026-11-11: rethink it; 2026-11-13: it
