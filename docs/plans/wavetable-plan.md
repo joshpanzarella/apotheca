@@ -616,11 +616,13 @@ across A moved POSITION A from 30 to 80, B turned on to VOWEL drawn in purple, n
 
 ## 14. Batch 5, as built (2026-11-17): the review
 
-**Two faults found and mended. Neither was heard; neither had reached the handheld.**
+**Two faults found and mended. Neither was heard.** Build 0.711 (`main`, batches 1 and 2) went to the
+handheld with the second: MORPH there plays its own bits, close to the desk's but not the same; the next
+build from this branch plays the desk's.
 
 | Found | Mended |
 | --- | --- |
-| **The handheld build would not have linked**: `scripts/build-handheld.sh` builds `engine/src/*.cpp` and `fx/*.cpp` by name, and MORPH's tables are `engine/src/morph/tables.cpp` (on `main` since batches 1 and 2 were joined) | the script takes `engine/src/morph/*.cpp` too; CLAUDE.md's "Adding an instrument" says so. **No handheld build was run** (the job said not to); the qemu test binary below links the same list |
+| **The handheld build would not have linked**: `scripts/build-handheld.sh` builds `engine/src/*.cpp` and `fx/*.cpp` by name, and MORPH's tables are `engine/src/morph/tables.cpp` (on `main` since batches 1 and 2 were joined) | found on `main` the same day while building 0.711: the script takes `engine/src/*/*.cpp` (main's mend, kept at the join); CLAUDE.md's "Adding an instrument" says so. **No handheld build was run here** (the job said not to); the qemu test binary below links the same sources |
 | **The handheld did not play the desk's bits**: `#pragma clang fp contract(off)` stood below the `#include`s, so `jx3p/ir3109.hpp`'s polynomials (`sinPoly`, `cosPoly`, `exp2Poly`) were fused into multiply-adds by clang on ARM; nine of the sixteen tables (those made from a wave: ANALOG, PULSE, SYNC, FOLD, BEND, FM, RATIO, DRIVE, STEPS) and every sound came out other | the pragma stands above every `#include` in `morph.cpp` and `morph/tables.cpp`. The desk's bits did not move |
 | Call 13's second half, **the X audition struck again** when TABLE A, TABLE B or UNISON changes, was not built in batch 2 | `Session::setSynthSetting` strikes the held key again (`audition`, which keeps it held); `app_test --morph` holds it (UNISON 2 heard as two streams, B on as four, CUTOFF strikes nothing: `Morph::strikes()`) |
 

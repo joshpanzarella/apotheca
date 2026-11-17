@@ -100,10 +100,10 @@ has presets and macros, and its DEVICE screen in `App::screenNow()`. Then the
 places that list the synths by name: `userList`, `builtInPresets`,
 `settingCount`, `specFor` (synth_spec.cpp), `macroIsChoice` (mods.hpp, for a
 threshold macro), its stills in `main.cpp` and `kViews`, and the tests'
-lists (`textsize`, `scope_test`, `save_test`, `modapp_test`). **An engine source in a folder of its
-own (`engine/src/morph/tables.cpp`) also goes in `scripts/build-handheld.sh`**, which builds only
-`engine/src/*.cpp` and `fx/*.cpp` by name (MORPH's tables were missing there from batch 1 to batch 5:
-the handheld build would not have linked). MORPH was the last added (2026-11-17, wavetable-plan.md: a
+lists (`textsize`, `scope_test`, `save_test`, `modapp_test`). **`scripts/build-handheld.sh` builds
+`engine/src/*.cpp` and `engine/src/*/*.cpp`**, so a source in a folder of its own under `engine/src`
+is taken, one two folders down is not (until 0.711 it took only `fx/`, and MORPH's
+`engine/src/morph/tables.cpp` did not link). MORPH was the last added (2026-11-17, wavetable-plan.md: a
 picture of its tables, a roll); ACID's commit is the plainest pattern.
 
 Where effects are, in the engine:
