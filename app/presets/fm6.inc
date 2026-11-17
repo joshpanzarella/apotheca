@@ -548,4 +548,117 @@ fx 2 ensemble 0.3 0.5 0.8 0.7
 send 2 0.2
 mod 1 1 1 0.85 10 1 0 0            # FEEDBACK +70%, a TRIANGLE over 4 BARS: smooth to torn
 mod 2 1 8 0.7 12 6 0 0 0.09        # the CUTOFF drifts, +40%, free
+# ---- More presets (2026-11-17, presets-plan.md, "More presets"): factory voices given a room -----------
+
+# ORGANS: drawbar, pipe and fair organs. Their carriers are most of the voice, so BRIGHT does little:
+# the MODs here move an effect or the level.
+
+new ORGANS / Rotor Organ
+base ROM 1A / E.ORGAN 1
+fx 1 chorus 0.45 0.6 0.625 0.7     # VIBRATO: a turning speaker
+fx 2 drive 0.25 0.5 0.5 0.6        # DRIVE, TONE, MIX, OUTPUT: the amp pushed a little
+mod 1 1 8 0.75 10 0 0 0            # the VIBRATO's RATE, +50%, 4 BARS: slow and fast
+new ORGANS / Gospel Organ
+base ROM 1B / E.ORGAN 2
+fx 1 tremolo 0.55 0.3 0.125 0.8    # RATE 1/8 DOT, SINE, wide
+fx 2 spring 0.4 0.45 0.5 0.2       # DRIP, DECAY, TONE, MIX
+new ORGANS / Sixties Organ
+base ROM 3B / 60-S ORGAN
+fx 1 wear 0.3 0.4 0.15 0.45        # WOW, DIRT, DROPS, TONE: an old record of it
+fx 2 reverb 0.35 0.5 0.2           # SIZE, DAMPING, MIX
+new ORGANS / Church Pipes
+base ROM 1B / PIPES 3
+fx 1 hall 0.85 0.7 0.4 0.35        # SIZE, DECAY, TONE, MIX
+send 2 0.15
+new ORGANS / Synth Organ
+base ROM 2B / SYNORGAN 1
+fx 1 phaser 0.25 0.6 0.5 0.45      # RATE, DEPTH, FEEDBACK, MIX
+mod 1 1 33 0.75 9 0 0 0            # PAN, +50%, 2 BARS, SINE
+new ORGANS / Fair Organ
+base ROM 1B / CALIOPE
+fx 1 tremolo 0.75 0.25 0.375 0.3   # RATE 1/4, SQUARE
+fx 2 plate 0.2 0.5 0.5 0.2
+
+# BRASS: sections and stabs.
+
+new BRASS / Section
+base ROM 1A / BRASS 1
+fx 1 ensemble 0.3 0.4 0.7 0.4      # RATE, DEPTH, SPREAD, MIX
+fx 2 hall 0.6 0.5 0.5 0.2
+new BRASS / Bright Section
+base ROM 1A / BRASS 2
+fx 1 eq 0.5 0.55 0.7 0.65          # LOW, MID, MID FREQ, HIGH
+mod 1 1 0 0.65 8 1 0 0             # BRIGHT, +30%, a bar, TRIANGLE: the players dig in
+new BRASS / Soft Horns
+base ROM 1A / BRASS 3
+fx 1 chorus 0.2 0.35 0.125 0.3
+send 2 0.3
+new BRASS / Organ Brass
+base ROM 4B / ORG-BRS BC
+fx 1 chorus 0.35 0.5 0.125 0.45
+mod 1 1 9 0.75 9 0 0 0             # the CHORUS's DEPTH, +50%, 2 BARS, SINE
+new BRASS / Brass Stab
+base ROM 4B / PERC BRASS
+fx 1 comp 0.45 0.5833 0.35 1       # THRESHOLD, RATIO, SPEED, MIX
+fx 2 plate 0.15 0.45 0.55 0.2
+new BRASS / Brass Bells
+base ROM 4B / BRS-CHIME
+fx 1 shimmer 0.35 0.55 0.55 0.2    # SHIMMER, DECAY, TONE, MIX
+send 1 0.15
+
+# DRONES: long voices that move on their own.
+
+new DRONES / String Drone
+base ROM 1A / STRINGS 3
+fx 1 ensemble 0.25 0.6 0.9 0.6
+fx 2 hall 0.75 0.65 0.4 0.3
+mod 1 1 32 0.35 10 6 0 0           # LEVEL, -30%, 4 BARS, DRIFT: it swells and sinks
+new DRONES / Voice Drone
+base ROM 2B / SYN-VOX
+fx 1 bloom 0.5 0.6 0.5 0.35        # BLOOM, DECAY, TONE, MIX
+mod 1 1 11 0.7 9 0 0 0             # BLOOM's MIX, +40%, 2 BARS, SINE: the room opens and closes
+new DRONES / Chime Drone
+base ROM 2B / CHIME-STRG
+fx 1 flanger 0.1 0.6 0.5 0.4       # RATE, DEPTH, FEEDBACK, MIX
+send 2 0.3
+new DRONES / Shimmer Drone
+base ROM 2B / SHIMMER
+fx 1 shimmer 0.5 0.65 0.6 0.3
+mod 1 1 33 0.8 12 6 0 0 0.12       # PAN, +60%, FREE at 0.12 HZ, DRIFT
+new DRONES / Pipe Drone
+base ROM 1B / PIPES 4
+fx 1 filter 0.55 0.3 0.1 1         # CUTOFF, RESONANCE, LOW 12, MIX
+fx 2 hall 0.8 0.65 0.4 0.3
+mod 1 1 8 0.75 10 0 0 0            # the filter's CUTOFF, +50%, 4 BARS, SINE
+new DRONES / Orchestra Drone
+base ROM 1A / ORCHESTRA
+fx 1 plate 0.3 0.75 0.4 0.35
+send 2 0.2
+
+# ARPS: short and bright, for a line of sixteenths.
+
+new ARPS / Clav Arp
+base ROM 2B / SYN-CLAV 2
+fx 1 ping 0.3125 0.4 0.5 0.25      # TIME 1/8, FEEDBACK, TONE, MIX
+new ARPS / Funk Arp
+base ROM 4B / FUNKY RISE
+fx 1 tape 0.5625 0.35 0.3 0.25     # TIME 1/8 DOT, FEEDBACK, AGE, MIX
+fx 2 plate 0.15 0.4 0.55 0.15
+new ARPS / Synth Arp
+base ROM 4B / PRC SYNTH2
+mod 1 2 0 0.85 1 0 0 0             # a STEPPER on BRIGHT, +70%, a step each
+modsteps 1 16 0 0 1 -0.5 0.3 -1 0.8 -0.2 0.5 -0.8 1 -0.6 0 -1 0.6 -0.3 0.9
+send 1 0.2
+new ARPS / Pizz Arp
+base ROM 4B / STRG-PIZZT
+fx 1 dub 0.5625 0.4 0.45 0.25      # TIME 1/8 DOT, FEEDBACK, TONE, MIX
+new ARPS / Clav Steps
+base ROM 1B / CLAV 3
+fx 1 vowel 0.4 0.5 0.6 0.6         # VOWEL, SHIFT, RESONANCE, MIX
+mod 1 2 8 0.9 1 0 0 0              # a STEPPER on the VOWEL, +80%, a step each
+modsteps 1 8 0 0 -1 0.5 1 -0.5 0 0.8 -0.8 0.3 0 0 0 0 0 0 0 0
+new ARPS / Piano Arp
+base ROM 2B / SYN-PIANO
+fx 1 stutter 0.4375 0.5 0.3 0.35   # LENGTH, REPEATS, CHANCE, MIX
+fx 2 ping 0.6875 0.3 0.45 0.15     # TIME 1/4
 )presets"

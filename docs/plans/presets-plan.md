@@ -278,6 +278,7 @@ window.
 | CLOUD | 6 + 18 (24) | 24: 48 now | PADS, DRONES, PLUCKS, RHYTHM (six each; RHYTHM's are a STEPPER or an effect in time). None names a recording |
 | MORPH | 8 + 24 (32) | 32: 64 now | KEYS, PLUCKS (six each), BELLS, ARPS, DRONES, FX (five each). All 64 still within 8 dB of each other |
 | PHYSIC | 32 + 64 (96) | 16: 112 now | BASS, KEYS (eight each: PHYSIC had one bass, Plucked Bass) |
+| FM-6 | 160 + 49 (209) | 24: 233 now | ORGANS, BRASS, DRONES, ARPS (six each, each a factory voice given its room). An organ's carriers are most of it, so its MODs move an effect, PAN or LEVEL, not BRIGHT |
 
 PHAZED's engine folders are the CZ bank's own words (Keys, Bass...), so the added ones are other words
 (DEEP BASS, not BASS): the folder step and the list would show two folders that read alike.
