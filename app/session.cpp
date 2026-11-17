@@ -1047,12 +1047,7 @@ void Session::moveScenesHere(int from, int by, const StepRead* last) {
     if (by > 0) {
         // Everything a scene holds, moved down one from the end (the last falls off); then `from` is
         // made what `from + 1` is now, a copy.
-        for (TrackData& t : project.tracks) { // (the last scene's pieces go)
-            t.drums.drop(kMaxScenes - 1);
-            t.notes.drop(kMaxScenes - 1);
-            t.automation.drop(kMaxScenes - 1);
-        }
-        for (int scene = kMaxScenes - 1; scene > from; --scene) carry(scene, scene - 1);
+        for (int scene = kMaxScenes - 1; scene > from; --scene) carry(scene, scene - 1); // (the last's pieces freed as they are written over)
         for (TrackData& t : project.tracks) {
             t.bars[from] = t.bars[from + 1];
             if (t.drums.has(from + 1)) std::memcpy(t.drums[from], t.drums[from + 1], sizeof t.drums[from]);
@@ -1062,12 +1057,7 @@ void Session::moveScenesHere(int from, int by, const StepRead* last) {
         return;
     }
     const int end = kMaxScenes - 1;
-    for (TrackData& t : project.tracks) { // (the scene taken out: its pieces go)
-        t.drums.drop(from - 1);
-        t.notes.drop(from - 1);
-        t.automation.drop(from - 1);
-    }
-    for (int scene = from - 1; scene < end; ++scene) carry(scene, scene + 1);
+    for (int scene = from - 1; scene < end; ++scene) carry(scene, scene + 1); // (the pieces of the one taken out freed as they are written over)
     for (int t = 0; t < kNumTracks; ++t) {
         TrackData& now = project.tracks[t];
         const bool has = last && last->kind[t] == now.kind && last->read[t]; // (a scene move reads the step whole)

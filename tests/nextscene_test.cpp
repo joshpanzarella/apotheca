@@ -1593,6 +1593,10 @@ void testTheLastSceneIsGivenBack() {
         p.tracks[0].bars[kMaxScenes - 1] = 2;
         p.repeats[kMaxScenes - 1] = 3;
         p.steps[kMaxScenes - 1] = 11;
+        // ...and what it holds that plays nothing: a hit in its hidden fourth bar, a step of automation.
+        // (Pushed off the end by the copy, they come back with the undo, from the step's text.)
+        p.tracks[0].drums[kMaxScenes - 1][3].level[4][6] = 0.7f;
+        p.tracks[1].automation[kMaxScenes - 1][2][9] = 0.4f;
         r->session().applyProject();
         r->frames(2);
         r->render(512);
@@ -1632,6 +1636,7 @@ void testTheLastSceneIsGivenBack() {
     rig.undo();
     CHECK(songText(p) == was && rig.session().imagesSent() == images && rig.engine->dropped() == 0);
     CHECK(p.tracks[0].bars[kMaxScenes - 1] == 2 && p.repeats[kMaxScenes - 1] == 3 && p.steps[kMaxScenes - 1] == 11);
+    CHECK(p.tracks[0].drums[kMaxScenes - 1][3].level[4][6] == 0.7f && p.tracks[1].automation[kMaxScenes - 1][2][9] == 0.4f);
 }
 
 // The queue is full (the audio thread has stood still for seconds) and scene moves are lost. When
@@ -2635,14 +2640,16 @@ void testAMoveMakesNothingNew() {
     rig.undo();
     rig.settle();
     // The last scene but one gets the copy of scene 2, and the last one is copied into by nothing.
+    // Track 2 has nothing there, but its cell is two bars long: the copy keeps that, in the engine too.
     p.tracks[0].drums[kMaxScenes - 2][0].level[0][0] = 0.8f;
+    p.tracks[1].bars[kMaxScenes - 2] = 2;
     rig.session().applyProject();
     rig.settle();
     const int full = given();
     p.scene = kMaxScenes - 2;
     rig.nextScene();
     rig.settle();
-    CHECK(p.sceneCount() == kMaxScenes && given() == full + 1 && given() == holding());
+    CHECK(p.sceneCount() == kMaxScenes && given() == full + 2 && given() == holding());
     rig.undo();
     rig.settle();
     CHECK(given() == full && given() == holding() && Engine::blankStillBlank());

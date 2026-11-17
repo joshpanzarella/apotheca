@@ -3432,10 +3432,15 @@ static void testScenesHaveStoresWhenWritten() {
     renderFrames(*engine, 64);
     CHECK(Engine::blankStillBlank());
     // A full queue: the store and the write go together, or neither does.
-    while (engine->send(make(Command::SetTempo, 0, 0, 0, 120.f))) {
-    }
+    int room = 0;
+    while (engine->send(make(Command::SetTempo, 0, 0, 0, 120.f))) ++room;
     const unsigned lost = engine->dropped();
     CHECK(!engine->send(at(step(KICK, 0, 1.f), 12)) && engine->scenesGiven(0) == 2 && engine->dropped() == lost + 1);
+    renderFrames(*engine, 64);
+    // Room for one: the store would go and the write not, so neither does.
+    for (int i = 0; i + 1 < room; ++i) engine->send(make(Command::SetTempo, 0, 0, 0, 120.f));
+    CHECK(!engine->send(at(step(KICK, 0, 1.f), 12)) && engine->scenesGiven(0) == 2 && engine->dropped() == lost + 2);
+    CHECK(engine->send(make(Command::SetTempo, 0, 0, 0, 120.f)) && !engine->send(make(Command::SetTempo, 0, 0, 0, 120.f))); // (that one place was there)
     renderFrames(*engine, 64);
     CHECK(engine->send(at(step(KICK, 0, 1.f), 12)) && engine->scenesGiven(0) == 3);
     renderFrames(*engine, 64);

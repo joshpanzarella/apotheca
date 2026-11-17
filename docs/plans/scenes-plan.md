@@ -125,4 +125,59 @@ it.** Then the cap costs a few pointers and small numbers a scene, and 64 costs 
 
 ## As built
 
-(Filled in as each batch is done.)
+**Built 2026-11-17, batches 0 to 5, on branch `scenes`. Not joined to `main`, not run on the
+handheld; nobody has played a song past sixteen scenes on it.** Everything below is from the tests,
+`bench --app` and the stills.
+
+### The figures (desk, `bench --app`, the bench's song: twelve tracks, eight scenes used)
+
+| | 16, fixed (before) | 64, fixed (not built) | **64, pieces (built)** |
+| --- | --- | --- | --- |
+| The whole program (VmRSS) | 76 MB | 246 MB | **40 MB** |
+| `TrackData` / `Project` | 1.0 MB / 12 MB | 4.0 / 48 MB | **4.8 KB / 58 KB**, plus the pieces in use |
+| The engine's stores, a song with nothing in it | 10 MB | 40 MB | **0** (one blank store, 52 KB, for every engine) |
+| One frame, nothing changing | 0.08 ms | 0.20 | **0.06 to 0.08** |
+| A frame that ends an edit | 0.38 to 0.40 ms | 1.25 to 1.27 | **0.28 to 0.29** |
+| Undo, then redo | 0.69 to 0.70 ms | 2.3 | **0.53 to 0.56** |
+| ...a knob and a hit, undone | 1.29 ms | 4.0 to 4.1 | **1.04 to 1.08** |
+| A track sent whole | 0.72 to 0.92 ms | 2.6 to 2.7 | **0.46** (and the audio thread copies nothing) |
+| NEXT SCENE, then undo | 5.7 to 6.7 ms | 18.2 to 19.0 | **3.6** |
+
+A piece: a scene's drums 22.8 KB, its notes 27.6 KB, its automation 12.3 KB; the engine's store for a
+scene 52 KB. A full song (twelve tracks, 64 scenes, every one used, automation everywhere) would hold
+about 48 MB in the app and 40 MB in the engine, as the fixed arrays would have; a song uses what it
+uses.
+
+### What was learned
+
+- **A non-const track makes a piece even to read it.** Every loop over all the scenes was looked at:
+  the text, its cache, `sceneEmpty`, `clearAutomation`, `setAutomation` of nothing, a TYPE change's
+  lanes, `setTrackKind`'s macro lanes. Each takes the track `const` or asks `has` first.
+  `nextscene_test` `testAMoveMakesNothingNew` holds the engine's stores to the scenes that hold
+  something before and after a move, its undo and redo.
+- **An assignment never frees a piece**: undo puts the patterns back with `now.notes = then.notes`,
+  and a test held a reference to a bar across it (the old arrays never moved). A scene with no piece
+  in `then` is copied in as the blank piece. Only `makeBlank` (a song read in) and a scene move free.
+- **Old tests wrote a step at the scene's number** (`level[bar][scene]`): fine below 16, past the
+  array at 64 (save_test crashed). Look for a scene number used as another index.
+- **A `TrackImage` cannot be summed by slot any more** (`image->level + slot`): `level.at(slot)` is
+  a scene's first slot as an array.
+- The thread sanitizer: see the review below.
+
+### The review (batch 5)
+
+- **Thread sanitizer**: `nextscene_test` built with `-fsanitize=thread`, run whole: clean, 15 minutes
+  on a shared desk (what a scene move hands over changed: nullptr for a scene with nothing, the blank
+  store in its place).
+- **Mutation testing**: 43 mutants of the new code (`leavesBlank` for each command, the "handed over"
+  bits, both-or-neither on a full queue, `moveGiven`, the blank store's guard, a track taken away,
+  `GiveScene`, a track sent whole, a scene move's blank; `SceneCells` compare, copy and assignment,
+  `fieldsFrom`, the file's `repeats` and `length`, the text cache's compare and marks, `makeBlank`,
+  `putAutomation`, the app's scene move, `setAutomation` / `clearAutomation` of nothing, the track and
+  scene images). **All die but two, both kept on purpose**: `writable`'s guard against writing the
+  blank store (no command reaches a blank store with something to write: `send` hands the store over
+  first; it is a belt) and `sceneHolds`'s first line (a shortcut: the same answer, sooner). Three
+  survived the first round and were killed by stronger tests: a full queue with room for exactly one
+  (`hasRoom`), a last scene holding a hidden bar and automation pushed off by NEXT SCENE and given back
+  by undo, and an empty two-bar cell copied (the engine keeps its length). Two "frees" in the app's
+  scene move were found to do nothing (a piece written over is freed anyway) and taken out.
