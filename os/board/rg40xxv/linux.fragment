@@ -7,7 +7,7 @@ CONFIG_INITRAMFS_SOURCE=""
 
 # The panel's start-up sequence, built in (see external.mk). WiFi and BT
 # firmware come in batch 5.
-CONFIG_EXTRA_FIRMWARE="panels/anbernic,rg40xx-panel.panel panels/anbernic,rg40xx-v2-panel.panel"
+CONFIG_EXTRA_FIRMWARE="panels/anbernic,rg40xx-panel.panel panels/anbernic,rg40xx-v2-panel.panel panels/anbernic,rg40xx-v2-stock-panel.panel"
 CONFIG_EXTRA_FIRMWARE_DIR="firmware-apotheca"
 
 # A serial console over the USB-C port (the device acts as a USB serial

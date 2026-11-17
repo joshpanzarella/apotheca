@@ -5,8 +5,8 @@ LEFT button 15 0 0
 RIGHT button 16 0 0
 A button 1 0 0
 B button 0 0 0
-X button 2 0 0
-Y button 3 0 0
+X button 3 0 0
+Y button 2 0 0
 L1 button 4 0 0
 R1 button 5 0 0
 L2 button 6 0 0

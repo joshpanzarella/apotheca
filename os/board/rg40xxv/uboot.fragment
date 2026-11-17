@@ -12,3 +12,14 @@ CONFIG_LED_STATUS_GPIO=y
 CONFIG_LED_STATUS0=y
 CONFIG_LED_STATUS_BIT=267
 CONFIG_LED_STATUS_STATE=2
+# Ours, not ROCKNIX's: the panel's backlight off (PD28), the panel held in
+# reset (PI14) and its power off (PI15) as soon as U-Boot runs, so the panel
+# is not left lit and powered with no picture and no start-up commands (the
+# coloured stripes) until Linux's panel driver powers it up properly, about
+# 3 s into the kernel. The pins are the device tree's (backlight, the
+# panel's reset-gpios, and the vdd-lcd regulator), and low is the state
+# Linux leaves them in with the panel off. Tried in the hope that it ends the
+# faint ghost of the stripes the owner saw in dark pictures (an LCD left
+# driven with no set-up can hold an image for a while). The SPL and the boot
+# ROM run before this, so a fraction of a second of stripes may remain.
+CONFIG_PREBOOT="gpio clear PD28; gpio clear PI14; gpio clear PI15"
