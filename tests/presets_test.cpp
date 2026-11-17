@@ -1062,18 +1062,18 @@ struct Fm6Heard {
     double cost = 0.0;         // the engine's time over the sound's while it played: a share of a core (this machine)
 };
 
-// A bass is played low and as one line; anything else plays keys.
-bool fm6IsBass(int preset) { return std::strcmp(specFor(TrackKind::Fm6)->presetCategory(preset), "BASS") == 0; }
+// A bass is played low and as one line; anything else plays keys. (MORPH's are heard the same way.)
+bool fm6IsBass(int preset, TrackKind kind = TrackKind::Fm6) { return std::strcmp(specFor(kind)->presetCategory(preset), "BASS") == 0; }
 
 // The phrase, a bar at 120 BPM played round twice (4 s), then Stop and the tail. Keys: a low note held
 // the whole bar under four notes up, a four-key chord held six steps (loose notes: one moment), a high
 // note. A bass: a line around C1 and C2 with one long note. All at the level a note is placed at.
 // `without` is a MOD put OFF after the pick (-1: none); `out`, when given, keeps the 4 s played.
-Fm6Heard hearFm6Preset(int preset, int without = -1, std::vector<float>* out = nullptr) {
+Fm6Heard hearFm6Preset(int preset, int without = -1, std::vector<float>* out = nullptr, TrackKind kind = TrackKind::Fm6) {
     Fm6Heard h;
     Rig rig;
     Session& session = rig.session();
-    CHECK(session.addTrack(TrackKind::Fm6));
+    CHECK(session.addTrack(kind));
     const int track = rig.project().trackCount() - 1;
     session.chooseSynthPreset(track, preset);
     rig.settle();
@@ -1085,7 +1085,7 @@ Fm6Heard hearFm6Preset(int preset, int without = -1, std::vector<float>* out = n
     const int keys[][3] = {{0, 48, 16}, {0, 60, 2}, {2, 67, 2}, {4, 64, 2}, {6, 72, 2}, {8, 55, 6}, {8, 60, 6}, {8, 64, 6}, {8, 71, 6}, {14, 79, 2}};
     const int bass[][3] = {{0, 36, 2}, {2, 43, 1}, {3, 36, 1}, {4, 40, 2}, {6, 48, 2}, {8, 31, 6}, {14, 43, 2}};
     int slot = 0;
-    if (fm6IsBass(preset))
+    if (fm6IsBass(preset, kind))
         for (const auto& n : bass) bar.notes[slot++] = NoteEvent{n[0], n[1], static_cast<float>(n[2]), 0.f, kPlacedLevel};
     else
         for (const auto& n : keys) bar.notes[slot++] = NoteEvent{n[0], n[1], static_cast<float>(n[2]), 0.f, kPlacedLevel};
@@ -1145,17 +1145,17 @@ Fm6Heard hearFm6Preset(int preset, int without = -1, std::vector<float>* out = n
 
 // Every MOD of a preset, heard: the phrase with it off against the phrase with both on, sample for sample
 // (the engine is fresh both times, so with nothing changed the two are the same to the bit).
-void hearFm6Mods(int preset, Fm6Heard& h) {
-    const TrackSound* sound = presetSound(TrackKind::Fm6, preset);
+void hearFm6Mods(int preset, Fm6Heard& h, TrackKind kind = TrackKind::Fm6) {
+    const TrackSound* sound = presetSound(kind, preset);
     if (!sound) return;
     std::vector<float> all;
-    hearFm6Preset(preset, -1, &all);
+    hearFm6Preset(preset, -1, &all, kind);
     double signal = 0.0;
     for (float v : all) signal += static_cast<double>(v) * v;
     for (int m = 0; m < kModsPerTrack; ++m) {
         if (sound->mods[m].kind == kModOff) continue;
         std::vector<float> without;
-        hearFm6Preset(preset, m, &without);
+        hearFm6Preset(preset, m, &without, kind);
         double apart = 0.0;
         for (std::size_t i = 0; i < all.size() && i < without.size(); ++i) apart += (static_cast<double>(all[i]) - without[i]) * (static_cast<double>(all[i]) - without[i]);
         h.modHeardDb[m] = 10.0 * std::log10((apart + 1e-30) / (signal + 1e-30));
@@ -1199,6 +1199,51 @@ void testFm6PresetsAsHeard(bool measure) {
         CHECK(h.ended && h.tail <= kFm6TailMost);
         CHECK(modsMove);
     }
+}
+
+// ---- MORPH's presets, heard through their whole sound -------------------------------------------
+// (docs/plans/wavetable-plan.md, batch 3.) Played as FM-6's are (a bar of keys, or the bass line for
+// BASS, round twice, Stop, the tail), every one of the 32, the engine's own eight too: the loudest tenth
+// inside the window, the master's peak under 0.9, a tail that ends, every MOD moving and heard, and the
+// loudest and the quietest within kMorphSpreadDb of each other. Nothing is pinned by checksum: the owner
+// tunes them by ear.
+constexpr double kMorphQuietestDb = -26.0, kMorphLoudestDb = -10.0;
+constexpr float kMorphPeakMost = 0.9f;
+constexpr double kMorphTailMost = 30.0;
+constexpr double kMorphModHeardDb = -40.0; // a MOD turned off changes the phrase by at least 1% of its RMS
+constexpr double kMorphSpreadDb = 8.0;
+void testMorphPresetsAsHeard(bool measure) {
+    const TrackKind kind = TrackKind::Morph;
+    const SynthSpec& spec = *specFor(kind);
+    if (measure) std::printf("  %-3s %-8s %-16s %8s %6s %6s %7s  %s\n", "", "folder", "name", "loudest", "peak", "tail", "cost", "MODs swing / heard");
+    double lo = 1e9, hi = -1e9;
+    for (int i = 0; i < builtInPresets(kind); ++i) {
+        Fm6Heard h = hearFm6Preset(i, -1, nullptr, kind);
+        hearFm6Mods(i, h, kind);
+        const TrackSound* sound = presetSound(kind, i);
+        bool modsMove = true;
+        char swing[96] = "";
+        for (int m = 0; m < kModsPerTrack; ++m) {
+            if (!sound || sound->mods[m].kind == kModOff) continue;
+            modsMove = modsMove && h.modSwing[m] > 0.005f && h.modHeardDb[m] >= kMorphModHeardDb;
+            char one[40];
+            std::snprintf(one, sizeof one, " %d:%.2f/%.0fdB", m + 1, h.modSwing[m], h.modHeardDb[m]);
+            std::strcat(swing, one);
+        }
+        if (measure)
+            std::printf("  %-3d %-8s %-16s %6.1f dB %6.3f %5.1fs %6.2f%% %s\n", i + 1, spec.presetCategory(i), spec.presetName(i), h.loudestDb, h.peak, h.tail, h.cost * 100.0, swing);
+        lo = std::min(lo, h.loudestDb), hi = std::max(hi, h.loudestDb);
+        const bool fine = h.numbers && h.loudestDb >= kMorphQuietestDb && h.loudestDb <= kMorphLoudestDb && h.peak < kMorphPeakMost && h.ended && h.tail <= kMorphTailMost && modsMove;
+        if (!fine) std::printf("  MORPH %d %s / %s: loudest %.1f dB, peak %.3f, tail %.1f s%s%s, MODs%s\n", i + 1, spec.presetCategory(i), spec.presetName(i), h.loudestDb, h.peak, h.tail, h.ended ? "" : " (not ended)", h.numbers ? "" : ", NOT A NUMBER", swing);
+        CHECK(h.numbers);
+        CHECK(h.loudestDb >= kMorphQuietestDb && h.loudestDb <= kMorphLoudestDb);
+        CHECK(h.peak < kMorphPeakMost);
+        CHECK(h.ended && h.tail <= kMorphTailMost);
+        CHECK(modsMove);
+    }
+    if (measure) std::printf("  loudest %.1f dB, quietest %.1f dB\n", hi, lo);
+    CHECK(hi - lo <= kMorphSpreadDb);
+    CHECK(builtInPresets(kind) == 32 && Morph::presetCount() == 8);
 }
 
 // ---- ACID's added presets, heard through their whole sound ------------------------------------------
@@ -1653,6 +1698,13 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[a], "--heard-cloud") == 0 || std::strcmp(argv[a], "--measure-cloud") == 0) {
             testCloudPresetsAsHeard(std::strcmp(argv[a], "--measure-cloud") == 0);
             std::printf(failures ? "%d check(s) failed\n" : "CLOUD's presets as heard: passed\n", failures);
+            return failures ? 1 : 0;
+        }
+        // --heard-morph: MORPH's 32 the same way (its own ctest entry, presets_heard_morph).
+        // --measure-morph: their figures, printed.
+        if (std::strcmp(argv[a], "--heard-morph") == 0 || std::strcmp(argv[a], "--measure-morph") == 0) {
+            testMorphPresetsAsHeard(std::strcmp(argv[a], "--measure-morph") == 0);
+            std::printf(failures ? "%d check(s) failed\n" : "MORPH's presets as heard: passed\n", failures);
             return failures ? 1 : 0;
         }
         // --heard-jaxep: JAX-EP's added presets the same way, the VCA's clip counted too (its own ctest

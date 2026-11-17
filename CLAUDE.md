@@ -2333,7 +2333,10 @@ effect in those two groups and fails one that does not.
   ENV, two rows of four at most; every click of every setting reads another way (the test walks them);
   **UNISON reads with the keys the pool leaves** (`mo::readingIn`: "4, 3 KEYS" with B on). No macro a
   choice; **ROLL on Y** (`mo::roll`: OCTAVE, TUNE, the AMP envelope, KEY TRACK, VELOCITY and LEVEL stay).
-  Its built-in data is `app/presets/morph.inc`, empty until batch 3. **Nobody has heard it.**
+  **32 presets in five folders** (batch 3): BASIC is the engine's table, PADS, LEADS, BASS and MOVING
+  are `app/presets/morph.inc`; `presets_test --heard-morph` (ctest `presets_heard_morph`) plays each
+  through its whole sound (FM-6's player: keys, or the bass line for BASS), every MOD heard, the 32
+  within 8 dB of each other. **Nobody has heard it.**
   - **`SynthSpec::table`** (MORPH's alone) gives MAIN the picture's room (as CLOUD's recording does) and
     `SynthScreen::drawTablePicture`: A's wave teal, B's purple behind it, a strip of frames with POSITION A
     brass, and while a key sounds the wave the newest key READS (the MOD ENV, a MOD) with a teal tick: the

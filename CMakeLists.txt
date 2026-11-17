@@ -220,6 +220,8 @@ if(APOTHECA_BUILD_APP)
     # CLOUD's (granular-plan.md, batch 3): through the TONE and a recording, each MOD heard.
     add_test(NAME presets_heard_cloud COMMAND presets_test --heard-cloud)
     set_tests_properties(presets_heard_cloud PROPERTIES TIMEOUT 120)
+    add_test(NAME presets_heard_morph COMMAND presets_test --heard-morph)
+    set_tests_properties(presets_heard_morph PROPERTIES TIMEOUT 120)
     # The speed plan's changes (docs/plans/speed-plan.md), each held to the sound it made before,
     # to the bit, beside the old way of working it out. It reads the effects' and the CZ's own parts.
     add_executable(speed_test tests/speed_test.cpp)

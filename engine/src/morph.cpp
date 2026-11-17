@@ -39,13 +39,13 @@ struct Preset {
 // LEADS, BASS, MOVING) are data in the app (batch 3). Preset 0 is a new track's. Nobody has heard any.
 //   TA  POSA TB POSB MIX SEMI FINE SUB OCT TUNE UNI DET WID FILT CUT RES KEY  ATK DEC SUS REL  EATK EDEC ESUS EREL EPOS ECUT VEL LEVEL
 const Preset kPresets[] = {
-    {"Analog Sweep", "BASIC", {Analog, 30, 0, 0, 50, 0, 0, 0, 0, 0, 1, 20, 50, kLow12, 85, 10, 50, 8, 50, 100, 50, 8, 60, 0, 50, 20, 0, 50, 0}},
-    {"Pulse Width", "BASIC", {Pulse, 15, 0, 0, 50, 0, 0, 0, 0, 0, 1, 20, 50, kLow24, 75, 20, 50, 8, 50, 100, 45, 8, 70, 0, 50, 45, 0, 50, 0}},
+    {"Analog Sweep", "BASIC", {Analog, 30, 0, 0, 50, 0, 0, 0, 0, 0, 1, 20, 50, kLow12, 85, 10, 50, 8, 50, 100, 50, 8, 60, 0, 50, 20, 0, 50, -3}},
+    {"Pulse Width", "BASIC", {Pulse, 15, 0, 0, 50, 0, 0, 0, 0, 0, 1, 20, 50, kLow24, 75, 20, 50, 8, 50, 100, 45, 8, 70, 0, 50, 45, 0, 50, -4}},
     {"Sync Rise", "BASIC", {Sync, 0, 0, 0, 50, 0, 0, 20, 0, 0, 1, 20, 50, kLow12, 90, 0, 50, 8, 50, 100, 40, 50, 80, 40, 50, 60, 0, 50, -2}},
-    {"Vowel Talk", "BASIC", {Vowel, 40, 1 + Vowel, 80, 30, 0, 7, 0, 0, 0, 2, 25, 60, kLow12, 95, 0, 50, 20, 50, 100, 55, 40, 75, 30, 55, 30, 0, 50, -3}},
-    {"Organ Stops", "BASIC", {Organ, 60, 0, 0, 50, 0, 0, 30, 0, 0, 1, 20, 50, kFilterOff, 100, 0, 50, 4, 50, 100, 30, 8, 60, 0, 50, 0, 0, 30, -4}},
-    {"Harmonic Walk", "BASIC", {Harmonic, 5, 0, 0, 50, 0, 0, 0, 0, 0, 1, 20, 50, kLow12, 85, 0, 50, 8, 50, 100, 50, 8, 75, 0, 50, 50, 0, 50, 0}},
-    {"Fold Grow", "BASIC", {Fold, 15, 0, 0, 50, 0, 0, 0, 0, 0, 1, 20, 50, kLow24, 70, 30, 50, 8, 50, 100, 45, 30, 70, 20, 50, 50, 15, 50, -2}},
+    {"Vowel Talk", "BASIC", {Vowel, 40, 1 + Vowel, 80, 30, 0, 7, 0, 0, 0, 2, 25, 60, kLow12, 95, 0, 50, 20, 50, 100, 55, 40, 75, 30, 55, 30, 0, 50, 0}},
+    {"Organ Stops", "BASIC", {Organ, 60, 0, 0, 50, 0, 0, 30, 0, 0, 1, 20, 50, kFilterOff, 100, 0, 50, 4, 50, 100, 30, 8, 60, 0, 50, 0, 0, 30, -2}},
+    {"Harmonic Walk", "BASIC", {Harmonic, 5, 0, 0, 50, 0, 0, 0, 0, 0, 1, 20, 50, kLow12, 85, 0, 50, 8, 50, 100, 50, 8, 75, 0, 50, 50, 0, 50, -3}},
+    {"Fold Grow", "BASIC", {Fold, 15, 0, 0, 50, 0, 0, 0, 0, 0, 1, 20, 50, kLow24, 70, 30, 50, 8, 50, 100, 45, 30, 70, 20, 50, 50, 15, 50, -4}},
     {"FM Bell", "BASIC", {Fm, 45, 1 + Bell, 20, 40, 12, 0, 0, 0, 0, 1, 20, 50, kLow12, 100, 0, 50, 4, 70, 0, 65, 4, 65, 0, 60, -40, 0, 60, 0}},
 };
 const int kPresetCount = static_cast<int>(sizeof kPresets / sizeof kPresets[0]);

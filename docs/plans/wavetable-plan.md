@@ -562,5 +562,31 @@ them. At 36 the large name ran into the line under it at every size (the still s
 did not catch it: the two texts are one row's), so a box under 44 draws its name in the medium lettering
 and both lines by their own heights in its middle (`SongScreen::kListLineGap` 4, with `kListTailRoom` 5 kept for the tails and the outline), held at LARGE's at XL.
 
-**Not done here**: the 24 data presets (batch 3), the designer page's picture (batch 4: today the generic
+**Not done here**: the designer page's picture (batch 4: today the generic
 synth page serves every setting and ROLL), README's page and the review (batch 5).
+
+## 12. Batch 3, as built (2026-11-17): the 32 presets
+
+The 24 of section 6 are data in `app/presets/morph.inc`, after the engine's 8 (BASIC): PADS, LEADS,
+BASS, MOVING, six each. Names made up. **Nobody has heard any of them.**
+
+| Planned | Built | Why |
+| --- | --- | --- |
+| PADS: HALL, BLOOM or SHIMMER "on SPACE" | **in the track's first slot** (Glass Choir SHIMMER, Slow Vowels HALL, Harmonic Bloom BLOOM), Warm Strings and Drift Bells send into SPACE | a preset holds the track's sound (three slots, two sends, MODs), never a bus's effect |
+| The engine's 8 as batch 1 left them | **LEVEL moved on six** (Analog Sweep -3, Pulse Width -4, Harmonic Walk -3, Fold Grow -4, Vowel Talk 0, Organ Stops -2 dB) | Pulse Width peaked 0.76 and Vowel Talk sat at -22 dB: the 32 now lie within 6.6 dB of each other |
+| `--heard-morph` its own phrase | **FM-6's player** (`hearFm6Preset` takes the kind: a bar of keys, or the bass line for a BASS folder) | the same phrase, round twice, Stop, the tail; no second copy of the player |
+
+MOVING has every MOD the plan named: an LFO in time (Table Walk, 1 BAR TRIANGLE), a FREE LFO (Free
+Swirl, 0.4 HZ; Drift Bells in PADS, 0.15 HZ DRIFT), a STEPPER playing the table as a sequence of waves
+(Wave Sequence), a STEPPER with CHANCE (Chance Waves), MOD 2 on CUTOFF (Two Movers), and a RANDOM quarter
+(Ratio Tremble). Two leads send into ECHO; Drive Bass has DRIVE, Wide Fold Bass SATURATE.
+
+**Measured** (`presets_test --measure-morph`, the desk): the loudest tenth -15.9 dB (Pulse Width) to
+-22.5 dB (Talking Bass); every peak under 0.6; every tail ends inside 3.2 s of Stop (a reverb's);
+every MOD moves and is heard, the faintest -12 dB (Drift Bells: the phrase with it off differs by a
+quarter of its RMS). Cost while playing 0.14% (a bass) to 1.0% (Harmonic Bloom, UNISON 2 with B and
+BLOOM) of a desk core.
+
+**`presets_test --heard-morph`** (ctest `presets_heard_morph`, about 4 s) holds all 32, the engine's
+too: -26 to -10 dB, peak under 0.9, a tail inside 30 s, each MOD moving and heard (1% of the RMS), and
+the loudest and the quietest within 8 dB.
