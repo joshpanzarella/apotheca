@@ -87,8 +87,8 @@
 //
 // A lane with a feel wears a purple mark at the left of its name.
 //
-// SLICES, for chopping a break. L1 on a lane that plays a recording zooms the
-// grid into that one lane (L1 again: back). The recording is drawn large, cut
+// SLICES, for chopping a break. L1 (tapped: it acts as it is let go) on a lane
+// that plays a recording zooms the grid into that one lane (L1 again: back). The recording is drawn large, cut
 // into slices: sixteen, or one to a step if it is fitted to more than a bar.
 // Under it are the bar's sixteen steps, and a line from every hit to the
 // slice it plays. Everything above works the same there, and:
@@ -107,6 +107,13 @@
 //
 // Slices that follow each other in order play as one unbroken sound; only a
 // slice out of order is heard as a cut (drums.hpp).
+//
+// COPY A BAR, here and in the slice view: hold L1 and
+//
+//   R1                  copy the bar on screen, every lane and every hit with all it is
+//   A                   paste it over the bar on screen (another bar, cell, scene or drum track)
+//
+// One step of undo. On the same track its automation goes with it.
 
 #include "redraw.hpp"
 #include "screen.hpp"
@@ -177,6 +184,10 @@ public:
     int sliceOf(int step) const;      // the slice a hit plays, from 0: the one its start falls in
     float ownStart(int step) const;   // where a step's own slice begins: step 5 of bar 1 is slice 5
     const char* said() const { return lastMs_ < saidUntil_ ? said_ : ""; }
+    // COPY A BAR: hold L1, then R1 copies the bar shown (every lane), A pastes over it (Session::copyBar).
+    // L1's own job, the slices, is then done on its LET GO, and only if nothing else was pressed while it was held.
+    bool barKeyHeld() const { return l1First_; } // L1 is held, pressed first: R1 copies, A pastes
+    void shouldersPressed() { l1Used_ = true; } // (the App: another shoulder went down with L1 held, a panic on its way)
     bool fromDice(int lane, int step) const { return pat().fromDice[lane][step]; }
 
     Feel feel;
@@ -256,6 +267,8 @@ private:
     char said_[96] = "";   // a line said for a moment (why a lane cannot be sliced)
     Uint32 saidUntil_ = 0;
 
+    bool l1First_ = false; // L1 is held and went down with nothing else held: R1 copies the bar, A pastes it
+    bool l1Used_ = false;  // ...and something was pressed while it was held: letting go is no tap (no slices)
     bool erasing_ = false; // B is held: hits the cursor crosses are deleted
     Paint paint_ = Paint::None;
     float brush_ = kPlacedLevel;              // the level R1 is painting with

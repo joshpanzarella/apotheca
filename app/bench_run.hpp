@@ -5,6 +5,8 @@
 namespace apotheca {
 // The timings, printed (see bench_run.cpp). Returns the program's exit code.
 int runBench();
+// Only the app's rows (undo, the song's text, a frame): `bench --app`.
+int runAppBench();
 
 // One of the bench's setups rendered for `seconds` of sound with no clock and nothing printed
 // but its name, for callgrind (`bench --profile NAME [SECONDS]`; docs/plans/speed-plan.md). The

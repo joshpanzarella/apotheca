@@ -573,6 +573,13 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down && shaping_) nudgeBy(b == Button::R2 ? 0.1f : -0.1f);
         return;
     }
+    // L1 held (pressed first): R1 copies the bar shown, A pastes over it. Nothing else of R1's or A's.
+    if (event.down && l1First_ && input.held(Button::L1) && !input.held(Button::X) && (b == Button::R1 || b == Button::A)) {
+        if (b == Button::R1) session_.copyBarHere();
+        else session_.pasteBarHere();
+        zoomUsed_ = true; // (the tap's zoom does not happen as well)
+        return;
+    }
     if (b == Button::A) {
         if (event.down && !chordHere()) placeNote(kNewLevel); // on a chord, A takes hold of the chord
         shaping_ = event.down;
@@ -582,10 +589,13 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (b == Button::L1) {
         // Zoom. A tap steps closer (2 octaves, 1, then round to 3). Held, up
         // and down go closer and further.
-        if (event.down) zooming_ = true, zoomUsed_ = false;
-        else {
+        if (event.down) {
+            zooming_ = true, zoomUsed_ = false;
+            l1First_ = !shaping_ && !painting_ && !erasing_ && carrying_ == Carry::Nothing;
+        } else {
             if (zooming_ && !zoomUsed_) zoomTo(session_.octavesShown() == 1 ? 3 : session_.octavesShown() - 1);
             zooming_ = false;
+            l1First_ = false;
         }
         return;
     }
@@ -652,7 +662,7 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
     if (!input.held(Button::B)) erasing_ = false;
     if (!input.held(Button::R1)) carrying_ = Carry::Nothing;
     if (!input.held(Button::X) || (!noteHere() && !chordHere())) fxHeld_ = false;
-    if (!input.held(Button::L1)) zooming_ = false;
+    if (!input.held(Button::L1)) zooming_ = false, l1First_ = false;
     if (!input.held(Button::Y)) picking_ = false; // (let go properly, the chord has landed already)
 
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
@@ -1277,6 +1287,10 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const HintUnder below[] = {{kStripHeldRatchetX, "LEFT / RIGHT"}, {kStripHeldGlideX, "UP / DOWN"}, {kStripHeldThrowX, "A"}, {kStripHeldFromX, "L1 / R1"}};
         hintsUnder(r, fonts, "Y", below, 4);
         return;
+    } else if (l1First_ && !held && carrying_ == Carry::Nothing) {
+        hint("UP / DOWN", "zoom");
+        hint("R1", "copy bar");
+        hint("A", "paste bar");
     } else if (carrying_ != Carry::Nothing) {
         hint("STICK UP / DOWN", "slide in time, freely");
         hint("D-PAD", "by whole steps");

@@ -41,6 +41,8 @@ New screens and gestures keep these; do not invent a variant.
 - **B** deletes, empties, goes back. **Hold B deletes for good** (with a bar that fills): never another button. Typing a name, B keeps it and leaves; Y deletes a letter.
 - **X** hears (on SONG it solos the track: owner, 2026-11-15). **Hold X** is "what it does": step effects on a drum hit, ratchet and glide on a note.
 - **Hold R1** drags: paint from an empty step, carry from a note, copy on SONG.
+- **Hold L1 on the grids** (drum grid, slices, roll) is the bar key: **+ R1 copies the bar, + A pastes it**.
+  So L1's own tap (the slices, the roll's zoom) acts on its LET GO, and only if nothing else was pressed meanwhile.
 - **Y** is the screen's special (chance, chord, mute, catch, roll).
 - **SELECT + something** is for whole-song things. **L2 / R2** are the tabs.
 - **A held D-pad has two speeds**, in `ui.hpp`: `kCursor...` for cursors, `kList...` for lists and choices.
@@ -52,7 +54,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (61) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`, `idle_test` as `idle1` to `idle3`; `textsize`, `textviews` and `themeviews` each run by themselves) |
+| All tests (66) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`, `idle_test` as `idle1` to `idle3`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them). `./build/bench --profile NAME [SECONDS]` renders one setup with no clock for callgrind (`--toggle-collect='*profiledRender*'`; NAME empty lists them; `docs/plans/speed-plan.md`) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-switch` (COMP, on its second setting; with `--hold-a` the heading shows the key that switches its TYPE), `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling); the list of recordings: `picker` (SAMPLES, on a folder), `picker-in` (in a folder), `picker-deep` (two folders down), `picker-deleting`, `picker-new` (on + NEW FOLDER), `picker-typing` (its name being typed), `picker-carrying` (R1 held, steered onto a folder), `picker-folder-deleting` (B held on an empty folder), `sampler-picker`; the help card: `help` (with SOUND 43%, WORST 88%, CPU 37%: pretended, `App::pretendLoad`), `help-load` (its longest line); the sampler: `sampler` (on START), `sampler-end` (on END; both with START 12% and END 80% marked; the demo's last track becomes the sampler, all twelve being used), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`, and at rest: `bounce-ready`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; JAX-EP's panel and pages: `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank` (MAIN on B7 Distortion Guitar, in BANK B: the longest of the 32 names), `jaxep-held` (a knob, A held); FM-6's: `fm6` (MAIN), `fm6-1` to `fm6-8` (its pages), `fm6-long` (HARPSICH 1, the widest name), `fm6-fixed` (an operator at a FIXED pitch, on FINE), `fm6-off` (an operator OFF); PHYSIC's: `physic` (MAIN), `physic-1` to `physic-5` (SOUND, RING, PLAY, DICE, BODY: on Vibes, PAIR and BUZZ up), `physic-long` (its widest preset name), `physic-string` (RING on Steel: STRETCH reads B), `physic-noise` (SOUND on Hand Drum: HARDNESS reads a NOISE burst's length); a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); FEEL on the drum grid: `feel` (lanes with their marks, the cursor on a name), `feel-held` (X held: the strip is the lane's feel), `feel-off-held`, `feel-same-held` (every lane at 100%, the strip at its widest), `feel-said` (L1 on a built-in drum with a feel: the message has the row), `slices-name-feel` (the slice view's name with its mark; needs `--samples`); X held on a knob, its MOD: `device-mod-held` (an LFO on Phazed's TONE), `device-mod-stepper`, `device-mod-new` (none yet), `device-mod-full` (MODS FULL), `device-mod-deleting` (B held), `fx-mod-held` (an LFO on TAPE's FEEDBACK), `fx-mod-stepper`, `fx-mod-new`, `fx-mod-full`, `fx-sends-mod-held` (on ECHO: the panel in SPACE's row); the brass mark with the song playing: `device-modded`, `fx-modded`; the MOD tab: `mod` (an LFO on TONE, a STEPPER on ECHO; the demo plays, so the dots move), `mod-lfo` (on DEPTH), `mod-steps` (MOD 2's row, on step 5), `mod-depth` (MOD 1's DEPTH lane written, the demo playing), `mod-mixer` (LEVEL and PAN as targets), `mod-target` and `mod-drums` (each with `--hold-a`: the list of targets), `mod-off`, `mod-deleting`, `mod-12`, `mod-free` (a free LFO: SPEED in Hz), `device-mod-free`; any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -1136,22 +1138,43 @@ effect in those two groups and fails one that does not.
   step's text (`dropTrackText`), and another instrument is passed by (its kind
   differs). The delete itself is still not undone.
 - **The song's text is made a track at a time** (`SongTextCache`,
-  `Session::textNow()`): a track whose bytes are as they were when its text
-  was made is not written again. The autosave, the end of a burst of edits and
-  undo all use it, so with nothing changed the autosave is a compare of memory
-  (2.5 MB of text: 0.8 ms on the desk, was 68). The copies it keeps cost
-  about 1 MB a track (11.8 MB for twelve). **An undo reads back only the
-  tracks whose text differs from the step's** (`Session::readStep`; the rest
-  get a stand-in line that gives their kind and cells' lengths). A scene move
-  reads the step whole (it takes the sixteenth scene from it).
-  `readUndoWhole(true)` reads every step whole, as before: `app_test`
-  (`testUndoIsAsItWasReadWhole`) holds the two the same. **A track whose
+  `Session::textNow()`): a track whose text would be as it was when its text
+  was made is not written again. **It is compared by what the text reads**
+  (`sameForText`, `TextUsed`): everything outside the patterns byte for byte;
+  a bar or a lane of automation that had something in it byte for byte; one
+  that had nothing only looked at, one side, to see it still has nothing
+  (first by one `memcmp` against an empty one: `levelsEmpty`, `notesEmpty`,
+  `laneEmpty`). Exact, because `putTrack` writes nothing for such a piece. The
+  autosave, the end of a burst of edits and undo all use it, so with nothing
+  changed the autosave is a compare of memory. The copies it keeps cost about
+  1 MB a track (11.8 MB for twelve). **An undo reads back only the tracks
+  whose text differs from the step's, and builds no `Project`** (speed plan
+  batch 4: `Session::readStep` into a `StepRead`: the song's own lines, and
+  the tracks read into `TrackData` made once and kept, a megabyte a track ever
+  needed; `SongReader` reads a part at a time as `parseSong` reads the whole,
+  `cutSongAt` gives the parts' places). The text of each track now is what
+  undo or redo just made (`patternsNow`), not compared again: **only they call
+  `restorePatterns`**. A scene move reads the step whole (it takes the
+  sixteenth scene from it). `readUndoWhole(true)` reads every step whole:
+  `app_test` (`testUndoIsAsItWasReadWhole`) holds the two the same, and
+  `save_test` (`testASongReadInPartsIsAsReadWhole`) the reader. **A track whose
   numbers differ from the step's but whose text is the same is left alone**
-  (compared by `trackText`, as the file writes it): a value the text rounds
-  (a keyboard's 90/127) made one undo send all twelve tracks whole.
-  `app_test --undo` runs the undo tests alone. Do not give the cache
-  a count of changes instead: the screens write into the project in many
-  places, and one that forgot to count is work never saved.
+  (`patternsSameAsText`: of one kind, only the patterns' own lines,
+  `patternText`): a value the text rounds (a keyboard's 90/127) made one undo
+  send all twelve tracks whole. `app_test --undo` runs the undo tests alone.
+  Do not give the cache a count of changes instead: the screens write into the
+  project in many places, and one that forgot to count is work never saved.
+- **The song's text is written and read without snprintf or streams** (speed
+  plan batch 4): `appendNumber` writes `%.0f`, `%.4g` and `%.6g` to the byte
+  as snprintf does (exact 128-bit arithmetic; snprintf where it would not
+  fit), and `LineIn` (`app/line_in.hpp`) reads a line as a `std::istringstream`
+  of it does, failures included (num_get's gathering, then strtod or its exact
+  fast path). `save_test` holds both to the library over millions of values
+  and lines (every float was checked once, outside the tests). **`parseSong`
+  reads in place** (`Project` is a `ProjectHead` and the tracks; a track is
+  made blank piece by piece, `makeBlank`), so it is never handed a second
+  12 MB Project. A new format in the song file goes through `put`'s three, or
+  snprintf; a new way to read goes through `LineIn`'s operations.
 - **Scenes are numbered by their place, so a scene put in moves the ones
   after it** (NEXT SCENE, SELECT + Y: `Session::nextScene`). Whatever holds a
   scene's number must follow: the engine's playing, its patterns and an
@@ -1500,6 +1523,37 @@ effect in those two groups and fails one that does not.
   drawn by `pattern_slices.cpp`), not a screen of its own, so every grid
   gesture works in it unchanged. A hit's slice is its `start`; there is no
   separate slice data. A lane has 16 slices, or its FIT in steps if longer.
+- **COPY A BAR: hold L1, R1 copies the bar shown, A pastes over it** (owner, 2026-11-17: "copying
+  steps 1-16 to paste on 17-32"; `Session::copyBar` / `pasteBar` / `BarClip`, `copyBarHere` /
+  `pasteBarHere` for the screens; `tests/copybar_test.cpp`). The drum grid, its slice view and the roll.
+  - **The clipboard is memory only**, never in the song file; a new song keeps it. It holds a drum
+    bar (`DrumPattern`, every field) or a note bar (`NotePattern`, chords and their effects), the bar's
+    16 steps of every automation lane, and where it came from.
+  - **A paste REPLACES the bar** and is **one step of undo of its own** (as NEXT SCENE: the burst
+    before it ends, and `settled_` is taken after it, so an edit straight after is a step too). Onto a
+    bar that is already the same (compared field by field; automation too on the same track): nothing,
+    no step. The engine gets the track's image (`sendTrackImage`, as `setCellBars`).
+  - **Drums only onto a drum track, notes onto any synth or sampler track**; a track with nothing, or
+    a bar past the cell's end: refused. **A note over the bar line keeps its length, held to the end of
+    the cell it lands in** (as the roll's `room`). **Automation only onto the SAME track** (another
+    track's lanes are other knobs; its own are left).
+  - **The gesture**: L1 must go down FIRST, with nothing else held (`l1First_`; not with X held: X's
+    L1 / R1 are the step effects, GLIDE FROM, the feel). R1 then copies (no brush, no carry), A pastes
+    (no hit or note placed; on the grid `aSpent_`, so A's hold nudges nothing). **L1's own tap acts on
+    its let go**: the drum grid's slices (`l1Used_`: any other button pressed while L1 was held cancels
+    it) and the roll's zoom (`zoomUsed_`, set by a copy or a paste). The App tells both screens when
+    another shoulder goes down with L1 held (`shouldersPressed`), so a panic's let go of L1 opens no
+    slices; **a panic begun L1, R1 puts the copy back** (`clipBeforeShoulders_`, `barCopies`).
+  - What was done is said in the App's box above the bar (`Session::say`, taken by
+    `App::takeSessionSaid`): BAR 1 COPIED, PASTED ON BAR 2, BAR 2 IS THE SAME ALREADY, NOTHING
+    COPIED YET, DRUMS GO ON A DRUM TRACK, NOTES GO ON A NOTE TRACK. Each fits the box at LARGE
+    (`testTheWordsFit`).
+  - **The hints are in the bar only while L1 is held** (R1 copy bar, A paste bar; the roll also
+    UP / DOWN zoom): the plain bars of the drum grid and the roll have no room. Not on the help card
+    (full). Stills `copy-bar`, `copy-bar-notes`, `copy-bar-refused`.
+  - Mutants: every one tried in `copybar_test` dies but the App's two `shouldersPressed` calls (the
+    panic's, and "another shoulder with L1 held"): each is the other's belt, and the two taken out
+    together die (`testTheSlicesAndL1`, the panic begun L1, L2, R2, R1).
 - **A drum hit that starts where the lane's sound has just got to carries it
   on** (`DrumMachine::trigger`, within 1.5 ms, never from the very top). That
   is what makes slices in order seamless. Do not "simplify" it away.
@@ -2617,9 +2671,10 @@ effect in those two groups and fails one that does not.
 | ...a macro changed, a call: Phazed / QMOD / JAX-EP (the same runs) | 0.36 / 0.92 / 0.11 us; 24 MODs on QMOD's macros run: +0.27% of a core |
 | 24 LFOs FREE against the same 24 in time, twelve silent drum tracks, on the sends (2026-11-16, three `bench` runs, the six engines timed in turns, load 5 to 12; the 24 in time +0.074 to +0.090% over none) | -0.002 to -0.005%: nothing that shows |
 | One idle frame | 0.03 ms |
-| A frame that ends an edit (undo snapshot) | 1 ms |
-| Undo plus redo (bench: twelve tracks, an edit to one) | 20 ms; 21 to 31 before undo took sounds, 22 after (2026-11-14, a busy desk) |
-| ...a knob and a hit on two tracks, undone and redone | 19 to 24 ms before, 12 to 13 after |
+| A frame that ends an edit (undo snapshot) | 0.32 to 0.37 ms (speed batch 4, 2026-11-17, `bench --app`; 0.57 to 0.59 before, 12.3 on the handheld). **Handheld: about 7 ms, an estimate** |
+| Undo plus redo (bench: twelve tracks, an edit to one) | **0.63 to 0.67 ms** (speed batch 4; 20.9 to 21.7 before it on the same desk, the handheld's SPEED TEST 200). **Handheld: about 6 to 10 ms, an estimate** |
+| ...a knob and a hit on two tracks, undone and redone | 1.1 to 1.3 ms (10 to 11 before batch 4; 213 on the handheld). Handheld estimate 12 to 20 ms |
+| The bench's song (33 KB) as text / read back into a song | 0.68 to 0.76 ms / 0.77 to 0.84 ms (1.61 to 1.75 / 3.88 to 3.95 before batch 4; 17.5 / 47 on the handheld). Handheld estimate about 8 / 10 ms |
 | The busiest song shared out other ways (speed plan batch 0, 2026-11-15, one run, load 6): 2 helpers / 3 / 2 heaviest first / 3 heaviest first. **The desk cannot tell; the device's SPEED TEST decides** | 12.0 / 13.3 / 11.4 / 11.1% of a block |
 | A screen pass while the song plays, SDL's software renderer (batch 0): SONG / drum grid | update 0.06 / 0.05 ms, drawing 1.7 / 1.6 ms |
 | Instructions in one second of sound (callgrind, clang -O2 -g, `bench --profile`; speed plan section 8): busiest / twelve silent Phazed / eleven silent samplers, chords / twelve drum tracks / thrown, before batch 1. The busiest song then had two QMOD tracks where FM-6 is now | 2,070 / 351 / 67.5 / 214 / 435 M |
@@ -2663,6 +2718,8 @@ watch again, it is in git (the commit before batch 8b).
    through SDL2's Android side (sound, files, the WiFi page, which core the sound runs on).
    Keep the engine free of Linux-only calls where it costs nothing.
 10. **Our own firmware for the RG40XXV, Apotheca and nothing else** (owner, 2026-11-16; `docs/plans/firmware-plan.md`): a Buildroot image on the mainline kernel with ROCKNIX's H700 patches. **Planned only; batch 0 (ROCKNIX on a spare card, SPEED TEST there) is the first step.**
+11. **A drum synth** (owner, 2026-11-17): a kit lane's sound made from knobs (KICK, SNARE, HATS...) instead of a recording. Plan and engine on branch `drumsynth` (`docs/plans/drumsynth-plan.md`).
+12. **A wavetable synth, after the drum synth** (owner, 2026-11-17). Not planned yet.
 
 Open: FM-6's banks ROM2A, 3A and 4A (in the same archive; not taken: the job asked for the B sides), which chord packs ship, more presets, own WiFi hotspot, an automation
 step-editor, a picture of FM-6's ALGORITHM (its wiring; msfa's table says each). **Twin Analog is gone** (owner, 2026-11-11: rethink it; 2026-11-13: it

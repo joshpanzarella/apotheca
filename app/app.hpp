@@ -115,6 +115,11 @@ private:
     View viewBeforeShoulders_ = View::Pattern;
     bool slicingBeforeShoulders_ = false;
     int trackBeforeShoulders_ = 0;
+    // ...and the copied bar: L1 then R1 on the way to all four is a copy (hold L1, R1), which a panic puts back.
+    Session::BarClip clipBeforeShoulders_;
+    unsigned copiesBeforeShoulders_ = 0;
+    unsigned saidSeen_ = 0; // Session::saidCount() when its line was last taken
+    void takeSessionSaid(); // what the Session asked to be said (a bar copied or pasted) into this box
     NoteScreen notes_;
     KitScreen kit_;
     FxScreen fx_;

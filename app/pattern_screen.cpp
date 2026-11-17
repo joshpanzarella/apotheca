@@ -644,6 +644,13 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down) fxThrow(), aSpent_ = true; // THROW, a step round. (A's own jobs, placing and shaping, wait until X is let go and A is pressed again.)
         return;
     }
+    // L1 held (pressed first): R1 copies the bar shown, A pastes over it. Nothing else of R1's or A's.
+    if (event.down && b != Button::L1 && l1First_) l1Used_ = true; // L1 let go is then no tap
+    if (event.down && l1First_ && input.held(Button::L1) && !input.held(Button::X) && (b == Button::R1 || b == Button::A)) {
+        if (b == Button::R1) session_.copyBarHere();
+        else session_.pasteBarHere(), aSpent_ = true; // (A's hold does nothing either: no nudge with the D-pad)
+        return;
+    }
     if (b == Button::X) {
         // Hears what is under the cursor, as everywhere. On a hit it is also a hold: the stick then sets its step effects.
         fxHeld_ = event.down && hitHere() && !shaping_ && !dicing_ && paint_ == Paint::None;
@@ -666,8 +673,15 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (b == Button::L1) {
-        // Into the cursor's lane, as slices; and back out to the whole grid.
-        if (event.down && !shaping_ && !dicing_ && paint_ == Paint::None) setSlicing(!slicing_);
+        // Into the cursor's lane, as slices; and back out to the whole grid. On the let go of a tap:
+        // held, L1 is the key R1 copies and A pastes a bar with.
+        if (event.down) {
+            l1First_ = !shaping_ && !dicing_ && paint_ == Paint::None;
+            l1Used_ = false;
+        } else {
+            if (l1First_ && !l1Used_) setSlicing(!slicing_);
+            l1First_ = false;
+        }
         return;
     }
     if (b == Button::A) {
@@ -750,6 +764,7 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
     if (!input.held(Button::X) || onTempo_ || step_ != kLaneName) feelHeld_ = false;
     if (!input.held(Button::A)) aSpent_ = false;
     if (!input.held(Button::Y)) ySpent_ = false;
+    if (!input.held(Button::L1)) l1First_ = false;
 
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
@@ -1125,6 +1140,9 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const HintUnder under[] = {{kFxPitchX, "UP / DOWN"}, {kFxRatchetX, "LEFT / RIGHT"}, {kFxReverseX, "L1"}, {kFxCutX, "R1"}, {kFxThrowX, "A"}};
         ui::hintsUnder(r, fonts, "Y", under, 5);
         return;
+    } else if (l1First_ && !held && paint_ == Paint::None) {
+        hint("R1", "copy bar");
+        hint("A", "paste bar");
     } else if (slicing_ && paint_ == Paint::OneLevel) {
         hint("DRAG", "lay the break out in order");
         hint("+ R2", "shuffled");

@@ -28,6 +28,8 @@
 //                  mod, mod-lfo, mod-steps, mod-target, mod-off, mod-drums, mod-deleting, mod-12, mod-free (the MOD tab;
 //                  with --hold-a on mod-target and mod-drums, the list of targets), device-mod-free
 //                  help (the card, with how hard the program works: 43, 88 and 37%), help-load (its longest line),
+//                  copy-bar, copy-bar-notes, copy-bar-refused (L1 held on the drum grid / the roll after a
+//                  copy: the bar's hints and BAR 1 COPIED; a drum bar pasted on a synth track: refused)
 //                  volume (the SET page, on VOLUME), update-ready, update-ready-drums,
 //                  update-accepted (an update accepted: the bar, and the notice), nomenu and help-nomenu
 //                  (a handheld with no MENU button: its hint, and its help card)
@@ -1379,6 +1381,17 @@ int main(int argc, char** argv) {
         pushKey(SDLK_BACKSPACE, true); // SELECT, held
         tapKey(SDLK_a, std::strcmp(view + 10, "-full") == 0 ? kMaxScenes : 1); // Y
         pushKey(SDLK_BACKSPACE, false);
+    } else if (std::strncmp(view, "copy-bar", 8) == 0) {
+        // COPY A BAR: L1 held (the bar says what R1 and A do) just after R1 copied the bar (BAR 1 COPIED),
+        // on the drum grid; on the piano roll ("copy-bar-notes"); and a drum bar refused on a synth track
+        // ("copy-bar-refused": DRUMS GO ON A DRUM TRACK).
+        if (std::strcmp(view + 8, "-notes") == 0 || std::strcmp(view + 8, "-refused") == 0) {
+            if (view[9] == 'r') app.session().copyBar(0, 0, 0);
+            app.project().track = 1;
+            app.notes().moveCursorTo(57, 6);
+        }
+        pushKey(SDLK_q, true); // L1, held
+        tapKey(view[9] == 'r' ? SDLK_x : SDLK_w); // A pastes, R1 copies
     } else if (std::strcmp(view, "update-ready") == 0 || std::strcmp(view, "update-ready-drums") == 0) {
         // An update accepted, waiting for the next start: the bar's end says so.
         app.session().markUpdateReadyForStill();
