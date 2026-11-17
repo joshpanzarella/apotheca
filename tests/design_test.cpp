@@ -1175,6 +1175,56 @@ void testCloudFromThePage() {
     CHECK(rig.tell("sample") && !rig.track().sample[0]);
 }
 
+// MORPH's page (wavetable-plan.md, batch 4): its sixteen tables in the spec, every frame of each at 64
+// points, as MAIN's picture reads them, and which settings pick and place A's and B's. A turned
+// POSITION or TABLE is in the state only: the spec is not made again for it.
+std::vector<int> tableWaveOf(const std::string& spec, int table) {
+    std::size_t at = spec.find("\"waves\":[[");
+    if (at == std::string::npos) return {};
+    at += 9;
+    for (int t = 0; t < table; ++t) at = spec.find("],[", at) + 2;
+    std::vector<int> out;
+    std::istringstream in(spec.substr(at + 1, spec.find(']', at) - at - 1));
+    std::string one;
+    while (std::getline(in, one, ',')) out.push_back(std::atoi(one.c_str()));
+    return out;
+}
+void testMorphFromThePage() {
+    Rig rig;
+    Session& session = rig.app.session();
+    CHECK(session.addTrack(TrackKind::Morph));
+    rig.app.project().track = rig.app.project().trackCount() - 1;
+    rig.frames(1);
+    const std::string spec = rig.get("/design/spec").body;
+    CHECK(has(spec, "\"name\":\"MORPH\",\"roll\":true,") && has(spec, "\"page\":\"synth\""));
+    CHECK(has(spec, "\"tables\":{\"points\":64,\"names\":[\"ANALOG\",\"PULSE\",") && has(spec, "\"GLASS\"],\"frames\":[32,32,"));
+    CHECK(has(spec, "\"oscs\":[{\"name\":\"A\",\"table\":0,\"position\":1,\"off\":false},{\"name\":\"B\",\"table\":2,\"position\":3,\"off\":true}]"));
+    for (int t = 0; t < morph::kTables; ++t) {
+        const std::vector<int> w = tableWaveOf(spec, t);
+        CHECK(static_cast<int>(w.size()) == Morph::tableFrames(t) * 64);
+        int most = 0;
+        for (int v : w) most = std::max(most, std::abs(v));
+        CHECK(most >= 80 && most <= 100); // a frame's peak is 1 (a narrow one falls between the 64 points)
+        // As MAIN reads it: a point of the middle frame is the table's own read there.
+        const int f = Morph::tableFrames(t) / 2, i = 17;
+        if (static_cast<int>(w.size()) > f * 64 + i) CHECK(w[static_cast<std::size_t>(f * 64 + i)] == static_cast<int>(std::lround(Morph::tableRead(t, f, i / 64.0) * 100.f)));
+    }
+    // ANALOG's first frame is a sine: up at a quarter, down at three quarters.
+    const std::vector<int> analog = tableWaveOf(spec, 0);
+    CHECK(analog.size() >= 64 && analog[16] > 90 && analog[48] < -90 && std::abs(analog[0]) <= 2);
+    // POSITION and TABLE from the page change the state, not the spec.
+    const int before = specNumber(rig.get("/design/state").body);
+    CHECK(rig.tell("set 1 70") && rig.tell("set 2 5") && rig.track().morph.value[morph::PositionA] == 70 && rig.track().morph.value[morph::TableB] == 5);
+    rig.frames(1);
+    const std::string state = rig.get("/design/state").body;
+    CHECK(specNumber(state) == before && has(state, "\"values\":[0,70,5,"));
+    CHECK(rig.get("/design/spec").body == spec);
+    // ROLL from the page: a new sound, OCTAVE and the AMP envelope kept.
+    const MorphPatch was = rig.track().morph;
+    CHECK(rig.tell("roll 777"));
+    CHECK(std::memcmp(&was, &rig.track().morph, sizeof was) != 0 && rig.track().morph.value[morph::Octave] == was.value[morph::Octave] && rig.track().morph.value[morph::Attack] == was.value[morph::Attack]);
+}
+
 int main() {
     // The engine's own presets only: the tests here are of their tables. The presets the app's data
     // adds (and any track sound it gives a built-in) are presets_test's.
@@ -1191,6 +1241,7 @@ int main() {
     testKitFromThePage();
     testKitSynthFromThePage();
     testCloudFromThePage();
+    testMorphFromThePage();
     if (const char* hold = std::getenv("APOTHECA_DESIGN_HOLD")) {
         Rig rig;
         if (std::getenv("APOTHECA_DESIGN_SAMPLER")) { // (a SAMPLER track, on a recording of four hits; two more on the card)
@@ -1230,6 +1281,10 @@ int main() {
             mkdir((rig.root + "/samples").c_str(), 0755);
             writeWav(rig.root + "/samples/stepped.wav", steppedSine(), 48000);
             rig.app.session().addTrack(TrackKind::Cloud);
+            rig.app.project().track = rig.app.project().trackCount() - 1;
+            rig.frames(1);
+        } else if (std::getenv("APOTHECA_DESIGN_MORPH")) { // (a MORPH track, on its first preset)
+            rig.app.session().addTrack(TrackKind::Morph);
             rig.app.project().track = rig.app.project().trackCount() - 1;
             rig.frames(1);
         } else if (std::getenv("APOTHECA_DESIGN_PHYSIC")) { // (a PHYSIC track, on its first preset)

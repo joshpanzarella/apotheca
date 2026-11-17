@@ -52,6 +52,8 @@ input[type=range]{width:100%;accent-color:var(--teal);margin:2px 0}
 .wavetop select{min-width:220px;max-width:100%}
 .wave canvas{display:block;width:100%;height:150px;background:var(--bg);border:1px solid var(--line);touch-action:none;cursor:ew-resize}
 .wave .note{font-size:11px;color:var(--dim);margin-top:4px}
+.tables{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:14px}
+.tables .wave canvas{height:170px}
 body.kit{padding-bottom:24px}
 #kithelp{font-size:12px;color:var(--dim);margin:2px 0 12px}
 .lanes{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,480px),1fr));gap:14px}
@@ -245,6 +247,64 @@ function wave(w) {
   waves.push({draw});
   return box;
 }
+// MORPH's tables (spec.tables: every frame of each at `points` points, -100..100; spec.oscs: which
+// settings pick and place A's and B's): the table's frames stacked faint, back to front, and the frame
+// POSITION reads drawn at its place in the stack, crossfaded between the two it falls between as the
+// voice does (teal A, purple B). A click or a drag sets POSITION. The macros are left out, as CLOUD's
+// band leaves them: the picture is the patch.
+function tableWave(o) {
+  const box = el('div', 'wave'), cv = el('canvas'), note = el('div', 'note');
+  box.append(cv, note);
+  const at = id => state && state.values ? +state.values[id] : 0;
+  const table = () => { const v = at(o.table); return o.off ? v - 1 : v; };
+  let dragging = false;
+  function move(e) {
+    const r = cv.getBoundingClientRect(), v = Math.max(0, Math.min(100, Math.round((e.clientX - r.left) / Math.max(1, r.width) * 100)));
+    if (v !== at(o.position)) setValue(o.position, v);
+  }
+  cv.addEventListener('pointerdown', e => { if (!state || table() < 0) return; dragging = true; cv.setPointerCapture(e.pointerId); move(e); e.preventDefault(); });
+  cv.addEventListener('pointermove', e => { if (dragging) move(e); });
+  for (const up of ['pointerup', 'pointercancel']) cv.addEventListener(up, () => { dragging = false; });
+  function draw() {
+    const css = getComputedStyle(document.documentElement), c = n => css.getPropertyValue(n).trim();
+    const dpr = window.devicePixelRatio || 1, W = Math.max(1, Math.round(cv.clientWidth * dpr)), H = Math.max(1, Math.round(cv.clientHeight * dpr));
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+    const g = cv.getContext('2d'); g.clearRect(0, 0, W, H);
+    const t = table(), T = spec.tables;
+    if (t < 0 || t >= T.names.length) {
+      g.fillStyle = c('--dim'); g.font = (14 * dpr) + 'px system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(o.name + ' IS OFF: TABLE ' + o.name + ' TURNS IT ON', W / 2, H / 2);
+      note.textContent = ''; return;
+    }
+    const F = T.frames[t], P = T.points, data = T.waves[t], pos = at(o.position) / 100 * (F - 1);
+    // The stack: frame 1 at the front (bottom left), the last at the back (top right).
+    const dx = W * 0.22, dy = H * 0.34, w = W - dx - 8 * dpr, amp = (H - dy) * 0.36, x0 = 4 * dpr, y0 = H - (H - dy) / 2;
+    const line = (f0, f1, k) => { // a frame, crossfaded between f0 and f1 by k, at its place in the stack
+      const depth = (f0 + (f1 - f0) * k) / Math.max(1, F - 1), ox = x0 + depth * dx, oy = y0 - depth * dy;
+      g.beginPath();
+      for (let i = 0; i <= P; ++i) {
+        const j = i % P, v = (data[f0 * P + j] * (1 - k) + data[f1 * P + j] * k) / 100;
+        const x = ox + i / P * w, y = oy - v * amp;
+        if (i) g.lineTo(x, y); else g.moveTo(x, y);
+      }
+      g.stroke();
+    };
+    g.lineWidth = dpr; g.strokeStyle = c('--line');
+    for (let f = F - 1; f >= 0; --f) line(f, f, 0);
+    const f0 = Math.min(F - 2, Math.floor(pos)), k = pos - f0;
+    g.lineWidth = 2.5 * dpr; g.strokeStyle = c(o.name === 'A' ? '--teal' : '--purple');
+    line(f0, f0 + 1, k);
+    // POSITION along the bottom: a brass mark, and the FRAME it reads.
+    const mx = Math.min(W - 2 * dpr, Math.max(0, at(o.position) / 100 * W - dpr));
+    g.fillStyle = c('--brass'); g.fillRect(mx, H - 8 * dpr, 2 * dpr, 8 * dpr);
+    g.font = (11 * dpr) + 'px system-ui,sans-serif'; g.textBaseline = 'top'; g.textAlign = 'left';
+    g.fillStyle = c('--text'); g.fillText(o.name + '  ' + T.names[t], 6 * dpr, 6 * dpr);
+    g.fillStyle = c('--brass'); g.textAlign = 'right'; g.fillText('FRAME ' + (pos + 1).toFixed(2) + ' OF ' + F, W - 6 * dpr, 6 * dpr);
+    note.textContent = 'POSITION ' + o.name + ' ' + at(o.position) + '%: the bright wave is the frame it reads. Click or drag to move it.';
+  }
+  waves.push({draw});
+  return box;
+}
 function drawWaves() { for (const w of waves) w.draw(); }
 window.addEventListener('resize', drawWaves);
 function build() {
@@ -257,6 +317,11 @@ function build() {
   if (none) return;
   if (kit) return buildKit(all);
   if (sampler || spec.waves) for (const w of spec.waves) all.append(recordingSection(w)); // (a CLOUD's too)
+  if (spec.tables) { // MORPH: A's and B's tables, side by side
+    const s = el('section'), row = el('div', 'tables'); s.append(el('h2', '', 'TABLES'));
+    for (const o of spec.oscs) row.append(tableWave(o));
+    s.append(row); all.append(s);
+  }
   // presets, in their folders
   const sel = $('preset'); sel.textContent = ''; let group = null, folder = null;
   spec.presets.forEach((p, i) => {

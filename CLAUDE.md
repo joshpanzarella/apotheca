@@ -2341,6 +2341,10 @@ effect in those two groups and fails one that does not.
     `SynthScreen::drawTablePicture`: A's wave teal, B's purple behind it, a strip of frames with POSITION A
     brass, and while a key sounds the wave the newest key READS (the MOD ENV, a MOD) with a teal tick: the
     readout is CLOUD's (`Engine::grainPlaces`, `kStirGrains`), MORPH's places there. `idle_test` has a part.
+  - **The WiFi page draws A's and B's tables** (batch 4): the spec carries all sixteen once
+    (`morphTablesText`: every frame at 64 points, about 110 KB) and `"oscs"`, so a turned TABLE or
+    POSITION is in the state only and never sends a new spec; a click or drag sets POSITION
+    (`tableWave` in `design_page.cpp`, tried in Chromium). `design_test` `testMorphFromThePage`.
   - **The tables are made on a thread of their own as the program starts** (`main.cpp`: `Morph::makeTables`,
     joined at the end); a MORPH track added, or MAIN drawn, before it is done waits on the same lock.
   - **Nine instruments close the list up to 41 adding a track and 36 with the words under it** (each box a
@@ -2842,7 +2846,7 @@ watch again, it is in git (the commit before batch 8b).
    Keep the engine free of Linux-only calls where it costs nothing.
 10. **Our own firmware for the RG40XXV, Apotheca and nothing else** (owner, 2026-11-16; `docs/plans/firmware-plan.md`): a Buildroot image on the mainline kernel with ROCKNIX's H700 patches. Batch 0 (ROCKNIX on a spare card, SPEED TEST there) is the owner's and has not happened. **Batch 1 is built on branch `firmware` (2026-11-17)**, tested on the desk only (section 8 of the plan): `os/` is a Buildroot external tree, `scripts/build-image.sh` writes `build-image/apotheca-rg40xxv.img.gz`, `os/tools/check-image.sh` and `os/tools/qemu-test.py` are its desk tests, `os/README.md` is the owner's page. ROCKNIX's kernel patches are vendored in `os/board/rg40xxv/patches/linux` (eight refreshed so they apply with no fuzz: the same tree to the byte; `os/board/rg40xxv/README.md` says where every file came from and its licence). **The image must stay reproducible** (the same `img.gz` from two builds): nothing made at build time may write the clock in.
 11. **A drum synth** (owner, 2026-11-17): a kit lane's sound made from knobs. **Batches 0 to 5 built** (`docs/plans/drumsynth-plan.md`: twelve models, the KIT page's SOUND column and VOICE view, 73 named voices, the designer page, the review); all joined to main (0.700). Not heard, not run on the handheld; the owner's twelve calls are with the owner.
-12. **A wavetable synth, MORPH** (owner, 2026-11-17: "let's do the wavetable after that"; `docs/plans/wavetable-plan.md`): batches 0 to 2 (the rule, the tables and the voice, the app) built and joined to main; batch 3 (the 32 presets) on branch `wavetable`; next: 4 (the designer page's picture), 5 (review, README). Not heard, not run on the handheld; the owner's 17 calls are at the plan's picks.
+12. **A wavetable synth, MORPH** (owner, 2026-11-17: "let's do the wavetable after that"; `docs/plans/wavetable-plan.md`): batches 0 to 2 (the rule, the tables and the voice, the app) built and joined to main; batches 3 (the 32 presets) and 4 (the designer page's picture) on branch `wavetable`; next: 5 (review, README). Not heard, not run on the handheld; the owner's 17 calls are at the plan's picks.
 
 Open: FM-6's banks ROM2A, 3A and 4A (in the same archive; not taken: the job asked for the B sides), which chord packs ship, more presets, own WiFi hotspot, an automation
 step-editor, a picture of FM-6's ALGORITHM (its wiring; msfa's table says each). **Twin Analog is gone** (owner, 2026-11-11: rethink it; 2026-11-13: it

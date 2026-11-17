@@ -230,6 +230,38 @@ bool Session::savePreset(int track, const std::string& typed) {
     return true;
 }
 
+// MORPH's sixteen tables as the page draws them (wavetable-plan.md, batch 4): every frame of each at
+// kPagePoints points across one cycle, -100 to 100 (a frame's peak is 1), read straight from the largest
+// size as MAIN's picture reads it. Made once: the tables never change. About 110 KB of text, sent with
+// the spec, never with the state, so a turned POSITION or TABLE changes no spec.
+namespace {
+constexpr int kPagePoints = 64;
+const std::string& morphTablesText() {
+    static const std::string text = [] {
+        Morph::makeTables();
+        std::string out = ",\"tables\":{\"points\":" + std::to_string(kPagePoints) + ",\"names\":[";
+        for (int t = 0; t < morph::kTables; ++t) out += (t ? "," : "") + jsonText(morph::tableName(t));
+        out += "],\"frames\":[";
+        for (int t = 0; t < morph::kTables; ++t) out += (t ? "," : "") + std::to_string(Morph::tableFrames(t));
+        out += "],\"waves\":[";
+        char n[16];
+        for (int t = 0; t < morph::kTables; ++t) {
+            out += t ? ",[" : "[";
+            const int frames = Morph::tableFrames(t);
+            for (int f = 0; f < frames; ++f)
+                for (int i = 0; i < kPagePoints; ++i) {
+                    const float v = Morph::tableRead(t, f, static_cast<double>(i) / kPagePoints);
+                    std::snprintf(n, sizeof n, "%s%d", f || i ? "," : "", static_cast<int>(std::lround(std::max(-1.f, std::min(1.f, v)) * 100.f)));
+                    out += n;
+                }
+            out += "]";
+        }
+        return out + "]}";
+    }();
+    return text;
+}
+} // namespace
+
 // What the track has, for the page to build its controls from: a synth's pages and presets, or a
 // sampler's settings and recording (samplerSpec). "page" says which; the page asks for this again
 // when it changes (the state's "spec" number: serveDesigner).
@@ -283,6 +315,14 @@ std::string Session::designSpec(int track) const {
         out += text + peaksText(tone ? cloudToneOutline() : sound.peaks) + "]}],\"recordings\":[";
         for (std::size_t i = 0; i < designRecordings_.size(); ++i) out += (i ? "," : "") + jsonText(designRecordings_[i].c_str());
         out += "]";
+    }
+    if (spec->table) {
+        // MORPH: its tables, and which settings pick and place each oscillator's (B's 0 is OFF, then the
+        // tables); the page reads their values from the state and draws the frame POSITION reads.
+        char oscs[200];
+        std::snprintf(oscs, sizeof oscs, ",\"oscs\":[{\"name\":\"A\",\"table\":%d,\"position\":%d,\"off\":false},{\"name\":\"B\",\"table\":%d,\"position\":%d,\"off\":true}]",
+                      morph::TableA, morph::PositionA, morph::TableB, morph::PositionB);
+        out += morphTablesText() + oscs;
     }
     return out + ",\"page\":\"synth\"}";
 }

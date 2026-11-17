@@ -562,8 +562,7 @@ them. At 36 the large name ran into the line under it at every size (the still s
 did not catch it: the two texts are one row's), so a box under 44 draws its name in the medium lettering
 and both lines by their own heights in its middle (`SongScreen::kListLineGap` 4, with `kListTailRoom` 5 kept for the tails and the outline), held at LARGE's at XL.
 
-**Not done here**: the designer page's picture (batch 4: today the generic
-synth page serves every setting and ROLL), README's page and the review (batch 5).
+**Not done here**: README's page and the review (batch 5).
 
 ## 12. Batch 3, as built (2026-11-17): the 32 presets
 
@@ -590,3 +589,27 @@ BLOOM) of a desk core.
 **`presets_test --heard-morph`** (ctest `presets_heard_morph`, about 4 s) holds all 32, the engine's
 too: -26 to -10 dB, peak under 0.9, a tail inside 30 s, each MOD moving and heard (1% of the RMS), and
 the loudest and the quietest within 8 dB.
+
+## 13. Batch 4, as built (2026-11-17): the designer page's picture
+
+The WiFi page's synth page draws A's and B's tables (TABLES, above the macros), side by side.
+
+- **The spec carries all sixteen tables once** (`morphTablesText` in `session_synth.cpp`): every frame
+  of each at 64 points across a cycle, -100 to 100, read with `Morph::tableRead` as MAIN's picture reads
+  them; made once (the tables never change), about 110 KB of text. With `"oscs"`: which settings pick and
+  place A's and B's table (B's 0 is OFF). **A turned TABLE or POSITION is in the state only**, so the
+  spec is never made again under a dragged slider (the DRUM SYNTH page's lesson). The plan said 32 x 64
+  "from a small size", for the two tables in use: sending all sixteen is what keeps TABLE out of the spec.
+- **The picture** (`tableWave` in `design_page.cpp`): the table's frames stacked faint, the first at the
+  front, and the frame POSITION reads drawn bright at its place in the stack (teal A, purple B),
+  crossfaded between its two frames as the voice does; a brass mark for POSITION and "FRAME 25.80 OF
+  32"; "B IS OFF" while it is. **A click or a drag sets POSITION**, the same request as its slider. The
+  macros are left out, as CLOUD's band leaves them.
+- **A narrow peak falls between the 64 points**: three tables read 80 to 99 at their loudest on the page
+  (the test holds 80 to 100).
+
+**Tests**: `design_test` `testMorphFromThePage` (the names, the frames, every table's points against
+`tableRead`, ANALOG's first frame a sine, a POSITION and a TABLE set from the page change the state and
+not the spec, ROLL from the page). `APOTHECA_DESIGN_MORPH=1` with `APOTHECA_DESIGN_HOLD=SECONDS` holds the
+page open. **The script was tried in Chromium with Playwright** (2026-11-17): two pictures, a drag
+across A moved POSITION A from 30 to 80, B turned on to VOWEL drawn in purple, no script errors.
