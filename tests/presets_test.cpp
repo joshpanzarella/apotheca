@@ -42,7 +42,7 @@ static int failures = 0;
 
 namespace {
 
-const TrackKind kSynths[] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Physic, TrackKind::Acid, TrackKind::Cloud};
+const TrackKind kSynths[] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Physic, TrackKind::Acid, TrackKind::Cloud, TrackKind::Morph};
 
 struct Rig {
     std::unique_ptr<Engine> engine{new Engine};

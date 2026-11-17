@@ -465,6 +465,20 @@ void theSession(Rig& rig, const std::string& samples) {
     rig.press(X); // a tap: heard a moment, then RELEASE, the grains going on under it
     rig.run(3000);
 
+    // MORPH (wavetable-plan.md): MAIN's picture draws the wave the newest key reads, and the MOD ENV moves
+    // it by itself while the key sounds (and the tick on its strip), then it goes back to the knob's.
+    rig.part = "a MORPH's wave on MAIN's picture, the MOD ENV moving POSITION";
+    rig.byHand([&] {
+        s.addTrack(TrackKind::Morph);
+        rig.project().track = rig.project().trackCount() - 1;
+        s.setSynthSetting(rig.project().track, morph::Level, -24);
+        s.setSynthSetting(rig.project().track, morph::EnvPosition, 80);
+        s.setSynthSetting(rig.project().track, morph::EnvDecay, 75);
+    });
+    rig.run(300);
+    rig.press(X);
+    rig.run(4000);
+
     rig.part = "a synth's key heard on its page";
     rig.byHand([&] {
         s.addTrack(TrackKind::Phazed);

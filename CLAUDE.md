@@ -2305,6 +2305,46 @@ effect in those two groups and fails one that does not.
   - Stills `cloud`, `cloud-1` to `cloud-3`, `cloud-long`, `cloud-sounding` (a key held: the still is
     taken before the engine renders, so no ticks show there; `testCloudsHintsFit` reads them off a
     drawn screen).
+- **MORPH** (2026-11-17, the engine only: batches 0 and 1 of `docs/plans/wavetable-plan.md`;
+  `engine/include/apotheca/morph.hpp`, `morph_rule.hpp`, `engine/src/morph.cpp`, `engine/src/morph/tables.*`;
+  `tests/morph_test.cpp`). `SynthKind::Morph` appended. **Every figure is SELF. Nobody has heard it, not
+  run on the handheld; no app side yet.** The owner's 17 calls are at the plan's picks.
+  - **A table is 32 frames kept at 18 sizes, one a half octave**; a stream reads the first size whose top
+    harmonic is at or under rate - 20 kHz, so a size change drops nothing under 19.85 kHz and needs no
+    crossfade. **32 points a harmonic (capped at 2048)**: at 8 a straight-line read aliased -39 dB on
+    FOLD at key 96; at 32, -64 dB at worst. 80 KB a frame, **41 MB for the 16 built-ins**, made once
+    in `prepare` (130 to 200 ms on the desk), shared, never freed.
+  - **The tables use no maths library** (`turnSin` / `turnCos` from the house polynomials, `exp2Poly`;
+    `#pragma clang fp contract(off)`), so the handheld makes the desk's tables. Not yet checked under qemu.
+  - **A key works on a 16-sample tick counted from its strike**; every setting the patch and macros give
+    slides in over 512 samples counted from when it changed (a MOD on POSITION is a line), at once when
+    no key sounds. The MOD ENV steps once a tick (its shape made at rate / 16). TABLE A, TABLE B and
+    UNISON are read at the strike.
+  - **A pool of 24 streams** (a stream is one oscillator's read; UNISON x (B on ? 2 : 1) a key): a key
+    that finds too few steals the oldest let-go key, then the oldest, until it fits. The cost's ceiling.
+  - **The only roll is a unison stream's start** (`streamPhase`: the strike's seed); one stream alone
+    starts at 0. The readout is CLOUD's `grainPlaces` path: each key's place in A, newest first, then B's.
+  - Cost (`bench`, a quiet desk): 6 keys 0.47%, the pool full 0.67%, asleep 0; 53 M / 87 M instructions
+    a second (about 5% / 9% of a handheld core by the speed plan's rule, not run there).
+- **MORPH in the app** (batch 2, 2026-11-17; `mo` in `app/synth_spec.cpp`, `app_test` `testMorphOnATrack`
+  and `testMorphsHintsAndPicture`, `app_test --morph`). `TrackKind::Morph` appended, its row LAST (word `morph`,
+  presets `NAME.morph`, short name MRPH, "wavetables, swept from wave to wave"), `TrackData::morph` a
+  `MorphPatch` of 40, 29 used. A new track is on Analog Sweep. MAIN and five pages, OSC, VOICE, FILTER, AMP,
+  ENV, two rows of four at most; every click of every setting reads another way (the test walks them);
+  **UNISON reads with the keys the pool leaves** (`mo::readingIn`: "4, 3 KEYS" with B on). No macro a
+  choice; **ROLL on Y** (`mo::roll`: OCTAVE, TUNE, the AMP envelope, KEY TRACK, VELOCITY and LEVEL stay).
+  Its built-in data is `app/presets/morph.inc`, empty until batch 3. **Nobody has heard it.**
+  - **`SynthSpec::table`** (MORPH's alone) gives MAIN the picture's room (as CLOUD's recording does) and
+    `SynthScreen::drawTablePicture`: A's wave teal, B's purple behind it, a strip of frames with POSITION A
+    brass, and while a key sounds the wave the newest key READS (the MOD ENV, a MOD) with a teal tick: the
+    readout is CLOUD's (`Engine::grainPlaces`, `kStirGrains`), MORPH's places there. `idle_test` has a part.
+  - **The tables are made on a thread of their own as the program starts** (`main.cpp`: `Morph::makeTables`,
+    joined at the end); a MORPH track added, or MAIN drawn, before it is done waits on the same lock.
+  - **Nine instruments close the list up to 41 adding a track and 36 with the words under it** (each box a
+    pixel short): **a box under 44 draws its name in the medium lettering and both lines by their own
+    heights in its middle** (`SongScreen::kListLineGap`, `kListTailRoom`), held at LARGE's where the size chosen does not
+    fit (at 35 the large name ran into the line under it at every size). `app_test` holds the heights.
+  - Stills `morph`, `morph-b`, `morph-1` to `morph-5`, `morph-keys`, `morph-long`, `morph-sounding`.
 - **FM-6's `setMacro` returns early on the value it has**, as Phazed's
   does (JAX-EP's does not; `bench` times it: 0.035 us a change, 0.002 the same value;
   `Fm6::applied()` counts them for `fm6_test`).
@@ -2799,7 +2839,7 @@ watch again, it is in git (the commit before batch 8b).
    Keep the engine free of Linux-only calls where it costs nothing.
 10. **Our own firmware for the RG40XXV, Apotheca and nothing else** (owner, 2026-11-16; `docs/plans/firmware-plan.md`): a Buildroot image on the mainline kernel with ROCKNIX's H700 patches. Batch 0 (ROCKNIX on a spare card, SPEED TEST there) is the owner's and has not happened. **Batch 1 is built on branch `firmware` (2026-11-17)**, tested on the desk only (section 8 of the plan): `os/` is a Buildroot external tree, `scripts/build-image.sh` writes `build-image/apotheca-rg40xxv.img.gz`, `os/tools/check-image.sh` and `os/tools/qemu-test.py` are its desk tests, `os/README.md` is the owner's page. ROCKNIX's kernel patches are vendored in `os/board/rg40xxv/patches/linux` (eight refreshed so they apply with no fuzz: the same tree to the byte; `os/board/rg40xxv/README.md` says where every file came from and its licence). **The image must stay reproducible** (the same `img.gz` from two builds): nothing made at build time may write the clock in.
 11. **A drum synth** (owner, 2026-11-17): a kit lane's sound made from knobs. **Batches 0 to 5 built** (`docs/plans/drumsynth-plan.md`: twelve models, the KIT page's SOUND column and VOICE view, 73 named voices, the designer page, the review); all joined to main (0.700). Not heard, not run on the handheld; the owner's twelve calls are with the owner.
-12. **A wavetable synth, MORPH** (owner, 2026-11-17; `docs/plans/wavetable-plan.md`): planned; batch 0 built on branch `wavetable`, batch 1 under way.
+12. **A wavetable synth, MORPH** (owner, 2026-11-17: "let's do the wavetable after that"; `docs/plans/wavetable-plan.md`): batches 0 to 2 (the rule, the tables and the voice, the app) built and joined to main; batch 3 on, on branch `wavetable`; next: batch 3 (the 24 data presets), 4 (the designer page's picture), 5 (review, README). Not heard, not run on the handheld; the owner's 17 calls are at the plan's picks.
 
 Open: FM-6's banks ROM2A, 3A and 4A (in the same archive; not taken: the job asked for the B sides), which chord packs ship, more presets, own WiFi hotspot, an automation
 step-editor, a picture of FM-6's ALGORITHM (its wiring; msfa's table says each). **Twin Analog is gone** (owner, 2026-11-11: rethink it; 2026-11-13: it

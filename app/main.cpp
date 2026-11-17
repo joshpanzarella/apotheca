@@ -251,6 +251,12 @@ void fillDemoSong(App& app) {
 } // namespace
 
 int main(int argc, char** argv) {
+    // MORPH's 16 tables (wavetable-plan.md, section 2) are made on a thread of their own from the start:
+    // seconds on the handheld (a guess), so the first MORPH track does not wait. Joined at the end.
+    struct Tables {
+        std::thread making{Morph::makeTables};
+        ~Tables() { making.join(); }
+    } tables;
     // Every line reaches the log as it is written. On the handheld the log is
     // a file, and the program is often stopped by the firmware, not by
     // quitting: without this, nothing it said would be in the file.
@@ -1326,6 +1332,40 @@ int main(int argc, char** argv) {
             app.physic().goTo(std::atoi(view + 7), 0);
         } else {
             app.physic().goTo(0, SynthScreen::kFirstMacro + 1);
+        }
+    } else if (std::strncmp(view, "morph", 5) == 0) {
+        // A MORPH track, added the way the Song screen adds one: MAIN with its picture, a macro lit
+        // ("morph"); B on, a fifth up, MIX 40 ("morph-b": the two waves); a page ("morph-1" to "morph-5":
+        // OSC, VOICE, FILTER, AMP, ENV); VOICE on UNISON 4 with B on, three keys ("morph-keys"); MAIN on the
+        // widest of its names ("morph-long"); a key held ("morph-sounding": the still is taken before the
+        // engine renders, so the sounding place does not show there).
+        app.session().addTrack(TrackKind::Morph);
+        const int track = app.project().trackCount() - 1;
+        app.project().track = track;
+        app.session().view = View::Device;
+        if (std::strcmp(view, "morph-long") == 0) {
+            int widest = 0;
+            for (int i = 1; i < morphSpec().presetCount(); ++i)
+                if (std::strlen(morphSpec().presetName(i)) > std::strlen(morphSpec().presetName(widest))) widest = i;
+            app.session().chooseSynthPreset(track, widest);
+            app.morph().goTo(0, SynthScreen::kPreset);
+        } else if (std::strcmp(view, "morph-b") == 0) {
+            app.session().setSynthSetting(track, morph::TableB, 1 + morph::Vowel);
+            app.session().setSynthSetting(track, morph::PositionB, 60);
+            app.session().setSynthSetting(track, morph::BSemi, 7);
+            app.session().setSynthSetting(track, morph::Mix, 40);
+            app.morph().goTo(0, SynthScreen::kFirstMacro);
+        } else if (std::strcmp(view, "morph-keys") == 0) {
+            app.session().setSynthSetting(track, morph::TableB, 1 + morph::Pulse);
+            app.session().setSynthSetting(track, morph::Unison, 4);
+            app.morph().goTo(2, 2);
+        } else if (std::strcmp(view, "morph-sounding") == 0) {
+            app.session().auditionHeld(track, 60, kPlacedLevel, &app);
+            app.morph().goTo(0, SynthScreen::kFirstMacro);
+        } else if (view[5] == '-') {
+            app.morph().goTo(std::atoi(view + 6), 0);
+        } else {
+            app.morph().goTo(0, SynthScreen::kFirstMacro + 1);
         }
     } else if (std::strncmp(view, "cloud", 5) == 0) {
         // A CLOUD track, added the way the Song screen adds one, on the TONE (no recording): MAIN with its

@@ -80,6 +80,10 @@ public:
     }
     // A row's box: 46 high, or a pixel short of the pitch where the rows close up (eight since CLOUD:
     // 46 adding a track, 41 with the words under them), its two lines placed within it.
+    // Between a closed-up row's two lines (the name, in capitals, and what it is), and the room the second
+    // line's tails and the outline take (3 and a pixel either end): both lines fit a box of their sum.
+    static constexpr float kListLineGap = 4.f;
+    static constexpr float kListTailRoom = 5.f;
     static constexpr int rowH(int instruments, bool changing) { return listPitch(instruments, changing) - 1 < 46 ? listPitch(instruments, changing) - 1 : 46; }
     static constexpr int listH(int instruments, bool changing) { return 46 + instruments * listPitch(instruments, changing) + (changing ? kChangeLostH : 0); }
     static constexpr int listTop(int instruments, bool changing) {

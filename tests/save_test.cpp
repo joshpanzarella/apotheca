@@ -1243,15 +1243,15 @@ void testTheTextKeptIsTheSongsText() {
     SongTextCache cache;
     std::uint32_t seed = 12345u;
     const auto roll = [&](int n) { seed = seed * 1664525u + 1013904223u; return static_cast<int>((seed >> 8) % static_cast<std::uint32_t>(n)); };
-    const TrackKind kinds[] = {TrackKind::Drums, TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Sampler, TrackKind::Physic, TrackKind::Acid, TrackKind::Cloud};
-    for (int t = 1; t < 9; ++t) {
-        p->tracks[t].kind = kinds[t % 8];
+    const TrackKind kinds[] = {TrackKind::Drums, TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Sampler, TrackKind::Physic, TrackKind::Acid, TrackKind::Cloud, TrackKind::Morph};
+    for (int t = 1; t < 10; ++t) {
+        p->tracks[t].kind = kinds[t % 9];
         if (const SynthSpec* spec = specFor(p->tracks[t].kind)) spec->loadPreset(p->tracks[t], 0);
     }
     CHECK(cache.text(*p) == songText(*p));
     int checks = 0, wrong = 0;
     for (int round = 0; round < 3000; ++round) {
-        TrackData& t = p->tracks[roll(8)];
+        TrackData& t = p->tracks[roll(10)];
         const int scene = roll(kMaxScenes), bar = roll(kMaxBars), lane = roll(kDrumLanes), step = roll(kSteps);
         switch (roll(17)) {
         case 0: { // (a level the text does not write: under 0, not a number)

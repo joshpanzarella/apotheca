@@ -124,9 +124,13 @@ public:
     static constexpr int kPicMacroH = (ui::kAboveScope - 10 - kAdvancedH - kMacroGap - kPicMacroY) / 2;
     static constexpr int kPicAdvancedY = kPicMacroY + 2 * kPicMacroH + kMacroGap + 10;
     static_assert(kPicAdvancedY + kAdvancedH <= ui::kAboveScope, "MAIN ends above LIVE OUTPUT");
-    int macroY() const { return spec_.recording ? kPicMacroY : kMacroY; }
-    int macroH() const { return spec_.recording ? kPicMacroH : kMacroH; }
-    int advancedY() const { return spec_.recording ? kPicAdvancedY : kAdvancedY; }
+    // (MORPH's wave takes the same room: SynthSpec::table.)
+    bool picture() const { return spec_.recording || spec_.table; }
+    int macroY() const { return picture() ? kPicMacroY : kMacroY; }
+    int macroH() const { return picture() ? kPicMacroH : kMacroH; }
+    int advancedY() const { return picture() ? kPicAdvancedY : kAdvancedY; }
+    // MORPH's picture: the strip of frames along its foot, and the wave's room above it.
+    static constexpr int kFrameStripH = 10;
     // The picture's ticks are as tall as this, at its top and at its bottom.
     static constexpr int kTickH = 8;
     // CLOUD's RECORDING stop: the first of its first page (not a setting: its id is kRecordingId).
@@ -195,6 +199,7 @@ private:
     void hearFromList(SamplePicker::Hear how);
     void say(const std::string& words, Uint32 ms);
     void drawPicture(SDL_Renderer* r, const Fonts& fonts) const;
+    void drawTablePicture(SDL_Renderer* r, const Fonts& fonts) const;
     void drawScreen(SDL_Renderer* r, const Fonts& fonts) const;
     bool wasRecording_ = false;
 };

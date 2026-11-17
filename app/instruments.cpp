@@ -29,6 +29,9 @@ const InstrumentInfo kInstruments[] = {
     // CLOUD (owner, 2026-11-14; docs/plans/granular-plan.md): clouds of grains from the track's recording (the
     // built-in TONE when it has none). Last in the list.
     {TrackKind::Cloud, "CLOUD", "CLD", "CLOUD", "clouds of grains from your recordings", false, "cloud", SynthKind::Cloud, ".cloud"},
+    // MORPH (owner, 2026-11-17; docs/plans/wavetable-plan.md): two wavetable oscillators, POSITION sweeping
+    // each from wave to wave. Last in the list. The line names no product.
+    {TrackKind::Morph, "MORPH", "MRPH", "MORPH", "wavetables, swept from wave to wave", false, "morph", SynthKind::Morph, ".morph"},
 };
 const int kInstrumentCount = static_cast<int>(sizeof kInstruments / sizeof kInstruments[0]);
 

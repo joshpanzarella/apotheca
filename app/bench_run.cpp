@@ -39,6 +39,7 @@
 #include "apotheca/physic.hpp"
 #include "apotheca/acid.hpp"
 #include "apotheca/cloud.hpp"
+#include "apotheca/morph.hpp"
 #include "apotheca/drum_synth.hpp"
 #include "app.hpp"
 #include "bench_run.hpp"
@@ -1027,6 +1028,30 @@ static void cloudRow(const char* name, bool full) {
     std::printf("  %-28s %5.2f%% of one core, %.1f grains\n", name, 100.0 * each / (256.0 / 48.0), blocks ? static_cast<double>(grains) / blocks : 0.0);
 }
 
+// MORPH (docs/plans/wavetable-plan.md, section 4): six keys of A and B with the SUB and LOW 12, the
+// MOD ENV sweeping POSITION; the pool full (UNISON 2, A and B, WIDTH, LOW 24: 24 streams); asleep.
+static void morphRow(const char* name, int what) {
+    std::unique_ptr<Morph> synth(new Morph);
+    synth->prepare(48000.f);
+    synth->setSetting(morph::TableB, 1 + morph::Fm);
+    synth->setSetting(morph::EnvPosition, 50);
+    if (what == 1) {
+        synth->setSetting(morph::Unison, 2);
+        synth->setSetting(morph::Width, 60);
+        synth->setSetting(morph::Filter, morph::kLow24);
+    } else {
+        synth->setSetting(morph::Sub, 30);
+    }
+    for (int k = 0; k < morph::kKeys; ++k) synth->noteOn(48 + 3 * k, 0.9f);
+    std::vector<float> l(256), r(256);
+    if (what == 2) {
+        for (int k = 0; k < morph::kKeys; ++k) synth->noteOff(48 + 3 * k);
+        for (int b = 0; b < 2000; ++b) synth->render(l.data(), r.data(), 256);
+    }
+    const double each = ms([&] { synth->render(l.data(), r.data(), 256); }, 600);
+    std::printf("  %-28s %5.2f%% of one core, %d streams\n", name, 100.0 * each / (256.0 / 48.0), synth->streamsInUse());
+}
+
 // DRUM SYNTH (docs/plans/drumsynth-plan.md): a voice is made on the app's thread when a knob turns
 // (the helper thread past drumsynth::kWorkInAFrame), never while the song plays. The time to make
 // one, the best of five: a KICK as it starts, an OP HAT as it starts, and the longest there is (a
@@ -1092,6 +1117,10 @@ int apotheca::runBench() {
     acidRow("ACID asleep", true);
     cloudRow("CLOUD, one key", false);
     cloudRow("CLOUD, full pool", true);
+    morphRow("MORPH, 6 keys", 0);
+    morphRow("MORPH, the pool full", 1);
+    morphRow("MORPH asleep", 2);
+    std::printf("  %-28s %7.1f ms (once, the first MORPH track)\n", "MORPH's 16 tables made", 1000.0 * Morph::tablesSeconds());
     instrument("Sampler (no recording)", SynthKind::Sampler, 8);
 
     {
