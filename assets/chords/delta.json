@@ -1,0 +1,646 @@
+{
+  "schemaVersion": 2,
+  "id": "authored.delta",
+  "name": "Delta",
+  "sourceTonic": 0,
+  "scale": {
+    "id": "mixolydian",
+    "pitchClasses": [
+      0,
+      2,
+      4,
+      5,
+      7,
+      9,
+      10
+    ]
+  },
+  "description": "Blues in C. Every chord a seventh: the twelve-bar's three, ninths, thirteenths, the sharp nine, the passing diminished, and a minor blues.",
+  "tags": [
+    "blues",
+    "dominant",
+    "mixolydian",
+    "authored"
+  ],
+  "guidance": {
+    "density": "medium",
+    "chordRegister": {
+      "low": 48,
+      "high": 82
+    },
+    "leadRegister": {
+      "low": 60,
+      "high": 91
+    },
+    "bassRegister": {
+      "low": 28,
+      "high": 50
+    },
+    "melody": {
+      "targets": [
+        0,
+        3,
+        4,
+        7,
+        9,
+        10,
+        12,
+        15,
+        16
+      ],
+      "allowApproach": true,
+      "requireResolution": true
+    }
+  },
+  "chords": [
+    {
+      "id": "delta.I7",
+      "quality": "7",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "delta.I9",
+      "quality": "9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "delta.I13",
+      "quality": "13",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        10,
+        14,
+        21
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        21
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "delta.I7s9",
+      "quality": "7#9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10,
+        15
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        15
+      ],
+      "preferredVoices": 5,
+      "function": "tonic",
+      "borrowedFrom": "blue third",
+      "outside": [
+        3
+      ]
+    },
+    {
+      "id": "delta.im7",
+      "quality": "m7",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "tonic",
+      "borrowedFrom": "minor blues",
+      "outside": [
+        3
+      ]
+    },
+    {
+      "id": "delta.iim7",
+      "quality": "m7",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "delta.IV7",
+      "quality": "7",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "predominant",
+      "borrowedFrom": "blues IV7",
+      "outside": [
+        3
+      ]
+    },
+    {
+      "id": "delta.IV9",
+      "quality": "9",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "predominant",
+      "borrowedFrom": "blues IV7",
+      "outside": [
+        3
+      ]
+    },
+    {
+      "id": "delta.IV13",
+      "quality": "13",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        10,
+        14,
+        21
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        21
+      ],
+      "preferredVoices": 5,
+      "function": "predominant",
+      "borrowedFrom": "blues IV7",
+      "outside": [
+        3
+      ]
+    },
+    {
+      "id": "delta.ivm7",
+      "quality": "m7",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "predominant",
+      "borrowedFrom": "minor blues",
+      "outside": [
+        3,
+        8
+      ]
+    },
+    {
+      "id": "delta.sharpIVdim7",
+      "quality": "dim7",
+      "root": {
+        "degree": 3,
+        "alteration": 1
+      },
+      "intervals": [
+        0,
+        3,
+        6,
+        9
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        6,
+        9
+      ],
+      "preferredVoices": 4,
+      "function": "dominant",
+      "borrowedFrom": "passing diminished",
+      "outside": [
+        3,
+        6
+      ]
+    },
+    {
+      "id": "delta.V7",
+      "quality": "7",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "dominant",
+      "borrowedFrom": "major dominant",
+      "outside": [
+        11
+      ]
+    },
+    {
+      "id": "delta.V9",
+      "quality": "9",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "dominant",
+      "borrowedFrom": "major dominant",
+      "outside": [
+        11
+      ]
+    },
+    {
+      "id": "delta.V7s9",
+      "quality": "7#9",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        10,
+        15
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        15
+      ],
+      "preferredVoices": 4,
+      "function": "dominant",
+      "borrowedFrom": "major dominant",
+      "outside": [
+        11
+      ]
+    },
+    {
+      "id": "delta.V7s5",
+      "quality": "7#5",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        8,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        8,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "dominant",
+      "borrowedFrom": "augmented dominant",
+      "outside": [
+        3,
+        11
+      ]
+    },
+    {
+      "id": "delta.bVI7",
+      "quality": "7",
+      "root": {
+        "degree": 5,
+        "alteration": -1
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "predominant",
+      "borrowedFrom": "minor blues",
+      "outside": [
+        3,
+        6,
+        8
+      ]
+    },
+    {
+      "id": "delta.VI7",
+      "quality": "7",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "dominant",
+      "borrowedFrom": "V of ii",
+      "outside": [
+        1
+      ]
+    },
+    {
+      "id": "delta.bVII7",
+      "quality": "7",
+      "root": {
+        "degree": 6,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "unknown",
+      "borrowedFrom": "minor blues",
+      "outside": [
+        8
+      ]
+    }
+  ],
+  "progressions": [
+    {
+      "id": "delta.twelve-bar",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "delta.I7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "delta.IV7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "delta.I7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "delta.I7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "delta.IV7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "delta.sharpIVdim7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "delta.I7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "delta.VI7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "delta.iim7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "delta.V7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "delta.I7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "delta.V7s9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "delta.minor-blues",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "delta.im7",
+          "durationTicks": 15360,
+          "weight": 1.0
+        },
+        {
+          "chordId": "delta.ivm7",
+          "durationTicks": 7680,
+          "weight": 1.0
+        },
+        {
+          "chordId": "delta.im7",
+          "durationTicks": 7680,
+          "weight": 1.0
+        },
+        {
+          "chordId": "delta.bVI7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "delta.V7s9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "delta.im7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "delta.V7s9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "delta.shuffle",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "delta.I9",
+          "durationTicks": 7680,
+          "weight": 1.0
+        },
+        {
+          "chordId": "delta.IV9",
+          "durationTicks": 7680,
+          "weight": 1.0
+        },
+        {
+          "chordId": "delta.I9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "delta.V9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    }
+  ]
+}

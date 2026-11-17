@@ -24,7 +24,7 @@
   "chords": [
     {
       "id": "glass.Iopen",
-      "quality": "major(open)",
+      "quality": "major",
       "root": {
         "degree": 0,
         "alteration": 0
@@ -44,7 +44,7 @@
     },
     {
       "id": "glass.Iadd9open",
-      "quality": "add9(open)",
+      "quality": "add9",
       "root": {
         "degree": 0,
         "alteration": 0

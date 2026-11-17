@@ -1,0 +1,563 @@
+{
+  "schemaVersion": 2,
+  "id": "authored.horizon",
+  "name": "Horizon",
+  "sourceTonic": 0,
+  "scale": {
+    "id": "naturalMinor",
+    "pitchClasses": [
+      0,
+      2,
+      3,
+      5,
+      7,
+      8,
+      10
+    ]
+  },
+  "description": "Cinematic in C minor. Wide fifths and octaves, the rising six-three-seven, the major four, and mediants a third away for a sudden sky.",
+  "tags": [
+    "cinematic",
+    "minor",
+    "epic",
+    "chromatic-mediant",
+    "authored"
+  ],
+  "guidance": {
+    "density": "medium",
+    "chordRegister": {
+      "low": 43,
+      "high": 84
+    },
+    "leadRegister": {
+      "low": 62,
+      "high": 93
+    },
+    "bassRegister": {
+      "low": 24,
+      "high": 48
+    },
+    "melody": {
+      "targets": [
+        0,
+        2,
+        3,
+        7,
+        12,
+        14,
+        15,
+        19
+      ],
+      "allowApproach": true,
+      "requireResolution": true
+    }
+  },
+  "chords": [
+    {
+      "id": "horizon.i5",
+      "quality": "5",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        12,
+        19
+      ],
+      "requiredIntervals": [
+        0,
+        7
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "horizon.i",
+      "quality": "m",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        12,
+        15
+      ],
+      "requiredIntervals": [
+        0,
+        7,
+        15
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "horizon.iadd9",
+      "quality": "madd9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        14,
+        15
+      ],
+      "requiredIntervals": [
+        0,
+        14,
+        15
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "horizon.Isus2",
+      "quality": "sus2",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        12,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        7,
+        14
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "horizon.bII",
+      "quality": "major",
+      "root": {
+        "degree": 1,
+        "alteration": -1
+      },
+      "intervals": [
+        0,
+        7,
+        12,
+        16
+      ],
+      "requiredIntervals": [
+        0,
+        7,
+        16
+      ],
+      "preferredVoices": 4,
+      "function": "predominant",
+      "legacyName": "Db",
+      "borrowedFrom": "Neapolitan",
+      "outside": [
+        1
+      ]
+    },
+    {
+      "id": "horizon.bIII",
+      "quality": "major",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        12,
+        16
+      ],
+      "requiredIntervals": [
+        0,
+        7,
+        16
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "horizon.bIIImaj7",
+      "quality": "maj7",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        11,
+        16
+      ],
+      "requiredIntervals": [
+        0,
+        11,
+        16
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "horizon.III",
+      "quality": "major",
+      "root": {
+        "degree": 2,
+        "alteration": 1
+      },
+      "intervals": [
+        0,
+        7,
+        12,
+        16
+      ],
+      "requiredIntervals": [
+        0,
+        7,
+        16
+      ],
+      "preferredVoices": 4,
+      "function": "unknown",
+      "borrowedFrom": "chromatic mediant",
+      "outside": [
+        4,
+        11
+      ]
+    },
+    {
+      "id": "horizon.iv",
+      "quality": "m",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        12,
+        15
+      ],
+      "requiredIntervals": [
+        0,
+        7,
+        15
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "horizon.IV",
+      "quality": "major",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        12,
+        16
+      ],
+      "requiredIntervals": [
+        0,
+        7,
+        16
+      ],
+      "preferredVoices": 4,
+      "function": "predominant",
+      "borrowedFrom": "dorian",
+      "outside": [
+        9
+      ]
+    },
+    {
+      "id": "horizon.v",
+      "quality": "m",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        12,
+        15
+      ],
+      "requiredIntervals": [
+        0,
+        7,
+        15
+      ],
+      "preferredVoices": 4,
+      "function": "dominant"
+    },
+    {
+      "id": "horizon.V",
+      "quality": "major",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        12,
+        16
+      ],
+      "requiredIntervals": [
+        0,
+        7,
+        16
+      ],
+      "preferredVoices": 4,
+      "function": "dominant",
+      "borrowedFrom": "harmonic minor",
+      "outside": [
+        11
+      ]
+    },
+    {
+      "id": "horizon.Vsus4",
+      "quality": "sus4",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        12,
+        17
+      ],
+      "requiredIntervals": [
+        0,
+        7,
+        17
+      ],
+      "preferredVoices": 4,
+      "function": "dominant"
+    },
+    {
+      "id": "horizon.bVI",
+      "quality": "major",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        12,
+        16
+      ],
+      "requiredIntervals": [
+        0,
+        7,
+        16
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "horizon.bVIadd9",
+      "quality": "add9",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        14,
+        16
+      ],
+      "requiredIntervals": [
+        0,
+        14,
+        16
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "horizon.bvi",
+      "quality": "m",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        12,
+        15
+      ],
+      "requiredIntervals": [
+        0,
+        7,
+        15
+      ],
+      "preferredVoices": 4,
+      "function": "unknown",
+      "borrowedFrom": "chromatic mediant",
+      "outside": [
+        11
+      ]
+    },
+    {
+      "id": "horizon.VI",
+      "quality": "major",
+      "root": {
+        "degree": 5,
+        "alteration": 1
+      },
+      "intervals": [
+        0,
+        7,
+        12,
+        16
+      ],
+      "requiredIntervals": [
+        0,
+        7,
+        16
+      ],
+      "preferredVoices": 4,
+      "function": "unknown",
+      "borrowedFrom": "chromatic mediant",
+      "outside": [
+        1,
+        4,
+        9
+      ]
+    },
+    {
+      "id": "horizon.bVII",
+      "quality": "major",
+      "root": {
+        "degree": 6,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        12,
+        16
+      ],
+      "requiredIntervals": [
+        0,
+        7,
+        16
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    },
+    {
+      "id": "horizon.bVIIsus2",
+      "quality": "sus2",
+      "root": {
+        "degree": 6,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        12,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        7,
+        14
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    }
+  ],
+  "progressions": [
+    {
+      "id": "horizon.rise",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "horizon.i",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "horizon.bVI",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "horizon.bIII",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "horizon.bVII",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "horizon.sudden-sky",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "horizon.i",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "horizon.III",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "horizon.i",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "horizon.bvi",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "horizon.the-lift",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "horizon.bVI",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "horizon.bVII",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "horizon.Vsus4",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "horizon.V",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    }
+  ]
+}

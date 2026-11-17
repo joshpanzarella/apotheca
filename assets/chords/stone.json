@@ -1,0 +1,469 @@
+{
+  "schemaVersion": 2,
+  "id": "authored.stone",
+  "name": "Stone",
+  "sourceTonic": 0,
+  "scale": {
+    "id": "dorian",
+    "pitchClasses": [
+      0,
+      2,
+      3,
+      5,
+      7,
+      9,
+      10
+    ]
+  },
+  "description": "Fourths in C dorian. Chords stacked in perfect fourths, the fourths-and-a-third modal voicing, and suspended ninths.",
+  "tags": [
+    "quartal",
+    "dorian",
+    "modal",
+    "open",
+    "authored"
+  ],
+  "guidance": {
+    "density": "medium",
+    "chordRegister": {
+      "low": 48,
+      "high": 86
+    },
+    "leadRegister": {
+      "low": 62,
+      "high": 93
+    },
+    "bassRegister": {
+      "low": 26,
+      "high": 48
+    },
+    "melody": {
+      "targets": [
+        0,
+        2,
+        3,
+        5,
+        7,
+        9,
+        10,
+        12,
+        14,
+        15
+      ],
+      "allowApproach": true,
+      "requireResolution": true
+    }
+  },
+  "chords": [
+    {
+      "id": "stone.Iq3",
+      "quality": "quartal",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        10
+      ],
+      "preferredVoices": 3,
+      "function": "unknown"
+    },
+    {
+      "id": "stone.Iq4",
+      "quality": "quartal4",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        10,
+        15
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        10,
+        15
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    },
+    {
+      "id": "stone.im11",
+      "quality": "m11",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        10,
+        15,
+        19
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        10,
+        15
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "stone.I9sus4",
+      "quality": "9sus4",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        10,
+        14
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "stone.IIq4",
+      "quality": "quartal4",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        10,
+        15
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        10,
+        15
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    },
+    {
+      "id": "stone.IIq5",
+      "quality": "quartal5",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        10,
+        15,
+        20
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        10,
+        15,
+        20
+      ],
+      "preferredVoices": 5,
+      "function": "unknown"
+    },
+    {
+      "id": "stone.iim11",
+      "quality": "m11",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        10,
+        15,
+        19
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        10,
+        15
+      ],
+      "preferredVoices": 5,
+      "function": "predominant"
+    },
+    {
+      "id": "stone.bIIImaj7s11",
+      "quality": "maj7#11",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        6,
+        11,
+        16
+      ],
+      "requiredIntervals": [
+        0,
+        6,
+        11,
+        16
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    },
+    {
+      "id": "stone.IVq3",
+      "quality": "quartal",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        10
+      ],
+      "preferredVoices": 3,
+      "function": "unknown"
+    },
+    {
+      "id": "stone.IV9sus4",
+      "quality": "9sus4",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        10,
+        14
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "stone.Vq4",
+      "quality": "quartal4",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        10,
+        15
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        10,
+        15
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    },
+    {
+      "id": "stone.Vq5",
+      "quality": "quartal5",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        10,
+        15,
+        20
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        10,
+        15,
+        20
+      ],
+      "preferredVoices": 5,
+      "function": "unknown"
+    },
+    {
+      "id": "stone.vm11",
+      "quality": "m11",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        10,
+        15,
+        19
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        10,
+        15
+      ],
+      "preferredVoices": 5,
+      "function": "dominant"
+    },
+    {
+      "id": "stone.VIq4",
+      "quality": "quartal4",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        10,
+        15
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        10,
+        15
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    },
+    {
+      "id": "stone.VIq5",
+      "quality": "quartal5",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        10,
+        15,
+        20
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        10,
+        15,
+        20
+      ],
+      "preferredVoices": 5,
+      "function": "unknown"
+    }
+  ],
+  "progressions": [
+    {
+      "id": "stone.modal-vamp",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "stone.im11",
+          "durationTicks": 7680,
+          "weight": 1.0
+        },
+        {
+          "chordId": "stone.IV9sus4",
+          "durationTicks": 7680,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "stone.climb",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "stone.Iq4",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "stone.IIq4",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "stone.bIIImaj7s11",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "stone.IV9sus4",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "stone.vm11",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "stone.stack",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "stone.VIq5",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "stone.Vq5",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "stone.IIq5",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "stone.Iq4",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    }
+  ]
+}

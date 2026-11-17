@@ -1,0 +1,681 @@
+{
+  "schemaVersion": 2,
+  "id": "authored.elegy",
+  "name": "Elegy",
+  "sourceTonic": 0,
+  "scale": {
+    "id": "naturalMinor",
+    "pitchClasses": [
+      0,
+      2,
+      3,
+      5,
+      7,
+      8,
+      10
+    ]
+  },
+  "description": "Minor in C, natural and harmonic. The major five and the diminished seventh pull home; the line cliche, the lament and the Neapolitan.",
+  "tags": [
+    "minor",
+    "harmonic-minor",
+    "dark",
+    "authored"
+  ],
+  "guidance": {
+    "density": "medium",
+    "chordRegister": {
+      "low": 48,
+      "high": 82
+    },
+    "leadRegister": {
+      "low": 60,
+      "high": 91
+    },
+    "bassRegister": {
+      "low": 26,
+      "high": 48
+    },
+    "melody": {
+      "targets": [
+        0,
+        2,
+        3,
+        5,
+        7,
+        8,
+        11,
+        12,
+        14,
+        15
+      ],
+      "allowApproach": true,
+      "requireResolution": true
+    }
+  },
+  "chords": [
+    {
+      "id": "elegy.i",
+      "quality": "m",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        7
+      ],
+      "preferredVoices": 3,
+      "function": "tonic"
+    },
+    {
+      "id": "elegy.iadd9",
+      "quality": "madd9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        14
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "elegy.imMaj7",
+      "quality": "mMaj7",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        11
+      ],
+      "preferredVoices": 4,
+      "function": "tonic",
+      "borrowedFrom": "harmonic minor",
+      "outside": [
+        11
+      ]
+    },
+    {
+      "id": "elegy.im7",
+      "quality": "m7",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "elegy.im6",
+      "quality": "m6",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        9
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        9
+      ],
+      "preferredVoices": 4,
+      "function": "tonic",
+      "borrowedFrom": "melodic minor",
+      "outside": [
+        9
+      ]
+    },
+    {
+      "id": "elegy.im9",
+      "quality": "m9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "elegy.bII",
+      "quality": "major",
+      "root": {
+        "degree": 1,
+        "alteration": -1
+      },
+      "intervals": [
+        0,
+        4,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        7
+      ],
+      "preferredVoices": 3,
+      "function": "predominant",
+      "legacyName": "Db",
+      "borrowedFrom": "Neapolitan",
+      "outside": [
+        1
+      ]
+    },
+    {
+      "id": "elegy.iim7b5",
+      "quality": "m7b5",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        6,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        6,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "elegy.bIII",
+      "quality": "major",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        7
+      ],
+      "preferredVoices": 3,
+      "function": "tonic"
+    },
+    {
+      "id": "elegy.bIIImaj7",
+      "quality": "maj7",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "elegy.bIIImaj7s5",
+      "quality": "maj7#5",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        8,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        8,
+        11
+      ],
+      "preferredVoices": 4,
+      "function": "tonic",
+      "borrowedFrom": "harmonic minor",
+      "outside": [
+        11
+      ]
+    },
+    {
+      "id": "elegy.iv",
+      "quality": "m",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        7
+      ],
+      "preferredVoices": 3,
+      "function": "predominant"
+    },
+    {
+      "id": "elegy.ivm6",
+      "quality": "m6",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        9
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        9
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "elegy.ivm9",
+      "quality": "m9",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "predominant"
+    },
+    {
+      "id": "elegy.vm7",
+      "quality": "m7",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "dominant"
+    },
+    {
+      "id": "elegy.Vsus4",
+      "quality": "sus4",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        7
+      ],
+      "preferredVoices": 3,
+      "function": "dominant"
+    },
+    {
+      "id": "elegy.V",
+      "quality": "major",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        7
+      ],
+      "preferredVoices": 3,
+      "function": "dominant",
+      "borrowedFrom": "harmonic minor",
+      "outside": [
+        11
+      ]
+    },
+    {
+      "id": "elegy.V7",
+      "quality": "7",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "dominant",
+      "borrowedFrom": "harmonic minor",
+      "outside": [
+        11
+      ]
+    },
+    {
+      "id": "elegy.V7b9",
+      "quality": "7b9",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10,
+        13
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        13
+      ],
+      "preferredVoices": 5,
+      "function": "dominant",
+      "borrowedFrom": "harmonic minor",
+      "outside": [
+        11
+      ]
+    },
+    {
+      "id": "elegy.bVI",
+      "quality": "major",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        7
+      ],
+      "preferredVoices": 3,
+      "function": "predominant"
+    },
+    {
+      "id": "elegy.bVImaj7",
+      "quality": "maj7",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "elegy.bVII",
+      "quality": "major",
+      "root": {
+        "degree": 6,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        7
+      ],
+      "preferredVoices": 3,
+      "function": "unknown"
+    },
+    {
+      "id": "elegy.viidim7",
+      "quality": "dim7",
+      "root": {
+        "degree": 6,
+        "alteration": 1
+      },
+      "intervals": [
+        0,
+        3,
+        6,
+        9
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        6,
+        9
+      ],
+      "preferredVoices": 4,
+      "function": "dominant",
+      "borrowedFrom": "harmonic minor",
+      "outside": [
+        11
+      ]
+    }
+  ],
+  "progressions": [
+    {
+      "id": "elegy.lament",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "elegy.i",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "elegy.bVII",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "elegy.bVI",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "elegy.V",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "elegy.line-cliche",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "elegy.i",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "elegy.imMaj7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "elegy.im7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "elegy.im6",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "elegy.the-turn",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "elegy.im9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "elegy.ivm9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "elegy.iim7b5",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "elegy.V7b9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "elegy.neapolitan",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "elegy.i",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "elegy.bII",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "elegy.V7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "elegy.i",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    }
+  ]
+}

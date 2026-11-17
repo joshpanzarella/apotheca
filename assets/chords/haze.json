@@ -1,0 +1,450 @@
+{
+  "schemaVersion": 2,
+  "id": "authored.haze",
+  "name": "Haze",
+  "sourceTonic": 0,
+  "scale": {
+    "id": "major",
+    "pitchClasses": [
+      0,
+      2,
+      4,
+      5,
+      7,
+      9,
+      11
+    ]
+  },
+  "description": "Ambient in C. Close seconds, suspended stacks and chords over a held C. Nothing has to move; let them ring.",
+  "tags": [
+    "ambient",
+    "drone",
+    "cluster",
+    "sparse",
+    "authored"
+  ],
+  "guidance": {
+    "density": "sparse",
+    "chordRegister": {
+      "low": 48,
+      "high": 88
+    },
+    "leadRegister": {
+      "low": 67,
+      "high": 98
+    },
+    "bassRegister": {
+      "low": 28,
+      "high": 50
+    },
+    "melody": {
+      "targets": [
+        0,
+        2,
+        4,
+        7,
+        9,
+        11,
+        14,
+        16,
+        19
+      ],
+      "allowApproach": true,
+      "requireResolution": true
+    }
+  },
+  "chords": [
+    {
+      "id": "haze.Iadd9",
+      "quality": "add9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        2,
+        4,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        2,
+        4
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "haze.I69",
+      "quality": "6/9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        9,
+        14,
+        16
+      ],
+      "requiredIntervals": [
+        0,
+        9,
+        14,
+        16
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "haze.Imaj9",
+      "quality": "maj9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        11,
+        14,
+        16
+      ],
+      "requiredIntervals": [
+        0,
+        11,
+        14,
+        16
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "haze.VoverI",
+      "quality": "maj9(no3)",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        11,
+        14,
+        19
+      ],
+      "requiredIntervals": [
+        0,
+        7,
+        11,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "tonic",
+      "legacyName": "G/C"
+    },
+    {
+      "id": "haze.IIsus2",
+      "quality": "sus2",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        2,
+        7,
+        12
+      ],
+      "requiredIntervals": [
+        0,
+        2,
+        7
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    },
+    {
+      "id": "haze.iim11",
+      "quality": "m11",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        10,
+        15,
+        17
+      ],
+      "requiredIntervals": [
+        0,
+        10,
+        15,
+        17
+      ],
+      "preferredVoices": 5,
+      "function": "unknown"
+    },
+    {
+      "id": "haze.iiiadd11",
+      "quality": "madd11",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        5,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        5
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    },
+    {
+      "id": "haze.iiim7",
+      "quality": "m7",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        10,
+        15
+      ],
+      "requiredIntervals": [
+        0,
+        10,
+        15
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    },
+    {
+      "id": "haze.IVadd9",
+      "quality": "add9",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        2,
+        4,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        2,
+        4
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    },
+    {
+      "id": "haze.IVmaj7s11",
+      "quality": "maj7#11",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        6,
+        7,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        6,
+        11
+      ],
+      "preferredVoices": 5,
+      "function": "unknown"
+    },
+    {
+      "id": "haze.IVmaj9",
+      "quality": "maj9",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        11,
+        14,
+        16
+      ],
+      "requiredIntervals": [
+        0,
+        11,
+        14,
+        16
+      ],
+      "preferredVoices": 5,
+      "function": "unknown"
+    },
+    {
+      "id": "haze.Vsus4",
+      "quality": "sus4",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        7,
+        12
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        7
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    },
+    {
+      "id": "haze.V13sus4",
+      "quality": "13sus4",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        10,
+        14,
+        21
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        10,
+        21
+      ],
+      "preferredVoices": 5,
+      "function": "unknown"
+    },
+    {
+      "id": "haze.viadd9",
+      "quality": "madd9",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        2,
+        3,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        2,
+        3
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    },
+    {
+      "id": "haze.vim11",
+      "quality": "m11",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        5,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        5,
+        10
+      ],
+      "preferredVoices": 5,
+      "function": "unknown"
+    }
+  ],
+  "progressions": [
+    {
+      "id": "haze.breathe",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "haze.Iadd9",
+          "durationTicks": 7680,
+          "weight": 1.0
+        },
+        {
+          "chordId": "haze.IVmaj7s11",
+          "durationTicks": 7680,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "haze.tide",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "haze.viadd9",
+          "durationTicks": 7680,
+          "weight": 1.0
+        },
+        {
+          "chordId": "haze.IVadd9",
+          "durationTicks": 7680,
+          "weight": 1.0
+        },
+        {
+          "chordId": "haze.Iadd9",
+          "durationTicks": 7680,
+          "weight": 1.0
+        },
+        {
+          "chordId": "haze.V13sus4",
+          "durationTicks": 7680,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "haze.held-c",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "haze.Imaj9",
+          "durationTicks": 7680,
+          "weight": 1.0
+        },
+        {
+          "chordId": "haze.VoverI",
+          "durationTicks": 7680,
+          "weight": 1.0
+        }
+      ]
+    }
+  ]
+}

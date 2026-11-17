@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iterator>
 #include <utility>
 
 #include "song_file.hpp"
@@ -224,21 +225,119 @@ const ChordPack& builtInPack() {
     return pack;
 }
 
+namespace {
+
+// The shipped packs' JSON, one raw string each (tools/chord_packs.py writes it).
+const char* const kShippedPackTexts[] = {
+#include "chord_packs.inc"
+};
+
+bool byName(const ChordPack& a, const ChordPack& b) { return a.name < b.name; }
+
+} // namespace
+
+const std::vector<std::string>& shippedPackTexts() {
+    static const std::vector<std::string> texts(std::begin(kShippedPackTexts), std::end(kShippedPackTexts));
+    return texts;
+}
+
+const std::vector<ChordPack>& shippedPacks() {
+    static const std::vector<ChordPack> packs = [] {
+        std::vector<ChordPack> made;
+        for (const std::string& text : shippedPackTexts()) {
+            ChordPack pack;
+            if (parseChordPack(text, pack)) made.push_back(pack);
+        }
+        std::sort(made.begin(), made.end(), byName);
+        return made;
+    }();
+    return packs;
+}
+
 std::vector<ChordPack> loadChordPacks(const std::string& folder) {
-    std::vector<ChordPack> found;
+    std::vector<ChordPack> found = shippedPacks();
+    const std::size_t shipped = found.size();
     if (DIR* dir = folder.empty() ? nullptr : opendir(folder.c_str())) {
         while (const dirent* entry = readdir(dir)) {
             const std::string file = entry->d_name;
             if (file.size() <= 5 || file.compare(file.size() - 5, 5, ".json") != 0) continue;
             std::string text;
             ChordPack pack;
-            if (readTextFile(folder + "/" + file, text) && parseChordPack(text, pack)) found.push_back(pack);
+            if (!readTextFile(folder + "/" + file, text) || !parseChordPack(text, pack)) continue;
+            // A file with a shipped pack's name takes its place (the copies the zip puts on the card do).
+            std::size_t same = 0;
+            while (same < shipped && found[same].name != pack.name) ++same;
+            if (same < shipped) found[same] = pack;
+            else found.push_back(pack);
         }
         closedir(dir);
     }
-    std::sort(found.begin(), found.end(), [](const ChordPack& a, const ChordPack& b) { return a.name < b.name; });
+    std::stable_sort(found.begin(), found.end(), byName);
     found.insert(found.begin(), builtInPack());
     return found;
+}
+
+namespace {
+
+std::string textOf(const Json* j) { return j && j->type == Json::String ? j->text : std::string(); }
+
+std::vector<int> wholesOf(const Json* j) {
+    std::vector<int> out;
+    if (j && j->type == Json::Array)
+        for (const Json& v : j->items) out.push_back(v.isWhole() ? static_cast<int>(v.number) : -999);
+    return out;
+}
+
+int wholeOf(const Json* j, int otherwise) { return j && j->isWhole() ? static_cast<int>(j->number) : otherwise; }
+
+} // namespace
+
+bool readPackFacts(const std::string& json, PackFacts& facts) {
+    Json doc;
+    if (!Reader(json).document(doc) || doc.type != Json::Object) return false;
+    const Json* chords = doc.get("chords");
+    if (!chords || chords->type != Json::Array) return false;
+    PackFacts made;
+    made.schemaVersion = wholeOf(doc.get("schemaVersion"), 0);
+    made.tonic = wholeOf(doc.get("sourceTonic"), -1);
+    made.id = textOf(doc.get("id"));
+    made.name = textOf(doc.get("name"));
+    made.description = textOf(doc.get("description"));
+    if (const Json* scale = doc.get("scale")) {
+        made.scaleId = textOf(scale->get("id"));
+        made.scale = wholesOf(scale->get("pitchClasses"));
+    }
+    for (const Json& c : chords->items) {
+        PackFacts::Chord chord;
+        chord.id = textOf(c.get("id"));
+        chord.quality = textOf(c.get("quality"));
+        chord.function = textOf(c.get("function"));
+        chord.legacyName = textOf(c.get("legacyName"));
+        chord.borrowedFrom = textOf(c.get("borrowedFrom"));
+        if (const Json* root = c.get("root")) {
+            chord.degree = wholeOf(root->get("degree"), -1);
+            chord.alteration = wholeOf(root->get("alteration"), 0);
+        }
+        chord.preferredVoices = wholeOf(c.get("preferredVoices"), 0);
+        chord.pedal = wholeOf(c.get("pedalSemitone"), -1);
+        chord.intervals = wholesOf(c.get("intervals"));
+        chord.required = wholesOf(c.get("requiredIntervals"));
+        chord.hasOutside = c.get("outside") != nullptr;
+        chord.outside = wholesOf(c.get("outside"));
+        made.chords.push_back(chord);
+    }
+    if (const Json* progressions = doc.get("progressions"))
+        for (const Json& p : progressions->items) {
+            PackFacts::Progression progression;
+            progression.id = textOf(p.get("id"));
+            if (const Json* segments = p.get("segments"))
+                for (const Json& segment : segments->items)
+                    progression.segments.push_back({textOf(segment.get("chordId")), wholeOf(segment.get("durationTicks"), 0)});
+            made.progressions.push_back(progression);
+        }
+    if (made.chords.empty()) return false;
+    facts = made;
+    return true;
 }
 
 ChordEvent makeChord(const ChordShape& shape, int nearPitch, int step, float length, float velocity, int inversion) {

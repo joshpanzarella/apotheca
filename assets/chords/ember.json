@@ -1,0 +1,497 @@
+{
+  "schemaVersion": 2,
+  "id": "authored.ember",
+  "name": "Ember",
+  "sourceTonic": 0,
+  "scale": {
+    "id": "phrygian",
+    "pitchClasses": [
+      0,
+      1,
+      3,
+      5,
+      7,
+      8,
+      10
+    ]
+  },
+  "description": "Phrygian in C. The flat second leaning on the tonic, the Spanish turn down to a major tonic, and a suspended chord with a flat ninth.",
+  "tags": [
+    "dark",
+    "phrygian",
+    "modal",
+    "authored"
+  ],
+  "guidance": {
+    "density": "medium",
+    "chordRegister": {
+      "low": 48,
+      "high": 82
+    },
+    "leadRegister": {
+      "low": 60,
+      "high": 91
+    },
+    "bassRegister": {
+      "low": 26,
+      "high": 48
+    },
+    "melody": {
+      "targets": [
+        0,
+        1,
+        3,
+        5,
+        7,
+        8,
+        10,
+        12,
+        13,
+        15
+      ],
+      "allowApproach": true,
+      "requireResolution": true
+    }
+  },
+  "chords": [
+    {
+      "id": "ember.i",
+      "quality": "m",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        12,
+        15
+      ],
+      "requiredIntervals": [
+        0,
+        7,
+        15
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "ember.im7",
+      "quality": "m7",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "ember.i5",
+      "quality": "5",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        12
+      ],
+      "requiredIntervals": [
+        0,
+        7
+      ],
+      "preferredVoices": 3,
+      "function": "tonic"
+    },
+    {
+      "id": "ember.I7sus4b9",
+      "quality": "7sus4b9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        7,
+        10,
+        13
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        10,
+        13
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "ember.I",
+      "quality": "major",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        12
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        7
+      ],
+      "preferredVoices": 4,
+      "function": "tonic",
+      "borrowedFrom": "phrygian dominant",
+      "outside": [
+        4
+      ]
+    },
+    {
+      "id": "ember.bII",
+      "quality": "major",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        12
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        7
+      ],
+      "preferredVoices": 4,
+      "function": "predominant",
+      "legacyName": "Db"
+    },
+    {
+      "id": "ember.bIImaj7",
+      "quality": "maj7",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "preferredVoices": 4,
+      "function": "predominant",
+      "legacyName": "Dbmaj7"
+    },
+    {
+      "id": "ember.bIImaj7s11",
+      "quality": "maj7#11",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11,
+        18
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11,
+        18
+      ],
+      "preferredVoices": 5,
+      "function": "predominant",
+      "legacyName": "Dbmaj7#11"
+    },
+    {
+      "id": "ember.bIII",
+      "quality": "major",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        12
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        7
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    },
+    {
+      "id": "ember.bIII7",
+      "quality": "7",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    },
+    {
+      "id": "ember.iv",
+      "quality": "m",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        12
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        7
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "ember.ivm9",
+      "quality": "m9",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "predominant"
+    },
+    {
+      "id": "ember.vm7b5",
+      "quality": "m7b5",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        6,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        6,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "dominant"
+    },
+    {
+      "id": "ember.bVI",
+      "quality": "major",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        12
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        7
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "ember.bVImaj7",
+      "quality": "maj7",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "ember.bvii",
+      "quality": "m",
+      "root": {
+        "degree": 6,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        12
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        7
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    },
+    {
+      "id": "ember.bviim7",
+      "quality": "m7",
+      "root": {
+        "degree": 6,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    }
+  ],
+  "progressions": [
+    {
+      "id": "ember.half-step",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "ember.i",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "ember.bII",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "ember.spanish",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "ember.iv",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "ember.bIII",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "ember.bII",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "ember.I",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "ember.smoulder",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "ember.im7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "ember.bviim7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "ember.bIImaj7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "ember.I7sus4b9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    }
+  ]
+}

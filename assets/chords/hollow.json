@@ -1,0 +1,512 @@
+{
+  "schemaVersion": 2,
+  "id": "authored.hollow",
+  "name": "Hollow",
+  "sourceTonic": 0,
+  "scale": {
+    "id": "harmonicMinor",
+    "pitchClasses": [
+      0,
+      2,
+      3,
+      5,
+      7,
+      8,
+      11
+    ]
+  },
+  "description": "Dark in C harmonic minor. The minor-major seventh, augmented and diminished chords, minor chords a major third and a tritone away.",
+  "tags": [
+    "dark",
+    "harmonic-minor",
+    "horror",
+    "chromatic",
+    "authored"
+  ],
+  "guidance": {
+    "density": "medium",
+    "chordRegister": {
+      "low": 43,
+      "high": 79
+    },
+    "leadRegister": {
+      "low": 60,
+      "high": 88
+    },
+    "bassRegister": {
+      "low": 24,
+      "high": 46
+    },
+    "melody": {
+      "targets": [
+        0,
+        2,
+        3,
+        6,
+        7,
+        8,
+        11,
+        12,
+        14,
+        15
+      ],
+      "allowApproach": true,
+      "requireResolution": true
+    }
+  },
+  "chords": [
+    {
+      "id": "hollow.i",
+      "quality": "m",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        7
+      ],
+      "preferredVoices": 3,
+      "function": "tonic"
+    },
+    {
+      "id": "hollow.imMaj7",
+      "quality": "mMaj7",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        11
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "hollow.imMaj9",
+      "quality": "mMaj9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        11,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        11,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "hollow.idim",
+      "quality": "dim",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        6
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        6
+      ],
+      "preferredVoices": 3,
+      "function": "unknown",
+      "borrowedFrom": "diminished tonic",
+      "outside": [
+        6
+      ]
+    },
+    {
+      "id": "hollow.idim7",
+      "quality": "dim7",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        6,
+        9
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        6,
+        9
+      ],
+      "preferredVoices": 4,
+      "function": "unknown",
+      "borrowedFrom": "diminished tonic",
+      "outside": [
+        6,
+        9
+      ]
+    },
+    {
+      "id": "hollow.bIImaj7",
+      "quality": "maj7",
+      "root": {
+        "degree": 1,
+        "alteration": -1
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "preferredVoices": 4,
+      "function": "predominant",
+      "legacyName": "Dbmaj7",
+      "borrowedFrom": "Neapolitan",
+      "outside": [
+        1
+      ]
+    },
+    {
+      "id": "hollow.iim7b5",
+      "quality": "m7b5",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        6,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        6,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "hollow.III+",
+      "quality": "aug",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        8
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        8
+      ],
+      "preferredVoices": 3,
+      "function": "unknown"
+    },
+    {
+      "id": "hollow.IIImaj7s5",
+      "quality": "maj7#5",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        8,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        8,
+        11
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    },
+    {
+      "id": "hollow.iii",
+      "quality": "m",
+      "root": {
+        "degree": 2,
+        "alteration": 1
+      },
+      "intervals": [
+        0,
+        3,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        7
+      ],
+      "preferredVoices": 3,
+      "function": "unknown",
+      "borrowedFrom": "minor a major third up",
+      "outside": [
+        4
+      ]
+    },
+    {
+      "id": "hollow.ivm6",
+      "quality": "m6",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        9
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        9
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "hollow.sharpiv",
+      "quality": "m",
+      "root": {
+        "degree": 3,
+        "alteration": 1
+      },
+      "intervals": [
+        0,
+        3,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        7
+      ],
+      "preferredVoices": 3,
+      "function": "unknown",
+      "borrowedFrom": "minor a tritone away",
+      "outside": [
+        1,
+        6,
+        9
+      ]
+    },
+    {
+      "id": "hollow.V7b9",
+      "quality": "7b9",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10,
+        13
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        13
+      ],
+      "preferredVoices": 5,
+      "function": "dominant"
+    },
+    {
+      "id": "hollow.V7s5",
+      "quality": "7#5",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        8,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        8,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "dominant"
+    },
+    {
+      "id": "hollow.bVI",
+      "quality": "major",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        7
+      ],
+      "preferredVoices": 3,
+      "function": "predominant"
+    },
+    {
+      "id": "hollow.bvi",
+      "quality": "m",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        7
+      ],
+      "preferredVoices": 3,
+      "function": "unknown"
+    },
+    {
+      "id": "hollow.viidim7",
+      "quality": "dim7",
+      "root": {
+        "degree": 6,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        6,
+        9
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        6,
+        9
+      ],
+      "preferredVoices": 4,
+      "function": "dominant"
+    }
+  ],
+  "progressions": [
+    {
+      "id": "hollow.the-tritone",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "hollow.i",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "hollow.sharpiv",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "hollow.thirds-down",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "hollow.i",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "hollow.bvi",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "hollow.iii",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "hollow.i",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "hollow.the-wait",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "hollow.imMaj7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "hollow.viidim7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "hollow.idim7",
+          "durationTicks": 3840,
+          "weight": 1.0
+        },
+        {
+          "chordId": "hollow.V7b9",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    }
+  ]
+}
