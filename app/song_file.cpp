@@ -1,4 +1,5 @@
 #include "song_file.hpp"
+#include "scales.hpp"
 #include "line_in.hpp"
 #include "instruments.hpp"
 #include "samples.hpp"
@@ -666,6 +667,11 @@ void putHead(std::string& out, const ProjectHead& project) {
     // songend N: what the song does at its end (1: STOP). Left out at LOOP, so a song that loops is
     // written as it always was, and a program from before (which skips the line) plays it round.
     if (project.songEnd != kSongLoop) put(out, "songend %.0f\n", project.songEnd);
+    // scale KEY KIND: SCALE LOCK (scales.hpp). Left out at OFF, so a song with none is written as before.
+    if (project.scaleKind != kScaleOff) {
+        put(out, "scale %.0f", project.scaleKey);
+        put(out, " %.0f\n", project.scaleKind);
+    }
     // master DB PAN: the master's level and pan on the mixer, as a track's `mix`. Left out at 0 0.
     if (project.masterDb != 0 || project.masterPan != 0) {
         put(out, "master %.0f", project.masterDb);
@@ -881,6 +887,11 @@ void readLines(SongReading& r, const std::string& text, std::size_t from, std::s
         } else if (word == "songend") {
             double end = 0;
             if (in >> end) head.songEnd = songEndKind(wholeIn(end, 0, 255)); // (held as a double first; a number nobody knows: LOOP)
+        } else if (word == "scale") {
+            double key = 0, kind = 0;
+            if (!(in >> key >> kind)) continue;
+            head.scaleKey = wholeIn(key, 0, 11);
+            head.scaleKind = scaleKindOf(wholeIn(kind, 0, 255)); // (held as doubles first; a kind nobody knows: OFF)
         } else if (word == "master") {
             double db = 0, pan = 0;
             if (!(in >> db)) continue;
@@ -1235,7 +1246,7 @@ bool cutSongAt(const std::string& text, std::vector<std::size_t>& starts) {
     starts.clear();
     if (text.compare(0, 13, "apotheca-song") != 0) return false;
     bool inTrack = false;
-    static const char* const songsOwn[] = {"tempo", "length", "steps", "repeats", "pack", "busfx", "master", "songend"};
+    static const char* const songsOwn[] = {"tempo", "length", "steps", "repeats", "pack", "busfx", "master", "songend", "scale"};
     for (std::size_t at = 0; at < text.size();) {
         std::size_t end = text.find('\n', at);
         end = end == std::string::npos ? text.size() : end + 1;

@@ -518,6 +518,8 @@ public:
     // undo; the engine is told by syncSong. The engine says when a song stopped by itself, and
     // update() then takes project.playing down (songEnded, playsSent_).
     void setSongEnd(int end);
+    // SCALE LOCK (scales.hpp): the song's KEY (0..11, round) and SCALE (a choice with ends). A step of undo.
+    void setScale(int key, int kind);
     int mixDb(int track) const { return track == kMasterTrack ? project.masterDb : (track >= 0 && track < kNumTracks ? project.tracks[track].mixDb : 0); }
     int mixPan(int track) const { return track == kMasterTrack ? project.masterPan : (track >= 0 && track < kNumTracks ? project.tracks[track].mixPan : 0); }
     void sendMix(int track); // what the engine is told for it: its level and its pan

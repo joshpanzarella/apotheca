@@ -403,6 +403,8 @@ and the day it was built. The number goes up by one with every build.
 | --- | --- | --- |
 | TEMPO | A beat a minute | **Tap it in time**: from the second tap the tempo is the beat of the last five taps (a pause of two seconds starts again). The box above the bar says TAPPED: 117 BPM |
 | CHORD PACK | Another pack | |
+| KEY | The song's key, C to B (round) | |
+| SCALE | **SCALE LOCK**: OFF (every key), MAJOR, MINOR, DORIAN, PHRYGIAN, LYDIAN, MIXOLYDIAN, LOCRIAN, MAJOR PENT, MINOR PENT, HARMONIC MINOR, BLUES. On, the piano roll's cursor steps left / right only through the scale's keys (and any key a note of the bar shown is on, so it can still be reached), the keys out of it are drawn dim, a note carried sideways (hold R1) goes to the next key of the scale, and the chord pack's chords are moved into the key (a major pack in a minor scale to its relative major: C major's chords in A minor stay C, Dm...). Kept in the song; a step of undo | |
 | TRACK NAME | A name for the track being worked on, from a list | **Type one**: a grid of letters and numbers. A types, **Y deletes a letter, B keeps the name and leaves** (with nothing typed B leaves and the name stays as it was), START keeps it too (with nothing typed: the instrument's own name). Ten characters. |
 | VOLUME | A twentieth | |
 | BRIGHTNESS | The screen, 10% to 100% in fives (also **MENU + the volume keys**, ten at a time). **Only on Apotheca's own system for the RG40XXV** | |
@@ -1607,6 +1609,14 @@ they leave; tap Y to reshuffle). **The dice work on every hit of the lane,
 yours too**: down takes any hit away, a tap rolls the lane's hits anew (as
 many as it has; an empty lane gets four, a full one eight). Undo puts yours
 back. A full lane says THE LANE IS FULL, an empty one THE LANE IS EMPTY.
+
+**EVEN** (a Euclidean rhythm): with Y held on a lane's name, **R1 is one hit
+more and L1 one fewer, spread as evenly over the bar as sixteen steps allow**
+(3 hits: steps 1, 7, 12; 4: every beat; 5: 1, 5, 8, 11, 14). From then until Y
+is let go, **left / right turn the pattern a step** later or earlier. It writes
+over the lane's bar as the dice do (a hit that stays where one was keeps its
+level and effects; a new one is placed at 90%), the box says EVEN: 5 HITS,
+TURNED 2, and undo puts the lane back.
 Up from the top lane is the tempo: hold A + up / down turns it, and **A tapped in
 time sets it** (from the second tap: the beat of the last five taps; a pause of
 two seconds starts again). SETUP's TEMPO row taps the same way.

@@ -60,6 +60,9 @@ struct NoteEvent {
 // The level a hit, a note or a chord starts at when it is placed (owner, 2026-11-15: 90%, it was
 // 80%), and what X and A hear a sound at on every screen, so what is heard is what is placed.
 constexpr float kPlacedLevel = 0.9f;
+// EVEN (easywins batch 5): is `step` (0..15) one of `hits` spread as evenly as sixteen steps allow, the
+// first on step 0? (A Euclidean rhythm, as Bresenham draws a line: 3 is steps 1, 7, 12; 5 is 1, 5, 8, 11, 14.)
+inline bool euclidHit(int hits, int step) { return hits > 0 && (step * hits) % 16 < hits; }
 // The keys the piano roll reaches, C0 to C8 (NoteScreen::kLowest, kHighest). TRANSPOSE keeps a cell inside them.
 constexpr int kRollLowest = 12, kRollHighest = 108;
 
@@ -428,6 +431,8 @@ struct ProjectHead {
     float tempo = 120.f;
     int masterDb = 0, masterPan = 0; // the master's level and pan on the mixer, as a track's are
     int songEnd = 0; // AT END, played as a song: kSongLoop round to the first scene (as it always did), kSongStop stop there
+    int scaleKey = 0;  // SCALE LOCK (scales.hpp): the song's key, 0 C .. 11 B
+    int scaleKind = 0; // ...and its scale, kScaleOff (the roll is free) to kScaleBlues
     char chordPack[32] = {}; // the chord pack this song picks from; empty is the built-in one
     int track = 0; // the track and scene the Pattern and Device screens show
     int scene = 0;

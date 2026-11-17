@@ -216,6 +216,10 @@ private:
     bool diceRemove();
     void diceTurn(float hits);
     void diceReshuffle();
+    // EVEN (easywins batch 5): with Y held on a lane's name, R1 one hit more and L1 one fewer, the hits
+    // spread evenly over the bar (euclidHit); then, while Y stays held, LEFT / RIGHT turn the pattern a step.
+    void evenLane(int hits, int turn);
+    int laneHits() const;
     float randomLevel();
     void turnUpDown(float amount);   // with A: level, drum volume or tempo
     void turnSideways(float amount); // with A: nudge
@@ -249,6 +253,8 @@ private:
 
     bool shaping_ = false;  // A is held
     bool dicing_ = false;   // Y is held
+    bool evening_ = false;  // ...and R1 or L1 made the lane EVEN in this hold: LEFT / RIGHT turn it
+    int evenHits_ = 0, evenTurn_ = 0;
     bool yDidSomething_ = false; // this hold of Y already placed or turned, so letting go is not a tap
     Axis axis_ = Axis::None; // the stick does one job at a time until it is let go
     Turning turning_ = Turning::Nothing;

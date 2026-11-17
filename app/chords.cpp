@@ -165,6 +165,10 @@ bool parseChordPack(const std::string& json, ChordPack& pack) {
     if (scale.empty()) scale = {0, 2, 4, 5, 7, 9, 11};
 
     ChordPack made;
+    made.tonic = tonic;
+    bool third = false, majorThird = false;
+    for (int pc : scale) third = third || pc == 3, majorThird = majorThird || pc == 4;
+    made.minor = third && !majorThird;
     if (const Json* name = doc.get("name")) made.name = name->type == Json::String ? name->text : "";
     for (char& c : made.name)
         if (c < ' ' || c > 126) c = ' ';

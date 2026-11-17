@@ -21,6 +21,7 @@
 #include "apotheca/engine.hpp"
 #include "presets.hpp"
 #include "app.hpp"
+#include "scales.hpp"
 #include "battery.hpp"
 #include "bench_run.hpp"
 #include "canvas.hpp"
@@ -3297,6 +3298,11 @@ void testTheSetupScreen() {
         rig.tap(RIGHT);
         rig.tap(LEFT);
         CHECK(session.packIndex() == pack);
+        // KEY and SCALE (easywins batch 4: easy_test scale has the rest)
+        rig.tap(DOWN);
+        CHECK(setup.cursorRow() == SettingsScreen::kKey);
+        rig.tap(DOWN);
+        CHECK(setup.cursorRow() == SettingsScreen::kScale && rig.project().scaleKind == kScaleOff);
         // TRACK NAME: through the list, round and round; the first is its instrument's own.
         rig.tap(DOWN);
         CHECK(setup.cursorRow() == SettingsScreen::kTrackName && rig.project().current().name[0] == 0);

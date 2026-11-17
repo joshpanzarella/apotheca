@@ -74,6 +74,7 @@
 #include "version.hpp"
 #include "apotheca/engine.hpp"
 #include "app.hpp"
+#include "scales.hpp"
 #include "drum_voices.hpp"
 #include "power_off.hpp"
 #include "redraw.hpp"
@@ -1302,6 +1303,24 @@ int main(int argc, char** argv) {
         app.session().setClick(Session::kClickRecording);
         app.session().setCountIn(true);
         app.settings().goTo(SettingsScreen::kClick);
+    } else if (std::strcmp(view, "scale-roll") == 0 || std::strcmp(view, "setup-scale") == 0) {
+        // SCALE LOCK (easywins batch 4): D DORIAN; the roll on the demo's synth track (the keys out of it dim),
+        // or the SET page on SCALE.
+        app.session().setScale(2, kScaleDorian);
+        if (view[0] == 's' && view[1] == 'e') {
+            app.session().view = View::Settings;
+            app.settings().goTo(SettingsScreen::kScale);
+        } else {
+            app.project().track = 1;
+            app.session().view = View::Pattern;
+            app.notes().moveCursorTo(62, 2);
+        }
+    } else if (std::strcmp(view, "even") == 0) {
+        // EVEN (easywins batch 5): Y held on the open hat's name, R1 five times: five hits spread evenly.
+        app.session().view = View::Pattern;
+        app.drums().moveCursorTo(3, -1);
+        pushKey(SDLK_a, true);
+        tapKey(SDLK_w, 4);
     } else if (std::strcmp(view, "tap-tempo") == 0) {
         // TAP TEMPO (easywins batch 1): two taps half a second apart, the cursor on the drum grid's tempo row.
         app.session().view = View::Pattern;
