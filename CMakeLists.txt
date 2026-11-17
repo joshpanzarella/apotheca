@@ -33,7 +33,10 @@ add_library(msfa STATIC
 target_compile_options(msfa PRIVATE -fwrapv -Wall -Wextra)
 
 # The version shown on screen: 0.N, N being the number of changes kept so far plus this one.
-execute_process(COMMAND git rev-list --count HEAD WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} OUTPUT_VARIABLE APOTHECA_CHANGES OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+# (A build from a copy with no git history, as the system image's, passes -DAPOTHECA_CHANGES=N.)
+if(NOT DEFINED APOTHECA_CHANGES)
+  execute_process(COMMAND git rev-list --count HEAD WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} OUTPUT_VARIABLE APOTHECA_CHANGES OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+endif()
 if(NOT APOTHECA_CHANGES)
   set(APOTHECA_CHANGES 0)
 endif()

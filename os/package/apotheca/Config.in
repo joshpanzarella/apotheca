@@ -1,0 +1,11 @@
+config BR2_PACKAGE_APOTHECA
+	bool "apotheca"
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	select BR2_PACKAGE_SDL2
+	help
+	  Apotheca itself, built from this repository by Buildroot's
+	  toolchain, with its lettering, chord packs and licences, in
+	  /usr/lib/apotheca. /usr/sbin/apotheca-start runs it from the
+	  card's DATA partition (/data/apotheca), where its songs,
+	  recordings and updates live.

@@ -1,0 +1,70 @@
+#!/bin/sh
+# apotheca-keep NAME PROGRAM [ARGS...]
+#
+# Runs PROGRAM and starts it again whenever it stops. Batch 2 runs Apotheca
+# under it (from /etc/inittab); batch 1 has it for the desk test.
+#
+#   - A program that ran KEEP_QUICK seconds or more starts again at once.
+#   - One that stopped sooner waits 1, 2, 4 ... seconds, at most
+#     KEEP_MOST_WAIT, before the next start, so a program that cannot start
+#     does not take the CPU.
+#   - While the file $KEEP_RUN/NAME.hold exists nothing is started (for work
+#     from the shell: touch it, kill the program, do the work, remove it).
+#   - Every start and stop is written to $KEEP_LOG/NAME.log.
+#   - Sent TERM or INT (shutdown), it stops the program and then itself.
+
+name=$1
+shift
+quick=${KEEP_QUICK:-10}
+most=${KEEP_MOST_WAIT:-30}
+run=${KEEP_RUN:-/run/apotheca}
+logdir=${KEEP_LOG:-/data/apotheca/logs}
+[ -d "$logdir" ] && [ -w "$logdir" ] || logdir=$run
+mkdir -p "$run"
+log="$logdir/$name.log"
+hold="$run/$name.hold"
+
+now() { cut -d. -f1 /proc/uptime; }
+note() { echo "[$(cut -d' ' -f1 /proc/uptime)] $name: $*" >> "$log"; }
+
+child=
+stop() {
+    note "told to stop"
+    [ -n "$child" ] && kill "$child" 2>/dev/null && wait "$child"
+    note "stopped"
+    exit 0
+}
+trap stop TERM INT
+
+fails=0
+while :; do
+    if [ -e "$hold" ]; then
+        note "held ($hold): not started"
+        while [ -e "$hold" ]; do sleep 1; done
+        note "hold lifted"
+        fails=0
+    fi
+    began=$(now)
+    "$@" &
+    child=$!
+    note "started (pid $child)"
+    wait "$child"
+    code=$?
+    child=
+    ran=$(( $(now) - began ))
+    if [ "$ran" -lt "$quick" ]; then
+        fails=$((fails + 1))
+        wait_s=1
+        i=1
+        while [ "$i" -lt "$fails" ] && [ "$wait_s" -lt "$most" ]; do
+            wait_s=$((wait_s * 2)); i=$((i + 1))
+        done
+        [ "$wait_s" -gt "$most" ] && wait_s=$most
+    else
+        fails=0
+        wait_s=0
+    fi
+    note "stopped with code $code after ${ran}s; next start in ${wait_s}s"
+    sync
+    [ "$wait_s" -gt 0 ] && sleep "$wait_s"
+done

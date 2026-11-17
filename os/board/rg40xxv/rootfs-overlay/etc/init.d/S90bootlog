@@ -1,0 +1,85 @@
+#!/bin/sh
+# Writes what this boot found to the card's DATA partition, so the owner can
+# send it back: /data/apotheca/logs/boot-NNNN.txt (the newest also as
+# boot-latest.txt). A second look 20 s later catches drivers that come late.
+# The last 20 boots are kept.
+
+. /usr/lib/apotheca/common.sh
+
+LOGS=/data/apotheca/logs
+KEEP=20
+
+section() { echo; echo "===== $1"; }
+
+report() {
+    echo "Apotheca boot log"
+    section "build"; cat /etc/apotheca-build
+    section "kernel"; uname -a; cat /proc/cmdline
+    section "device tree"
+    tr -d '\0' < /proc/device-tree/model 2>/dev/null; echo
+    tr -d '\0' < /proc/device-tree/rocknix-dt-id 2>/dev/null; echo
+    section "uptime (s) and memory"; cat /proc/uptime; free -k
+    section "cpu"
+    grep -E '^(processor|BogoMIPS|CPU part)' /proc/cpuinfo
+    for c in /sys/devices/system/cpu/cpu[0-9]*/cpufreq; do
+        [ -d "$c" ] && echo "$c: $(cat $c/scaling_governor 2>/dev/null) $(cat $c/scaling_cur_freq 2>/dev/null) kHz"
+    done
+    section "apotheca start-up"; cat "$APOTHECA_BOOTLOG" 2>/dev/null
+    section "partitions"; cat /proc/partitions; echo; mount
+    section "screen (drm, framebuffer, backlight)"
+    for s in /sys/class/drm/*/status; do [ -e "$s" ] && echo "$s: $(cat "$s")"; done
+    for m in /sys/class/drm/*/modes; do [ -s "$m" ] && echo "$m: $(tr '\n' ' ' < "$m")"; done
+    cat /proc/fb 2>/dev/null
+    for b in /sys/class/backlight/*; do [ -d "$b" ] && echo "$b: $(cat $b/brightness)/$(cat $b/max_brightness)"; done
+    section "input"; cat /proc/bus/input/devices 2>/dev/null
+    section "sound"; cat /proc/asound/cards 2>/dev/null
+    section "power"
+    for p in /sys/class/power_supply/*; do
+        [ -d "$p" ] || continue
+        echo "$p:"; cat "$p/uevent" 2>/dev/null | sed 's/^/  /'
+    done
+    section "usb"; ls /sys/class/udc 2>/dev/null; cat /sys/kernel/config/usb_gadget/apotheca/UDC 2>/dev/null
+    section "regulators"
+    for r in /sys/class/regulator/regulator.*; do
+        [ -d "$r" ] && echo "$(cat $r/name 2>/dev/null): $(cat $r/microvolts 2>/dev/null) uV $(cat $r/state 2>/dev/null)"
+    done
+    section "modules"; cat /proc/modules
+    section "processes"; ps
+    section "dmesg"; dmesg
+}
+
+start() {
+    if ! mountpoint -q /data; then
+        say "boot log: /data is not mounted, the log stays in $APOTHECA_BOOTLOG"
+        return 0
+    fi
+    mkdir -p "$LOGS"
+    n=$(cat "$LOGS/count" 2>/dev/null || echo 0)
+    case "$n" in ''|*[!0-9]*) n=0 ;; esac
+    n=$((n + 1))
+    echo "$n" > "$LOGS/count"
+    file=$(printf '%s/boot-%04d.txt' "$LOGS" "$n")
+    report > "$file" 2>&1
+    cp "$file" "$LOGS/boot-latest.txt"
+    sync
+    say "boot log: $file"
+
+    # Keep the last $KEEP
+    ls "$LOGS"/boot-[0-9]*.txt 2>/dev/null | sort \
+        | awk -v keep=$KEEP '{ f[NR] = $0 } END { for (i = 1; i <= NR - keep; i++) print f[i] }' \
+        | xargs -r rm -f
+
+    # A second look once late drivers have come up
+    (
+        sleep 20
+        { echo; echo "##### 20 seconds later"; report; } >> "$file" 2>&1
+        cp "$file" "$LOGS/boot-latest.txt"
+        sync
+    ) < /dev/null > /dev/null 2>&1 &
+}
+
+case "$1" in
+    start) start ;;
+    stop) sync ;;
+    *) echo "usage: $0 start|stop" ;;
+esac

@@ -1,0 +1,5 @@
+# The tarball Buildroot makes from commit ac1be0fa0c4e of
+# https://github.com/ROCKNIX/rocknix-joypad (the one ROCKNIX pins), taken 2026-11-17.
+sha256  0391c09b0e0c0d49a1ee1bacbdc38a2f3ce648a1b18cc87e080494460c5a159a  rocknix-joypad-ac1be0fa0c4e1f7feb9a900fc428d7ac6014029c-git4.tar.gz
+# Its licence: the SPDX line at the top of the driver's source.
+sha256  233dd744261d3724fb3d3bbb0c5411d3ee0f2a3509efa98bdee4a52fa81189cb  rocknix-singleadc-joypad.c
