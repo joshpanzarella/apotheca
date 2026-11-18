@@ -363,7 +363,8 @@ void testTheSetPage() {
         if (place > setup.firstShown()) CHECK(setup.rowNowY(row) >= setup.rowNowY(setup.rowAt(place - 1)) + S::kRowH - 2);
     }
     // The places and the rows agree both ways.
-    for (int row = 0; row < S::kRows; ++row) CHECK(setup.rowAt(setup.placeOf(row)) == row);
+    for (int row = 0; row < S::kRows; ++row) // (a row not on this handheld, NETWORK here, has no place of its own)
+        if (setup.here(row)) CHECK(setup.rowAt(setup.placeOf(row)) == row);
     // The lights taken away (they never are on a handheld, but the page must not stay past its end).
     const int withLights = setup.firstShown();
     rig.session().useLights(Lights());
