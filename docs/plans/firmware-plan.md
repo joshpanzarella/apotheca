@@ -924,14 +924,14 @@ right memory may stop somewhere new.
 
 | Test | Result |
 | --- | --- |
-| `uboot-pick-test.py`, part one (qemu "virt", the card commands echoed) | RESULT_PICK1 |
-| `uboot-pick-test.py`, part two: **the card commands for real** on qemu's Orange Pi PC (Allwinner H3: mainline U-Boot v2026.01 built for it with the card's PREBOOT, the same sunxi card driver and FAT code as the handheld's U-Boot; needs `arm-linux-gnueabihf-gcc`) | RESULT_PICK2 |
-| `qemu-test.py` | RESULT_QEMU |
-| `check-image.sh` | RESULT_CHECK |
-| The SPL | read in the built SPL's code: the green light's pin (268) driven high after `gpio_init()`, the red one's (267) after `sunxi_board_init()` returns. The LPDDR3 SPL: RESULT_SPL3. **Neither run**: qemu has no H700 |
-| Reproducible | RESULT_REPRO |
+| `uboot-pick-test.py`, part one (qemu "virt", the card commands echoed) | **passes**: the five ways to pick the tree as before, now with the green light put out first and `uboot-started.txt` written before anything else (and the report saying that write went); a made-up piece of kernel text put in memory at `0x4d380000` is saved whole as `kernel-from-memory.txt` and the start goes on; a second reset in a row is counted and starts; a third does not start, tells the power chip to turn off and blinks the red light; the FAT sound after it all |
+| `uboot-pick-test.py`, part two: **the card commands for real** on qemu's Orange Pi PC (Allwinner H3: mainline U-Boot v2026.01 built for it with the card's PREBOOT, the same sunxi card driver and FAT code as the handheld's U-Boot; needs `arm-linux-gnueabihf-gcc`) | **passes** (41 checks in the two parts): PREBOOT's first look at the card works with nothing having touched it before; `uboot-started.txt` and `uboot-report.txt` are on the boot partition, the second start counts on from the first; the 512 KiB from memory are in `kernel-from-memory.txt` **and on the card's bare sectors from 2 MiB, with the sectors either side untouched**; the boot partition's files and the root partition's start unchanged. So the commands that left no report on BLACK are sound: U-Boot simply never ran there |
+| `qemu-test.py` | **every check passes (108)**, run on the image of the commit before the last (the same but for the commit's name in `/etc/apotheca-build`). New: the first program finds the root by the disk's signature, the deadline is off once the system runs, nothing of the initramfs is left mounted; `kernel-log.txt` and `linux-early.txt` on the boot partition; a root that is not there (the reason said, 20 s of waiting, a reset, the reason in `kernel-log.txt`); a root that will not mount; the kernel left waiting with no first program: the deadline's panic and a reset; `rdinit=/none`: the kernel mounts the root itself, as before; on qemu's tree with the two pieces of memory: ramoops in use, U-Boot's mark Linux's to clear, and **after a panic and a reset the next start finds what the kernel said, its last words included**. **One thing seen and not explained**: on an earlier build of the day that last start (the one after the reset) went silent after the first program handed over, 3 times in 12; 6 of 6 and the full run since. A cold start never did it |
+| `check-image.sh` | **every check passes (102)** on both images |
+| The SPL | read in the built SPL's code: the green light's pin (268) driven high after `gpio_init()`, the red one's (267) after `sunxi_board_init()` returns. The LPDDR3 SPL: its `.config` has `CONFIG_SUNXI_DRAM_H616_LPDDR3`, ROCKNIX's ODT and TPR values and `CONFIG_AXP_DCDC3_VOLT=1200`; every tree on its card has `dcdc3` at 1,200,000 uV (the LPDDR4 card's 1,100,000). **Neither run**: qemu has no H700 |
+| Reproducible | the LPDDR4 image: **the same `img.gz` to the bit** from two builds, U-Boot (from clean) and the tools rebuilt between. The LPDDR3 image was built once |
 
-**The images**: RESULT_IMAGE
+**The images**: built from commit `0731b19`. `apotheca-rg40xxv.img.gz` (LPDDR4), 32,966,872 bytes, sha256 `f61f222ca8b228274b45ff702ab09c6686b9ce625a1e7563718345c106465ac7`. **`apotheca-rg40xxv-lpddr3.img.gz`** (LPDDR3), 32,966,907 bytes, sha256 `96997d23c7ac5ba4b62f2c3d1f97a04b397a502ad955596106900e788ec7f3f7`. The kernel grew 0.3 MB (the first program)
 
 ### Only the handheld can tell
 
