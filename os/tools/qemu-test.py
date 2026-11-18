@@ -823,9 +823,12 @@ def main():
         check("(H616 Audio Codec Headphone Jack): the headphone socket" in out and "headphones out (just now): the speaker on" in out
               and "headphones in (just now): the speaker off" in out,
               "apotheca-power finds the stand-in headphone socket and follows it: out, the speaker on; in, off")
+        before, _ = m.run("grep -c 'headphones in (as found): the speaker off' /data/apotheca/logs/power.log")
         m.run("kill $(pidof apotheca-power); sleep 5")
         out, _ = m.run("pidof apotheca-power > /dev/null && echo running; grep -c 'headphones in (as found): the speaker off' /data/apotheca/logs/power.log")
-        check(out.split() == ["running", "1"],
+        # Counted against before the restart: the first start may have found the stand-in already in.
+        check(out.split()[:1] == ["running"] and len(out.split()) == 2 and before.strip().isdigit()
+              and int(out.split()[1]) == int(before.strip()) + 1,
               "started again with headphones in: it asks the socket its state (EVIOCGSW) and turns the speaker off (%s)" % out.split())
         out, code = m.run("/usr/libexec/apotheca/speaker loud; echo $?; grep -c 'Speaker Switch' /etc/init.d/S20sound; "
                           "grep -c 'set_control \"Speaker Switch\"' /etc/init.d/S20sound")
