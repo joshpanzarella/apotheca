@@ -49,20 +49,41 @@ handheld as before.** Keep the stock card in a drawer and use a spare one.
    **APOTHECA** drive appears only after the handheld's first start.
 4. Eject the card.
 
-## Two images, one for each kind of memory
+## One image for both kinds of memory
 
-RG40XXVs have been made with two kinds of memory, and a card starts only
-the kind it was built for (plan, section 16: one of the owner's two units
-blinked green for ever with the first image).
+**`apotheca-rg40xxv.img.gz` starts every RG40XXV.** They have been made
+with two kinds of memory, LPDDR4 and LPDDR3, and nothing on the outside
+says which (the owner's unit with the newer screen is LPDDR4, the other
+LPDDR3: plan, sections 16 and 17). The card's first program finds out:
+
+- It tries **LPDDR4 first, at 1.1 V**. That voltage is LPDDR4's own and is
+  under LPDDR3's 1.2 V, so the first try harms neither kind.
+- If that fails it raises the rail to 1.2 V and tries **LPDDR3**.
+- A kind is taken only if the set-up says it passed **and** a write-and-read
+  test of 64 places across the memory passes.
+- It **remembers the answer** in a spare register of the handheld's clock,
+  so later starts go straight to the right kind. If a try never comes back
+  (the memory code resets the handheld instead), the note it left says so
+  and the next run starts with the other kind.
+
+`uboot-report.txt` (`apotheca_dram`) and `linux-report.txt` say which kind
+was found. `memory-kind.txt` on APOTHBOOT says which image the card is.
 
 | Image | For | Built with |
 | --- | --- | --- |
-| `apotheca-rg40xxv.img.gz` | LPDDR4 (the owner's unit with the newer screen) | `scripts/build-image.sh` |
-| `apotheca-rg40xxv-lpddr3.img.gz` | LPDDR3 (**a guess** for the owner's other unit: not tried) | `scripts/build-image.sh --dram lpddr3`, after `scripts/build-image.sh -- uboot-dirclean` (U-Boot is not built again by itself when only the kind changes) |
+| `apotheca-rg40xxv.img.gz` | **every unit** | `scripts/build-image.sh` |
+| `apotheca-rg40xxv-lpddr4.img.gz` | LPDDR4 only (a fallback) | `scripts/build-image.sh --dram lpddr4` |
+| `apotheca-rg40xxv-lpddr3.img.gz` | LPDDR3 only (a fallback; it is what first started the LPDDR3 unit) | `scripts/build-image.sh --dram lpddr3` |
 
-The wrong card does no harm: the green light blinks evenly, alone, about
-once a second, and nothing else happens. `memory-kind.txt` on APOTHBOOT
-says which card it is.
+(The script builds U-Boot again by itself when the kind asked for changes.)
+
+**To make it try a kind first** at the next start: an empty file named
+`dram-lpddr3.txt` or `dram-lpddr4.txt` at the top of APOTHBOOT, one start,
+then delete it. **What this cannot do**: help a handheld that does not
+start. The file is read by U-Boot, which runs only after the memory works.
+For that case use a one-kind image. A one-kind card in the wrong handheld
+does no harm: the green light blinks evenly, alone, and nothing else
+happens.
 
 ## Starting it
 
@@ -74,35 +95,35 @@ says which card it is.
 
    | Step | You see | It means |
    | --- | --- | --- |
-   | 1 | **green and red together** within a second of the power key (it may look like one orange light) | the card's first small program (the SPL) ran and set the memory up |
+   | 1 | **green, then green and red together** within a second or two of the power key (together they may look like one orange light). On an LPDDR3 unit the green may go out and come back once before the red joins it | the card's first small program (the SPL) ran and set the memory up |
    | 2 | **red alone**, and **the screen lit but empty** | the boot loader (U-Boot) is running |
    | 3 | the red goes out, **the green blinks in pairs** (blink-blink, pause) | Linux has started |
    | 4 | the red on again for a moment (often too short to see) | Linux's first program is looking for the card |
-   | 5 | the red out, **the green blinks evenly**, about once a second; the screen dark a moment, then **text** (a lot of it on this card), then **Apotheca** | the system is starting |
+   | 5 | the red out, **the green blinks evenly**, about once a second; the screen says **APOTHECA STARTING**, then **Apotheca** | the system is starting |
    | 6 | you press any button: **the green light stays on** | this screen now counts as seen working |
 
    **If it stops on the way:**
 
    | You see | It means | What to do, or what it does by itself |
    | --- | --- | --- |
-   | **green alone, blinking evenly about once a second, from the start, never red** | the first program cannot set this handheld's memory up and tries again for ever | **the card is for the other kind of memory**: use the other image (`memory-kind.txt` on APOTHBOOT says which this card is). Hold the power key to turn it off |
+   | **green alone, blinking evenly, from the start, never red, for more than ten seconds** | the first program cannot set this handheld's memory up as either kind and tries again for ever | hold the power key to turn it off; try the LPDDR3-only image, then the LPDDR4-only one, and tell us |
    | green and red blinking together | the memory is set up, the boot loader does not start | tell us |
    | red alone, staying | the boot loader runs, Linux does not start | send `uboot-started.txt` and `uboot-report.txt` |
    | green in pairs, no red, for a minute | Linux started and stopped before its first program | resets after 60 s, so U-Boot can save what Linux said (`kernel-from-memory.txt`); after three resets it stops: off, or the red light blinking evenly until the power key is held |
    | green flickering fast, red on | Linux sees no card | resets after about a minute |
    | green blinking evenly after the steps above, the screen dark or garbage | the system runs, the screen's kind is wrong | off after 5 minutes with no button. Make `screen-first.txt` or `screen-v2.txt` (below) |
 
-   - **Wait 30 seconds** on the first start: it makes the APOTHECA part of
-     the card then, once. Do not switch off in this time.
+   - **Do not switch off during the very first start**: it makes the
+     APOTHECA part of the card then, once.
    - **The handheld never stays on behind a dark screen**: see the table.
      (`screen-check 0` in `apotheca/power.txt` turns the 5-minute rule off.)
    - **The buttons are set up already** (no "press A" setup). If they do
      the wrong things, delete `apotheca/controls.txt` on the APOTHECA drive:
      the next start asks for each button, as on the stock card.
-   - **Seen on a handheld so far** (2026-11-18, with the card before this
-     one): the unit with the newer screen shows red, then green blinking,
-     then green steady, and works; the other blinks green alone, evenly,
-     for ever (plan, section 16). Nothing of this card's own lights yet.
+   - **Seen on a handheld so far** (2026-11-18): the LPDDR4 unit works
+     with the LPDDR4-only card and the LPDDR3 unit with the LPDDR3-only
+     card (plan, section 16). **This one image for both has run on
+     neither yet.**
 4. To turn it off: see the next section.
 
 ## Turning it off, the power key, the battery
@@ -120,10 +141,9 @@ handheld off**. Every way off saves the song first.
 | Hold the power key about 10 seconds | the power chip cuts the power by itself, whatever the system is doing (the last resort, as on stock: songs are saved as you go, but the last couple of seconds may be lost) |
 
 To turn it on again: press the power key. **A charger plugged in while it
-is off starts it** (since 2026-11-17: the rule that kept it off was the one
-place in the start-up that cuts the power before any light, and it was
-taken out while one unit would not start; plan, section 15). Turned off
-again it should go on charging (**not tried**).
+is off charges it and it stays off**, as on ROCKNIX (the rule was taken out
+on 2026-11-17 while one unit would not start; it was not the cause, and it
+is back: plan, section 17).
 
 **Settings**, if you want other numbers: a text file `apotheca/power.txt`
 on the APOTHECA drive, one setting a line (any you leave out keep their
@@ -164,11 +184,11 @@ Whatever you see is useful. Send:
    | File | Written by | Holds |
    | --- | --- | --- |
    | `uboot-started.txt` | U-Boot, its first act at every start | nothing much: that it is there says U-Boot ran and can write the card |
-| `uboot-report.txt` | U-Boot, at every start | the pin it read, the tree it chose and why, counts of starts and of resets in a row (hexadecimal) |
+| `uboot-report.txt` | U-Boot, at every start | **the kind of memory found** (`apotheca_dram`), the pin it read, the tree it chose and why, counts of starts and of resets in a row (hexadecimal) |
    | `kernel-from-memory.txt` | U-Boot, after a reset | what Linux said in the start **before**, found still in memory (512 KiB, the text goes round) |
-   | `kernel-log.txt` | Linux's first program, every 2 s until the system takes over | how far it got, the cards Linux sees, what Linux said |
+   | `kernel-log.txt` | Linux's first program, **only when the card kept it waiting 2 s or it could not go on** | how far it got, the cards Linux sees, what Linux said |
    | `linux-early.txt` | the system's first script, every 5 s until the boot log is written | the start-up step by step and what is running |
-   | `linux-report.txt` | the system, once it is up | the full boot log (also on APOTHECA: `apotheca/logs/boot-latest.txt`) |
+   | `linux-report.txt` | the system, once it is up | the full boot log, the memory's kind in it (also on APOTHECA: `apotheca/logs/boot-latest.txt`) |
    | `kernel-from-card.txt` | a start that works | the same as `kernel-from-memory.txt`, taken from a hidden part of the card U-Boot also writes |
 
    **If a handheld left no new file at all**: copy what is there, then put
@@ -340,7 +360,10 @@ ran, with its size and CRC-32.
 ## For whoever builds it
 
 ```
-scripts/build-image.sh                       # build-image/apotheca-rg40xxv.img.gz
+scripts/build-image.sh                       # build-image/apotheca-rg40xxv.img.gz (both kinds of memory)
+scripts/build-image.sh --dram lpddr3         # ...-lpddr3.img.gz, one kind only (or lpddr4)
+os/tools/dram-kind-test.sh --mutants         # which memory: the rule and the SPL's loop, on the desk (seconds)
+python3 -I os/tools/uboot-pick-test.py build-image/apotheca-rg40xxv.img.gz  # U-Boot's start under qemu (minutes)
 os/tools/check-image.sh build-image/apotheca-rg40xxv.img.gz   # the image's layout
 python3 -I os/tools/qemu-test.py build-image/apotheca-rg40xxv.img.gz  # boots it in qemu (6 boots, about 20 min)
 scripts/build-firmware-app.sh                # Apotheca alone: dist/firmware/apotheca (minutes)

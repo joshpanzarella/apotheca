@@ -1,0 +1,9 @@
+# One SPL for both kinds of memory the RG40XXV was made with (the default:
+# scripts/build-image.sh, or --dram both). U-Boot patch 0004: LPDDR4 tried
+# first at 1.1 V, LPDDR3 at 1.2 V when that fails, the memory tested before
+# a kind is taken, what was found kept in the RTC's register 7. LPDDR4's
+# settings are mainline's (anbernic_rg35xx_h700_defconfig); LPDDR3's are the
+# patch's defaults, which are ROCKNIX's (uboot-lpddr3.fragment has the same
+# numbers for the LPDDR3-only build).
+# CONFIG_SUNXI_DRAM_H616_LPDDR4 is not set
+CONFIG_SUNXI_DRAM_H616_LPDDR4_LPDDR3=y

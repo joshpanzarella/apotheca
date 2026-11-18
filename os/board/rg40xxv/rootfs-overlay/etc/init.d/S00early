@@ -7,7 +7,8 @@
 #   - the kernel's deadline off (patch 0171: it resets a kernel whose first
 #     programs never ran) and U-Boot's count of resets cleared (its mark at
 #     0x4d200000, where the device tree has it): the system started;
-#   - linux-early.txt on the BOOT partition (the FAT one), written now and
+#   - linux-early.txt on the BOOT partition (the FAT one), written at once
+#     (in the background: the start-up does not wait for the card) and
 #     again every 5 s for 90 s, or until S90bootlog has written the boot
 #     log: the start-up scripts' own lines, the running programs (the script
 #     that hangs is among them) and the kernel's messages. The partition is
@@ -42,8 +43,9 @@ start() {
     mkdir -p /sys/fs/pstore 2>/dev/null
     mount -t pstore pstore /sys/fs/pstore 2>/dev/null
     say "the system's own programs run (S00early)"
-    write_early "the first start-up script" || say "S00early: could not write linux-early.txt to the boot partition"
+    # In the background: nothing here holds the start-up back.
     (
+        write_early "the first start-up script"
         n=0
         while [ $n -lt 18 ] && [ ! -e "$APOTHECA_RUN/bootlog-written" ]; do
             sleep 5

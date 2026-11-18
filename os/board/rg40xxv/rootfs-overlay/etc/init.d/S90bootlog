@@ -18,6 +18,22 @@ report() {
     section "device tree"
     tr -d '\0' < /proc/device-tree/model 2>/dev/null; echo
     tr -d '\0' < /proc/device-tree/rocknix-dt-id 2>/dev/null; echo
+    section "memory (which kind the first program found: it keeps a mark in the clock's spare register)"
+    if grep -q allwinner /proc/device-tree/compatible 2>/dev/null; then
+        mark=$(devmem 0x0700011c 32 2>/dev/null)
+        case "$mark" in
+            0x41504414) kind="LPDDR4" ;;
+            0x41504413) kind="LPDDR3" ;;
+            0x41504434) kind="not said; LPDDR4 is asked for at the next start" ;;
+            0x41504433) kind="not said; LPDDR3 is asked for at the next start" ;;
+            *) kind="not said (an image for one kind only leaves no mark)" ;;
+        esac
+        echo "memory kind: $kind (mark $mark)"
+    fi
+    echo "this card: $(cat "$APOTHECA_RUN/memory-kind.txt" 2>/dev/null)"
+    for r in /sys/class/regulator/regulator.*; do
+        [ "$(cat "$r/name" 2>/dev/null)" = vdd-dram ] && echo "vdd-dram: $(cat "$r/microvolts" 2>/dev/null) microvolts"
+    done
     section "what U-Boot left on the boot partition (uboot-report.txt)"
     cat "$APOTHECA_RUN/uboot-report.txt" 2>/dev/null
     section "the kernel's messages of the start before, when still in memory (ramoops)"
@@ -62,7 +78,9 @@ report() {
     section "apotheca"
     cat /data/apotheca/logs/apotheca-start.log 2>/dev/null | tail -n 20
     cat /data/apotheca/logs/apotheca.log 2>/dev/null | tail -n 20
-    echo "--- apotheca.log (the program's own)"; tail -n 40 /data/apotheca/apotheca.log 2>/dev/null
+    echo "--- apotheca.log (the program's own) as this start found it: how the run before ended"
+    cat "$APOTHECA_RUN/apotheca-before.log" 2>/dev/null
+    echo "--- apotheca.log (the program's own) now"; tail -n 40 /data/apotheca/apotheca.log 2>/dev/null
     section "power"
     for p in /sys/class/power_supply/*; do
         [ -d "$p" ] || continue
@@ -109,6 +127,7 @@ from_boot() {
     # mounted at this moment, and a second mount with other options is refused)
     mount -t vfat -o rw,noatime "/dev/$boot" "$APOTHECA_RUN/boot" 2>/dev/null || return 1
     cp "$APOTHECA_RUN/boot/uboot-report.txt" "$APOTHECA_RUN/uboot-report.txt" 2>/dev/null
+    cp "$APOTHECA_RUN/boot/memory-kind.txt" "$APOTHECA_RUN/memory-kind.txt" 2>/dev/null
     umount "$APOTHECA_RUN/boot"
 }
 
@@ -139,19 +158,25 @@ recover_memory_log() {
     say "boot log: a kernel log saved from memory was on the card: kernel-from-card.txt"
 }
 
+# The whole of it runs in the background: Apotheca does not wait for a report.
 start() {
+    # (the one thing done before Apotheca starts: it writes this file anew)
+    mkdir -p "$APOTHECA_RUN"
+    tail -n 40 /data/apotheca/apotheca.log > "$APOTHECA_RUN/apotheca-before.log" 2>/dev/null
+    ( start_now ) < /dev/null > /dev/null 2>&1 &
+}
+
+start_now() {
     from_boot
     recover_memory_log
     if ! mountpoint -q /data; then
         say "boot log: /data is not mounted, the log goes to the boot partition only"
         report > "$APOTHECA_RUN/linux-report.txt" 2>&1
         to_boot "$APOTHECA_RUN/linux-report.txt" && say "boot log: linux-report.txt on the boot partition"
-        touch "$APOTHECA_RUN/bootlog-written"
-        (
-            sleep 20
-            { echo; echo "##### 20 seconds later"; report; } >> "$APOTHECA_RUN/linux-report.txt" 2>&1
-            to_boot "$APOTHECA_RUN/linux-report.txt"
-        ) < /dev/null > /dev/null 2>&1 &
+        touch "$APOTHECA_RUN/bootlog-written" "$APOTHECA_RUN/bootlog-copied"
+        sleep 20
+        { echo; echo "##### 20 seconds later"; report; } >> "$APOTHECA_RUN/linux-report.txt" 2>&1
+        to_boot "$APOTHECA_RUN/linux-report.txt"
         return 0
     fi
     mkdir -p "$LOGS"
@@ -166,6 +191,7 @@ start() {
     say "boot log: $file"
     touch "$APOTHECA_RUN/bootlog-written"
     to_boot "$file" || say "boot log: could not copy it to the boot partition"
+    touch "$APOTHECA_RUN/bootlog-copied"
 
     # Keep the last $KEEP
     ls "$LOGS"/boot-[0-9]*.txt 2>/dev/null | sort \
@@ -173,13 +199,11 @@ start() {
         | xargs -r rm -f
 
     # A second look once late drivers have come up, and Apotheca has started
-    (
-        sleep 20
-        { echo; echo "##### 20 seconds later"; report; } >> "$file" 2>&1
-        cp "$file" "$LOGS/boot-latest.txt"
-        sync
-        to_boot "$file"
-    ) < /dev/null > /dev/null 2>&1 &
+    sleep 20
+    { echo; echo "##### 20 seconds later"; report; } >> "$file" 2>&1
+    cp "$file" "$LOGS/boot-latest.txt"
+    sync
+    to_boot "$file"
 }
 
 case "$1" in

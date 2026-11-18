@@ -101,11 +101,18 @@ check(b'bl31' in fitdata or b'atf' in fitdata, "U-Boot's FIT holds Trusted Firmw
 # then the tree (dtb.img, else screen-first.txt / screen-v2.txt, else PE6)
 # and the report written to the boot partition.
 uboot = read(8 * 1024, 4088 * 1024)
-pre = re.search(rb'gpio clear PI12; mmc dev 0; mmc rescan; [^\0]*done; fi', uboot)
+pre = re.search(rb'gpio clear PI12; setenv apotheca_first failed; [^\0]*done; fi', uboot)
 pre = pre.group(0).decode() if pre else ''
-check(pre.startswith('gpio clear PI12; mmc dev 0; mmc rescan; setenv apotheca_first failed;')
-      and 0 < pre.find('if fatwrite mmc 0:1 ${scriptaddr} uboot-started.txt ${filesize}; then setenv apotheca_first written; fi; gpio clear PD28;') < pre.find('gpio set PI15'),
-      "U-Boot puts the green light out (red alone: U-Boot runs), looks at the card afresh, and writes uboot-started.txt before anything else")
+check(pre.startswith('gpio clear PI12; setenv apotheca_first failed;')
+      and 0 < pre.find('if fatwrite mmc 0:1 ${scriptaddr} uboot-started.txt ${filesize}; then setenv apotheca_first written; fi;') < pre.find('gpio clear PD28;') < pre.find('gpio set PI15'),
+      "U-Boot puts the green light out (red alone: U-Boot runs) and writes uboot-started.txt before anything else")
+check('mmc rescan' not in pre and 'sleep 1' not in pre and 'sleep 2' not in pre,
+      "no wait in U-Boot's start but the panel's reset pulse (%s)" % ', '.join(re.findall(r'sleep [0-9.]+', pre.split('-ge 3')[0])))
+check('if itest.l *0x0700011c == 0x41504414; then setenv apotheca_dram lpddr4; fi; if itest.l *0x0700011c == 0x41504413; then setenv apotheca_dram lpddr3; fi;' in pre
+      and 'if test -e mmc 0:1 dram-lpddr4.txt; then mw.l 0x0700011c 0x41504434; setenv apotheca_dram_asked lpddr4; fi; '
+          'if test -e mmc 0:1 dram-lpddr3.txt; then mw.l 0x0700011c 0x41504433; setenv apotheca_dram_asked lpddr3; fi;' in pre
+      and ' apotheca_dram apotheca_dram_asked ' in pre[pre.rfind('env export -t'):],
+      "U-Boot reads the kind of memory the first program found into its report, and dram-lpddr3.txt / dram-lpddr4.txt ask for a kind at the next start")
 spl = read(8 * 1024, 32 * 1024)
 check(True, "the SPL is %d KiB" % (struct.unpack_from('<I', spl, 16)[0] // 1024))
 check('if test -e mmc 0:1 dtb.img; then setenv fdtfile dtb.img;' in pre,
@@ -135,8 +142,8 @@ check('if itest.l *0x4d200000 == 0x41504f43; then setexpr.l apotheca_resets *0x4
                        'while true; do gpio toggle PI11; sleep 0.25; done; fi')
       and pre.find('uboot-report.txt ${filesize}') < pre.find('-ge 3'),
       "resets in a row are counted in memory; at three it does not start again (after the report is written)")
-check(b'Power on by plug-in' not in uboot,
-      "the SPL does not turn the power off for a start by the charger (AXP_DISABLE_BOOT_ON_POWERON is off)")
+check(b'Power on by plug-in' in uboot,
+      "plugged in while off, the handheld charges and stays off, as on ROCKNIX (AXP_DISABLE_BOOT_ON_POWERON)")
 
 # --- p1: FAT boot partition
 off = parts[0][2]
@@ -183,12 +190,40 @@ if shutil.which('mdir') and shutil.which('mtype'):
     check(blink, "every device tree on p1 blinks the power light once Linux runs (heartbeat)")
     check(kept, "every device tree gives the kernel its piece of memory to keep its messages in (ramoops), and U-Boot's count its own")
     conf2 = mt('mtype', '-i', spec, '::extlinux/extlinux.conf').stdout
+    append = [l for l in conf2.splitlines() if l.strip().startswith('APPEND')]
+    check(len(append) == 1 and ' quiet ' in append[0] and ' loglevel=3 ' in append[0]
+          and 'initcall_debug' not in append[0] and 'loglevel=8' not in append[0],
+          "extlinux.conf: a quiet kernel (the hunt's initcall_debug and loglevel=8 are off)")
+    # The kind of memory this card is for, and the memory's rail in every tree
+    kind = mt('mtype', '-i', spec, '::memory-kind.txt').stdout.split(':')[0]
+    check(kind in ('both', 'lpddr4', 'lpddr3'), "memory-kind.txt says which memory this card is for (%s)" % kind)
+    both_spl = b'No kind of DRAM could be set up' in uboot and b' LPDDR%u' in uboot
+    check(both_spl == (kind == 'both'), "the first program %s" % ("finds the kind of memory itself: LPDDR4 first, then LPDDR3" if both_spl else "sets up one kind of memory only"))
+    fdtget = shutil.which('fdtget') or os.path.join(sys.argv[3], 'build-image', 'output', 'host', 'bin', 'fdtget')
+    if os.path.exists(fdtget):
+        want = {'both': ('1100000', '1200000'), 'lpddr4': ('1100000', '1100000'), 'lpddr3': ('1200000', '1200000')}.get(kind)
+        rails = set()
+        for f in ['device_trees/sun50i-h700-anbernic-rg40xx-v.dtb', 'device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb',
+                  'device_trees/sun50i-h700-anbernic-rg40xx-v-v2-stock-panel.dtb'] + \
+                 ['device_trees/try/%s/dtb.img' % t for t in ['1-pins-40ma', '2-backlight-50khz', '3-dither', '4-all-as-stock']]:
+            d = subprocess.run(['mtype', '-i', spec, '::' + f], capture_output=True, env=env).stdout
+            with tempfile.NamedTemporaryFile(suffix='.dtb') as t:
+                t.write(d); t.flush()
+                node = '/soc/i2c@7081400/pmic@34/regulators/dcdc3'
+                rails.add((subprocess.run([fdtget, t.name, node, 'regulator-min-microvolt'], capture_output=True, text=True).stdout.strip(),
+                           subprocess.run([fdtget, t.name, node, 'regulator-max-microvolt'], capture_output=True, text=True).stdout.strip(),
+                           subprocess.run([fdtget, t.name, node, 'regulator-name'], capture_output=True, text=True).stdout.strip()))
+        check(rails == {want + ('vdd-dram',)},
+              "every tree: the memory's rail (vdd-dram) may be %s to %s microvolts, so Linux leaves it where the first program set it (%s)"
+              % (want + (sorted(rails),)))
+    else:
+        print("skip  the memory's rail in the trees: no fdtget")
     check(' panic=5' in conf2, "extlinux.conf: panic=5 (a kernel that panics resets, so U-Boot can save what it said)")
     kimage = subprocess.run(['mtype', '-i', spec, '::Image'], capture_output=True, env=env).stdout
     check(b'apotheca_deadline: nothing put the deadline off' in kimage and b'ramoops' in kimage,
           "the kernel has the deadline (patch 0171) and ramoops")
     readme = mt('mtype', '-i', spec, '::README.txt').stdout
-    check(all(w in readme for w in ['screen-first.txt', 'uboot-started.txt', 'memory-kind.txt', 'uboot-report.txt', 'linux-report.txt', 'kernel-log.txt',
+    check(all(w in readme for w in ['screen-first.txt', 'dram-lpddr3.txt', 'dram-lpddr4.txt', 'uboot-started.txt', 'memory-kind.txt', 'uboot-report.txt', 'linux-report.txt', 'kernel-log.txt',
                                     'linux-early.txt', 'kernel-from-memory.txt', 'kernel-from-card.txt']),
           "README.txt tells of screen-first.txt and of every report file")
     tries = {}

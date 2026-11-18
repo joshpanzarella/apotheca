@@ -966,6 +966,152 @@ writes to the boot partition at every start (section 15's, `kernel-log.txt`,
 `linux-early.txt`); perhaps the deadline's 60 s, once real start times are
 known.
 
+## 17. One card for both kinds of memory, and a quick start (2026-11-18)
+
+**The LPDDR3 card of section 16 started BLACK** (the owner: "it worked",
+then "boots and works perfect"). So BLACK has LPDDR3 memory and WHITE
+LPDDR4, the same model, and nothing on the outside says which. The owner
+asked for **one image for every RG40XXV**, and then for a start that does
+not take a minute. This section is that image. **It has run on neither
+handheld.**
+
+### How the first program finds the memory
+
+U-Boot's H616 memory code has the kind fixed when it is built, and panics
+on a memory it cannot train (section 16: BLACK's even green blink).
+Patch `0004` adds a third choice, `CONFIG_SUNXI_DRAM_H616_LPDDR4_LPDDR3`:
+both kinds' timings and PHY tables are built in and the kind is found as it
+starts. The rule is one small header with no hardware in it
+(`os/board/rg40xxv/uboot/dram_kind.h`).
+
+| Step | What | Why |
+| --- | --- | --- |
+| 1 | **LPDDR4 first, the rail (DCDC3) at 1.1 V** | 1.1 V is LPDDR4's own voltage and is under LPDDR3's 1.2 V. An LPDDR3 part is not harmed by too little; so the first try over-volts nothing |
+| 2 | A try fails if the set-up refuses, **if a wait in it times out** (1 s; upstream panics there, this build gives up and goes on), or if the memory test fails | the wrong kind must be an answer, not a reset |
+| 3 | **The memory test**: 64 places spread over the size found, each written with its own word, read back, written with the inverse, read back, then put back as they were | a set-up can say it passed on the wrong kind. Put back, so the kernel's last words (ramoops) survive |
+| 4 | LPDDR4 failed: **the rail to 1.2 V, 5 ms, then LPDDR3** | an LPDDR4 part sees 1.2 V only after its own kind failed. 1.2 V is over LPDDR4's working range (1.06 to 1.17 V) and far under its limit (1.5 V) |
+| 5 | **The mark**: one word in the clock's spare register 7 (`0x0700011c`), which a reset does not clear. TRYING kind before each try, GOOD kind after | a later start goes straight to the kind that worked. A try that never comes back (another panic in the memory code resets the board) leaves TRYING, and the next run starts with the other kind |
+| 6 | Neither works: PREFER the other kind, panic (a reset) | it goes on turn about; the green light blinks alone |
+
+Two ways to the second kind, on purpose: **in the same run** (steps 2 to
+4), which needs nothing kept, and **through the mark** after a reset, which
+needs nothing of the failed set-up to be recoverable. BLACK's blink of
+about once a second fits the 1 s time-out, so the first way is the likely
+one there; which it is, only BLACK can say.
+
+**The trees**: `dcdc3` (vdd-dram) is 1.1 V fixed in ROCKNIX's trees. On
+this card every tree allows 1.1 to 1.2 V, so Linux leaves the rail where
+the first program set it (a one-kind LPDDR3 card has it fixed at 1.2 V).
+No tree is picked by the memory: nothing else differs.
+
+**The reports**: `uboot-report.txt` has `apotheca_dram` (lpddr4, lpddr3,
+unknown) and `apotheca_dram_asked`; `linux-report.txt` has a "memory"
+section (the mark, read again, and the rail's microvolts).
+`memory-kind.txt` says which image the card is (both, lpddr4, lpddr3).
+
+**The override, and what it cannot do**: `dram-lpddr3.txt` or
+`dram-lpddr4.txt` on the boot partition makes U-Boot write PREFER that
+kind into the mark, for the **next** start. U-Boot runs only after the
+memory works, so the file cannot help a handheld that does not start. It
+is for a handheld that starts on the wrong kind's settings (not expected).
+The real fallback is a one-kind image: `scripts/build-image.sh --dram
+lpddr4` and `--dram lpddr3` still build them (the script cleans U-Boot by
+itself when the kind changes).
+
+### The charger rule is back
+
+`CONFIG_AXP_DISABLE_BOOT_ON_POWERON=y` again: plugged in while off, the
+handheld charges and stays off, as on ROCKNIX. It was taken out in section
+15 as a suspect for BLACK; it was not the cause (the memory was), and a
+handheld that starts by itself in a bag on a charger is worse than one that
+does not.
+
+### The start made quick
+
+**Where the time went** (WHITE's own report of 2026-11-17, an image
+without the hunt's settings):
+
+| Stage | Then | Why | Now (estimated, not measured) |
+| --- | --- | --- | --- |
+| Kernel start to the first program | 3.53 s | **about 2.7 s of it printing 30,700 characters on the serial line at 115,200 baud** (counted from the log) | about 1 s: `quiet loglevel=3` prints errors only |
+| The screen showing anything | 3.18 s (the text console) | the same printing | about 1 s; then APOTHECA STARTING |
+| First program to Apotheca started | 3.9 s (to 7.42 s) | 1.8 s the boot report, written before Apotheca; a card write in the first script; the USB serial set-up; 0.5 s making DATA (first start only) | about 1.5 s (2 s the first start) |
+| **Linux in all** | **7.4 s** | | **about 3 s** |
+
+BLACK's "a minute", and its five seconds of green blinking before any
+text, were the hunt: `initcall_debug loglevel=8` names every driver twice,
+on the serial line and on the screen. **Off now.**
+
+What changed:
+
+- `extlinux.conf`: `quiet loglevel=3` (the boot log still has every
+  message). `initcall_debug`, `loglevel=8`, `log_buf_len=1M` out.
+- **APOTHECA STARTING** is written to the screen by the kernel's first
+  program, its first act. It shows as soon as the display is up.
+- The first program writes **no `kernel-log.txt` and mounts no boot
+  partition when the root is there at once**; from 2 s of waiting on, and
+  on every failure, it writes as before.
+- `S00early`'s write, the USB serial console (`S10usbgadget`) and the whole
+  boot report (`S90bootlog`) run **in the background**. Apotheca starts
+  without them. Modules, DATA and sound stay in order before it.
+- U-Boot: `mmc dev 0; mmc rescan` out of PREBOOT (it was for the hunt).
+  `bootdelay` was 0 already. The panel's reset pulse (0.165 s) stays: PE6
+  is read after it.
+
+**Not cut**: U-Boot reading the 29 MB kernel from the card (a second or
+two, a guess; a compressed kernel would trade reading for unpacking, not
+tried), U-Boot's two small report files, the heartbeat and the lights.
+**No clock is read before Linux**, so the time from the power key to the
+kernel is not in any report: a stopwatch on the handheld is the measure.
+
+### What the owner sees
+
+| | WHITE (LPDDR4) | BLACK (LPDDR3) |
+| --- | --- | --- |
+| The lights at the start | green, then green and red within a second | green alone for a second or two longer (the LPDDR4 try, then LPDDR3); it may go out and back once. Then green and red. **After the first start, as WHITE if the clock keeps the mark** |
+| Then | red alone, the screen lit and empty (U-Boot); green in pairs (Linux); APOTHECA STARTING; green even; Apotheca | the same |
+| `uboot-report.txt` | `apotheca_dram=lpddr4` | `apotheca_dram=lpddr3` |
+
+**On neither**: green alone, blinking, for more than ten seconds. That
+means neither kind worked; the one-kind image is next.
+
+### Desk tests
+
+| Test | Result |
+| --- | --- |
+| `os/tools/dram-kind-test.sh` (new) | the rule; the patch's copy of the header equal to ours; **the SPL's own loop, cut out of the patch and compiled against a made-up handheld** of each kind whose wrong-kind set-up refuses, never comes back, lies, aliases or times out, from nine marks, with 0 to 2 set-ups of the right kind lost: always the right kind, the right rail, LPDDR4 settings never at 1.2 V, one run at the next start, the memory left as found. **24 mutants, all die** |
+| `uboot-pick-test.py` | **every check passes (54)**: the mark read into the report as lpddr4, lpddr3 or unknown (the mark stood in for by a word of ordinary memory: the clock's register is not in the emulator), `dram-lpddr3.txt` and `dram-lpddr4.txt` writing PREFER, the five tree picks, the reports, the memory dump, the resets; the card commands for real on an emulated Allwinner board. The PREBOOT broken on purpose (the two kinds swapped) fails three checks |
+| `check-image.sh` | **every check passes (108)** on all three images: the SPL of the kind `memory-kind.txt` says, the rail's range in every tree, the quiet kernel, the charger rule in, the README's words |
+| `qemu-test.py` | **every check passes (110)**. It found two faults of the background work on the way, both mended: `/data/apotheca/logs` was made by the boot report (now by `S05data`: `apotheca-power` and the keeper log from their first moment), and the report read Apotheca's log after Apotheca had begun it anew (the start now keeps the last 40 lines first). First boot to a shell 12.5 s, second 9.2 s (emulated CPU; 15 to 22 and 15 to 17 before). APOTHECA STARTING read off the text console |
+| `power-test.py` | **every check passes (50)** |
+| The SPL | 38.6 KiB of 49 allowed. Read in the build: both timing functions and both PHY tables in; `mctl_gave_up` in `.data` (**the SPL's `.bss` is in the memory being set up**, at `0x4ff80000`, so nothing there may be used before it works) |
+| Reproducible | **the same `img.gz` to the bit** from two builds with U-Boot built from clean three times between (the LPDDR4-only and LPDDR3-only images were built in between). All tests above ran on those bits |
+
+**The image**: `build-image/apotheca-rg40xxv.img.gz`, 32,967,718 bytes, sha256 `c3a961d7dde6cd47385ba7c570e0a08ab85c6160fa90b355bb6728f0c304d30e`. The fallbacks, built from the same tree and **not run** (they differ from section 16's: the quick start and the charger rule are in them): `apotheca-rg40xxv-lpddr4.img.gz` `d7bc3a06088e3625fb9691157719c132fbee12f9d4ef957eb3f49dd802eb3a8e`, `apotheca-rg40xxv-lpddr3.img.gz` `54deec6724de14d5ac0284ba6b2c5a07fcffecfb469689b266944841c8826f43`. The LPDDR3 image BLACK started with is section 16's `96997d23...`, built from commit `0731b19`.
+
+### Only the handhelds can tell
+
+- **Whether this image starts either unit.** Both kinds' code is ROCKNIX's
+  settings, each proven alone (section 16); together in one SPL they have
+  not run.
+- **BLACK: whether a failed LPDDR4 try leaves the controller able to set
+  up LPDDR3 in the same run.** Each try begins by resetting the controller,
+  as a cold start does; nobody has seen it.
+- **BLACK: whether the clock's register keeps the mark** through a reset
+  (believed: Allwinner's own loader keeps flags there) and through power
+  off (it should while the battery has charge). If not, BLACK takes the
+  second or two longer at every start.
+- **WHITE: that LPDDR4 passes first time**, so 1.2 V is never applied.
+  `apotheca_dram=lpddr4` and vdd-dram 1,100,000 in `linux-report.txt` say
+  so.
+- Whether the memory test passes on good memory of every size (written
+  for 1 GiB; the places scale with the size found).
+- The charger rule: plugged in while off, does it stay off, on both units.
+- **Every time in this section.** The estimates come from WHITE's log and
+  a count of characters.
+- That APOTHECA STARTING shows, and for how long the screen is lit and
+  empty before it.
+
 ## Sources
 
 - Anbernic, RG 40XXV product page (SoC, RAM, screen, battery, WiFi, BT): https://anbernic.com/products/rg-40xxv

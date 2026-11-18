@@ -217,6 +217,14 @@ def shell_quote(text):
     return "'" + text.replace("'", "'\\''") + "'"
 
 
+def wait_bootlog(m, seconds=120):
+    """The boot log is written in the background (nothing waits for it at the
+    start): waits until it is on DATA and on the boot partition."""
+    out, _ = m.run("i=0; while [ ! -e /run/apotheca/bootlog-copied ] && [ $i -lt %d ]; do sleep 1; i=$((i+1)); done; "
+                   "ls /run/apotheca/bootlog-copied" % seconds, timeout=seconds + 20)
+    return "bootlog-copied" in out
+
+
 def wait_running(m, seconds=180):
     t0 = time.time()
     while time.time() - t0 < seconds:
@@ -433,6 +441,7 @@ def memory_boot(work, image, kernel):
         m.read_until(rb"Rebooting in 3 seconds", 60)
         m.began = time.time()
         m.wait_shell()
+        wait_bootlog(m)
         out, _ = m.run("grep -c -e 'apotheca-last-words-4711' -e 'Kernel panic - not syncing: sysrq triggered crash' "
                        "/sys/fs/pstore/console-ramoops-0; grep -c 'apotheca-last-words-4711' /data/apotheca/logs/boot-latest.txt")
         check(out.split()[0] == "2" and int(out.split()[1]) >= 1,
@@ -480,14 +489,17 @@ def main():
         check(grown > 500 * MiB, "DATA grew from 32 MiB to %d MiB" % (grown // MiB))
         out, _ = m.run("cat /run/apotheca/boot.log")
         check("first boot, growing" in out, "the start-up log says it grew DATA")
+        check(wait_bootlog(m), "the boot log, written in the background, is done")
         out, code = m.run("ls /data/apotheca/logs; head -3 /data/apotheca/logs/boot-latest.txt")
         check("boot-0001.txt" in out and "Apotheca boot log" in out, "boot log written to DATA")
         out, _ = m.run("grep -c '^\\[' /data/apotheca/logs/boot-0001.txt")
         check(int(out or 0) > 20, "the boot log holds the kernel's messages (%s lines)" % out)
         # The kernel's first program (the initramfs's /init) ran before any
-        # of that: it found the root by the disk's signature, wrote
-        # kernel-log.txt to the boot partition, and handed over. S00early
-        # then put the kernel's deadline off and wrote linux-early.txt.
+        # of that: it found the root by the disk's signature and handed
+        # over; a start that goes well writes no kernel-log.txt (a start
+        # that waits or fails does: the boots at the end of this test).
+        # S00early then put the kernel's deadline off and wrote
+        # linux-early.txt.
         out, _ = m.run("dmesg | grep -c 'apotheca-early: the root is vda2, on the disk vda'; "
                        "cat /sys/module/apotheca_deadline/parameters/seconds; grep -c ' / rootfs' /proc/mounts")
         check(out.split() == ["1", "0", "0"],
@@ -495,11 +507,14 @@ def main():
         # (mounted as the system's own scripts mount it: one of them may have
         # it mounted this moment, and other options would be refused)
         out, _ = m.run("mkdir -p /tmp/b && mount -t vfat -o rw,noatime /dev/vda1 /tmp/b && "
-                       "for w in 'stage: the root is mounted' 'the boot partition is vda1' 'MBR signature 41504f54' 'Linux version'; "
-                       "do grep -q \"$w\" /tmp/b/kernel-log.txt && echo k; done; ls /tmp/b/kernel-log.part 2>/dev/null; "
+                       "ls /tmp/b/kernel-log.txt /tmp/b/kernel-log.part 2>/dev/null; "
                        "for w in 'S00early' '===== running now' 'Linux version'; "
                        "do grep -q \"$w\" /tmp/b/linux-early.txt && echo e; done; umount /tmp/b")
-        check(out.split() == ["k"] * 4 + ["e"] * 3, "kernel-log.txt (the first program's) and linux-early.txt (S00early's) are on the boot partition (%s)" % " ".join(out.split()))
+        check(out.split() == ["e"] * 3, "no kernel-log.txt for a start that went well; linux-early.txt (S00early's) is on the boot partition (%s)" % " ".join(out.split()))
+        out, _ = m.run("dmesg | grep -c \"apotheca-early: handing over to the root's /sbin/init\"; "
+                       "head -c 1200 /dev/vcs1 2>/dev/null | tr -s ' ' | tr -d '\\000'")
+        check(out.startswith("1"), "the first program says in the kernel's log that it hands over")
+        print("info  the screen's first words (the text console, where this machine has one): %r" % out[1:].strip()[:60])
         # The same log on the BOOT partition (the FAT one), beside U-Boot's
         # report: the one place to look on a card out of a dark handheld.
         out, _ = m.run("mkdir -p /tmp/b && mount -t vfat -o rw,noatime /dev/vda1 /tmp/b && "
@@ -823,6 +838,7 @@ def main():
         check(out == "kept", "a file written on the first boot is still on DATA")
         out, _ = m.run("cat /run/apotheca/boot.log")
         check("growing" not in out, "DATA was not grown or made again")
+        wait_bootlog(m)
         out, _ = m.run("cat /data/apotheca/logs/count; ls /data/apotheca/logs")
         check(out.startswith("2") and "boot-0002.txt" in out, "the second boot's log is boot-0002")
         out, _ = m.run("grep 'asking for the handheld off' /data/apotheca/logs/apotheca.log")

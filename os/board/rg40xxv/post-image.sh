@@ -45,20 +45,27 @@ for t in "$images"/boot/device_trees/*.dtb; do
     "$HOST_DIR/bin/fdtput" -t x "$t" /reserved-memory/apotheca-crumbs@4d200000 reg 0x0 0x4d200000 0x0 0x1000
     "$HOST_DIR/bin/fdtput" -t s "$t" /reserved-memory/apotheca-crumbs@4d200000 no-map ""
 done
-# A card for a handheld with LPDDR3 memory (build-image.sh --dram lpddr3): the
-# memory's rail is 1.2 V there, and the trees say 1.1 V (LPDDR4), which Linux
-# would set as it starts. U-Boot's side is uboot-lpddr3.fragment.
-if [ "${APOTHECA_DRAM:-lpddr4}" = lpddr3 ]; then
-    for t in "$images"/boot/device_trees/*.dtb; do
-        node=/soc/i2c@7081400/pmic@34/regulators/dcdc3
-        [ "$("$HOST_DIR/bin/fdtget" -t u "$t" "$node" regulator-min-microvolt)" = 1100000 ]
-        "$HOST_DIR/bin/fdtput" -t u "$t" "$node" regulator-min-microvolt 1200000
-        "$HOST_DIR/bin/fdtput" -t u "$t" "$node" regulator-max-microvolt 1200000
-    done
-    echo "lpddr3: this card is for a handheld with LPDDR3 memory (1.2 V); it will not start one with LPDDR4" > "$images/boot/memory-kind.txt"
-else
-    echo "lpddr4: this card is for a handheld with LPDDR4 memory (1.1 V); it will not start one with LPDDR3" > "$images/boot/memory-kind.txt"
-fi
+# The memory's rail (dcdc3, "vdd-dram"): the trees say 1.1 V, LPDDR4's, and
+# Linux sets what a tree says as it starts. LPDDR3 wants 1.2 V. So:
+#   both (the default: U-Boot's first stage finds the kind and sets the rail)
+#          every tree allows 1.1 to 1.2 V, and Linux leaves a rail that is
+#          inside what its tree allows as it finds it;
+#   lpddr3 every tree says 1.2 V;
+#   lpddr4 as they are.
+dram="${APOTHECA_DRAM:-both}"
+node=/soc/i2c@7081400/pmic@34/regulators/dcdc3
+for t in "$images"/boot/device_trees/*.dtb; do
+    [ "$("$HOST_DIR/bin/fdtget" -t u "$t" "$node" regulator-min-microvolt)" = 1100000 ]
+    case "$dram" in
+    both) "$HOST_DIR/bin/fdtput" -t u "$t" "$node" regulator-max-microvolt 1200000 ;;
+    lpddr3) "$HOST_DIR/bin/fdtput" -t u "$t" "$node" regulator-min-microvolt 1200000
+            "$HOST_DIR/bin/fdtput" -t u "$t" "$node" regulator-max-microvolt 1200000 ;;
+    esac
+done
+case "$dram" in
+both) echo "both: this card finds the handheld's kind of memory by itself (LPDDR4 or LPDDR3)" ;;
+*) echo "$dram: this card is for a handheld with that kind of memory only; it will not start the other kind" ;;
+esac > "$images/boot/memory-kind.txt"
 cp -r "$board/boot-files/extlinux" "$images/boot/"
 cp "$board/boot-files/README.txt" "$images/boot/README.txt"
 genimage_cfg="$BUILD_DIR/genimage-apotheca.cfg"

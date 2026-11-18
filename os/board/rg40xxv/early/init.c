@@ -9,9 +9,11 @@
  *   1. /dev, /proc, /sys. The red light ON (the kernel put it out; the
  *      green one blinks the kernel's heartbeat): "the first program runs".
  *      The kernel's deadline (apotheca_deadline) moved to 150 s from now.
+ *      APOTHECA STARTING on the screen.
  *   2. Four times a second, until the root is found or WAIT seconds are up
- *      (40; apotheca.wait=N on the command line), kernel-log.txt at most
- *      every 2 s:
+ *      (40; apotheca.wait=N on the command line). A start that finds the
+ *      root at once writes nothing and waits for nothing; from 2 s of
+ *      waiting on, kernel-log.txt at most every 2 s:
  *        the root: root=PARTUUID=SSSSSSSS-NN is partition NN of the disk
  *          whose MBR signature is SSSSSSSS; root=/dev/NAME is that device;
  *        the boot partition: partition 1 of the root's disk, else any
@@ -333,6 +335,17 @@ int main(void) {
     mount("proc", "/proc", "proc", 0, "");
     mount("sysfs", "/sys", "sysfs", 0, "");
 
+    /* Something on the screen at once (it is kept until the display is up,
+     * if that comes later): the kernel itself prints nothing unless it has an
+     * error to say. */
+    {
+        const int screen = open("/dev/tty1", O_WRONLY | O_NOCTTY | O_CLOEXEC);
+        if (screen >= 0) {
+            const char* words = "\033[2J\033[H\n\n\n      APOTHECA\n\n      STARTING\n\n";
+            if (write(screen, words, strlen(words)) < 0) {}
+            close(screen);
+        }
+    }
     writeText("/sys/module/apotheca_deadline/parameters/seconds", "150");
     light("status", "none", 1, 0, 0);
     note("started (the red light on; the kernel's deadline moved to 150 s)");
@@ -354,13 +367,16 @@ int main(void) {
     char part[64] = "", disk[64] = "";
     int disks = 0, flickering = 0, found = 0;
     const double began = up();
-    double wrote = began - 2;
+    double wrote = began;
     for (;;) {
         found = findRoot(root, part, sizeof part, disk, sizeof disk, &disks);
-        findBoot(found ? disk : NULL);
         if (found) break;
         const double waited = up() - began;
         if (waited >= wait) break;
+        /* A start that goes well writes nothing and waits for nothing: the
+         * boot partition is looked for, and kernel-log.txt written, only
+         * once the root has kept us waiting 2 s. */
+        if (waited >= 2) findBoot(NULL);
         if (disks == 0 && waited >= 10 && !flickering) {
             flickering = 1;
             note("10 s and Linux sees no disk at all (no card): the green light flickers");
@@ -374,6 +390,7 @@ int main(void) {
     }
     if (!found) {
         char why[300];
+        findBoot(NULL);
         snprintf(why, sizeof why, "no root %s after %d s (%d disk%s seen)", root, wait, disks, disks == 1 ? "" : "s");
         giveUp(why);
     }
@@ -389,17 +406,22 @@ int main(void) {
     }
     if (!mounted) {
         char why[300];
+        findBoot(disk);
         snprintf(why, sizeof why, "the root %s will not mount as %s: %s", dev, type, strerror(error));
         giveUp(why);
     }
-    if (access("/newroot/sbin/init", X_OK) != 0) giveUp("the root has no /sbin/init");
+    if (access("/newroot/sbin/init", X_OK) != 0) {
+        findBoot(disk);
+        giveUp("the root has no /sbin/init");
+    }
     note("the root is mounted; its /sbin/init is next (the red light out, the green one an even blink)");
     light("status", "none", 0, 0, 0);
     light("power", "timer", 1, 500, 500);
-    writeLog("the root is mounted: the system's own programs start now");
-    note("kernel-log.txt written for the last time");
-    leaveBoot();
-    note("the boot partition is let go; handing over to the root's /sbin/init");
+    if (bootMounted) { /* only when it was a wait worth a log */
+        writeLog("the root is mounted: the system's own programs start now");
+        leaveBoot();
+    }
+    note("handing over to the root's /sbin/init");
 
     /* Hand over: /dev goes with us, the rest is the system's own to mount. */
     umount("/proc");

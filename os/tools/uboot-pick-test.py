@@ -57,7 +57,26 @@ def card_preboot():
     return re.search(r'^CONFIG_PREBOOT="(.*)"$', text, re.M).group(1)
 
 
+# The memory-kind mark: on the handheld the clock's spare register 7
+# (0x0700011c), which is no memory on either emulated board. Here it is a
+# word of ordinary memory, loaded before the start and shown after PREBOOT.
+MARK_REAL = "0x0700011c"
+MARK_HERE = 0x4d100000
+
+
+def mark_here(pre):
+    assert pre.count(MARK_REAL) == 4, pre     # read twice (lpddr4? lpddr3?), written for each of the two files
+    return pre.replace(MARK_REAL, "0x%08x" % MARK_HERE) + "; echo the mark is now; md.l 0x%08x 1" % MARK_HERE
+
+
+def mark_file(work, value):
+    path = os.path.join(work, "mark-%08x.bin" % value)
+    open(path, "wb").write(value.to_bytes(4, "little"))
+    return path
+
+
 def test_preboot(pre):
+    pre = mark_here(pre)
     pre = pre.replace("mmc 0:1", "virtio 0:1")
     pre = pre.replace("gpio input PE6", "test -e virtio 0:1 pe6-low")
     pre = re.sub(r"gpio (set|clear|toggle) (P[A-Z][0-9]+)", r"echo gpio \1 \2", pre)
@@ -99,6 +118,7 @@ def build_uboot(pre):
 def sunxi_preboot(pre):
     """The card's PREBOOT for the emulated sunxi board: its card commands
     (test -e, fatload, fatwrite, mmc dev / rescan / write) as they are."""
+    pre = mark_here(pre)
     pre = pre.replace("gpio input PE6", "test -e mmc 0:1 pe6-low")
     pre = re.sub(r"gpio (set|clear|toggle) (P[A-Z][0-9]+)", r"echo gpio \1 \2", pre)
     pre = re.sub(r"\b(i2c [^;]*)", r"echo \1", pre)
@@ -165,7 +185,10 @@ def sunxi_part(image_gz, work):
     command = lambda: ["qemu-system-arm", "-M", "orangepi-pc", "-nographic", "-monitor", "none", "-serial", "stdio",
                        "-drive", "file=%s,format=raw,if=sd" % image, "-no-reboot"]
     done = (b"Retrieving file: /Image", b"Retrieving file: /device_trees", b"=> ")
-    out = boot(None, image, os.path.join(work, "sunxi1.log"), memory=[(zone, 0x4d380000)], command=command(), until=done, seconds=120)
+    out = boot(None, image, os.path.join(work, "sunxi1.log"), memory=[(zone, 0x4d380000), (mark_file(work, 0x41504413), MARK_HERE)],
+               command=command(), until=done, seconds=120)
+    check("apotheca_dram=lpddr3" in mt("mtype", "-i", fat, "::uboot-report.txt").stdout.decode("utf-8", "replace"),
+          "sunxi: the report says the kind of memory the mark holds (LPDDR3 here)")
     check("apotheca: device tree device_trees/sun50i-h700-anbernic-rg40xx-v.dtb by screen-first.txt" in out,
           "sunxi: U-Boot's PREBOOT runs before anything else has touched the card, and reads screen-first.txt from it")
     report = mt("mtype", "-i", fat, "::uboot-report.txt").stdout.decode("utf-8", "replace")
@@ -297,8 +320,33 @@ def main():
             started = mt("mtype", "-i", fat, "::uboot-started.txt").stdout.decode("utf-8", "replace")
             check(started.startswith("apotheca_note=U-Boot started") and said.get("apotheca_first") == "written",
                   "uboot-started.txt is there (U-Boot's first act), and the report says that write went")
+            check(said.get("apotheca_dram") == "unknown" and said.get("apotheca_dram_asked") == "nothing",
+                  "and, with no mark and no file: memory kind unknown, nothing asked")
             mt("mdel", "-i", fat, "::uboot-started.txt")
             for name in add:
+                mt("mdel", "-i", fat, "::" + name)
+        # The kind of memory: the mark the first program left is read into
+        # the report; dram-lpddr3.txt / dram-lpddr4.txt write "this kind
+        # first at the next start" into it.
+        for what, mark, files, found, asked, after in [
+                ("the mark says LPDDR4 passed", 0x41504414, [], "lpddr4", "nothing", 0x41504414),
+                ("the mark says LPDDR3 passed", 0x41504413, [], "lpddr3", "nothing", 0x41504413),
+                ("a mark nobody knows", 0x12345678, [], "unknown", "nothing", 0x12345678),
+                ("a try under way (no answer)", 0x41504424, [], "unknown", "nothing", 0x41504424),
+                ("LPDDR4 passed, dram-lpddr3.txt there", 0x41504414, ["dram-lpddr3.txt"], "lpddr4", "lpddr3", 0x41504433),
+                ("LPDDR3 passed, dram-lpddr4.txt there", 0x41504413, ["dram-lpddr4.txt"], "lpddr3", "lpddr4", 0x41504434),
+                ("both files there", 0x41504414, ["dram-lpddr3.txt", "dram-lpddr4.txt"], "lpddr4", "lpddr3", 0x41504433)]:
+            for name in files:
+                mt("mcopy", "-o", "-i", fat, os.path.join(work, "flag"), "::" + name)
+            out = boot(uboot, image, os.path.join(work, "uboot-dram.log"), memory=[(mark_file(work, mark), MARK_HERE)])
+            report = mt("mtype", "-i", fat, "::uboot-report.txt").stdout.decode("utf-8", "replace")
+            said = dict(l.split("=", 1) for l in report.splitlines() if "=" in l)
+            now = re.search(r"the mark is now\s+%08x: ([0-9a-f]{8})" % MARK_HERE, out)
+            check(said.get("apotheca_dram") == found and said.get("apotheca_dram_asked") == asked
+                  and now and int(now.group(1), 16) == after and "Starting kernel" in out,
+                  "memory kind, %s: the report says found %s, asked %s; the mark afterwards %08x (%s, %s, %s)"
+                  % (what, found, asked, after, said.get("apotheca_dram"), said.get("apotheca_dram_asked"), now and now.group(1)))
+            for name in files:
                 mt("mdel", "-i", fat, "::" + name)
         # What the kernel of the start before left in memory (ramoops's
         # console piece, 512 KiB at 0x4d380000, beginning "DBGC"): U-Boot

@@ -17,10 +17,26 @@ card then starts with that screen's tree. It is the easy way to try the
 other screen: make an empty text file with that name. Delete it to go back.
 (dtb.img, when there is one, still wins over both.)
 
+THE RG40XXV HAS ALSO HAD TWO KINDS OF MEMORY (LPDDR4 and LPDDR3), and
+nothing on the outside says which. This card finds that by itself too
+(memory-kind.txt on this drive says "both"). It tries LPDDR4 first, at the
+lower voltage, which harms neither kind; if that does not work it tries
+LPDDR3. It remembers the answer in the handheld's clock, so later starts
+go straight to the right kind.
+
+To make it try a kind FIRST at the next start, make an empty file named
+dram-lpddr3.txt or dram-lpddr4.txt at the top of this drive, start the
+handheld once, and delete the file. This only works on a handheld that
+starts: the file is read after the memory is set up. For a handheld that
+will not start with this card at all there are two more card images, one
+for each kind only.
+
 WHAT YOU SEE WHEN IT STARTS, AND WHAT IT MEANS
 
-  1. Green and red together, within a second of the power key (it may
-     look like one orange light).
+  1. Green, then green and red together, within a second or two of the
+     power key (together they may look like one orange light). On a
+     handheld with LPDDR3 memory the green may go out and come back once
+     before the red joins it, the first time or every time.
         The card's first small program ran and set the memory up.
   2. RED ALONE, and the screen lit but empty.
         The boot loader (U-Boot) is running.
@@ -29,21 +45,21 @@ WHAT YOU SEE WHEN IT STARTS, AND WHAT IT MEANS
   4. The red comes on again for a moment (often too short to see): Linux's
      first program is looking for the card.
   5. The red goes out and the green light blinks EVENLY, about once a
-     second. The screen goes dark for a moment, then text scrolls (a lot
-     of it on this card), then Apotheca comes up.
-        The system is starting. Give it 30 seconds the first time (it makes
-        the APOTHECA drive then): do not switch it off.
+     second. The screen says APOTHECA STARTING, then Apotheca comes up.
+        The system is starting. The very first time it also makes the
+        APOTHECA drive: do not switch it off.
   6. Press any button: the green light stops blinking and stays on.
         The handheld now counts this screen as seen working.
 
 IF IT STOPS ON THE WAY, the lights say where:
 
-  GREEN ALONE blinking evenly about once a second, from the start, never
-  any red
-        The first program cannot set this handheld's memory up, and tries
-        again for ever. THIS CARD IS FOR THE OTHER KIND OF MEMORY
-        (memory-kind.txt on this drive says which kind it is for): use the
-        other card image. Hold the power key to turn it off.
+  GREEN ALONE blinking evenly, from the start, never any red, for more
+  than ten seconds
+        The first program cannot set this handheld's memory up as either
+        kind, and tries again for ever. Hold the power key to turn it off,
+        and try the card image made for one kind only (LPDDR3, then
+        LPDDR4). (On a card whose memory-kind.txt names one kind, this
+        light means the handheld has the other kind.)
   green and red blinking together
         The memory is set up but the boot loader does not start.
   red alone, staying
@@ -66,13 +82,18 @@ this drive, whatever is there:
 
   uboot-started.txt       the boot loader's first act at every start
   uboot-report.txt        the boot loader, at every start: what it read,
-                          which tree it chose, how many starts and resets
+                          which memory was found (apotheca_dram), which
+                          tree it chose, how many starts and resets
   kernel-from-memory.txt  what Linux said in the start BEFORE, found in
                           memory by the boot loader after a reset
-  kernel-log.txt          Linux's first program: what Linux said, the
-                          cards it sees, how far it got
+  kernel-log.txt          Linux's first program, only when it had to wait
+                          for the card or could not go on: what Linux
+                          said, the cards it sees, how far it got
   linux-early.txt         the system's start-up, step by step
-  linux-report.txt        the full boot log, once the system is up
+  linux-report.txt        the full boot log, once the system is up (it
+                          says the memory's kind too)
+  memory-kind.txt         which memory this card is for (made with the
+                          card; it does not change)
   kernel-from-card.txt    see the next paragraph
 
 IF A HANDHELD LEFT NO NEW FILE AT ALL: copy what is here first, then put
@@ -110,5 +131,5 @@ key for 2 seconds. Either way the song is saved first. A short press
 of the power key turns the screen off (the song plays on, the buttons
 do nothing) and on again. At 5% battery it saves and turns itself off.
 
-A charger plugged in while the handheld is off STARTS it (since
-2026-11-17). Turned off again it should go on charging (not yet tried).
+A charger plugged in while the handheld is off charges it and it STAYS
+OFF, as on ROCKNIX. Press the power key to start it.

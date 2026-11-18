@@ -1,7 +1,7 @@
 #!/bin/sh
 # Build Apotheca's own system image for the Anbernic RG40XXV.
 #
-#   scripts/build-image.sh [--dtb auto|rg40xx-v|rg40xx-v-v2-panel|rg40xx-v-v2-stock-panel] [--dram lpddr4|lpddr3]
+#   scripts/build-image.sh [--dtb auto|rg40xx-v|rg40xx-v-v2-panel|rg40xx-v-v2-stock-panel] [--dram both|lpddr4|lpddr3]
 #                          [--tidy|--tidy-all] [-- MAKE-ARGS...]
 #
 # Output: build-image/apotheca-rg40xxv.img.gz (and its .sha256), ready for
@@ -15,8 +15,13 @@
 #            the screen: rg40xx-v-v2-panel (the newer screen), rg40xx-v (the
 #            first), rg40xx-v-v2-stock-panel (the newer screen with Anbernic's
 #            own pixel clock edge and timings).
-#   --dram   the memory type U-Boot sets up. Default lpddr4 (ROCKNIX lists
-#            the RG40XX V under its DDR4 image).
+#   --dram   the memory U-Boot's first stage sets up. Default both: one
+#            card for every RG40XXV (it tries LPDDR4, then LPDDR3: U-Boot
+#            patch 0004; firmware plan, section 17). lpddr4 or lpddr3 builds a
+#            card for that kind alone, under a name of its own
+#            (apotheca-rg40xxv-lpddr4.img.gz, -lpddr3): the fallbacks. U-Boot
+#            is made again from nothing whenever the kind asked for is not the
+#            one it was last built for.
 #   --tidy   after the build, delete the work files of the biggest folders
 #            that are built once (Mesa, and the host LLVM, clang and SPIR-V
 #            tools that build Mesa's shaders); they keep their "done" marks and
@@ -48,7 +53,7 @@ out="$work/output"
 external="$here/os"
 
 dtb=auto
-dram=lpddr4
+dram=both
 tidy=no
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -61,7 +66,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 case "$dtb" in auto|rg40xx-v|rg40xx-v-v2-panel|rg40xx-v-v2-stock-panel) ;; *) echo "--dtb: auto, rg40xx-v, rg40xx-v-v2-panel or rg40xx-v-v2-stock-panel" >&2; exit 2 ;; esac
-case "$dram" in lpddr4|lpddr3) ;; *) echo "--dram: lpddr4 or lpddr3" >&2; exit 2 ;; esac
+case "$dram" in both|lpddr4|lpddr3) ;; *) echo "--dram: both, lpddr4 or lpddr3" >&2; exit 2 ;; esac
 
 mkdir -p "$work/dl"
 
@@ -93,10 +98,16 @@ export APOTHECA_COMMIT
 
 make -C "$br" O="$out" BR2_EXTERNAL="$external" apotheca_rg40xxv_defconfig
 
-if [ "$dram" = lpddr3 ]; then
-    frag="$external/board/rg40xxv/uboot.fragment $external/board/rg40xxv/uboot-lpddr3.fragment"
-    sed -i "s|^BR2_TARGET_UBOOT_CONFIG_FRAGMENT_FILES=.*|BR2_TARGET_UBOOT_CONFIG_FRAGMENT_FILES=\"$frag\"|" "$out/.config"
-    make -C "$br" O="$out" olddefconfig
+frag="$external/board/rg40xxv/uboot.fragment"
+[ "$dram" = both ] && frag="$frag $external/board/rg40xxv/uboot-dram-both.fragment"
+[ "$dram" = lpddr3 ] && frag="$frag $external/board/rg40xxv/uboot-lpddr3.fragment"
+sed -i "s|^BR2_TARGET_UBOOT_CONFIG_FRAGMENT_FILES=.*|BR2_TARGET_UBOOT_CONFIG_FRAGMENT_FILES=\"$frag\"|" "$out/.config"
+make -C "$br" O="$out" olddefconfig
+# Buildroot does not build U-Boot again because its fragments changed: when
+# the kind asked for is not the one U-Boot was last built for, start it over.
+if [ $# -eq 0 ] && [ "$(cat "$out/.apotheca-dram" 2>/dev/null)" != "$dram" ]; then
+    make -C "$br" O="$out" uboot-dirclean
+    echo "$dram" > "$out/.apotheca-dram"
 fi
 
 if [ $# -gt 0 ]; then
@@ -121,7 +132,7 @@ fi
 
 # The LPDDR3 card has a name of its own, so the two never get mixed up.
 name=apotheca-rg40xxv
-[ "$dram" = lpddr3 ] && name=apotheca-rg40xxv-lpddr3
+[ "$dram" != both ] && name=apotheca-rg40xxv-$dram
 cp "$out/images/apotheca-rg40xxv.img.gz" "$work/$name.img.gz"
 (cd "$work" && sha256sum "$name.img.gz" > "$name.img.gz.sha256")
 

@@ -32,7 +32,7 @@ stop() {
 }
 
 case "$1" in
-    start) start ;;
+    start) ( start ) < /dev/null > /dev/null 2>&1 & ;;   # nothing waits for it
     stop) stop ;;
     *) echo "usage: $0 start|stop" ;;
 esac
