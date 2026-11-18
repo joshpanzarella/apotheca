@@ -816,6 +816,10 @@ def main():
         # handheld have that part.)
         m.run("echo 'jack in' > /tmp/pad; sleep 2; echo 'jack out' > /tmp/pad; sleep 1; echo 'jack in' > /tmp/pad; sleep 1")
         out, _ = m.run("grep -e 'headphone' /data/apotheca/logs/power.log")
+        if "headphones in (just now)" not in out:
+            info, _ = m.run("tail -n 40 /data/apotheca/logs/power.log; grep -l . /sys/class/input/event*/device/capabilities/sw; "
+                            "for e in /sys/class/input/event*; do echo $e $(cat $e/device/name) sw=$(cat $e/device/capabilities/sw); done; cat /tmp/fp.txt")
+            print("info  power.log and the input devices:\n" + "\n".join("      " + l for l in info.splitlines()))
         check("(H616 Audio Codec Headphone Jack): the headphone socket" in out and "headphones out (just now): the speaker on" in out
               and "headphones in (just now): the speaker off" in out,
               "apotheca-power finds the stand-in headphone socket and follows it: out, the speaker on; in, off")
