@@ -565,14 +565,14 @@ int main(int argc, char** argv) {
      * from its parent, since the kernel makes it only with the first device
      * (none in qemu until a stand-in is made). */
     const int watch = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
-    int watching = 0;
+
     if (watch >= 0) {
         char parent[512];
         snprintf(parent, sizeof parent, "%s", devDir);
         char* slash = strrchr(parent, '/');
         if (slash && slash != parent) *slash = 0;
         inotify_add_watch(watch, parent, IN_CREATE);
-        watching = inotify_add_watch(watch, devDir, IN_CREATE | IN_ATTRIB) >= 0;
+        inotify_add_watch(watch, devDir, IN_CREATE | IN_ATTRIB);
     }
     findDevices();
     readBattery();
@@ -662,11 +662,15 @@ int main(int argc, char** argv) {
         }
         if (findAt && now >= findAt) {
             findAt = 0;
-            if (!watching && watch >= 0) watching = inotify_add_watch(watch, devDir, IN_CREATE | IN_ATTRIB) >= 0;
+            /* Always again: the kernel takes /dev/input away with its last device,
+             * and the watch on it with it (a stand-in joypad made again) */
+            if (watch >= 0) inotify_add_watch(watch, devDir, IN_CREATE | IN_ATTRIB);
             findDevices();
         }
         if (now >= nextRead) {
-            if (!watching && watch >= 0) watching = inotify_add_watch(watch, devDir, IN_CREATE | IN_ATTRIB) >= 0;
+            /* Always again: the kernel takes /dev/input away with its last device,
+             * and the watch on it with it (a stand-in joypad made again) */
+            if (watch >= 0) inotify_add_watch(watch, devDir, IN_CREATE | IN_ATTRIB);
             const int before = screenCheckSeconds;
             readConfig();
             if (screenCheckSeconds != before && treeId[0] && !screenSeen)

@@ -427,6 +427,25 @@ def main():
         check(r.logged().count("no headphone socket among the input devices") == 1 and r.speakerSaid() == [],
               "no socket among the input devices: said once, the speaker left alone")
         check(r.stop() == 0, "stops")
+        # The kernel takes /dev/input away with its last device, and the
+        # watch on it with it; the socket made after, in a /dev/input made
+        # again, is found at once, not at the next read (poll 60 s here)
+        r = Rig(program, os.path.join(work, "f"))
+        r.device(0, "axp20x-pek", [KEY_POWER])
+        r.start(poll=60)
+        os.close(r.fifos.pop(0))
+        shutil.rmtree(r.dev)
+        shutil.rmtree(os.path.join(r.sys, "class", "input", "event0"))
+        time.sleep(0.6)
+        r.device(1, "axp20x-pek", [KEY_POWER])
+        time.sleep(0.6)
+        r.device(2, "H616 Audio Codec Headphone Jack", [], [SW_HEADPHONE_INSERT])
+        time.sleep(0.6)
+        r.jack(2, True)
+        check("event2 (H616 Audio Codec Headphone Jack): the headphone socket" in r.logged()
+              and "headphones in (just now): the speaker off" in r.logged(),
+              "/dev/input taken away and made again: a socket made after is found at once and followed")
+        check(r.stop() == 0, "stops")
     finally:
         if r and r.p and r.p.poll() is None:
             r.p.kill()

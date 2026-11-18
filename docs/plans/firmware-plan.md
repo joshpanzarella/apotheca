@@ -1178,14 +1178,14 @@ would fix the screen's kind and defeat the pick by PE6.
 
 | Test | Result |
 | --- | --- |
-| `power-test.py` | RESULT18_POWER |
-| `qemu-test.py` | RESULT18_QEMU |
-| `check-image.sh` | RESULT18_CHECK |
-| `uboot-pick-test.py`, `dram-kind-test.sh` | RESULT18_OTHER |
+| `power-test.py` | every check passed, the headphone part included (in, out, the same twice, another switch, the screen off, the three rules, a switch that fails, no socket). **One more since the first run: `/dev/input` taken away and made again** (next row); it fails on the watcher as it was |
+| `qemu-test.py` | every check passed (a stand-in socket made by `fakepad`: found, followed in and out, asked its state at a restart). **The first runs failed, and it was the watcher's fault**: when the last input device goes, the kernel takes `/dev/input` away and the watch on it with it, and the watcher kept thinking it watched. A device made after (a stand-in joypad made again, so the socket after it) was only found at the 20 s read, after the test had looked. The watch is now set again every time the watcher wakes for a new device (`inotify_add_watch` on a watch it has is harmless). On the handheld `/dev/input` is never empty, so it would not have shown there |
+| `check-image.sh` | passed |
+| `uboot-pick-test.py`, `dram-kind-test.sh` | both passed |
 | The kernel patch | compiled into the image's kernel. **Not run: qemu has no H616 codec.** Read against `snd_soc_jack_report()`: every report sets each pin from the jack's status (the inverted one the other way) and syncs DAPM |
-| Reproducible | RESULT18_REPRO |
+| Reproducible | **not checked for this image** (it was for the images of sections 16 and 17; nothing here writes a date or a random number) |
 
-**The image**: RESULT18_IMAGE
+**The image**: `apotheca-rg40xxv.img.gz`, sha256 `04b58c8fbd8e47b71588228d97d33ff62b680cac2a7a92691c1f2ab140dbed39`, one image for both memory kinds (section 17). **Not run on a handheld.**
 
 ### Only the handhelds can tell
 
