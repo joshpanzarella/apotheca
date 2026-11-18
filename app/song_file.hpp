@@ -148,6 +148,15 @@ bool renameRecordings(std::string& text, const std::vector<std::pair<std::string
 // A song's text with its track `track` (counted as parseSong counts them) taken out, and the
 // tracks after it a place up: what the steps of undo hold once a track is deleted. False if
 // the text has no such track (it is then as it was).
+// KIT PRESETS (easywins batch 7). A drum track's kit as a file's text: "apotheca-kit 1", then the kit's
+// lines exactly as a song file writes them under a drum track (lanes, sample, lanesynth, oneslice,
+// laneedit, feel, swing, choke). `readKit` reads one into `kit`'s kit fields (through parseSong: the one
+// reader), leaving everything else of it alone; false if the text is not a kit. `copyKit` copies those
+// fields from one track to another.
+std::string kitText(const TrackData& track);
+bool readKit(const std::string& text, TrackData& kit);
+void copyKit(const TrackData& from, TrackData& to);
+
 bool dropTrackText(std::string& text, int track);
 // ...and with its track `track` written twice, the copy right after it and the tracks after a place
 // down: what the steps of undo hold once a track is duplicated (each step's own version of the track,

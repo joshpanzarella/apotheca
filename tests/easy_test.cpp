@@ -10,6 +10,8 @@
 //   duplicate  DUPLICATE A TRACK: the text of undo's steps (doubleTrackText), Session::duplicateTrack (the
 //              copy, the tracks after it, twelve, undo after, the engine's sound), L1 + R1 on a head, a panic.
 //   even       EVEN: the rule (euclidHit), Y held on a lane's name + R1 / L1, the turn, the words, undo, hints.
+//   kits       KIT PRESETS: a kit's text (kitText, readKit, copyKit), the built-in recipes, Session's
+//              list, load, save and delete, and the KIT page's stop above lane 1.
 //
 // `easy_test NAME...` runs just those sections.
 
@@ -1058,6 +1060,312 @@ void testEvenOnALane() {
     (void)session;
 }
 
+// ---- batch 7: KIT PRESETS ------------------------------------------------------------------------
+
+// What lane 1 sounds like now: struck, and the next tenth of a second summed.
+double kitHeard(Rig& rig) {
+    rig.frames(30); // (anything before has rung out, a made voice has landed)
+    Command c;
+    c.type = Command::Trigger;
+    c.track = rig.project().track;
+    c.a = 0;
+    c.value = kPlacedLevel;
+    rig.engine->send(c);
+    std::vector<float> out(2 * 4800);
+    rig.engine->render(out.data(), 4800);
+    double sum = 0.0;
+    for (float v : out) sum += std::fabs(v);
+    rig.frames(40);
+    return sum;
+}
+
+void testTheKitsText() {
+    // The built-in kits name only voices the data has.
+    for (const std::string& problem : builtInKitProblems()) std::printf("kit problem: %s\n", problem.c_str());
+    CHECK(builtInKitProblems().empty());
+    // A kit's text is the song file's own lines for a kit, and reads back as it was written.
+    std::unique_ptr<TrackData> kit(new TrackData), back(new TrackData);
+    chokeTheHats(*kit);
+    kit->laneLevel[2] = 0.5f;
+    kit->laneFeel[1].time = 40, kit->laneFeel[1].level = 20;
+    kit->laneSwing[3] = 60;
+    kit->laneFit[4] = 8;
+    std::snprintf(kit->laneSample[4], sizeof kit->laneSample[4], "%s", "breaks/amen");
+    kit->laneEdit[4].gain = -30;
+    kit->laneSynth[0] = drumsynth::usualVoice(drumsynth::modelFromWord("kick"));
+    const std::string text = kitText(*kit);
+    CHECK(text.compare(0, 15, "apotheca-kit 1\n") == 0);
+    CHECK(text.find("lanesynth 1 kick") != std::string::npos && text.find("swing 4 60") != std::string::npos);
+    CHECK(text.find("track") == std::string::npos && text.find("pattern") == std::string::npos);
+    CHECK(readKit(text, *back));
+    CHECK(kitText(*back) == text);
+    CHECK(back->laneLevel[2] == 0.5f && back->laneSwing[3] == 60 && back->laneFit[4] == 8 && back->laneChoke[2] == 1);
+    CHECK(std::strcmp(back->laneSample[4], "breaks/amen") == 0 && back->laneEdit[4].gain == -30 && back->laneSynth[0].on());
+    // Not a kit: refused, and nothing changed.
+    std::unique_ptr<TrackData> other(new TrackData);
+    other->laneSwing[0] = 30;
+    CHECK(!readKit("apotheca-song 1\ntrack drums\nswing 0 90\n", *other));
+    CHECK(!readKit("", *other) && !readKit("swing 0 90\n", *other));
+    CHECK(other->laneSwing[0] == 30);
+    // A kit's text cannot bring a track, a pattern or a synth's lines in with it.
+    CHECK(readKit("apotheca-kit 1\nswing 1 90\ntrack phazed\nswing 2 80\n", *other));
+    CHECK(other->laneSwing[0] == 90 && other->laneSwing[1] == 0);
+    // copyKit takes the kit and nothing else.
+    std::unique_ptr<TrackData> to(new TrackData);
+    to->mixDb = -6;
+    to->drums[0][0].level[0][0] = 0.9f;
+    copyKit(*kit, *to);
+    CHECK(kitText(*to) == text && to->mixDb == -6 && to->drums[0][0].level[0][0] == 0.9f);
+}
+
+void testKitsInTheSession() {
+    const std::string folder = tempFolder("easykits");
+    {
+        Rig rig;
+        Session& session = rig.session();
+        session.usePresetFolder(folder);
+        CHECK(rig.track(0).kind == TrackKind::Drums);
+        // The list: the built-in kits, DRUMS first; a new track's kit is DRUMS.
+        const std::size_t builtIn = session.kits().size();
+        CHECK(builtIn >= 5 && session.kits()[0].name == "DRUMS" && !session.kits()[0].own);
+        session.chokeNewKit(0); // (as main.cpp does for a new song)
+        rig.settle();
+        CHECK(session.kitOf(0) == 0);
+        for (std::size_t i = 0; i < builtIn; ++i) {
+            CHECK(session.kits()[i].name.size() <= Session::kKitNameMost);
+            for (std::size_t j = 0; j < i; ++j) CHECK(session.kits()[i].text != session.kits()[j].text && session.kits()[i].name != session.kits()[j].name);
+        }
+        // A kit put on: every lane's, the patterns and the mixer left, the engine told, no step of undo.
+        rig.app.drums().moveCursorTo(0, 0);
+        rig.tap(A);
+        rig.settle();
+        CHECK(rig.track(0).drums[0][0].level[0][0] == kPlacedLevel);
+        const double drums = kitHeard(rig);
+        CHECK(session.loadKit(0, 2));
+        CHECK(session.kitOf(0) == 2);
+        CHECK(rig.track(0).laneSynth[0].on() && rig.track(0).drums[0][0].level[0][0] == kPlacedLevel);
+        const double tight = kitHeard(rig);
+        CHECK(std::fabs(tight - drums) > 0.05 * drums);
+        // A step of undo of its own: the kit back, the hit left; then the hit.
+        rig.undo();
+        rig.settle();
+        CHECK(session.kitOf(0) == 0 && rig.track(0).drums[0][0].level[0][0] == kPlacedLevel);
+        CHECK(std::fabs(kitHeard(rig) - drums) < 0.005 * drums);
+        rig.undo();
+        rig.settle();
+        CHECK(session.kitOf(0) == 0 && rig.track(0).drums[0][0].level[0][0] == 0.f);
+        // Put on and back by the list: the first kit to the bit of its text, and as it sounded.
+        CHECK(session.loadKit(0, 3) && session.kitOf(0) == 3);
+        rig.settle();
+        CHECK(session.loadKit(0, 0) && session.kitOf(0) == 0);
+        CHECK(std::fabs(kitHeard(rig) - drums) < 0.005 * drums);
+        CHECK(!session.loadKit(0, -1) && !session.loadKit(0, static_cast<int>(builtIn)));
+        // A kit changed is nobody's: YOUR OWN.
+        session.setLaneSwing(0, 1, 45);
+        CHECK(session.kitOf(0) == -1);
+        // Every part of a kit is put on: one with a CHOKE, a volume, a feel, a swing, an EDIT and a voice of its own.
+        session.setLaneChoke(0, 5, 2);
+        session.setLaneLevel(0, 2, 0.5f);
+        session.setLaneFeel(0, 1, 40, 20);
+        LaneEdit edit = rig.track(0).laneEdit[6];
+        edit.gain = -30, edit.reverse = 1;
+        session.setLaneEdit(0, 6, edit);
+        drumsynth::Voice zap = drumsynth::usualVoice(drumsynth::modelFromWord("zap"));
+        zap.dial[0] = 33;
+        session.setLaneSynth(0, 7, zap);
+        {
+            std::unique_ptr<TrackData> mine(new TrackData);
+            copyKit(rig.track(0), *mine);
+            const std::string text = kitText(*mine);
+            for (int other = 0; other < 3; ++other) {
+                CHECK(session.loadKit(0, other) && session.kitOf(0) == other);
+                CHECK(session.putKit(0, *mine) && kitText(rig.track(0)) == text);
+            }
+            CHECK(rig.track(0).laneChoke[5] == 2 && rig.track(0).laneLevel[2] == 0.5f && rig.track(0).laneFeel[1].time == 40 && rig.track(0).laneSwing[1] == 45);
+            CHECK(rig.track(0).laneEdit[6].gain == -30 && rig.track(0).laneEdit[6].reverse == 1 && rig.track(0).laneSynth[7] == zap);
+        }
+        // Saved: KIT 1, a file beside the presets, the last of the list, and the track's kit is it.
+        CHECK(session.saveKit(0) == "KIT 1");
+        CHECK(session.kits().size() == builtIn + 1 && session.kits().back().own && session.kits().back().name == "KIT 1");
+        CHECK(session.kitOf(0) == static_cast<int>(builtIn));
+        std::string file;
+        CHECK(readTextFile(folder + "/kit 1.kit", file) && file == kitText(rig.track(0)));
+        // Another: KIT 2 (a name is never taken twice).
+        session.setLaneSwing(0, 1, 50);
+        CHECK(session.saveKit(0) == "KIT 2" && session.kits().size() == builtIn + 2);
+        // A built-in kit is not deleted; one's own is, and the track keeps its sound.
+        CHECK(!session.deleteKit(0) && session.kits().size() == builtIn + 2);
+        CHECK(session.deleteKit(static_cast<int>(builtIn)));
+        CHECK(session.kits().size() == builtIn + 1 && session.kits().back().name == "KIT 2");
+        CHECK(!readTextFile(folder + "/kit 1.kit", file));
+        CHECK(rig.track(0).laneSwing[1] == 50 && session.kitOf(0) == static_cast<int>(builtIn));
+        // Not on a synth track.
+        session.addTrack(TrackKind::Phazed);
+        CHECK(session.kitOf(1) == -1 && !session.loadKit(1, 1) && session.saveKit(1).empty());
+    }
+    {
+        // Another run finds the saved kit, and puts it on.
+        Rig rig;
+        Session& session = rig.session();
+        session.usePresetFolder(folder);
+        CHECK(session.kits().back().own && session.kits().back().name == "KIT 2");
+        CHECK(session.loadKit(0, static_cast<int>(session.kits().size()) - 1));
+        CHECK(rig.track(0).laneSwing[1] == 50);
+    }
+}
+
+void testTheKitStop() {
+    const std::string folder = tempFolder("easykitstop");
+    Rig rig;
+    Session& session = rig.session();
+    session.usePresetFolder(folder);
+    session.chokeNewKit(0);
+    session.view = View::Device;
+    rig.frames(2);
+    KitScreen& kit = rig.app.kit();
+    const int builtIn = static_cast<int>(session.kits().size());
+    // UP from lane 1 is the KIT stop; UP again the last lane, DOWN from the stop lane 1.
+    CHECK(!kit.onKit());
+    rig.tap(UP);
+    CHECK(kit.onKit());
+    rig.tap(UP);
+    CHECK(!kit.onKit());
+    rig.tap(DOWN); // (lane 8 -> lane 1)
+    CHECK(!kit.onKit());
+    rig.tap(UP);
+    CHECK(kit.onKit());
+    rig.tap(DOWN);
+    CHECK(!kit.onKit());
+    rig.tap(DOWN), rig.tap(UP);
+    CHECK(!kit.onKit()); // (lane 2 -> lane 1: not the stop)
+    rig.tap(UP);
+    CHECK(kit.onKit());
+    // Hold A + UP: the next kit; DOWN the one before; the ends stop.
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(UP);
+    CHECK(session.kitOf(0) == 1);
+    rig.tap(UP);
+    CHECK(session.kitOf(0) == 2);
+    rig.tap(DOWN);
+    CHECK(session.kitOf(0) == 1);
+    rig.tap(DOWN), rig.tap(DOWN);
+    CHECK(session.kitOf(0) == 0 && kit.onKit());
+    rig.tap(UP, builtIn + 3);
+    CHECK(session.kitOf(0) == builtIn - 1);
+    {
+        const int heardSoFar = kit.hears();
+        rig.tap(UP); // past the last: nothing, and nothing heard
+        CHECK(kit.hears() == heardSoFar);
+    }
+    // B with A still held: the kit as it was when A went down.
+    rig.tap(B);
+    CHECK(session.kitOf(0) == 0);
+    rig.key(A, false);
+    rig.frames(2);
+    CHECK(kit.onKit() && !kit.editing() && !kit.voicing()); // (A let go opens nothing on the stop)
+    // Left and right, X and a tap of A do nothing to the kit here.
+    rig.tap(LEFT), rig.tap(RIGHT), rig.tap(A);
+    CHECK(kit.onKit() && session.kitOf(0) == 0 && !kit.picker().isOpen());
+    // Y on a kit of the list: said, nothing saved.
+    rig.tap(Y);
+    CHECK(kit.said() == "IT IS DRUMS ALREADY" && static_cast<int>(session.kits().size()) == builtIn);
+    // Changed, Y saves it.
+    session.setLaneSwing(0, 0, 35);
+    rig.tap(Y);
+    CHECK(kit.said() == "SAVED AS KIT 1" && session.kitOf(0) == builtIn);
+    // A tap of B does nothing; B held a second deletes one's own; any other button calls it off.
+    rig.tap(B);
+    CHECK(static_cast<int>(session.kits().size()) == builtIn + 1);
+    rig.key(B, true);
+    rig.frames(30);
+    CHECK(kit.kitDeletePart() > 0.3f && kit.kitDeletePart() < 0.7f);
+    rig.tap(LEFT);
+    CHECK(kit.kitDeletePart() == 0.f);
+    rig.frames(60);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(static_cast<int>(session.kits().size()) == builtIn + 1);
+    // B let go while another screen was up (this one never saw it): nothing is deleted on coming back.
+    rig.key(B, true);
+    rig.frames(10);
+    session.view = View::Song;
+    rig.frames(2);
+    rig.key(B, false);
+    rig.frames(2);
+    session.view = View::Device;
+    rig.frames(80);
+    CHECK(static_cast<int>(session.kits().size()) == builtIn + 1 && kit.kitDeletePart() == 0.f && kit.onKit());
+    rig.key(B, true);
+    rig.frames(61);
+    CHECK(static_cast<int>(session.kits().size()) == builtIn + 1); // (not before the second is up)
+    rig.frames(4);
+    CHECK(static_cast<int>(session.kits().size()) == builtIn && kit.kitDeletePart() == 0.f);
+    CHECK(kit.said() == "KIT 1 DELETED. THE TRACK KEEPS ITS SOUND");
+    rig.frames(70);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(rig.track(0).laneSwing[0] == 35 && session.kitOf(0) == -1 && kit.onKit());
+    // Hold B on a built-in kit deletes nothing.
+    session.loadKit(0, 1);
+    rig.key(B, true);
+    rig.frames(30);
+    CHECK(kit.kitDeletePart() == 0.f); // (no bar fills)
+    rig.frames(50);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(static_cast<int>(session.kits().size()) == builtIn && kit.kitDeletePart() == 0.f);
+    // From a kit of nobody's, A + UP is the first of the list, A + DOWN nothing.
+    session.setLaneSwing(0, 0, 35);
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(DOWN);
+    CHECK(session.kitOf(0) == -1);
+    rig.tap(UP);
+    CHECK(session.kitOf(0) == 0);
+    rig.tap(B); // as it was: the kit of nobody's, to its text
+    CHECK(session.kitOf(0) == -1 && rig.track(0).laneSwing[0] == 35 && rig.track(0).laneSynth[0].on());
+    rig.key(A, false);
+    rig.frames(2);
+    // START plays from the stop.
+    rig.tap(START);
+    CHECK(rig.project().playing);
+    rig.tap(START);
+    // The hints fit: at rest on a built-in kit, on one of nobody's, on one's own, A held, deleting.
+    Canvas canvas;
+    if (canvas.ok) {
+        auto fits = [&] {
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(ui::gHintsOver == 0.f);
+        };
+        fits();
+        rig.tap(Y);
+        fits();
+        rig.key(A, true);
+        rig.frames(1);
+        fits();
+        rig.key(A, false);
+        rig.frames(1);
+        rig.key(B, true);
+        rig.frames(20);
+        fits();
+        rig.tap(X);
+        rig.key(B, false);
+        rig.frames(1);
+        session.loadKit(0, 6);
+        fits();
+    }
+    // A turn of A + UP is heard (stopped): lane 1 struck.
+    const int heard = kit.hears();
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(UP);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(kit.hears() == heard + 1);
+}
+
 struct Section {
     const char* name;
     std::function<void()> run;
@@ -1074,6 +1382,7 @@ int main(int argc, char** argv) {
         {"scale", [] { testTheScales(), testTheScaleInTheSong(), testTheRollKeepsToIt(); }},
         {"duplicate", [] { testDoubleTrackText(), testDuplicateATrack(), testDuplicateOnSong(); }},
         {"even", [] { testTheEvenRule(), testEvenOnALane(); }},
+        {"kits", [] { testTheKitsText(), testKitsInTheSession(), testTheKitStop(); }},
     };
     for (const Section& s : sections) {
         bool wanted = argc < 2;

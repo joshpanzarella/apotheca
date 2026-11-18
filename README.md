@@ -1833,6 +1833,15 @@ WAV file from the `samples` folder beside the program) or a **synth voice**
 Left / right moves between the columns, SOUND, FIT TO, CHOKE and the sound's
 picture, EDIT (round the ends).
 
+**Kits.** UP from lane 1 is the kit's own stop, at the top left: KIT and its
+name. Hold A + UP / DOWN there puts on the next / previous kit: seven
+built-in kits (DRUMS, SYNTH, TIGHT, BIG, ELECTRO, DUSTY, HAND DRUMS), then
+your own. B with A still held gives back the kit you had. Y saves the kit as
+it is now as KIT 1, KIT 2... (a file `kit 1.kit` beside the presets). Hold B
+a second deletes one of your own; the track keeps its sound. A kit is each
+lane's sound with its EDIT, FIT, VOLUME, CHOKE, FEEL and SWING, not the
+patterns or the effects. A changed kit reads YOUR OWN until it is saved.
+
 | On | Hold A + stick up / down | B |
 | --- | --- | --- |
 | SOUND | From the built-in drum: UP each recording by name, DOWN the twelve synth models. Heard as it changes. | The drum back |

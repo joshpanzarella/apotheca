@@ -372,3 +372,48 @@ the track worked on, the unseen let go, the solo: each fails. Still `song-copy-t
 
 **Only the owner can tell**: whether L1 + R1 on a head is easy to hit, and whether the copy should
 be a step of undo.
+
+## Batch 7: KIT PRESETS
+
+A drum track's whole kit, kept under a name and put on any drum track. **A kit is every lane's sound
+(the built-in drum, a recording or a synth voice), its EDIT, FIT, VOLUME, CHOKE, FEEL and SWING.**
+Not the patterns, not the effects, not the mixer.
+
+**The gesture.** On the KIT page, UP from lane 1 is the kit's own stop, where SOUND's heading stood.
+It reads KIT and the kit's name: a built-in kit, one of your own, or YOUR OWN when it is in no list.
+
+| On the stop | Does |
+| --- | --- |
+| Hold A + UP / DOWN | the kit after / before, put on at once and heard (lane 1, stopped). The ends stop |
+| B with A still held | the kit as it was when A went down |
+| Y | SAVE: the kit as it is now becomes KIT 1, KIT 2... |
+| Hold B a second (a bar fills) | delete one of your own kits. The track keeps its sound |
+
+- **Seven built-in kits**: DRUMS (the built-in drums), SYNTH, TIGHT, BIG, ELECTRO, DUSTY, HAND DRUMS.
+  The last six are recipes of DRUM SYNTH's named voices, looked up by name; a recipe naming a voice
+  the data lost fails the tests (`builtInKitProblems`).
+- **Your own are files beside the synths' presets**, `kit N.kit`, written in the song file's own
+  lines (`kitText` / `readKit`: the one writer and reader). A kit that names a recording keeps the
+  name; the recording must be on the card.
+- **A kit put on is a step of undo**, like any change to a kit: voices, EDIT, FEEL, SWING and CHOKE
+  come back. A recording does not (as always).
+
+| Call | Taken |
+| --- | --- |
+| Where | **A stop above lane 1 on the KIT page** (not a new screen) |
+| What a kit holds | **The lanes' sounds and what is done to them**; not patterns, effects or mixer |
+| Names | **KIT 1, KIT 2...** (no typing: a second keyboard screen for a later batch if wanted) |
+| Built-in kits | **Seven, from the synth voices**; no recordings ship |
+| Undo | **A step** (recordings not put back) |
+
+**Tests**: `easy_test kits`: the text there and back, a text that is no kit, a `track` line in a kit
+taking nothing, `copyKit`; the built-in recipes; the list, a kit put on (the engine's sound changed
+and back), undo, every field put back from a kit of one's own, save, the next free name, delete, a
+second run finding the file; the stop: UP and DOWN round it, A + UP / DOWN and the ends, B as it
+was, Y on a kit that is one already, hold B (the bar, called off, let go unseen, a built-in kit),
+START, the hints at 0 over. 20 mutants: each fails. Stills `kit-preset`, `-held`, `-own`.
+
+**Not done**: a name of your choosing (kits are numbered); the WiFi page does not list or send kits;
+FIT and a recording on a lane are carried by the same calls but no test puts a kit with a recording on.
+
+**Only the owner can tell**: how the seven kits sound, and whether the stop above lane 1 is found.

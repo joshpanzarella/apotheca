@@ -563,6 +563,22 @@ public:
     // Keep the track's sound, as it is now with its macros, under a name.
     // The track is then on that preset. False if the name is no good or it could not be written.
     bool savePreset(int track, const std::string& name);
+    // KIT PRESETS (easywins batch 7; kits.cpp). The list: the built-in kits (recipes of DRUM SYNTH's named
+    // voices), then the player's own ("NAME.kit" in the preset folder, written by SAVE as KIT 1, KIT 2...).
+    // A kit is a drum track's every lane: its recording or synth voice, EDIT, FIT, one-slice, level,
+    // FEEL, SWING and CHOKE; never its patterns, effects or mixer.
+    static constexpr std::size_t kKitNameMost = 12;
+    struct Kit {
+        std::string name, text; // its text is a kit file's (kitText)
+        bool own = false;
+        std::string file;       // an own kit's file in the preset folder
+    };
+    const std::vector<Kit>& kits();
+    int kitOf(int track);                          // which kit of the list the track's kit is now, or -1 (its own)
+    bool loadKit(int track, int index);            // put on the track: every lane told to the engine. Not a step of undo
+    bool putKit(int track, const TrackData& kit);  // ...the kit fields of `kit` (copyKit's)
+    std::string saveKit(int track);                // as the next free "KIT n": its name, or "" (no folder, or the card refused)
+    bool deleteKit(int index);                     // an own kit's file, for good
     // The sound-designer page's way in (see designer.hpp); the WiFi page serves it.
     Designer& designer() { return designer_; }
 
@@ -818,6 +834,8 @@ private:
     std::string designState() const;
     Designer designer_;
     std::string presetFolder_;
+    std::vector<Kit> kits_;
+    void readKits();
     bool designHeld_[128] = {}; // keys the page is holding down
     int designHeldTrack_ = 0;
     unsigned designLooks_ = 0;
@@ -906,5 +924,8 @@ private:
     float seenTempo_ = 0.f;
     Uint32 tempoMovedAt_ = 0;
 };
+
+// A built-in kit's recipe naming a voice the data does not have ("TIGHT: no voice kick TIGHT"): the tests fail on one.
+std::vector<std::string> builtInKitProblems();
 
 } // namespace apotheca

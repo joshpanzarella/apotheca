@@ -595,6 +595,16 @@ int main(int argc, char** argv) {
             app.kit().goTo(3, KitScreen::kChoke);
             if (std::strstr(view, "-held")) pushKey(SDLK_x, true); // A held
         }
+    } else if (std::strncmp(view, "kit-preset", 10) == 0) {
+        // KIT PRESETS: the KIT page on the kit's stop, above lane 1. kit-preset: the built-in kit HAND DRUMS on (the longest name);
+        // -held: A held (what UP / DOWN do); -own: a lane's swing turned since (YOUR OWN: Y saves it).
+        Session& session = app.session();
+        session.loadKit(0, 6);
+        if (std::strstr(view, "-own")) session.setLaneSwing(0, 1, 40);
+        session.finishStretching();
+        session.view = View::Device;
+        app.kit().goToKit();
+        if (std::strstr(view, "-held")) pushKey(SDLK_x, true); // A held
     } else if (std::strncmp(view, "kit-synth", 9) == 0 || std::strncmp(view, "kit-voice", 9) == 0) {
         // DRUM SYNTH: the first four lanes synth voices (KICK with its TUNE turned, SNARE, CL HAT, OP HAT),
         // lane 6 a CLAP. kit-synth: the KIT page on lane 1's SOUND. kit-voice: lane 1's VOICE view on TUNE;

@@ -2635,6 +2635,17 @@ effect in those two groups and fails one that does not.
   (`SongScreen::shouldersPressed`): a panic begun L1, R1 on a head copies nothing. A let go the SONG
   screen never saw copies nothing either (`update`). A cell is emptied by B and copied by HOLD R1 and
   drag, as before: nothing was added there.
+- **KIT PRESETS: a stop above lane 1 on the KIT page** (easywins batch 7; `app/kits.cpp`,
+  `KitScreen::onKit_`, `Session::kits` / `kitOf` / `putKit` / `loadKit` / `saveKit` / `deleteKit`).
+  Hold A + UP / DOWN the kits (B with A held: as it was), Y SAVE as KIT n, hold B deletes one's own.
+  **A kit's text is the song file's own kit lines** (`putKit` in song_file.cpp, which `putTrack` calls;
+  `kitText`, `readKit` through `parseSong`): a new thing a lane keeps goes in `putKit` and `copyKit`,
+  and a kit carries it. **Which kit a track has is worked out, never kept** (`kitOf`: its text against
+  the list's), so a song file has no word for it and a changed kit reads YOUR OWN. The built-in kits
+  are recipes of DRUM SYNTH's named voices BY NAME (`kRecipes`): a voice renamed or taken out fails
+  `easy_test kits` (`builtInKitProblems`). A kit put on goes through the lanes' own setters, so it is a
+  step of undo as they are (a recording is not put back). A player's own are `kit N.kit` in the preset
+  folder. Stills `kit-preset`, `-held`, `-own`. **Nobody has heard the kits.**
 - **Solo is a tap of X on a track** (a cell or its head; owner, 2026-11-15: "I don't like the hold L1
   for solo since Y for mute is just a one tap"). It was a tap of L1, then for a day L1 HELD 400 ms
   (a tap of L1 soloed by mistake too easily); the hold, its timer and `kSoloHoldMs` are gone, and **L1

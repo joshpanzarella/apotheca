@@ -729,8 +729,11 @@ void testTheKitScreen() {
     CHECK(rig.session().view == View::Device);
     CHECK(kit.cursorLane() == 0 && kit.cursorColumn() == KitScreen::kSound);
     // Up and down through the lanes, round the ends; sideways through the four columns, round the ends.
+    // (Above lane 1 is the kit's own stop, since kit presets: round the ends takes two presses.)
     rig.tap(UP);
-    CHECK(kit.cursorLane() == 7);
+    CHECK(kit.onKit());
+    rig.tap(UP);
+    CHECK(kit.cursorLane() == 7 && !kit.onKit());
     rig.tap(DOWN, 3);
     CHECK(kit.cursorLane() == 2);
     rig.tap(RIGHT);
