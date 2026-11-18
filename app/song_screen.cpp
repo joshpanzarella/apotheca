@@ -17,7 +17,7 @@ namespace {
 constexpr Uint32 kDeleteHoldMs = 1000; // B held this long on a song deletes it
 
 constexpr int kGridTop = 34, kHeadH = 40, kRowH = 44, kRowsTop = kGridTop + kHeadH + 6;
-constexpr int kNumberW = 26, kRepeatW = 34, kColumnsLeft = 8 + kNumberW + kRepeatW;
+constexpr int kNumberW = 26, kRepeatW = 38, kColumnsLeft = 8 + kNumberW + kRepeatW; // (kRepeatW was 34: the column's word, REPEATS, is 67 wide at LARGE)
 constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs;
 constexpr float kStickCellsPerSecond = 24.f;
 constexpr float kRepeatsPerSecond = 20.f;
@@ -662,7 +662,8 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const int playScene = session_.playScene(), playStep = session_.engine.playStep();
 
     // ---- column heads ----------------------------------------------------------
-    fonts.small.drawRight(r, kColumnsLeft - 7.f, kGridTop + 14.f, "PLAYS", kDim);
+    // (REPEATS, it was PLAYS: owner, 2026-11-18. Low in the heads' row, nearer the boxes it names; held at LARGE where it would leave the screen.)
+    fonts.within(&Fonts::small, kRepeatsWord, kColumnsLeft - 5.f).drawRight(r, kColumnsLeft - 2.f, static_cast<float>(kRepeatsWordY), kRepeatsWord, kDim);
     for (int t = 0; t < tracks; ++t) {
         const int x = kColumnsLeft + t * (colW + 1);
         box(r, x, kGridTop, colW, kHeadH, kPanel2, kLine);

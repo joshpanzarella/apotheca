@@ -495,8 +495,8 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
             {"A", "put it back again"},
             {"X", "WRITE on / off: record a knob's moves while playing"},
             {"L1  R1", "quieter / louder"},
-            {"L2  R2", "on PATTERN: the scene a step shorter / longer"},
-            {"Y", "on PATTERN: NEXT SCENE, a copy of this one to add to"},
+            {"L2  R2", "on PTRN: the scene a step shorter / longer"},
+            {"Y", "on PTRN: NEXT SCENE, a copy of this one to add to"},
             {"UP  DOWN  LEFT  RIGHT", "tempo: a beat a minute / ten at a time"}, // (one line: the card is full)
             {"START", quitWords(quitTurnsOff_)},
         };

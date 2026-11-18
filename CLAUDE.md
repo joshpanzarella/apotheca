@@ -2082,10 +2082,11 @@ effect in those two groups and fails one that does not.
   knob's first, call C), B with A held, another track or another screen calls it off. Only
   `pickLineTargets` (through `modTargetFits`) says what is offered. Everything goes through
   `Session::setMod`, so undo needs nothing here.
-  - **The top bar's tabs have 3 pixels either side of their word** (`ui::kTabPad`; it was 5),
-    so with six tabs the screen's words still have room: 167 stopped, 94 playing (a track's
-    name, "12 PHAZED", is 77), 32 playing with WRITE on (`TopBar::wordsRoom`; with five tabs at
-    5 it was 186, 113, 51). `modtab_test` holds the name to fit stopped and playing.
+  - **The top bar's tabs read SONG, PTRN, DVICE, FX, MOD, SET, 5 pixels either side of each word**
+    (owner, 2026-11-18; `ui::kTabPad`; it was PATTERN and DEVICE at 3). The screen's words have 182
+    stopped, 109 playing (a track's name, "12 PHAZED", is 77), 47 playing with WRITE on
+    (`TopBar::wordsRoom`). `modtab_test` holds the name to fit stopped and playing. **The help card
+    says PTRN too; README and the web pages keep the full words.**
   - **The dot at now and the step lit are shown only while the song plays or X runs that MOD**
     (`ModScreen::nowPosition`, `nowPlace`: the project's word, then the engine's
     `Engine::modNow`, the position of the MOD's last tick, and `modPlace`). Read from the
@@ -2646,6 +2647,12 @@ effect in those two groups and fails one that does not.
   `easy_test kits` (`builtInKitProblems`). A kit put on goes through the lanes' own setters, so it is a
   step of undo as they are (a recording is not put back). A player's own are `kit N.kit` in the preset
   folder. Stills `kit-preset`, `-held`, `-own`. **Nobody has heard the kits.**
+- **The owner's five of 2026-11-18** (`easy_test looks`). SONG's column word is REPEATS (`SongScreen::
+  kRepeatsWord`, low in the heads' row, 10 above the first box; `kRepeatW` 38, it was 34, so the word
+  fits at LARGE: the columns start 4 further right). **A lane's volume in its name's box is `kPanel2`
+  with a `kDim` edge where it ends** (`kLevelEdgeW`): panel on bg was 1.08 to 1 in BLACK; the fill is
+  1.22 and the edge 8.5 against the bg, 7.0 against the fill (every theme: 5.1 or more on bg). The
+  name's word starts at `kNameTextX`, 5 clear of the feel mark (it was 1), in the grid and the slices.
 - **Solo is a tap of X on a track** (a cell or its head; owner, 2026-11-15: "I don't like the hold L1
   for solo since Y for mute is just a one tap"). It was a tap of L1, then for a day L1 HELD 400 ms
   (a tap of L1 soloed by mistake too easily); the hold, its timer and `kSoloHoldMs` are gone, and **L1

@@ -130,11 +130,13 @@ public:
     const std::vector<std::string>& listedSongs() const { return songs_; }
     void scenesMoved(int from, int by); // a scene put in or taken out (NEXT SCENE): the cursor stays on the scene it was on
     void selectWasUsed() { cancelSelectTap(); } // SELECT did something else: letting go is not a tap
-    // AT END: the PLAYS box of the first empty row, just past the song's last scene, is where the
+    // AT END: the REPEATS box of the first empty row, just past the song's last scene, is where the
     // song ends. It shows a loop (LOOP) or a stop square (STOP), and A there switches them.
     int songEndRow() const { return project_.sceneCount() < kMaxScenes ? project_.sceneCount() : -1; } // -1: every row is a scene
     bool onSongEnd() const { return !onMaster_ && column_ == kRepeatColumn && scene_ == songEndRow(); }
-    SDL_Rect repeatBox(int scene) const; // a scene's PLAYS box as it is drawn (w 0: not in view)
+    static constexpr const char* kRepeatsWord = "REPEATS"; // the column's word, over the boxes
+    static constexpr int kRepeatsWordY = 34 + 24;          // (kGridTop + 24: 10 above the first box; it stood 20 above)
+    SDL_Rect repeatBox(int scene) const; // a scene's REPEATS box as it is drawn (w 0: not in view)
     static void drawSongEnd(SDL_Renderer* r, int cx, int cy, int end, SDL_Color color); // the mark, centred on (cx, cy)
 
 private:

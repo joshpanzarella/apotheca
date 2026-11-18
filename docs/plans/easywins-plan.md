@@ -417,3 +417,16 @@ START, the hints at 0 over. 20 mutants: each fails. Stills `kit-preset`, `-held`
 FIT and a recording on a lane are carried by the same calls but no test puts a kit with a recording on.
 
 **Only the owner can tell**: how the seven kits sound, and whether the stop above lane 1 is found.
+
+## The owner's five (2026-11-18)
+
+| Ask | Done |
+| --- | --- |
+| SONG: PLAYS becomes REPEATS, nearer the x1 box | REPEATS, 10 above the first box (was 20). It is 67 wide at LARGE, so the REPEATS column is 4 wider (38) and the track columns start 4 further right |
+| Drum grid: the feel mark too close to the name | The name's word starts 5 clear of the mark (was 1), grid and slices; names have 3 less room before they are held at LARGE |
+| Tabs: PTRN, DVICE, evenly spaced | Done; each word has 5 either side again (was 3). The words after the tabs gained 15: 182 stopped, 109 playing, 47 with WRITE. Help card says PTRN; README keeps the full words and says so |
+| The lane's volume hard to see in BLACK | The fill is the lightest surface (panel2) with a dim edge where the volume ends. BLACK: fill on bg 1.08 before, 1.22 after, and the edge is 8.5 on bg |
+
+**Tests**: `easy_test looks` (the volume's fill, edge and bg off the drawn screen in all six themes, at
+50%, full and none; the clear room by the mark; REPEATS inside the screen and near its boxes), 5
+mutants, each fails. `modtab_test` holds the tabs.

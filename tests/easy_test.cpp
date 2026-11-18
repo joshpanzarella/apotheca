@@ -30,6 +30,7 @@
 #include "app.hpp"
 #include "canvas.hpp"
 #include "chords.hpp"
+#include "pattern_layout.hpp"
 #include "scales.hpp"
 #include "tap_tempo.hpp"
 #include "song_file.hpp"
@@ -1366,6 +1367,74 @@ void testTheKitStop() {
     CHECK(kit.hears() == heard + 1);
 }
 
+// ---- the owner's five (2026-11-18): the looks ---------------------------------------------------
+
+void testTheLooks() {
+    using namespace pattern_layout;
+    Rig rig;
+    Session& session = rig.session();
+    session.view = View::Pattern;
+    session.setLaneLevel(0, 1, 0.5f);
+    session.setLaneLevel(0, 2, 0.f);
+    session.setLaneFeel(0, 1, 50, 50);
+    rig.frames(2);
+    rig.app.drums().moveCursorTo(6, 0); // (the cursor off the lanes looked at)
+    Canvas canvas;
+    if (!canvas.ok) return;
+    // A lane's volume in its name's box: the lightest surface as far as it is turned up, a dim edge
+    // where it ends, the background past it. In every theme, by the theme's own colours.
+    for (int theme = 0; theme < kThemes; ++theme) {
+        session.setTheme(theme);
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        const int y = kGridTop + 1 * kLaneH + kCellH - 3; // (the box's foot: under the name's letters)
+        const int filled = static_cast<int>(std::round((kNameW - 2) * 0.5f)), end = kNameX + 1 + filled;
+        CHECK(canvas.is(end - 1, y, ui::kDim) && canvas.is(end - kLevelEdgeW, y, ui::kDim));
+        CHECK(canvas.is(end - kLevelEdgeW - 1, y, ui::kPanel2) && canvas.is(end - 12, y, ui::kPanel2));
+        CHECK(canvas.is(end, y, ui::kBg) && canvas.is(end + 12, y, ui::kBg));
+        // The edge is two pieces, at the top and the foot: none of it in the rows the name's letters have.
+        const int top = kGridTop + 1 * kLaneH;
+        CHECK(canvas.is(end - 1, top + 2, ui::kDim) && canvas.is(end - 1, top + kLevelEdgeH, ui::kDim));
+        CHECK(canvas.is(end - 1, top + kLevelEdgeH + 1, ui::kPanel2) && canvas.is(end - 1, top + kCellH - 2 - kLevelEdgeH, ui::kPanel2));
+        // At full the edge stands at the box's right; at none there is no edge and no fill.
+        const int y0 = kGridTop + kCellH - 3, y2 = kGridTop + 2 * kLaneH + kCellH - 3;
+        CHECK(canvas.is(kNameX + kNameW - 2, y0, ui::kDim) && canvas.is(kNameX + kNameW - 2 - kLevelEdgeW, y0, ui::kPanel2));
+        CHECK(canvas.is(kNameX + 20, y2, ui::kBg) && canvas.is(kNameX + 60, y2, ui::kBg));
+        // The feel mark, and clear room between it and the name's first letter: nothing of the name's
+        // colour left of kNameTextX, in the mark's rows.
+        const int my = kGridTop + 1 * kLaneH + kFeelMarkInset + 2;
+        CHECK(canvas.is(kFeelMarkX, my, ui::kPurple) && canvas.is(kFeelMarkX + kFeelMarkW - 1, my, ui::kPurple));
+        for (int row = kGridTop + kLaneH + 2; row < kGridTop + kLaneH + kCellH - 2; ++row)
+            for (int x = kFeelMarkX + kFeelMarkW; x < kNameTextX; ++x) CHECK(!canvas.is(x, row, ui::kText) && !canvas.is(x, row, ui::kPurple));
+    }
+    session.setTheme(kThemeBrown);
+    CHECK(kNameTextX - (kFeelMarkX + kFeelMarkW) >= 5);                      // the room asked for
+    CHECK(kFeelMarkX > kNameX && kFeelMarkX + kFeelMarkW < kSwingMarkRight - 20); // inside the box, far from SWING's and CHOKE's
+    // SONG: the column's word is REPEATS, inside the screen and short of the first head, at every size
+    // it may be drawn at (held at LARGE where the size chosen would not fit).
+    CHECK(std::strcmp(SongScreen::kRepeatsWord, "REPEATS") == 0);
+    session.view = View::Song;
+    rig.frames(2);
+    canvas.clear();
+    rig.app.draw(canvas.r, *canvas.fonts);
+    const SDL_Rect head = rig.app.song().headRect(0), first = rig.app.song().repeatBox(0);
+    const float wide = canvas.fonts->small.width(SongScreen::kRepeatsWord);
+    CHECK(head.x - 2.f - wide >= 3.f);                       // inside the screen, clear of the first head
+    CHECK(first.y - (SongScreen::kRepeatsWordY + canvas.fonts->small.capHeight()) <= 12.f); // near its boxes (it stood 20 above)
+    CHECK(first.y > SongScreen::kRepeatsWordY + canvas.fonts->small.capHeight());
+    // Its letters are drawn there, in dim, and none left of the screen's margin.
+    int ink = 0;
+    for (int y = SongScreen::kRepeatsWordY; y < first.y; ++y)
+        for (int x = 0; x < head.x; ++x) {
+            if (!canvas.is(x, y, ui::kDim)) continue;
+            ++ink;
+            CHECK(x >= 3 && x < head.x - 1);
+        }
+    if (ink <= 25) std::printf("ink %d\n", ink);
+    CHECK(ink > 25);
+}
+
 struct Section {
     const char* name;
     std::function<void()> run;
@@ -1382,6 +1451,7 @@ int main(int argc, char** argv) {
         {"scale", [] { testTheScales(), testTheScaleInTheSong(), testTheRollKeepsToIt(); }},
         {"duplicate", [] { testDoubleTrackText(), testDuplicateATrack(), testDuplicateOnSong(); }},
         {"even", [] { testTheEvenRule(), testEvenOnALane(); }},
+        {"looks", [] { testTheLooks(); }},
         {"kits", [] { testTheKitsText(), testKitsInTheSession(), testTheKitStop(); }},
     };
     for (const Section& s : sections) {
