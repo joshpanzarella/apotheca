@@ -7,7 +7,12 @@
 #   Line Out Playback Switch     the output on
 #   Line Out Source Playback Route   Stereo (not Mono Differential)
 #   Left/Right Mixer DAC Playback Switch   the DAC into the output mixers
-#   Speaker Switch               the speaker amplifier (a card pin switch)
+#   Speaker Switch               the speaker amplifier (a card pin switch):
+#                                NOT set here. The kernel sets it by the
+#                                headphone socket as the card is made (patch
+#                                0172: headphones in, the speaker off), and
+#                                apotheca-power keeps it so. Set "on" here it
+#                                played from both with headphones in at boot.
 #
 # Apotheca sets its own volume on top (its VOLUME on the SET page), so the
 # codec is left at full: 0 dB digital, the line out at its top. Anything not
@@ -44,8 +49,8 @@ start() {
     set_control "DAC Playback Switch" on,on
     set_control "Left Mixer DAC Playback Switch" on,on
     set_control "Right Mixer DAC Playback Switch" on,on
-    set_control "Speaker Switch" on
     say "sound: card $card ($(cat /proc/asound/card$card/id)); set:${set_ok:- none}; not there:${set_missing:- none}"
+    say "sound: headphones $(amixer -c "$card" cget "iface=CARD,name=Headphone Jack" 2>/dev/null | sed -n 's/.*: values=//p' | head -n 1), speaker $(amixer -c "$card" cget "name=Speaker Switch" 2>/dev/null | sed -n 's/.*: values=//p' | head -n 1) (as the kernel set them)"
 }
 
 case "$1" in

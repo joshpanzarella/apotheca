@@ -35,7 +35,7 @@ import os, shutil, signal, struct, subprocess, sys, tempfile, time
 
 fails = []
 KEY_POWER, KEY_VOLUMEUP, KEY_VOLUMEDOWN, BTN_SOUTH, BTN_DPAD_UP = 116, 115, 114, 0x130, 0x220
-EV_KEY, EV_SYN = 1, 0
+EV_KEY, EV_SYN, EV_SW, SW_HEADPHONE_INSERT = 1, 0, 5, 2
 
 
 def check(ok, what):
@@ -64,6 +64,7 @@ class Rig:
         self.tree = os.path.join(root, "rocknix-dt-id")   # absent: not the handheld, no screen check
         self.seen = os.path.join(root, "screen-seen")
         self.find = 60
+        self.speaker = os.path.join(root, "speaker")   # what the speaker was switched to, a line a time
         os.makedirs(self.dev)
         os.makedirs(os.path.join(self.sys, "power"))
         open(os.path.join(self.sys, "power", "state"), "w").write("freeze mem\n")
@@ -74,11 +75,12 @@ class Rig:
         self.fifos = {}
         self.p = None
 
-    def device(self, n, name, keys):
+    def device(self, n, name, keys, switches=()):
         d = os.path.join(self.sys, "class", "input", "event%d" % n, "device")
         os.makedirs(os.path.join(d, "capabilities"))
         open(os.path.join(d, "name"), "w").write(name + "\n")
-        open(os.path.join(d, "capabilities", "key"), "w").write(bitmap(keys) + "\n")
+        open(os.path.join(d, "capabilities", "key"), "w").write((bitmap(keys) if keys else "0") + "\n")
+        open(os.path.join(d, "capabilities", "sw"), "w").write((bitmap(switches) if switches else "0") + "\n")
         os.makedirs(self.dev, exist_ok=True)
         path = os.path.join(self.dev, "event%d" % n)
         os.mkfifo(path)
@@ -98,7 +100,8 @@ class Rig:
         self.p = subprocess.Popen(
             [self.program, "--sys", self.sys, "--dev", self.dev, "--config", self.config, "--log", self.log,
              "--off", "echo off >> %s" % self.offs, "--poll", str(poll), "--console", os.devnull,
-             "--tree", self.tree, "--seen", self.seen, "--find-screen-s", str(self.find)],
+             "--tree", self.tree, "--seen", self.seen, "--find-screen-s", str(self.find),
+             "--speaker", "echo >> %s" % self.speaker],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(0.5)
 
@@ -113,6 +116,14 @@ class Rig:
 
     def key(self, n, code, value):
         os.write(self.fifos[n], struct.pack("llHHi", 0, 0, EV_KEY, code, value) + struct.pack("llHHi", 0, 0, EV_SYN, 0, 0))
+
+    def jack(self, n, plugged):
+        os.write(self.fifos[n], struct.pack("llHHi", 0, 0, EV_SW, SW_HEADPHONE_INSERT, 1 if plugged else 0)
+                 + struct.pack("llHHi", 0, 0, EV_SYN, 0, 0))
+        time.sleep(0.3)
+
+    def speakerSaid(self):
+        return open(self.speaker).read().split() if os.path.exists(self.speaker) else []
 
     def press(self, seconds):
         self.key(0, KEY_POWER, 1)
@@ -349,6 +360,72 @@ def main():
         r.start(poll=60)
         time.sleep(1.7)
         check(r.offCount() == 0, "both there: on")
+        check(r.stop() == 0, "stops")
+
+        # The headphone socket (firmware plan, section 18): headphones in,
+        # the speaker off; out, on. A made-up socket (a FIFO) has no state to
+        # ask for, so here it is known from its first event; the qemu test
+        # asks a real input device.
+        r = Rig(program, os.path.join(work, "d"))
+        r.device(0, "axp20x-pek", [KEY_POWER])
+        r.device(1, "H700 Gamepad", list(range(BTN_SOUTH, BTN_SOUTH + 15)) + [BTN_DPAD_UP, BTN_DPAD_UP + 1])
+        r.device(2, "H616 Audio Codec Headphone Jack", [], [SW_HEADPHONE_INSERT])
+        r.device(3, "a lid", [], [0])                      # another switch (SW_LID): not a socket
+        r.supply("battery", type="Battery", capacity=60, status="Discharging")
+        r.start(poll=2)
+        check("event2 (H616 Audio Codec Headphone Jack): the headphone socket" in r.logged() and "event3" not in r.logged(),
+              "the socket is found by its switch, among the input devices; a device with another switch is not taken")
+        check(r.speakerSaid() == [], "nothing is switched before the socket's state is known")
+        r.jack(2, True)
+        check(r.speakerSaid() == ["off"] and "headphones in (just now): the speaker off" in r.logged(), "headphones in: the speaker off")
+        r.jack(2, True)
+        check(r.speakerSaid() == ["off"], "told the same again: nothing is switched twice")
+        r.jack(2, False)
+        check(r.speakerSaid() == ["off", "on"] and "headphones out (just now): the speaker on" in r.logged(), "headphones out: the speaker on")
+        os.write(r.fifos[2], struct.pack("llHHi", 0, 0, EV_SW, 0, 1) + struct.pack("llHHi", 0, 0, EV_SYN, 0, 0))   # SW_LID
+        os.write(r.fifos[3], struct.pack("llHHi", 0, 0, EV_SW, SW_HEADPHONE_INSERT, 1) + struct.pack("llHHi", 0, 0, EV_SYN, 0, 0))
+        r.key(1, BTN_SOUTH, 1)
+        time.sleep(0.3)
+        check(r.speakerSaid() == ["off", "on"], "another switch of the socket's device, the same switch from another device, a button: nothing")
+        r.jack(2, True)
+        r.press(0.2)                                       # the screen off: the socket still works
+        r.jack(2, False)
+        r.press(0.2)
+        check(r.speakerSaid() == ["off", "on", "off", "on"] and r.offCount() == 0, "with the screen off by the power key it works the same")
+        # The rule, read again with the battery
+        r.jack(2, True)
+        open(r.config, "w").write("headphones ignore\n")
+        time.sleep(2.6)
+        check(r.speakerSaid()[-1] == "on" and "headphones ignore: the speaker on" in r.logged(),
+              "\"headphones ignore\" in the config: the speaker on with headphones in, at the next read")
+        n = len(r.speakerSaid())
+        r.jack(2, False)
+        r.jack(2, True)
+        check(len(r.speakerSaid()) == n, "and plugging changes nothing then")
+        open(r.config, "w").write("headphones inverted\n")
+        time.sleep(2.6)
+        check(r.speakerSaid()[-1] == "on" and len(r.speakerSaid()) == n,
+              "\"headphones inverted\": \"in\" is taken as out (the speaker on)")
+        r.jack(2, False)
+        check(r.speakerSaid()[-1] == "off" and "headphones inverted: the speaker off" in r.logged(), "and \"out\" as in")
+        open(r.config, "w").write("# nothing\n")
+        time.sleep(2.6)
+        check(r.speakerSaid()[-1] == "on", "the line taken away: the usual rule again (out: the speaker on)")
+        check(r.stop() == 0, "stops")
+        # A speaker that cannot be switched is said, and it goes on
+        r.speaker = os.path.join(r.root, "no-such-folder", "speaker")
+        r.start(poll=60)
+        r.jack(2, True)
+        check("the speaker off COULD NOT BE SWITCHED" in r.logged() and r.p.poll() is None, "a switch that fails is said in the log, and it runs on")
+        r.stop()
+        # No socket at all: said once, nothing switched
+        r = Rig(program, os.path.join(work, "e"))
+        r.device(0, "axp20x-pek", [KEY_POWER])
+        r.supply("battery", type="Battery", capacity=60, status="Discharging")
+        r.start(poll=1)
+        time.sleep(2.6)
+        check(r.logged().count("no headphone socket among the input devices") == 1 and r.speakerSaid() == [],
+              "no socket among the input devices: said once, the speaker left alone")
         check(r.stop() == 0, "stops")
     finally:
         if r and r.p and r.p.poll() is None:

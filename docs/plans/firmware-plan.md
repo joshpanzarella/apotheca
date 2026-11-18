@@ -1112,6 +1112,90 @@ means neither kind worked; the one-kind image is next.
 - That APOTHECA STARTING shows, and for how long the screen is lit and
   empty before it.
 
+## 18. Headphones or speaker, one or the other (2026-11-18)
+
+**The fault** (the owner, on BLACK): sound from the speaker and the
+headphones at once. **It is not BLACK's alone**: nothing in our system ever
+turned the speaker off, so WHITE does the same. The fix below is built and
+passes the desk; **no handheld has run it.**
+
+### How the handheld is made
+
+| Part | What | Where it is said |
+| --- | --- | --- |
+| The sound chip | the H616's own codec (`allwinner,sun50i-h616-codec`, driver `sun4i-codec`). **One analog output, LINEOUT** | the kernel's driver |
+| The speaker | an amplifier fed from LINEOUT, switched by **PI5** (`allwinner,pa-gpios`), powered from `cldo1` | the tree, `&codec` in `sun50i-h700-anbernic-rg35xx-2024.dts` |
+| The headphone socket | fed from the same LINEOUT. A contact says "something is in": **PI3** (`hp-det-gpios`, high = in) | the same |
+| The two screens' trees | the v2 tree and the stock-panel tree `#include` the first screen's, and none of them touches `&codec`: **the same sound nodes in every tree we ship**. `check-image.sh` now holds that | `os/board/rg40xxv/dts` |
+
+The kernel makes a jack for PI3 ("Headphone Jack": a control on the card,
+and an input device with the switch SW_HEADPHONE_INSERT). Upstream it
+switches the "Headphone" pin only. The amplifier's pin, "Speaker", is left
+to userland: alsa-ucm-conf's `sun4i-h616` profile turns `Speaker Switch`
+off when the jack says in, and ROCKNIX, with PipeWire, uses that. We run no
+sound server, and `S20sound` set `Speaker Switch on` at every start. So
+both played.
+
+### The fix, in two layers
+
+| Layer | What | Why |
+| --- | --- | --- |
+| **The kernel** (patch `0172`) | on an H616 codec with `hp-det-gpios` and an amplifier GPIO the jack has a second pin: **"Speaker", inverted**. In: DAPM powers the Speaker widget down, which takes PI5 low (then its supply, patch 0163's order). Out: back on | it switches inside the kernel's own power sequence, the same one that turns the amplifier on for a first sound, so a click is the driver's, no new one. It is right from the moment the card is made: the jack's first reading sets it |
+| **`apotheca-power`** (the belt) | it already reads the input devices. It now finds the one with SW_HEADPHONE_INSERT, **asks its state** when found (EVIOCGSW), follows its events, reads it again at every battery read, and runs `/usr/libexec/apotheca/speaker on|off` (`amixer ... "Speaker Switch"`) when the speaker should change | if the kernel's pin ever fails to follow, or a later kernel drops the patch, it still switches. And it carries the rule (next row) |
+| `power.txt`: `headphones auto` / `ignore` / `inverted` | auto is the usual. `ignore`: both play, as before. `inverted`: the socket's line reads the other way | **PI3's sense (high = in) is ROCKNIX's for the RG35XX family; nobody has checked it on an RG40XXV for us.** If it is wrong, the speaker is silent with nothing plugged in: this line mends that without a new card |
+| `S20sound` | no longer sets `Speaker Switch` | it undid the kernel's reading at every start with headphones in |
+
+**The app's volume is untouched**: only the speaker's switch moves.
+Nothing in `app/` changed.
+
+**Not done**: no fade around the switch (the driver's own 700 ms wait
+after the amplifier comes on is all there is); nothing for HDMI sound.
+
+### The report
+
+`linux-report.txt` has a section "headphones and speaker": for each card
+`Headphone Jack` and `Speaker Switch` as the mixer reads them, every input
+device that has switches (the socket's is the one with bit 4), the two pins
+read straight from the pin controller (PI3, PI5), and `apotheca-power`'s
+lines about the socket. The start-up log says what the kernel had set when
+`S20sound` ran.
+
+### Onto a card that already works, without flashing it
+
+**There is no whole way.** The system (the watcher, the scripts) is a
+read-only partition; nothing on the two drives a computer sees can replace
+it, and it should not be otherwise. Two honest options:
+
+| Way | What it gives | What it costs |
+| --- | --- | --- |
+| **Copy the new `Image` over the one on APOTHBOOT** (keep the old one as `Image-old`). The kernel is a file there, and the patch is in it | plugging and unplugging switch the speaker. **But started with headphones already in, the speaker plays until they are pulled and put back** (the old `S20sound` turns it on), and there is no `headphones inverted` rule | nothing is erased. If the speaker is then silent with no headphones, put `Image-old` back |
+| Flash the new image | all of it | **it empties the APOTHECA drive.** Copy the `apotheca` folder to the computer first, flash, start once, copy it back |
+
+A `dtb.img` cannot do it: the trees are right already, and a `dtb.img`
+would fix the screen's kind and defeat the pick by PE6.
+
+### Desk tests
+
+| Test | Result |
+| --- | --- |
+| `power-test.py` | RESULT18_POWER |
+| `qemu-test.py` | RESULT18_QEMU |
+| `check-image.sh` | RESULT18_CHECK |
+| `uboot-pick-test.py`, `dram-kind-test.sh` | RESULT18_OTHER |
+| The kernel patch | compiled into the image's kernel. **Not run: qemu has no H616 codec.** Read against `snd_soc_jack_report()`: every report sets each pin from the jack's status (the inverted one the other way) and syncs DAPM |
+| Reproducible | RESULT18_REPRO |
+
+**The image**: RESULT18_IMAGE
+
+### Only the handhelds can tell
+
+- **That it works at all**: in, the speaker off; out, on; while sound plays.
+- **PI3's sense on the RG40XXV**, on both units (the report's "pins" line
+  with and without headphones says it).
+- Whether a click is heard at the switch, and how it compares with stock.
+- Whether the amplifier's 700 ms is noticed when headphones come out.
+- Started with headphones in: silent speaker from the first sound.
+
 ## Sources
 
 - Anbernic, RG 40XXV product page (SoC, RAM, screen, battery, WiFi, BT): https://anbernic.com/products/rg-40xxv

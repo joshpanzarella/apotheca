@@ -1,0 +1,11 @@
+#!/bin/sh
+# speaker on|off: the speaker's amplifier, through the sound card's "Speaker
+# Switch" (the first card that is not HDMI's). apotheca-power calls it when
+# headphones go in or come out. Nothing else is touched: no volume.
+case "$1" in on|off) ;; *) echo "usage: $0 on|off" >&2; exit 2 ;; esac
+for c in /proc/asound/card[0-9]*; do
+    [ -f "$c/id" ] || continue
+    case "$(cat "$c/id")" in *[Hh][Dd][Mm][Ii]*) continue ;; esac
+    exec amixer -q -c "${c#/proc/asound/card}" cset "name=Speaker Switch" "$1"
+done
+exit 1

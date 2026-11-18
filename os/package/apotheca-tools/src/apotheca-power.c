@@ -32,6 +32,15 @@
  *       with no backlight or no display at all in /sys: poweroff.
  *       Only where the device tree names itself (rocknix-dt-id: the
  *       handheld, not qemu).
+ *   The headphone socket (firmware plan, section 18): one or the other
+ *       The codec has one output for the speaker's amplifier and the
+ *       socket both. The kernel turns the speaker off while headphones are
+ *       in (patch 0172: the jack's "Speaker" pin); this is the belt. The
+ *       jack is an input device with the switch SW_HEADPHONE_INSERT: its
+ *       state is read when it is found (EVIOCGSW), at every event and at
+ *       every battery read, and the speaker's switch set to match, by
+ *       /usr/libexec/apotheca/speaker on|off ("Speaker Switch" alone: no
+ *       volume is touched).
  *   The green light: Linux blinks it from the start (the device tree's
  *       heartbeat); it is made steady here once the screen counts as seen.
  *
@@ -41,6 +50,11 @@
  *   power-key screen|sleep  what a short press does (screen)
  *   screen-check SECONDS    0 to 3600; 0: never off for a screen not yet
  *                           seen working (300)
+ *   headphones auto|ignore|inverted
+ *                           auto: headphones in, the speaker off (the usual)
+ *                           ignore: the speaker always on, as before
+ *                           inverted: for a socket that reads the wrong way
+ *                           round (the speaker goes off when they come OUT)
  * (Its idle-off MINUTES line is Apotheca's own: /usr/libexec/apotheca/run
  * hands it to the program.)
  *
@@ -62,6 +76,8 @@
  *                  /proc/device-tree/rocknix-dt-id)
  *   --seen FILE    the tree last seen working (default /data/apotheca/screen-seen)
  *   --find-screen-s S  when to look for a backlight and a display (default 60)
+ *   --speaker CMD  what switches the speaker, run by /bin/sh with " on" or
+ *                  " off" after it (default /usr/libexec/apotheca/speaker)
  */
 #include <dirent.h>
 #include <errno.h>
@@ -98,6 +114,9 @@ static int screenCheckSeconds = 300;
 static const char* treeFile = "/proc/device-tree/rocknix-dt-id";
 static const char* seenFile = "/data/apotheca/screen-seen";
 static int findScreenSeconds = 60;
+static const char* speakerCommand = "/usr/libexec/apotheca/speaker";
+enum { kJackAuto, kJackIgnore, kJackInverted };
+static int jackRule = kJackAuto;
 static const long kLowMicrovolts = 3250000; /* a backstop under the gauge (guess: not measured) */
 
 /* ---- saying what happens ---------------------------------------------- */
@@ -165,6 +184,7 @@ static void readConfig(void) {
     lowPercent = 5;
     keySleeps = 0;
     screenCheckSeconds = 300;
+    jackRule = kJackAuto;
     FILE* f = fopen(configFile, "r");
     if (!f) return;
     char line[128];
@@ -181,6 +201,8 @@ static void readConfig(void) {
             char* end = NULL;
             const long v = strtol(value, &end, 10);
             if (end != value && *end == 0 && v >= 0 && v <= 3600) screenCheckSeconds = (int)v;
+        } else if (strcmp(word, "headphones") == 0) {
+            jackRule = strcmp(value, "ignore") == 0 ? kJackIgnore : strcmp(value, "inverted") == 0 ? kJackInverted : kJackAuto;
         }
     }
     fclose(f);
@@ -193,6 +215,7 @@ struct Device {
     int fd;
     int power;     /* reports KEY_POWER */
     int pad;       /* a joypad: held while the screen is off */
+    int jack;      /* the headphone socket: reports SW_HEADPHONE_INSERT */
     int grabbed;
 };
 static struct Device devices[kMostDevices];
@@ -220,6 +243,36 @@ static int isPad(const char* keys) {
 
 static int screenOff = 0;
 
+/* ---- the headphone socket ---------------------------------------------- */
+
+static int jackIn = -1;       /* 1 in, 0 out, -1 not known yet */
+static int speakerSet = -1;   /* what the speaker was last switched to */
+
+/* The speaker for the socket's state and the rule; said and done only when
+ * it changes. */
+static void setSpeaker(const char* how) {
+    if (jackIn < 0) return;
+    const int on = jackRule == kJackIgnore ? 1 : jackRule == kJackInverted ? jackIn : !jackIn;
+    if (on == speakerSet) return;
+    char command[600];
+    snprintf(command, sizeof command, "%s %s", speakerCommand, on ? "on" : "off");
+    const int code = system(command);
+    say(0, "headphones %s (%s)%s: the speaker %s%s", jackIn ? "in" : "out", how,
+        jackRule == kJackIgnore ? ", headphones ignore" : jackRule == kJackInverted ? ", headphones inverted" : "",
+        on ? "on" : "off", code == 0 ? "" : " COULD NOT BE SWITCHED");
+    speakerSet = on;
+}
+
+/* The socket's state as the kernel holds it. A made-up device (the desk
+ * test's FIFO) has none: it is known from its first event. */
+static void readJack(const struct Device* d, const char* how) {
+    unsigned long bits[SW_MAX / (8 * sizeof(unsigned long)) + 1];
+    memset(bits, 0, sizeof bits);
+    if (ioctl(d->fd, EVIOCGSW(sizeof bits), bits) < 0) return;
+    jackIn = (int)((bits[SW_HEADPHONE_INSERT / (8 * sizeof(unsigned long))] >> (SW_HEADPHONE_INSERT % (8 * sizeof(unsigned long)))) & 1ul);
+    setSpeaker(how);
+}
+
 static void grab(struct Device* d, int on) {
     if (d->fd < 0 || d->grabbed == on) return;
     if (ioctl(d->fd, EVIOCGRAB, on ? 1 : 0) == 0) d->grabbed = on;
@@ -245,11 +298,13 @@ static void findDevices(void) {
         for (int i = 0; i < deviceCount; ++i)
             if (strcmp(devices[i].name, e->d_name) == 0) known = 1;
         if (known || deviceCount >= kMostDevices) continue;
-        char keys[1024], name[128] = "?";
+        char keys[1024], switches[256] = "", name[128] = "?";
         snprintf(path, sizeof path, "%s/class/input/%s/device/capabilities/key", sysDir, e->d_name);
         if (!readLine(path, keys, sizeof keys)) continue;
-        const int power = hasBit(keys, KEY_POWER), pad = isPad(keys);
-        if (!power && !pad) continue;
+        snprintf(path, sizeof path, "%s/class/input/%s/device/capabilities/sw", sysDir, e->d_name);
+        readLine(path, switches, sizeof switches);
+        const int power = hasBit(keys, KEY_POWER), pad = isPad(keys), jack = hasBit(switches, SW_HEADPHONE_INSERT);
+        if (!power && !pad && !jack) continue;
         snprintf(path, sizeof path, "%s/%s", devDir, e->d_name);
         const int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
         if (fd < 0) continue; /* its node is not there yet: next time */
@@ -261,7 +316,10 @@ static void findDevices(void) {
         d->fd = fd;
         d->power = power;
         d->pad = pad;
-        say(0, "%s (%s): %s%s%s", d->name, name, power ? "the power key" : "", power && pad ? ", " : "", pad ? "a joypad" : "");
+        d->jack = jack;
+        say(0, "%s (%s): %s%s%s%s%s", d->name, name, power ? "the power key" : "", power && pad ? ", " : "", pad ? "a joypad" : "",
+            jack && (power || pad) ? ", " : "", jack ? "the headphone socket" : "");
+        if (jack) readJack(d, "as found");
         if (pad && screenOff) grab(d, 1);
     }
     closedir(dir);
@@ -464,6 +522,7 @@ int main(int argc, char** argv) {
         else if (strcmp(a, "--tree") == 0) treeFile = v;
         else if (strcmp(a, "--seen") == 0) seenFile = v;
         else if (strcmp(a, "--find-screen-s") == 0) findScreenSeconds = atoi(v) > 0 ? atoi(v) : 60;
+        else if (strcmp(a, "--speaker") == 0) speakerCommand = v;
         else { fprintf(stderr, "apotheca-power: unknown option %s\n", a); return 2; }
         ++i;
     }
@@ -520,7 +579,7 @@ int main(int argc, char** argv) {
 
     long nextRead = nowMs() + pollSeconds * 1000L;
     long pressedAt = 0, findAt = 0;
-    int keyDown = 0, longDone = 0;
+    int keyDown = 0, longDone = 0, noJackSaid = 0;
     while (!stopping) {
         struct pollfd fds[kMostDevices + 1];
         int n = 0;
@@ -554,6 +613,16 @@ int main(int argc, char** argv) {
                             screenWasSeen("a button was pressed");
                             break;
                         }
+                }
+                if (devices[i].jack) {
+                    for (int k = 0; k < (int)(got / (ssize_t)sizeof ev[0]); ++k) {
+                        if (ev[k].type == EV_SW && ev[k].code == SW_HEADPHONE_INSERT) {
+                            jackIn = ev[k].value != 0;
+                            setSpeaker("just now");
+                        } else if (ev[k].type == EV_SYN && ev[k].code == SYN_DROPPED) {
+                            readJack(&devices[i], "read again");
+                        }
+                    }
                 }
                 if (!devices[i].power) continue; /* a joypad's other events: read only to keep its queue empty */
                 for (int k = 0; k < (int)(got / (ssize_t)sizeof ev[0]); ++k) {
@@ -604,6 +673,16 @@ int main(int argc, char** argv) {
                 checkAt = screenCheckSeconds ? startedAt + screenCheckSeconds * 1000L : 0;
             readBattery();
             findDevices();
+            /* The socket again, in case an event was missed, and the rule,
+             * in case the config changed */
+            int jacks = 0;
+            for (int i = 0; i < deviceCount; ++i)
+                if (devices[i].jack) ++jacks, readJack(&devices[i], "read again");
+            setSpeaker("the rule changed");
+            if (!jacks && !noJackSaid) {
+                noJackSaid = 1;
+                say(0, "no headphone socket among the input devices: the speaker is left as it is");
+            }
             nextRead = now + pollSeconds * 1000L;
         }
     }

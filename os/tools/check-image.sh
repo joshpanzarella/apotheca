@@ -187,6 +187,27 @@ if shutil.which('mdir') and shutil.which('mtype'):
         d = subprocess.run(['mtype', '-i', spec, '::' + f], capture_output=True, env=env).stdout
         blink = blink and b'linux,default-trigger\0' in d and b'heartbeat\0' in d
         kept = kept and b'ramoops@4d300000\0' in d and b'apotheca-crumbs@4d200000\0' in d and b'console-size\0' in d
+    # One or the other, headphones or speaker (section 18): every tree gives
+    # the codec the socket's line and the amplifier's, and the kernel has
+    # the jack's second pin.
+    jacks = set()
+    if os.path.exists(os.path.join(sys.argv[3], 'build-image', 'output', 'host', 'bin', 'fdtget')) or shutil.which('fdtget'):
+        fg = shutil.which('fdtget') or os.path.join(sys.argv[3], 'build-image', 'output', 'host', 'bin', 'fdtget')
+        for f in ['device_trees/sun50i-h700-anbernic-rg40xx-v.dtb', 'device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb',
+                  'device_trees/sun50i-h700-anbernic-rg40xx-v-v2-stock-panel.dtb'] + \
+                 ['device_trees/try/%s/dtb.img' % t for t in ['1-pins-40ma', '2-backlight-50khz', '3-dither', '4-all-as-stock']]:
+            d = subprocess.run(['mtype', '-i', spec, '::' + f], capture_output=True, env=env).stdout
+            with tempfile.NamedTemporaryFile(suffix='.dtb') as t:
+                t.write(d); t.flush()
+                node = '/soc/codec@5096000'
+                g = lambda prop, *a: subprocess.run([fg] + list(a) + [t.name, node, prop], capture_output=True, text=True).stdout.strip()
+                # (the first number of each is the pin controller's handle; then port, pin, active level)
+                jacks.add((g('compatible'), g('status'), ' '.join(g('hp-det-gpios').split()[1:]),
+                           ' '.join(g('allwinner,pa-gpios').split()[1:]), g('allwinner,audio-routing')))
+        check(jacks == {('allwinner,sun50i-h616-codec', 'okay', '8 3 0', '8 5 0', 'Speaker LINEOUT Headphone LINEOUT')},
+              "every tree: the codec has the headphone socket's line (PI3) and the speaker amplifier's (PI5), the same in all (%s)" % sorted(jacks))
+    else:
+        print("skip  the codec's nodes in the trees: no fdtget")
     check(blink, "every device tree on p1 blinks the power light once Linux runs (heartbeat)")
     check(kept, "every device tree gives the kernel its piece of memory to keep its messages in (ramoops), and U-Boot's count its own")
     conf2 = mt('mtype', '-i', spec, '::extlinux/extlinux.conf').stdout

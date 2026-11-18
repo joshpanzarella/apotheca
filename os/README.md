@@ -145,6 +145,27 @@ is off charges it and it stays off**, as on ROCKNIX (the rule was taken out
 on 2026-11-17 while one unit would not start; it was not the cause, and it
 is back: plan, section 17).
 
+## Headphones or speaker, one or the other
+
+**Headphones in: the speaker is off. Headphones out: the speaker is on.**
+Also while sound plays, and right at the start whichever way the socket is.
+(Until 2026-11-18 both played: plan, section 18.) **Not tried on a
+handheld.**
+
+- The sound chip has one output for both. The headphone socket has a
+  contact that says "something is in" (pin PI3); the speaker's amplifier has
+  an on/off line (PI5). The kernel now turns the amplifier off while the
+  socket says "in" (patch 0172), and `apotheca-power` does the same from
+  outside the kernel, as a second belt. Only the speaker's switch is
+  touched; **no volume changes**.
+- **If the speaker is silent with NO headphones in**, the socket reads the
+  wrong way round on that handheld. Put `headphones inverted` in
+  `apotheca/power.txt` (below), start again, and tell us. `headphones
+  ignore` is the old behaviour (both play).
+- `linux-report.txt` has a "headphones and speaker" section: the socket's
+  state, the speaker's switch, the two pins. Send it once with headphones in
+  at the start and once with them out.
+
 **Settings**, if you want other numbers: a text file `apotheca/power.txt`
 on the APOTHECA drive, one setting a line (any you leave out keep their
 usual value):
@@ -153,6 +174,8 @@ usual value):
 idle-off 30         minutes before it turns itself off when left alone (0: never; usual 15)
 low-battery 8       the battery percent it turns off at (0: never; usual 5)
 power-key sleep     a tap of the power key SLEEPS instead of turning the screen off
+headphones ignore   the speaker stays on with headphones in (as it was before 2026-11-18)
+headphones inverted for a handheld whose speaker goes off when the headphones come OUT
 ```
 
 **`power-key sleep` has not been tried on any handheld.** Sleep (suspend) on

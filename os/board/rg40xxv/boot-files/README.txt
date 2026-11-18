@@ -126,6 +126,12 @@ settings can be inside it, so no new card is needed.
 Nothing else here needs changing. The songs and the boot logs are on
 the other partition, APOTHECA.
 
+HEADPHONES IN: THE SPEAKER IS OFF. Headphones out: it is on. If the
+speaker is silent with no headphones in, make a text file power.txt in
+the apotheca folder of the APOTHECA drive with the one line
+"headphones inverted" (or "headphones ignore": both play, as before),
+start again, and tell us.
+
 To turn the handheld off: SEL + START in Apotheca, or hold the power
 key for 2 seconds. Either way the song is saved first. A short press
 of the power key turns the screen off (the song plays on, the buttons

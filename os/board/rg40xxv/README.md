@@ -42,6 +42,7 @@ from ROCKNIX's files and keep their licence:
 | Here | Made from | Licence |
 | --- | --- | --- |
 | `patches/linux/0171-apotheca-misc-a-deadline-for-the-first-program.patch` | ours: a kernel that has not run its first program in time panics (plan, section 16) | GPL-2.0 |
+| `patches/linux/0172-apotheca-asoc-sun4i-codec-h616-speaker-off-with-headphones.patch` | ours (2026-11-18): on an H616 codec with `hp-det-gpios` and an amplifier GPIO the headphone jack also switches the "Speaker" pin, inverted, so the speaker is off while headphones are in (plan, section 18) | GPL-2.0, as the file it changes |
 | `early/init.c`, `early/initramfs.list` | ours: the kernel's first program, built into the kernel as its initramfs | Apotheca's own; linked with glibc (LGPL-2.1+), statically |
 | `patches/linux/0170-apotheca-panel-mipi-a-panel-file-in-the-device-tree.patch` | ours, a change to kikuchan's driver (patch 0110): a panel file may be the device tree's `apotheca,panel-firmware` | GPL-2.0, as the driver |
 | `firmware/panels/anbernic,rg40xx-v2-stock-panel.panel` | ROCKNIX's `anbernic,rg40xx-v2-panel.panel`, written by `os/tools/make-v2-stock-panel.py`: the same start-up commands, the pixel clock edge and the timings set to the values of Anbernic's own device tree for the RG40XX (`lcd0` in the boot package muOS ships, read on 2026-11-17; numbers, not code) | GPL-2.0, as ROCKNIX's file |

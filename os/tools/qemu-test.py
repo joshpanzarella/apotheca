@@ -808,6 +808,27 @@ def main():
         held, seen = grabbed()
         check(not held and seen, "another short press: the joypad let go, presses reach a reader again")
 
+        # The headphone socket (section 18): a stand-in input device with the
+        # switch SW_HEADPHONE_INSERT. apotheca-power finds it, follows it,
+        # and ASKS a real device its state when it starts with headphones
+        # in. (This machine's sound card has no "Speaker Switch", so the
+        # switching itself is said to fail here; the desk test and the
+        # handheld have that part.)
+        m.run("echo 'jack in' > /tmp/pad; sleep 2; echo 'jack out' > /tmp/pad; sleep 1; echo 'jack in' > /tmp/pad; sleep 1")
+        out, _ = m.run("grep -e 'headphone' /data/apotheca/logs/power.log")
+        check("(H616 Audio Codec Headphone Jack): the headphone socket" in out and "headphones out (just now): the speaker on" in out
+              and "headphones in (just now): the speaker off" in out,
+              "apotheca-power finds the stand-in headphone socket and follows it: out, the speaker on; in, off")
+        m.run("kill $(pidof apotheca-power); sleep 5")
+        out, _ = m.run("pidof apotheca-power > /dev/null && echo running; grep -c 'headphones in (as found): the speaker off' /data/apotheca/logs/power.log")
+        check(out.split() == ["running", "1"],
+              "started again with headphones in: it asks the socket its state (EVIOCGSW) and turns the speaker off (%s)" % out.split())
+        out, code = m.run("/usr/libexec/apotheca/speaker loud; echo $?; grep -c 'Speaker Switch' /etc/init.d/S20sound; "
+                          "grep -c 'set_control \"Speaker Switch\"' /etc/init.d/S20sound")
+        check(out.split()[-3:] == ["2", "1", "0"] or out.split()[-3] == "2" and out.split()[-1] == "0",
+              "the speaker's switch takes on or off only, and the sound set-up at boot no longer turns the speaker on (%s)" % out.split()[-3:])
+        m.run("echo 'jack out' > /tmp/pad; sleep 1")
+
         # Quit is off: Apotheca, started again with the stand-in joypad there,
         # quit with SEL + START: it saves, leaves the mark, and the machine goes down.
         m.run("echo kept > /data/kept.txt")  # something to find again after the power cycle

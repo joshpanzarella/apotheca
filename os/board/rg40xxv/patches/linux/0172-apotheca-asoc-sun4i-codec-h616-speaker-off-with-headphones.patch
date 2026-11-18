@@ -1,0 +1,58 @@
+From: Apotheca <noreply@apotheca.invalid>
+Subject: [PATCH] ASoC: sun4i-codec: h616: the speaker off while headphones are in
+
+The H616 codec has one analog output, LINEOUT. On Anbernic's H700
+handhelds it feeds the speaker's amplifier and the headphone socket both.
+The jack made for hp-det-gpios switches the "Headphone" pin only, so the
+amplifier stays on with headphones in and both play, unless userland turns
+"Speaker Switch" off (alsa-ucm-conf's sun4i-h616 profile does, for a sound
+server; a system with none never does).
+
+Give the jack a second pin on such a card (hp-det-gpios and an amplifier
+GPIO): "Speaker", inverted. Plugged in, DAPM powers the Speaker widget
+down, which takes the amplifier's GPIO low; pulled out, it comes back.
+The jack's first reading, as the card is made, sets it for the start.
+"Speaker Switch" still reads and sets the same pin.
+---
+--- a/sound/soc/sunxi/sun4i-codec.c
++++ b/sound/soc/sunxi/sun4i-codec.c
+@@ -1623,6 +1623,16 @@
+ 	{ .pin = "Headphone", .mask = SND_JACK_HEADPHONE },
+ };
+ 
++/*
++ * The H616's boards have one output (LINEOUT) for the speaker's amplifier
++ * and the headphone socket both: with headphones in, the speaker goes off,
++ * and comes on again when they are out.
++ */
++static struct snd_soc_jack_pin sun50i_h616_headphone_jack_pins[] = {
++	{ .pin = "Headphone", .mask = SND_JACK_HEADPHONE },
++	{ .pin = "Speaker", .mask = SND_JACK_HEADPHONE, .invert = 1 },
++};
++
+ static struct snd_soc_jack_gpio sun4i_headphone_jack_gpio = {
+ 	.name = "hp-det",
+ 	.report = SND_JACK_HEADPHONE,
+@@ -1636,11 +1646,20 @@
+ 	int ret;
+ 
+ 	if (scodec->gpio_hp) {
++		struct snd_soc_jack_pin *pins = sun4i_headphone_jack_pins;
++		unsigned int num_pins = ARRAY_SIZE(sun4i_headphone_jack_pins);
++
++		if (scodec->gpio_pa &&
++		    of_device_is_compatible(card->dev->of_node,
++					    "allwinner,sun50i-h616-codec")) {
++			pins = sun50i_h616_headphone_jack_pins;
++			num_pins = ARRAY_SIZE(sun50i_h616_headphone_jack_pins);
++		}
++
+ 		ret = snd_soc_card_jack_new_pins(card, "Headphone Jack",
+ 						 SND_JACK_HEADPHONE,
+ 						 &sun4i_headphone_jack,
+-						 sun4i_headphone_jack_pins,
+-						 ARRAY_SIZE(sun4i_headphone_jack_pins));
++						 pins, num_pins);
+ 		if (ret) {
+ 			dev_err(rtd->dev,
+ 				"Headphone jack creation failed: %d\n", ret);

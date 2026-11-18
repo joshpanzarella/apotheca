@@ -74,6 +74,22 @@ report() {
     for c in /proc/asound/card[0-9]*; do
         [ -d "$c" ] && { echo "--- ${c#/proc/asound/} controls"; amixer -c "${c#/proc/asound/card}" contents 2>&1; }
     done
+    section "headphones and speaker (one or the other: the socket's state, the speaker's switch, the device that carries the socket)"
+    for c in /proc/asound/card[0-9]*; do
+        [ -d "$c" ] || continue
+        n=${c#/proc/asound/card}
+        echo "card $n ($(cat "$c/id" 2>/dev/null)): Headphone Jack $(amixer -c "$n" cget "iface=CARD,name=Headphone Jack" 2>/dev/null | sed -n 's/.*: values=//p' | head -n 1), Speaker Switch $(amixer -c "$n" cget "name=Speaker Switch" 2>/dev/null | sed -n 's/.*: values=//p' | head -n 1)"
+    done
+    for e in /sys/class/input/event*; do
+        sw=$(cat "$e/device/capabilities/sw" 2>/dev/null)
+        case "$sw" in ''|0) ;; *) echo "${e##*/} ($(cat "$e/device/name" 2>/dev/null)): switches $sw (4: headphones)" ;; esac
+    done
+    # The two pins themselves: PI3 the socket's line, PI5 the amplifier's (port I's data register)
+    if grep -q allwinner /proc/device-tree/compatible 2>/dev/null; then
+        pi=$(devmem 0x0300B130 32 2>/dev/null)
+        [ -n "$pi" ] && echo "pins: PI3 (the socket) reads $(( (pi >> 3) & 1 )), PI5 (the amplifier) is $(( (pi >> 5) & 1 )) (port I data $pi)"
+    fi
+    grep -i -e headphone -e speaker /data/apotheca/logs/power.log 2>/dev/null | tail -n 12
     section "joysticks as SDL sees them"; /usr/libexec/apotheca/padprobe -l 2>&1
     section "apotheca"
     cat /data/apotheca/logs/apotheca-start.log 2>/dev/null | tail -n 20

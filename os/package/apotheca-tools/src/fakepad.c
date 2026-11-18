@@ -19,6 +19,9 @@
  *   down NAME / up NAME   a key down or up (NAME as above, or POWER)
  *   tap NAME              down, 150 ms, up
  *   wait MS
+ *   jack in / jack out    a stand-in for the headphone socket ("H616 Audio
+ *                         Codec Headphone Jack", the switch
+ *                         SW_HEADPHONE_INSERT), made at its first use
  * printing "did LINE" after each. */
 #include <fcntl.h>
 #include <linux/uinput.h>
@@ -85,9 +88,26 @@ static int makePowerKey(void) {
     return fd;
 }
 
+static int makeJack(void) {
+    int fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
+    if (fd < 0) { perror("fakepad: /dev/uinput"); return -1; }
+    ioctl(fd, UI_SET_EVBIT, EV_SW);
+    ioctl(fd, UI_SET_SWBIT, SW_HEADPHONE_INSERT);
+    struct uinput_setup setup;
+    memset(&setup, 0, sizeof setup);
+    setup.id.bustype = BUS_HOST;
+    strcpy(setup.name, "H616 Audio Codec Headphone Jack");
+    if (ioctl(fd, UI_DEV_SETUP, &setup) < 0 || ioctl(fd, UI_DEV_CREATE) < 0) {
+        perror("fakepad: create the jack");
+        return -1;
+    }
+    return fd;
+}
+
 /* --serve: do what the FIFO says, on the joypad (pad) and the power key (power). */
 static int serve(int pad, const char* fifo) {
     const int power = makePowerKey();
+    int jack = -1;
     if (power < 0) return 1;
     printf("made axp20x-pek\nready\n");
     fflush(stdout);
@@ -106,6 +126,14 @@ static int serve(int pad, const char* fifo) {
             }
             if (n == 2 && strcmp(verb, "wait") == 0) {
                 usleep((useconds_t)atoi(name) * 1000);
+            } else if (n == 2 && strcmp(verb, "jack") == 0) {
+                if (jack < 0) {
+                    jack = makeJack();
+                    usleep(300000); /* its node, before its first event */
+                }
+                if (jack < 0) continue;
+                emit(jack, EV_SW, SW_HEADPHONE_INSERT, strcmp(name, "in") == 0);
+                emit(jack, EV_SYN, SYN_REPORT, 0);
             } else if (n == 2) {
                 const int code = codeOf(name);
                 const int fd = code == KEY_POWER ? power : pad;
