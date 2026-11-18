@@ -122,7 +122,7 @@ check('test -e mmc 0:1 screen-first.txt' in pre and 'test -e mmc 0:1 screen-v2.t
       and 0 < pre.find('if test ${apotheca_why} = PE6; then') < pre.find('screen-first.txt'),
       "screen-first.txt or screen-v2.txt on the boot partition overrides the pin (dtb.img overrides both)")
 check('fatwrite mmc 0:1 ${scriptaddr} uboot-report.txt ${filesize};' in pre
-      and pre.find('setenv fdtfile device_trees') < pre.find('env export -t'),
+      and pre.find('setenv fdtfile device_trees') < pre.rfind('env export -t'),
       "it writes uboot-report.txt to the boot partition, after the tree is chosen")
 check('if itest.l *0x4d380000 == 0x43474244; then' in pre and 'mmc write 0x4d380000 0x1000 0x400;' in pre
       and 'fatwrite mmc 0:1 0x4d380000 kernel-from-memory.txt 0x80000;' in pre,

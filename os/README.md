@@ -49,6 +49,21 @@ handheld as before.** Keep the stock card in a drawer and use a spare one.
    **APOTHECA** drive appears only after the handheld's first start.
 4. Eject the card.
 
+## Two images, one for each kind of memory
+
+RG40XXVs have been made with two kinds of memory, and a card starts only
+the kind it was built for (plan, section 16: one of the owner's two units
+blinked green for ever with the first image).
+
+| Image | For | Built with |
+| --- | --- | --- |
+| `apotheca-rg40xxv.img.gz` | LPDDR4 (the owner's unit with the newer screen) | `scripts/build-image.sh` |
+| `apotheca-rg40xxv-lpddr3.img.gz` | LPDDR3 (**a guess** for the owner's other unit: not tried) | `scripts/build-image.sh --dram lpddr3`, after `scripts/build-image.sh -- uboot-dirclean` (U-Boot is not built again by itself when only the kind changes) |
+
+The wrong card does no harm: the green light blinks evenly, alone, about
+once a second, and nothing else happens. `memory-kind.txt` on APOTHBOOT
+says which card it is.
+
 ## Starting it
 
 1. Handheld off. Stock card out (into the drawer), our card into the
@@ -59,8 +74,8 @@ handheld as before.** Keep the stock card in a drawer and use a spare one.
 
    | Step | You see | It means |
    | --- | --- | --- |
-   | 1 | **the power light, green**, within a second of the power key | the card's first small program (the SPL) ran |
-   | 2 | **a second light or colour** (red; with the green it may look orange), and **the screen lit but empty** | the boot loader (U-Boot) ran: the memory works |
+   | 1 | **green and red together** within a second of the power key (it may look like one orange light) | the card's first small program (the SPL) ran and set the memory up |
+   | 2 | **red alone**, and **the screen lit but empty** | the boot loader (U-Boot) is running |
    | 3 | the red goes out, **the green blinks in pairs** (blink-blink, pause) | Linux has started |
    | 4 | the red on again for a moment (often too short to see) | Linux's first program is looking for the card |
    | 5 | the red out, **the green blinks evenly**, about once a second; the screen dark a moment, then **text** (a lot of it on this card), then **Apotheca** | the system is starting |
@@ -68,11 +83,14 @@ handheld as before.** Keep the stock card in a drawer and use a spare one.
 
    **If it stops on the way:**
 
-   | You see | It means | What it does by itself |
+   | You see | It means | What to do, or what it does by itself |
    | --- | --- | --- |
-   | green in pairs, no red, for a minute | Linux started and stopped before its first program (a part of the handheld it could not start) | resets after 60 s, so U-Boot can save what Linux said (`kernel-from-memory.txt`); after three resets it stops: off, or the red light blinking evenly until the power key is held |
+   | **green alone, blinking evenly about once a second, from the start, never red** | the first program cannot set this handheld's memory up and tries again for ever | **the card is for the other kind of memory**: use the other image (`memory-kind.txt` on APOTHBOOT says which this card is). Hold the power key to turn it off |
+   | green and red blinking together | the memory is set up, the boot loader does not start | tell us |
+   | red alone, staying | the boot loader runs, Linux does not start | send `uboot-started.txt` and `uboot-report.txt` |
+   | green in pairs, no red, for a minute | Linux started and stopped before its first program | resets after 60 s, so U-Boot can save what Linux said (`kernel-from-memory.txt`); after three resets it stops: off, or the red light blinking evenly until the power key is held |
    | green flickering fast, red on | Linux sees no card | resets after about a minute |
-   | green blinking evenly, the screen dark or garbage | the system runs, the screen's kind is wrong | off after 5 minutes with no button. Make `screen-first.txt` or `screen-v2.txt` (below) |
+   | green blinking evenly after the steps above, the screen dark or garbage | the system runs, the screen's kind is wrong | off after 5 minutes with no button. Make `screen-first.txt` or `screen-v2.txt` (below) |
 
    - **Wait 30 seconds** on the first start: it makes the APOTHECA part of
      the card then, once. Do not switch off in this time.
@@ -81,8 +99,10 @@ handheld as before.** Keep the stock card in a drawer and use a spare one.
    - **The buttons are set up already** (no "press A" setup). If they do
      the wrong things, delete `apotheca/controls.txt` on the APOTHECA drive:
      the next start asks for each button, as on the stock card.
-   - **Seen on a handheld so far** (2026-11-18): on both units the green
-     light comes on and blinks; nothing else of these tables.
+   - **Seen on a handheld so far** (2026-11-18, with the card before this
+     one): the unit with the newer screen shows red, then green blinking,
+     then green steady, and works; the other blinks green alone, evenly,
+     for ever (plan, section 16). Nothing of this card's own lights yet.
 4. To turn it off: see the next section.
 
 ## Turning it off, the power key, the battery
@@ -143,7 +163,8 @@ Whatever you see is useful. Send:
 
    | File | Written by | Holds |
    | --- | --- | --- |
-   | `uboot-report.txt` | U-Boot, at every start | the pin it read, the tree it chose and why, counts of starts and of resets in a row (hexadecimal) |
+   | `uboot-started.txt` | U-Boot, its first act at every start | nothing much: that it is there says U-Boot ran and can write the card |
+| `uboot-report.txt` | U-Boot, at every start | the pin it read, the tree it chose and why, counts of starts and of resets in a row (hexadecimal) |
    | `kernel-from-memory.txt` | U-Boot, after a reset | what Linux said in the start **before**, found still in memory (512 KiB, the text goes round) |
    | `kernel-log.txt` | Linux's first program, every 2 s until the system takes over | how far it got, the cards Linux sees, what Linux said |
    | `linux-early.txt` | the system's first script, every 5 s until the boot log is written | the start-up step by step and what is running |

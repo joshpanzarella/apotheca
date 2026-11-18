@@ -838,6 +838,134 @@ FAT needing a check. Take them out, or write only on a start that failed,
 once BLACK starts. Whether a charger should start the handheld is the
 owner's call once cause 1 is proved or cleared.
 
+## 16. BLACK, the second card: the first program goes round (2026-11-18)
+
+**BLACK's fault is found, as far as lights can find one: the card's first
+program (the SPL) cannot set BLACK's memory up, and tries again for ever.
+The likeliest reason is that BLACK has the other kind of memory (LPDDR3).
+A second card image for that kind is built. Nothing of it has run on a
+handheld.**
+
+### What the owner saw with the card of section 15 (image `ee7c3bdf`)
+
+| Unit | Seen |
+| --- | --- |
+| WHITE | red at the start, then the green light blinking as Linux's text comes up, then green steady once Apotheca has loaded. Works. Its start wrote `uboot-report.txt` (`apotheca_starts=1`, PE6 low, the v2 tree) and `linux-report.txt` |
+| BLACK | **the green light blinks about once a second, evenly, from the start. Never any red.** The same with the charger out. The screen fully dark. It never turns itself off. No APOTHECA drive. **No `uboot-report.txt`**: WHITE's `apotheca_starts=1` came after several starts in BLACK with the same card, so U-Boot never wrote on BLACK. `screen-first.txt` / `screen-v2.txt` change nothing |
+
+### What that says
+
+| Fact | So |
+| --- | --- |
+| On that card three things light the green light: the SPL (as its first act), U-Boot's PREBOOT, Linux. Only U-Boot itself lights the red one, before its PREBOOT | **No red, ever: U-Boot never ran on BLACK.** The green light is the SPL's |
+| Linux's blink on that card is the heartbeat: two quick blinks and a pause. BLACK's is even | It is not Linux |
+| The SPL lights the light once. For it to blink, the SPL must start again and again | **The board resets about once a second, in the SPL** |
+| The H616 memory code in mainline U-Boot calls `panic()` when it cannot train the memory ("This DRAM setup is currently not supported", eight places in `dram_sun50i_h616.c`), and a panic in the SPL resets the board through the watchdog. A plain failure to find the size would `hang()`: a steady light | **The reset is most likely the memory set-up giving up** |
+| Mainline's SPL has the memory's kind and timings fixed at build time (`CONFIG_SUNXI_DRAM_H616_LPDDR4`, `CONFIG_DRAM_CLK=672`, the ODT and TPR values); ours are mainline's `anbernic_rg35xx_h700_defconfig`, which is also ROCKNIX's LPDDR4 build. ROCKNIX builds a second U-Boot for H700 handhelds with LPDDR3 | **BLACK most likely has LPDDR3**, or an LPDDR4 part these timings do not suit. Nothing found names an RG40XX V with LPDDR3: this is from the lights, not from a report |
+| The stock boot loader starts BLACK | Anbernic's own first stage carries settings for both, or finds the kind itself |
+
+**Section 15 was wrong about its cause 1** (the charger rule). With the
+earlier cards the SPL had no light, so the same going round showed as
+"nothing at all". Section 15's cause 4 (the memory) was ranked low because a
+hang leaves the backlight lit; this is not a hang but a reset every second,
+and BLACK's screen stays dark through that (seen; why is not known). The charger rule stays out
+(it is not the cause, and not needed to find it).
+
+**What is not shown**: that it is the memory and not the power chip's
+set-up just before it (`axp_init`, the three rails), which the same light
+covers. A wrong reading there does not panic in the code, so the memory is
+the better guess.
+
+### The two cards
+
+| Image | For | What differs |
+| --- | --- | --- |
+| `apotheca-rg40xxv.img.gz` | LPDDR4 (WHITE) | as before |
+| **`apotheca-rg40xxv-lpddr3.img.gz`** (`scripts/build-image.sh --dram lpddr3`) | LPDDR3 (BLACK, if the guess is right) | U-Boot built with `uboot-lpddr3.fragment` (ROCKNIX's LPDDR3 settings for the H700 handhelds, and its one-line fix to the memory code, patch 0001, which only LPDDR3 uses); the memory's rail (`dcdc3`) set to 1.2 V by the SPL and **in every device tree** (they say 1.1 V, which Linux would set as it starts); `memory-kind.txt` on the boot partition says which card it is |
+
+Each card goes round on the other kind of handheld (green alone, blinking):
+no harm, it is what BLACK has done all along. **One card for both** needs
+the SPL to try one kind and then the other; not built: it is a change to the
+memory code that only the two handhelds can test, and comes after BLACK has
+started once.
+
+### The lights, from this card on
+
+| Seen | Reached |
+| --- | --- |
+| **green alone, blinking evenly about once a second** | the SPL starts, cannot set the memory (or the power chip) up, resets: **the wrong card for this handheld's memory** |
+| green and red blinking together | the memory is set up (the SPL lights the red one then: patch 0003, `CONFIG_SPL_DRAM_OK_LED_GPIO`); it resets after that, before U-Boot's own commands |
+| **red alone** | U-Boot runs (its PREBOOT puts the green one out, then writes `uboot-started.txt` before anything else) |
+| red out, **green in pairs** | Linux has started |
+| red on again for a moment | Linux's first program looks for the card |
+| red out, **green even, once a second**, then text and Apotheca | the system starts. (The same blink as the first row, but it comes after red, and the screen is lit) |
+| green steady | a button was pressed with this screen |
+
+### What else the new cards do (for a start that stops later)
+
+| Part | What |
+| --- | --- |
+| **Linux's first program** (`os/board/rg40xxv/early/init.c`) | A 600 KB static program, the only thing in an initramfs built into the kernel (`CONFIG_INITRAMFS_SOURCE`; `external.mk` builds it into the kernel's tree before each kernel build). It runs before the root is there: red light on; looks four times a second for the root (`root=PARTUUID=41504f54-02`: partition 2 of the disk whose MBR signature that is) and for the boot partition (partition 1 of that disk, else any partition that mounts as FAT and holds `extlinux/extlinux.conf`); writes **`kernel-log.txt`** there at most every 2 s (its own notes, the disks Linux sees, the kernel's messages; written to a `.part` file and renamed, so it is whole or the last one). Then it mounts the root, puts the red light out, sets the green one to an even blink, and runs the root's `/sbin/init`. **The kernel no longer mounts the root itself** |
+| When it cannot go on | No root after 40 s, a root that will not mount, or no `/sbin/init`: said in `kernel-log.txt` (when the card can be written), the green light flickers fast for 20 s, then **a reset**. With no disk at all the flicker starts 10 s in |
+| **The kernel's deadline** (kernel patch `0171`, `drivers/misc/apotheca_deadline.c`) | A timer armed as the kernel starts (60 s; `apotheca_deadline.seconds=N`). If nobody has put it off it **panics**, and `panic=5` on the command line makes that a reset. The first program moves it to 150 s; `S00early` turns it off. This is what gets a kernel that waits for good in a driver to give up: without it BLACK would blink for ever again |
+| **What the kernel said, kept in memory** | `CONFIG_PSTORE_RAM` and `CONFIG_PSTORE_CONSOLE`; every device tree names 1 MiB at `0x4d300000` for it (`post-image.sh`), the console's text in the last 512 KiB. A reset does not clear memory (a power cut does, within seconds) |
+| **U-Boot saves it** (PREBOOT) | With the mark `DBGC` at `0x4d380000`: those 512 KiB written twice. **Straight onto the card** at sector 4096 (2 MiB in, the unused room before the boot partition: `mmc write`, no file system code in the way), and as **`kernel-from-memory.txt`** on the boot partition. `S90bootlog` of a start that works turns the bare copy into **`kernel-from-card.txt`** and clears it: so a card from BLACK, put in WHITE and started once, gives up BLACK's kernel log even if U-Boot's file write fails there again |
+| **Three resets, then no more** | U-Boot counts resets with no start of the system between (a mark and a count in memory at `0x4d200000`, kept out of Linux's hands by the device tree; `S00early` clears it). At three it does not start a fourth time: it tells the power chip to turn off (register 0x27 over I2C, on either bus: **a guess at the bus, not tried**), and if still on blinks the red light evenly until the power key is held. So a handheld that cannot start goes round three times (about four minutes), not for good |
+| **The system's first script** (`S00early`) | Turns the deadline off, clears U-Boot's count, mounts pstore, and writes **`linux-early.txt`** to the boot partition at once and every 5 s for 90 s or until the boot log is written: the scripts' own lines, what is running (a script that hangs is in that list), the kernel's messages |
+| **Every driver named** | `initcall_debug loglevel=8 log_buf_len=1M` on the command line: the kernel says each driver it starts and when it is done, so a stop inside one names it last. **For this hunt only**: the start is a few seconds longer and the screen fills with text |
+| U-Boot | `mmc dev 0; mmc rescan` before the first look at the card (a guess at why the report was missing; harmless) |
+| `S90bootlog` | every mount of the boot partition with the same options (a second mount with other options is refused while `S00early` has it); the kernel's messages of the start before (pstore) in the boot log |
+
+These were built while the blink was still taken for Linux's. They cost
+nothing on a start that works and are kept: BLACK's first start with the
+right memory may stop somewhere new.
+
+### Tested on the desk
+
+| Test | Result |
+| --- | --- |
+| `uboot-pick-test.py`, part one (qemu "virt", the card commands echoed) | RESULT_PICK1 |
+| `uboot-pick-test.py`, part two: **the card commands for real** on qemu's Orange Pi PC (Allwinner H3: mainline U-Boot v2026.01 built for it with the card's PREBOOT, the same sunxi card driver and FAT code as the handheld's U-Boot; needs `arm-linux-gnueabihf-gcc`) | RESULT_PICK2 |
+| `qemu-test.py` | RESULT_QEMU |
+| `check-image.sh` | RESULT_CHECK |
+| The SPL | read in the built SPL's code: the green light's pin (268) driven high after `gpio_init()`, the red one's (267) after `sunxi_board_init()` returns. The LPDDR3 SPL: RESULT_SPL3. **Neither run**: qemu has no H700 |
+| Reproducible | RESULT_REPRO |
+
+**The images**: RESULT_IMAGE
+
+### Only the handheld can tell
+
+- **Whether the LPDDR3 card starts BLACK at all**, and if it does, whether
+  Linux is steady with the memory's rail at 1.2 V and ROCKNIX's timings.
+- **Whether memory keeps the kernel's text through a reset on the H700**:
+  the reset is the SoC's watchdog; the memory chips stay powered but are not
+  refreshed until the SPL sets them up again, and the SPL's set-up writes
+  test words into memory (at its start and at round offsets, not at
+  `0x4d300000`: read from the code, not seen). Bits may flip; the text
+  should still read.
+- Whether U-Boot's `mmc write` and `fatwrite` work on the H700's card
+  reader with a real card (the emulated board is another Allwinner chip).
+- Whether `panic` really resets the H700 under mainline (through Trusted
+  Firmware), and how long BLACK's kernel takes to reach the deadline.
+- The I2C power-off after three resets.
+- Everything about the lights' colours, as in section 15.
+- **The cause.**
+
+### If the card says nothing again
+
+Left, in order of cost: the same card started once in WHITE
+(`kernel-from-card.txt`); `stock-probe.sh` on the stock card in both units
+(section 15); a serial console over the USB-C port from the kernel itself
+(`CONFIG_USB_G_SERIAL` built in, `console=ttyGS0`: the owner's computer
+would need a terminal program); the UART pads inside the case.
+
+### To undo when BLACK starts
+
+`initcall_debug loglevel=8 log_buf_len=1M` (back to `loglevel=7`); the
+writes to the boot partition at every start (section 15's, `kernel-log.txt`,
+`linux-early.txt`); perhaps the deadline's 60 s, once real start times are
+known.
+
 ## Sources
 
 - Anbernic, RG 40XXV product page (SoC, RAM, screen, battery, WiFi, BT): https://anbernic.com/products/rg-40xxv
