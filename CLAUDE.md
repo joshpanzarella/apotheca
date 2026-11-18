@@ -1522,14 +1522,14 @@ effect in those two groups and fails one that does not.
   "enough rows now"; `SettingsScreen::Row`, `groupOf`, `groupName`): SONG (TEMPO, CHORD PACK, KEY,
   SCALE, TRACK NAME, BOUNCE), PLAYING (CLICK, COUNT IN, MUTES, USB KEYBOARD), LOOK (TEXT SIZE, THEME, PIANO
   ROLL), HANDHELD (VOLUME, BRIGHTNESS, STICK LIGHT, LIGHT COLOUR, STICK SPEED), SETUP (WIFI PAGE,
-  BUTTONS, CONTROLS). The heading of the first row in view stands above the rows (`kHeadingY`); every
+  NETWORK, BUTTONS, CONTROLS). The heading of the first row in view stands above the rows (`kHeadingY`); every
   other heading in view takes `kHeadingGap` before its group's first row. So **twelve rows are in
   view with one heading among them, eleven with two, ten with three** (`placeY`, `fits`, `kPageFoot`;
   `kRowsShown` 12 is the most). It moves one row at a time, by as little as shows the cursor, and
   leaves no room empty under the last row. **The page counts PLACES, not rows** (`here`, `placeOf`,
   `rowAt`; `firstShown` is a place): a row that is not on this handheld is passed by. **A group's
-  first row must always be here** (a heading stands on it): only BRIGHTNESS, STICK LIGHT and LIGHT
-  COLOUR can be missing. A new row costs its place in `Row` (the numbers are kept nowhere: a setting
+  first row must always be here** (a heading stands on it): only BRIGHTNESS, STICK LIGHT, LIGHT
+  COLOUR and NETWORK can be missing. A new row costs its place in `Row` (the numbers are kept nowhere: a setting
   is kept by its word in settings.txt) and its group in `groupOf`. An UP arrow after the top heading
   and a DOWN arrow after the last heading in view say rows are out of sight.
 - **The METRONOME is added after Catch and before the volume, and never reaches a bounce**
@@ -1559,6 +1559,23 @@ effect in those two groups and fails one that does not.
   **THEME's colour is picked for the ring, theme by theme** (`ringThemeColour`: BROWN's is BRASS, the
   owner's word; the other five are unseen picks; a new theme must be given one, a `static_assert`
   counts). A bar's first step is brass, or white where the ring is too near brass (`ringFirstFor`).
+- **NETWORK: our firmware's WiFi is joined on the SET page** (2026-11-18, `docs/plans/firmware-plan.md`
+  section 14 on branch `firmware`; `app/wifi.hpp`, `tests/wifi_test.cpp`). The row is under WIFI PAGE,
+  **only where `APOTHECA_WIFI` names the system's `apotheca-wifi`** (`Session::wifiHere`; the port: no row,
+  nothing runs). **Every call is on the `Wifi`'s own thread, one at a time in the order asked** (no frame
+  waits; a status or a scan already waiting is not asked twice); it touches only its own answers, under
+  its lock, and the app thread reads a copy (`now()`). `Session::update` asks the status every second
+  while the page is on, on every screen, and a scan at once and every 10 s while the row is up
+  (`wifiLooking`). **The password goes on the program's stdin, never its words, never a log**, and is
+  written over after. Hold A + UP / DOWN picks from the list as it was when A went down (a scan landing
+  meanwhile moves nothing), let go joins: saved or open at once, else the keys in their PASSWORD mode
+  (`passwordButton`: three sets of forty, X the next set, 8 to 63; the track name's keys are as they
+  were). Hold B a second forgets (`kForgettingWords`). **`status`'s `joined NAME ADDRESS [HOSTNAME]` is
+  read from the right** (a name may hold spaces); the hostname (`apotheca.local`, `apotheca-2.local`)
+  is said beside the address, never instead (`Session::transferName`: the WIFI PAGE row in the medium or
+  small of LARGE, the list of songs on a line of its own with one row fewer). A still pretends it all
+  (`Session::pretendWifi`): `setup-network`, `-held`, `-keys`, `-forgetting`, `-long`, `-songs`. **Not
+  run on a handheld: the system side is not built yet.**
 - **The one colour on the screen that is not the theme's: a track's ring colour on its SONG head**
   (owner, 2026-11-17: "a little color identifier to the tracks"; a deliberate exception to "a colour
   goes through the ten names"). Only while LIGHT COLOUR is TRACK on a ring that is here and lit

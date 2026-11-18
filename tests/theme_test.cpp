@@ -331,7 +331,7 @@ void testTheRow() {
     session.view = View::Settings;
     S& setup = rig.app.settings();
     // After TEXT SIZE, under LOOK. (Twenty rows; BRIGHTNESS, STICK LIGHT and LIGHT COLOUR show only on our own firmware: seventeen here.)
-    CHECK(S::kRows == 21 && setup.places() == 18 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kRowsShown == 12 && S::groupOf(S::kTheme) == S::kLook);
+    CHECK(S::kRows == 22 && setup.places() == 18 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kRowsShown == 12 && S::groupOf(S::kTheme) == S::kLook);
     setup.goTo(S::kTextSize);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kTheme && session.theme() == kThemeBrown);

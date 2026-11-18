@@ -17,6 +17,7 @@
 #include "song_file.hpp"
 #include "synth_spec.hpp"
 #include "transfer.hpp"
+#include "wifi.hpp"
 #include "midi.hpp"
 #include "designer.hpp"
 #include "lights.hpp"
@@ -340,8 +341,21 @@ public:
     // A web page in a browser on the same network: recordings, chord packs
     // and songs go on and come off (transfer.hpp). Off until turned on.
     bool toggleTransfer(unsigned seed);  // true if it is now on
-    bool transferOn() const { return transfer_.running(); }
-    std::string transferAddress() const { return transfer_.address(); } // what to type into the browser
+    bool transferOn() const { return transfer_.running() || !pretendAddress_.empty(); }
+    // WiFi on our own firmware (wifi.hpp): joining a network. Here only where the system gives the
+    // program its `apotheca-wifi` (APOTHECA_WIFI); elsewhere nothing of it shows or runs.
+    Wifi& wifi() { return wifi_; }
+    const Wifi& wifi() const { return wifi_; }
+    bool wifiHere() const { return wifi_.here(); }
+    // The NETWORK row is up on the SET page (set by it each frame): `update` then asks for a scan
+    // every 10 s as well as the status every second (wifi.hpp), which it asks for on every screen.
+    bool wifiLooking = false;
+    std::string transferAddress() const { return pretendAddress_.empty() ? transfer_.address() : pretendAddress_; } // what to type into the browser
+    // The page's address by NAME ("apotheca.local:8080/4821": the name our firmware says, with the
+    // address's port and number), or "" where no name is said (the port; not joined; an older system).
+    std::string transferName() const;
+    // For a still: the WIFI PAGE as if on at this address, and our firmware's WiFi saying this.
+    void pretendWifi(const Wifi::Now& now, const std::string& address) { wifi_.pretend(now), pretendAddress_ = address; }
     std::mutex& songFiles() { return transfer_.songFiles(); } // held while a song file is written (saveNow) or sent
 
     // ---- updating Apotheca over WiFi ----------------------------------------------------
@@ -876,6 +890,8 @@ private:
     char muteMark_[kNumTracks] = {};  // ...the mark that waits on each track
     bool heardBefore_[kNumTracks] = {}; // ...and what each sounded as before it
     void pressedMute(int track, bool solo, bool on);
+    Wifi wifi_;
+    std::string pretendAddress_;
     int click_ = kClickOff;
     bool countIn_ = false;
     int sentClick_ = -1; // what the engine was last told (SetClick); -1: nothing yet
