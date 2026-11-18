@@ -402,7 +402,7 @@ help card, the WiFi page, and the first line of `apotheca.log`): `0.104`
 and the day it was built. The number goes up by one with every build.
 
 The rows stand under five headings: **SONG** (TEMPO, CHORD PACK, KEY, SCALE,
-TRACK NAME, BOUNCE), **PLAYING** (CLICK, COUNT IN, USB KEYBOARD), **LOOK** (TEXT
+TRACK NAME, BOUNCE), **PLAYING** (CLICK, COUNT IN, MUTES, USB KEYBOARD), **LOOK** (TEXT
 SIZE, THEME, PIANO ROLL), **HANDHELD** (VOLUME, BRIGHTNESS, STICK LIGHT, LIGHT
 COLOUR, STICK SPEED) and **SETUP** (WIFI PAGE, BUTTONS, CONTROLS). The page moves
 a row at a time; a small arrow after a heading says there are rows out of sight
@@ -426,6 +426,7 @@ that way.
 | USB KEYBOARD | PLAY ONLY, or PLAY + RECORD | |
 | CLICK | The metronome: OFF, ON (a click on every beat while the song plays, higher on a bar's first), RECORDING (only while it plays with PLAY + RECORD). It is never in a bounce, and CATCH never takes it | |
 | COUNT IN | OFF, or ONE BAR: with PLAY + RECORD, START clicks a bar first (the box above the bar counts 4, 3, 2, 1) and the song starts after it. START again calls it off | |
+| MUTES | AT ONCE, or NEXT BAR: a mute or a solo pressed while the song plays lands on the next bar line. Until then its M or S is drawn hollow on the track's head and the track sounds as it did. Stop lands it at once; pressing it back before the line calls it off | |
 | WIFI PAGE | | On / off |
 | BUTTONS | | The button test |
 | CONTROLS | | Hold a second: set the controls up again |

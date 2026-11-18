@@ -135,6 +135,7 @@ void SettingsScreen::change(int by) {
     case kMidi: session_.setMidiRecording(by > 0); break;
     case kClick: session_.setClick(session_.click() + by); break; // (a choice with ends)
     case kCountIn: session_.setCountIn(by > 0); break;
+    case kMutes: session_.setMutes(session_.mutes() + by); break;
     default: break;
     }
 }
@@ -334,7 +335,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         return;
     }
 
-    const char* names[kRows] = {"TEMPO", "CHORD PACK", "KEY", "SCALE", "TRACK NAME", "BOUNCE", "CLICK", "COUNT IN", "USB KEYBOARD", "TEXT SIZE", "THEME", "PIANO ROLL",
+    const char* names[kRows] = {"TEMPO", "CHORD PACK", "KEY", "SCALE", "TRACK NAME", "BOUNCE", "CLICK", "COUNT IN", "MUTES", "USB KEYBOARD", "TEXT SIZE", "THEME", "PIANO ROLL",
                                 "VOLUME", "BRIGHTNESS", "STICK LIGHT", "LIGHT COLOUR", "STICK SPEED", "WIFI PAGE", "BUTTONS", "CONTROLS"};
     const int rowH = kRowH, w = kRowW; // (twelve rows shown: 34 a row, as it was with eleven, would run into the hints bar)
     // The heading of the first row in view, above the rows.
@@ -455,6 +456,10 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         case kCountIn:
             std::snprintf(text, sizeof text, "%s", session_.countIn() ? "ONE BAR" : "OFF");
             note = "clicks before PLAY + RECORD";
+            break;
+        case kMutes:
+            std::snprintf(text, sizeof text, "%s", session_.mutes() == Session::kMutesNextBar ? "NEXT BAR" : "AT ONCE");
+            note = "mute and solo while playing";
             break;
         case kWifi:
             if (session_.transferOn()) std::snprintf(text, sizeof text, "ON   %s", session_.transferAddress().c_str());

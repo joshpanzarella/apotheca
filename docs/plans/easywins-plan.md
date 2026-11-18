@@ -430,3 +430,34 @@ FIT and a recording on a lane are carried by the same calls but no test puts a k
 **Tests**: `easy_test looks` (the volume's fill, edge and bg off the drawn screen in all six themes, at
 50%, full and none; the clear room by the mark; REPEATS inside the screen and near its boxes), 5
 mutants, each fails. `modtab_test` holds the tabs.
+
+## Batch 8: QUEUED MUTES
+
+A mute or a solo pressed while the song plays can wait for the next bar line, so a part comes in or
+drops out on the one.
+
+**The setting.** SET, PLAYING group: **MUTES: AT ONCE** (as it always was) or **NEXT BAR**.
+
+**What happens at NEXT BAR, playing.** Y (mute) or X (solo) on SONG as before. The mark appears at
+once, drawn **hollow**, and the track sounds as it did; on the next bar's first sample the gate
+moves (its usual 5 ms fade) and the mark goes solid, or goes away if it was coming off. Pressed back
+before the line: called off. Stop: it lands at once. Stopped: at once, as before.
+
+| Call | Taken |
+| --- | --- |
+| A setting or a gesture | **A SET row** (the same Y and X; nothing new to learn) |
+| The line it waits for | **The next bar line** (not the scene's end) |
+| What shows while waiting | **A hollow M or S**, the head not dark yet |
+| Stop while it waits | **Lands at once** |
+| The song file | **Says what was asked**, at once (a save mid-wait keeps the mute) |
+
+**Tests**: `easy_test mutes`. The engine: a waiting gate beside an engine told at once exactly on the
+bar line, the same to the bit in blocks of 1, 64, 256, 333; one sample past the line lands it; stopped;
+told what it is; asked and asked back (the song as one never asked); Stop; a track taken away. The
+app: AT ONCE unchanged, the waiting marks, solo, a second press, a press that changes nothing, Stop,
+MUTES put back, Y and X on a head read off the drawn screen (hollow, solid, gone; the head dark only
+after the line), the SET row and its name, settings.txt. 18 mutants: 17 fail; the one that lives is
+the number's place beside a waiting mark on the narrowest heads (11 and 12 tracks), which has no test.
+
+**Only the owner can tell**: whether the bar line is the right wait (or the scene's end), and
+whether the hollow mark reads as "waiting".

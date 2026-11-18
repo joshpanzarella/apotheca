@@ -294,7 +294,8 @@ void Session::keepSettings() const {
                                                         "\ntheme " + std::to_string(theme_) + "\nbrightness " + std::to_string(brightness_) +
                                                         "\nlight " + std::to_string(stickLight_) + "\nclick " + std::to_string(click_) +
                                                         "\ncountin " + (countIn_ ? "1" : "0") + "\n" +
-                                                        (lightColour_ != kLightTheme ? "lightcolour " + std::to_string(lightColour_) + "\n" : ""));
+                                                        (lightColour_ != kLightTheme ? "lightcolour " + std::to_string(lightColour_) + "\n" : "") +
+                                                        (mutes_ != kMutesAtOnce ? "mutes " + std::to_string(mutes_) + "\n" : ""));
 }
 
 void Session::setBrightness(int percent) {
@@ -369,6 +370,7 @@ void Session::loadSettings() {
         if (name == "light" && value >= 0 && value < kRingModes) setStickLight(value); // (none: ON)
         if (name == "click" && value >= 0 && value < kClickModes) setClick(value); // (none: OFF)
         if (name == "countin" && (value == 0 || value == 1)) setCountIn(value == 1);
+        if (name == "mutes" && value >= 0 && value < kMutesModes) setMutes(value); // (none: AT ONCE)
         if (name == "lightcolour" && value >= 0 && value < kLightColours) setLightColour(value); // (none: THEME)
     }
     programFolder_ = folder;

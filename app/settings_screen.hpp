@@ -47,7 +47,7 @@ public:
     //   HANDHELD  VOLUME, BRIGHTNESS, STICK LIGHT, LIGHT COLOUR, STICK SPEED
     //   SETUP     WIFI PAGE, BUTTONS, CONTROLS
     // The numbers are kept nowhere (a setting is kept by its word in settings.txt): the order is free.
-    enum Row { kTempo, kPack, kKey, kScale, kTrackName, kBounce, kClick, kCountIn, kMidi, kTextSize, kTheme, kOctaves,
+    enum Row { kTempo, kPack, kKey, kScale, kTrackName, kBounce, kClick, kCountIn, kMutes, kMidi, kTextSize, kTheme, kOctaves,
                kVolume, kBrightness, kLight, kLightColour, kStick, kWifi, kTest, kControls, kRows };
     enum Group { kSong, kPlaying, kLook, kHandheld, kSetup, kGroups };
     static constexpr int groupOf(int row) { return row < kClick ? kSong : row < kTextSize ? kPlaying : row < kVolume ? kLook : row < kWifi ? kHandheld : kSetup; }

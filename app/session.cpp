@@ -356,6 +356,8 @@ void Session::dropHearing() {
 }
 
 void Session::update(Uint32 nowMs) {
+    // QUEUED MUTES: the engine has set (or called off) every gate of the last asking.
+    if (mutesWaiting_ && engine.heardDone() == mutesAsked_) mutesWaiting_ = false;
     now_ = nowMs;
     engine.collectGarbage();
     {
@@ -1414,26 +1416,49 @@ bool Session::heard(int track) const {
     return anySolo ? project.tracks[track].solo : !project.tracks[track].muted;
 }
 
-void Session::sendMutes() {
+void Session::sendMutes(bool wait) {
     Command c;
     c.type = Command::SetTrackHeard;
+    c.b = wait ? 1 : 0;
     for (int t = 0; t < kNumTracks; ++t) {
+        // (The asking's number rides on the LAST track's command: the engine gives it back once nothing
+        // waits, and before the last it has not heard the whole asking.)
+        c.c = t == kNumTracks - 1 ? mutesAsked_ : 0;
         c.track = t;
         c.a = heard(t) ? 1 : 0;
         engine.send(c);
     }
 }
 
-void Session::setMuted(int track, bool muted) {
+// A mute or a solo pressed. QUEUED MUTES: with MUTES at NEXT BAR and the song playing, the engine sets
+// the gates on the next bar line; the project says what was asked at once (the mark, the song file).
+void Session::pressedMute(int track, bool solo, bool on) {
     if (track < 0 || track >= kNumTracks || project.tracks[track].kind == TrackKind::None) return;
-    project.tracks[track].muted = muted;
-    sendMutes();
+    bool before[kNumTracks], changes = false;
+    for (int t = 0; t < kNumTracks; ++t) before[t] = heard(t);
+    (solo ? project.tracks[track].solo : project.tracks[track].muted) = on;
+    for (int t = 0; t < kNumTracks; ++t) changes = changes || heard(t) != before[t];
+    const bool wait = mutes_ == kMutesNextBar && project.playing && (changes || mutesWaiting_);
+    if (wait) {
+        // (A press while another waits: what sounds now is still what sounded before the first.)
+        if (!mutesWaiting_) std::memcpy(heardBefore_, before, sizeof heardBefore_), std::memset(muteMark_, 0, sizeof muteMark_);
+        mutesWaiting_ = true;
+        muteMark_[track] = solo ? 'S' : 'M';
+        mutesAsked_ = mutesAsked_ >= 1000000 ? 1 : mutesAsked_ + 1;
+    }
+    sendMutes(wait);
 }
 
-void Session::setSolo(int track, bool solo) {
-    if (track < 0 || track >= kNumTracks || project.tracks[track].kind == TrackKind::None) return;
-    project.tracks[track].solo = solo;
-    sendMutes();
+void Session::setMuted(int track, bool muted) { pressedMute(track, false, muted); }
+
+void Session::setSolo(int track, bool solo) { pressedMute(track, true, solo); }
+
+void Session::setMutes(int mode) {
+    mode = mode < 0 ? 0 : (mode >= kMutesModes ? kMutesModes - 1 : mode);
+    if (mode == mutes_) return;
+    mutes_ = mode;
+    if (mode == kMutesAtOnce && mutesWaiting_) sendMutes(); // what waited lands now
+    keepSettings();
 }
 
 // ---- the mixer -----------------------------------------------------------------------

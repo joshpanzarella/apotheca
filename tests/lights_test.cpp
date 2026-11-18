@@ -294,7 +294,7 @@ void testTheSetPage() {
         // Not ours (the stock firmware): the page as it was, the two rows passed by.
         Rig rig;
         S& setup = rig.setup();
-        CHECK(!setup.here(S::kBrightness) && !setup.here(S::kLight) && setup.places() == 17);
+        CHECK(!setup.here(S::kBrightness) && !setup.here(S::kLight) && setup.places() == 18);
         setup.goTo(S::kVolume);
         rig.tap(DOWN);
         CHECK(setup.cursorRow() == S::kStick);
@@ -309,7 +309,7 @@ void testTheSetPage() {
     Rig rig;
     rig.session().useLights(sys.both());
     S& setup = rig.setup();
-    CHECK(setup.here(S::kBrightness) && setup.here(S::kLight) && setup.here(S::kLightColour) && setup.places() == 20);
+    CHECK(setup.here(S::kBrightness) && setup.here(S::kLight) && setup.here(S::kLightColour) && setup.places() == 21);
     // After VOLUME, among the handheld's rows.
     setup.goTo(S::kVolume);
     rig.tap(DOWN);

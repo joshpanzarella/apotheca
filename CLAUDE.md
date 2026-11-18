@@ -1520,7 +1520,7 @@ effect in those two groups and fails one that does not.
     `--theme paper`.
 - **The SET page is five groups under headings, and shows as many rows as fit** (owner, 2026-11-17:
   "enough rows now"; `SettingsScreen::Row`, `groupOf`, `groupName`): SONG (TEMPO, CHORD PACK, KEY,
-  SCALE, TRACK NAME, BOUNCE), PLAYING (CLICK, COUNT IN, USB KEYBOARD), LOOK (TEXT SIZE, THEME, PIANO
+  SCALE, TRACK NAME, BOUNCE), PLAYING (CLICK, COUNT IN, MUTES, USB KEYBOARD), LOOK (TEXT SIZE, THEME, PIANO
   ROLL), HANDHELD (VOLUME, BRIGHTNESS, STICK LIGHT, LIGHT COLOUR, STICK SPEED), SETUP (WIFI PAGE,
   BUTTONS, CONTROLS). The heading of the first row in view stands above the rows (`kHeadingY`); every
   other heading in view takes `kHeadingGap` before its group's first row. So **twelve rows are in
@@ -2623,6 +2623,19 @@ effect in those two groups and fails one that does not.
   `note` (the nudge is then written even at 0), the third of `chordfx` (the
   ratchet is then written even at 1). A chord's THROW is every key's.
 - **Mute is its own gate** (`SetTrackHeard`), not the track level.
+- **QUEUED MUTES: SET's MUTES at NEXT BAR, a mute or solo pressed while playing lands on the next bar's
+  first sample** (easywins batch 8; `SetTrackHeard` with b = 1, `Track::heardNext`, `Engine::landHeard`
+  from `fireStep` at step 0 and from `stopPlaying`). AT ONCE (b = 0) is the engine as it was. Stopped,
+  or told what it is already: at once, and what waited for that track is called off. **The engine says
+  when nothing waits, the app does not guess**: an asking's number rides on the LAST track's command
+  (c) and comes back in `heardDone()`; `Session::mutesWaiting_` goes down when the two are equal. The
+  project's `muted` / `solo` say what was ASKED at once (the song file, undo's text); the SONG head
+  draws the mark hollow while it waits (`muteWaits`: going on or coming off) and keeps the head as it
+  still sounds (`heardNow`). A song sent again, or MUTES put back to AT ONCE, lands it at once.
+  `mutes N` in settings.txt, left out at AT ONCE. Anything new that sends `SetTrackHeard` for a
+  press goes through `Session::pressedMute`. Stills `song-mute-waiting`, `setup-mutes`. Its marks
+  change only while the song plays, which the redraw already draws: no `idle_test` part. **One mutant
+  lives**: the narrow heads' number moved aside for a WAITING mark (11 and 12 tracks) has no test.
 - **A head's M or S mark is a box made to its letter** (`SongScreen::headMarkWidth`: the letter at the
   heads' own lettering, LARGE, 2 pixels clear all round; owner, 2026-11-14: in a fixed 11 by 11 the letter
   stood out of it). Where the mark would stand on the track's number (11 and 12 in the narrowest heads)

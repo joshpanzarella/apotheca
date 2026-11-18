@@ -182,6 +182,9 @@ struct Command {
         SetAutomation,  // one step of a lane: track, scene, a = lane, b = bar * 16 + step, value = 0..1 (below 0: nothing there)
         ClearAutomation,// a whole lane of a cell: track, scene, a = lane (-1: every lane)
         SetTrackHeard,  // mute and solo: track, a = 1 heard, 0 silent. It fades over 5 ms either way, so it does not click.
+                        //   b = 1: it waits for the next bar line (playing only; stopped, or told what it is
+                        //   already: at once, and anything waiting for that track is called off). c: the
+                        //   asking's number (0: none), which heardDone() gives back once nothing waits.
         SetEffectParam, // track (or kMasterTrack, kEchoBus, kSpaceBus), a = slot, b = param, value
         SetLaneLevel,   // one drum's volume:         track, a = lane, value = 0..1
         SetStepNudge,   // move a hit off the grid:   track, scene, a = lane, b = step, value = -0.5..0.5 of a step
@@ -482,6 +485,10 @@ public:
     unsigned songEnded() const { return songEnded_.load(std::memory_order_relaxed); }
     // COUNT IN: the beats of it still to come, the one sounding counted (4, 3, 2, 1), or 0: none under way.
     int countingIn() const { return countShown_.load(std::memory_order_relaxed); }
+    // QUEUED MUTES: the number of the last SetTrackHeard asking (its c) once no track's gate waits for a
+    // bar line any more: landed, called off, or never made to wait. Any thread, no lock.
+    int heardDone() const { return heardDone_.load(std::memory_order_relaxed); }
+    bool trackHeard(int track) const { return tracks_[track].heard; } // (for the tests: the audio thread's own)
     bool clickOn() const { return clickOn_; } // what SetClick last said (for the tests: the audio thread's own)
     bool songStopsAtEnd() const { return songStop_; } // what SetSongEnd last said (for the tests: the audio thread's own)
     int playRepeat() const { return playRepeat_.load(std::memory_order_relaxed); } // 0-based pass through the scene
@@ -803,6 +810,7 @@ private:
         float levelSet = kUsualTrackLevel, panSet = 0.f;
         float modMix[2] = {}; // what the MODs add to LEVEL and to PAN (runMods); 0 while none runs
         bool heard = true;   // not muted (SetTrackHeard)
+        int heardNext = -1;  // ...what it becomes at the next bar line (SetTrackHeard with b = 1); -1: nothing waits
         float gate = 1.f;    // ...as it is this sample: moving toward 1 or 0
         float send[kBuses] = {};    // how much goes to each bus (SetSend, or its automation lane)
         float sendNow[kBuses] = {}; // ...as it is this sample: moving toward `send`
@@ -860,6 +868,10 @@ private:
     bool anyMod_ = false;      // some track has a MOD on: chunks are cut on the tick while playing
     long sinceStep_ = 0;       // samples since the first sample of the step playing (the tick counts from it)
     long playedFor_ = 0;       // samples since Play: a FREE LFO's clock (seconds, not steps)
+    int heardAsked_ = 0;               // SetTrackHeard: the last asking's number
+    std::atomic<int> heardDone_{0};    // ...given out once nothing waits
+    void landHeard();                  // a bar line, Stop: every waiting gate is set
+    void tellHeardDone();
     int heardTrack_ = -1;      // ModAudition: the track whose MODs run while stopped, -1 none
     unsigned heardMask_ = 0;   // ...which of them (bit 0 MOD 1), 0: none runs
     long heardFor_ = 0;        // ...samples since X went down

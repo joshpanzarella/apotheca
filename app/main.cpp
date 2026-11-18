@@ -1327,6 +1327,19 @@ int main(int argc, char** argv) {
             pushKey(SDLK_w, true);
             pushKey(SDLK_l, true);
         }
+    } else if (std::strcmp(view, "song-mute-waiting") == 0 || std::strcmp(view, "setup-mutes") == 0) {
+        // QUEUED MUTES (easywins batch 8): track 2's mute asked for and waiting for the bar line (its M
+        // hollow, its head not dark yet), track 3 muted and landed; or the SET page on MUTES at NEXT BAR.
+        app.session().setMutes(Session::kMutesNextBar);
+        if (view[1] == 'e') {
+            app.session().view = View::Settings;
+            app.settings().goTo(SettingsScreen::kMutes);
+        } else {
+            app.session().view = View::Song;
+            app.session().setMuted(1, true);
+            app.session().setMuted(2, true);
+            app.session().pretendMuteWaits(1, 'M');
+        }
     } else if (std::strcmp(view, "setup-click") == 0) {
         // The METRONOME's row (easywins batch 2): CLICK at RECORDING, COUNT IN at ONE BAR.
         app.session().view = View::Settings;

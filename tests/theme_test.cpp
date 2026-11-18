@@ -331,7 +331,7 @@ void testTheRow() {
     session.view = View::Settings;
     S& setup = rig.app.settings();
     // After TEXT SIZE, under LOOK. (Twenty rows; BRIGHTNESS, STICK LIGHT and LIGHT COLOUR show only on our own firmware: seventeen here.)
-    CHECK(S::kRows == 20 && setup.places() == 17 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kRowsShown == 12 && S::groupOf(S::kTheme) == S::kLook);
+    CHECK(S::kRows == 21 && setup.places() == 18 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kRowsShown == 12 && S::groupOf(S::kTheme) == S::kLook);
     setup.goTo(S::kTextSize);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kTheme && session.theme() == kThemeBrown);
@@ -378,7 +378,7 @@ void testTheRow() {
     setup.goTo(S::kTempo);
     CHECK(setup.firstShown() == 0 && setup.shown(S::kTempo) && !setup.shown(S::kControls));
     rig.draw();
-    CHECK(rig.drewText("TEMPO") && !rig.drewText("CONTROLS") && rig.drewText("THEME") && !rig.drewText("VOLUME"));
+    CHECK(rig.drewText("TEMPO") && !rig.drewText("CONTROLS") && rig.drewText("TEXT SIZE") && !rig.drewText("VOLUME"));
     int firstWas = 0;
     for (int place = 1; place < setup.places(); ++place) {
         rig.tap(DOWN);
@@ -422,7 +422,7 @@ void testTheRow() {
             for (int x = static_cast<int>(x0); x < static_cast<int>(x0) + 12; ++x) lit += canvas().is(x, yy, ui::kDim) ? 1 : 0;
         return lit;
     };
-    CHECK(setup.shown(S::kTheme) && !setup.shown(S::kOctaves)); // (eleven in view with two headings among them)
+    CHECK(setup.shown(S::kTextSize) && !setup.shown(S::kTheme)); // (eleven in view with two headings among them)
     CHECK(arrowAfter("LOOK", setup.rowNowY(S::kTextSize) - S::kHeadingUp) >= 9 && arrowAfter("SONG", S::kHeadingY) == 0 && arrowAfter("PLAYING", setup.rowNowY(S::kClick) - S::kHeadingUp) == 0);
     setup.goTo(S::kControls);
     rig.draw();

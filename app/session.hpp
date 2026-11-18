@@ -513,6 +513,20 @@ public:
     void setMuted(int track, bool muted);
     void setSolo(int track, bool solo);
     bool heard(int track) const; // as things stand, does this track sound?
+    // QUEUED MUTES (easywins batch 8): SET's MUTES at NEXT BAR, a mute or a solo pressed while the song
+    // plays lands on the next bar line. Until the engine says it has, the track's mark waits ('M' or
+    // 'S': drawn hollow) and heardNow is what still sounds.
+    enum { kMutesAtOnce, kMutesNextBar, kMutesModes };
+    int mutes() const { return mutes_; }
+    void setMutes(int mode);
+    char muteWaits(int track) const { return track >= 0 && track < kNumTracks && mutesWaiting_ ? muteMark_[track] : 0; }
+    bool mutesWaiting() const { return mutesWaiting_; }
+    // For a still: this track's mark as if it waited for a bar line that never comes.
+    void pretendMuteWaits(int track, char mark) {
+        for (int t = 0; t < kNumTracks; ++t) heardBefore_[t] = t == track ? true : heard(t);
+        mutesWaiting_ = true, mutesAsked_ = -1, muteMark_[track] = mark;
+    }
+    bool heardNow(int track) const { return mutesWaiting_ && track >= 0 && track < kNumTracks ? heardBefore_[track] : heard(track); }
     // What the player calls a track: capitals, digits, spaces, - and _, ten
     // at most. Empty puts back its instrument's name.
     void setTrackName(int track, const std::string& name);
@@ -532,7 +546,7 @@ public:
     int mixPan(int track) const { return track == kMasterTrack ? project.masterPan : (track >= 0 && track < kNumTracks ? project.tracks[track].mixPan : 0); }
     void sendMix(int track); // what the engine is told for it: its level and its pan
     void sendEffects(int track); // every slot of a track, the master or a bus, to the engine
-    void sendMutes(); // tell the engine how things stand (after a song is opened)
+    void sendMutes(bool wait = false); // tell the engine how things stand (after a song is opened); wait: at the next bar line
 
     // ---- a synth's sound ---------------------------------------------------------------
     // One place for changing a synth track's patch, used by the Device screen
@@ -856,6 +870,12 @@ private:
     void hearMidi();
     MidiInput midi_;
     bool midiRecord_ = false;
+    int mutes_ = kMutesAtOnce;
+    bool mutesWaiting_ = false;       // an asking the engine has not said is done
+    int mutesAsked_ = 0;              // ...its number (Command::SetTrackHeard's c)
+    char muteMark_[kNumTracks] = {};  // ...the mark that waits on each track
+    bool heardBefore_[kNumTracks] = {}; // ...and what each sounded as before it
+    void pressedMute(int track, bool solo, bool on);
     int click_ = kClickOff;
     bool countIn_ = false;
     int sentClick_ = -1; // what the engine was last told (SetClick); -1: nothing yet

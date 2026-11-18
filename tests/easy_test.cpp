@@ -12,6 +12,9 @@
 //   even       EVEN: the rule (euclidHit), Y held on a lane's name + R1 / L1, the turn, the words, undo, hints.
 //   kits       KIT PRESETS: a kit's text (kitText, readKit, copyKit), the built-in recipes, Session's
 //              list, load, save and delete, and the KIT page's stop above lane 1.
+//   looks      the owner's five of 2026-11-18: the lane's volume and its edge, the feel mark's room, REPEATS.
+//   mutes      QUEUED MUTES: the engine's waiting gate (on the bar's first sample, to the bit; Stop, called
+//              off, a track gone), the Session's waiting marks, Y and X on a SONG head, SET's MUTES row.
 //
 // `easy_test NAME...` runs just those sections.
 
@@ -1435,6 +1438,288 @@ void testTheLooks() {
     CHECK(ink > 25);
 }
 
+// ---- batch 8: QUEUED MUTES ----------------------------------------------------------------------
+
+void heardTo(Engine& engine, int track, bool heard, bool wait, int asking = 0) {
+    Command c = make(Command::SetTrackHeard, track);
+    c.a = heard ? 1 : 0;
+    c.b = wait ? 1 : 0;
+    c.c = asking;
+    engine.send(c);
+}
+
+// A hit on every step of track 0, so a gate's 5 ms shows wherever it lands.
+void busyDrums(Engine& engine) {
+    for (int step = 0; step < 16; ++step) {
+        Command c = make(Command::SetStep);
+        c.a = step % 3;
+        c.b = step;
+        c.value = 0.9f;
+        engine.send(c);
+    }
+}
+
+void testTheWaitingGate() {
+    const long bar = 16 * kStep120;
+    // A gate asked to wait lands on the next bar's first sample: the sound is, to the bit, that of an
+    // engine told AT ONCE exactly there. In any blocks.
+    for (int block : {1, 64, 256, 333}) {
+        std::unique_ptr<Engine> waits(new Engine), there(new Engine);
+        busyDrums(*waits), busyDrums(*there);
+        play(*waits), play(*there);
+        std::vector<float> a = render(*waits, 5000, block), b = render(*there, 5000, block);
+        heardTo(*waits, 0, false, true, 7);
+        std::vector<float> more = render(*waits, bar - 5000, block);
+        a.insert(a.end(), more.begin(), more.end());
+        CHECK(waits->trackHeard(0) && waits->heardDone() != 7); // still heard, still waiting, up to the bar's last sample
+        more = render(*there, bar - 5000, block);
+        b.insert(b.end(), more.begin(), more.end());
+        heardTo(*there, 0, false, false);
+        more = render(*waits, bar, block);
+        a.insert(a.end(), more.begin(), more.end());
+        more = render(*there, bar, block);
+        b.insert(b.end(), more.begin(), more.end());
+        CHECK(!waits->trackHeard(0) && waits->heardDone() == 7);
+        CHECK(a == b);
+        CHECK(loudest(a, bar - 2000, bar) > 0.01f && loudest(a, bar + 1000, 2 * bar) == 0.f); // sounding to the line, silent after its fade
+        if (block == 256) {
+            // And one sample past the line is enough to land it.
+            std::unique_ptr<Engine> e(new Engine);
+            busyDrums(*e);
+            play(*e);
+            render(*e, 100, 100);
+            heardTo(*e, 0, false, true, 3);
+            render(*e, bar - 100, 256);
+            CHECK(e->trackHeard(0));
+            render(*e, 1, 1);
+            CHECK(!e->trackHeard(0) && e->heardDone() == 3);
+        }
+    }
+    {
+        // Stopped: at once, whatever is asked. Told what it is already: nothing waits.
+        std::unique_ptr<Engine> e(new Engine);
+        busyDrums(*e);
+        heardTo(*e, 0, false, true, 1);
+        render(*e, 64, 64);
+        CHECK(!e->trackHeard(0) && e->heardDone() == 1);
+        heardTo(*e, 0, true, true, 2);
+        render(*e, 64, 64);
+        CHECK(e->trackHeard(0) && e->heardDone() == 2);
+        play(*e);
+        heardTo(*e, 0, true, true, 3);
+        render(*e, 64, 64);
+        CHECK(e->trackHeard(0) && e->heardDone() == 3);
+        // Asked and asked back before the line: called off, and the song is as one never asked.
+        std::unique_ptr<Engine> plain(new Engine);
+        busyDrums(*plain);
+        play(*plain);
+        render(*plain, 64, 64);
+        heardTo(*e, 0, false, true, 4);
+        render(*e, 1000, 100), render(*plain, 1000, 100);
+        CHECK(e->heardDone() == 3);
+        heardTo(*e, 0, true, true, 5);
+        render(*e, 1000, 100), render(*plain, 1000, 100);
+        CHECK(e->heardDone() == 5 && e->trackHeard(0));
+        CHECK(render(*e, 2 * 96000, 256) == render(*plain, 2 * 96000, 256));
+        // One waiting, another track told at once: the count is not given out until the first lands.
+        heardTo(*e, 0, false, true, 6);
+        heardTo(*e, 1, false, false, 6);
+        render(*e, 64, 64);
+        CHECK(e->heardDone() == 5 && !e->trackHeard(1) && e->trackHeard(0));
+        // AT ONCE while it waits: now, and nothing waits any more.
+        heardTo(*e, 0, false, false, 6);
+        render(*e, 64, 64);
+        CHECK(!e->trackHeard(0) && e->heardDone() == 6);
+        // Stop lands what waits (the bar line will not come).
+        heardTo(*e, 0, true, true, 8);
+        render(*e, 64, 64);
+        CHECK(!e->trackHeard(0));
+        e->send(make(Command::Stop));
+        render(*e, 64, 64);
+        CHECK(e->trackHeard(0) && e->heardDone() == 8);
+        // A track taken away while its gate waits: nothing left waiting.
+        play(*e);
+        render(*e, 64, 64);
+        heardTo(*e, 0, false, true, 9);
+        render(*e, 64, 64);
+        CHECK(e->heardDone() == 8);
+        e->send(make(Command::RemoveInstrument));
+        heardTo(*e, 1, true, false, 9);
+        render(*e, 2000, 100);
+        CHECK(e->heardDone() == 9 && e->trackHeard(0));
+        render(*e, 96000, 256);
+        CHECK(e->trackHeard(0)); // (the bar line lands nothing on it)
+    }
+}
+
+void testQueuedMutesInTheApp() {
+    const std::string folder = tempFolder("easymutes");
+    const int bar = 375; // frames of 256 in a bar at 120
+    {
+        Rig rig;
+        Session& session = rig.session();
+        session.useProgramFolder(folder);
+        session.addTrack(TrackKind::Phazed);
+        session.addTrack(TrackKind::Phazed);
+        rig.settle();
+        // AT ONCE (as it always was): nothing waits, playing or not.
+        CHECK(session.mutes() == Session::kMutesAtOnce);
+        session.togglePlay(false);
+        rig.frames(4);
+        session.setMuted(1, true);
+        CHECK(!session.mutesWaiting() && session.muteWaits(1) == 0 && !session.heardNow(1));
+        rig.frames(2);
+        CHECK(!rig.engine->trackHeard(1));
+        session.setMuted(1, false);
+        rig.frames(2);
+        // NEXT BAR, playing: the project says what was asked, the engine waits, the mark waits.
+        session.setMutes(Session::kMutesNextBar);
+        session.setMuted(1, true);
+        CHECK(rig.track(1).muted && session.mutesWaiting() && session.muteWaits(1) == 'M' && session.muteWaits(0) == 0);
+        CHECK(session.heardNow(1) && !session.heard(1));
+        rig.frames(20);
+        CHECK(rig.engine->trackHeard(1) && session.mutesWaiting());
+        rig.frames(bar);
+        CHECK(!rig.engine->trackHeard(1) && !session.mutesWaiting() && session.muteWaits(1) == 0 && !session.heardNow(1));
+        // Taken off again: an M that waits to go.
+        session.setMuted(1, false);
+        CHECK(session.muteWaits(1) == 'M' && !session.heardNow(1) && session.heard(1));
+        rig.frames(bar);
+        CHECK(rig.engine->trackHeard(1) && !session.mutesWaiting());
+        // Solo: the S waits, the others sound until the line.
+        session.setSolo(2, true);
+        CHECK(session.muteWaits(2) == 'S' && session.heardNow(0) && session.heardNow(1) && !session.heard(0));
+        rig.frames(20);
+        // A second press while the first waits: both marks wait, and what sounds is still as before the first.
+        session.setMuted(2, true);
+        CHECK(session.muteWaits(2) == 'M' && session.heardNow(0));
+        session.setSolo(2, false), session.setMuted(2, false); // all asked back
+        rig.frames(4);
+        CHECK(!session.mutesWaiting()); // called off: the engine says nothing waits
+        CHECK(rig.engine->trackHeard(0) && rig.engine->trackHeard(1) && rig.engine->trackHeard(2));
+        // A press that changes no gate does not wait (track 0 muted under a solo is silent already).
+        session.setSolo(2, true);
+        rig.frames(bar);
+        session.setMuted(0, true);
+        CHECK(!session.mutesWaiting());
+        session.setMuted(0, false), session.setSolo(2, false);
+        rig.frames(bar);
+        CHECK(!session.mutesWaiting() && rig.engine->trackHeard(0));
+        // Stop lands it at once.
+        session.setMuted(0, true);
+        rig.frames(4);
+        CHECK(session.mutesWaiting() && rig.engine->trackHeard(0));
+        session.togglePlay(false);
+        rig.frames(4);
+        CHECK(!session.mutesWaiting() && !rig.engine->trackHeard(0));
+        // Stopped: at once.
+        session.setMuted(0, false);
+        CHECK(!session.mutesWaiting());
+        rig.frames(2);
+        CHECK(rig.engine->trackHeard(0));
+        // Back to AT ONCE while one waits: it lands now.
+        session.togglePlay(false);
+        rig.frames(4);
+        session.setMuted(1, true);
+        rig.frames(4);
+        CHECK(session.mutesWaiting());
+        session.setMutes(Session::kMutesAtOnce);
+        rig.frames(4);
+        CHECK(!session.mutesWaiting() && !rig.engine->trackHeard(1));
+        session.setMuted(1, false);
+        session.togglePlay(false);
+        session.setMutes(Session::kMutesNextBar);
+        // Through the SONG screen: Y on a head while playing, the mark drawn hollow until the line.
+        session.view = View::Song;
+        SongScreen& song = rig.app.song();
+        song.moveCursorTo(0, 1);
+        rig.tap(UP);
+        CHECK(song.cursorOnHead());
+        rig.tap(START);
+        rig.frames(4);
+        rig.tap(Y);
+        CHECK(rig.track(1).muted && session.muteWaits(1) == 'M');
+        Canvas canvas;
+        if (canvas.ok) {
+            const SDL_Rect head = song.headRect(1);
+            const int w = SongScreen::headMarkWidth(*canvas.fonts, "M"), left = head.x + head.w - 2 - w;
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(ui::gHintsOver == 0.f);
+            CHECK(canvas.is(left, head.y + 2, ui::kBrass) && canvas.is(left + 1, head.y + 3, ui::kBg)); // hollow: an outline, the box empty
+            // The head has not gone dark yet (as the head of a track left alone, track 3's); at the line it has.
+            const SDL_Rect other = song.headRect(2);
+            CHECK(canvas.at(head.x + 3, head.y + head.h - 8) == canvas.at(other.x + 3, other.y + other.h - 8));
+            rig.frames(bar);
+            CHECK(session.muteWaits(1) == 0);
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(canvas.at(head.x + 3, head.y + head.h - 8) != canvas.at(other.x + 3, other.y + other.h - 8));
+            CHECK(canvas.is(left, head.y + 2, ui::kBrass) && canvas.is(left + 1, head.y + 3, ui::kBrass)); // solid
+            // Off again: the M still stands, hollow, until the line; then no mark.
+            rig.tap(Y);
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(!rig.track(1).muted && canvas.is(left, head.y + 2, ui::kBrass) && canvas.is(left + 1, head.y + 3, ui::kBg));
+            rig.frames(bar);
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(!canvas.is(left, head.y + 2, ui::kBrass));
+            // X: the S waits hollow.
+            rig.tap(X);
+            const int ws = SongScreen::headMarkWidth(*canvas.fonts, "S"), lefts = head.x + head.w - 2 - ws;
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(rig.track(1).solo && canvas.is(lefts, head.y + 2, ui::kTeal) && canvas.is(lefts + 1, head.y + 3, ui::kBg));
+            rig.tap(X);
+        }
+        rig.tap(START);
+        rig.frames(4);
+        // The SET row: MUTES, after COUNT IN.
+        session.view = View::Settings;
+        SettingsScreen& setup = rig.app.settings();
+        typedef SettingsScreen S;
+        CHECK(S::kMutes == S::kCountIn + 1 && S::groupOf(S::kMutes) == S::kPlaying);
+        setup.goTo(S::kMutes);
+        rig.frames(1);
+        rig.tap(LEFT);
+        CHECK(session.mutes() == Session::kMutesAtOnce);
+        rig.tap(LEFT);
+        CHECK(session.mutes() == Session::kMutesAtOnce); // (the ends stop)
+        rig.tap(RIGHT);
+        CHECK(session.mutes() == Session::kMutesNextBar);
+        rig.tap(RIGHT);
+        CHECK(session.mutes() == Session::kMutesNextBar);
+        if (canvas.ok) {
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(ui::gHintsOver == 0.f);
+            // Its own name on its row (and USB KEYBOARD's on the row after): the cursor's outline, then MUTES in dim.
+            const int place = setup.placeOf(S::kMutes), y = setup.placeY(place, setup.firstShown());
+            int ink = 0, inkNext = 0;
+            const float mutesW = canvas.fonts->small.width("MUTES"), usbW = canvas.fonts->small.width("USB KEYBOARD");
+            for (int row = y; row < y + S::kRowH - 2; ++row)
+                for (int x = 20; x < 160; ++x) {
+                    if (canvas.is(x, row, ui::kDim) && x > 26 + mutesW + 4) ++ink;
+                    if (canvas.is(x, row + S::kRowH, ui::kDim) && x > 26 + mutesW + 4 && x < 26 + usbW + 4) ++inkNext;
+                }
+            CHECK(ink == 0 && inkNext > 10); // (MUTES is short; USB KEYBOARD, on the row after, runs on past it)
+        }
+        // Kept in settings.txt only when it is not AT ONCE.
+        std::string text;
+        CHECK(readTextFile(folder + "/settings.txt", text) && text.find("\nmutes 1\n") != std::string::npos);
+        session.setMutes(Session::kMutesAtOnce);
+        CHECK(readTextFile(folder + "/settings.txt", text) && text.find("mutes") == std::string::npos);
+        session.setMutes(Session::kMutesNextBar);
+    }
+    {
+        Rig rig;
+        rig.session().useProgramFolder(folder);
+        rig.session().loadSettings();
+        CHECK(rig.session().mutes() == Session::kMutesNextBar);
+    }
+}
+
 struct Section {
     const char* name;
     std::function<void()> run;
@@ -1452,6 +1737,7 @@ int main(int argc, char** argv) {
         {"duplicate", [] { testDoubleTrackText(), testDuplicateATrack(), testDuplicateOnSong(); }},
         {"even", [] { testTheEvenRule(), testEvenOnALane(); }},
         {"looks", [] { testTheLooks(); }},
+        {"mutes", [] { testTheWaitingGate(), testQueuedMutesInTheApp(); }},
         {"kits", [] { testTheKitsText(), testKitsInTheSession(), testTheKitStop(); }},
     };
     for (const Section& s : sections) {

@@ -667,7 +667,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     for (int t = 0; t < tracks; ++t) {
         const int x = kColumnsLeft + t * (colW + 1);
         box(r, x, kGridTop, colW, kHeadH, kPanel2, kLine);
-        const bool sounding = session_.heard(t);
+        const bool sounding = session_.heardNow(t); // (QUEUED MUTES: as it still sounds until the bar line)
         // B held on this track: its head fills red and says what is coming, and
         // nothing else: the number and the name come back if B is let go. The
         // words flash slowly, three times in the two seconds.
@@ -685,7 +685,8 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             // Where the mark would stand on the number (11 and 12 in the narrowest heads), the number is centred
             // in the room left of it instead, clear of the mixer's mark at the other corner.
             const Font& numberFont = (colW > 60 ? fonts : fonts.fixed()).small;
-            const char* letter = project_.tracks[t].solo ? "S" : (project_.tracks[t].muted ? "M" : nullptr);
+            const char waiting = session_.muteWaits(t); // (a mark that waits for the bar line stands there too)
+            const char* letter = project_.tracks[t].solo || waiting == 'S' ? "S" : (project_.tracks[t].muted || waiting == 'M' ? "M" : nullptr);
             float numberX = x + colW / 2.f;
             if (letter) {
                 const float markLeft = x + colW - 2 - headMarkWidth(fonts, letter);
@@ -726,18 +727,22 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (!deleting && (project_.tracks[t].mixDb != 0 || project_.tracks[t].mixPan != 0)) fill(r, x + kMixMarkInset, kGridTop + kMixMarkInset, kMixMarkSize, kMixMarkSize, kBrass);
         // The mark's box is made to its letter (2 pixels clear all round), in the lettering every head was
         // laid out at: at a fixed 11 by 11 the letter stood out of it, below and at the sides (owner, 2026-11-14).
-        const auto mark = [&](const char* letter, SDL_Color colour) {
+        // QUEUED MUTES: a mark that waits for the bar line is hollow (its box an outline, its letter in the
+        // colour), whether it is going on or coming off.
+        const auto mark = [&](const char* letter, SDL_Color colour, bool waits) {
             const Font& font = fonts.fixed().small;
             const int w = headMarkWidth(fonts, letter), h = static_cast<int>(std::ceil(font.capHeight())) + 4;
             const int left = x + colW - 2 - w;
-            fill(r, left, kGridTop + 2, w, h, colour);
-            font.drawCentered(r, left + w / 2.f, kGridTop + 4.f, letter, kBg);
+            fill(r, left, kGridTop + 2, w, h, waits ? kBg : colour);
+            if (waits) outline(r, left, kGridTop + 2, w, h, colour);
+            font.drawCentered(r, left + w / 2.f, kGridTop + 4.f, letter, waits ? colour : kBg);
         };
-        if (project_.tracks[t].solo) {
-            mark("S", kTeal);
-            outline(r, x, kGridTop, colW, kHeadH, kTeal);
-        } else if (project_.tracks[t].muted) {
-            mark("M", kBrass);
+        const char waits = session_.muteWaits(t);
+        if (project_.tracks[t].solo || waits == 'S') {
+            mark("S", kTeal, waits == 'S');
+            if (project_.tracks[t].solo) outline(r, x, kGridTop, colW, kHeadH, kTeal);
+        } else if (project_.tracks[t].muted || waits == 'M') {
+            mark("M", kBrass, waits == 'M');
         }
     }
     if (addColumn() >= 0) {

@@ -1459,7 +1459,15 @@ void Engine::apply(const Command& c) {
         } else if (c.track == kMasterTrack) panGains(c.value, masterPanL_, masterPanR_);
         break;
     case Command::SetTrackHeard:
-        if (validTrack(c.track)) tracks_[c.track].heard = c.a != 0;
+        if (validTrack(c.track)) {
+            Track& track = tracks_[c.track];
+            const bool want = c.a != 0;
+            // QUEUED MUTES: while playing it may wait for the bar line. Told what it is already, nothing waits.
+            if (c.b != 0 && playing_ && want != track.heard) track.heardNext = want ? 1 : 0;
+            else track.heard = want, track.heardNext = -1;
+        }
+        if (c.c > 0) heardAsked_ = c.c;
+        tellHeardDone();
         break;
     case Command::SetLaneLevel:
         if (validTrack(c.track)) tracks_[c.track].drums.setLaneLevel(c.a, c.value);
@@ -1779,8 +1787,24 @@ void Engine::barLine() {
     barBeganAt_ = now;
 }
 
+// QUEUED MUTES: every gate that waited is set (a bar's first sample, or Stop).
+void Engine::landHeard() {
+    for (Track& track : tracks_) {
+        if (track.heardNext >= 0) track.heard = track.heardNext != 0;
+        track.heardNext = -1;
+    }
+    tellHeardDone();
+}
+
+void Engine::tellHeardDone() {
+    for (const Track& track : tracks_)
+        if (track.heardNext >= 0) return;
+    heardDone_.store(heardAsked_, std::memory_order_relaxed);
+}
+
 void Engine::stopPlaying() {
     playing_ = false;
+    landHeard(); // a mute waiting for a bar line that will not come
     countSteps_ = 0; // a COUNT IN under way is called off
     countShown_.store(0, std::memory_order_relaxed);
     clearPending(); // a hit that was waiting for its moment does not come after the song has stopped
@@ -1914,6 +1938,7 @@ void Engine::fireStep() {
     // step after Play, which is where the song starts).
     // Bar lines, for Catch: where the bar that has just ended began and ended.
     if (nextStep_ == 0) barLine();
+    if (nextStep_ == 0) landHeard(); // QUEUED MUTES land on the bar's first sample
     if (clickOn_ && nextStep_ % 4 == 0) startClick(nextStep_ == 0); // the METRONOME: on the beat, from this step's first sample
     if (nextStep_ == 0 && !firstStep_) {
         const Position next = afterThisBar();
@@ -2061,6 +2086,7 @@ void Engine::takeAway(int t) {
     track.hasDrums = false;
     track.grainCount.store(-1, std::memory_order_relaxed);
     track.glideFrom = kFromTop;
+    track.heardNext = -1; // (a mute that waited for the bar line: the track is gone)
     // Its MODs go OFF, as GLIDE FROM goes back to TOP: the effects stay, so what was added to
     // their settings and the sends is taken off first.
     stillMods(track);
