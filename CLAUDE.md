@@ -1574,8 +1574,16 @@ effect in those two groups and fails one that does not.
   read from the right** (a name may hold spaces); the hostname (`apotheca.local`, `apotheca-2.local`)
   is said beside the address, never instead (`Session::transferName`: the WIFI PAGE row in the medium or
   small of LARGE, the list of songs on a line of its own with one row fewer). A still pretends it all
-  (`Session::pretendWifi`): `setup-network`, `-held`, `-keys`, `-forgetting`, `-long`, `-songs`. **Not
-  run on a handheld: the system side is not built yet.**
+  (`Session::pretendWifi`): `setup-network`, `-held`, `-keys`, `-forgetting`, `-long`, `-songs`. **The
+  system side is built** (2026-11-18, branch `firmware`: `/usr/sbin/apotheca-wifi` on wpa_supplicant,
+  udhcpc and avahi; `qemu-test.py` joins made-up radios). **Not run on a handheld.**
+- **FOLLOW: the drum grid, its slices and the roll show each bar as the playhead comes into it**
+  (owner, 2026-11-18; `app/follow_bar.hpp`, one rule for both grids, `tests/follow_test.cpp`): only
+  while the song plays the scene on screen; never while a button is held or the stick pushed, nor
+  `kFollowRestMs` (1.5 s) after, so a bar looked at by hand stays until the playhead next enters a bar.
+  The cursor keeps its step.
+- **SCALE's OFF reads CHROMATIC** (owner, 2026-11-18: "no key" was not seen as there; `scaleName`):
+  the number in songs is unchanged.
 - **The one colour on the screen that is not the theme's: a track's ring colour on its SONG head**
   (owner, 2026-11-17: "a little color identifier to the tracks"; a deliberate exception to "a colour
   goes through the ten names"). Only while LIGHT COLOUR is TRACK on a ring that is here and lit
