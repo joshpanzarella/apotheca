@@ -404,7 +404,7 @@ and the day it was built. The number goes up by one with every build.
 The rows stand under five headings: **SONG** (TEMPO, CHORD PACK, KEY, SCALE,
 TRACK NAME, BOUNCE), **PLAYING** (CLICK, COUNT IN, MUTES, USB KEYBOARD), **LOOK** (TEXT
 SIZE, THEME, PIANO ROLL), **HANDHELD** (VOLUME, BRIGHTNESS, STICK LIGHT, LIGHT
-COLOUR, STICK SPEED) and **SETUP** (WIFI PAGE, BUTTONS, CONTROLS). The page moves
+COLOUR, STICK SPEED) and **SETUP** (WIFI PAGE, NETWORK, BUTTONS, CONTROLS). The page moves
 a row at a time; a small arrow after a heading says there are rows out of sight
 that way.
 
@@ -427,7 +427,8 @@ that way.
 | CLICK | The metronome: OFF, ON (a click on every beat while the song plays, higher on a bar's first), RECORDING (only while it plays with PLAY + RECORD). It is never in a bounce, and CATCH never takes it | |
 | COUNT IN | OFF, or ONE BAR: with PLAY + RECORD, START clicks a bar first (the box above the bar counts 4, 3, 2, 1) and the song starts after it. START again calls it off | |
 | MUTES | AT ONCE, or NEXT BAR: a mute or a solo pressed while the song plays lands on the next bar line. Until then its M or S is drawn hollow on the track's head and the track sounds as it did. Stop lands it at once; pressing it back before the line calls it off | |
-| WIFI PAGE | | On / off |
+| WIFI PAGE | | On / off. On Apotheca's own system the page's name shows beside its address: `or apotheca.local:8080/4821` |
+| NETWORK | | **Only on Apotheca's own system.** Which WiFi network the handheld is on: **hold A + up / down** through those found, let go to join (see "Joining a network" below). **Hold B** a second forgets the one joined |
 | BUTTONS | | The button test |
 | CONTROLS | | Hold a second: set the controls up again |
 
@@ -445,6 +446,40 @@ two rows are not there. The ring dims with BRIGHTNESS. A tap of the power key
 turns the screen off and the ring with it. Hold **MENU** and press a **volume
 key** to change the brightness from any screen (the help card goes while you
 do, so you see the screen itself).
+
+#### Joining a network (Apotheca's own system only)
+
+On Apotheca's own system for the RG40XXV the WiFi is the program's, so it is
+joined here. On the stock firmware the firmware joins it and this row is not
+there.
+
+1. Turn **WIFI PAGE** on. The radio only runs while it is on.
+2. Go down to **NETWORK**. It says the network joined, or NONE, and beside it
+   what is going on: LOOKING..., 3 FOUND, JOINING..., WRONG PASSWORD, NOT
+   FOUND, or the handheld's address once it is on. It looks for networks
+   when you reach the row and again every ten seconds.
+3. **Hold A** and press **up / down** through the networks found, the
+   strongest first. A small lock after a name means it needs a password.
+   **Let go of A** to join it. B while A is held: nothing is joined.
+4. A network the handheld knows already, or an open one, is joined at once.
+   One that needs a password opens the keys: three sets (small letters,
+   capitals, signs), **X** turns to the next set, A types, **Y deletes a
+   letter**, **B or START keep it and join** (B with nothing typed leaves).
+   8 to 63 letters. What you type is shown, so a wrong letter can be seen.
+5. The handheld remembers it, and joins it by itself the next time WIFI PAGE
+   is turned on. **Hold B** a second on NETWORK to forget it (the row says
+   FORGETTING IT: CANNOT BE UNDONE while the bar fills).
+
+The password goes to the system and is kept in `wifi/networks.conf` on the
+APOTHECA drive, as any computer keeps its WiFi passwords. It is never written
+to a log.
+
+**`apotheca.local`**: on its own system the handheld also has a name on the
+network, so the page can be opened as `apotheca.local:8080/4821` (the same
+port and number) as well as by its address. Both are shown, on the WIFI PAGE
+row and in the list of songs. Where two handhelds share a network the second
+is `apotheca-2.local`. A computer that does not look names up this way
+(some Windows and Android ones) still has the address.
 
 **THEME** changes the colours, and nothing else: every box, word and mark
 stays where it was. It changes at once. Four are dark and two are light:
@@ -1558,8 +1593,9 @@ closed. The first install still goes by SD card. Only the program is
 updated this way: a new launcher script or fonts still come from the zip
 (the chord packs that ship are inside the program).
 
-The handheld has to be on a WiFi network already (set in the firmware's own
-settings). Making its own hotspot, so no router is needed, is a job for the
+The handheld has to be on a WiFi network already: set in the firmware's own
+settings, or, on Apotheca's own system, on SET's NETWORK row (see "Joining a
+network"), where the list also says the page's name, `apotheca.local`. Making its own hotspot, so no router is needed, is a job for the
 Apotheca-only system image.
 
 ### Revs

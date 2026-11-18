@@ -395,10 +395,20 @@ bool Session::trimLaneSilence(int track, int lane) {
 
 // ---- files over WiFi --------------------------------------------------------------------
 
+std::string Session::transferName() const {
+    if (!transferOn() || !wifi_.here()) return "";
+    const WifiStatus status = wifi_.now().status;
+    if (status.state != WifiState::Joined || status.hostname.empty()) return "";
+    const std::string address = transferAddress();
+    const std::size_t tail = address.find(':');
+    return status.hostname + (tail == std::string::npos ? "" : address.substr(tail));
+}
+
 bool Session::toggleTransfer(unsigned seed) {
     if (transfer_.running()) {
         transfer_.stop();
         discardUpdate(); // an update nobody answered goes when WiFi is turned off
+        wifi_.down();    // (our firmware: the radio off. On its own thread; nothing where there is no such program)
         return false;
     }
     if (folder_.empty() || sampleFolder_.empty()) return false; // nowhere for files to go
@@ -410,6 +420,7 @@ bool Session::toggleTransfer(unsigned seed) {
     toldOpenSong_ = songName_;
     const bool on = transfer_.start(sampleFolder_, folder_, chords, 8080, seed) || transfer_.start(sampleFolder_, folder_, chords, 0, seed);
     if (on) std::printf("files over wifi: http://%s\n", transfer_.address().c_str()); // in the log too, for whoever is setting it up
+    if (on) wifi_.up(); // (our firmware: the radio on, and a saved network joined by itself)
     return on;
 }
 

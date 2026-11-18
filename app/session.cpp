@@ -359,6 +359,7 @@ void Session::update(Uint32 nowMs) {
     // QUEUED MUTES: the engine has set (or called off) every gate of the last asking.
     if (mutesWaiting_ && engine.heardDone() == mutesAsked_) mutesWaiting_ = false;
     now_ = nowMs;
+    if (wifi_.here()) wifi_.update(nowMs, transferOn(), view == View::Settings && wifiLooking); // (each call on the WiFi's own thread)
     engine.collectGarbage();
     {
         unsigned heard = 0;

@@ -42,6 +42,7 @@
 #include "redraw.hpp"
 #include "samples.hpp"
 #include "temp_folder.hpp"
+#include "wifi_standin.hpp"
 
 using namespace apotheca;
 
@@ -636,6 +637,29 @@ void theSession(Rig& rig, const std::string& samples) {
     rig.hold(A, 1200); // accepted
     rig.press(A);      // WiFi off; UPDATE ACCEPTED stays for five seconds
     rig.run(6000);
+
+    // Our firmware's WiFi (wifi.hpp): the NETWORK row's words come from another thread, a call at a
+    // time. They change only while the WIFI PAGE is on, which is drawn every pass (the WIFI stir).
+    rig.part = "SETUP: the NETWORK row joins by itself";
+    const std::string radio = tempFolder("idle-wifi");
+    wifiFile(radio + "/scan", "-40 open Cafe\n-60 wpa2 The Old Mill\n");
+    rig.byHand([&] {
+        s.wifi().useProgram(wifiStandIn(radio));
+        rig.app->settings().goTo(SettingsScreen::kWifi);
+    });
+    rig.press(A); // on: `up`, then the status now and then
+    rig.byHand([&] { rig.app->settings().goTo(SettingsScreen::kNetwork); });
+    rig.run(1500); // the scan lands: LOOKING... becomes 2 FOUND
+    wifiFile(radio + "/status", "joining Cafe\n");
+    rig.run(1500);
+    wifiFile(radio + "/status", "joined Cafe 192.168.1.7 apotheca.local\n");
+    rig.run(2500);
+    rig.byHand([&] { rig.app->settings().goTo(SettingsScreen::kWifi); });
+    rig.run(300);
+    rig.press(A); // off: the row says NONE at once, whatever the radio's thread still has to say
+    rig.byHand([&] { rig.app->settings().goTo(SettingsScreen::kNetwork); });
+    rig.run(1500);
+    rig.byHand([&] { s.wifi().finish(); });
     (void)samples;
 }
 
