@@ -715,6 +715,13 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
     lastMs_ = nowMs;
     if (project_.bar >= cellBars()) project_.bar = 0; // the cell was shortened, or it is another cell
     const float x = input.stickX(), y = input.stickY();
+    {
+        // The view follows the bar playing, unless the player is at the controls (follow_bar.hpp).
+        const int bars = cellBars();
+        const bool here = project_.playing && session_.playScene() == project_.scene && session_.engine.playStep() >= 0 && bars > 0;
+        const int at = follow_.step(here, here ? session_.engine.playBar() % bars : -1, input.anyHeld() || x != 0.f || y != 0.f, nowMs);
+        if (at >= 0) project_.bar = at;
+    }
     // A key played on a USB keyboard: the cursor goes to it, so A places there.
     if (const int key = session_.takeMidiKey(); key >= 0 && !shaping_ && !picking_ && !painting_) moveCursorTo(key, step_);
     keepInView(); // the zoom can be changed from SETUP too

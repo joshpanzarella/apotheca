@@ -67,6 +67,7 @@
 // place; B while Y is held breaks it up into loose notes instead.
 
 #include "chord_effects.hpp"
+#include "follow_bar.hpp"
 #include "screen.hpp"
 #include <SDL.h>
 
@@ -198,6 +199,7 @@ private:
     Button repeating_ = Button::None;
     Uint32 repeatAt_ = 0;
     Uint32 lastMs_ = 0;
+    BarFollow follow_; // the view follows the bar playing (follow_bar.hpp)
     float stickX_ = 0.f, stickY_ = 0.f;
     bool stickWasX_ = false, stickWasY_ = false;
 };

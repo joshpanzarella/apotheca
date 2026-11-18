@@ -835,6 +835,13 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
 
     const float x = input.stickX(), y = input.stickY();
     if (project_.bar >= trk().bars[project_.scene]) project_.bar = 0; // the cell was shortened, or it is another cell
+    {
+        // The view follows the bar playing, unless the player is at the controls (follow_bar.hpp).
+        const int bars = trk().bars[project_.scene];
+        const bool here = project_.playing && session_.playScene() == project_.scene && engine_.playStep() >= 0 && bars > 0;
+        const int at = follow_.step(here, here ? engine_.playBar() % bars : -1, input.anyHeld() || x != 0.f || y != 0.f, nowMs);
+        if (at >= 0) project_.bar = at;
+    }
     // Another screen (the kit's) asked for a lane's slices.
     if (session_.wantSlices >= 0) {
         moveCursorTo(session_.wantSlices, step_ < 0 ? 0 : step_);

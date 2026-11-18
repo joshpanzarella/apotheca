@@ -23,6 +23,68 @@ constexpr float kMovesPerSecond = 7.f, kChangesPerSecond = 9.f;
 // Four rows of ten: the letters, the digits, and the three marks a name may have. '_' at the end; the space is the wide one.
 const char* const SettingsScreen::kKeys = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_ ";
 
+// The PASSWORD keys: three sets of forty. Every sign a WPA password may hold is on one of them.
+const char* const SettingsScreen::kPasswordKeys[3] = {
+    "abcdefghijklmnopqrstuvwxyz0123456789 -_.",
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_.",
+    "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ \x01\x01\x01\x01\x01\x01\x01",
+};
+const char* const SettingsScreen::kPasswordSetNames[3] = {"abc", "ABC", "#+="};
+
+void SettingsScreen::passwordButton(Button b) {
+    if (isDirection(b)) {
+        moveKey(b);
+        repeating_ = b;
+        repeatAt_ = 0;
+    } else if (b == Button::A) {
+        const char c = kPasswordKeys[keySet_][key_];
+        if (c != '\x01' && static_cast<int>(typed_.size()) < kWifiPasswordMost) typed_ += c;
+    } else if (b == Button::Y) {
+        if (!typed_.empty()) typed_.pop_back();
+    } else if (b == Button::X) {
+        keySet_ = (keySet_ + 1) % 3;
+    } else if (b == Button::B || b == Button::Start) {
+        // Keeps it and joins. Nothing typed: B leaves, and nothing is joined.
+        if (typed_.empty()) {
+            if (b == Button::B) typing_ = false, password_ = false;
+        } else if (static_cast<int>(typed_.size()) < kWifiPasswordLeast) {
+            networkSaid_ = "8 AT LEAST";
+            networkSaidUntil_ = lastMs_ + 2500;
+        } else {
+            session_.wifi().join(passwordFor_, typed_);
+            std::fill(typed_.begin(), typed_.end(), '\0'); // (it goes no further than the program's stdin)
+            typed_.clear();
+            typing_ = false, password_ = false;
+        }
+    }
+}
+
+// Hold A on NETWORK: the network before or after in the list (strongest first). The ends stop.
+void SettingsScreen::pickStep(int by) {
+    const int count = static_cast<int>(nets_.size());
+    if (count == 0) return;
+    // (Moved, even where an end stops it: the network the row is about may be picked again, as after a wrong password.)
+    pickMoved_ = true;
+    const int to = pick_ < 0 ? (by > 0 ? 0 : -1) : pick_ + by;
+    if (to < 0 || to >= count) return;
+    pick_ = to;
+}
+
+// A let go on a network picked: joined at once if it is open or the system has its password, else
+// the keys come up for one.
+void SettingsScreen::joinPicked() {
+    if (pick_ < 0 || pick_ >= static_cast<int>(nets_.size())) return;
+    const WifiNetwork& net = nets_[static_cast<std::size_t>(pick_)];
+    if (net.needsPassword()) {
+        typing_ = true, password_ = true, fromSong_ = false;
+        typed_.clear();
+        passwordFor_ = net.name;
+        key_ = 0, keySet_ = 0;
+    } else {
+        session_.wifi().join(net.name, "");
+    }
+}
+
 void SettingsScreen::moveKey(Button direction) {
     const int count = 40, columns = kKeyColumns;
     int col = key_ % columns, row = key_ / columns;
@@ -64,6 +126,7 @@ void SettingsScreen::typeButton(Button b) {
 bool SettingsScreen::here(int row) const {
     if (row == kBrightness) return session_.screenHere();
     if (row == kLight || row == kLightColour) return session_.ringHere();
+    if (row == kNetwork) return session_.wifiHere();
     return row >= 0 && row < kRows;
 }
 
@@ -102,6 +165,7 @@ void SettingsScreen::goTo(int row) {
     if (to >= kRows)
         for (to = row; to > 0 && !here(to); --to) {}
     row_ = to;
+    session_.wifiLooking = row_ == kNetwork && !typing_; // (at once: Session::update asks before this screen's update)
     const int place = placeOf(row_);
     if (place < first_) first_ = place;
     while (first_ < place && !fits(place, first_)) ++first_;
@@ -148,9 +212,44 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (typing_) {
-        if (event.down) typeButton(b);
+        if (event.down) password_ ? passwordButton(b) : typeButton(b);
         else if (b == repeating_) repeating_ = Button::None;
         return;
+    }
+    if (event.down && b != Button::B) forgetting_ = false; // (any other button calls a forgetting off)
+    if (row_ == kNetwork && session_.wifiHere()) {
+        // NETWORK: hold A + up / down picks, let go joins; hold B forgets the one joined.
+        if (b == Button::A) {
+            if (event.down && session_.transferOn()) {
+                picking_ = true, pickMoved_ = false;
+                const Wifi::Now now = session_.wifi().now();
+                nets_ = now.networks;
+                pick_ = -1;
+                for (std::size_t i = 0; i < nets_.size(); ++i)
+                    if (now.status.state != WifiState::Off && nets_[i].name == now.status.name) pick_ = static_cast<int>(i);
+            } else if (!event.down && picking_) {
+                picking_ = false;
+                if (pickMoved_) joinPicked();
+            }
+            return;
+        }
+        if (b == Button::B) {
+            const WifiStatus status = session_.wifi().now().status;
+            if (event.down && picking_) picking_ = false; // (B with A held: nothing is joined)
+            else if (event.down) forgetting_ = session_.transferOn() && status.state != WifiState::Off, forgetTimed_ = false;
+            else forgetting_ = false;
+            return;
+        }
+        if (picking_) {
+            if (event.down && (b == Button::Up || b == Button::Down)) {
+                pickStep(b == Button::Down ? 1 : -1);
+                repeating_ = b;
+                repeatAt_ = 0;
+            } else if (!event.down && b == repeating_) {
+                repeating_ = Button::None;
+            }
+            return;
+        }
     }
     if (b == Button::A) {
         holding_ = event.down && row_ == kControls;
@@ -159,7 +258,7 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (!event.down) return;
         if (row_ == kBounce && !session_.bouncing()) session_.startBounce(bounceWhat_ == 0 ? Session::Bounce::Song : bounceWhat_ == 1 ? Session::Bounce::EachTrack : Session::Bounce::ThisTrack);
         if (row_ == kTempo) session_.tapTempo(lastMs_); // TAP TEMPO: A in time
-        if (row_ == kTrackName) typing_ = true, typed_ = project_.current().name, key_ = 0;
+        if (row_ == kTrackName) typing_ = true, password_ = false, typed_ = project_.current().name, key_ = 0;
         if (row_ == kWifi) session_.toggleTransfer(lastMs_ * 2654435761u + 977u);
         if (row_ == kTest) testing_ = true, testTimed_ = false, lastPressed_ = Button::None;
         return;
@@ -186,11 +285,31 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
     // A button let go while another screen was showing (a song opened, a tab turned) never told this
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
     if (!input.held(Button::A)) holding_ = false, holdPart_ = 0.f;
+    if (!input.held(Button::A) || row_ != kNetwork) picking_ = false; // (a let go this screen never saw joins nothing)
+    if (!input.held(Button::B) || row_ != kNetwork) forgetting_ = false;
+    if (!networkSaid_.empty() && nowMs >= networkSaidUntil_) networkSaid_.clear();
+    // Our firmware's WiFi: its status asked for now and then, and a scan while the NETWORK row is up.
+    session_.wifiLooking = row_ == kNetwork && !typing_; // (Session::update asks; the status is asked for on every screen)
+    forgetPart_ = 0.f;
+    if (forgetting_) {
+        if (!forgetTimed_) forgetTimed_ = true, forgetSince_ = nowMs;
+        forgetPart_ = static_cast<float>(nowMs - forgetSince_) / static_cast<float>(kForgetHoldMs);
+        if (nowMs - forgetSince_ >= kForgetHoldMs) {
+            forgetting_ = false, forgetPart_ = 0.f;
+            const WifiStatus status = session_.wifi().now().status;
+            if (status.state != WifiState::Off) {
+                session_.wifi().forget(status.name);
+                networkSaid_ = "FORGOTTEN";
+                networkSaidUntil_ = nowMs + 2500;
+            }
+        }
+    }
     // The SONG screen asked for the keyboard, for the track its cursor is on.
     if (session_.wantTrackName) {
         session_.wantTrackName = false;
         row_ = kTrackName;
         typing_ = true;
+        password_ = false;
         fromSong_ = true;
         typed_ = project_.current().name;
         key_ = 0;
@@ -262,14 +381,23 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
         saved_ += stickWas_ ? std::fabs(push) * (sideways ? kChangesPerSecond : kMovesPerSecond) * dt : 1.f;
         stickWas_ = true;
         for (; saved_ >= 1.f; saved_ -= 1.f) {
-            if (sideways) change(push > 0.f ? 1 : -1);
-            else step(push > 0.f ? 1 : -1);
+            if (picking_) {
+                if (!sideways) pickStep(push > 0.f ? 1 : -1);
+            } else if (sideways) {
+                change(push > 0.f ? 1 : -1);
+            } else {
+                step(push > 0.f ? 1 : -1);
+            }
         }
     }
     if (repeating_ != Button::None && repeatAt_ == 0) {
         repeatAt_ = nowMs + kRepeatDelayMs;
     } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
         repeatAt_ = nowMs + kRepeatEveryMs;
+        if (picking_) {
+            pickStep(repeating_ == Button::Down ? 1 : repeating_ == Button::Up ? -1 : 0);
+            return;
+        }
         if (repeating_ == Button::Up) step(-1);
         if (repeating_ == Button::Down) step(1);
         if (repeating_ == Button::Left) change(-1);
@@ -281,6 +409,40 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     topBar(r, fonts, View::Settings, "", project_);
     char text[96];
 
+    if (typing_ && password_) {
+        // A network's password: the keys in three sets. What is typed is shown (the handheld is in
+        // your hand, and a wrong letter costs a minute); its end where it is too long for the box.
+        const std::string title = "PASSWORD FOR " + passwordFor_;
+        fonts.within(&Fonts::small, title.c_str(), kScreenW - 80.f).draw(r, 40.f, 46.f, title.c_str(), kDim);
+        box(r, 40, 66, kScreenW - 80, 52, kPanel2, kTeal);
+        std::snprintf(text, sizeof text, "%d OF %d", static_cast<int>(typed_.size()), kWifiPasswordMost);
+        const float countW = fonts.fixed().small.width("63 OF 63");
+        const Font& typedFont = fonts.fixed().medium;
+        const float tx = 56.f, room = kScreenW - 56.f - countW - 16.f - tx - 8.f;
+        std::string shown = typed_;
+        while (shown.size() > 1 && typedFont.width((std::string("...") + shown).c_str()) > room) shown.erase(0, 1);
+        if (shown.size() < typed_.size()) shown = "..." + shown;
+        typedFont.draw(r, tx, 66.f + (52.f - typedFont.capHeight()) / 2.f, shown.c_str(), kText);
+        if (static_cast<int>(typed_.size()) < kWifiPasswordMost) fill(r, static_cast<int>(tx + typedFont.width(shown.c_str()) + (shown.empty() ? 0 : 3)), 66 + 14, 2, 24, kTeal);
+        fonts.fixed().small.drawRight(r, kScreenW - 56.f, 66.f + (52.f - fonts.fixed().small.capHeight()) / 2.f, text, kDim);
+        if (!networkSaid_.empty()) fonts.fixed().small.drawRight(r, kScreenW - 40.f, 46.f, networkSaid_.c_str(), kBrass);
+        const int kw = 52, kh = 52, gx = (kScreenW - kKeyColumns * kw) / 2, gy = 140;
+        for (int i = 0; i < 40; ++i) {
+            const int x = gx + (i % kKeyColumns) * kw, y = gy + (i / kKeyColumns) * kh;
+            const bool here = i == key_;
+            const char c = kPasswordKeys[keySet_][i];
+            box(r, x + 2, y + 2, kw - 4, kh - 4, here ? kTeal : (c == '\x01' ? kBg : kPanel), here ? kTeal : kLine);
+            if (c == '\x01') continue;
+            char one[8];
+            std::snprintf(one, sizeof one, "%s", c == ' ' ? "SPACE" : std::string(1, c).c_str());
+            const Font& font = c == ' ' ? fonts.within(&Fonts::small, one, kw - 4 - 6.f) : fonts.fixed().large;
+            font.drawCentered(r, x + kw / 2.f, y + (kh - font.capHeight()) / 2.f, one, here ? kBg : kText);
+        }
+        const bool none = typed_.empty();
+        const Hint list[] = {{"A", "type"}, {"Y", none ? nullptr : "delete"}, {"X", kPasswordSetNames[(keySet_ + 1) % 3]}, {"B", none ? "leave" : "join"}};
+        hints(r, fonts, list, 4);
+        return;
+    }
     if (typing_) {
         char title[48];
         std::snprintf(title, sizeof title, "TRACK %d: ITS NAME", project_.track + 1);
@@ -336,7 +498,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     }
 
     const char* names[kRows] = {"TEMPO", "CHORD PACK", "KEY", "SCALE", "TRACK NAME", "BOUNCE", "CLICK", "COUNT IN", "MUTES", "USB KEYBOARD", "TEXT SIZE", "THEME", "PIANO ROLL",
-                                "VOLUME", "BRIGHTNESS", "STICK LIGHT", "LIGHT COLOUR", "STICK SPEED", "WIFI PAGE", "BUTTONS", "CONTROLS"};
+                                "VOLUME", "BRIGHTNESS", "STICK LIGHT", "LIGHT COLOUR", "STICK SPEED", "WIFI PAGE", "NETWORK", "BUTTONS", "CONTROLS"};
     const int rowH = kRowH, w = kRowW; // (twelve rows shown: 34 a row, as it was with eleven, would run into the hints bar)
     // The heading of the first row in view, above the rows.
     const char* topHeading = groupName(groupOf(rowAt(first_)));
@@ -359,6 +521,8 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const bool here = row == row_;
         float part = -1.f;
         const char* note = "";
+        char said[96] = "";
+        bool lock = false, twoAddresses = false;
         switch (row) {
         case kTempo:
             std::snprintf(text, sizeof text, "%d BPM", static_cast<int>(project_.tempo));
@@ -465,7 +629,39 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             if (session_.transferOn()) std::snprintf(text, sizeof text, "ON   %s", session_.transferAddress().c_str());
             else std::snprintf(text, sizeof text, "OFF");
             note = session_.transferOn() ? "" : "files and updates from a browser";
+            if (session_.transferOn() && session_.wifiHere()) {
+                // Our firmware gives the handheld a name on the network: said beside the address (the
+                // same port and number after it). Nothing where the system does not say one.
+                const std::string name = session_.transferName();
+                if (!name.empty()) std::snprintf(said, sizeof said, "or %.60s", name.c_str()), note = said, twoAddresses = true;
+            }
             break;
+        case kNetwork: {
+            const Wifi::Now now = session_.wifi().now();
+            const WifiStatus& status = now.status;
+            if (!session_.transferOn()) {
+                std::snprintf(text, sizeof text, "NONE");
+                note = "turn WIFI PAGE on first";
+            } else if (picking_) {
+                const bool one = pick_ >= 0 && pick_ < static_cast<int>(nets_.size());
+                std::snprintf(text, sizeof text, "%s", one ? nets_[static_cast<std::size_t>(pick_)].name.c_str() : "NONE");
+                lock = one && nets_[static_cast<std::size_t>(pick_)].needsPassword();
+                if (nets_.empty()) std::snprintf(said, sizeof said, "%s", now.scanned ? "NONE FOUND" : "LOOKING...");
+                else std::snprintf(said, sizeof said, "%d OF %d", one ? pick_ + 1 : 0, static_cast<int>(nets_.size()));
+                note = said;
+            } else {
+                std::snprintf(text, sizeof text, "%s", status.state == WifiState::Off ? "NONE" : status.name.c_str());
+                if (forgetPart_ > 0.f) note = kForgettingWords;
+                else if (!networkSaid_.empty()) std::snprintf(said, sizeof said, "%s", networkSaid_.c_str()), note = said;
+                else if (status.state == WifiState::Joining) note = "JOINING...";
+                else if (status.state == WifiState::WrongPassword) note = "WRONG PASSWORD";
+                else if (status.state == WifiState::NotFound) note = "NOT FOUND";
+                else if (status.state == WifiState::Joined) std::snprintf(said, sizeof said, "%.40s", status.address.c_str()), note = said;
+                else if (!now.scanned) note = "LOOKING...";
+                else std::snprintf(said, sizeof said, "%d FOUND", static_cast<int>(now.networks.size())), note = said;
+            }
+            break;
+        }
         case kTest:
             std::snprintf(text, sizeof text, "TEST");
             note = "see what Apotheca hears from each button";
@@ -480,9 +676,29 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         // A value and what is said about it share the row. Where the two would meet at XL (a track's
         // name of ten wide letters), both are held at LARGE (Fonts::within).
         const float valueRoom = kNoteRight - kValueX - (note[0] ? fonts.small.width(note) + kNoteGap : 0.f);
-        const Font& valueFont = fonts.within(&Fonts::large, text, valueRoom);
+        // (WIFI PAGE with the page's name beside its address is two addresses on one row: they do not fit in
+        // the large lettering at any size, so the address is drawn in the medium, or the small, of LARGE.)
+        const Font* addressFont = nullptr;
+        if (twoAddresses) {
+            const float room = kNoteRight - kValueX - kNoteGap - fonts.fixed().small.width(note);
+            addressFont = fonts.fixed().medium.width(text) <= room ? &fonts.fixed().medium : &fonts.fixed().small;
+        }
+        // (A network's name is the one value that may be too long even at LARGE: cut to its room there, "..."
+        // at its end, so it is the same words at every size.)
+        if (row == kNetwork) {
+            const float room = kNoteRight - kValueX - (note[0] ? fonts.fixed().small.width(note) + kNoteGap : 0.f) - (lock ? kLockW + 8 : 0);
+            for (std::size_t n = std::strlen(text); n > 4 && fonts.fixed().large.width(text) > room; --n) std::snprintf(text + n - 4, 5, "...");
+        }
+        const Font& valueFont = addressFont ? *addressFont : fonts.within(&Fonts::large, text, valueRoom - (lock ? kLockW + 8 : 0));
         const Font& noteFont = (&valueFont == &fonts.large ? fonts : fonts.fixed()).small;
         valueFont.draw(r, kValueX, y + (rowH - 6 - valueFont.capHeight()) / 2.f, text, here ? kTeal : kText);
+        if (lock) {
+            // It needs a password: a little lock after its name (a body, and a bow over it).
+            const int lx = static_cast<int>(kValueX + valueFont.width(text)) + 8, ly = y + (rowH - 6 - kLockH) / 2;
+            fill(r, lx, ly + 5, kLockW, kLockH - 5, kBrass);
+            outline(r, lx + 2, ly, kLockW - 4, 7, kBrass);
+        }
+        if (row == kNetwork && here && forgetPart_ > 0.f) fill(r, 16, y + rowH - 10, static_cast<int>(w * (forgetPart_ > 1.f ? 1.f : forgetPart_)), 4, kStop);
         if (note[0]) noteFont.drawRight(r, kNoteRight, y + (rowH - 6 - noteFont.capHeight()) / 2.f, note, kDim);
         if (part >= 0.f) {
             // The bar, between the value and what is said: at 250 as it always was, or further right where
@@ -510,6 +726,20 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (row_ == kTempo) hint("A", "tap it");
     if (row_ == kTrackName) hint("A", "type a name");
     if (row_ == kWifi) hint("A", session_.transferOn() ? "turn off" : "turn on");
+    if (row_ == kNetwork && session_.transferOn()) {
+        const bool joined = session_.wifi().now().status.state != WifiState::Off;
+        if (forgetPart_ > 0.f) {
+            count = 0;
+            hint("HOLD B", "forgetting");
+        } else if (picking_) {
+            count = 0;
+            hint("UP / DOWN", "networks");
+            hint("B", "leave it");
+        } else {
+            hint("HOLD A", "networks");
+            if (joined) hint("HOLD B", "forget");
+        }
+    }
     if (row_ == kTest) hint("A", "open the test");
     if (row_ == kControls) hint("HOLD A", "set up again");
     hint("SELECT", "to SONG");

@@ -31,6 +31,7 @@
 #include <SDL.h>
 
 #include <string>
+#include <vector>
 
 #include "input.hpp"
 #include "session.hpp"
@@ -45,10 +46,10 @@ public:
     //   PLAYING   CLICK, COUNT IN, USB KEYBOARD
     //   LOOK      TEXT SIZE, THEME, PIANO ROLL
     //   HANDHELD  VOLUME, BRIGHTNESS, STICK LIGHT, LIGHT COLOUR, STICK SPEED
-    //   SETUP     WIFI PAGE, BUTTONS, CONTROLS
+    //   SETUP     WIFI PAGE, NETWORK (our own firmware only: wifi.hpp), BUTTONS, CONTROLS
     // The numbers are kept nowhere (a setting is kept by its word in settings.txt): the order is free.
     enum Row { kTempo, kPack, kKey, kScale, kTrackName, kBounce, kClick, kCountIn, kMutes, kMidi, kTextSize, kTheme, kOctaves,
-               kVolume, kBrightness, kLight, kLightColour, kStick, kWifi, kTest, kControls, kRows };
+               kVolume, kBrightness, kLight, kLightColour, kStick, kWifi, kNetwork, kTest, kControls, kRows };
     enum Group { kSong, kPlaying, kLook, kHandheld, kSetup, kGroups };
     static constexpr int groupOf(int row) { return row < kClick ? kSong : row < kTextSize ? kPlaying : row < kVolume ? kLook : row < kWifi ? kHandheld : kSetup; }
     static const char* groupName(int group);
@@ -58,7 +59,7 @@ public:
     void onButton(const ButtonEvent& event, const Input& input) override;
     void update(const Input& input, Uint32 nowMs) override;
     void draw(SDL_Renderer* renderer, const Fonts& fonts) const override;
-    unsigned stirring() const override { return testing_ ? kStirButtonTest : 0u; } // it closes by itself (redraw.hpp)
+    unsigned stirring() const override { return (testing_ ? kStirButtonTest : 0u) | (!networkSaid_.empty() ? kStirScreenSaid : 0u); } // each goes by itself (redraw.hpp)
 
     // Where the rows are drawn, for the tests: a row's box starts at rowY and is kRowH - 6 tall;
     // its name starts at kNameX, its value at kValueX, and what is said about it ends at kNoteRight.
@@ -107,6 +108,23 @@ public:
     bool typing() const { return typing_; }
     const std::string& typed() const { return typed_; }
     static const char* const kKeys; // the grid's characters, row after row
+    // NETWORK (firmware-plan.md, section 14): hold A + up / down through the networks found, let go
+    // to join; one that needs a password opens the keys in their PASSWORD mode (three sets of forty,
+    // X turns to the next: small letters, capitals, signs; 63 letters at most, 8 at least). Hold B a
+    // second forgets the network joined.
+    static const char* const kPasswordKeys[3]; // each forty; '\x01' is a key with nothing on it
+    static const char* const kPasswordSetNames[3];
+    static constexpr Uint32 kForgetHoldMs = 1000;
+    static constexpr const char* kForgettingWords = "FORGETTING IT: CANNOT BE UNDONE";
+    bool typingPassword() const { return typing_ && password_; }
+    int passwordSet() const { return keySet_; }
+    int keyAt() const { return key_; } // the key the cursor is on
+    bool picking() const { return picking_; }
+    int picked() const { return pick_; }
+    float forgetPart() const { return forgetPart_; }
+    const std::string& passwordFor() const { return passwordFor_; }
+    const std::string& networkSaid() const { return networkSaid_; }
+    static constexpr int kLockW = 9, kLockH = 11; // the mark after a network that needs a password
     static constexpr int kKeyColumns = 10, kNameLength = 10;
     // True once after A was held a second on CONTROLS. The program then runs
     // the controls setup again (main.cpp); asking clears it.
@@ -127,6 +145,20 @@ private:
     std::string typed_;
     int key_ = 0; // which character of the grid the cursor is on
     void typeButton(Button b);
+    void passwordButton(Button b);
+    void pickStep(int by);
+    void joinPicked();
+    bool password_ = false; // the keys are in PASSWORD mode
+    int keySet_ = 0;
+    std::string passwordFor_; // the network the password is for
+    bool picking_ = false, pickMoved_ = false;
+    int pick_ = -1;
+    std::vector<WifiNetwork> nets_; // the list as it was when A went down (a scan landing meanwhile moves nothing)
+    bool forgetting_ = false, forgetTimed_ = false;
+    Uint32 forgetSince_ = 0;
+    float forgetPart_ = 0.f;
+    std::string networkSaid_; // said on the row for a moment (TOO SHORT...)
+    Uint32 networkSaidUntil_ = 0;
     void moveKey(Button direction);
     bool testing_ = false, testTimed_ = false;
     Uint32 testUntil_ = 0;

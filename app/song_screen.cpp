@@ -891,9 +891,12 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
 
     // ---- the list of songs --------------------------------------------------------
     if (listing_) {
-        const int w = 360, rowH = 34, shown = 9, x = (kScreenW - w) / 2, y = 60;
+        // (Our firmware names the page on the network, apotheca.local: it is said as well as the
+        // address, on a line of its own, and the list shows a row fewer for it. The box is as it was.)
+        const std::string pageName = session_.transferName();
+        const int w = 360, rowH = 34, room = 9, shown = pageName.empty() ? room : room - 1, x = (kScreenW - w) / 2, y = 60;
         fill(r, 0, kTopBarH + 1, kScreenW, kScreenH - kTopBarH - kHintsH - 1, faded(kBg, 200));
-        box(r, x, y, w, 80 + shown * rowH, kPanel, kLine);
+        box(r, x, y, w, 80 + room * rowH, kPanel, kLine);
         {
             // Files over WiFi: off, or the address to type into a browser.
             const int ty = y + 42 + shown * rowH;
@@ -904,8 +907,13 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             if (on) {
                 const std::string address = session_.transferAddress();
                 // (These run the panel's width: one too wide at XL is held at LARGE.)
-                const std::string open = address[0] == ':' ? "NOT ON A NETWORK. JOIN WIFI IN THE FIRMWARE FIRST." : "OPEN IN A BROWSER:  " + address;
+                const std::string open = address[0] == ':' ? (session_.wifiHere() ? "NOT ON A NETWORK. JOIN ONE: SET, NETWORK." : "NOT ON A NETWORK. JOIN WIFI IN THE FIRMWARE FIRST.")
+                                                               : pageName.empty() ? "OPEN IN A BROWSER:  " + address : "OPEN  " + pageName;
                 fonts.within(&Fonts::small, open.c_str(), w - 24.f).draw(r, x + 12.f, ty + 16.f, open.c_str(), kBrass);
+                if (!pageName.empty() && address[0] != ':') {
+                    const std::string also = "OR  " + address;
+                    fonts.within(&Fonts::small, also.c_str(), w - 24.f).draw(r, x + 12.f, ty + 32.f, also.c_str(), kBrass);
+                }
             } else {
                 const char* from = "Recordings, chord packs, songs: from a browser.";
                 fonts.within(&Fonts::small, from, w - 24.f).draw(r, x + 12.f, ty + 16.f, from, kDim);

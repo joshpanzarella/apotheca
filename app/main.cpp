@@ -1327,6 +1327,38 @@ int main(int argc, char** argv) {
             pushKey(SDLK_w, true);
             pushKey(SDLK_l, true);
         }
+    } else if (std::strncmp(view, "setup-network", 13) == 0) {
+        // NETWORK (our firmware's WiFi; pretended, nothing is run): the WIFI PAGE on, The Old Mill joined,
+        // the page's name beside its address. setup-network: the cursor on NETWORK. -held: A held and
+        // DOWN to the next network, one that needs a password (its lock). -keys: the password's keys,
+        // a few letters typed, on the capitals. -forgetting: B held, its bar filling. -long: a
+        // network's name at its longest (32 wide letters), joining.
+        Wifi::Now now;
+        now.scanned = true;
+        now.networks = wifiNetworksFrom("-40 wpa2+saved The Old Mill\n-52 wpa2 Hollow Lane Guest\n-60 open Cafe\n-71 sae Next Door\n");
+        now.status = wifiStatusFrom(std::strstr(view, "-long") ? "joining WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW\n" : "joined The Old Mill 192.168.1.27 apotheca.local\n");
+        app.session().pretendWifi(now, "192.168.1.27:8080/4821");
+        app.session().view = View::Settings;
+        app.settings().goTo(SettingsScreen::kNetwork);
+        if (std::strstr(view, "-held") || std::strstr(view, "-keys")) {
+            pushKey(SDLK_x, true); // A held
+            tapKey(SDLK_DOWN);
+        }
+        if (std::strstr(view, "-keys")) {
+            pushKey(SDLK_x, false);
+            tapKey(SDLK_x, 3);  // aaa
+            tapKey(SDLK_s);     // X: the capitals
+            tapKey(SDLK_RIGHT);
+            tapKey(SDLK_x, 2);  // BB
+        }
+        if (std::strstr(view, "-forgetting")) {
+            pushKey(SDLK_z, true); // B held
+            if (stillMs > 600) stillMs = 600; // (the picture is taken before the second is up)
+        }
+        if (std::strstr(view, "-songs")) { // the list of songs, the page's address by name and by number
+            app.session().view = View::Song;
+            tapKey(SDLK_BACKSPACE); // SELECT
+        }
     } else if (std::strcmp(view, "song-mute-waiting") == 0 || std::strcmp(view, "setup-mutes") == 0) {
         // QUEUED MUTES (easywins batch 8): track 2's mute asked for and waiting for the bar line (its M
         // hollow, its head not dark yet), track 3 muted and landed; or the SET page on MUTES at NEXT BAR.
@@ -1636,7 +1668,7 @@ int main(int argc, char** argv) {
         // nothing more: any press would put the notice away
     } else if (demo && std::strcmp(view, "help-nomenu") == 0) {
         // nothing more: START with SELECT held is "quit"
-    } else if (demo && std::strcmp(view, "add-track") != 0 && std::strstr(view, "-deleting") == nullptr && std::strcmp(view, "picker-typing") != 0 && std::strcmp(view, "typing") != 0) { // (another press calls a held B off; START keeps a name being typed, and makes the folder: the "typing" still showed the SET page, not the keys, until 2026-11-15)
+    } else if (demo && std::strcmp(view, "add-track") != 0 && std::strstr(view, "-deleting") == nullptr && std::strstr(view, "-forgetting") == nullptr && std::strcmp(view, "setup-network-keys") != 0 && std::strcmp(view, "picker-typing") != 0 && std::strcmp(view, "typing") != 0) { // (another press calls a held B off; START keeps a name being typed, and makes the folder: the "typing" still showed the SET page, not the keys, until 2026-11-15)
         tapKey(SDLK_RETURN); // playing, so the stills show the play position and the scope
     }
     // A gesture held on the drum grid.

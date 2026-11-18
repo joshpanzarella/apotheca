@@ -724,7 +724,7 @@ void testTheRow() {
     S& setup = rig.app.settings();
     // Among the handheld's rows, after STICK SPEED; thirteen rows now, THEME after it (tests/theme_test.cpp).
     // (Under LOOK since the page's headings: after USB KEYBOARD, the last of PLAYING.)
-    CHECK(S::kRows == 21 && S::kTextSize == S::kMidi + 1 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::groupOf(S::kTextSize) == S::kLook);
+    CHECK(S::kRows == 22 && S::kTextSize == S::kMidi + 1 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::groupOf(S::kTextSize) == S::kLook);
     setup.goTo(S::kMidi);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kTextSize && session.textSize() == kTextLarge);
@@ -808,6 +808,75 @@ void testTheRow() {
         std::snprintf(what, sizeof what, "the SET page, row %d", row + 1);
         CHECK(holds(rig, what) > 10);
     }
+}
+
+// ---- NETWORK, on our firmware (wifi.hpp): the row, the list held, the password's keys ------------
+void testTheNetworkRow() {
+    Screens& s = screens();
+    if (!s.canvas.ok) return;
+    typedef SettingsScreen S;
+    Rig rig;
+    Session& session = rig.session();
+    Wifi::Now now;
+    now.scanned = true;
+    now.networks = wifiNetworksFrom("-40 wpa2 WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW\n-52 wpa2 Hollow Lane Guest\n-60 open Cafe\n");
+    const char* const statuses[] = {"off", "joining WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW", "wrong-password WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW", "not-found Hollow Lane Guest",
+                                    "joined WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW 192.168.100.200 apotheca-2.local", "joined Cafe 192.168.1.7"};
+    session.view = View::Settings;
+    S& setup = rig.app.settings();
+    for (const char* status : statuses) {
+        now.status = wifiStatusFrom(status);
+        session.pretendWifi(now, "192.168.100.200:8080/4821");
+        setup.goTo(S::kNetwork);
+        rig.frames(1);
+        CHECK(setup.cursorRow() == S::kNetwork);
+        CHECK(holds(rig, status) > 10);
+        setup.goTo(S::kWifi); // (the page's two addresses, the cursor on them)
+        rig.frames(1);
+        CHECK(holds(rig, "WIFI PAGE with the page's name") > 10);
+    }
+    // Held: each network of the list, the longest name with its lock.
+    now.status = wifiStatusFrom("off");
+    session.pretendWifi(now, "192.168.100.200:8080/4821");
+    setup.goTo(S::kNetwork);
+    rig.key(A, true);
+    rig.frames(1);
+    for (int i = 0; i < 3; ++i) {
+        rig.tap(DOWN);
+        CHECK(setup.picked() == i);
+        CHECK(holds(rig, "NETWORK, A held") > 10);
+    }
+    rig.tap(UP, 2);
+    rig.key(A, false);
+    rig.frames(1);
+    // The password's keys, each set, empty and full.
+    CHECK(setup.typingPassword());
+    for (int set = 0; set < 3; ++set) {
+        CHECK(holds(rig, "the password's keys") >= 0); // (the keys are a tight grid: drawn at LARGE at every size)
+        rig.tap(X);
+    }
+    rig.tap(DOWN, 2), rig.tap(RIGHT, 2); // (W: the widest)
+    rig.tap(X);
+    for (int i = 0; i < 63; ++i) rig.tap(A);
+    rig.tap(Y, 60);
+    rig.tap(B); // 8 AT LEAST
+    CHECK(holds(rig, "the password's keys, too short") >= 0); // (the keys are a tight grid: drawn at LARGE at every size)
+    for (int i = 0; i < 63; ++i) rig.tap(A);
+    CHECK(static_cast<int>(setup.typed().size()) == 63);
+    CHECK(holds(rig, "the password's keys, full") >= 0); // (the keys are a tight grid: drawn at LARGE at every size)
+    rig.tap(Y, 63);
+    rig.tap(B);
+    CHECK(!setup.typing());
+    // Forgetting.
+    now.status = wifiStatusFrom("joined Hollow Lane Guest 192.168.1.7 apotheca.local");
+    session.pretendWifi(now, "192.168.1.7:8080/4821");
+    rig.frames(1);
+    rig.key(B, true);
+    rig.frames(30);
+    CHECK(setup.forgetPart() > 0.f);
+    CHECK(holds(rig, "NETWORK, forgetting") > 10);
+    rig.key(B, false);
+    rig.frames(1);
 }
 
 // ---- the tight rows stay at LARGE ---------------------------------------------------------------
@@ -2479,6 +2548,7 @@ int main(int argc, char** argv) {
     testTheBoxes();
     testTheSettingIsKept();
     testTheRow();
+    testTheNetworkRow();
     testTheDrumGridsRows();
     testTheStepNumbersOfAShortScene();
     testThePianoRollsRows();
