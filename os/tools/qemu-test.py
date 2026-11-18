@@ -815,7 +815,10 @@ def main():
         # switching itself is said to fail here; the desk test and the
         # handheld have that part.)
         m.run("echo 'jack in' > /tmp/pad; sleep 2; echo 'jack out' > /tmp/pad; sleep 1; echo 'jack in' > /tmp/pad; sleep 1")
-        out, _ = m.run("grep -e 'headphone' /data/apotheca/logs/power.log")
+        # The switching runs amixer, slow under the emulator: wait up to 10 s for both lines.
+        out, _ = m.run("for i in $(seq 20); do grep -q 'headphones out (just now)' /data/apotheca/logs/power.log && "
+                       "grep -q 'headphones in (just now)' /data/apotheca/logs/power.log && break; sleep 0.5; done; "
+                       "grep -e 'headphone' /data/apotheca/logs/power.log", timeout=40)
         if "headphones in (just now)" not in out:
             info, _ = m.run("tail -n 40 /data/apotheca/logs/power.log; grep -l . /sys/class/input/event*/device/capabilities/sw; "
                             "for e in /sys/class/input/event*; do echo $e $(cat $e/device/name) sw=$(cat $e/device/capabilities/sw); done; cat /tmp/fp.txt")
