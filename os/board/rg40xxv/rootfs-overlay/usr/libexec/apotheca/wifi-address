@@ -1,0 +1,41 @@
+#!/bin/sh
+# udhcpc's script for apotheca-wifi: BusyBox's own does the address, and this
+# starts avahi (so the handheld answers as apotheca.local) once there is one,
+# and stops it when the address goes. `wifi-address stop` stops avahi alone
+# (apotheca-wifi down).
+
+run=/run/apotheca-wifi
+
+avahiStop() {
+    if [ -f "$run/avahi.pid" ]; then
+        kill "$(cat "$run/avahi.pid")" 2>/dev/null
+        rm -f "$run/avahi.pid"
+    fi
+    # Nothing else on this machine runs avahi
+    killall -q avahi-daemon 2>/dev/null
+}
+
+avahiStart() {
+    [ -f "$run/avahi.pid" ] && kill -0 "$(cat "$run/avahi.pid")" 2>/dev/null && return
+    command -v avahi-daemon > /dev/null || return
+    mkdir -p "$run" /run/avahi-daemon
+    # Not as a daemon, so what it says (its host name among it) goes to a
+    # file of ours; its output kept away from apotheca-wifi's. As root: the
+    # image has no avahi user (and this avahi has no chroot to leave).
+    avahi-daemon --no-drop-root --no-rlimits < /dev/null > "$run/avahi.log" 2>&1 &
+    echo $! > "$run/avahi.pid"
+}
+
+case "$1" in
+    stop) avahiStop ;;
+    deconfig|leasefail|nak)
+        /usr/share/udhcpc/default.script "$@"
+        [ "$1" = deconfig ] && avahiStop
+        ;;
+    bound|renew)
+        /usr/share/udhcpc/default.script "$@"
+        avahiStart
+        ;;
+    *) /usr/share/udhcpc/default.script "$@" ;;
+esac
+exit 0

@@ -34,6 +34,19 @@ define APOTHECA_LINUX_EARLY_INIT
 endef
 LINUX_PRE_BUILD_HOOKS += APOTHECA_LINUX_EARLY_INIT
 
+# The start-up picture in place of the penguins (os/tools/make-logo.py writes
+# it; CONFIG_LOGO_LINUX_CLUT224_FILE in linux.fragment names it). Copied only
+# when it changed, with the build's fixed date, so the kernel is the same from
+# one build to the next.
+define APOTHECA_LINUX_LOGO
+	cmp -s $(BR2_EXTERNAL_APOTHECA_PATH)/board/rg40xxv/logo/logo_apotheca_clut224.ppm \
+		$(LINUX_DIR)/drivers/video/logo/logo_apotheca_clut224.ppm || \
+		cp $(BR2_EXTERNAL_APOTHECA_PATH)/board/rg40xxv/logo/logo_apotheca_clut224.ppm \
+			$(LINUX_DIR)/drivers/video/logo/logo_apotheca_clut224.ppm
+	touch -d @$(SOURCE_DATE_EPOCH) $(LINUX_DIR)/drivers/video/logo/logo_apotheca_clut224.ppm
+endef
+LINUX_PRE_BUILD_HOOKS += APOTHECA_LINUX_LOGO
+
 # SDL2's "offscreen" video driver (no screen at all), so the desk test can
 # have Apotheca draw a still under qemu (os/tools/qemu-test.py). Buildroot
 # turns it off; the later flag wins.

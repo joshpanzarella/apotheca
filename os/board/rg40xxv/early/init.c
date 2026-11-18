@@ -9,7 +9,7 @@
  *   1. /dev, /proc, /sys. The red light ON (the kernel put it out; the
  *      green one blinks the kernel's heartbeat): "the first program runs".
  *      The kernel's deadline (apotheca_deadline) moved to 150 s from now.
- *      APOTHECA STARTING on the screen.
+ *      STARTING on the screen, under the kernel's logo.
  *   2. Four times a second, until the root is found or WAIT seconds are up
  *      (40; apotheca.wait=N on the command line). A start that finds the
  *      root at once writes nothing and waits for nothing; from 2 s of
@@ -337,11 +337,13 @@ int main(void) {
 
     /* Something on the screen at once (it is kept until the display is up,
      * if that comes later): the kernel itself prints nothing unless it has an
-     * error to say. */
+     * error to say. The picture above it (SHAPETAKER, APOTHECA) is the
+     * kernel's logo (os/tools/make-logo.py): the screen is not cleared, or
+     * it would go. The console is 80 letters wide; this stands in the middle. */
     {
         const int screen = open("/dev/tty1", O_WRONLY | O_NOCTTY | O_CLOEXEC);
         if (screen >= 0) {
-            const char* words = "\033[2J\033[H\n\n\n      APOTHECA\n\n      STARTING\n\n";
+            const char* words = "\r\n                                    STARTING\r\n";
             if (write(screen, words, strlen(words)) < 0) {}
             close(screen);
         }

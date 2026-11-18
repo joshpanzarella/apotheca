@@ -81,6 +81,9 @@ done
 
 # Quitting turns the handheld off; so does idling (app/power_off.hpp).
 export APOTHECA_OFF_MARK=/run/apotheca/apotheca.off
+# The NETWORK row on the SET page: joins a WiFi network through our program
+# (firmware plan, section 14). The port sets nothing, and has no row.
+[ -x /usr/sbin/apotheca-wifi ] && export APOTHECA_WIFI=/usr/sbin/apotheca-wifi
 idle=$(sed -n 's/^idle-off[[:space:]]\{1,\}\([0-9]\{1,4\}\)[[:space:]]*$/\1/p' "$dir/power.txt" 2>/dev/null | tail -n 1)
 export APOTHECA_IDLE_OFF_MINUTES=${idle:-15}
 

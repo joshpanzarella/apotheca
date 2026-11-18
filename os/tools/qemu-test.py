@@ -839,6 +839,90 @@ def main():
               "the speaker's switch takes on or off only, and the sound set-up at boot no longer turns the speaker on (%s)" % out.split()[-3:])
         m.run("echo 'jack out' > /tmp/pad; sleep 1")
 
+        # WiFi (section 14). The handheld's own parts are on the card; the
+        # radio is three made-up ones (mac80211_hwsim, never loaded on the
+        # H700): wlan0 the handheld's, wlan1 an access point with a password,
+        # wlan2 an open one, each handing out an address (udhcpd). The real
+        # apotheca-wifi joins them, as the NETWORK row asks it to.
+        out, _ = m.run("[ -f /lib/firmware/rtw88/rtw8821c_fw.bin ] && echo /lib/firmware/rtw88/rtw8821c_fw.bin; find /lib/modules -name 'rtw88_8821cs.ko*' | wc -l; "
+                       "ls /etc/init.d | grep -c avahi; tr '\\0' '\\n' < /proc/$(pidof apotheca)/environ | grep APOTHECA_WIFI")
+        check(out.split() == ["/lib/firmware/rtw88/rtw8821c_fw.bin", "1", "0", "APOTHECA_WIFI=/usr/sbin/apotheca-wifi"],
+              "WiFi's parts are there: the 8821CS's firmware on the root, its driver a module, no avahi start-up "
+              "script, and Apotheca is told the program (%s)" % out.split())
+        ap = ("modprobe mac80211_hwsim radios=3 && sleep 1 && "
+              "printf 'ctrl_interface=/run/ap1\\nap_scan=2\\nnetwork={\\n ssid=\"APOTHECA TEST\"\\n mode=2\\n frequency=2437\\n "
+              "key_mgmt=WPA-PSK\\n proto=RSN\\n pairwise=CCMP\\n group=CCMP\\n psk=\"right password\"\\n}\\n' > /tmp/ap1.conf && "
+              "printf 'ctrl_interface=/run/ap2\\nap_scan=2\\nnetwork={\\n ssid=\"OPEN NET\"\\n mode=2\\n frequency=2462\\n "
+              "key_mgmt=NONE\\n}\\n' > /tmp/ap2.conf && "
+              "wpa_supplicant -B -D nl80211 -i wlan1 -c /tmp/ap1.conf > /dev/null 2>&1 && "
+              "wpa_supplicant -B -D nl80211 -i wlan2 -c /tmp/ap2.conf > /dev/null 2>&1 && "
+              "ip addr add 10.9.1.1/24 dev wlan1 && ip addr add 10.9.2.1/24 dev wlan2 && "
+              "for n in 1 2; do printf 'interface wlan%s\\nstart 10.9.%s.10\\nend 10.9.%s.20\\noption subnet 255.255.255.0\\n"
+              "lease_file /tmp/l%s\\npidfile /tmp/d%s.pid\\n' $n $n $n $n $n > /tmp/d$n.conf; touch /tmp/l$n; udhcpd /tmp/d$n.conf; done; "
+              "sleep 2; ls /sys/class/net | grep -c wlan")
+        out, _ = m.run(ap, timeout=60)
+        check(out.strip().endswith("3"), "three made-up radios, two of them access points (%s)" % out.split()[-1:])
+        w = "/usr/sbin/apotheca-wifi"
+
+        def wifi_until(want, seconds):
+            out = ""
+            end = time.time() + seconds
+            while time.time() < end:
+                out, _ = m.run(w + " status")
+                if re.match(want, out):
+                    return out
+                m.run("sleep 1")
+            return out
+
+        out, _ = m.run(w + " status")
+        check(out == "off", "status before up: off (%r)" % out)
+        out, code = m.run(w + " up; echo $?; " + w + " status; pidof wpa_supplicant | wc -w")
+        check(out.split() == ["0", "off", "3"], "up: the handheld's wpa_supplicant runs beside the two access points, nothing joined (%s)" % out.split())
+        out = ""
+        for i in range(4):
+            out, _ = m.run(w + " scan", timeout=30)
+            if "OPEN NET" in out and "APOTHECA TEST" in out:
+                break
+        lines = out.splitlines()
+        check(any(re.match(r"-?\d+ wpa2 APOTHECA TEST$", l) for l in lines) and any(re.match(r"-?\d+ open OPEN NET$", l) for l in lines),
+              "scan: one line a network, signal, security, the name with its space (%s)" % lines)
+        m.run("echo 'wrong password 1' | " + w + " join 'APOTHECA TEST'")
+        out = wifi_until(r"wrong-password ", 45)
+        conf, _ = m.run("cat /data/apotheca/wifi/networks.conf")
+        check(out == "wrong-password APOTHECA TEST" and "wrong password 1" not in conf,
+              "a wrong password: said, and not kept in networks.conf (%r)" % out)
+        m.run("echo 'right password' | " + w + " join 'APOTHECA TEST'")
+        out = wifi_until(r"joined APOTHECA TEST 10\.9\.1\.\d+ apotheca\.local$", 45)
+        check(re.match(r"joined APOTHECA TEST 10\.9\.1\.\d+ apotheca\.local$", out) is not None,
+              "the right password: joined, an address from the access point, and avahi says apotheca.local (%r)" % out)
+        conf, _ = m.run("cat /data/apotheca/wifi/networks.conf")
+        logs, _ = m.run("grep -rl 'right password' /data/apotheca/logs /run /tmp/fp.txt 2>/dev/null | wc -l; "
+                        "pidof avahi-daemon | wc -w; " + w + " scan | grep 'APOTHECA TEST'")
+        check("right password" in conf and logs.splitlines()[0] == "0",
+              "the password is in networks.conf and in no log (%s)" % logs.splitlines()[:1])
+        check(logs.splitlines()[1] == "1" and re.search(r"wpa2\+saved APOTHECA TEST", logs) is not None,
+              "avahi runs once there is an address, and scan marks the network saved (%s)" % logs.splitlines()[1:])
+        out, _ = m.run(w + " down; " + w + " status; ps | grep -v grep | grep -c 'wpa_supplicant.*wlan0\\|udhcpc\\|avahi-daemon'; "
+                       "ps | grep -v grep | grep 'wpa_supplicant.*wlan0\\|udhcpc\\|avahi-daemon'")
+        check(out.split()[:2] == ["off", "0"], "down: off, and wpa_supplicant, udhcpc and avahi on the handheld's side stopped (%s)" % out.split())
+        m.run(w + " up")
+        out = wifi_until(r"joined APOTHECA TEST ", 45)
+        check(out.startswith("joined APOTHECA TEST 10.9.1."), "up again: the saved network is joined by itself (%r)" % out)
+        m.run(w + " forget 'APOTHECA TEST'")
+        conf, _ = m.run("cat /data/apotheca/wifi/networks.conf")
+        out = wifi_until(r"off$", 20)
+        check("APOTHECA" not in conf and "41504f5448454341" not in conf and "right password" not in conf and out == "off",
+              "forget: gone from networks.conf, and off (%r)" % out)
+        m.run(w + " join 'OPEN NET' < /dev/null")
+        out = wifi_until(r"joined OPEN NET 10\.9\.2\.\d+ apotheca\.local$", 45)
+        check(re.match(r"joined OPEN NET 10\.9\.2\.\d+ apotheca\.local$", out) is not None,
+              "an open network: joined with no password, and an address from IT, not the last network's (%r)" % out)
+        m.run(w + " join 'NOBODY HERE' < /dev/null")
+        out = wifi_until(r"not-found ", 60)
+        check(out == "not-found NOBODY HERE", "a network that is not there: not-found, after a while (%r)" % out)
+        m.run(w + " down; for p in /tmp/d1.pid /tmp/d2.pid; do kill $(cat $p); done; killall wpa_supplicant; sleep 1; "
+              "rmmod mac80211_hwsim; rm -rf /data/apotheca/wifi")
+
         # Quit is off: Apotheca, started again with the stand-in joypad there,
         # quit with SEL + START: it saves, leaves the mark, and the machine goes down.
         m.run("echo kept > /data/kept.txt")  # something to find again after the power cycle

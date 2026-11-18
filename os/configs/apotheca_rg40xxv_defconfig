@@ -106,3 +106,21 @@ BR2_PACKAGE_HOST_DOSFSTOOLS=y
 BR2_PACKAGE_HOST_EXFATPROGS=y
 BR2_PACKAGE_HOST_GENIMAGE=y
 BR2_PACKAGE_HOST_MTOOLS=y
+
+# WiFi (firmware plan, section 14): the 8821CS's firmware from linux-firmware,
+# wpa_supplicant to join (WPA2 and WPA3, no D-Bus), avahi so the handheld
+# answers as apotheca.local. All started and stopped by /usr/sbin/apotheca-wifi,
+# only while the WIFI PAGE is on (their own start-up scripts are taken out in
+# post-build.sh). AP_SUPPORT is for the desk test alone: a second made-up
+# radio plays the access point there (qemu-test.py).
+BR2_PACKAGE_LINUX_FIRMWARE=y
+BR2_PACKAGE_LINUX_FIRMWARE_RTL_RTW88=y
+BR2_PACKAGE_WPA_SUPPLICANT=y
+BR2_PACKAGE_WPA_SUPPLICANT_NL80211=y
+BR2_PACKAGE_WPA_SUPPLICANT_AP_SUPPORT=y
+BR2_PACKAGE_WPA_SUPPLICANT_WPA3=y
+BR2_PACKAGE_WPA_SUPPLICANT_CLI=y
+BR2_PACKAGE_WPA_SUPPLICANT_CTRL_IFACE=y
+BR2_PACKAGE_AVAHI=y
+BR2_PACKAGE_AVAHI_DAEMON=y
+BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_APOTHECA_PATH)/board/rg40xxv/busybox.fragment"

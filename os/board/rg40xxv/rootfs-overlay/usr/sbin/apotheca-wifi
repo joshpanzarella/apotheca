@@ -1,0 +1,274 @@
+#!/bin/sh
+# apotheca-wifi: WiFi for Apotheca on our firmware (firmware plan, section 14).
+# The app runs it as `apotheca-wifi WORD [NAME]`, with no shell, on a thread of
+# its own, and reads what it prints (one answer, then the end of its output):
+#
+#   up              the radio on, wpa_supplicant and the address; a saved
+#                   network is joined by itself
+#   down            all of it off, the radio too
+#   scan            one line a network: SIGNAL SECURITY NAME (SIGNAL in dBm;
+#                   SECURITY open, or wpa2 / wpa3, with "+saved" when this
+#                   card knows it)
+#   join NAME       the password, if any, as one line on stdin (never on a
+#                   command line, never in a log); a saved network with no
+#                   password given is joined with what is saved
+#   forget NAME     the saved network deleted
+#   status          off | joining NAME | joined NAME ADDRESS [HOSTNAME] |
+#                   wrong-password NAME | not-found NAME
+#
+# Saved networks are /data/apotheca/wifi/networks.conf (wpa_supplicant's own
+# form): on the APOTHECA drive, so they go with the card. Its passwords are
+# in it, as any computer's WiFi settings hold them.
+#
+# Everything this starts runs with its output away from ours: the app reads
+# our output to its end, and a daemon holding it would keep the app waiting.
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+umask 077
+
+saved_dir=${APOTHECA_WIFI_DIR:-/data/apotheca/wifi}
+conf=$saved_dir/networks.conf
+run=/run/apotheca-wifi
+ctrl=/run/wpa_supplicant
+log=/data/apotheca/logs/wifi.log
+mkdir -p "$run" "$saved_dir" /data/apotheca/logs 2>/dev/null
+
+say() { echo "[$(cut -d' ' -f1 /proc/uptime)] $*" >> "$log" 2>/dev/null; }
+
+# The first wireless interface (wlan0 on the handheld).
+iface() {
+    for w in /sys/class/net/*/wireless; do
+        [ -d "$w" ] || continue
+        w=${w%/wireless}
+        echo "${w##*/}"
+        return 0
+    done
+    return 1
+}
+
+cli() { wpa_cli -p "$ctrl" -i "$dev" "$@" 2>/dev/null; }
+
+running() { [ -f "$1" ] && kill -0 "$(cat "$1" 2>/dev/null)" 2>/dev/null; }
+
+# A name as wpa_supplicant writes it in hex (a name may hold anything).
+hexOf() { printf '%s' "$1" | od -An -tx1 -v | tr -d ' \n'; }
+
+# The name wpa_supplicant shows (\xNN for anything but plain letters, \" and
+# \\ for those two), made plain again.
+plainName() { printf '%b' "$(printf '%s' "$1" | sed 's/\\"/"/g')"; }
+
+tab=$(printf '\t')
+
+# The id of a saved network by its name.
+idOf() {
+    want=$(hexOf "$1")
+    cli list_networks | tail -n +2 | while IFS="$tab" read -r id ssid rest; do
+        [ "$(hexOf "$(plainName "$ssid")")" = "$want" ] && { echo "$id"; break; }
+    done
+}
+
+ensureConf() {
+    [ -s "$conf" ] && return
+    printf 'ctrl_interface=%s\n' "$ctrl" > "$conf"
+}
+
+# A saved network taken out of the file. Only this program writes the file
+# (wpa_supplicant is never asked to: it would write the networks a join had
+# set aside as disabled), and it writes every name in hex, so a block is
+# found by its ssid line.
+removeSaved() {
+    [ -f "$conf" ] || return 0
+    awk -v line="	ssid=$(hexOf "$1")" '
+        /^network=\{/ { block = $0; inside = 1; next }
+        inside { block = block "\n" $0; if ($0 ~ /^}/) { inside = 0; if (index(block "\n", "\n" line "\n") == 0) print block }; next }
+        { print }' "$conf" > "$conf.part" && mv "$conf.part" "$conf"
+}
+
+# The address: udhcpc, -b so it goes on asking with no lease yet. It is
+# started again for every join, or it would keep the last network's address
+# until its lease ran out.
+dhcpStart() {
+    udhcpc -i "$dev" -b -R -t 4 -T 2 -A 3 -x hostname:apotheca -p "$run/dhcp.pid" \
+        -s /usr/libexec/apotheca/wifi-address < /dev/null > /dev/null 2>&1
+}
+
+# Nothing else on this machine runs udhcpc: every one is stopped (its pid
+# file can name the process from before it went into the background).
+dhcpStop() {
+    running "$run/dhcp.pid" && kill "$(cat "$run/dhcp.pid")" 2>/dev/null
+    killall -q udhcpc 2>/dev/null
+    rm -f "$run/dhcp.pid"
+    n=0
+    while pidof udhcpc > /dev/null && [ $n -lt 20 ]; do sleep 0.1; n=$((n + 1)); done
+    [ -n "$dev" ] && ip addr flush dev "$dev" 2>/dev/null
+}
+
+up() {
+    # The driver is a module, loaded at boot by its modalias; the interface
+    # can take a moment after a resume or a slow probe.
+    n=0
+    while ! dev=$(iface) && [ $n -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+    [ -n "$dev" ] || { say "up: no wireless interface"; return 1; }
+    ensureConf
+    command -v rfkill >/dev/null && rfkill unblock wifi 2>/dev/null
+    ip link set "$dev" up 2>/dev/null
+    if ! running "$run/wpa.pid"; then
+        wpa_supplicant -B -D nl80211 -i "$dev" -c "$conf" -C "$ctrl" -P "$run/wpa.pid" < /dev/null > /dev/null 2>&1 \
+            || { say "up: wpa_supplicant did not start"; return 1; }
+    fi
+    running "$run/dhcp.pid" || dhcpStart
+    say "up: $dev"
+}
+
+down() {
+    dev=$(iface)
+    dhcpStop
+    running "$run/wpa.pid" && kill "$(cat "$run/wpa.pid")" 2>/dev/null
+    rm -f "$run/wpa.pid"
+    /usr/libexec/apotheca/wifi-address stop > /dev/null 2>&1
+    if [ -n "$dev" ]; then
+        ip addr flush dev "$dev" 2>/dev/null
+        ip link set "$dev" down 2>/dev/null
+    fi
+    rm -f "$run/target" "$run/since" "$run/wrong"
+    say "down"
+}
+
+scan() {
+    dev=$(iface) || return 0
+    running "$run/wpa.pid" || return 0
+    cli scan > /dev/null
+    # Results come in about two seconds; a busy radio answers what it has.
+    n=0
+    while [ $n -lt 40 ]; do
+        sleep 0.1
+        n=$((n + 1))
+        cli status | grep -q '^wpa_state=SCANNING' || [ $n -lt 20 ] || break
+    done
+    savedHex=$(cli list_networks | tail -n +2 | while IFS="$tab" read -r id ssid rest; do
+        hexOf "$(plainName "$ssid")"; echo
+    done)
+    cli scan_results | tail -n +2 | while IFS="$tab" read -r bssid freq signal flags ssid; do
+        [ -n "$ssid" ] || continue
+        name=$(plainName "$ssid")
+        case "$flags" in
+            *SAE*) kind=wpa3 ;;
+            *WPA*|*RSN*|*WEP*) kind=wpa2 ;;
+            *) kind=open ;;
+        esac
+        h=$(hexOf "$name")
+        printf '%s\n' "$savedHex" | grep -qx "$h" && kind=$kind+saved
+        printf '%s %s %s\n' "$signal" "$kind" "$name"
+    done
+}
+
+join() {
+    name=$1
+    [ -n "$name" ] || return 1
+    dev=$(iface) || return 1
+    running "$run/wpa.pid" || up || return 1
+    dev=$(iface)
+    IFS= read -r password || true
+    id=$(idOf "$name")
+    if [ -n "$password" ] || [ -z "$id" ]; then
+        # A new network, or a new password: the old one deleted, the new one
+        # written into the file by us (the password never on a command line),
+        # then read back.
+        [ -n "$id" ] && cli remove_network "$id" > /dev/null
+        removeSaved "$name"
+        ensureConf
+        {
+            printf 'network={\n\tssid=%s\n\tscan_ssid=1\n' "$(hexOf "$name")"
+            if [ -n "$password" ]; then
+                printf '\tkey_mgmt=WPA-PSK WPA-PSK-SHA256 SAE\n\tieee80211w=1\n\tpsk="%s"\n' "$password"
+            else
+                printf '\tkey_mgmt=NONE\n'
+            fi
+            printf '}\n'
+        } >> "$conf"
+        password=
+        cli reconfigure > /dev/null
+        id=$(idOf "$name")
+    fi
+    [ -n "$id" ] || { say "join: not saved"; return 1; }
+    # The others set aside until the next start (the file is not touched).
+    cli select_network "$id" > /dev/null
+    dhcpStop
+    dhcpStart
+    rm -f "$run/wrong"
+    printf '%s' "$name" > "$run/target"
+    cut -d. -f1 /proc/uptime > "$run/since"
+    say "join: $(printf '%s' "$name" | wc -c)-letter name"
+    echo "joining $name"
+}
+
+forget() {
+    name=$1
+    dev=$(iface)
+    if [ -n "$dev" ] && running "$run/wpa.pid"; then
+        id=$(idOf "$name")
+        [ -n "$id" ] && cli remove_network "$id" > /dev/null
+    fi
+    removeSaved "$name"
+    [ "$(cat "$run/target" 2>/dev/null)" = "$name" ] && rm -f "$run/target" "$run/since" "$run/wrong"
+    say "forget"
+}
+
+status() {
+    dev=$(iface) || { echo off; return 0; }
+    running "$run/wpa.pid" || { echo off; return 0; }
+    s=$(cli status)
+    state=$(printf '%s\n' "$s" | sed -n 's/^wpa_state=//p')
+    ssid=$(printf '%s\n' "$s" | sed -n 's/^ssid=//p')
+    target=$(cat "$run/target" 2>/dev/null)
+    if [ "$state" = COMPLETED ] && [ -n "$ssid" ]; then
+        name=$(plainName "$ssid")
+        address=$(ip -4 addr show dev "$dev" 2>/dev/null | sed -n 's/.*inet \([0-9.]*\).*/\1/p' | head -n 1)
+        if [ -n "$address" ]; then
+            # The name avahi got (apotheca.local, or apotheca-2.local where a
+            # second Apotheca is on the network), from what it said.
+            host=$(grep -o 'Host name is [^ ]*' "$run/avahi.log" 2>/dev/null | tail -n 1 | sed 's/^Host name is //; s/\.$//')
+            echo "joined $name $address${host:+ $host}"
+        else
+            echo "joining $name"
+        fi
+        return 0
+    fi
+    [ -n "$target" ] || { echo off; return 0; }
+    id=$(idOf "$target")
+    since=$(cat "$run/since" 2>/dev/null)
+    now=$(cut -d. -f1 /proc/uptime)
+    if [ -n "$id" ] && cli list_networks | tail -n +2 | grep "^$id$tab" | grep -q 'TEMP-DISABLED'; then
+        # Turned away at the handshake: the password. It is not kept (the
+        # card would try it again at every start), and it is said until
+        # another join.
+        cli remove_network "$id" > /dev/null
+        removeSaved "$target"
+        touch "$run/wrong"
+        say "join: wrong password"
+        echo "wrong-password $target"
+    elif [ -f "$run/wrong" ]; then
+        echo "wrong-password $target"
+    elif [ -n "$since" ] && [ $((now - since)) -ge 20 ] && ! scan_has "$target"; then
+        echo "not-found $target"
+    else
+        echo "joining $target"
+    fi
+}
+
+scan_has() {
+    h=$(hexOf "$1")
+    cli scan_results | tail -n +2 | while IFS="$tab" read -r bssid freq signal flags ssid; do
+        [ "$(hexOf "$(plainName "$ssid")")" = "$h" ] && { echo yes; break; }
+    done | grep -q yes
+}
+
+case "$1" in
+    up) up ;;
+    down) down ;;
+    scan) scan ;;
+    join) join "$2" ;;
+    forget) forget "$2" ;;
+    status) status ;;
+    *) echo "usage: apotheca-wifi up|down|scan|status|join NAME|forget NAME" >&2; exit 2 ;;
+esac

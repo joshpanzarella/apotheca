@@ -17,8 +17,9 @@ CONFIG_INITRAMFS_SOURCE="apotheca-early/initramfs.list"
 CONFIG_PSTORE_RAM=y
 CONFIG_PSTORE_CONSOLE=y
 
-# The panel's start-up sequence, built in (see external.mk). WiFi and BT
-# firmware come in batch 5.
+# The panel's start-up sequence, built in (see external.mk). The WiFi chip's
+# firmware is not: it is on the root (linux-firmware), so its driver is a
+# module, loaded by S02modules once the root is mounted (section 14).
 CONFIG_EXTRA_FIRMWARE="panels/anbernic,rg40xx-panel.panel panels/anbernic,rg40xx-v2-panel.panel panels/anbernic,rg40xx-v2-stock-panel.panel"
 CONFIG_EXTRA_FIRMWARE_DIR="firmware-apotheca"
 
@@ -45,3 +46,25 @@ CONFIG_TEST_POWER=m
 # device tree. A module that loads only where a device tree asks for
 # "gpio-simulator": never on the H700.
 CONFIG_GPIO_SIM=m
+
+# WiFi (section 14): rtw88 as modules, so the firmware is read from
+# /lib/firmware. The 8821CS is the RG40XXV's; the other SDIO parts of the
+# family come along for the same price (other H700 handhelds use them).
+CONFIG_RTW88=m
+CONFIG_RTW88_CORE=m
+CONFIG_RTW88_SDIO=m
+CONFIG_RTW88_8821C=m
+CONFIG_RTW88_8821CS=m
+CONFIG_RTW88_8723DS=m
+CONFIG_RTW88_8822BS=m
+CONFIG_RTW88_8822CS=m
+# The desk test's two made-up radios (one the access point); a module never
+# loaded on the H700, which has no device to ask for it.
+CONFIG_MAC80211_HWSIM=m
+
+# The start-up picture (SHAPETAKER, APOTHECA) in place of the penguins: one,
+# not one a core (fbcon=logo-count:1 in extlinux.conf). Copied into the tree
+# by external.mk; drawn by os/tools/make-logo.py.
+CONFIG_LOGO=y
+CONFIG_LOGO_LINUX_CLUT224=y
+CONFIG_LOGO_LINUX_CLUT224_FILE="drivers/video/logo/logo_apotheca_clut224.ppm"

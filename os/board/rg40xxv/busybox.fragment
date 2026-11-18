@@ -1,0 +1,8 @@
+# Apotheca's changes over Buildroot's BusyBox config.
+# The desk test's made-up access point hands out an address with this
+# (qemu-test.py, WiFi); the handheld never runs it.
+CONFIG_UDHCPD=y
+# CONFIG_FEATURE_UDHCPD_BOOTP is not set
+# CONFIG_FEATURE_UDHCPD_WRITE_LEASES_EARLY is not set
+# CONFIG_FEATURE_UDHCPD_BASE_IP_ON_MAC is not set
+CONFIG_DHCPD_LEASES_FILE="/tmp/udhcpd.leases"

@@ -11,10 +11,11 @@ mkdir -p "$target/data"
 # would start crond and the network scripts, try to write a random seed to
 # the read-only root (seedrng), run sysctl with nothing to set, and load
 # modules from a list we do not keep (our S02modules loads what the
-# hardware asks for). Syslog and klog would write to a RAM disk nobody
+# hardware asks for). avahi is started by apotheca-wifi, only while the WIFI
+# PAGE has an address. Syslog and klog would write to a RAM disk nobody
 # reads: our boot log takes dmesg itself.
 for s in S01seedrng S20seedrng S01syslogd S02klogd S02sysctl S11modules \
-         S40network S50crond; do
+         S40network S50crond S05avahi-setup.sh S50avahi-daemon; do
     rm -f "$target/etc/init.d/$s"
 done
 
