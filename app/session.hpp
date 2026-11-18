@@ -108,6 +108,12 @@ public:
 
     // Give the next free track an instrument. False when all twelve are used.
     bool addTrack(TrackKind kind);
+    // DUPLICATE A TRACK (easywins batch 6): a copy of `track` (its instrument, sound, effects, sends,
+    // MODs, mixer, mute, every scene's patterns and automation, its name) put right after it, the
+    // tracks after a place down. Returns the copy's place, or -1 (no such track, or twelve already).
+    // The song is sent to the engine again, as when a track is deleted; undo keeps its steps (each has
+    // the track twice from then: doubleTrackText). The copy itself is not undone: hold B deletes it.
+    int duplicateTrack(int track);
     // Another instrument on a track that is there. Its patterns stay: notes carry over between the
     // instruments played from the keys, and a drum pattern waits untouched under a synth (and the
     // other way about). The new instrument starts on its first sound; the track's effects, name and
@@ -422,6 +428,8 @@ public:
     void setBrightness(int percent);
     int stickLight() const { return stickLight_; }
     int lightColour() const { return lightColour_; } // LIGHT COLOUR (lights.hpp: LightColour)
+    // LIGHT COLOUR is TRACK on a ring that is here and lit: the SONG screen marks each head with its track's colour.
+    bool trackColoursShown() const { return ringHere() && stickLight_ != kRingOff && lightColour_ == kLightTrack; }
     void setLightColour(int which);
     void setStickLight(int mode);
     // What the ring shows now (ringPicture with the song's step and the theme's colours).
@@ -505,6 +513,20 @@ public:
     void setMuted(int track, bool muted);
     void setSolo(int track, bool solo);
     bool heard(int track) const; // as things stand, does this track sound?
+    // QUEUED MUTES (easywins batch 8): SET's MUTES at NEXT BAR, a mute or a solo pressed while the song
+    // plays lands on the next bar line. Until the engine says it has, the track's mark waits ('M' or
+    // 'S': drawn hollow) and heardNow is what still sounds.
+    enum { kMutesAtOnce, kMutesNextBar, kMutesModes };
+    int mutes() const { return mutes_; }
+    void setMutes(int mode);
+    char muteWaits(int track) const { return track >= 0 && track < kNumTracks && mutesWaiting_ ? muteMark_[track] : 0; }
+    bool mutesWaiting() const { return mutesWaiting_; }
+    // For a still: this track's mark as if it waited for a bar line that never comes.
+    void pretendMuteWaits(int track, char mark) {
+        for (int t = 0; t < kNumTracks; ++t) heardBefore_[t] = t == track ? true : heard(t);
+        mutesWaiting_ = true, mutesAsked_ = -1, muteMark_[track] = mark;
+    }
+    bool heardNow(int track) const { return mutesWaiting_ && track >= 0 && track < kNumTracks ? heardBefore_[track] : heard(track); }
     // What the player calls a track: capitals, digits, spaces, - and _, ten
     // at most. Empty puts back its instrument's name.
     void setTrackName(int track, const std::string& name);
@@ -524,7 +546,7 @@ public:
     int mixPan(int track) const { return track == kMasterTrack ? project.masterPan : (track >= 0 && track < kNumTracks ? project.tracks[track].mixPan : 0); }
     void sendMix(int track); // what the engine is told for it: its level and its pan
     void sendEffects(int track); // every slot of a track, the master or a bus, to the engine
-    void sendMutes(); // tell the engine how things stand (after a song is opened)
+    void sendMutes(bool wait = false); // tell the engine how things stand (after a song is opened); wait: at the next bar line
 
     // ---- a synth's sound ---------------------------------------------------------------
     // One place for changing a synth track's patch, used by the Device screen
@@ -555,6 +577,22 @@ public:
     // Keep the track's sound, as it is now with its macros, under a name.
     // The track is then on that preset. False if the name is no good or it could not be written.
     bool savePreset(int track, const std::string& name);
+    // KIT PRESETS (easywins batch 7; kits.cpp). The list: the built-in kits (recipes of DRUM SYNTH's named
+    // voices), then the player's own ("NAME.kit" in the preset folder, written by SAVE as KIT 1, KIT 2...).
+    // A kit is a drum track's every lane: its recording or synth voice, EDIT, FIT, one-slice, level,
+    // FEEL, SWING and CHOKE; never its patterns, effects or mixer.
+    static constexpr std::size_t kKitNameMost = 12;
+    struct Kit {
+        std::string name, text; // its text is a kit file's (kitText)
+        bool own = false;
+        std::string file;       // an own kit's file in the preset folder
+    };
+    const std::vector<Kit>& kits();
+    int kitOf(int track);                          // which kit of the list the track's kit is now, or -1 (its own)
+    bool loadKit(int track, int index);            // put on the track: every lane told to the engine. Not a step of undo
+    bool putKit(int track, const TrackData& kit);  // ...the kit fields of `kit` (copyKit's)
+    std::string saveKit(int track);                // as the next free "KIT n": its name, or "" (no folder, or the card refused)
+    bool deleteKit(int index);                     // an own kit's file, for good
     // The sound-designer page's way in (see designer.hpp); the WiFi page serves it.
     Designer& designer() { return designer_; }
 
@@ -810,6 +848,8 @@ private:
     std::string designState() const;
     Designer designer_;
     std::string presetFolder_;
+    std::vector<Kit> kits_;
+    void readKits();
     bool designHeld_[128] = {}; // keys the page is holding down
     int designHeldTrack_ = 0;
     unsigned designLooks_ = 0;
@@ -830,6 +870,12 @@ private:
     void hearMidi();
     MidiInput midi_;
     bool midiRecord_ = false;
+    int mutes_ = kMutesAtOnce;
+    bool mutesWaiting_ = false;       // an asking the engine has not said is done
+    int mutesAsked_ = 0;              // ...its number (Command::SetTrackHeard's c)
+    char muteMark_[kNumTracks] = {};  // ...the mark that waits on each track
+    bool heardBefore_[kNumTracks] = {}; // ...and what each sounded as before it
+    void pressedMute(int track, bool solo, bool on);
     int click_ = kClickOff;
     bool countIn_ = false;
     int sentClick_ = -1; // what the engine was last told (SetClick); -1: nothing yet
@@ -898,5 +944,8 @@ private:
     float seenTempo_ = 0.f;
     Uint32 tempoMovedAt_ = 0;
 };
+
+// A built-in kit's recipe naming a voice the data does not have ("TIGHT: no voice kick TIGHT"): the tests fail on one.
+std::vector<std::string> builtInKitProblems();
 
 } // namespace apotheca

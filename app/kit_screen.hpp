@@ -19,6 +19,12 @@
 //           the other lanes of that group (the closed hat cuts the open one:
 //           a new kit has its two hats in 1). B: none.
 //   EDIT    the sound's picture: tap A opens the lane's EDIT view (below).
+//   KIT     up from lane 1 (easywins batch 7, kit presets): the kit's own stop, where SOUND's heading
+//           stands. It names the kit the track's is (a built-in, one of your own, or YOUR OWN).
+//           hold A + up / down: the kit after / before in the list (the built-in kits, then your
+//           own), put on at once; B with A still held: the kit as it was when A went down.
+//           Y: SAVE the kit as it is now as KIT 1, KIT 2... Hold B a second on one of your own:
+//           delete its file (the track keeps its sound).
 //   Y       CATCH: the last bar the song played, all of it as it was
 //           heard, becomes a recording on this lane, fitted to one bar.
 //   R1      RECORD from a USB microphone or interface onto this lane: once
@@ -59,6 +65,7 @@
 #include "screen.hpp"
 #include <SDL.h>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -127,6 +134,13 @@ public:
     static constexpr int kVoiceModel = -1;
     static constexpr const char* kVoiceDeletingWords = "PUTTING EVERY KNOB BACK TO ITS USUAL";
     static constexpr int kRollLow = 25, kRollHigh = 75; // ROLL: each knob somewhere in here
+    // KIT PRESETS: the kit's stop, for tests and stills.
+    bool onKit() const { return onKit_; }
+    void goToKit() { onKit_ = true, lane_ = 0; }
+    float kitDeletePart() const { return kitDeletePart_; }
+    static constexpr Uint32 kKitDeleteMs = 1000;
+    static constexpr const char* kKitDeletingWords = "DELETING THE KIT: CANNOT BE UNDONE";
+
 private:
     TrackData& trk() { return project_.current(); }
     const TrackData& trk() const { return project_.current(); }
@@ -150,6 +164,13 @@ private:
     Session& session_;
     Project& project_;
     int lane_ = 0, column_ = kSound;
+    // The KIT stop (up from lane 1).
+    bool onKit_ = false;
+    std::unique_ptr<TrackData> kitBefore_; // the kit as it was when A went down on the stop
+    bool kitDeleting_ = false, kitDeleteTimed_ = false;
+    Uint32 kitDeleteSince_ = 0;
+    float kitDeletePart_ = 0.f;
+    void stepKit(int by);
     bool holding_ = false; // A is held
     bool stepped_ = false; // ...and something was changed with it, so letting go is not a tap
     SamplePicker picker_;

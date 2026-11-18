@@ -538,6 +538,77 @@ void putNoteScenes(std::string& out, const TrackData& track) {
     }
 }
 
+// A drum track's KIT: every lane's level, recording or synth voice, FIT, one-slice, EDIT, FEEL, SWING and
+// CHOKE, in the song file's own lines. The one writer of them: a track in a song (putTrack) and a kit
+// preset's file (kitText) are written here.
+void putKit(std::string& out, const TrackData& track) {
+    out += "lanes";
+    for (float level : track.laneLevel) put(out, " %.6g", level);
+    out += "\n";
+    // sample LANE FIT NAME: a recording on a lane, stretched to FIT steps (0: as recorded)
+    for (int lane = 0; lane < kDrumLanes; ++lane) {
+        if (!track.laneSample[lane][0]) continue;
+        put(out, "sample %.0f", lane + 1);
+        put(out, " %.0f ", track.laneFit[lane]);
+        out += track.laneSample[lane];
+        out += "\n";
+    }
+    // lanesynth LANE WORD v1..v8: a lane's DRUM SYNTH voice (apotheca/drum_synth.hpp), its model by its
+    // word and its eight dials in place order. Left out when the lane has none.
+    for (int lane = 0; lane < kDrumLanes; ++lane) {
+        const drumsynth::Voice& v = track.laneSynth[lane];
+        if (!v.on()) continue;
+        put(out, "lanesynth %.0f ", lane + 1);
+        out += drumsynth::modelWord(v.model);
+        for (int p = 0; p < drumsynth::kPlaces; ++p) put(out, " %.0f", v.dial[p]);
+        out += "\n";
+    }
+    // oneslice LANE...: the lanes whose hits play one slice of their sound and stop
+    bool anySliced = false;
+    for (bool on : track.laneOneSlice) anySliced = anySliced || on;
+    if (anySliced) {
+        out += "oneslice";
+        for (int lane = 0; lane < kDrumLanes; ++lane)
+            if (track.laneOneSlice[lane]) put(out, " %.0f", lane + 1);
+        out += "\n";
+    }
+    // laneedit LANE START END GAIN FADEIN FADEOUT REVERSE PITCH FINE: what a lane does to its sound
+    // (lane_edit.hpp). START and END as parts of the file (0..1), GAIN in dB, the fades in ms, REVERSE
+    // 0 or 1, PITCH in semitones, FINE in cents. Left out when every edit is at rest.
+    for (int lane = 0; lane < kDrumLanes; ++lane) {
+        const LaneEdit& e = track.laneEdit[lane];
+        if (e.atRest()) continue;
+        put(out, "laneedit %.0f", lane + 1);
+        put(out, " %.6g", static_cast<double>(e.start) / kEditUnits);
+        put(out, " %.6g", static_cast<double>(e.end) / kEditUnits);
+        put(out, " %.6g", e.gain / 10.0);
+        put(out, " %.0f", e.fadeIn);
+        put(out, " %.0f", e.fadeOut);
+        put(out, " %.0f", e.reverse);
+        put(out, " %.0f", e.pitch);
+        put(out, " %.0f\n", e.fine);
+    }
+    // feel LANE TIME LEVEL: a lane's HUMAN TIME and HUMAN LEVEL, each 0..100. Left out when both are off.
+    for (int lane = 0; lane < kDrumLanes; ++lane) {
+        if (track.laneFeel[lane].atRest()) continue;
+        put(out, "feel %.0f", lane + 1);
+        put(out, " %.0f", track.laneFeel[lane].time);
+        put(out, " %.0f\n", track.laneFeel[lane].level);
+    }
+    // swing LANE AMOUNT: a lane's SWING, 0..100. Left out at 0.
+    for (int lane = 0; lane < kDrumLanes; ++lane) {
+        if (track.laneSwing[lane] == 0) continue;
+        put(out, "swing %.0f", lane + 1);
+        put(out, " %.0f\n", track.laneSwing[lane]);
+    }
+    // choke LANE GROUP: a lane in CHOKE 1 or 2. Left out in none.
+    for (int lane = 0; lane < kDrumLanes; ++lane) {
+        if (track.laneChoke[lane] == kChokeNone) continue;
+        put(out, "choke %.0f", lane + 1);
+        put(out, " %.0f\n", track.laneChoke[lane]);
+    }
+}
+
 void putTrack(std::string& out, const TrackData& track) {
     ++gTracksWritten;
     out += std::string("track ") + instrument(track.kind)->word + "\n";
@@ -551,71 +622,7 @@ void putTrack(std::string& out, const TrackData& track) {
     }
     out += soundText(track.kind, track.effects, track.send, track.glideFrom, track.mods);
     if (track.kind == TrackKind::Drums) {
-        out += "lanes";
-        for (float level : track.laneLevel) put(out, " %.6g", level);
-        out += "\n";
-        // sample LANE FIT NAME: a recording on a lane, stretched to FIT steps (0: as recorded)
-        for (int lane = 0; lane < kDrumLanes; ++lane) {
-            if (!track.laneSample[lane][0]) continue;
-            put(out, "sample %.0f", lane + 1);
-            put(out, " %.0f ", track.laneFit[lane]);
-            out += track.laneSample[lane];
-            out += "\n";
-        }
-        // lanesynth LANE WORD v1..v8: a lane's DRUM SYNTH voice (apotheca/drum_synth.hpp), its model by its
-        // word and its eight dials in place order. Left out when the lane has none.
-        for (int lane = 0; lane < kDrumLanes; ++lane) {
-            const drumsynth::Voice& v = track.laneSynth[lane];
-            if (!v.on()) continue;
-            put(out, "lanesynth %.0f ", lane + 1);
-            out += drumsynth::modelWord(v.model);
-            for (int p = 0; p < drumsynth::kPlaces; ++p) put(out, " %.0f", v.dial[p]);
-            out += "\n";
-        }
-        // oneslice LANE...: the lanes whose hits play one slice of their sound and stop
-        bool anySliced = false;
-        for (bool on : track.laneOneSlice) anySliced = anySliced || on;
-        if (anySliced) {
-            out += "oneslice";
-            for (int lane = 0; lane < kDrumLanes; ++lane)
-                if (track.laneOneSlice[lane]) put(out, " %.0f", lane + 1);
-            out += "\n";
-        }
-        // laneedit LANE START END GAIN FADEIN FADEOUT REVERSE PITCH FINE: what a lane does to its sound
-        // (lane_edit.hpp). START and END as parts of the file (0..1), GAIN in dB, the fades in ms, REVERSE
-        // 0 or 1, PITCH in semitones, FINE in cents. Left out when every edit is at rest.
-        for (int lane = 0; lane < kDrumLanes; ++lane) {
-            const LaneEdit& e = track.laneEdit[lane];
-            if (e.atRest()) continue;
-            put(out, "laneedit %.0f", lane + 1);
-            put(out, " %.6g", static_cast<double>(e.start) / kEditUnits);
-            put(out, " %.6g", static_cast<double>(e.end) / kEditUnits);
-            put(out, " %.6g", e.gain / 10.0);
-            put(out, " %.0f", e.fadeIn);
-            put(out, " %.0f", e.fadeOut);
-            put(out, " %.0f", e.reverse);
-            put(out, " %.0f", e.pitch);
-            put(out, " %.0f\n", e.fine);
-        }
-        // feel LANE TIME LEVEL: a lane's HUMAN TIME and HUMAN LEVEL, each 0..100. Left out when both are off.
-        for (int lane = 0; lane < kDrumLanes; ++lane) {
-            if (track.laneFeel[lane].atRest()) continue;
-            put(out, "feel %.0f", lane + 1);
-            put(out, " %.0f", track.laneFeel[lane].time);
-            put(out, " %.0f\n", track.laneFeel[lane].level);
-        }
-        // swing LANE AMOUNT: a lane's SWING, 0..100. Left out at 0.
-        for (int lane = 0; lane < kDrumLanes; ++lane) {
-            if (track.laneSwing[lane] == 0) continue;
-            put(out, "swing %.0f", lane + 1);
-            put(out, " %.0f\n", track.laneSwing[lane]);
-        }
-        // choke LANE GROUP: a lane in CHOKE 1 or 2. Left out in none.
-        for (int lane = 0; lane < kDrumLanes; ++lane) {
-            if (track.laneChoke[lane] == kChokeNone) continue;
-            put(out, "choke %.0f", lane + 1);
-            put(out, " %.0f\n", track.laneChoke[lane]);
-        }
+        putKit(out, track);
         putDrumScenes(out, track);
     } else {
         if (track.kind == TrackKind::Sampler) {
@@ -1282,6 +1289,21 @@ bool cutSong(const std::string& text, std::string& head, std::vector<std::string
     return true;
 }
 
+bool doubleTrackText(std::string& text, int track) {
+    std::string head;
+    std::vector<std::string> tracks;
+    if (track < 0 || !cutSong(text, head, tracks) || track >= static_cast<int>(tracks.size()) || static_cast<int>(tracks.size()) >= kNumTracks) return false;
+    std::string out = head;
+    for (int t = 0; t < static_cast<int>(tracks.size()); ++t) {
+        std::string one = tracks[static_cast<std::size_t>(t)];
+        if (!one.empty() && one.back() != '\n') one += '\n';
+        out += one;
+        if (t == track) out += one;
+    }
+    text = out;
+    return true;
+}
+
 bool dropTrackText(std::string& text, int track) {
     if (track < 0 || text.compare(0, 13, "apotheca-song") != 0) return false;
     std::size_t from = std::string::npos, to = text.size();
@@ -1422,6 +1444,38 @@ bool readTextFile(const std::string& path, std::string& text) {
     const bool whole = !std::ferror(f); // a card that fails part-way must not pass for a short file: it may be written back
     std::fclose(f);
     return whole;
+}
+
+std::string kitText(const TrackData& track) {
+    std::string out = "apotheca-kit 1\n";
+    putKit(out, track);
+    return out;
+}
+
+void copyKit(const TrackData& from, TrackData& to) {
+    for (int lane = 0; lane < kDrumLanes; ++lane) {
+        to.laneLevel[lane] = from.laneLevel[lane];
+        std::memcpy(to.laneSample[lane], from.laneSample[lane], sizeof to.laneSample[lane]);
+        to.laneFit[lane] = from.laneFit[lane];
+        to.laneOneSlice[lane] = from.laneOneSlice[lane];
+        to.laneSynth[lane] = from.laneSynth[lane];
+        to.laneEdit[lane] = from.laneEdit[lane];
+        to.laneFeel[lane] = from.laneFeel[lane];
+        to.laneSwing[lane] = from.laneSwing[lane];
+        to.laneChoke[lane] = from.laneChoke[lane];
+    }
+}
+
+bool readKit(const std::string& text, TrackData& kit) {
+    if (text.compare(0, 12, "apotheca-kit") != 0) return false;
+    const std::size_t line = text.find('\n');
+    if (line == std::string::npos) return false;
+    // Read as a song of one drum track would be: the kit's lines are the song file's own, and parseSong
+    // is the one reader of them (every number held, every name checked, as a song's).
+    std::unique_ptr<Project> song(new Project);
+    if (!parseSong("apotheca-song 1\ntrack drums\n" + text.substr(line + 1), *song) ) return false;
+    copyKit(song->tracks[0], kit);
+    return true;
 }
 
 } // namespace apotheca

@@ -125,6 +125,8 @@ and a track deleted or given another instrument are not. The song keeps
 playing while you undo.
 
 **L2 and R2** walk along the screens: SONG, PATTERN, DEVICE, FX, MOD, SET.
+The bar at the top writes PATTERN as **PTRN** and DEVICE as **DVICE**, to give
+the six tabs room; this manual keeps the full words.
 **SELECT**, tapped by itself, goes to SONG from anywhere (and on SONG opens
 the list of songs). **START** plays: the song from
 the SONG screen, the scene being worked on from the others. **SELECT + START**
@@ -399,6 +401,13 @@ else), or it goes by itself after four seconds.
 help card, the WiFi page, and the first line of `apotheca.log`): `0.104`
 and the day it was built. The number goes up by one with every build.
 
+The rows stand under five headings: **SONG** (TEMPO, CHORD PACK, KEY, SCALE,
+TRACK NAME, BOUNCE), **PLAYING** (CLICK, COUNT IN, MUTES, USB KEYBOARD), **LOOK** (TEXT
+SIZE, THEME, PIANO ROLL), **HANDHELD** (VOLUME, BRIGHTNESS, STICK LIGHT, LIGHT
+COLOUR, STICK SPEED) and **SETUP** (WIFI PAGE, BUTTONS, CONTROLS). The page moves
+a row at a time; a small arrow after a heading says there are rows out of sight
+that way.
+
 | Row | Left / right | A |
 | --- | --- | --- |
 | TEMPO | A beat a minute | **Tap it in time**: from the second tap the tempo is the beat of the last five taps (a pause of two seconds starts again). The box above the bar says TAPPED: 117 BPM |
@@ -409,7 +418,7 @@ and the day it was built. The number goes up by one with every build.
 | VOLUME | A twentieth | |
 | BRIGHTNESS | The screen, 10% to 100% in fives (also **MENU + the volume keys**, ten at a time). **Only on Apotheca's own system for the RG40XXV** | |
 | STICK LIGHT | The light round the stick: OFF, ON (steady, in LIGHT COLOUR), BEAT (a flash on every beat while the song plays), STEPS (the ring goes round once a scene: its sixteen lights share the scene's length, the bar's first step in brass). **Only on Apotheca's own system** | |
-| LIGHT COLOUR | The ring's colour: THEME (the theme's cursor colour), TEAL, PURPLE, BRASS, RED, ORANGE, YELLOW, GREEN, BLUE, PINK, WHITE, TRACK (a colour for each track: the track you are on), RAINBOW (each light its own colour, turning a light a beat while the song plays). **Only on Apotheca's own system** | |
+| LIGHT COLOUR | The ring's colour: THEME (a colour picked for each theme: BROWN's is BRASS, BLUE a sky blue, GREEN a spring green, BLACK white, PAPER amber, GREY an ice blue), TEAL, PURPLE, BRASS, RED, ORANGE, YELLOW, GREEN, BLUE, PINK, WHITE, TRACK (a colour for each track: the track you are on; while it is chosen each track's head on the SONG screen wears a thin bar of its colour along its foot, so the ring can be matched to a track), RAINBOW (each light its own colour, turning a light a beat while the song plays). **Only on Apotheca's own system** | |
 | STICK SPEED | 25% to 150%, kept for next time | |
 | TEXT SIZE | SMALL, MEDIUM, LARGE or XL, kept for next time | |
 | THEME | The colours: BROWN, BLUE, GREEN, BLACK, PAPER or GREY, kept for next time | |
@@ -417,6 +426,7 @@ and the day it was built. The number goes up by one with every build.
 | USB KEYBOARD | PLAY ONLY, or PLAY + RECORD | |
 | CLICK | The metronome: OFF, ON (a click on every beat while the song plays, higher on a bar's first), RECORDING (only while it plays with PLAY + RECORD). It is never in a bounce, and CATCH never takes it | |
 | COUNT IN | OFF, or ONE BAR: with PLAY + RECORD, START clicks a bar first (the box above the bar counts 4, 3, 2, 1) and the song starts after it. START again calls it off | |
+| MUTES | AT ONCE, or NEXT BAR: a mute or a solo pressed while the song plays lands on the next bar line. Until then its M or S is drawn hollow on the track's head and the track sounds as it did. Stop lands it at once; pressing it back before the line calls it off | |
 | WIFI PAGE | | On / off |
 | BUTTONS | | The button test |
 | CONTROLS | | Hold a second: set the controls up again |
@@ -1306,11 +1316,11 @@ The track columns share the width of the screen: with few tracks they are wide.
 | On | A | Hold A + stick | B | Hold R1 and drag |
 | --- | --- | --- | --- | --- |
 | A cell | Opens it on PATTERN | Left / right: how long it is (1, 2, 4 or 8 bars). **Up / down: TRANSPOSE** its notes and chords a semitone (the stick up / down: an octave), every bar of it; the box above the bar says how far (MOVED +3 SEMITONES). A drum cell does not move. If a key would pass C0 or C8 nothing moves (NO ROOM). One step of undo | Empties it | Copies it into every cell crossed |
-| A track's head (up from the top scene, with the D-pad) | **A** (a quick tap) types its name. Held, it is the mixer: once its card is up, letting go never names the track, turned or not. **R1** changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go, and the list says so: this cannot be undone. **Hold B** two seconds deletes the track. Y and X work there as on its cells. | | | |
+| A track's head (up from the top scene, with the D-pad) | **A** (a quick tap) types its name. Held, it is the mixer: once its card is up, letting go never names the track, turned or not. **Hold L1 and press R1** copies the track: a new track right after it with the same instrument, sound, effects, sends, MODs, mixer, name and every scene's patterns (the tracks after it move a place along; twelve is the most). The copy is not soloed. It is not undone by SELECT + B: hold B on the copy deletes it. **R1** changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go, and the list says so: this cannot be undone. **Hold B** two seconds deletes the track. Y and X work there as on its cells. | | | |
 | A track (any of its cells) | **Y** mutes it and **X** solos it, each a tap, at once, playing or not; again to undo. X does not hear the track here: on its DEVICE page it does. L1 does nothing on a track. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. | | | |
 | A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted. The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
 | A repeat count | Tap: 1, 2, 4, 8 | Times the scene plays, 1 to 16 | Back to 1 | |
-| The song's end (the PLAYS box of the first empty row, just past the last scene) | Switches what the song does at its end: LOOP (a loop arrow) or STOP (a square) | | Back to LOOP | |
+| The song's end (the REPEATS box of the first empty row, just past the last scene) | Switches what the song does at its end: LOOP (a loop arrow) or STOP (a square) | | Back to LOOP | |
 | + TRACK | Pick DRUMS, PHAZED, JAX-EP, SAMPLER, FM-6, PHYSIC, ACID, CLOUD or MORPH | | | |
 | MASTER (the head at the right-hand end, right of + TRACK) | | Its level and pan, as a track's (below) | | |
 
@@ -1825,6 +1835,15 @@ WAV file from the `samples` folder beside the program) or a **synth voice**
 (a drum made from knobs: below). A kit can mix all three.
 Left / right moves between the columns, SOUND, FIT TO, CHOKE and the sound's
 picture, EDIT (round the ends).
+
+**Kits.** UP from lane 1 is the kit's own stop, at the top left: KIT and its
+name. Hold A + UP / DOWN there puts on the next / previous kit: seven
+built-in kits (DRUMS, SYNTH, TIGHT, BIG, ELECTRO, DUSTY, HAND DRUMS), then
+your own. B with A still held gives back the kit you had. Y saves the kit as
+it is now as KIT 1, KIT 2... (a file `kit 1.kit` beside the presets). Hold B
+a second deletes one of your own; the track keeps its sound. A kit is each
+lane's sound with its EDIT, FIT, VOLUME, CHOKE, FEEL and SWING, not the
+patterns or the effects. A changed kit reads YOUR OWN until it is saved.
 
 | On | Hold A + stick up / down | B |
 | --- | --- | --- |

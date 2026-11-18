@@ -135,7 +135,7 @@ void testTheTabAndTheTopBar() {
     // Six tabs in the top bar, at LARGE: the bar is a tight row, the same at every TEXT SIZE (textviews holds
     // that for every still). The tabs and the chips end where the screen's words begin, and those words keep room.
     Canvas c;
-    const char* tabs[] = {"SONG", "PATTERN", "DEVICE", "FX", "MOD", "SET"};
+    const char* tabs[] = {"SONG", "PTRN", "DVICE", "FX", "MOD", "SET"};
     for (int v = 0; v <= static_cast<int>(View::Settings); ++v) {
         c.clear();
         const ui::TopBar bar = ui::topBar(c.r, *c.fonts, static_cast<View>(v), "", rig.project());

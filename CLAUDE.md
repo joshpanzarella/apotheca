@@ -1518,12 +1518,20 @@ effect in those two groups and fails one that does not.
     glow lands where the clock puts it, and over a ghost hit it failed now and then); a new
     translucent thing that moves with the clock is added the same way. A still in a theme:
     `--theme paper`.
-- **The SET page shows twelve rows and moves one row at a time**
-  (`SettingsScreen::firstShown`, `rowNowY`): thirteen since THEME, fifteen since
-  CLICK and COUNT IN (easywins batch 2), eighteen on our own firmware (LIGHT COLOUR). A new row costs nothing more than its place in `Row`. **The page
-  counts PLACES, not rows** (`here`, `placeOf`, `rowAt`; `firstShown` is a place):
-  a row that is not on this handheld is passed by. Only rows after VOLUME may be
-  missing, so the HANDHELD gap stays at VOLUME.
+- **The SET page is five groups under headings, and shows as many rows as fit** (owner, 2026-11-17:
+  "enough rows now"; `SettingsScreen::Row`, `groupOf`, `groupName`): SONG (TEMPO, CHORD PACK, KEY,
+  SCALE, TRACK NAME, BOUNCE), PLAYING (CLICK, COUNT IN, MUTES, USB KEYBOARD), LOOK (TEXT SIZE, THEME, PIANO
+  ROLL), HANDHELD (VOLUME, BRIGHTNESS, STICK LIGHT, LIGHT COLOUR, STICK SPEED), SETUP (WIFI PAGE,
+  BUTTONS, CONTROLS). The heading of the first row in view stands above the rows (`kHeadingY`); every
+  other heading in view takes `kHeadingGap` before its group's first row. So **twelve rows are in
+  view with one heading among them, eleven with two, ten with three** (`placeY`, `fits`, `kPageFoot`;
+  `kRowsShown` 12 is the most). It moves one row at a time, by as little as shows the cursor, and
+  leaves no room empty under the last row. **The page counts PLACES, not rows** (`here`, `placeOf`,
+  `rowAt`; `firstShown` is a place): a row that is not on this handheld is passed by. **A group's
+  first row must always be here** (a heading stands on it): only BRIGHTNESS, STICK LIGHT and LIGHT
+  COLOUR can be missing. A new row costs its place in `Row` (the numbers are kept nowhere: a setting
+  is kept by its word in settings.txt) and its group in `groupOf`. An UP arrow after the top heading
+  and a DOWN arrow after the last heading in view say rows are out of sight.
 - **The METRONOME is added after Catch and before the volume, and never reaches a bounce**
   (easywins batch 2, `docs/plans/easywins-plan.md`; `Command::SetClick`, `Engine::addClick`). Off
   with nothing sounding it adds nothing: the output is as it was, to the bit. Only the live engine
@@ -1547,7 +1555,19 @@ effect in those two groups and fails one that does not.
   the share played, brass on a bar's first step; a one-bar scene is as it was. **LIGHT COLOUR**
   (`LightColour`, `ringColours`; a row shown only where STICK LIGHT is; `lightcolour N` in
   settings.txt, left out at THEME): premade colours, TRACK (twelve hues, the track up) and RAINBOW (a
-  hue a LED, turning a LED a beat). Not yet seen on the ring.
+  hue a LED, turning a LED a beat). **The owner has seen the colours and likes them** (2026-11-17).
+  **THEME's colour is picked for the ring, theme by theme** (`ringThemeColour`: BROWN's is BRASS, the
+  owner's word; the other five are unseen picks; a new theme must be given one, a `static_assert`
+  counts). A bar's first step is brass, or white where the ring is too near brass (`ringFirstFor`).
+- **The one colour on the screen that is not the theme's: a track's ring colour on its SONG head**
+  (owner, 2026-11-17: "a little color identifier to the tracks"; a deliberate exception to "a colour
+  goes through the ten names"). Only while LIGHT COLOUR is TRACK on a ring that is here and lit
+  (`Session::trackColoursShown`): a bar `kHueMarkH` high along the head's foot in
+  `ringTrackColour(track)`, a dim line over it for an edge on a light theme, drawn AFTER a muted
+  head's dark wash (so it is flat and as bright), clear of the M / S and mixer marks at the top.
+  `themeviews`' `Explain` knows the twelve hues as flat colours; `lights_test` `testTrackColours`
+  reads the heads in BROWN and PAPER at 2 and 12 tracks. Not on the top bar's track name (no room
+  that is not a tight row). Anything else that wants a track's colour asks `ringTrackColour`.
   A row's bar starts after its value's words and ends short of what is said
   at the right, at every text size (`SettingsScreen::barPlace`: BOUNCE's
   WORKING 37% / TAIL 12 S; VOLUME's and STICK's stay at 250, 110 wide).
@@ -2062,10 +2082,11 @@ effect in those two groups and fails one that does not.
   knob's first, call C), B with A held, another track or another screen calls it off. Only
   `pickLineTargets` (through `modTargetFits`) says what is offered. Everything goes through
   `Session::setMod`, so undo needs nothing here.
-  - **The top bar's tabs have 3 pixels either side of their word** (`ui::kTabPad`; it was 5),
-    so with six tabs the screen's words still have room: 167 stopped, 94 playing (a track's
-    name, "12 PHAZED", is 77), 32 playing with WRITE on (`TopBar::wordsRoom`; with five tabs at
-    5 it was 186, 113, 51). `modtab_test` holds the name to fit stopped and playing.
+  - **The top bar's tabs read SONG, PTRN, DVICE, FX, MOD, SET, 5 pixels either side of each word**
+    (owner, 2026-11-18; `ui::kTabPad`; it was PATTERN and DEVICE at 3). The screen's words have 182
+    stopped, 109 playing (a track's name, "12 PHAZED", is 77), 47 playing with WRITE on
+    (`TopBar::wordsRoom`). `modtab_test` holds the name to fit stopped and playing. **The help card
+    says PTRN too; README and the web pages keep the full words.**
   - **The dot at now and the step lit are shown only while the song plays or X runs that MOD**
     (`ModScreen::nowPosition`, `nowPlace`: the project's word, then the engine's
     `Engine::modNow`, the position of the MOD's last tick, and `modPlace`). Read from the
@@ -2602,10 +2623,49 @@ effect in those two groups and fails one that does not.
   `note` (the nudge is then written even at 0), the third of `chordfx` (the
   ratchet is then written even at 1). A chord's THROW is every key's.
 - **Mute is its own gate** (`SetTrackHeard`), not the track level.
+- **QUEUED MUTES: SET's MUTES at NEXT BAR, a mute or solo pressed while playing lands on the next bar's
+  first sample** (easywins batch 8; `SetTrackHeard` with b = 1, `Track::heardNext`, `Engine::landHeard`
+  from `fireStep` at step 0 and from `stopPlaying`). AT ONCE (b = 0) is the engine as it was. Stopped,
+  or told what it is already: at once, and what waited for that track is called off. **The engine says
+  when nothing waits, the app does not guess**: an asking's number rides on the LAST track's command
+  (c) and comes back in `heardDone()`; `Session::mutesWaiting_` goes down when the two are equal. The
+  project's `muted` / `solo` say what was ASKED at once (the song file, undo's text); the SONG head
+  draws the mark hollow while it waits (`muteWaits`: going on or coming off) and keeps the head as it
+  still sounds (`heardNow`). A song sent again, or MUTES put back to AT ONCE, lands it at once.
+  `mutes N` in settings.txt, left out at AT ONCE. Anything new that sends `SetTrackHeard` for a
+  press goes through `Session::pressedMute`. Stills `song-mute-waiting`, `setup-mutes`. Its marks
+  change only while the song plays, which the redraw already draws: no `idle_test` part. **One mutant
+  lives**: the narrow heads' number moved aside for a WAITING mark (11 and 12 tracks) has no test.
 - **A head's M or S mark is a box made to its letter** (`SongScreen::headMarkWidth`: the letter at the
   heads' own lettering, LARGE, 2 pixels clear all round; owner, 2026-11-14: in a fixed 11 by 11 the letter
   stood out of it). Where the mark would stand on the track's number (11 and 12 in the narrowest heads)
   the number is centred in the room left of it, clear of the mixer's mark. Stills `song-marks`, `-12`.
+- **DUPLICATE A TRACK: L1 held on a SONG head, then R1** (easywins batch 6; `Session::duplicateTrack`,
+  `doubleTrackText`). The copy goes right after its track, the tracks after a place down (their type
+  memories and preset memories with them), the song sent again (`sendSong`, as a delete). **Undo keeps
+  its steps: each has the track twice from then** (the step's own version), so an undo from before the
+  copy puts both back to what the one was; the copy itself is not undone. **It is done on R1's LET GO
+  with L1 still held**, and the App tells the screen when all four shoulders are down
+  (`SongScreen::shouldersPressed`): a panic begun L1, R1 on a head copies nothing. A let go the SONG
+  screen never saw copies nothing either (`update`). A cell is emptied by B and copied by HOLD R1 and
+  drag, as before: nothing was added there.
+- **KIT PRESETS: a stop above lane 1 on the KIT page** (easywins batch 7; `app/kits.cpp`,
+  `KitScreen::onKit_`, `Session::kits` / `kitOf` / `putKit` / `loadKit` / `saveKit` / `deleteKit`).
+  Hold A + UP / DOWN the kits (B with A held: as it was), Y SAVE as KIT n, hold B deletes one's own.
+  **A kit's text is the song file's own kit lines** (`putKit` in song_file.cpp, which `putTrack` calls;
+  `kitText`, `readKit` through `parseSong`): a new thing a lane keeps goes in `putKit` and `copyKit`,
+  and a kit carries it. **Which kit a track has is worked out, never kept** (`kitOf`: its text against
+  the list's), so a song file has no word for it and a changed kit reads YOUR OWN. The built-in kits
+  are recipes of DRUM SYNTH's named voices BY NAME (`kRecipes`): a voice renamed or taken out fails
+  `easy_test kits` (`builtInKitProblems`). A kit put on goes through the lanes' own setters, so it is a
+  step of undo as they are (a recording is not put back). A player's own are `kit N.kit` in the preset
+  folder. Stills `kit-preset`, `-held`, `-own`. **Nobody has heard the kits.**
+- **The owner's five of 2026-11-18** (`easy_test looks`). SONG's column word is REPEATS (`SongScreen::
+  kRepeatsWord`, low in the heads' row, 10 above the first box; `kRepeatW` 38, it was 34, so the word
+  fits at LARGE: the columns start 4 further right). **A lane's volume in its name's box is `kPanel2`
+  with a `kDim` edge where it ends** (`kLevelEdgeW`): panel on bg was 1.08 to 1 in BLACK; the fill is
+  1.22 and the edge 8.5 against the bg, 7.0 against the fill (every theme: 5.1 or more on bg). The
+  name's word starts at `kNameTextX`, 5 clear of the feel mark (it was 1), in the grid and the slices.
 - **Solo is a tap of X on a track** (a cell or its head; owner, 2026-11-15: "I don't like the hold L1
   for solo since Y for mute is just a one tap"). It was a tap of L1, then for a day L1 HELD 400 ms
   (a tap of L1 soloed by mistake too easily); the hold, its timer and `kSoloHoldMs` are gone, and **L1

@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -22,6 +23,8 @@
 
 #include "apotheca/engine.hpp"
 #include "app.hpp"
+#include "canvas.hpp"
+#include "song_screen.hpp"
 #include "lights.hpp"
 #include "settings_screen.hpp"
 #include "temp_folder.hpp"
@@ -291,7 +294,7 @@ void testTheSetPage() {
         // Not ours (the stock firmware): the page as it was, the two rows passed by.
         Rig rig;
         S& setup = rig.setup();
-        CHECK(!setup.here(S::kBrightness) && !setup.here(S::kLight) && setup.places() == 17);
+        CHECK(!setup.here(S::kBrightness) && !setup.here(S::kLight) && setup.places() == 18);
         setup.goTo(S::kVolume);
         rig.tap(DOWN);
         CHECK(setup.cursorRow() == S::kStick);
@@ -300,13 +303,13 @@ void testTheSetPage() {
         setup.goTo(S::kBrightness); // (asked for by number: the next row that is here)
         CHECK(setup.cursorRow() == S::kStick);
         setup.goTo(S::kControls);
-        CHECK(setup.firstShown() == 5 && setup.shown(S::kControls) && !setup.shown(S::kTempo));
+        CHECK(setup.firstShown() > 0 && setup.shown(S::kControls) && !setup.shown(S::kTempo) && setup.shown(S::kVolume) && setup.shown(S::kStick));
     }
     Sys sys;
     Rig rig;
     rig.session().useLights(sys.both());
     S& setup = rig.setup();
-    CHECK(setup.here(S::kBrightness) && setup.here(S::kLight) && setup.here(S::kLightColour) && setup.places() == 20);
+    CHECK(setup.here(S::kBrightness) && setup.here(S::kLight) && setup.here(S::kLightColour) && setup.places() == 21);
     // After VOLUME, among the handheld's rows.
     setup.goTo(S::kVolume);
     rig.tap(DOWN);
@@ -347,22 +350,25 @@ void testTheSetPage() {
     for (int place = 1; place < setup.places(); ++place) {
         rig.tap(DOWN);
         CHECK(setup.placeOf(setup.cursorRow()) == place && setup.shown(setup.cursorRow()));
-        CHECK(setup.firstShown() == (place < S::kRowsShown ? 0 : place - S::kRowsShown + 1));
+        CHECK(setup.firstShown() == 0 || !setup.fits(place, setup.firstShown() - 1)); // moved by as little as shows the cursor
     }
-    CHECK(setup.cursorRow() == S::kControls && setup.firstShown() == 8);
+    // The last row in view with HANDHELD's five and SETUP's three, and no room left empty under it.
+    CHECK(setup.cursorRow() == S::kControls && setup.shown(S::kVolume) && setup.shown(S::kLightColour) && !setup.fits(setup.places() - 1, setup.firstShown() - 1));
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kControls);
-    for (int place = setup.firstShown(); place < setup.firstShown() + S::kRowsShown; ++place) {
+    for (int place = setup.firstShown(); place < setup.places(); ++place) {
         const int row = setup.rowAt(place);
+        CHECK(setup.fits(place, setup.firstShown()));
         CHECK(setup.rowNowY(row) >= ui::kTopBarH + 8 && setup.rowNowY(row) + S::kRowH - 6 <= ui::kScreenH - ui::kHintsH - 4);
         if (place > setup.firstShown()) CHECK(setup.rowNowY(row) >= setup.rowNowY(setup.rowAt(place - 1)) + S::kRowH - 2);
     }
     // The places and the rows agree both ways.
     for (int row = 0; row < S::kRows; ++row) CHECK(setup.rowAt(setup.placeOf(row)) == row);
     // The lights taken away (they never are on a handheld, but the page must not stay past its end).
+    const int withLights = setup.firstShown();
     rig.session().useLights(Lights());
     setup.goTo(S::kControls);
-    CHECK(setup.firstShown() == 5 && setup.cursorRow() == S::kControls);
+    CHECK(setup.firstShown() < withLights && setup.cursorRow() == S::kControls && !setup.fits(setup.places() - 1, setup.firstShown() - 1));
 }
 
 // ---- kept in settings.txt --------------------------------------------------------------------------
@@ -473,7 +479,9 @@ void testTheRingFollowsTheSong() {
     rig.session().setStickLight(kRingSteps);
     rig.session().setTheme(kThemePaper);
     rig.frames(2);
-    const Rgb teal = fullest(0, 106, 92), brass = fullest(128, 84, 0), dim = dimmed(teal, kRingDim);
+    // (LIGHT COLOUR at THEME: PAPER's ring colour is its amber, and beside amber a bar's first step is white.)
+    const Rgb teal = ringThemeColour(kThemePaper), brass = lightColourOf(kLightWhite), dim = dimmed(teal, kRingDim);
+    CHECK(teal == rgb(255, 130, 40) && ringFirstFor(teal) == brass);
     std::vector<unsigned char> last = sys.last();
     CHECK(last.size() == 51);
     for (int i = 0; i < kRingLeds; ++i) CHECK(last[static_cast<std::size_t>(2 + 3 * i)] == dim.r && last[static_cast<std::size_t>(3 + 3 * i)] == dim.g);
@@ -555,6 +563,15 @@ void testScenesAndColours() {
     ringColours(kLightRainbow, teal, 0, 3, turned);
     for (int i = 0; i < kRingLeds; ++i) CHECK(turned[i] == c[(i + 3) % kRingLeds]);
     CHECK(hueRgb(0) == rgb(255, 0, 0) && hueRgb(256) == rgb(255, 255, 0) && hueRgb(1024) == rgb(0, 0, 255) && hueRgb(kHueRound) == hueRgb(0) && hueRgb(-256) == hueRgb(1280));
+    // THEME's own colours: BROWN's is BRASS (the owner's), each theme's its own, a number out of range BROWN's.
+    CHECK(ringThemeColour(kThemeBrown) == lightColourOf(kLightBrass) && ringThemeColour(99) == ringThemeColour(kThemeBrown) && ringThemeColour(-1) == ringThemeColour(0));
+    for (int a = 0; a < kThemes; ++a)
+        for (int b = 0; b < a; ++b) CHECK(ringThemeColour(a) != ringThemeColour(b));
+    // A bar's first step: brass, or white where the ring is too near brass to tell.
+    const Rgb white = lightColourOf(kLightWhite), brassSet = lightColourOf(kLightBrass);
+    for (int which : {kLightBrass, kLightOrange, kLightYellow}) CHECK(ringFirstFor(lightColourOf(which)) == white);
+    for (int which : {kLightTeal, kLightPurple, kLightRed, kLightGreen, kLightBlue, kLightPink, kLightWhite}) CHECK(ringFirstFor(lightColourOf(which)) == brassSet);
+    CHECK(ringFirstFor(ringThemeColour(kThemeBrown)) == white && ringFirstFor(ringThemeColour(kThemeBlue)) == brassSet && ringFirstFor(ringThemeColour(kThemeBlack)) == brassSet);
     // ON in RAINBOW: every LED its own hue; dim ones dimmed each by its own.
     ringColours(kLightRainbow, teal, 0, -1, c);
     RingPlace stopped;
@@ -584,7 +601,7 @@ void testScenesAndColours() {
             ++seen;
             const std::vector<unsigned char> last = sys.last();
             const int lit = ringLedOf(place / 2);
-            const Rgb want = place % 16 == 0 ? fullest(kThemeTable[kThemeBrown].brass.r, kThemeTable[kThemeBrown].brass.g, kThemeTable[kThemeBrown].brass.b) : rgb(255, 0, 0);
+            const Rgb want = place % 16 == 0 ? lightColourOf(kLightBrass) : rgb(255, 0, 0);
             CHECK(last.size() == 51 && last[static_cast<std::size_t>(2 + 3 * lit)] == want.r && last[static_cast<std::size_t>(3 + 3 * lit)] == want.g &&
                   last[static_cast<std::size_t>(4 + 3 * lit)] == want.b);
             const int other = (lit + 8) % kRingLeds;
@@ -613,6 +630,91 @@ void testScenesAndColours() {
     }
 }
 
+// ---- LIGHT COLOUR at TRACK: each head on SONG wears its track's colour (owner's ask B) ---------------
+void testTrackColours() {
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    const auto hueOf = [](int track) {
+        const Rgb c = ringTrackColour(track);
+        return SDL_Color{c.r, c.g, c.b, 255};
+    };
+    // The twelve are all different, track 1 red, and the ring's TRACK colour is the same one.
+    for (int a = 0; a < kNumTracks; ++a)
+        for (int b = 0; b < a; ++b) CHECK(ringTrackColour(a) != ringTrackColour(b));
+    Rgb ring[kRingLeds];
+    ringColours(kLightTrack, rgb(1, 2, 3), 7, -1, ring);
+    CHECK(ringTrackColour(0) == rgb(255, 0, 0) && ring[5] == ringTrackColour(7));
+    for (int tracks : {2, kNumTracks}) {
+        Sys sys;
+        Rig rig;
+        Session& session = rig.session();
+        session.useLights(sys.both());
+        while (rig.app.project().trackCount() < tracks) session.addTrack(TrackKind::Phazed);
+        session.view = View::Song;
+        session.setMuted(tracks - 2, true);
+        session.setSolo(tracks - 1, true);
+        session.setMix(0, -6, 10); // (the mixer's mark on track 1)
+        typedef SongScreen G;
+        // How many pixels of each head's foot are the track's colour: the whole bar, or none.
+        const auto marked = [&](int track) {
+            rig.frames(1);
+            ui::useTheme(session.theme());
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            const SDL_Rect head = rig.app.song().headRect(track);
+            int n = 0;
+            for (int y = head.y; y < head.y + head.h; ++y)
+                for (int x = head.x; x < head.x + head.w; ++x) n += canvas.is(x, y, hueOf(track)) ? 1 : 0;
+            // Where it is: the foot of the head, and nowhere else in it.
+            const int top = head.y + head.h - G::kHueMarkFoot - G::kHueMarkH;
+            int inBar = 0;
+            for (int y = top; y < top + G::kHueMarkH; ++y) inBar += canvas.run(head.x + G::kHueMarkInset, y, hueOf(track));
+            CHECK(n == inBar);
+            return n;
+        };
+        for (int theme : {static_cast<int>(kThemeBrown), static_cast<int>(kThemePaper)}) {
+            session.setTheme(theme);
+            session.setStickLight(kRingOn);
+            session.setLightColour(kLightTrack);
+            for (int t = 0; t < tracks; ++t) {
+                const SDL_Rect head = rig.app.song().headRect(t);
+                CHECK(marked(t) == (head.w - 2 * G::kHueMarkInset) * G::kHueMarkH); // muted and soloed heads too, as bright
+                // A line of the dim lettering over it (its edge on a light theme).
+                CHECK(canvas.run(head.x + G::kHueMarkInset, head.y + head.h - G::kHueMarkFoot - G::kHueMarkH - 1, ui::kDim) >= head.w - 2 * G::kHueMarkInset);
+                // Clear of the marks at the head's top: the M / S box and the mixer's square end above it.
+                const int markFoot = head.y + 2 + static_cast<int>(std::ceil(canvas.fonts->fixed().small.capHeight())) + 4;
+                CHECK(markFoot < head.y + head.h - G::kHueMarkFoot - G::kHueMarkH - 1 && head.y + G::kMixMarkInset + G::kMixMarkSize < markFoot + 20);
+            }
+            // The M and S marks and the mixer's are still drawn (brass on the first head's corner).
+            const SDL_Rect first = rig.app.song().headRect(0);
+            CHECK(canvas.is(first.x + G::kMixMarkInset + 1, first.y + G::kMixMarkInset + 1, ui::kBrass));
+            // Only at TRACK, and only with the ring lit.
+            session.setLightColour(kLightRed);
+            CHECK(marked(0) == 0 && marked(tracks - 1) == 0);
+            session.setLightColour(kLightRainbow);
+            CHECK(marked(0) == 0);
+            session.setLightColour(kLightTrack);
+            session.setStickLight(kRingOff);
+            CHECK(marked(0) == 0 && !session.trackColoursShown());
+            session.setStickLight(kRingSteps);
+            CHECK(marked(1) > 0 && session.trackColoursShown());
+        }
+        // No ring on this handheld (the stock firmware): never, whatever settings.txt says.
+        Rig stock;
+        stock.session().view = View::Song;
+        stock.session().setLightColour(kLightTrack);
+        stock.frames(1);
+        canvas.clear();
+        stock.app.draw(canvas.r, *canvas.fonts);
+        const SDL_Rect head = stock.app.song().headRect(0);
+        int n = 0;
+        for (int y = head.y; y < head.y + head.h; ++y)
+            for (int x = head.x; x < head.x + head.w; ++x) n += canvas.is(x, y, hueOf(0)) ? 1 : 0;
+        CHECK(n == 0 && !stock.session().trackColoursShown());
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -624,7 +726,7 @@ int main(int argc, char** argv) {
     const Test tests[] = {
         {"testTheRules", testTheRules}, {"testFromTheEnvironment", testFromTheEnvironment}, {"testTheFiles", testTheFiles},
         {"testTheSetPage", testTheSetPage}, {"testKept", testKept}, {"testTheVolumeKeys", testTheVolumeKeys},
-        {"testTheRingFollowsTheSong", testTheRingFollowsTheSong}, {"testScenesAndColours", testScenesAndColours},
+        {"testTheRingFollowsTheSong", testTheRingFollowsTheSong}, {"testScenesAndColours", testScenesAndColours}, {"testTrackColours", testTrackColours},
     };
     for (const Test& test : tests) {
         bool wanted = argc < 2;

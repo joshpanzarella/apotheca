@@ -294,7 +294,8 @@ void Session::keepSettings() const {
                                                         "\ntheme " + std::to_string(theme_) + "\nbrightness " + std::to_string(brightness_) +
                                                         "\nlight " + std::to_string(stickLight_) + "\nclick " + std::to_string(click_) +
                                                         "\ncountin " + (countIn_ ? "1" : "0") + "\n" +
-                                                        (lightColour_ != kLightTheme ? "lightcolour " + std::to_string(lightColour_) + "\n" : ""));
+                                                        (lightColour_ != kLightTheme ? "lightcolour " + std::to_string(lightColour_) + "\n" : "") +
+                                                        (mutes_ != kMutesAtOnce ? "mutes " + std::to_string(mutes_) + "\n" : ""));
 }
 
 void Session::setBrightness(int percent) {
@@ -314,7 +315,7 @@ void Session::setLightColour(int which) {
 }
 
 RingFrame Session::ringNow() const {
-    const Theme& t = kThemeTable[theme_ >= 0 && theme_ < kThemes ? theme_ : kThemeBrown];
+    static_assert(kRingThemes == kThemes, "a new theme is given its ring colour (ringThemeColour, lights.hpp)");
     RingPlace at;
     if (project.playing && project.playStep >= 0) {
         at.step = project.playStep;
@@ -323,9 +324,9 @@ RingFrame Session::ringNow() const {
     }
     Rgb colours[kRingLeds];
     const int beats = at.sceneStep < 0 ? -1 : (project.playRepeat * at.sceneSteps + at.sceneStep) / 4;
-    ringColours(lightColour_, fullest(t.teal.r, t.teal.g, t.teal.b), project.track, beats, colours);
-    // A bar's first step in the theme's brass; in white where the ring is brass already.
-    const Rgb first = lightColour_ == kLightBrass ? lightColourOf(kLightWhite) : fullest(t.brass.r, t.brass.g, t.brass.b);
+    ringColours(lightColour_, ringThemeColour(theme_), project.track, beats, colours);
+    // A bar's first step in brass; in white where the ring is too near brass to tell (RAINBOW and TRACK: brass).
+    const Rgb first = lightColour_ == kLightTrack || lightColour_ == kLightRainbow ? lightColourOf(kLightBrass) : ringFirstFor(colours[0]);
     return ringPicture(stickLight_, brightness_, at, colours, first);
 }
 
@@ -369,6 +370,7 @@ void Session::loadSettings() {
         if (name == "light" && value >= 0 && value < kRingModes) setStickLight(value); // (none: ON)
         if (name == "click" && value >= 0 && value < kClickModes) setClick(value); // (none: OFF)
         if (name == "countin" && (value == 0 || value == 1)) setCountIn(value == 1);
+        if (name == "mutes" && value >= 0 && value < kMutesModes) setMutes(value); // (none: AT ONCE)
         if (name == "lightcolour" && value >= 0 && value < kLightColours) setLightColour(value); // (none: THEME)
     }
     programFolder_ = folder;

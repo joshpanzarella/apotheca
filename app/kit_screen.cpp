@@ -118,7 +118,26 @@ void KitScreen::openPicker() {
     picker_.open(session_.sampleNames(), session_.sampleFolders(), trk().laneSample[lane_], title, "THE BUILT-IN DRUM", jobs);
 }
 
+// The kit after or before in the list, put on at once. From a kit of the player's own making (in no
+// list) UP is the first; the ends stop.
+void KitScreen::stepKit(int by) {
+    const int now = session_.kitOf(project_.track);
+    const int to = now < 0 ? (by > 0 ? 0 : -1) : now + by;
+    if (to < 0) return; // (past the last: loadKit refuses)
+    if (!session_.loadKit(project_.track, to)) return;
+    if (!project_.playing) hear(false); // (heard: its first lane, where the stop is reached from)
+}
+
 void KitScreen::press(Button b) {
+    if (onKit_) {
+        if (holding_) {
+            if (b == Button::Up || b == Button::Down) stepKit(b == Button::Up ? 1 : -1), stepped_ = true;
+            return;
+        }
+        if (b == Button::Up) onKit_ = false, lane_ = kDrumLanes - 1; // (round, as the lanes go)
+        if (b == Button::Down) onKit_ = false, lane_ = 0;
+        return;
+    }
     if (holding_) {
         if (b != Button::Up && b != Button::Down) return;
         stepped_ = true;
@@ -127,7 +146,10 @@ void KitScreen::press(Button b) {
         else if (column_ == kChoke) stepChoke(b == Button::Up ? 1 : -1);
         return;
     }
-    if (b == Button::Up) lane_ = (lane_ + kDrumLanes - 1) % kDrumLanes;
+    if (b == Button::Up) {
+        if (lane_ == 0) onKit_ = true; // the KIT stop is above lane 1
+        else --lane_;
+    }
     if (b == Button::Down) lane_ = (lane_ + 1) % kDrumLanes;
     if (b == Button::Left) column_ = (column_ + kColumns - 1) % kColumns; // round the ends, as the lanes go
     if (b == Button::Right) column_ = (column_ + 1) % kColumns;
@@ -142,6 +164,49 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
     if (editing_) return editButton(event, input);
     if (voicing_) return voiceButton(event, input);
+    if (onKit_) {
+        // The KIT stop: hold A + up / down the kits, B with A held the kit as it was, Y save, hold B delete.
+        if (event.down && b != Button::B) kitDeleting_ = false; // (any other button calls a delete off)
+        if (b == Button::A) {
+            holding_ = event.down;
+            stepped_ = false;
+            saved_ = 0.f;
+            if (event.down) {
+                kitBefore_.reset(new TrackData);
+                copyKit(trk(), *kitBefore_);
+            }
+            return;
+        }
+        if (b == Button::B) {
+            if (event.down && holding_) {
+                if (kitBefore_) session_.putKit(project_.track, *kitBefore_);
+            } else if (event.down) {
+                const int now = session_.kitOf(project_.track);
+                kitDeleting_ = now >= 0 && session_.kits()[static_cast<std::size_t>(now)].own;
+                kitDeleteTimed_ = false;
+            } else {
+                kitDeleting_ = false;
+            }
+            return;
+        }
+        if (!event.down) {
+            if (b == repeating_) repeating_ = Button::None;
+            return;
+        }
+        if (isDirection(b)) {
+            press(b);
+            repeating_ = b;
+            repeatAt_ = 0;
+        } else if (b == Button::Y && !holding_) {
+            const int now = session_.kitOf(project_.track);
+            const std::string name = now >= 0 ? "" : session_.saveKit(project_.track);
+            said_ = now >= 0 ? "IT IS " + session_.kits()[static_cast<std::size_t>(now)].name + " ALREADY" : name.empty() ? "NOT SAVED: THE CARD REFUSED IT" : "SAVED AS " + name;
+            saidUntil_ = lastMs_ + 2500;
+        } else if (b == Button::Start && !input.held(Button::Select)) {
+            session_.togglePlay(false);
+        }
+        return;
+    }
     if (b == Button::A) {
         // Held, with up / down: one at a time. A plain tap on SOUND: the list; on the picture: EDIT.
         if (!event.down && holding_ && !stepped_ && column_ == kSound) {
@@ -207,6 +272,21 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
     // A button let go while another screen was showing (a song opened, a tab turned) never told this
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
     if (!input.held(Button::A)) holding_ = false;
+    if (!input.held(Button::B) || !onKit_ || input.held(Button::A)) kitDeleting_ = false;
+    // B kept held on a kit of the player's own: its file is deleted when the bar is full.
+    kitDeletePart_ = 0.f;
+    if (kitDeleting_) {
+        if (!kitDeleteTimed_) kitDeleteTimed_ = true, kitDeleteSince_ = nowMs;
+        kitDeletePart_ = static_cast<float>(nowMs - kitDeleteSince_) / static_cast<float>(kKitDeleteMs);
+        if (nowMs - kitDeleteSince_ >= kKitDeleteMs) {
+            kitDeleting_ = false;
+            kitDeletePart_ = 0.f;
+            const int now = session_.kitOf(project_.track);
+            const std::string name = now >= 0 ? session_.kits()[static_cast<std::size_t>(now)].name : "";
+            said_ = now >= 0 && session_.deleteKit(now) ? name + " DELETED. THE TRACK KEEPS ITS SOUND" : "NOT DELETED";
+            saidUntil_ = nowMs + 2500;
+        }
+    }
 
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
@@ -790,7 +870,19 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const SDL_Color cursorColor = holding_ ? kBrass : kTeal;
     const int rowH = kLaneRowH, top = kLaneTop, soundX = 8, soundW = 250, fitX = kFitX, fitW = kFitW, chokeX = kChokeX, chokeW = kChokeW, waveX = kWaveX, waveW = kWaveW;
 
-    fonts.small.draw(r, soundX + 2.f, 34.f, "SOUND", kDim);
+    // The KIT stop, where SOUND's heading stood: KIT and the kit the track's is (one of the list's, or YOUR OWN).
+    {
+        const int now = const_cast<Session&>(session_).kitOf(project_.track);
+        const std::vector<Session::Kit>& all = const_cast<Session&>(session_).kits();
+        const char* name = now >= 0 ? all[static_cast<std::size_t>(now)].name.c_str() : "YOUR OWN";
+        const std::string whole = std::string("KIT ") + name;
+        const Font& f = fonts.within(&Fonts::small, whole.c_str(), static_cast<float>(soundW) - 12.f);
+        f.draw(r, soundX + 2.f, 34.f, "KIT", kDim);
+        f.draw(r, soundX + 2.f + f.width("KIT") + 8.f, 34.f, name, onKit_ ? cursorColor : now >= 0 ? kText : kDim);
+        // (Its line stands under the tallest lettering, XL's, and above lane 1.)
+        if (kitDeletePart_ > 0.f) fill(r, soundX, 48, static_cast<int>(soundW * (kitDeletePart_ > 1.f ? 1.f : kitDeletePart_)), 1, kStop);
+        else if (onKit_) fill(r, soundX, 48, soundW, 1, cursorColor);
+    }
     if (said_.empty()) {
         fonts.small.draw(r, fitX + 2.f, 34.f, "FIT TO", kDim);
         fonts.small.draw(r, chokeX + 2.f, 34.f, "CHOKE", kDim);
@@ -829,7 +921,7 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             fonts.medium.draw(r, soundX + 26.f, textY, DrumKit::laneName(lane), kDim);
             fonts.small.drawRight(r, soundX + soundW - 8.f, y + (h - fonts.small.capHeight()) / 2.f, "BUILT IN", kLine);
         }
-        if (here && column_ == kSound) outline(r, soundX - 1, y - 1, soundW + 2, h + 2, cursorColor, 2);
+        if (here && !onKit_ && column_ == kSound) outline(r, soundX - 1, y - 1, soundW + 2, h + 2, cursorColor, 2);
 
         const int fit = trk().laneFit[lane];
         box(r, fitX, y, fitW, h, kPanel, kLine);
@@ -837,13 +929,13 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (!fits) std::snprintf(text, sizeof text, "-");
         else laneFitText(fit, text, sizeof text);
         fonts.medium.draw(r, fitX + 9.f, textY, text, fit > 0 && fits ? kPurple : kDim);
-        if (here && column_ == kFit) outline(r, fitX - 1, y - 1, fitW + 2, h + 2, cursorColor, 2);
+        if (here && !onKit_ && column_ == kFit) outline(r, fitX - 1, y - 1, fitW + 2, h + 2, cursorColor, 2);
 
         // CHOKE: NONE, or the group, in the colour of the mark on the drum grid's lane name.
         const int group = trk().laneChoke[lane];
         box(r, chokeX, y, chokeW, h, kPanel, kLine);
         fonts.medium.draw(r, chokeX + 9.f, textY, laneChokeText(group), group == kChokeNone ? kDim : kBrass);
-        if (here && column_ == kChoke) outline(r, chokeX - 1, y - 1, chokeW + 2, h + 2, cursorColor, 2);
+        if (here && !onKit_ && column_ == kChoke) outline(r, chokeX - 1, y - 1, chokeW + 2, h + 2, cursorColor, 2);
 
         // The recording's outline, and what is being done with it.
         if (sound.missing) { // (on two short lines: the column is narrower since CHOKE)
@@ -865,13 +957,31 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             else std::snprintf(text, sizeof text, "%.1f S", sound.seconds);
             const bool edited = !trk().laneEdit[lane].atRest(); // (its seconds purple, as a FIT that is on)
             fonts.small.drawRight(r, waveX + waveW - 2.f, y + (h - fonts.small.capHeight()) / 2.f, text, sound.waiting ? kBrass : edited ? kPurple : kDim);
-        }    if (here && column_ == kEdit) outline(r, waveX - 1, y - 1, waveW + 2, h + 2, cursorColor, 2);
+        }
+        if (here && !onKit_ && column_ == kEdit) outline(r, waveX - 1, y - 1, waveW + 2, h + 2, cursorColor, 2);
     }
     scopeStrip(r, fonts, session_.engine);
 
     Hint list[8];
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
+    if (onKit_) {
+        const int now = const_cast<Session&>(session_).kitOf(project_.track);
+        if (kitDeletePart_ > 0.f) {
+            hint("HOLD B", kKitDeletingWords);
+        } else if (holding_) {
+            hint("UP / DOWN", "next / previous kit");
+            hint("B", "as it was");
+        } else {
+            hint("HOLD A", "kits");
+            if (now < 0) hint("Y", "save this kit");
+            else if (const_cast<Session&>(session_).kits()[static_cast<std::size_t>(now)].own) hint("HOLD B", "delete this kit");
+            hint("START", project_.playing ? "stop" : "play");
+        }
+        hints(r, fonts, list, count);
+        picker_.draw(r, fonts);
+        return;
+    }
     if (holding_ && column_ == kEdit) {
         hint("A", "edit"); // (opens when it is let go)
     } else if (holding_) {

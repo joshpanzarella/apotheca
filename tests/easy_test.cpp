@@ -7,7 +7,14 @@
 //              engine told), and hold A + UP / DOWN / the stick on a SONG cell, its words and hints.
 //   scale      SCALE LOCK: the scales (scales.hpp), the song file's line, undo, the SET rows, the roll's
 //              cursor and carry, the chord in hand moved into the key.
+//   duplicate  DUPLICATE A TRACK: the text of undo's steps (doubleTrackText), Session::duplicateTrack (the
+//              copy, the tracks after it, twelve, undo after, the engine's sound), L1 + R1 on a head, a panic.
 //   even       EVEN: the rule (euclidHit), Y held on a lane's name + R1 / L1, the turn, the words, undo, hints.
+//   kits       KIT PRESETS: a kit's text (kitText, readKit, copyKit), the built-in recipes, Session's
+//              list, load, save and delete, and the KIT page's stop above lane 1.
+//   looks      the owner's five of 2026-11-18: the lane's volume and its edge, the feel mark's room, REPEATS.
+//   mutes      QUEUED MUTES: the engine's waiting gate (on the bar's first sample, to the bit; Stop, called
+//              off, a track gone), the Session's waiting marks, Y and X on a SONG head, SET's MUTES row.
 //
 // `easy_test NAME...` runs just those sections.
 
@@ -26,6 +33,7 @@
 #include "app.hpp"
 #include "canvas.hpp"
 #include "chords.hpp"
+#include "pattern_layout.hpp"
 #include "scales.hpp"
 #include "tap_tempo.hpp"
 #include "song_file.hpp"
@@ -753,6 +761,182 @@ void testTheRollKeepsToIt() {
     CHECK(c && c->root % 12 == 2 && std::string(c->name) == "D");
 }
 
+// ---- batch 6: DUPLICATE A TRACK ----------------------------------------------------------------------
+
+void testDoubleTrackText() {
+    Rig rig;
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Phazed) && session.addTrack(TrackKind::Jx3p));
+    rig.app.drums().setStep(0, 0, 1.f);
+    rig.settle();
+    std::string text = songText(rig.project());
+    std::string head;
+    std::vector<std::string> before, after;
+    CHECK(cutSong(text, head, before) && before.size() == 3);
+    CHECK(doubleTrackText(text, 1));
+    CHECK(cutSong(text, head, after) && after.size() == 4 && after[0] == before[0] && after[1] == before[1] && after[2] == before[1] && after[3] == before[2]);
+    std::unique_ptr<Project> read(new Project);
+    CHECK(parseSong(text, *read) && read->trackCount() == 4 && read->tracks[2].kind == TrackKind::Phazed && read->tracks[3].kind == TrackKind::Jx3p);
+    // No such track, or not a song: as it was.
+    const std::string same = text;
+    CHECK(!doubleTrackText(text, 7) && !doubleTrackText(text, -1) && text == same);
+    std::string junk = "hello";
+    CHECK(!doubleTrackText(junk, 0) && junk == "hello");
+}
+
+void testDuplicateATrack() {
+    Rig rig;
+    Session& session = rig.session();
+    const int t = synthWithNotes(rig); // track 1: Phazed, notes and a chord
+    CHECK(session.addTrack(TrackKind::Jx3p)); // track 2
+    session.setTrackName(t, "LEAD");
+    session.setMix(t, -6, 20);
+    session.setSend(t, 0, 0.4f);
+    session.setMuted(t, true);
+    session.setSolo(t, true);
+    session.setEffect(t, 0, EffectKind::Drive);
+    rig.project().track = 2;
+    rig.settle();
+    // An edit on track 2 before, so undo has a step from before the copy.
+    NoteEvent n;
+    n.step = 3, n.pitch = 50, n.length = 1.f, n.velocity = 0.9f;
+    rig.track(2).notes[0][0].notes[0] = n;
+    session.sendNotePattern(2, 0);
+    rig.settle();
+    const std::string was1 = songText(rig.project());
+    std::string head;
+    std::vector<std::string> then;
+    cutSong(was1, head, then);
+    CHECK(session.duplicateTrack(t) == 2);
+    rig.settle();
+    CHECK(rig.project().trackCount() == 4 && rig.project().track == 3); // (the track worked on moved down with its track)
+    std::vector<std::string> now;
+    CHECK(cutSong(songText(rig.project()), head, now) && now.size() == 4 && now[0] == then[0] && now[1] == then[1] && now[3] == then[2]);
+    const TrackData &a = rig.track(1), &b = rig.track(2);
+    CHECK(b.kind == TrackKind::Phazed && std::string(b.name) == "LEAD" && b.mixDb == -6 && b.mixPan == 20 && b.muted && !b.solo && a.solo);
+    CHECK(b.notes[0][0].notes[0].pitch == 60 && b.notes[0][1].notes[0].pitch == 67 && b.notes[0][0].chords[0].velocity > 0.f && b.bars[0] == 2);
+    CHECK(b.effects[0].kind == static_cast<int>(EffectKind::Drive) && b.send[0] == a.send[0] && a.send[0] > 0.3f);
+    // The copy is its own: a note changed on it leaves the first as it was.
+    rig.track(2).notes[0][0].notes[0].pitch = 72;
+    session.sendNotePattern(2, 0);
+    CHECK(rig.track(1).notes[0][0].notes[0].pitch == 60);
+    rig.settle();
+    // Undo: the note back; again: track 3's (was 2's) edit from before the copy, the four tracks still there.
+    rig.undo();
+    rig.settle();
+    CHECK(rig.track(2).notes[0][0].notes[0].pitch == 60 && rig.project().trackCount() == 4);
+    rig.undo();
+    rig.settle();
+    CHECK(rig.project().trackCount() == 4 && rig.track(3).kind == TrackKind::Jx3p && rig.track(3).notes[0][0].notes[0].velocity == 0.f);
+    CHECK(rig.track(2).notes[0][0].notes[0].pitch == 60 && rig.track(1).notes[0][0].notes[0].pitch == 60);
+    // Twelve is the most; no such track: nothing.
+    while (rig.project().trackCount() < kNumTracks) CHECK(session.duplicateTrack(0) == 1);
+    CHECK(session.duplicateTrack(0) == -1 && session.duplicateTrack(-1) == -1 && rig.project().trackCount() == kNumTracks);
+    // The engine plays the copy: a song with the track copied is twice as loud a line as... the same song
+    // built by hand with the track written twice sounds the same, to the bit.
+    {
+        Rig x, y;
+        const int tx = synthWithNotes(x);
+        CHECK(x.session().duplicateTrack(tx) == 2);
+        synthWithNotes(y);
+        CHECK(y.session().addTrack(TrackKind::Phazed));
+        y.session().setCellBars(2, 0, 2);
+        for (int bar = 0; bar < 2; ++bar) y.track(2).notes[0][bar] = y.track(1).notes[0][bar];
+        y.session().sendNotePattern(2, 0);
+        x.settle(), y.settle();
+        CHECK(songText(x.project()) == songText(y.project()));
+        x.session().togglePlay(false), y.session().togglePlay(false);
+        std::vector<float> p(2 * 4096), q(2 * 4096);
+        bool same = true;
+        float loud = 0.f;
+        for (int i = 0; i < 40; ++i) {
+            x.engine->render(p.data(), 4096), y.engine->render(q.data(), 4096);
+            same = same && p == q;
+            for (float v : p) loud = std::fmax(loud, std::fabs(v));
+        }
+        CHECK(same && loud > 0.01f);
+    }
+}
+
+void testDuplicateOnSong() {
+    Rig rig;
+    Session& session = rig.session();
+    const int t = synthWithNotes(rig);
+    session.view = View::Song;
+    rig.frames(1);
+    SongScreen& song = rig.app.song();
+    song.moveCursorTo(0, t);
+    rig.tap(UP); // onto its head
+    CHECK(song.cursorOnHead());
+    // L1 held, R1 tapped: the copy, the cursor on its head, the box says so.
+    rig.key(L1, true);
+    rig.frames(1);
+    CHECK(song.copyKeyHeld());
+    Canvas canvas;
+    if (canvas.ok) {
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(ui::gHintsOver == 0.f);
+    }
+    rig.key(R1, true);
+    rig.frames(1);
+    CHECK(rig.project().trackCount() == 2 && !song.choosing()); // (not yet: on R1's let go; and no list of instruments)
+    rig.key(R1, false);
+    rig.frames(1);
+    CHECK(rig.project().trackCount() == 3 && song.cursorColumn() == 2 && song.cursorOnHead() && rig.said() == "TRACK 3: COPY OF 2");
+    rig.key(L1, false);
+    rig.frames(1);
+    // R1 alone on a head is still the list of instruments; L1 alone does nothing.
+    rig.tap(L1);
+    CHECK(rig.project().trackCount() == 3);
+    rig.tap(R1);
+    CHECK(song.choosing() && rig.project().trackCount() == 3);
+    rig.tap(B);
+    // R1 first, then L1: nothing.
+    rig.key(R1, true), rig.frames(1), rig.tap(B);
+    rig.key(L1, true), rig.frames(1), rig.key(R1, false), rig.frames(1), rig.key(L1, false), rig.frames(1);
+    CHECK(rig.project().trackCount() == 3);
+    // L1 let go before R1: nothing.
+    rig.key(L1, true), rig.frames(1), rig.key(R1, true), rig.frames(1), rig.key(L1, false), rig.frames(1), rig.key(R1, false), rig.frames(1);
+    CHECK(rig.project().trackCount() == 3);
+    if (song.choosing()) rig.tap(B);
+    // R1 let go while another screen was up (this one never saw it): a later let go of R1 copies nothing.
+    song.moveCursorTo(0, 1);
+    rig.tap(UP);
+    rig.key(L1, true), rig.frames(1), rig.key(R1, true), rig.frames(1);
+    session.view = View::Pattern;
+    rig.frames(1), rig.key(R1, false), rig.frames(1);
+    session.view = View::Song;
+    rig.frames(1);
+    session.view = View::Pattern;
+    rig.frames(1), rig.key(R1, true), rig.frames(1);
+    session.view = View::Song;
+    rig.key(R1, false), rig.frames(1), rig.key(L1, false), rig.frames(1);
+    CHECK(rig.project().trackCount() == 3);
+    if (song.choosing()) rig.tap(B);
+    // A panic begun L1, R1 on a head (then L2, R2): no track is copied, whichever is let go first.
+    const SDL_Keycode L2 = SDLK_1, R2 = SDLK_2;
+    session.view = View::Song;
+    rig.frames(1);
+    rig.key(L1, true), rig.frames(1), rig.key(R1, true), rig.frames(1), rig.key(L2, true), rig.frames(1), rig.key(R2, true), rig.frames(2);
+    rig.key(R1, false), rig.frames(1), rig.key(L1, false), rig.key(L2, false), rig.key(R2, false), rig.frames(2);
+    CHECK(rig.project().trackCount() == 3);
+    rig.tap(A); // (the panic's notice put away)
+    rig.frames(120);
+    // On a cell, L1 + R1 copies no track (R1 there is the cell's copy brush).
+    session.view = View::Song;
+    song.moveCursorTo(0, 1);
+    rig.frames(1);
+    rig.key(L1, true), rig.frames(1), rig.tap(R1), rig.key(L1, false), rig.frames(1);
+    CHECK(rig.project().trackCount() == 3);
+    // Twelve tracks: it says so.
+    while (rig.project().trackCount() < kNumTracks) session.addTrack(TrackKind::Drums);
+    song.moveCursorTo(0, 0);
+    rig.tap(UP);
+    rig.key(L1, true), rig.frames(1), rig.tap(R1), rig.key(L1, false), rig.frames(1);
+    CHECK(rig.project().trackCount() == kNumTracks && rig.said() == "NO ROOM: 12 TRACKS");
+}
+
 // ---- batch 5: EVEN -----------------------------------------------------------------------------------
 
 std::string laneSteps(Rig& rig, int lane) {
@@ -880,6 +1064,662 @@ void testEvenOnALane() {
     (void)session;
 }
 
+// ---- batch 7: KIT PRESETS ------------------------------------------------------------------------
+
+// What lane 1 sounds like now: struck, and the next tenth of a second summed.
+double kitHeard(Rig& rig) {
+    rig.frames(30); // (anything before has rung out, a made voice has landed)
+    Command c;
+    c.type = Command::Trigger;
+    c.track = rig.project().track;
+    c.a = 0;
+    c.value = kPlacedLevel;
+    rig.engine->send(c);
+    std::vector<float> out(2 * 4800);
+    rig.engine->render(out.data(), 4800);
+    double sum = 0.0;
+    for (float v : out) sum += std::fabs(v);
+    rig.frames(40);
+    return sum;
+}
+
+void testTheKitsText() {
+    // The built-in kits name only voices the data has.
+    for (const std::string& problem : builtInKitProblems()) std::printf("kit problem: %s\n", problem.c_str());
+    CHECK(builtInKitProblems().empty());
+    // A kit's text is the song file's own lines for a kit, and reads back as it was written.
+    std::unique_ptr<TrackData> kit(new TrackData), back(new TrackData);
+    chokeTheHats(*kit);
+    kit->laneLevel[2] = 0.5f;
+    kit->laneFeel[1].time = 40, kit->laneFeel[1].level = 20;
+    kit->laneSwing[3] = 60;
+    kit->laneFit[4] = 8;
+    std::snprintf(kit->laneSample[4], sizeof kit->laneSample[4], "%s", "breaks/amen");
+    kit->laneEdit[4].gain = -30;
+    kit->laneSynth[0] = drumsynth::usualVoice(drumsynth::modelFromWord("kick"));
+    const std::string text = kitText(*kit);
+    CHECK(text.compare(0, 15, "apotheca-kit 1\n") == 0);
+    CHECK(text.find("lanesynth 1 kick") != std::string::npos && text.find("swing 4 60") != std::string::npos);
+    CHECK(text.find("track") == std::string::npos && text.find("pattern") == std::string::npos);
+    CHECK(readKit(text, *back));
+    CHECK(kitText(*back) == text);
+    CHECK(back->laneLevel[2] == 0.5f && back->laneSwing[3] == 60 && back->laneFit[4] == 8 && back->laneChoke[2] == 1);
+    CHECK(std::strcmp(back->laneSample[4], "breaks/amen") == 0 && back->laneEdit[4].gain == -30 && back->laneSynth[0].on());
+    // Not a kit: refused, and nothing changed.
+    std::unique_ptr<TrackData> other(new TrackData);
+    other->laneSwing[0] = 30;
+    CHECK(!readKit("apotheca-song 1\ntrack drums\nswing 0 90\n", *other));
+    CHECK(!readKit("", *other) && !readKit("swing 0 90\n", *other));
+    CHECK(other->laneSwing[0] == 30);
+    // A kit's text cannot bring a track, a pattern or a synth's lines in with it.
+    CHECK(readKit("apotheca-kit 1\nswing 1 90\ntrack phazed\nswing 2 80\n", *other));
+    CHECK(other->laneSwing[0] == 90 && other->laneSwing[1] == 0);
+    // copyKit takes the kit and nothing else.
+    std::unique_ptr<TrackData> to(new TrackData);
+    to->mixDb = -6;
+    to->drums[0][0].level[0][0] = 0.9f;
+    copyKit(*kit, *to);
+    CHECK(kitText(*to) == text && to->mixDb == -6 && to->drums[0][0].level[0][0] == 0.9f);
+}
+
+void testKitsInTheSession() {
+    const std::string folder = tempFolder("easykits");
+    {
+        Rig rig;
+        Session& session = rig.session();
+        session.usePresetFolder(folder);
+        CHECK(rig.track(0).kind == TrackKind::Drums);
+        // The list: the built-in kits, DRUMS first; a new track's kit is DRUMS.
+        const std::size_t builtIn = session.kits().size();
+        CHECK(builtIn >= 5 && session.kits()[0].name == "DRUMS" && !session.kits()[0].own);
+        session.chokeNewKit(0); // (as main.cpp does for a new song)
+        rig.settle();
+        CHECK(session.kitOf(0) == 0);
+        for (std::size_t i = 0; i < builtIn; ++i) {
+            CHECK(session.kits()[i].name.size() <= Session::kKitNameMost);
+            for (std::size_t j = 0; j < i; ++j) CHECK(session.kits()[i].text != session.kits()[j].text && session.kits()[i].name != session.kits()[j].name);
+        }
+        // A kit put on: every lane's, the patterns and the mixer left, the engine told, no step of undo.
+        rig.app.drums().moveCursorTo(0, 0);
+        rig.tap(A);
+        rig.settle();
+        CHECK(rig.track(0).drums[0][0].level[0][0] == kPlacedLevel);
+        const double drums = kitHeard(rig);
+        CHECK(session.loadKit(0, 2));
+        CHECK(session.kitOf(0) == 2);
+        CHECK(rig.track(0).laneSynth[0].on() && rig.track(0).drums[0][0].level[0][0] == kPlacedLevel);
+        const double tight = kitHeard(rig);
+        CHECK(std::fabs(tight - drums) > 0.05 * drums);
+        // A step of undo of its own: the kit back, the hit left; then the hit.
+        rig.undo();
+        rig.settle();
+        CHECK(session.kitOf(0) == 0 && rig.track(0).drums[0][0].level[0][0] == kPlacedLevel);
+        CHECK(std::fabs(kitHeard(rig) - drums) < 0.005 * drums);
+        rig.undo();
+        rig.settle();
+        CHECK(session.kitOf(0) == 0 && rig.track(0).drums[0][0].level[0][0] == 0.f);
+        // Put on and back by the list: the first kit to the bit of its text, and as it sounded.
+        CHECK(session.loadKit(0, 3) && session.kitOf(0) == 3);
+        rig.settle();
+        CHECK(session.loadKit(0, 0) && session.kitOf(0) == 0);
+        CHECK(std::fabs(kitHeard(rig) - drums) < 0.005 * drums);
+        CHECK(!session.loadKit(0, -1) && !session.loadKit(0, static_cast<int>(builtIn)));
+        // A kit changed is nobody's: YOUR OWN.
+        session.setLaneSwing(0, 1, 45);
+        CHECK(session.kitOf(0) == -1);
+        // Every part of a kit is put on: one with a CHOKE, a volume, a feel, a swing, an EDIT and a voice of its own.
+        session.setLaneChoke(0, 5, 2);
+        session.setLaneLevel(0, 2, 0.5f);
+        session.setLaneFeel(0, 1, 40, 20);
+        LaneEdit edit = rig.track(0).laneEdit[6];
+        edit.gain = -30, edit.reverse = 1;
+        session.setLaneEdit(0, 6, edit);
+        drumsynth::Voice zap = drumsynth::usualVoice(drumsynth::modelFromWord("zap"));
+        zap.dial[0] = 33;
+        session.setLaneSynth(0, 7, zap);
+        {
+            std::unique_ptr<TrackData> mine(new TrackData);
+            copyKit(rig.track(0), *mine);
+            const std::string text = kitText(*mine);
+            for (int other = 0; other < 3; ++other) {
+                CHECK(session.loadKit(0, other) && session.kitOf(0) == other);
+                CHECK(session.putKit(0, *mine) && kitText(rig.track(0)) == text);
+            }
+            CHECK(rig.track(0).laneChoke[5] == 2 && rig.track(0).laneLevel[2] == 0.5f && rig.track(0).laneFeel[1].time == 40 && rig.track(0).laneSwing[1] == 45);
+            CHECK(rig.track(0).laneEdit[6].gain == -30 && rig.track(0).laneEdit[6].reverse == 1 && rig.track(0).laneSynth[7] == zap);
+        }
+        // Saved: KIT 1, a file beside the presets, the last of the list, and the track's kit is it.
+        CHECK(session.saveKit(0) == "KIT 1");
+        CHECK(session.kits().size() == builtIn + 1 && session.kits().back().own && session.kits().back().name == "KIT 1");
+        CHECK(session.kitOf(0) == static_cast<int>(builtIn));
+        std::string file;
+        CHECK(readTextFile(folder + "/kit 1.kit", file) && file == kitText(rig.track(0)));
+        // Another: KIT 2 (a name is never taken twice).
+        session.setLaneSwing(0, 1, 50);
+        CHECK(session.saveKit(0) == "KIT 2" && session.kits().size() == builtIn + 2);
+        // A built-in kit is not deleted; one's own is, and the track keeps its sound.
+        CHECK(!session.deleteKit(0) && session.kits().size() == builtIn + 2);
+        CHECK(session.deleteKit(static_cast<int>(builtIn)));
+        CHECK(session.kits().size() == builtIn + 1 && session.kits().back().name == "KIT 2");
+        CHECK(!readTextFile(folder + "/kit 1.kit", file));
+        CHECK(rig.track(0).laneSwing[1] == 50 && session.kitOf(0) == static_cast<int>(builtIn));
+        // Not on a synth track.
+        session.addTrack(TrackKind::Phazed);
+        CHECK(session.kitOf(1) == -1 && !session.loadKit(1, 1) && session.saveKit(1).empty());
+    }
+    {
+        // Another run finds the saved kit, and puts it on.
+        Rig rig;
+        Session& session = rig.session();
+        session.usePresetFolder(folder);
+        CHECK(session.kits().back().own && session.kits().back().name == "KIT 2");
+        CHECK(session.loadKit(0, static_cast<int>(session.kits().size()) - 1));
+        CHECK(rig.track(0).laneSwing[1] == 50);
+    }
+}
+
+void testTheKitStop() {
+    const std::string folder = tempFolder("easykitstop");
+    Rig rig;
+    Session& session = rig.session();
+    session.usePresetFolder(folder);
+    session.chokeNewKit(0);
+    session.view = View::Device;
+    rig.frames(2);
+    KitScreen& kit = rig.app.kit();
+    const int builtIn = static_cast<int>(session.kits().size());
+    // UP from lane 1 is the KIT stop; UP again the last lane, DOWN from the stop lane 1.
+    CHECK(!kit.onKit());
+    rig.tap(UP);
+    CHECK(kit.onKit());
+    rig.tap(UP);
+    CHECK(!kit.onKit());
+    rig.tap(DOWN); // (lane 8 -> lane 1)
+    CHECK(!kit.onKit());
+    rig.tap(UP);
+    CHECK(kit.onKit());
+    rig.tap(DOWN);
+    CHECK(!kit.onKit());
+    rig.tap(DOWN), rig.tap(UP);
+    CHECK(!kit.onKit()); // (lane 2 -> lane 1: not the stop)
+    rig.tap(UP);
+    CHECK(kit.onKit());
+    // Hold A + UP: the next kit; DOWN the one before; the ends stop.
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(UP);
+    CHECK(session.kitOf(0) == 1);
+    rig.tap(UP);
+    CHECK(session.kitOf(0) == 2);
+    rig.tap(DOWN);
+    CHECK(session.kitOf(0) == 1);
+    rig.tap(DOWN), rig.tap(DOWN);
+    CHECK(session.kitOf(0) == 0 && kit.onKit());
+    rig.tap(UP, builtIn + 3);
+    CHECK(session.kitOf(0) == builtIn - 1);
+    {
+        const int heardSoFar = kit.hears();
+        rig.tap(UP); // past the last: nothing, and nothing heard
+        CHECK(kit.hears() == heardSoFar);
+    }
+    // B with A still held: the kit as it was when A went down.
+    rig.tap(B);
+    CHECK(session.kitOf(0) == 0);
+    rig.key(A, false);
+    rig.frames(2);
+    CHECK(kit.onKit() && !kit.editing() && !kit.voicing()); // (A let go opens nothing on the stop)
+    // Left and right, X and a tap of A do nothing to the kit here.
+    rig.tap(LEFT), rig.tap(RIGHT), rig.tap(A);
+    CHECK(kit.onKit() && session.kitOf(0) == 0 && !kit.picker().isOpen());
+    // Y on a kit of the list: said, nothing saved.
+    rig.tap(Y);
+    CHECK(kit.said() == "IT IS DRUMS ALREADY" && static_cast<int>(session.kits().size()) == builtIn);
+    // Changed, Y saves it.
+    session.setLaneSwing(0, 0, 35);
+    rig.tap(Y);
+    CHECK(kit.said() == "SAVED AS KIT 1" && session.kitOf(0) == builtIn);
+    // A tap of B does nothing; B held a second deletes one's own; any other button calls it off.
+    rig.tap(B);
+    CHECK(static_cast<int>(session.kits().size()) == builtIn + 1);
+    rig.key(B, true);
+    rig.frames(30);
+    CHECK(kit.kitDeletePart() > 0.3f && kit.kitDeletePart() < 0.7f);
+    rig.tap(LEFT);
+    CHECK(kit.kitDeletePart() == 0.f);
+    rig.frames(60);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(static_cast<int>(session.kits().size()) == builtIn + 1);
+    // B let go while another screen was up (this one never saw it): nothing is deleted on coming back.
+    rig.key(B, true);
+    rig.frames(10);
+    session.view = View::Song;
+    rig.frames(2);
+    rig.key(B, false);
+    rig.frames(2);
+    session.view = View::Device;
+    rig.frames(80);
+    CHECK(static_cast<int>(session.kits().size()) == builtIn + 1 && kit.kitDeletePart() == 0.f && kit.onKit());
+    rig.key(B, true);
+    rig.frames(61);
+    CHECK(static_cast<int>(session.kits().size()) == builtIn + 1); // (not before the second is up)
+    rig.frames(4);
+    CHECK(static_cast<int>(session.kits().size()) == builtIn && kit.kitDeletePart() == 0.f);
+    CHECK(kit.said() == "KIT 1 DELETED. THE TRACK KEEPS ITS SOUND");
+    rig.frames(70);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(rig.track(0).laneSwing[0] == 35 && session.kitOf(0) == -1 && kit.onKit());
+    // Hold B on a built-in kit deletes nothing.
+    session.loadKit(0, 1);
+    rig.key(B, true);
+    rig.frames(30);
+    CHECK(kit.kitDeletePart() == 0.f); // (no bar fills)
+    rig.frames(50);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(static_cast<int>(session.kits().size()) == builtIn && kit.kitDeletePart() == 0.f);
+    // From a kit of nobody's, A + UP is the first of the list, A + DOWN nothing.
+    session.setLaneSwing(0, 0, 35);
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(DOWN);
+    CHECK(session.kitOf(0) == -1);
+    rig.tap(UP);
+    CHECK(session.kitOf(0) == 0);
+    rig.tap(B); // as it was: the kit of nobody's, to its text
+    CHECK(session.kitOf(0) == -1 && rig.track(0).laneSwing[0] == 35 && rig.track(0).laneSynth[0].on());
+    rig.key(A, false);
+    rig.frames(2);
+    // START plays from the stop.
+    rig.tap(START);
+    CHECK(rig.project().playing);
+    rig.tap(START);
+    // The hints fit: at rest on a built-in kit, on one of nobody's, on one's own, A held, deleting.
+    Canvas canvas;
+    if (canvas.ok) {
+        auto fits = [&] {
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(ui::gHintsOver == 0.f);
+        };
+        fits();
+        rig.tap(Y);
+        fits();
+        rig.key(A, true);
+        rig.frames(1);
+        fits();
+        rig.key(A, false);
+        rig.frames(1);
+        rig.key(B, true);
+        rig.frames(20);
+        fits();
+        rig.tap(X);
+        rig.key(B, false);
+        rig.frames(1);
+        session.loadKit(0, 6);
+        fits();
+    }
+    // A turn of A + UP is heard (stopped): lane 1 struck.
+    const int heard = kit.hears();
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(UP);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(kit.hears() == heard + 1);
+}
+
+// ---- the owner's five (2026-11-18): the looks ---------------------------------------------------
+
+void testTheLooks() {
+    using namespace pattern_layout;
+    Rig rig;
+    Session& session = rig.session();
+    session.view = View::Pattern;
+    session.setLaneLevel(0, 1, 0.5f);
+    session.setLaneLevel(0, 2, 0.f);
+    session.setLaneFeel(0, 1, 50, 50);
+    rig.frames(2);
+    rig.app.drums().moveCursorTo(6, 0); // (the cursor off the lanes looked at)
+    Canvas canvas;
+    if (!canvas.ok) return;
+    // A lane's volume in its name's box: the lightest surface as far as it is turned up, a dim edge
+    // where it ends, the background past it. In every theme, by the theme's own colours.
+    for (int theme = 0; theme < kThemes; ++theme) {
+        session.setTheme(theme);
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        const int y = kGridTop + 1 * kLaneH + kCellH - 3; // (the box's foot: under the name's letters)
+        const int filled = static_cast<int>(std::round((kNameW - 2) * 0.5f)), end = kNameX + 1 + filled;
+        CHECK(canvas.is(end - 1, y, ui::kDim) && canvas.is(end - kLevelEdgeW, y, ui::kDim));
+        CHECK(canvas.is(end - kLevelEdgeW - 1, y, ui::kPanel2) && canvas.is(end - 12, y, ui::kPanel2));
+        CHECK(canvas.is(end, y, ui::kBg) && canvas.is(end + 12, y, ui::kBg));
+        // The edge is two pieces, at the top and the foot: none of it in the rows the name's letters have.
+        const int top = kGridTop + 1 * kLaneH;
+        CHECK(canvas.is(end - 1, top + 2, ui::kDim) && canvas.is(end - 1, top + kLevelEdgeH, ui::kDim));
+        CHECK(canvas.is(end - 1, top + kLevelEdgeH + 1, ui::kPanel2) && canvas.is(end - 1, top + kCellH - 2 - kLevelEdgeH, ui::kPanel2));
+        // At full the edge stands at the box's right; at none there is no edge and no fill.
+        const int y0 = kGridTop + kCellH - 3, y2 = kGridTop + 2 * kLaneH + kCellH - 3;
+        CHECK(canvas.is(kNameX + kNameW - 2, y0, ui::kDim) && canvas.is(kNameX + kNameW - 2 - kLevelEdgeW, y0, ui::kPanel2));
+        CHECK(canvas.is(kNameX + 20, y2, ui::kBg) && canvas.is(kNameX + 60, y2, ui::kBg));
+        // The feel mark, and clear room between it and the name's first letter: nothing of the name's
+        // colour left of kNameTextX, in the mark's rows.
+        const int my = kGridTop + 1 * kLaneH + kFeelMarkInset + 2;
+        CHECK(canvas.is(kFeelMarkX, my, ui::kPurple) && canvas.is(kFeelMarkX + kFeelMarkW - 1, my, ui::kPurple));
+        for (int row = kGridTop + kLaneH + 2; row < kGridTop + kLaneH + kCellH - 2; ++row)
+            for (int x = kFeelMarkX + kFeelMarkW; x < kNameTextX; ++x) CHECK(!canvas.is(x, row, ui::kText) && !canvas.is(x, row, ui::kPurple));
+    }
+    session.setTheme(kThemeBrown);
+    CHECK(kNameTextX - (kFeelMarkX + kFeelMarkW) >= 5);                      // the room asked for
+    CHECK(kFeelMarkX > kNameX && kFeelMarkX + kFeelMarkW < kSwingMarkRight - 20); // inside the box, far from SWING's and CHOKE's
+    // SONG: the column's word is REPEATS, inside the screen and short of the first head, at every size
+    // it may be drawn at (held at LARGE where the size chosen would not fit).
+    CHECK(std::strcmp(SongScreen::kRepeatsWord, "REPEATS") == 0);
+    session.view = View::Song;
+    rig.frames(2);
+    canvas.clear();
+    rig.app.draw(canvas.r, *canvas.fonts);
+    const SDL_Rect head = rig.app.song().headRect(0), first = rig.app.song().repeatBox(0);
+    const float wide = canvas.fonts->small.width(SongScreen::kRepeatsWord);
+    CHECK(head.x - 2.f - wide >= 3.f);                       // inside the screen, clear of the first head
+    CHECK(first.y - (SongScreen::kRepeatsWordY + canvas.fonts->small.capHeight()) <= 12.f); // near its boxes (it stood 20 above)
+    CHECK(first.y > SongScreen::kRepeatsWordY + canvas.fonts->small.capHeight());
+    // Its letters are drawn there, in dim, and none left of the screen's margin.
+    int ink = 0;
+    for (int y = SongScreen::kRepeatsWordY; y < first.y; ++y)
+        for (int x = 0; x < head.x; ++x) {
+            if (!canvas.is(x, y, ui::kDim)) continue;
+            ++ink;
+            CHECK(x >= 3 && x < head.x - 1);
+        }
+    if (ink <= 25) std::printf("ink %d\n", ink);
+    CHECK(ink > 25);
+}
+
+// ---- batch 8: QUEUED MUTES ----------------------------------------------------------------------
+
+void heardTo(Engine& engine, int track, bool heard, bool wait, int asking = 0) {
+    Command c = make(Command::SetTrackHeard, track);
+    c.a = heard ? 1 : 0;
+    c.b = wait ? 1 : 0;
+    c.c = asking;
+    engine.send(c);
+}
+
+// A hit on every step of track 0, so a gate's 5 ms shows wherever it lands.
+void busyDrums(Engine& engine) {
+    for (int step = 0; step < 16; ++step) {
+        Command c = make(Command::SetStep);
+        c.a = step % 3;
+        c.b = step;
+        c.value = 0.9f;
+        engine.send(c);
+    }
+}
+
+void testTheWaitingGate() {
+    const long bar = 16 * kStep120;
+    // A gate asked to wait lands on the next bar's first sample: the sound is, to the bit, that of an
+    // engine told AT ONCE exactly there. In any blocks.
+    for (int block : {1, 64, 256, 333}) {
+        std::unique_ptr<Engine> waits(new Engine), there(new Engine);
+        busyDrums(*waits), busyDrums(*there);
+        play(*waits), play(*there);
+        std::vector<float> a = render(*waits, 5000, block), b = render(*there, 5000, block);
+        heardTo(*waits, 0, false, true, 7);
+        std::vector<float> more = render(*waits, bar - 5000, block);
+        a.insert(a.end(), more.begin(), more.end());
+        CHECK(waits->trackHeard(0) && waits->heardDone() != 7); // still heard, still waiting, up to the bar's last sample
+        more = render(*there, bar - 5000, block);
+        b.insert(b.end(), more.begin(), more.end());
+        heardTo(*there, 0, false, false);
+        more = render(*waits, bar, block);
+        a.insert(a.end(), more.begin(), more.end());
+        more = render(*there, bar, block);
+        b.insert(b.end(), more.begin(), more.end());
+        CHECK(!waits->trackHeard(0) && waits->heardDone() == 7);
+        CHECK(a == b);
+        CHECK(loudest(a, bar - 2000, bar) > 0.01f && loudest(a, bar + 1000, 2 * bar) == 0.f); // sounding to the line, silent after its fade
+        if (block == 256) {
+            // And one sample past the line is enough to land it.
+            std::unique_ptr<Engine> e(new Engine);
+            busyDrums(*e);
+            play(*e);
+            render(*e, 100, 100);
+            heardTo(*e, 0, false, true, 3);
+            render(*e, bar - 100, 256);
+            CHECK(e->trackHeard(0));
+            render(*e, 1, 1);
+            CHECK(!e->trackHeard(0) && e->heardDone() == 3);
+        }
+    }
+    {
+        // Stopped: at once, whatever is asked. Told what it is already: nothing waits.
+        std::unique_ptr<Engine> e(new Engine);
+        busyDrums(*e);
+        heardTo(*e, 0, false, true, 1);
+        render(*e, 64, 64);
+        CHECK(!e->trackHeard(0) && e->heardDone() == 1);
+        heardTo(*e, 0, true, true, 2);
+        render(*e, 64, 64);
+        CHECK(e->trackHeard(0) && e->heardDone() == 2);
+        play(*e);
+        heardTo(*e, 0, true, true, 3);
+        render(*e, 64, 64);
+        CHECK(e->trackHeard(0) && e->heardDone() == 3);
+        // Asked and asked back before the line: called off, and the song is as one never asked.
+        std::unique_ptr<Engine> plain(new Engine);
+        busyDrums(*plain);
+        play(*plain);
+        render(*plain, 64, 64);
+        heardTo(*e, 0, false, true, 4);
+        render(*e, 1000, 100), render(*plain, 1000, 100);
+        CHECK(e->heardDone() == 3);
+        heardTo(*e, 0, true, true, 5);
+        render(*e, 1000, 100), render(*plain, 1000, 100);
+        CHECK(e->heardDone() == 5 && e->trackHeard(0));
+        CHECK(render(*e, 2 * 96000, 256) == render(*plain, 2 * 96000, 256));
+        // One waiting, another track told at once: the count is not given out until the first lands.
+        heardTo(*e, 0, false, true, 6);
+        heardTo(*e, 1, false, false, 6);
+        render(*e, 64, 64);
+        CHECK(e->heardDone() == 5 && !e->trackHeard(1) && e->trackHeard(0));
+        // AT ONCE while it waits: now, and nothing waits any more.
+        heardTo(*e, 0, false, false, 6);
+        render(*e, 64, 64);
+        CHECK(!e->trackHeard(0) && e->heardDone() == 6);
+        // Stop lands what waits (the bar line will not come).
+        heardTo(*e, 0, true, true, 8);
+        render(*e, 64, 64);
+        CHECK(!e->trackHeard(0));
+        e->send(make(Command::Stop));
+        render(*e, 64, 64);
+        CHECK(e->trackHeard(0) && e->heardDone() == 8);
+        // A track taken away while its gate waits: nothing left waiting.
+        play(*e);
+        render(*e, 64, 64);
+        heardTo(*e, 0, false, true, 9);
+        render(*e, 64, 64);
+        CHECK(e->heardDone() == 8);
+        e->send(make(Command::RemoveInstrument));
+        heardTo(*e, 1, true, false, 9);
+        render(*e, 2000, 100);
+        CHECK(e->heardDone() == 9 && e->trackHeard(0));
+        render(*e, 96000, 256);
+        CHECK(e->trackHeard(0)); // (the bar line lands nothing on it)
+    }
+}
+
+void testQueuedMutesInTheApp() {
+    const std::string folder = tempFolder("easymutes");
+    const int bar = 375; // frames of 256 in a bar at 120
+    {
+        Rig rig;
+        Session& session = rig.session();
+        session.useProgramFolder(folder);
+        session.addTrack(TrackKind::Phazed);
+        session.addTrack(TrackKind::Phazed);
+        rig.settle();
+        // AT ONCE (as it always was): nothing waits, playing or not.
+        CHECK(session.mutes() == Session::kMutesAtOnce);
+        session.togglePlay(false);
+        rig.frames(4);
+        session.setMuted(1, true);
+        CHECK(!session.mutesWaiting() && session.muteWaits(1) == 0 && !session.heardNow(1));
+        rig.frames(2);
+        CHECK(!rig.engine->trackHeard(1));
+        session.setMuted(1, false);
+        rig.frames(2);
+        // NEXT BAR, playing: the project says what was asked, the engine waits, the mark waits.
+        session.setMutes(Session::kMutesNextBar);
+        session.setMuted(1, true);
+        CHECK(rig.track(1).muted && session.mutesWaiting() && session.muteWaits(1) == 'M' && session.muteWaits(0) == 0);
+        CHECK(session.heardNow(1) && !session.heard(1));
+        rig.frames(20);
+        CHECK(rig.engine->trackHeard(1) && session.mutesWaiting());
+        rig.frames(bar);
+        CHECK(!rig.engine->trackHeard(1) && !session.mutesWaiting() && session.muteWaits(1) == 0 && !session.heardNow(1));
+        // Taken off again: an M that waits to go.
+        session.setMuted(1, false);
+        CHECK(session.muteWaits(1) == 'M' && !session.heardNow(1) && session.heard(1));
+        rig.frames(bar);
+        CHECK(rig.engine->trackHeard(1) && !session.mutesWaiting());
+        // Solo: the S waits, the others sound until the line.
+        session.setSolo(2, true);
+        CHECK(session.muteWaits(2) == 'S' && session.heardNow(0) && session.heardNow(1) && !session.heard(0));
+        rig.frames(20);
+        // A second press while the first waits: both marks wait, and what sounds is still as before the first.
+        session.setMuted(2, true);
+        CHECK(session.muteWaits(2) == 'M' && session.heardNow(0));
+        session.setSolo(2, false), session.setMuted(2, false); // all asked back
+        rig.frames(4);
+        CHECK(!session.mutesWaiting()); // called off: the engine says nothing waits
+        CHECK(rig.engine->trackHeard(0) && rig.engine->trackHeard(1) && rig.engine->trackHeard(2));
+        // A press that changes no gate does not wait (track 0 muted under a solo is silent already).
+        session.setSolo(2, true);
+        rig.frames(bar);
+        session.setMuted(0, true);
+        CHECK(!session.mutesWaiting());
+        session.setMuted(0, false), session.setSolo(2, false);
+        rig.frames(bar);
+        CHECK(!session.mutesWaiting() && rig.engine->trackHeard(0));
+        // Stop lands it at once.
+        session.setMuted(0, true);
+        rig.frames(4);
+        CHECK(session.mutesWaiting() && rig.engine->trackHeard(0));
+        session.togglePlay(false);
+        rig.frames(4);
+        CHECK(!session.mutesWaiting() && !rig.engine->trackHeard(0));
+        // Stopped: at once.
+        session.setMuted(0, false);
+        CHECK(!session.mutesWaiting());
+        rig.frames(2);
+        CHECK(rig.engine->trackHeard(0));
+        // Back to AT ONCE while one waits: it lands now.
+        session.togglePlay(false);
+        rig.frames(4);
+        session.setMuted(1, true);
+        rig.frames(4);
+        CHECK(session.mutesWaiting());
+        session.setMutes(Session::kMutesAtOnce);
+        rig.frames(4);
+        CHECK(!session.mutesWaiting() && !rig.engine->trackHeard(1));
+        session.setMuted(1, false);
+        session.togglePlay(false);
+        session.setMutes(Session::kMutesNextBar);
+        // Through the SONG screen: Y on a head while playing, the mark drawn hollow until the line.
+        session.view = View::Song;
+        SongScreen& song = rig.app.song();
+        song.moveCursorTo(0, 1);
+        rig.tap(UP);
+        CHECK(song.cursorOnHead());
+        rig.tap(START);
+        rig.frames(4);
+        rig.tap(Y);
+        CHECK(rig.track(1).muted && session.muteWaits(1) == 'M');
+        Canvas canvas;
+        if (canvas.ok) {
+            const SDL_Rect head = song.headRect(1);
+            const int w = SongScreen::headMarkWidth(*canvas.fonts, "M"), left = head.x + head.w - 2 - w;
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(ui::gHintsOver == 0.f);
+            CHECK(canvas.is(left, head.y + 2, ui::kBrass) && canvas.is(left + 1, head.y + 3, ui::kBg)); // hollow: an outline, the box empty
+            // The head has not gone dark yet (as the head of a track left alone, track 3's); at the line it has.
+            const SDL_Rect other = song.headRect(2);
+            CHECK(canvas.at(head.x + 3, head.y + head.h - 8) == canvas.at(other.x + 3, other.y + other.h - 8));
+            rig.frames(bar);
+            CHECK(session.muteWaits(1) == 0);
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(canvas.at(head.x + 3, head.y + head.h - 8) != canvas.at(other.x + 3, other.y + other.h - 8));
+            CHECK(canvas.is(left, head.y + 2, ui::kBrass) && canvas.is(left + 1, head.y + 3, ui::kBrass)); // solid
+            // Off again: the M still stands, hollow, until the line; then no mark.
+            rig.tap(Y);
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(!rig.track(1).muted && canvas.is(left, head.y + 2, ui::kBrass) && canvas.is(left + 1, head.y + 3, ui::kBg));
+            rig.frames(bar);
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(!canvas.is(left, head.y + 2, ui::kBrass));
+            // X: the S waits hollow.
+            rig.tap(X);
+            const int ws = SongScreen::headMarkWidth(*canvas.fonts, "S"), lefts = head.x + head.w - 2 - ws;
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(rig.track(1).solo && canvas.is(lefts, head.y + 2, ui::kTeal) && canvas.is(lefts + 1, head.y + 3, ui::kBg));
+            rig.tap(X);
+        }
+        rig.tap(START);
+        rig.frames(4);
+        // The SET row: MUTES, after COUNT IN.
+        session.view = View::Settings;
+        SettingsScreen& setup = rig.app.settings();
+        typedef SettingsScreen S;
+        CHECK(S::kMutes == S::kCountIn + 1 && S::groupOf(S::kMutes) == S::kPlaying);
+        setup.goTo(S::kMutes);
+        rig.frames(1);
+        rig.tap(LEFT);
+        CHECK(session.mutes() == Session::kMutesAtOnce);
+        rig.tap(LEFT);
+        CHECK(session.mutes() == Session::kMutesAtOnce); // (the ends stop)
+        rig.tap(RIGHT);
+        CHECK(session.mutes() == Session::kMutesNextBar);
+        rig.tap(RIGHT);
+        CHECK(session.mutes() == Session::kMutesNextBar);
+        if (canvas.ok) {
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(ui::gHintsOver == 0.f);
+            // Its own name on its row (and USB KEYBOARD's on the row after): the cursor's outline, then MUTES in dim.
+            const int place = setup.placeOf(S::kMutes), y = setup.placeY(place, setup.firstShown());
+            int ink = 0, inkNext = 0;
+            const float mutesW = canvas.fonts->small.width("MUTES"), usbW = canvas.fonts->small.width("USB KEYBOARD");
+            for (int row = y; row < y + S::kRowH - 2; ++row)
+                for (int x = 20; x < 160; ++x) {
+                    if (canvas.is(x, row, ui::kDim) && x > 26 + mutesW + 4) ++ink;
+                    if (canvas.is(x, row + S::kRowH, ui::kDim) && x > 26 + mutesW + 4 && x < 26 + usbW + 4) ++inkNext;
+                }
+            CHECK(ink == 0 && inkNext > 10); // (MUTES is short; USB KEYBOARD, on the row after, runs on past it)
+        }
+        // Kept in settings.txt only when it is not AT ONCE.
+        std::string text;
+        CHECK(readTextFile(folder + "/settings.txt", text) && text.find("\nmutes 1\n") != std::string::npos);
+        session.setMutes(Session::kMutesAtOnce);
+        CHECK(readTextFile(folder + "/settings.txt", text) && text.find("mutes") == std::string::npos);
+        session.setMutes(Session::kMutesNextBar);
+    }
+    {
+        Rig rig;
+        rig.session().useProgramFolder(folder);
+        rig.session().loadSettings();
+        CHECK(rig.session().mutes() == Session::kMutesNextBar);
+    }
+}
+
 struct Section {
     const char* name;
     std::function<void()> run;
@@ -894,7 +1734,11 @@ int main(int argc, char** argv) {
         {"click", [] { testTheClick(), testTheCountIn(), testTheClickInTheApp(); }},
         {"transpose", [] { testChordNames(), testTransposeACell(), testTransposeOnSong(); }},
         {"scale", [] { testTheScales(), testTheScaleInTheSong(), testTheRollKeepsToIt(); }},
+        {"duplicate", [] { testDoubleTrackText(), testDuplicateATrack(), testDuplicateOnSong(); }},
         {"even", [] { testTheEvenRule(), testEvenOnALane(); }},
+        {"looks", [] { testTheLooks(); }},
+        {"mutes", [] { testTheWaitingGate(), testQueuedMutesInTheApp(); }},
+        {"kits", [] { testTheKitsText(), testKitsInTheSession(), testTheKitStop(); }},
     };
     for (const Section& s : sections) {
         bool wanted = argc < 2;

@@ -40,7 +40,18 @@ namespace apotheca {
 
 class SettingsScreen : public Screen {
 public:
-    enum Row { kTempo, kPack, kKey, kScale, kTrackName, kBounce, kVolume, kBrightness, kLight, kLightColour, kStick, kTextSize, kTheme, kOctaves, kMidi, kClick, kCountIn, kWifi, kTest, kControls, kRows };
+    // The rows, in the order they stand, under five headings (owner, 2026-11-17: "enough rows now"):
+    //   SONG      TEMPO, CHORD PACK, KEY, SCALE, TRACK NAME, BOUNCE   (kept in the song, or about it)
+    //   PLAYING   CLICK, COUNT IN, USB KEYBOARD
+    //   LOOK      TEXT SIZE, THEME, PIANO ROLL
+    //   HANDHELD  VOLUME, BRIGHTNESS, STICK LIGHT, LIGHT COLOUR, STICK SPEED
+    //   SETUP     WIFI PAGE, BUTTONS, CONTROLS
+    // The numbers are kept nowhere (a setting is kept by its word in settings.txt): the order is free.
+    enum Row { kTempo, kPack, kKey, kScale, kTrackName, kBounce, kClick, kCountIn, kMutes, kMidi, kTextSize, kTheme, kOctaves,
+               kVolume, kBrightness, kLight, kLightColour, kStick, kWifi, kTest, kControls, kRows };
+    enum Group { kSong, kPlaying, kLook, kHandheld, kSetup, kGroups };
+    static constexpr int groupOf(int row) { return row < kClick ? kSong : row < kTextSize ? kPlaying : row < kVolume ? kLook : row < kWifi ? kHandheld : kSetup; }
+    static const char* groupName(int group);
 
     explicit SettingsScreen(Session& session) : session_(session), project_(session.project) {}
 
@@ -51,18 +62,26 @@ public:
 
     // Where the rows are drawn, for the tests: a row's box starts at rowY and is kRowH - 6 tall;
     // its name starts at kNameX, its value at kValueX, and what is said about it ends at kNoteRight.
-    // Twelve rows fit between the bars (thirteen since THEME, fifteen with BRIGHTNESS and STICK
-    // LIGHT): the page shows twelve and moves one row at a time when the cursor goes past either end.
-    // A row's PLACE is its place among the rows here (a row not here has none: `here`); `rowY` takes
-    // places (`first`: the place shown at the top). The rows that can be missing come after VOLUME,
-    // so VOLUME's place is its number and the HANDHELD gap starts there either way.
-    // A small arrow beside PROJECT or HANDHELD says a row is out of sight that way.
-    static constexpr int kRowH = 32, kRowsTop = 50, kHandheldGap = 22, kRowX = 16, kRowW = 640 - 32;
+    // The page shows as many rows as fit between the bars and moves one row at a time when the cursor
+    // goes past either end. The heading of the first row shown stands at kHeadingY, above the rows;
+    // every other heading in view takes kHeadingGap before its group's first row, its words kHeadingUp
+    // over that row. So twelve rows are in view with one heading among them (kRowsShown, the most),
+    // eleven with two, ten with three.
+    // A row's PLACE is its place among the rows here (a row not here has none: `here`); `placeY` takes
+    // places (`first`: the place shown at the top). A group's first row is always here (only
+    // BRIGHTNESS, STICK LIGHT and LIGHT COLOUR can be missing), so every heading has a row to stand on.
+    // A small arrow after the top heading says a row is out of sight above, one after the last heading
+    // in view that one is out of sight below.
+    static constexpr int kRowH = 32, kRowsTop = 50, kHeadingGap = 22, kHeadingUp = 18, kHeadingY = 34, kRowX = 16, kRowW = 640 - 32;
     static constexpr int kRowsShown = 12;
+    static constexpr float kArrowsApart = 18.f; // an UP and a DOWN arrow after one heading
+    static constexpr int kPageFoot = kRowsTop + kRowsShown * kRowH + kHeadingGap - 6; // where the last row's box may end (450)
     static constexpr float kNameX = 26.f, kValueX = 170.f, kNoteRight = kRowX + kRowW - 10.f;
     static constexpr float kNoteGap = 8.f; // the least there is between a value and what is said about it
-    static constexpr int rowY(int row, int first = 0) { return kRowsTop + (row - first) * kRowH + (row >= kVolume ? kHandheldGap : 0); }
-    int rowNowY(int row) const { return rowY(placeOf(row), first_); } // where it is drawn just now
+    int placeY(int place, int first) const; // a place's top with `first` at the top of the page
+    bool fits(int place, int first) const { return place >= first && placeY(place, first) + kRowH - 6 <= kPageFoot; }
+    bool headsGroup(int place) const { return place > 0 && groupOf(rowAt(place)) != groupOf(rowAt(place - 1)); } // a heading stands over it
+    int rowNowY(int row) const { return placeY(placeOf(row), first_); } // where it is drawn just now
     bool here(int row) const;      // shown on this handheld at all
     int placeOf(int row) const;    // among the rows here
     int rowAt(int place) const;    // the row at a place
@@ -78,7 +97,7 @@ public:
         *w = room < kBarW ? (room > 0 ? room : 0) : kBarW;
     }
     int firstShown() const { return first_; } // the place at the top
-    bool shown(int row) const { return here(row) && placeOf(row) >= first_ && placeOf(row) < first_ + kRowsShown; }
+    bool shown(int row) const { return here(row) && fits(placeOf(row), first_); }
 
     // To a row; one that is not here gives the next that is (or the one before, at the end).
     void goTo(int row);

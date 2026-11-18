@@ -254,3 +254,210 @@ Y's tap after, the turn kept across holds, a kept hit written over: each fails. 
 
 **Only the owner can tell**: whether R1 / L1 with Y held is found without being told, and whether
 the turn wants to be on L1 / R1 and the count on the D-pad instead.
+
+## The stick light, after the owner saw it (2026-11-17): A, B and C
+
+The owner has seen the ring's colours and likes them. Three asks.
+
+### A. THEME's colour, picked for the ring
+
+LIGHT COLOUR at THEME was the theme's cursor colour made full. Now each theme has a colour picked
+for the ring (`ringThemeColour`, lights.hpp): **BROWN is the BRASS preset's colour** (the owner's
+word), BLUE a sky blue, GREEN a spring green, BLACK white, PAPER a warm amber, GREY an ice blue.
+**Only BROWN's was asked for; the other five are picks nobody has seen on the ring.**
+
+A bar's first step (BEAT and STEPS) is brass, **or white where the ring is too near brass to tell**
+(`ringFirstFor`: BRASS, ORANGE, YELLOW, BROWN's THEME, PAPER's amber). TRACK and RAINBOW keep brass.
+A new theme must be given a ring colour (a `static_assert` counts them).
+
+Tests: `lights_test`: BROWN's is BRASS, the six all differ, out of range is BROWN's, which colours
+get white; the ring through the Session on PAPER (amber, white on the bar). Mutants: the theme
+passed, the first's rule.
+
+### B. A track's colour on its head
+
+With LIGHT COLOUR at TRACK the ring shows the colour of the track up, but nothing on the screen said
+which colour is which track's. Now, **while LIGHT COLOUR is TRACK and the ring is here and not OFF,
+each track's head on SONG has a thin bar of its ring colour along its foot** (2 pixels, 3 in from
+each side, a dim line over it). It is the one colour on the screen that does not come from the
+theme: a deliberate exception, written in CLAUDE.md, and `themeviews` is taught the twelve hues.
+
+- Under the name, so it is clear of the M / S mark and the mixer's mark (both at the head's top),
+  in the narrowest heads too (twelve tracks).
+- Drawn after a muted head's dark wash: every track's bar is as bright.
+- **Not on the top bar's track name**: that row is tight and full (six tabs); the owner may ask.
+
+| Call | Taken |
+| --- | --- |
+| The mark | **A bar along the head's foot** (a square in a corner would meet the mixer's or the M / S mark) |
+| On light themes | **A dim line over it** gives yellow an edge on PAPER |
+| Elsewhere | **SONG only** |
+
+Tests: `lights_test testTrackColours`: the twelve differ and are the ring's; at 2 and 12 tracks, in
+BROWN and PAPER: the whole bar in each head's foot and nowhere else in the head, the dim line, the
+mixer's mark still there; none at RED, RAINBOW, the ring OFF or on a handheld with no ring. Mutants:
+the OFF check, the ring-here check, the track's own hue. Stills `song-track-colours`, `-12`.
+
+### C. The SET page under five headings
+
+Twenty rows (seventeen off our own firmware) stood under PROJECT and HANDHELD. Now:
+
+| Heading | Rows |
+| --- | --- |
+| SONG | TEMPO, CHORD PACK, KEY, SCALE, TRACK NAME, BOUNCE |
+| PLAYING | CLICK, COUNT IN, USB KEYBOARD |
+| LOOK | TEXT SIZE, THEME, PIANO ROLL |
+| HANDHELD | VOLUME, BRIGHTNESS, STICK LIGHT, LIGHT COLOUR, STICK SPEED |
+| SETUP | WIFI PAGE, BUTTONS, CONTROLS |
+
+The first row's heading stands above the rows, where PROJECT stood; each other heading in view takes
+the 22-pixel gap HANDHELD's took. **So the page shows twelve rows with one heading among them, eleven
+with two, ten with three**: the rows keep their size and the page still ends where it did. It still
+moves a row at a time, counts places (a row missing on this handheld is passed by), and leaves no
+room empty under the last row. An UP arrow after the top heading and a DOWN arrow after the last
+heading in view say rows are out of sight (both after one heading where it is the only one in view).
+
+| Call | Taken |
+| --- | --- |
+| The groups | **SONG, PLAYING, LOOK, HANDHELD, SETUP** (above) |
+| TEMPO | **SONG** (it is the song's, beside KEY and SCALE); CLICK and COUNT IN lead PLAYING |
+| PIANO ROLL (octaves shown) | **LOOK** |
+| USB KEYBOARD | **PLAYING** (COUNT IN and CLICK's RECORDING hang on it) |
+| Twelve rows in view | **Kept as the most**; a heading in view costs most of a row. The other way (headings with no room of their own) had nowhere to stand without restyling the rows |
+
+Tests: `theme_test testTheRow` (the walk down a row at a time moving by as little as shows the
+cursor, the end with no room left empty, every row in view inside the page, the gaps, the headings'
+words, the arrows at the top and the end), `lights_test testTheSetPage` (with and without the three
+firmware rows), `textsize` (every place the page can stand, at four sizes; the stills), `app_test`
+(each row by name). Stills `setup`, `setup-click`, `setup-scale`, `setup-light`, `setup-light-colour`.
+
+## Batch 6: DUPLICATE A TRACK (and what was already there)
+
+**What was asked**: duplicate a track; empty a cell; copy a whole cell to another scene or track.
+
+**What was there already, and stays**: B on a cell empties it (`clearCell`); **hold R1 on a cell and
+drag copies the whole cell** (its length and every bar) into every cell crossed, on any track of the
+same kind and any scene (`copyCell`). Nothing was added for those two.
+
+**New: duplicate a track.** On a track's head on SONG, **hold L1 and press R1** (COPY A BAR's two
+keys, on the thing they copy here; L1 did nothing on a head). A new track right after it: the same
+instrument, sound (preset, settings, macros), effects, sends, MODs, mixer, mute, name, a kit's lanes,
+and every scene's patterns and automation. The tracks after it move a place along. The cursor goes
+to the copy's head and the box says TRACK 3: COPY OF 2, or NO ROOM: 12 TRACKS. While L1 is held on a
+head the bar says R1 copy this track.
+
+- **Done on R1's let go, with L1 still held**: a panic (all four shoulders) begun L1, R1 copies no
+  track, and the App tells the screen when a panic starts.
+- The copy is not soloed (two soloed tracks where there was one).
+- **Undo keeps its steps**: every step has the track twice from then on (`doubleTrackText`), so
+  undoing an edit from before the copy still works, on both. **The copy itself is not undone**, as
+  adding or deleting a track is not: hold B on its head deletes it.
+- The engine is sent the song again (as when a track is deleted).
+
+| Call | Taken |
+| --- | --- |
+| The gesture | **Hold L1 + R1 on the head** |
+| Where the copy goes | **Right after its track** |
+| Undo | **Not a step** (as + TRACK and delete); hold B deletes the copy |
+| Its name | **The same** (two LEADs: rename one) |
+| Mute and solo | **Mute copied, solo not** |
+
+**Tests**: `easy_test duplicate`: a step's text with a track written twice (read back; no such track;
+not a song); the copy field by field (notes, chord, bars, effect, send, mixer, name, mute, not solo),
+the tracks after it, the track worked on following, the copy its own, two undos across the copy,
+twelve the most, the sound to the bit beside a song built by hand; through SONG: L1 + R1 (on R1's let
+go), the words, the hints at 0 over, R1 alone still the instruments, L1 alone nothing, the wrong
+orders, a let go unseen, a panic, a cell, twelve tracks. Mutants: the panic's call, the steps' text,
+the track worked on, the unseen let go, the solo: each fails. Still `song-copy-track`.
+
+**Only the owner can tell**: whether L1 + R1 on a head is easy to hit, and whether the copy should
+be a step of undo.
+
+## Batch 7: KIT PRESETS
+
+A drum track's whole kit, kept under a name and put on any drum track. **A kit is every lane's sound
+(the built-in drum, a recording or a synth voice), its EDIT, FIT, VOLUME, CHOKE, FEEL and SWING.**
+Not the patterns, not the effects, not the mixer.
+
+**The gesture.** On the KIT page, UP from lane 1 is the kit's own stop, where SOUND's heading stood.
+It reads KIT and the kit's name: a built-in kit, one of your own, or YOUR OWN when it is in no list.
+
+| On the stop | Does |
+| --- | --- |
+| Hold A + UP / DOWN | the kit after / before, put on at once and heard (lane 1, stopped). The ends stop |
+| B with A still held | the kit as it was when A went down |
+| Y | SAVE: the kit as it is now becomes KIT 1, KIT 2... |
+| Hold B a second (a bar fills) | delete one of your own kits. The track keeps its sound |
+
+- **Seven built-in kits**: DRUMS (the built-in drums), SYNTH, TIGHT, BIG, ELECTRO, DUSTY, HAND DRUMS.
+  The last six are recipes of DRUM SYNTH's named voices, looked up by name; a recipe naming a voice
+  the data lost fails the tests (`builtInKitProblems`).
+- **Your own are files beside the synths' presets**, `kit N.kit`, written in the song file's own
+  lines (`kitText` / `readKit`: the one writer and reader). A kit that names a recording keeps the
+  name; the recording must be on the card.
+- **A kit put on is a step of undo**, like any change to a kit: voices, EDIT, FEEL, SWING and CHOKE
+  come back. A recording does not (as always).
+
+| Call | Taken |
+| --- | --- |
+| Where | **A stop above lane 1 on the KIT page** (not a new screen) |
+| What a kit holds | **The lanes' sounds and what is done to them**; not patterns, effects or mixer |
+| Names | **KIT 1, KIT 2...** (no typing: a second keyboard screen for a later batch if wanted) |
+| Built-in kits | **Seven, from the synth voices**; no recordings ship |
+| Undo | **A step** (recordings not put back) |
+
+**Tests**: `easy_test kits`: the text there and back, a text that is no kit, a `track` line in a kit
+taking nothing, `copyKit`; the built-in recipes; the list, a kit put on (the engine's sound changed
+and back), undo, every field put back from a kit of one's own, save, the next free name, delete, a
+second run finding the file; the stop: UP and DOWN round it, A + UP / DOWN and the ends, B as it
+was, Y on a kit that is one already, hold B (the bar, called off, let go unseen, a built-in kit),
+START, the hints at 0 over. 20 mutants: each fails. Stills `kit-preset`, `-held`, `-own`.
+
+**Not done**: a name of your choosing (kits are numbered); the WiFi page does not list or send kits;
+FIT and a recording on a lane are carried by the same calls but no test puts a kit with a recording on.
+
+**Only the owner can tell**: how the seven kits sound, and whether the stop above lane 1 is found.
+
+## The owner's five (2026-11-18)
+
+| Ask | Done |
+| --- | --- |
+| SONG: PLAYS becomes REPEATS, nearer the x1 box | REPEATS, 10 above the first box (was 20). It is 67 wide at LARGE, so the REPEATS column is 4 wider (38) and the track columns start 4 further right |
+| Drum grid: the feel mark too close to the name | The name's word starts 5 clear of the mark (was 1), grid and slices; names have 3 less room before they are held at LARGE |
+| Tabs: PTRN, DVICE, evenly spaced | Done; each word has 5 either side again (was 3). The words after the tabs gained 15: 182 stopped, 109 playing, 47 with WRITE. Help card says PTRN; README keeps the full words and says so |
+| The lane's volume hard to see in BLACK | The fill is the lightest surface (panel2) with a dim edge where the volume ends. BLACK: fill on bg 1.08 before, 1.22 after, and the edge is 8.5 on bg |
+
+**Tests**: `easy_test looks` (the volume's fill, edge and bg off the drawn screen in all six themes, at
+50%, full and none; the clear room by the mark; REPEATS inside the screen and near its boxes), 5
+mutants, each fails. `modtab_test` holds the tabs.
+
+## Batch 8: QUEUED MUTES
+
+A mute or a solo pressed while the song plays can wait for the next bar line, so a part comes in or
+drops out on the one.
+
+**The setting.** SET, PLAYING group: **MUTES: AT ONCE** (as it always was) or **NEXT BAR**.
+
+**What happens at NEXT BAR, playing.** Y (mute) or X (solo) on SONG as before. The mark appears at
+once, drawn **hollow**, and the track sounds as it did; on the next bar's first sample the gate
+moves (its usual 5 ms fade) and the mark goes solid, or goes away if it was coming off. Pressed back
+before the line: called off. Stop: it lands at once. Stopped: at once, as before.
+
+| Call | Taken |
+| --- | --- |
+| A setting or a gesture | **A SET row** (the same Y and X; nothing new to learn) |
+| The line it waits for | **The next bar line** (not the scene's end) |
+| What shows while waiting | **A hollow M or S**, the head not dark yet |
+| Stop while it waits | **Lands at once** |
+| The song file | **Says what was asked**, at once (a save mid-wait keeps the mute) |
+
+**Tests**: `easy_test mutes`. The engine: a waiting gate beside an engine told at once exactly on the
+bar line, the same to the bit in blocks of 1, 64, 256, 333; one sample past the line lands it; stopped;
+told what it is; asked and asked back (the song as one never asked); Stop; a track taken away. The
+app: AT ONCE unchanged, the waiting marks, solo, a second press, a press that changes nothing, Stop,
+MUTES put back, Y and X on a head read off the drawn screen (hollow, solid, gone; the head dark only
+after the line), the SET row and its name, settings.txt. 18 mutants: 17 fail; the one that lives is
+the number's place beside a waiting mark on the narrowest heads (11 and 12 tracks), which has no test.
+
+**Only the owner can tell**: whether the bar line is the right wait (or the scene's end), and
+whether the hollow mark reads as "waiting".

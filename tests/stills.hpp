@@ -42,7 +42,7 @@ inline const char* const kViews[] = {
     "phazed", "page0", "page1", "page2", "page3", "page4", "page5", "page6", "page7", "page8", "page9", "jaxep", "jaxep0", "jaxep1", "jaxep2", "jaxep3", "jaxep4", "jaxep5", "jaxep-bank", "jaxep-held",
     "kit", "slices", "slices-32", "slices-name", "slices-name-feel", "slices-throw", "starts", "picker", "picker-in", "picker-deep", "picker-deleting", "picker-new", "picker-typing", "picker-carrying", "picker-folder-deleting", "sampler-picker",
     "feel", "feel-held", "feel-off-held", "feel-same-held", "feel-said", "feel-swing", "feel-swing-held",
-    "choke", "kit-choke", "kit-choke-held", "kit-edit", "kit-edit-held", "kit-edit-deleting", "kit-edit-column",
+    "choke", "kit-choke", "kit-choke-held", "kit-preset", "kit-preset-held", "kit-preset-own", "song-mute-waiting", "setup-mutes", "kit-edit", "kit-edit-held", "kit-edit-deleting", "kit-edit-column",
     "kit-synth", "kit-voice", "kit-voice-held", "kit-voice-deleting", "kit-voice-clap", "kit-voice-named",
     "setup", "setup-click", "tap-tempo", "even", "scale-roll", "setup-scale", "buttons", "typing", "help", "help-load",
     "fm6", "fm6-1", "fm6-2", "fm6-3", "fm6-4", "fm6-5", "fm6-6", "fm6-7", "fm6-8", "fm6-long", "fm6-fixed", "fm6-off",
@@ -50,7 +50,7 @@ inline const char* const kViews[] = {
     "acid", "acid-1", "acid-2", "acid-fixed", "acid-long", "acid-roll",
     "cloud", "cloud-1", "cloud-2", "cloud-3", "cloud-long", "cloud-sounding",
     "morph", "morph-b", "morph-1", "morph-2", "morph-3", "morph-4", "morph-5", "morph-keys", "morph-long", "morph-sounding",
-    "next-scene", "next-scene-notes", "next-scene-full", "scenes", "scenes-end", "scenes-full", "scenes-grid", "scenes-roll", "scenes-playing", "copy-bar", "copy-bar-notes", "copy-bar-refused", "volume", "setup-lights", "setup-light", "setup-light-colour", "brightness", "update-ready", "update-ready-drums", "update-accepted", "nomenu", "help-nomenu", "kit-old",
+    "next-scene", "next-scene-notes", "next-scene-full", "scenes", "scenes-end", "scenes-full", "scenes-grid", "scenes-roll", "scenes-playing", "copy-bar", "copy-bar-notes", "copy-bar-refused", "volume", "setup-lights", "setup-light", "setup-light-colour", "song-copy-track", "song-track-colours", "song-track-colours-12", "brightness", "update-ready", "update-ready-drums", "update-accepted", "nomenu", "help-nomenu", "kit-old",
     "", " --dice", " --paint", " --paint-random", " --on-name", " --on-tempo", " --hold-a", " --hold-y",
     "help --no-menu", "song --no-menu", "setup --no-menu",
 };

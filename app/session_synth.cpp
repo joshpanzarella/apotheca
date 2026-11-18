@@ -191,6 +191,7 @@ std::string kitField(const char* name, int field, const char* rest) {
 
 void Session::usePresetFolder(const std::string& folder) {
     presetFolder_ = folder;
+    kits_.clear(); // (read again when next asked for: the folder's own kits)
     mkdir(folder.c_str(), 0755);
     for (int i = 0; i < kInstrumentCount; ++i) {
         if (!kInstruments[i].presetEnding) continue; // it keeps no presets

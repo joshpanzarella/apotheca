@@ -61,13 +61,13 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
     if (onName) outline(r, kNameX - 1, kWaveY - 1, kNameW + 2, kWaveH + 2, cursorColor, 2);
     // Medium if it fits both at the size chosen and at LARGE, else small: so a smaller size never draws it bigger than
     // LARGE does (it did at MEDIUM once MEDIUM was made smaller: the name fitted there in medium, at LARGE it did not).
-    (fonts.medium.width(laneLabel(lane_)) <= kNameW - 12 && fonts.fixed().medium.width(laneLabel(lane_)) <= kNameW - 12 ? fonts.medium : fonts.small).draw(r, 15.f, kWaveY + 10.f, laneLabel(lane_), kTeal);
-    fonts.small.draw(r, 15.f, kWaveY + 44.f, "EACH HIT", kDim);
-    fonts.small.draw(r, 15.f, kWaveY + 60.f, "PLAYS", kDim);
+    (fonts.medium.width(laneLabel(lane_)) <= kNameW - 15 && fonts.fixed().medium.width(laneLabel(lane_)) <= kNameW - 15 ? fonts.medium : fonts.small).draw(r, static_cast<float>(kNameTextX), kWaveY + 10.f, laneLabel(lane_), kTeal);
+    fonts.small.draw(r, static_cast<float>(kNameTextX), kWaveY + 44.f, "EACH HIT", kDim);
+    fonts.small.draw(r, static_cast<float>(kNameTextX), kWaveY + 60.f, "PLAYS", kDim);
     const char* plays = trk().laneOneSlice[lane_] ? "ONE SLICE" : "RUNS ON";
-    fonts.within(&Fonts::medium, plays, kNameW - 10.f).draw(r, 15.f, kWaveY + 78.f, plays, trk().laneOneSlice[lane_] ? kPurple : kText);
+    fonts.within(&Fonts::medium, plays, kNameW - 13.f).draw(r, static_cast<float>(kNameTextX), kWaveY + 78.f, plays, trk().laneOneSlice[lane_] ? kPurple : kText);
     std::snprintf(text, sizeof text, "%d SLICES", count);
-    fonts.small.draw(r, 15.f, kWaveY + kWaveH - 22.f, text, kDim);
+    fonts.small.draw(r, static_cast<float>(kNameTextX), kWaveY + kWaveH - 22.f, text, kDim);
     drawFeelMark(r, kWaveY, trk().laneFeel[lane_]); // the lane's feel, as on the grid
     drawSwingMark(r, kWaveY, trk().laneSwing[lane_]); // ...its SWING
     drawChokeMark(r, kWaveY, trk().laneChoke[lane_]); // ...and its CHOKE group

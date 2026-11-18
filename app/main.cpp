@@ -595,6 +595,16 @@ int main(int argc, char** argv) {
             app.kit().goTo(3, KitScreen::kChoke);
             if (std::strstr(view, "-held")) pushKey(SDLK_x, true); // A held
         }
+    } else if (std::strncmp(view, "kit-preset", 10) == 0) {
+        // KIT PRESETS: the KIT page on the kit's stop, above lane 1. kit-preset: the built-in kit HAND DRUMS on (the longest name);
+        // -held: A held (what UP / DOWN do); -own: a lane's swing turned since (YOUR OWN: Y saves it).
+        Session& session = app.session();
+        session.loadKit(0, 6);
+        if (std::strstr(view, "-own")) session.setLaneSwing(0, 1, 40);
+        session.finishStretching();
+        session.view = View::Device;
+        app.kit().goToKit();
+        if (std::strstr(view, "-held")) pushKey(SDLK_x, true); // A held
     } else if (std::strncmp(view, "kit-synth", 9) == 0 || std::strncmp(view, "kit-voice", 9) == 0) {
         // DRUM SYNTH: the first four lanes synth voices (KICK with its TUNE turned, SNARE, CL HAT, OP HAT),
         // lane 6 a CLAP. kit-synth: the KIT page on lane 1's SOUND. kit-voice: lane 1's VOICE view on TUNE;
@@ -1029,6 +1039,26 @@ int main(int argc, char** argv) {
         }
         app.session().setMuted(1, true);
         app.session().setSolo(2, true);
+    } else if (std::strncmp(view, "song-track-colours", 18) == 0) {
+        // LIGHT COLOUR at TRACK: each head wears its track's ring colour along its foot; "-12" the narrow
+        // heads, tracks 11 muted and 12 soloed and track 1's mixer mark on. The files pretended.
+        app.session().useLights(Lights::pretend());
+        app.session().setLightColour(kLightTrack);
+        app.session().view = View::Song;
+        if (std::strstr(view, "-12")) {
+            const TrackKind kinds[3] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Drums};
+            for (int i = 0; app.project().trackCount() < kNumTracks; ++i) app.session().addTrack(kinds[i % 3]);
+            app.session().setMuted(10, true);
+            app.session().setSolo(11, true);
+            app.session().setMix(0, -6, 10);
+        }
+    } else if (std::strcmp(view, "song-copy-track") == 0) {
+        // DUPLICATE A TRACK (easywins batch 6): track 2 just copied (TRACK 3: COPY OF 2), L1 still held on the copy's head.
+        app.session().view = View::Song;
+        app.song().moveCursorTo(0, 1);
+        tapKey(SDLK_UP);
+        pushKey(SDLK_q, true);
+        tapKey(SDLK_w);
     } else if (std::strcmp(view, "song-head") == 0) {
         // The cursor on track 2's head: its hints (A name, HOLD A mix, R1 instrument, HOLD B delete, Y mute, X solo).
         app.session().view = View::Song;
@@ -1296,6 +1326,19 @@ int main(int argc, char** argv) {
             tapKey(SDLK_x);
             pushKey(SDLK_w, true);
             pushKey(SDLK_l, true);
+        }
+    } else if (std::strcmp(view, "song-mute-waiting") == 0 || std::strcmp(view, "setup-mutes") == 0) {
+        // QUEUED MUTES (easywins batch 8): track 2's mute asked for and waiting for the bar line (its M
+        // hollow, its head not dark yet), track 3 muted and landed; or the SET page on MUTES at NEXT BAR.
+        app.session().setMutes(Session::kMutesNextBar);
+        if (view[1] == 'e') {
+            app.session().view = View::Settings;
+            app.settings().goTo(SettingsScreen::kMutes);
+        } else {
+            app.session().view = View::Song;
+            app.session().setMuted(1, true);
+            app.session().setMuted(2, true);
+            app.session().pretendMuteWaits(1, 'M');
         }
     } else if (std::strcmp(view, "setup-click") == 0) {
         // The METRONOME's row (easywins batch 2): CLICK at RECORDING, COUNT IN at ONE BAR.

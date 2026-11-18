@@ -142,10 +142,10 @@ TopBar topBar(SDL_Renderer* r, const Fonts& chosen, View view, const char* conte
     arrow(x, true);
     x += 8.f;
     x += chip(x, "L2") + 4.f;
-    const char* tabs[] = {"SONG", "PATTERN", "DEVICE", "FX", "MOD", "SET"}; // View's order
+    const char* tabs[] = {"SONG", "PTRN", "DVICE", "FX", "MOD", "SET"}; // View's order (PTRN and DVICE: owner, 2026-11-18, to give the tabs their room back)
     for (int i = 0; i < 6; ++i) {
-        // (3 pixels either side of a tab's word: 5 until the sixth tab, MOD, came in, so the screen's own words
-        // kept their room: a track's name, "12 PHAZED", still fits beside the scene's blocks while playing.)
+        // (5 pixels either side of a tab's word again: it was 3 while the tabs read PATTERN and DEVICE. The four
+        // letters saved pay for it and leave the screen's own words a little more room than they had.)
         const float w = fonts.small.width(tabs[i]) + 2.f * kTabPad;
         const bool here = static_cast<int>(view) == i;
         if (here) fill(r, static_cast<int>(x), 2, static_cast<int>(w), kTopBarH - 4, kTeal);

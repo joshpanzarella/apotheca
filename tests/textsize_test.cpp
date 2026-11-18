@@ -140,7 +140,7 @@ void testTheStillsFlag(const std::string& program, const std::string& folder) {
         bool same = true;
         int lit = 0;
         const int bytes = with->format->BytesPerPixel;
-        for (int y = SettingsScreen::rowY(0); y < SettingsScreen::rowY(SettingsScreen::kRowsShown - 1) + SettingsScreen::kRowH - 6; ++y) { // (the rows: nothing in them moves while the song plays)
+        for (int y = SettingsScreen::kRowsTop; y < SettingsScreen::kPageFoot; ++y) { // (the rows: nothing in them moves while the song plays)
             const Uint8* a = static_cast<const Uint8*>(with->pixels) + y * with->pitch;
             const Uint8* b = static_cast<const Uint8*>(without->pixels) + y * without->pitch;
             same = same && std::memcmp(a, b, static_cast<std::size_t>(640 * bytes)) == 0;
@@ -723,8 +723,9 @@ void testTheRow() {
     session.view = View::Settings;
     S& setup = rig.app.settings();
     // Among the handheld's rows, after STICK SPEED; thirteen rows now, THEME after it (tests/theme_test.cpp).
-    CHECK(S::kRows == 20 && S::kTextSize == S::kStick + 1 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kTextSize > S::kVolume);
-    setup.goTo(S::kStick);
+    // (Under LOOK since the page's headings: after USB KEYBOARD, the last of PLAYING.)
+    CHECK(S::kRows == 21 && S::kTextSize == S::kMidi + 1 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::groupOf(S::kTextSize) == S::kLook);
+    setup.goTo(S::kMidi);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kTextSize && session.textSize() == kTextLarge);
     // A choice: one click a push, and it has ends.
@@ -771,10 +772,10 @@ void testTheRow() {
 
     // As drawn. Each size's own name is on the row, in that size; twelve rows shown, none over another, the last clear of the hints bar.
     setup.goTo(S::kTextSize);
-    for (int first = 0; first + S::kRowsShown <= S::kRows; ++first)
-        for (int row = first; row < first + S::kRowsShown; ++row) {
-            CHECK(S::rowY(row, first) >= ui::kTopBarH + 8 && S::rowY(row, first) + S::kRowH - 6 <= ui::kScreenH - ui::kHintsH - 4);
-            if (row > first) CHECK(S::rowY(row, first) >= S::rowY(row - 1, first) + S::kRowH - 6 + 4);
+    for (int first = 0; first < setup.places(); ++first)
+        for (int place = first; place < setup.places() && setup.fits(place, first); ++place) {
+            CHECK(setup.placeY(place, first) >= ui::kTopBarH + 8 && setup.placeY(place, first) + S::kRowH - 6 <= ui::kScreenH - ui::kHintsH - 4);
+            if (place > first) CHECK(setup.placeY(place, first) >= setup.placeY(place - 1, first) + S::kRowH - 6 + 4);
         }
     for (int size = 0; size < kTextSizes; ++size) {
         session.setTextSize(size);

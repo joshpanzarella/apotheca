@@ -17,7 +17,7 @@ namespace {
 constexpr Uint32 kDeleteHoldMs = 1000; // B held this long on a song deletes it
 
 constexpr int kGridTop = 34, kHeadH = 40, kRowH = 44, kRowsTop = kGridTop + kHeadH + 6;
-constexpr int kNumberW = 26, kRepeatW = 34, kColumnsLeft = 8 + kNumberW + kRepeatW;
+constexpr int kNumberW = 26, kRepeatW = 38, kColumnsLeft = 8 + kNumberW + kRepeatW; // (kRepeatW was 34: the column's word, REPEATS, is 67 wide at LARGE)
 constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs;
 constexpr float kStickCellsPerSecond = 24.f;
 constexpr float kRepeatsPerSecond = 20.f;
@@ -380,6 +380,30 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (mixing_ && event.down) mixTurned_ = true;
     if (mixing_ && b != Button::Start) return;
     if (onMaster_ && (b == Button::B || b == Button::R1)) return; // nothing to empty, delete or change there
+    // DUPLICATE A TRACK: L1 held on its head, R1 pressed and let go.
+    if (b == Button::L1 && !mixing_) {
+        l1OnHead_ = event.down && onHead_;
+        if (!event.down) dupArmed_ = false;
+        return;
+    }
+    if (onHead_ && b == Button::R1 && l1OnHead_ && input.held(Button::L1)) {
+        if (event.down) {
+            dupArmed_ = true;
+        } else if (dupArmed_) {
+            dupArmed_ = false;
+            const int made = session_.duplicateTrack(column_);
+            char text[48];
+            if (made >= 0) {
+                std::snprintf(text, sizeof text, "TRACK %d: COPY OF %d", made + 1, made);
+                moveCursorTo(scene_, made);
+                onHead_ = true;
+            } else {
+                std::snprintf(text, sizeof text, "NO ROOM: %d TRACKS", kNumTracks);
+            }
+            session_.say(text);
+        }
+        return;
+    }
     if (onHead_ && (b == Button::B || b == Button::R1)) {
         // On a track's head: B held deletes the track, as it does on a cell; a tap of it empties nothing here.
         if (b == Button::B && event.down && !input.held(Button::A)) {
@@ -497,6 +521,8 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
     if (mixing_ && !mixTimed_) mixTimed_ = true, mixSince_ = nowMs; // (the hold's clock starts on the frame after A)
     if (mixing_ && mixTimed_ && nowMs - mixSince_ >= kMixCardMs) mixShown_ = true;
     if (!input.held(Button::R1)) copying_ = false;
+    if (!input.held(Button::L1) || !onHead_) l1OnHead_ = false;
+    if (!l1OnHead_ || !input.held(Button::R1)) dupArmed_ = false; // (a let go this screen never saw copies nothing)
     if (!onCell()) onHead_ = false; // the track under it went
     if (onMaster_ && (listing_ || choosing_)) onMaster_ = false; // (a song opened: start at its top)
     if (!input.held(Button::B)) bHeld_ = false;
@@ -636,11 +662,12 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const int playScene = session_.playScene(), playStep = session_.engine.playStep();
 
     // ---- column heads ----------------------------------------------------------
-    fonts.small.drawRight(r, kColumnsLeft - 7.f, kGridTop + 14.f, "PLAYS", kDim);
+    // (REPEATS, it was PLAYS: owner, 2026-11-18. Low in the heads' row, nearer the boxes it names; held at LARGE where it would leave the screen.)
+    fonts.within(&Fonts::small, kRepeatsWord, kColumnsLeft - 5.f).drawRight(r, kColumnsLeft - 2.f, static_cast<float>(kRepeatsWordY), kRepeatsWord, kDim);
     for (int t = 0; t < tracks; ++t) {
         const int x = kColumnsLeft + t * (colW + 1);
         box(r, x, kGridTop, colW, kHeadH, kPanel2, kLine);
-        const bool sounding = session_.heard(t);
+        const bool sounding = session_.heardNow(t); // (QUEUED MUTES: as it still sounds until the bar line)
         // B held on this track: its head fills red and says what is coming, and
         // nothing else: the number and the name come back if B is let go. The
         // words flash slowly, three times in the two seconds.
@@ -658,7 +685,8 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             // Where the mark would stand on the number (11 and 12 in the narrowest heads), the number is centred
             // in the room left of it instead, clear of the mixer's mark at the other corner.
             const Font& numberFont = (colW > 60 ? fonts : fonts.fixed()).small;
-            const char* letter = project_.tracks[t].solo ? "S" : (project_.tracks[t].muted ? "M" : nullptr);
+            const char waiting = session_.muteWaits(t); // (a mark that waits for the bar line stands there too)
+            const char* letter = project_.tracks[t].solo || waiting == 'S' ? "S" : (project_.tracks[t].muted || waiting == 'M' ? "M" : nullptr);
             float numberX = x + colW / 2.f;
             if (letter) {
                 const float markLeft = x + colW - 2 - headMarkWidth(fonts, letter);
@@ -688,22 +716,33 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (onHead_ && t == column_ && !listing_ && !choosing_) outline(r, x - 1, kGridTop - 1, colW + 2, kHeadH + 2, cursorColor, 2);
         // Muted, or soloed: a mark in the corner of the head, and a silent track's head goes dark.
         if (!sounding && !deleting) fill(r, x + 1, kGridTop + 1, colW - 2, kHeadH - 2, faded(kBg, 150));
+        // LIGHT COLOUR at TRACK: the track's ring colour along the head's foot (drawn after the dark wash: a muted track's is as bright).
+        if (!deleting && session_.trackColoursShown()) {
+            const Rgb hue = ringTrackColour(t);
+            const int my = kGridTop + kHeadH - kHueMarkFoot - kHueMarkH;
+            fill(r, x + kHueMarkInset, my - 1, colW - 2 * kHueMarkInset, 1, kDim);
+            fill(r, x + kHueMarkInset, my, colW - 2 * kHueMarkInset, kHueMarkH, SDL_Color{hue.r, hue.g, hue.b, 255});
+        }
         // Not at its usual level or pan (the mixer): a brass mark in the other corner.
         if (!deleting && (project_.tracks[t].mixDb != 0 || project_.tracks[t].mixPan != 0)) fill(r, x + kMixMarkInset, kGridTop + kMixMarkInset, kMixMarkSize, kMixMarkSize, kBrass);
         // The mark's box is made to its letter (2 pixels clear all round), in the lettering every head was
         // laid out at: at a fixed 11 by 11 the letter stood out of it, below and at the sides (owner, 2026-11-14).
-        const auto mark = [&](const char* letter, SDL_Color colour) {
+        // QUEUED MUTES: a mark that waits for the bar line is hollow (its box an outline, its letter in the
+        // colour), whether it is going on or coming off.
+        const auto mark = [&](const char* letter, SDL_Color colour, bool waits) {
             const Font& font = fonts.fixed().small;
             const int w = headMarkWidth(fonts, letter), h = static_cast<int>(std::ceil(font.capHeight())) + 4;
             const int left = x + colW - 2 - w;
-            fill(r, left, kGridTop + 2, w, h, colour);
-            font.drawCentered(r, left + w / 2.f, kGridTop + 4.f, letter, kBg);
+            fill(r, left, kGridTop + 2, w, h, waits ? kBg : colour);
+            if (waits) outline(r, left, kGridTop + 2, w, h, colour);
+            font.drawCentered(r, left + w / 2.f, kGridTop + 4.f, letter, waits ? colour : kBg);
         };
-        if (project_.tracks[t].solo) {
-            mark("S", kTeal);
-            outline(r, x, kGridTop, colW, kHeadH, kTeal);
-        } else if (project_.tracks[t].muted) {
-            mark("M", kBrass);
+        const char waits = session_.muteWaits(t);
+        if (project_.tracks[t].solo || waits == 'S') {
+            mark("S", kTeal, waits == 'S');
+            if (project_.tracks[t].solo) outline(r, x, kGridTop, colW, kHeadH, kTeal);
+        } else if (project_.tracks[t].muted || waits == 'M') {
+            mark("M", kBrass, waits == 'M');
         }
     }
     if (addColumn() >= 0) {
@@ -1009,6 +1048,11 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("HOLD A", "level and pan of everything");
         hint("START", project_.playing ? "stop" : "play song");
     } else if (onHead_) {
+        if (l1OnHead_) {
+            hint("R1", project_.trackCount() < kNumTracks ? "copy this track" : "no room for a copy");
+            hints(r, fonts, list, count);
+            return;
+        }
         hint("A", "name");
         hint("HOLD A", "mix");
         hint("R1", "instrument");

@@ -1006,11 +1006,19 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             bar.a = 110;
             fill(r, kNameX + 1, y + 1, filled, kCellH - 2, bar);
         } else {
-            fill(r, kNameX + 1, y + 1, filled, kCellH - 2, kPanel);
+            // (The lightest surface, and a dim edge where the volume ends: panel on bg could not be seen
+            // in BLACK, 1.08 to 1; the edge is 8 to 1 there. Owner, 2026-11-18.)
+            fill(r, kNameX + 1, y + 1, filled, kCellH - 2, kPanel2);
+        }
+        // (Two pieces, above and below the name's letters: a name written over the edge is not crossed by it.)
+        if (filled >= kLevelEdgeW) {
+            const SDL_Color edge = nameHere && shaping_ ? kBrass : kDim;
+            fill(r, kNameX + 1 + filled - kLevelEdgeW, y + 1, kLevelEdgeW, kLevelEdgeH, edge);
+            fill(r, kNameX + 1 + filled - kLevelEdgeW, y + kCellH - 1 - kLevelEdgeH, kLevelEdgeW, kLevelEdgeH, edge);
         }
         if (nameHere) outline(r, kNameX - 1, y - 1, kNameW + 2, kCellH + 2, cursorColor, 2);
-        const Font& nameFont = fonts.within(&Fonts::medium, laneLabel(lane), kNameW - 10.f); // (a long recording's name at XL: held at LARGE)
-        nameFont.draw(r, 15.f, y + (kCellH - nameFont.capHeight()) / 2.f, laneLabel(lane), !onTempo_ && lane == lane_ ? kTeal : kText);
+        const Font& nameFont = fonts.within(&Fonts::medium, laneLabel(lane), kNameW - 13.f); // (a long recording's name at XL: held at LARGE)
+        nameFont.draw(r, static_cast<float>(kNameTextX), y + (kCellH - nameFont.capHeight()) / 2.f, laneLabel(lane), !onTempo_ && lane == lane_ ? kTeal : kText);
         drawFeelMark(r, y, trk().laneFeel[lane]);
         drawSwingMark(r, y, trk().laneSwing[lane]);
         drawChokeMark(r, y, trk().laneChoke[lane]);

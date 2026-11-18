@@ -60,6 +60,11 @@ class SongScreen : public Screen {
 public:
     // A head not at its usual level or pan: a brass square this big, this far in from its top left corner.
     static constexpr int kMixMarkSize = 6, kMixMarkInset = 3;
+    // LIGHT COLOUR at TRACK (Session::trackColoursShown): a bar of the track's ring colour along the foot of
+    // its head, kHueMarkH high and ending kHueMarkFoot above the head's lower edge, kHueMarkInset in from each
+    // side, a line of the dim lettering over it (so it has an edge on a light theme). Under the name, clear
+    // of the M / S mark and the mixer's mark, which are at the head's top.
+    static constexpr int kHueMarkH = 2, kHueMarkFoot = 1, kHueMarkInset = 3;
     // B held this long on a track deletes it; the warning bar starts after the wait.
     static constexpr Uint32 kTrackHoldWaitMs = 500, kTrackHoldMs = 2000;
     // A held this long on a head is the mixer, not a tap: its card comes up, and letting go then never
@@ -106,6 +111,8 @@ public:
     int cursorColumn() const { return column_; }
     bool cursorOnHead() const { return onHead_; }
     bool cursorOnMaster() const { return onMaster_; }
+    void shouldersPressed() { l1OnHead_ = dupArmed_ = false; } // (the App: all four shoulders, a panic: R1 let go copies no track)
+    bool copyKeyHeld() const { return l1OnHead_; }             // L1 is held on a track's head: R1 copies the track
     static int headMarkWidth(const Fonts& fonts, const char* letter); // a head's M or S mark, made to its letter
     bool mixing() const { return mixing_; } // A is held on a head (a track's or MASTER): the directions are the mixer's
     void showMixCardForStill() { mixShown_ = mixTimed_ = true; } // (a still is taken before kMixCardMs has gone by)
@@ -123,11 +130,13 @@ public:
     const std::vector<std::string>& listedSongs() const { return songs_; }
     void scenesMoved(int from, int by); // a scene put in or taken out (NEXT SCENE): the cursor stays on the scene it was on
     void selectWasUsed() { cancelSelectTap(); } // SELECT did something else: letting go is not a tap
-    // AT END: the PLAYS box of the first empty row, just past the song's last scene, is where the
+    // AT END: the REPEATS box of the first empty row, just past the song's last scene, is where the
     // song ends. It shows a loop (LOOP) or a stop square (STOP), and A there switches them.
     int songEndRow() const { return project_.sceneCount() < kMaxScenes ? project_.sceneCount() : -1; } // -1: every row is a scene
     bool onSongEnd() const { return !onMaster_ && column_ == kRepeatColumn && scene_ == songEndRow(); }
-    SDL_Rect repeatBox(int scene) const; // a scene's PLAYS box as it is drawn (w 0: not in view)
+    static constexpr const char* kRepeatsWord = "REPEATS"; // the column's word, over the boxes
+    static constexpr int kRepeatsWordY = 34 + 24;          // (kGridTop + 24: 10 above the first box; it stood 20 above)
+    SDL_Rect repeatBox(int scene) const; // a scene's REPEATS box as it is drawn (w 0: not in view)
     static void drawSongEnd(SDL_Renderer* r, int cx, int cy, int end, SDL_Color color); // the mark, centred on (cx, cy)
 
 private:
@@ -192,6 +201,10 @@ private:
     Uint32 trackHoldSince_ = 0;
     float trackHoldPart_ = 0.f;
     bool copying_ = false;  // R1 is held: the brush carries a cell
+    // DUPLICATE A TRACK: L1 held on a track's head, then R1 (COPY A BAR's keys). It is done when R1 is LET
+    // GO with L1 still held, so all four shoulders (a panic) never copy a track on the way.
+    bool l1OnHead_ = false; // L1 went down on a track's head, and is held
+    bool dupArmed_ = false; // ...and R1 went down after it
     int copyTrack_ = 0, copyScene_ = 0;
 
     Button repeating_ = Button::None;
