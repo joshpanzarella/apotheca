@@ -330,3 +330,45 @@ cursor, the end with no room left empty, every row in view inside the page, the 
 words, the arrows at the top and the end), `lights_test testTheSetPage` (with and without the three
 firmware rows), `textsize` (every place the page can stand, at four sizes; the stills), `app_test`
 (each row by name). Stills `setup`, `setup-click`, `setup-scale`, `setup-light`, `setup-light-colour`.
+
+## Batch 6: DUPLICATE A TRACK (and what was already there)
+
+**What was asked**: duplicate a track; empty a cell; copy a whole cell to another scene or track.
+
+**What was there already, and stays**: B on a cell empties it (`clearCell`); **hold R1 on a cell and
+drag copies the whole cell** (its length and every bar) into every cell crossed, on any track of the
+same kind and any scene (`copyCell`). Nothing was added for those two.
+
+**New: duplicate a track.** On a track's head on SONG, **hold L1 and press R1** (COPY A BAR's two
+keys, on the thing they copy here; L1 did nothing on a head). A new track right after it: the same
+instrument, sound (preset, settings, macros), effects, sends, MODs, mixer, mute, name, a kit's lanes,
+and every scene's patterns and automation. The tracks after it move a place along. The cursor goes
+to the copy's head and the box says TRACK 3: COPY OF 2, or NO ROOM: 12 TRACKS. While L1 is held on a
+head the bar says R1 copy this track.
+
+- **Done on R1's let go, with L1 still held**: a panic (all four shoulders) begun L1, R1 copies no
+  track, and the App tells the screen when a panic starts.
+- The copy is not soloed (two soloed tracks where there was one).
+- **Undo keeps its steps**: every step has the track twice from then on (`doubleTrackText`), so
+  undoing an edit from before the copy still works, on both. **The copy itself is not undone**, as
+  adding or deleting a track is not: hold B on its head deletes it.
+- The engine is sent the song again (as when a track is deleted).
+
+| Call | Taken |
+| --- | --- |
+| The gesture | **Hold L1 + R1 on the head** |
+| Where the copy goes | **Right after its track** |
+| Undo | **Not a step** (as + TRACK and delete); hold B deletes the copy |
+| Its name | **The same** (two LEADs: rename one) |
+| Mute and solo | **Mute copied, solo not** |
+
+**Tests**: `easy_test duplicate`: a step's text with a track written twice (read back; no such track;
+not a song); the copy field by field (notes, chord, bars, effect, send, mixer, name, mute, not solo),
+the tracks after it, the track worked on following, the copy its own, two undos across the copy,
+twelve the most, the sound to the bit beside a song built by hand; through SONG: L1 + R1 (on R1's let
+go), the words, the hints at 0 over, R1 alone still the instruments, L1 alone nothing, the wrong
+orders, a let go unseen, a panic, a cell, twelve tracks. Mutants: the panic's call, the steps' text,
+the track worked on, the unseen let go, the solo: each fails. Still `song-copy-track`.
+
+**Only the owner can tell**: whether L1 + R1 on a head is easy to hit, and whether the copy should
+be a step of undo.

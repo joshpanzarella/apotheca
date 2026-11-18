@@ -124,6 +124,32 @@ bool Session::removeTrack(int track) {
     return true;
 }
 
+int Session::duplicateTrack(int track) {
+    const int count = project.trackCount();
+    if (track < 0 || track >= count || count >= kNumTracks) return -1;
+    for (int t = count; t > track + 1; --t) { // the tracks after it, a place down (from the end)
+        project.tracks[t] = project.tracks[t - 1];
+        for (int s = 0; s < kTrackSlots; ++s) typeMemory_[t * kTrackSlots + s] = typeMemory_[(t - 1) * kTrackSlots + s];
+        presetSounds_[t] = presetSounds_[t - 1];
+    }
+    project.tracks[track + 1] = project.tracks[track];
+    project.tracks[track + 1].solo = false; // (two soloed tracks where there was one: the copy is heard with the rest)
+    for (int s = 0; s < kTrackSlots; ++s) typeMemory_[(track + 1) * kTrackSlots + s] = typeMemory_[track * kTrackSlots + s];
+    presetSounds_[track + 1] = presetSounds_[track];
+    if (project.track > track) ++project.track;
+    sendSong(); // every track told to the engine afresh, in its new place
+    for (UndoStep& step : undo_) doubleTrackText(step.text, track);
+    for (UndoStep& step : redo_) doubleTrackText(step.text, track);
+    if (undoReady_) {
+        if (editing_) settled_ = patternsNow(); // the burst of edits ends here
+        else doubleTrackText(settled_, track);
+        editing_ = false;
+        cellMark_ = cellMark();
+        soundMark_ = soundMark(); // not an edit
+    }
+    return track + 1;
+}
+
 bool Session::addTrack(TrackKind kind) {
     const int track = project.trackCount();
     if (track >= kNumTracks || kind == TrackKind::None) return false;

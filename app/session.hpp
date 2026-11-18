@@ -108,6 +108,12 @@ public:
 
     // Give the next free track an instrument. False when all twelve are used.
     bool addTrack(TrackKind kind);
+    // DUPLICATE A TRACK (easywins batch 6): a copy of `track` (its instrument, sound, effects, sends,
+    // MODs, mixer, mute, every scene's patterns and automation, its name) put right after it, the
+    // tracks after a place down. Returns the copy's place, or -1 (no such track, or twelve already).
+    // The song is sent to the engine again, as when a track is deleted; undo keeps its steps (each has
+    // the track twice from then: doubleTrackText). The copy itself is not undone: hold B deletes it.
+    int duplicateTrack(int track);
     // Another instrument on a track that is there. Its patterns stay: notes carry over between the
     // instruments played from the keys, and a drum pattern waits untouched under a synth (and the
     // other way about). The new instrument starts on its first sound; the track's effects, name and

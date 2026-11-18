@@ -50,7 +50,7 @@ inline const char* const kViews[] = {
     "acid", "acid-1", "acid-2", "acid-fixed", "acid-long", "acid-roll",
     "cloud", "cloud-1", "cloud-2", "cloud-3", "cloud-long", "cloud-sounding",
     "morph", "morph-b", "morph-1", "morph-2", "morph-3", "morph-4", "morph-5", "morph-keys", "morph-long", "morph-sounding",
-    "next-scene", "next-scene-notes", "next-scene-full", "scenes", "scenes-end", "scenes-full", "scenes-grid", "scenes-roll", "scenes-playing", "copy-bar", "copy-bar-notes", "copy-bar-refused", "volume", "setup-lights", "setup-light", "setup-light-colour", "song-track-colours", "song-track-colours-12", "brightness", "update-ready", "update-ready-drums", "update-accepted", "nomenu", "help-nomenu", "kit-old",
+    "next-scene", "next-scene-notes", "next-scene-full", "scenes", "scenes-end", "scenes-full", "scenes-grid", "scenes-roll", "scenes-playing", "copy-bar", "copy-bar-notes", "copy-bar-refused", "volume", "setup-lights", "setup-light", "setup-light-colour", "song-copy-track", "song-track-colours", "song-track-colours-12", "brightness", "update-ready", "update-ready-drums", "update-accepted", "nomenu", "help-nomenu", "kit-old",
     "", " --dice", " --paint", " --paint-random", " --on-name", " --on-tempo", " --hold-a", " --hold-y",
     "help --no-menu", "song --no-menu", "setup --no-menu",
 };

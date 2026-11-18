@@ -1282,6 +1282,21 @@ bool cutSong(const std::string& text, std::string& head, std::vector<std::string
     return true;
 }
 
+bool doubleTrackText(std::string& text, int track) {
+    std::string head;
+    std::vector<std::string> tracks;
+    if (track < 0 || !cutSong(text, head, tracks) || track >= static_cast<int>(tracks.size()) || static_cast<int>(tracks.size()) >= kNumTracks) return false;
+    std::string out = head;
+    for (int t = 0; t < static_cast<int>(tracks.size()); ++t) {
+        std::string one = tracks[static_cast<std::size_t>(t)];
+        if (!one.empty() && one.back() != '\n') one += '\n';
+        out += one;
+        if (t == track) out += one;
+    }
+    text = out;
+    return true;
+}
+
 bool dropTrackText(std::string& text, int track) {
     if (track < 0 || text.compare(0, 13, "apotheca-song") != 0) return false;
     std::size_t from = std::string::npos, to = text.size();

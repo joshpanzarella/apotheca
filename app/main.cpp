@@ -1042,6 +1042,13 @@ int main(int argc, char** argv) {
             app.session().setSolo(11, true);
             app.session().setMix(0, -6, 10);
         }
+    } else if (std::strcmp(view, "song-copy-track") == 0) {
+        // DUPLICATE A TRACK (easywins batch 6): track 2 just copied (TRACK 3: COPY OF 2), L1 still held on the copy's head.
+        app.session().view = View::Song;
+        app.song().moveCursorTo(0, 1);
+        tapKey(SDLK_UP);
+        pushKey(SDLK_q, true);
+        tapKey(SDLK_w);
     } else if (std::strcmp(view, "song-head") == 0) {
         // The cursor on track 2's head: its hints (A name, HOLD A mix, R1 instrument, HOLD B delete, Y mute, X solo).
         app.session().view = View::Song;

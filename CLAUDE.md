@@ -2626,6 +2626,15 @@ effect in those two groups and fails one that does not.
   heads' own lettering, LARGE, 2 pixels clear all round; owner, 2026-11-14: in a fixed 11 by 11 the letter
   stood out of it). Where the mark would stand on the track's number (11 and 12 in the narrowest heads)
   the number is centred in the room left of it, clear of the mixer's mark. Stills `song-marks`, `-12`.
+- **DUPLICATE A TRACK: L1 held on a SONG head, then R1** (easywins batch 6; `Session::duplicateTrack`,
+  `doubleTrackText`). The copy goes right after its track, the tracks after a place down (their type
+  memories and preset memories with them), the song sent again (`sendSong`, as a delete). **Undo keeps
+  its steps: each has the track twice from then** (the step's own version), so an undo from before the
+  copy puts both back to what the one was; the copy itself is not undone. **It is done on R1's LET GO
+  with L1 still held**, and the App tells the screen when all four shoulders are down
+  (`SongScreen::shouldersPressed`): a panic begun L1, R1 on a head copies nothing. A let go the SONG
+  screen never saw copies nothing either (`update`). A cell is emptied by B and copied by HOLD R1 and
+  drag, as before: nothing was added there.
 - **Solo is a tap of X on a track** (a cell or its head; owner, 2026-11-15: "I don't like the hold L1
   for solo since Y for mute is just a one tap"). It was a tap of L1, then for a day L1 HELD 400 ms
   (a tap of L1 soloed by mistake too easily); the hold, its timer and `kSoloHoldMs` are gone, and **L1

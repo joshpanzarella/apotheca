@@ -111,6 +111,8 @@ public:
     int cursorColumn() const { return column_; }
     bool cursorOnHead() const { return onHead_; }
     bool cursorOnMaster() const { return onMaster_; }
+    void shouldersPressed() { l1OnHead_ = dupArmed_ = false; } // (the App: all four shoulders, a panic: R1 let go copies no track)
+    bool copyKeyHeld() const { return l1OnHead_; }             // L1 is held on a track's head: R1 copies the track
     static int headMarkWidth(const Fonts& fonts, const char* letter); // a head's M or S mark, made to its letter
     bool mixing() const { return mixing_; } // A is held on a head (a track's or MASTER): the directions are the mixer's
     void showMixCardForStill() { mixShown_ = mixTimed_ = true; } // (a still is taken before kMixCardMs has gone by)
@@ -197,6 +199,10 @@ private:
     Uint32 trackHoldSince_ = 0;
     float trackHoldPart_ = 0.f;
     bool copying_ = false;  // R1 is held: the brush carries a cell
+    // DUPLICATE A TRACK: L1 held on a track's head, then R1 (COPY A BAR's keys). It is done when R1 is LET
+    // GO with L1 still held, so all four shoulders (a panic) never copy a track on the way.
+    bool l1OnHead_ = false; // L1 went down on a track's head, and is held
+    bool dupArmed_ = false; // ...and R1 went down after it
     int copyTrack_ = 0, copyScene_ = 0;
 
     Button repeating_ = Button::None;

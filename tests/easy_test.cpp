@@ -7,6 +7,8 @@
 //              engine told), and hold A + UP / DOWN / the stick on a SONG cell, its words and hints.
 //   scale      SCALE LOCK: the scales (scales.hpp), the song file's line, undo, the SET rows, the roll's
 //              cursor and carry, the chord in hand moved into the key.
+//   duplicate  DUPLICATE A TRACK: the text of undo's steps (doubleTrackText), Session::duplicateTrack (the
+//              copy, the tracks after it, twelve, undo after, the engine's sound), L1 + R1 on a head, a panic.
 //   even       EVEN: the rule (euclidHit), Y held on a lane's name + R1 / L1, the turn, the words, undo, hints.
 //
 // `easy_test NAME...` runs just those sections.
@@ -753,6 +755,182 @@ void testTheRollKeepsToIt() {
     CHECK(c && c->root % 12 == 2 && std::string(c->name) == "D");
 }
 
+// ---- batch 6: DUPLICATE A TRACK ----------------------------------------------------------------------
+
+void testDoubleTrackText() {
+    Rig rig;
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Phazed) && session.addTrack(TrackKind::Jx3p));
+    rig.app.drums().setStep(0, 0, 1.f);
+    rig.settle();
+    std::string text = songText(rig.project());
+    std::string head;
+    std::vector<std::string> before, after;
+    CHECK(cutSong(text, head, before) && before.size() == 3);
+    CHECK(doubleTrackText(text, 1));
+    CHECK(cutSong(text, head, after) && after.size() == 4 && after[0] == before[0] && after[1] == before[1] && after[2] == before[1] && after[3] == before[2]);
+    std::unique_ptr<Project> read(new Project);
+    CHECK(parseSong(text, *read) && read->trackCount() == 4 && read->tracks[2].kind == TrackKind::Phazed && read->tracks[3].kind == TrackKind::Jx3p);
+    // No such track, or not a song: as it was.
+    const std::string same = text;
+    CHECK(!doubleTrackText(text, 7) && !doubleTrackText(text, -1) && text == same);
+    std::string junk = "hello";
+    CHECK(!doubleTrackText(junk, 0) && junk == "hello");
+}
+
+void testDuplicateATrack() {
+    Rig rig;
+    Session& session = rig.session();
+    const int t = synthWithNotes(rig); // track 1: Phazed, notes and a chord
+    CHECK(session.addTrack(TrackKind::Jx3p)); // track 2
+    session.setTrackName(t, "LEAD");
+    session.setMix(t, -6, 20);
+    session.setSend(t, 0, 0.4f);
+    session.setMuted(t, true);
+    session.setSolo(t, true);
+    session.setEffect(t, 0, EffectKind::Drive);
+    rig.project().track = 2;
+    rig.settle();
+    // An edit on track 2 before, so undo has a step from before the copy.
+    NoteEvent n;
+    n.step = 3, n.pitch = 50, n.length = 1.f, n.velocity = 0.9f;
+    rig.track(2).notes[0][0].notes[0] = n;
+    session.sendNotePattern(2, 0);
+    rig.settle();
+    const std::string was1 = songText(rig.project());
+    std::string head;
+    std::vector<std::string> then;
+    cutSong(was1, head, then);
+    CHECK(session.duplicateTrack(t) == 2);
+    rig.settle();
+    CHECK(rig.project().trackCount() == 4 && rig.project().track == 3); // (the track worked on moved down with its track)
+    std::vector<std::string> now;
+    CHECK(cutSong(songText(rig.project()), head, now) && now.size() == 4 && now[0] == then[0] && now[1] == then[1] && now[3] == then[2]);
+    const TrackData &a = rig.track(1), &b = rig.track(2);
+    CHECK(b.kind == TrackKind::Phazed && std::string(b.name) == "LEAD" && b.mixDb == -6 && b.mixPan == 20 && b.muted && !b.solo && a.solo);
+    CHECK(b.notes[0][0].notes[0].pitch == 60 && b.notes[0][1].notes[0].pitch == 67 && b.notes[0][0].chords[0].velocity > 0.f && b.bars[0] == 2);
+    CHECK(b.effects[0].kind == static_cast<int>(EffectKind::Drive) && b.send[0] == a.send[0] && a.send[0] > 0.3f);
+    // The copy is its own: a note changed on it leaves the first as it was.
+    rig.track(2).notes[0][0].notes[0].pitch = 72;
+    session.sendNotePattern(2, 0);
+    CHECK(rig.track(1).notes[0][0].notes[0].pitch == 60);
+    rig.settle();
+    // Undo: the note back; again: track 3's (was 2's) edit from before the copy, the four tracks still there.
+    rig.undo();
+    rig.settle();
+    CHECK(rig.track(2).notes[0][0].notes[0].pitch == 60 && rig.project().trackCount() == 4);
+    rig.undo();
+    rig.settle();
+    CHECK(rig.project().trackCount() == 4 && rig.track(3).kind == TrackKind::Jx3p && rig.track(3).notes[0][0].notes[0].velocity == 0.f);
+    CHECK(rig.track(2).notes[0][0].notes[0].pitch == 60 && rig.track(1).notes[0][0].notes[0].pitch == 60);
+    // Twelve is the most; no such track: nothing.
+    while (rig.project().trackCount() < kNumTracks) CHECK(session.duplicateTrack(0) == 1);
+    CHECK(session.duplicateTrack(0) == -1 && session.duplicateTrack(-1) == -1 && rig.project().trackCount() == kNumTracks);
+    // The engine plays the copy: a song with the track copied is twice as loud a line as... the same song
+    // built by hand with the track written twice sounds the same, to the bit.
+    {
+        Rig x, y;
+        const int tx = synthWithNotes(x);
+        CHECK(x.session().duplicateTrack(tx) == 2);
+        synthWithNotes(y);
+        CHECK(y.session().addTrack(TrackKind::Phazed));
+        y.session().setCellBars(2, 0, 2);
+        for (int bar = 0; bar < 2; ++bar) y.track(2).notes[0][bar] = y.track(1).notes[0][bar];
+        y.session().sendNotePattern(2, 0);
+        x.settle(), y.settle();
+        CHECK(songText(x.project()) == songText(y.project()));
+        x.session().togglePlay(false), y.session().togglePlay(false);
+        std::vector<float> p(2 * 4096), q(2 * 4096);
+        bool same = true;
+        float loud = 0.f;
+        for (int i = 0; i < 40; ++i) {
+            x.engine->render(p.data(), 4096), y.engine->render(q.data(), 4096);
+            same = same && p == q;
+            for (float v : p) loud = std::fmax(loud, std::fabs(v));
+        }
+        CHECK(same && loud > 0.01f);
+    }
+}
+
+void testDuplicateOnSong() {
+    Rig rig;
+    Session& session = rig.session();
+    const int t = synthWithNotes(rig);
+    session.view = View::Song;
+    rig.frames(1);
+    SongScreen& song = rig.app.song();
+    song.moveCursorTo(0, t);
+    rig.tap(UP); // onto its head
+    CHECK(song.cursorOnHead());
+    // L1 held, R1 tapped: the copy, the cursor on its head, the box says so.
+    rig.key(L1, true);
+    rig.frames(1);
+    CHECK(song.copyKeyHeld());
+    Canvas canvas;
+    if (canvas.ok) {
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(ui::gHintsOver == 0.f);
+    }
+    rig.key(R1, true);
+    rig.frames(1);
+    CHECK(rig.project().trackCount() == 2 && !song.choosing()); // (not yet: on R1's let go; and no list of instruments)
+    rig.key(R1, false);
+    rig.frames(1);
+    CHECK(rig.project().trackCount() == 3 && song.cursorColumn() == 2 && song.cursorOnHead() && rig.said() == "TRACK 3: COPY OF 2");
+    rig.key(L1, false);
+    rig.frames(1);
+    // R1 alone on a head is still the list of instruments; L1 alone does nothing.
+    rig.tap(L1);
+    CHECK(rig.project().trackCount() == 3);
+    rig.tap(R1);
+    CHECK(song.choosing() && rig.project().trackCount() == 3);
+    rig.tap(B);
+    // R1 first, then L1: nothing.
+    rig.key(R1, true), rig.frames(1), rig.tap(B);
+    rig.key(L1, true), rig.frames(1), rig.key(R1, false), rig.frames(1), rig.key(L1, false), rig.frames(1);
+    CHECK(rig.project().trackCount() == 3);
+    // L1 let go before R1: nothing.
+    rig.key(L1, true), rig.frames(1), rig.key(R1, true), rig.frames(1), rig.key(L1, false), rig.frames(1), rig.key(R1, false), rig.frames(1);
+    CHECK(rig.project().trackCount() == 3);
+    if (song.choosing()) rig.tap(B);
+    // R1 let go while another screen was up (this one never saw it): a later let go of R1 copies nothing.
+    song.moveCursorTo(0, 1);
+    rig.tap(UP);
+    rig.key(L1, true), rig.frames(1), rig.key(R1, true), rig.frames(1);
+    session.view = View::Pattern;
+    rig.frames(1), rig.key(R1, false), rig.frames(1);
+    session.view = View::Song;
+    rig.frames(1);
+    session.view = View::Pattern;
+    rig.frames(1), rig.key(R1, true), rig.frames(1);
+    session.view = View::Song;
+    rig.key(R1, false), rig.frames(1), rig.key(L1, false), rig.frames(1);
+    CHECK(rig.project().trackCount() == 3);
+    if (song.choosing()) rig.tap(B);
+    // A panic begun L1, R1 on a head (then L2, R2): no track is copied, whichever is let go first.
+    const SDL_Keycode L2 = SDLK_1, R2 = SDLK_2;
+    session.view = View::Song;
+    rig.frames(1);
+    rig.key(L1, true), rig.frames(1), rig.key(R1, true), rig.frames(1), rig.key(L2, true), rig.frames(1), rig.key(R2, true), rig.frames(2);
+    rig.key(R1, false), rig.frames(1), rig.key(L1, false), rig.key(L2, false), rig.key(R2, false), rig.frames(2);
+    CHECK(rig.project().trackCount() == 3);
+    rig.tap(A); // (the panic's notice put away)
+    rig.frames(120);
+    // On a cell, L1 + R1 copies no track (R1 there is the cell's copy brush).
+    session.view = View::Song;
+    song.moveCursorTo(0, 1);
+    rig.frames(1);
+    rig.key(L1, true), rig.frames(1), rig.tap(R1), rig.key(L1, false), rig.frames(1);
+    CHECK(rig.project().trackCount() == 3);
+    // Twelve tracks: it says so.
+    while (rig.project().trackCount() < kNumTracks) session.addTrack(TrackKind::Drums);
+    song.moveCursorTo(0, 0);
+    rig.tap(UP);
+    rig.key(L1, true), rig.frames(1), rig.tap(R1), rig.key(L1, false), rig.frames(1);
+    CHECK(rig.project().trackCount() == kNumTracks && rig.said() == "NO ROOM: 12 TRACKS");
+}
+
 // ---- batch 5: EVEN -----------------------------------------------------------------------------------
 
 std::string laneSteps(Rig& rig, int lane) {
@@ -894,6 +1072,7 @@ int main(int argc, char** argv) {
         {"click", [] { testTheClick(), testTheCountIn(), testTheClickInTheApp(); }},
         {"transpose", [] { testChordNames(), testTransposeACell(), testTransposeOnSong(); }},
         {"scale", [] { testTheScales(), testTheScaleInTheSong(), testTheRollKeepsToIt(); }},
+        {"duplicate", [] { testDoubleTrackText(), testDuplicateATrack(), testDuplicateOnSong(); }},
         {"even", [] { testTheEvenRule(), testEvenOnALane(); }},
     };
     for (const Section& s : sections) {

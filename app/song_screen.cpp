@@ -380,6 +380,30 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (mixing_ && event.down) mixTurned_ = true;
     if (mixing_ && b != Button::Start) return;
     if (onMaster_ && (b == Button::B || b == Button::R1)) return; // nothing to empty, delete or change there
+    // DUPLICATE A TRACK: L1 held on its head, R1 pressed and let go.
+    if (b == Button::L1 && !mixing_) {
+        l1OnHead_ = event.down && onHead_;
+        if (!event.down) dupArmed_ = false;
+        return;
+    }
+    if (onHead_ && b == Button::R1 && l1OnHead_ && input.held(Button::L1)) {
+        if (event.down) {
+            dupArmed_ = true;
+        } else if (dupArmed_) {
+            dupArmed_ = false;
+            const int made = session_.duplicateTrack(column_);
+            char text[48];
+            if (made >= 0) {
+                std::snprintf(text, sizeof text, "TRACK %d: COPY OF %d", made + 1, made);
+                moveCursorTo(scene_, made);
+                onHead_ = true;
+            } else {
+                std::snprintf(text, sizeof text, "NO ROOM: %d TRACKS", kNumTracks);
+            }
+            session_.say(text);
+        }
+        return;
+    }
     if (onHead_ && (b == Button::B || b == Button::R1)) {
         // On a track's head: B held deletes the track, as it does on a cell; a tap of it empties nothing here.
         if (b == Button::B && event.down && !input.held(Button::A)) {
@@ -497,6 +521,8 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
     if (mixing_ && !mixTimed_) mixTimed_ = true, mixSince_ = nowMs; // (the hold's clock starts on the frame after A)
     if (mixing_ && mixTimed_ && nowMs - mixSince_ >= kMixCardMs) mixShown_ = true;
     if (!input.held(Button::R1)) copying_ = false;
+    if (!input.held(Button::L1) || !onHead_) l1OnHead_ = false;
+    if (!l1OnHead_ || !input.held(Button::R1)) dupArmed_ = false; // (a let go this screen never saw copies nothing)
     if (!onCell()) onHead_ = false; // the track under it went
     if (onMaster_ && (listing_ || choosing_)) onMaster_ = false; // (a song opened: start at its top)
     if (!input.held(Button::B)) bHeld_ = false;
@@ -1016,6 +1042,11 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("HOLD A", "level and pan of everything");
         hint("START", project_.playing ? "stop" : "play song");
     } else if (onHead_) {
+        if (l1OnHead_) {
+            hint("R1", project_.trackCount() < kNumTracks ? "copy this track" : "no room for a copy");
+            hints(r, fonts, list, count);
+            return;
+        }
         hint("A", "name");
         hint("HOLD A", "mix");
         hint("R1", "instrument");

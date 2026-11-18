@@ -149,6 +149,11 @@ bool renameRecordings(std::string& text, const std::vector<std::pair<std::string
 // tracks after it a place up: what the steps of undo hold once a track is deleted. False if
 // the text has no such track (it is then as it was).
 bool dropTrackText(std::string& text, int track);
+// ...and with its track `track` written twice, the copy right after it and the tracks after a place
+// down: what the steps of undo hold once a track is duplicated (each step's own version of the track,
+// so an undo puts both back to what the one was). False, the text as it was, if it has no such track
+// or twelve already.
+bool doubleTrackText(std::string& text, int track);
 
 // A song and its revs moved from `folder` into "deleted" inside it, under a name nothing there has
 // ("ash well", else "ash well 2", ...). False if there is no such song or a file would not move.

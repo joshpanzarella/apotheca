@@ -71,6 +71,7 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
                 saidSeen_ = session_.saidCount();
                 undoSaidUntil_ = 0;
             }
+            song_.shouldersPressed();  // (L1 then R1 on a head was on its way here: no track is copied)
             drums_.shouldersPressed(); // L1 let go after this is no tap of L1
             notes_.shouldersPressed();
             session_.panic(true);
