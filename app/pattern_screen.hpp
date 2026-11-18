@@ -116,6 +116,7 @@
 // One step of undo. On the same track its automation goes with it.
 
 #include "redraw.hpp"
+#include "follow_bar.hpp"
 #include "screen.hpp"
 #include <SDL.h>
 
@@ -285,6 +286,7 @@ private:
     Button repeating_ = Button::None; // D-pad direction being held
     Uint32 repeatAt_ = 0;
     Uint32 lastMs_ = 0;
+    BarFollow follow_; // the view follows the bar playing (follow_bar.hpp)
     float stickX_ = 0.f, stickY_ = 0.f; // cursor part-moves saved up
     bool stickWasX_ = false, stickWasY_ = false;
 };
