@@ -19,34 +19,72 @@ other screen: make an empty text file with that name. Delete it to go back.
 
 WHAT YOU SEE WHEN IT STARTS, AND WHAT IT MEANS
 
-  1. The power light, green, within a second of the power key.
-        The card's first small program ran.
-  2. A second light or colour (red; with the green it may look orange),
-     and the screen lit but empty.
-        The boot loader (U-Boot) ran. It also wrote uboot-report.txt here.
-  3. The red goes out and THE GREEN LIGHT BLINKS; the screen goes dark for
-     a moment, then text scrolls, then Apotheca comes up.
-        Linux is running. Give it 30 seconds the first time (it makes the
-        APOTHECA drive then): do not switch it off.
-  4. Press any button: the green light stops blinking and stays on.
+  1. Green and red together, within a second of the power key (it may
+     look like one orange light).
+        The card's first small program ran and set the memory up.
+  2. RED ALONE, and the screen lit but empty.
+        The boot loader (U-Boot) is running.
+  3. The red goes out and the green light blinks in PAIRS (blink-blink,
+     pause): Linux has started.
+  4. The red comes on again for a moment (often too short to see): Linux's
+     first program is looking for the card.
+  5. The red goes out and the green light blinks EVENLY, about once a
+     second. The screen goes dark for a moment, then text scrolls (a lot
+     of it on this card), then Apotheca comes up.
+        The system is starting. Give it 30 seconds the first time (it makes
+        the APOTHECA drive then): do not switch it off.
+  6. Press any button: the green light stops blinking and stays on.
         The handheld now counts this screen as seen working.
 
-IF IT STOPS ON THE WAY, the last step it reached says where. Then put the
-card in the computer and send every .txt file from the top of this drive:
+IF IT STOPS ON THE WAY, the lights say where:
 
-  uboot-report.txt   written by U-Boot at every start: what it read from
-                     the handheld and which tree it chose. If a start left
-                     no such file, or its count (apotheca_starts) did not
-                     go up, U-Boot did not run.
-  linux-report.txt   written by Linux a few seconds after it starts, and
-                     again 20 seconds later: everything it found.
+  GREEN ALONE blinking evenly about once a second, from the start, never
+  any red
+        The first program cannot set this handheld's memory up, and tries
+        again for ever. THIS CARD IS FOR THE OTHER KIND OF MEMORY
+        (memory-kind.txt on this drive says which kind it is for): use the
+        other card image. Hold the power key to turn it off.
+  green and red blinking together
+        The memory is set up but the boot loader does not start.
+  red alone, staying
+        The boot loader runs but Linux does not start.
+  green blinking in pairs, no red, for a minute; then it starts again by
+  itself
+        Linux started but stopped before its first program. It resets
+        itself after 60 seconds so the boot loader can save what Linux
+        said. After three such resets it stops trying: it turns off, or
+        the red light blinks evenly until you hold the power key.
+  green flickering fast, red on
+        Linux sees no card. It resets itself after about a minute, too.
+  green blinking evenly AFTER the steps above, the screen dark or garbage
+        the system runs but the screen's kind is wrong: make
+        screen-first.txt or screen-v2.txt (above). It turns itself off
+        after 5 minutes with no button.
+
+THEN PUT THE CARD IN THE COMPUTER AND SEND EVERY .txt FILE from the top of
+this drive, whatever is there:
+
+  uboot-started.txt       the boot loader's first act at every start
+  uboot-report.txt        the boot loader, at every start: what it read,
+                          which tree it chose, how many starts and resets
+  kernel-from-memory.txt  what Linux said in the start BEFORE, found in
+                          memory by the boot loader after a reset
+  kernel-log.txt          Linux's first program: what Linux said, the
+                          cards it sees, how far it got
+  linux-early.txt         the system's start-up, step by step
+  linux-report.txt        the full boot log, once the system is up
+  kernel-from-card.txt    see the next paragraph
+
+IF A HANDHELD LEFT NO NEW FILE AT ALL: copy what is here first, then put
+this card in a handheld that DOES start with it, start it once, wait a
+minute, turn it off, and look again. The boot loader also writes what it
+finds in memory onto a hidden part of the card, and a start that works
+turns that into kernel-from-card.txt.
 
 THE HANDHELD NEVER STAYS ON BEHIND A DARK SCREEN. Until a button has been
 pressed once with this screen, it turns itself off after 5 minutes with no
-button (the green light blinks all that time). If Linux finds no screen at
-all it turns off after a minute. If the screen is dark or garbage but the
-green light blinks, the card has the screen's kind wrong: make
-screen-first.txt (or screen-v2.txt) as above and start again.
+button. If Linux finds no screen at all it turns off after a minute. A
+start that cannot go on resets itself, three times at most.
 
 FAINT VERTICAL LINES ON THE NEWER SCREEN: four things to try, one at a
 time, each already named dtb.img in its own folder under device_trees/try/.

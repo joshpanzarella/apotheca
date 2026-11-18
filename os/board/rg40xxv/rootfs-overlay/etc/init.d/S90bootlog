@@ -20,6 +20,8 @@ report() {
     tr -d '\0' < /proc/device-tree/rocknix-dt-id 2>/dev/null; echo
     section "what U-Boot left on the boot partition (uboot-report.txt)"
     cat "$APOTHECA_RUN/uboot-report.txt" 2>/dev/null
+    section "the kernel's messages of the start before, when still in memory (ramoops)"
+    for f in /sys/fs/pstore/*; do [ -f "$f" ] && { echo "--- $f"; tail -n 150 "$f"; }; done
     section "uptime (s) and memory"; cat /proc/uptime; free -k
     section "cpu"
     grep -E '^(processor|BogoMIPS|CPU part)' /proc/cpuinfo
@@ -103,17 +105,48 @@ from_boot() {
     root=$(root_partition) || return 1
     boot=$(partition_of "$(disk_of "$root")" 1) || return 1
     mkdir -p "$APOTHECA_RUN/boot"
-    mount -t vfat -o ro "/dev/$boot" "$APOTHECA_RUN/boot" 2>/dev/null || return 1
+    # (the same options as every other mount of it here: S00early may have it
+    # mounted at this moment, and a second mount with other options is refused)
+    mount -t vfat -o rw,noatime "/dev/$boot" "$APOTHECA_RUN/boot" 2>/dev/null || return 1
     cp "$APOTHECA_RUN/boot/uboot-report.txt" "$APOTHECA_RUN/uboot-report.txt" 2>/dev/null
     umount "$APOTHECA_RUN/boot"
 }
 
+# What U-Boot wrote straight onto the card from memory (uboot.fragment, 5):
+# the kernel's messages of a start that ended in a reset, 512 KiB at sector
+# 4096, beginning "DBGC". Made a file here (on DATA and on the BOOT
+# partition, as kernel-from-card.txt), then cleared from the card. This is
+# how a card from a handheld that cannot start gives up that handheld's
+# kernel log: put it in one that can.
+recover_memory_log() {
+    root=$(root_partition) || return 0
+    disk=$(disk_of "$root")
+    [ "$(dd if="/dev/$disk" bs=512 skip=4096 count=1 2>/dev/null | head -c 4)" = DBGC ] || return 0
+    out="$APOTHECA_RUN/kernel-from-card.txt"
+    {
+        echo "Apotheca: the kernel's messages of a start that ended in a reset,"
+        echo "saved from memory by U-Boot straight onto the card, made a file by this start."
+        echo "The text goes round: its oldest lines may come after its newest."
+        echo
+        dd if="/dev/$disk" bs=512 skip=4096 count=1024 2>/dev/null | tail -c +13 | tr -d '\000'
+    } > "$out"
+    mountpoint -q /data && mkdir -p "$LOGS" && cp "$out" "$LOGS/kernel-from-card-$(cat "$LOGS/count" 2>/dev/null || echo 0).txt"
+    boot=$(partition_of "$disk" 1) && mkdir -p "$APOTHECA_RUN/boot" &&
+        mount -t vfat -o rw,noatime "/dev/$boot" "$APOTHECA_RUN/boot" 2>/dev/null && {
+            cp "$out" "$APOTHECA_RUN/boot/kernel-from-card.txt"; sync; umount "$APOTHECA_RUN/boot"; }
+    dd if=/dev/zero of="/dev/$disk" bs=512 seek=4096 count=1024 conv=notrunc 2>/dev/null
+    sync
+    say "boot log: a kernel log saved from memory was on the card: kernel-from-card.txt"
+}
+
 start() {
     from_boot
+    recover_memory_log
     if ! mountpoint -q /data; then
         say "boot log: /data is not mounted, the log goes to the boot partition only"
         report > "$APOTHECA_RUN/linux-report.txt" 2>&1
         to_boot "$APOTHECA_RUN/linux-report.txt" && say "boot log: linux-report.txt on the boot partition"
+        touch "$APOTHECA_RUN/bootlog-written"
         (
             sleep 20
             { echo; echo "##### 20 seconds later"; report; } >> "$APOTHECA_RUN/linux-report.txt" 2>&1
@@ -131,6 +164,7 @@ start() {
     cp "$file" "$LOGS/boot-latest.txt"
     sync
     say "boot log: $file"
+    touch "$APOTHECA_RUN/bootlog-written"
     to_boot "$file" || say "boot log: could not copy it to the boot partition"
 
     # Keep the last $KEEP

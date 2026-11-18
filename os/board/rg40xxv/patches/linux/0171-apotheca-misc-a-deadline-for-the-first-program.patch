@@ -1,0 +1,86 @@
+From: Apotheca <noreply@apotheca.invalid>
+Subject: [PATCH] misc: apotheca_deadline: panic when no program starts in time
+
+A handheld with no serial console at hand says nothing when the kernel
+stops before it runs its first program (a driver's probe that never
+returns): the kernel is alive, its LED trigger blinks, and that is all.
+
+This arms a timer as the kernel starts. If nobody has put it off by then
+it panics, so that with panic=N the board resets and what the kernel said
+(kept by ramoops) can be saved by the boot loader. The first program puts
+it off or moves it by writing seconds to
+/sys/module/apotheca_deadline/parameters/seconds (0: never);
+apotheca_deadline.seconds=N on the command line sets the first one.
+---
+--- a/drivers/misc/Makefile
++++ b/drivers/misc/Makefile
+@@ -74,3 +74,4 @@
+ obj-y				+= keba/
+ obj-y				+= amd-sbi/
+ obj-$(CONFIG_MISC_RP1)		+= rp1/
++obj-y				+= apotheca_deadline.o
+--- /dev/null
++++ b/drivers/misc/apotheca_deadline.c
+@@ -0,0 +1,62 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * A deadline for the system's first program: see the patch's description.
++ */
++#include <linux/init.h>
++#include <linux/jiffies.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/moduleparam.h>
++#include <linux/panic.h>
++#include <linux/timer.h>
++
++static int seconds = 60;
++static bool armed;
++static struct timer_list deadline;
++
++static void apotheca_deadline_passed(struct timer_list *unused)
++{
++	panic("apotheca_deadline: nothing put the deadline off in time (a driver that never finished starting?)");
++}
++
++static void apotheca_deadline_set(void)
++{
++	if (seconds > 0) {
++		mod_timer(&deadline, jiffies + (unsigned long)seconds * HZ);
++		pr_info("apotheca_deadline: %d s from now\n", seconds);
++	} else {
++		timer_delete_sync(&deadline);
++		pr_info("apotheca_deadline: off\n");
++	}
++}
++
++static int apotheca_deadline_param_set(const char *val, const struct kernel_param *kp)
++{
++	int ret = param_set_int(val, kp);
++
++	if (ret)
++		return ret;
++	if (seconds < 0 || seconds > 3600)
++		seconds = 0;
++	if (armed)
++		apotheca_deadline_set();
++	return 0;
++}
++
++static const struct kernel_param_ops apotheca_deadline_param_ops = {
++	.set = apotheca_deadline_param_set,
++	.get = param_get_int,
++};
++module_param_cb(seconds, &apotheca_deadline_param_ops, &seconds, 0644);
++
++static int __init apotheca_deadline_init(void)
++{
++	timer_setup(&deadline, apotheca_deadline_passed, 0);
++	armed = true;
++	apotheca_deadline_set();
++	return 0;
++}
++core_initcall(apotheca_deadline_init);
++
++MODULE_DESCRIPTION("Panics when the system's first program does not start in time");
++MODULE_LICENSE("GPL");

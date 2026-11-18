@@ -1,0 +1,61 @@
+#!/bin/sh
+# The first of the start-up scripts (firmware plan, section 16): says on the
+# card that the system's own programs run, and keeps saying how far the
+# start-up got until the boot log is written, so a start that hangs in a
+# later script (the DATA partition, a module) still leaves its story.
+#
+#   - the kernel's deadline off (patch 0171: it resets a kernel whose first
+#     programs never ran) and U-Boot's count of resets cleared (its mark at
+#     0x4d200000, where the device tree has it): the system started;
+#   - linux-early.txt on the BOOT partition (the FAT one), written now and
+#     again every 5 s for 90 s, or until S90bootlog has written the boot
+#     log: the start-up scripts' own lines, the running programs (the script
+#     that hangs is among them) and the kernel's messages. The partition is
+#     mounted only for each write.
+
+. /usr/lib/apotheca/common.sh
+
+MARK=/proc/device-tree/reserved-memory/apotheca-crumbs@4d200000
+
+write_early() {
+    root=$(root_partition) || return 1
+    boot=$(partition_of "$(disk_of "$root")" 1) || return 1
+    mkdir -p "$APOTHECA_RUN/boot-early"
+    mount -t vfat -o rw,noatime "/dev/$boot" "$APOTHECA_RUN/boot-early" 2>/dev/null || return 1
+    {
+        echo "Apotheca: the system's start-up, as far as it has got"
+        echo "written $(cut -d' ' -f1 /proc/uptime) s after the kernel started ($1)"
+        echo; echo "===== the start-up scripts' own lines"; cat "$APOTHECA_BOOTLOG" 2>/dev/null
+        echo; echo "===== running now"; ps 2>&1
+        echo; echo "===== mounted"; cat /proc/mounts
+        echo; echo "===== the kernel's messages"; dmesg 2>&1
+    } > "$APOTHECA_RUN/boot-early/linux-early.part" 2>&1 &&
+        mv "$APOTHECA_RUN/boot-early/linux-early.part" "$APOTHECA_RUN/boot-early/linux-early.txt"
+    sync
+    umount "$APOTHECA_RUN/boot-early"
+}
+
+start() {
+    [ -e /sys/module/apotheca_deadline/parameters/seconds ] &&
+        echo 0 > /sys/module/apotheca_deadline/parameters/seconds
+    [ -d "$MARK" ] && devmem 0x4d200000 32 0 > /dev/null 2>&1
+    mkdir -p /sys/fs/pstore 2>/dev/null
+    mount -t pstore pstore /sys/fs/pstore 2>/dev/null
+    say "the system's own programs run (S00early)"
+    write_early "the first start-up script" || say "S00early: could not write linux-early.txt to the boot partition"
+    (
+        n=0
+        while [ $n -lt 18 ] && [ ! -e "$APOTHECA_RUN/bootlog-written" ]; do
+            sleep 5
+            n=$((n + 1))
+            write_early "look $n, every 5 s until the boot log is written"
+        done
+        write_early "the last look: the boot log is $([ -e "$APOTHECA_RUN/bootlog-written" ] && echo written || echo NOT written after 90 s)"
+    ) < /dev/null > /dev/null 2>&1 &
+}
+
+case "$1" in
+    start) start ;;
+    stop) ;;
+    *) echo "usage: $0 start|stop" ;;
+esac

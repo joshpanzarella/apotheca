@@ -14,12 +14,19 @@ CONFIG_BOOTDELAY=0
 # The lights say how far the start got (firmware plan, section 15):
 #   green (PI12)  lit by the SPL as its first act (our patch 0003), before
 #                 the PMIC and the memory are set up;
-#   red (PI11)    U-Boot's status LED: lit when U-Boot itself runs, so the
-#                 memory works and Trusted Firmware was passed;
-#   Linux turns the red one off and blinks the green one (the device
-#   tree's heartbeat, put in by post-image.sh), and apotheca-power makes
-#   it steady.
+#   red (PI11)    lit by the SPL too, once the PMIC and the memory ARE set
+#                 up (the same patch). The H616 memory code panics on a
+#                 memory it cannot train, and a panic in the SPL resets the
+#                 board: such a board goes round about once a second, the
+#                 green light blinking evenly and ALONE (the first-screen
+#                 unit did exactly that: plan, section 16);
+#   U-Boot's own commands (PREBOOT, below) put the GREEN one out: red alone
+#                 says U-Boot runs;
+#   Linux turns the red one off and blinks the green one in PAIRS (the
+#   device tree's heartbeat, put in by post-image.sh); its first program
+#   and apotheca-power go on from there.
 CONFIG_SPL_EARLY_LED_GPIO=268
+CONFIG_SPL_DRAM_OK_LED_GPIO=267
 CONFIG_LED_STATUS=y
 CONFIG_LED_STATUS_GPIO=y
 CONFIG_LED_STATUS0=y
@@ -27,8 +34,12 @@ CONFIG_LED_STATUS_BIT=267
 CONFIG_LED_STATUS_STATE=2
 # Ours, not ROCKNIX's (2026-11-17), as soon as U-Boot runs:
 #
-# 1. The green light on (again: the SPL lit it), and the backlight off
-#    (PD28) so the reset pulse below shows nothing.
+# 1. The green light OUT (the SPL lit it, and the red one: red alone says
+#    U-Boot's own commands run), the card looked at afresh (mmc dev 0, mmc
+#    rescan), and BEFORE ANYTHING ELSE a first file written to the boot
+#    partition, uboot-started.txt: U-Boot got this far and could write. Whether
+#    that write went is in the report at the end (apotheca_first). Then the
+#    backlight off (PD28) so the reset pulse below shows nothing.
 # 2. The screen's kind, as Anbernic's own boot loader tells it (decoded from
 #    the u-boot.fex muOS ships, commit a55cdbe): the panel powered (PI15)
 #    and taken through a reset pulse (PI14: high 15 ms, low 50 ms, high
@@ -38,19 +49,30 @@ CONFIG_LED_STATUS_STATE=2
 # 3. The panel held in reset (PI14) and its power off (PI15), so it is not
 #    left powered with no start-up commands (the coloured stripes) until
 #    Linux's panel driver powers it up, about 3 s into the kernel; and THE
-#    BACKLIGHT ON (PD28): a lit, empty screen says U-Boot ran, and a start
-#    that stops later is never a dark screen. (It was turned off here until
-#    section 15.) Linux takes the backlight over: dark for a moment when its
-#    driver starts, lit again with the picture.
+#    BACKLIGHT ON (PD28): a lit, empty screen says U-Boot ran.
 # 4. The device tree, in fdtfile (extlinux.conf's FDTDIR / reads it):
 #      dtb.img on the boot partition, when there is one: a whole tree put
 #        there by hand always wins;
 #      else screen-first.txt or screen-v2.txt there (any content; v2 wins
 #        if both): the owner's word on which screen, over the pin's;
 #      else by PE6.
-# 5. uboot-report.txt written to the boot partition (FAT): what was read and
-#    chosen, and a count of starts (read back from the last report). A card
-#    taken out of a handheld that showed nothing says by this file whether
-#    U-Boot ran there. It is written last: the tree is chosen whatever the
-#    write does.
-CONFIG_PREBOOT="gpio set PI12; gpio clear PD28; setenv apotheca_why PE6; if test -e mmc 0:1 dtb.img; then setenv fdtfile dtb.img; setenv apotheca_why dtb.img; echo apotheca: dtb.img chosen by hand; fi; gpio set PI15; gpio set PI14; sleep 0.015; gpio clear PI14; sleep 0.05; gpio set PI14; sleep 0.1; if gpio input PE6; then setenv apotheca_pe6 low; setenv apotheca_screen v2; else setenv apotheca_pe6 high; setenv apotheca_screen first; fi; echo apotheca: PE6 says the ${apotheca_screen} screen; gpio clear PI14; gpio clear PI15; gpio set PD28; if test ${apotheca_why} = PE6; then if test -e mmc 0:1 screen-first.txt; then setenv apotheca_screen first; setenv apotheca_why screen-first.txt; fi; if test -e mmc 0:1 screen-v2.txt; then setenv apotheca_screen v2; setenv apotheca_why screen-v2.txt; fi; if test ${apotheca_screen} = v2; then setenv fdtfile device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb; else setenv fdtfile device_trees/sun50i-h700-anbernic-rg40xx-v.dtb; fi; fi; echo apotheca: device tree ${fdtfile} by ${apotheca_why}; if fatload mmc 0:1 ${scriptaddr} uboot-report.txt; then env import -t ${scriptaddr} ${filesize} apotheca_starts; fi; if test -n ${apotheca_starts}; then setexpr apotheca_starts ${apotheca_starts} + 1; else setenv apotheca_starts 1; fi; setenv apotheca_note U-Boot ran and wrote this as it started. apotheca_starts counts every start, in hexadecimal; env export -t ${scriptaddr} apotheca_note apotheca_starts apotheca_pe6 apotheca_screen apotheca_why fdtfile; fatwrite mmc 0:1 ${scriptaddr} uboot-report.txt ${filesize}"
+# 5. What the kernel of the start before said, when it is still in memory
+#    (section 16 of the firmware plan). Every device tree gives the kernel a
+#    piece of memory to keep its messages in (ramoops: 1 MiB at 0x4d300000,
+#    the console's text in the last 512 KiB, which begins with the mark
+#    0x43474244 "DBGC"). A reset does not clear memory. With the mark there,
+#    those 512 KiB are written twice: straight onto the card at sector 0x1000
+#    (2 MiB in, the unused room before the boot partition: no file system
+#    code is in the way; S90bootlog of a start that works turns it into a
+#    file), and as kernel-from-memory.txt on the boot partition.
+# 6. A count of resets with no start of the system between, kept in memory
+#    too (0x4d200000: the mark 0x41504f43, then the count; the system's
+#    S00early clears the mark). The kernel resets itself when it cannot
+#    start (panic=5; the deadline, patch 0171; the first program's give-up),
+#    so a handheld that never starts would go round for good behind a dark
+#    screen. At three: no fourth start. The power chip is told to turn off
+#    (register 0x27, on whichever I2C bus has it), and if it is still on,
+#    the red light blinks evenly until the power key is held.
+# 7. uboot-report.txt written to the boot partition (FAT): what was read and
+#    chosen, and a count of starts (read back from the last report).
+CONFIG_PREBOOT="gpio clear PI12; mmc dev 0; mmc rescan; setenv apotheca_first failed; setenv apotheca_note U-Boot started. This file is written twice a start: at once, and when its choices are made; env export -t ${scriptaddr} apotheca_note; if fatwrite mmc 0:1 ${scriptaddr} uboot-started.txt ${filesize}; then setenv apotheca_first written; fi; gpio clear PD28; setenv apotheca_why PE6; if test -e mmc 0:1 dtb.img; then setenv fdtfile dtb.img; setenv apotheca_why dtb.img; echo apotheca: dtb.img chosen by hand; fi; gpio set PI15; gpio set PI14; sleep 0.015; gpio clear PI14; sleep 0.05; gpio set PI14; sleep 0.1; if gpio input PE6; then setenv apotheca_pe6 low; setenv apotheca_screen v2; else setenv apotheca_pe6 high; setenv apotheca_screen first; fi; echo apotheca: PE6 says the ${apotheca_screen} screen; gpio clear PI14; gpio clear PI15; gpio set PD28; if test ${apotheca_why} = PE6; then if test -e mmc 0:1 screen-first.txt; then setenv apotheca_screen first; setenv apotheca_why screen-first.txt; fi; if test -e mmc 0:1 screen-v2.txt; then setenv apotheca_screen v2; setenv apotheca_why screen-v2.txt; fi; if test ${apotheca_screen} = v2; then setenv fdtfile device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb; else setenv fdtfile device_trees/sun50i-h700-anbernic-rg40xx-v.dtb; fi; fi; echo apotheca: device tree ${fdtfile} by ${apotheca_why}; setenv apotheca_memory nothing; if itest.l *0x4d380000 == 0x43474244; then setenv apotheca_memory saved; echo apotheca: the kernel of the start before left its messages in memory; mmc write 0x4d380000 0x1000 0x400; fatwrite mmc 0:1 0x4d380000 kernel-from-memory.txt 0x80000; fi; if itest.l *0x4d200000 == 0x41504f43; then setexpr.l apotheca_resets *0x4d200004 + 1; else setenv apotheca_resets 0; fi; mw.l 0x4d200000 0x41504f43; mw.l 0x4d200004 ${apotheca_resets}; if fatload mmc 0:1 ${scriptaddr} uboot-report.txt; then env import -t ${scriptaddr} ${filesize} apotheca_starts; fi; if test -n ${apotheca_starts}; then setexpr apotheca_starts ${apotheca_starts} + 1; else setenv apotheca_starts 1; fi; setenv apotheca_note U-Boot ran and wrote this as it started. apotheca_starts counts every start, in hexadecimal; env export -t ${scriptaddr} apotheca_note apotheca_starts apotheca_first apotheca_pe6 apotheca_screen apotheca_why fdtfile apotheca_memory apotheca_resets; fatwrite mmc 0:1 ${scriptaddr} uboot-report.txt ${filesize}; if itest ${apotheca_resets} -ge 3; then echo apotheca: three resets in a row with no start between: not starting again; mw.l 0x4d200000 0; i2c dev 0; i2c mw 0x34 0x27 1; i2c dev 1; i2c mw 0x34 0x27 1; while true; do gpio toggle PI11; sleep 0.25; done; fi"

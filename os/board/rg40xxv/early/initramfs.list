@@ -1,0 +1,13 @@
+# The kernel's built-in initramfs: one program (init.c) and the folders it
+# needs. Paths are from the top of the kernel's build tree (external.mk puts
+# the built init there).
+dir /dev 0755 0 0
+nod /dev/console 0600 0 0 c 5 1
+dir /proc 0755 0 0
+dir /sys 0755 0 0
+dir /boot 0755 0 0
+dir /newroot 0755 0 0
+# /root: where the kernel itself mounts the root when there is no /init to
+# run (rdinit=/none on the command line: the way round this program).
+dir /root 0700 0 0
+file /init apotheca-early/init 0755 0 0

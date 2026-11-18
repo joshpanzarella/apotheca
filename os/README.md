@@ -60,24 +60,29 @@ handheld as before.** Keep the stock card in a drawer and use a spare one.
    | Step | You see | It means |
    | --- | --- | --- |
    | 1 | **the power light, green**, within a second of the power key | the card's first small program (the SPL) ran |
-   | 2 | **a second light or colour** (red; with the green it may look orange), and **the screen lit but empty** | the boot loader (U-Boot) ran: the memory works. It wrote `uboot-report.txt` on APOTHBOOT |
-   | 3 | the red goes out, **the green light blinks**; the screen is dark for a moment, then **text scrolls**, then **Apotheca** | Linux is running |
-   | 4 | you press any button: **the green light stops blinking and stays on** | this screen now counts as seen working |
+   | 2 | **a second light or colour** (red; with the green it may look orange), and **the screen lit but empty** | the boot loader (U-Boot) ran: the memory works |
+   | 3 | the red goes out, **the green blinks in pairs** (blink-blink, pause) | Linux has started |
+   | 4 | the red on again for a moment (often too short to see) | Linux's first program is looking for the card |
+   | 5 | the red out, **the green blinks evenly**, about once a second; the screen dark a moment, then **text** (a lot of it on this card), then **Apotheca** | the system is starting |
+   | 6 | you press any button: **the green light stays on** | this screen now counts as seen working |
+
+   **If it stops on the way:**
+
+   | You see | It means | What it does by itself |
+   | --- | --- | --- |
+   | green in pairs, no red, for a minute | Linux started and stopped before its first program (a part of the handheld it could not start) | resets after 60 s, so U-Boot can save what Linux said (`kernel-from-memory.txt`); after three resets it stops: off, or the red light blinking evenly until the power key is held |
+   | green flickering fast, red on | Linux sees no card | resets after about a minute |
+   | green blinking evenly, the screen dark or garbage | the system runs, the screen's kind is wrong | off after 5 minutes with no button. Make `screen-first.txt` or `screen-v2.txt` (below) |
 
    - **Wait 30 seconds** on the first start: it makes the APOTHECA part of
-     the card then (a line `apotheca: DATA: first boot, growing ...`), once.
-     Do not switch off in this time.
-   - A moment of **coloured vertical stripes** on the newer screen is
-     normal (the screen powered with no start-up commands yet).
-   - **The handheld never stays on behind a dark screen.** Until a button
-     has been pressed once with this screen, it turns itself off after
-     **5 minutes** with no button (the green light blinks all that time).
-     If Linux finds no screen at all, after one minute. (`screen-check 0`
-     in `apotheca/power.txt` turns the 5-minute rule off.)
+     the card then, once. Do not switch off in this time.
+   - **The handheld never stays on behind a dark screen**: see the table.
+     (`screen-check 0` in `apotheca/power.txt` turns the 5-minute rule off.)
    - **The buttons are set up already** (no "press A" setup). If they do
      the wrong things, delete `apotheca/controls.txt` on the APOTHECA drive:
      the next start asks for each button, as on the stock card.
-   - **None of the lights' steps has been seen on a handheld** (2026-11-17).
+   - **Seen on a handheld so far** (2026-11-18): on both units the green
+     light comes on and blinks; nothing else of these tables.
 4. To turn it off: see the next section.
 
 ## Turning it off, the power key, the battery
@@ -133,15 +138,21 @@ Whatever you see is useful. Send:
 
 1. **A photo of the screen**, whatever is on it (black, garbage, text,
    sideways text).
-2. **Every `.txt` file from the top of the APOTHBOOT drive**, above all
-   `uboot-report.txt` (U-Boot writes it at every start: what it read and
-   which tree it chose; `apotheca_starts` counts the starts, in
-   hexadecimal) and `linux-report.txt` (Linux's boot log: the screen, the
-   buttons, the sound chip, the battery, the kernel's own messages). **No
-   `uboot-report.txt`, or a count that did not go up: U-Boot did not run.
-   That file but no `linux-report.txt`: Linux did not get as far as its
-   own programs.** The same log, and the ones before it, are on the
-   **APOTHECA** drive: `apotheca/logs/boot-latest.txt`, `boot-0001.txt` ...
+2. **Every `.txt` file from the top of the APOTHBOOT drive**, whatever is
+   there:
+
+   | File | Written by | Holds |
+   | --- | --- | --- |
+   | `uboot-report.txt` | U-Boot, at every start | the pin it read, the tree it chose and why, counts of starts and of resets in a row (hexadecimal) |
+   | `kernel-from-memory.txt` | U-Boot, after a reset | what Linux said in the start **before**, found still in memory (512 KiB, the text goes round) |
+   | `kernel-log.txt` | Linux's first program, every 2 s until the system takes over | how far it got, the cards Linux sees, what Linux said |
+   | `linux-early.txt` | the system's first script, every 5 s until the boot log is written | the start-up step by step and what is running |
+   | `linux-report.txt` | the system, once it is up | the full boot log (also on APOTHECA: `apotheca/logs/boot-latest.txt`) |
+   | `kernel-from-card.txt` | a start that works | the same as `kernel-from-memory.txt`, taken from a hidden part of the card U-Boot also writes |
+
+   **If a handheld left no new file at all**: copy what is there, then put
+   the card in a handheld that does start with it, start it once, wait a
+   minute, turn it off, and look for `kernel-from-card.txt`.
 3. **What the light did** (on, off, blinking) and whether text appeared.
 4. If Apotheca came up: **does it draw right** (compare with the stock
    card), **is there sound** from the speaker and the headphones, **do the

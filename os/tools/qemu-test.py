@@ -61,14 +61,17 @@ def check(ok, what):
         fails.append(what)
 
 
-def qemu_args(image, kernel, machine="virt", dtb=None):
+CMDLINE = "root=PARTUUID=41504f54-02 rootfstype=squashfs ro rootwait console=ttyAMA0"
+
+
+def qemu_args(image, kernel, machine="virt", dtb=None, append=CMDLINE, resets=False):
     """qemu's command line for a boot of the card (the QMP socket aside)."""
     return (["qemu-system-aarch64", "-M", machine, "-cpu", "cortex-a53", "-smp", "4",
              "-m", "1024", "-nographic", "-monitor", "none", "-serial", "stdio",
              "-kernel", kernel,
-             "-append", "root=PARTUUID=41504f54-02 rootfstype=squashfs ro rootwait console=ttyAMA0",
+             "-append", append,
              "-drive", "file=%s,format=raw,if=none,id=card" % image,
-             "-device", "virtio-blk-device,drive=card", "-no-reboot",
+             "-device", "virtio-blk-device,drive=card"] + ([] if resets else ["-no-reboot"]) + [
              # A screen (KMS, no GPU acceleration) and a sound card for Apotheca;
              # both need the modern (1.x) virtio, which virt's MMIO is not by itself
              "-global", "virtio-mmio.force-legacy=false",
@@ -78,11 +81,11 @@ def qemu_args(image, kernel, machine="virt", dtb=None):
 
 
 class Machine:
-    def __init__(self, image, kernel, log, dtb=None):
+    def __init__(self, image, kernel, log, dtb=None, append=CMDLINE, resets=False):
         self.log = open(log, "wb")
         self.buf = b""
         self.p = subprocess.Popen(
-            qemu_args(image, kernel, dtb=dtb) +
+            qemu_args(image, kernel, dtb=dtb, append=append, resets=resets) +
             # (relative, in the work folder: a socket's path must be under 108 bytes)
             ["-qmp", "unix:%s,server=on,wait=off" % self.qmp_name(log)],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -320,6 +323,126 @@ def panel_boot(work, image, kernel):
     check(m.end(60), "the panel boot powered down")
 
 
+def early_boots(image, kernel, work, boot_start):
+    """The starts that cannot go on (firmware plan, section 16)."""
+    env = dict(os.environ, MTOOLS_SKIP_CHECK="1")
+    fat = "%s@@%d" % (image, boot_start)
+    # No root to be found: the first program says so on the boot partition
+    # (found without the root: the partition that holds extlinux.conf), then
+    # resets the machine.
+    m = Machine(image, kernel, os.path.join(work, "boot7.log"),
+                append="root=PARTUUID=deadbeef-02 rootfstype=squashfs ro console=ttyAMA0 apotheca.wait=6 panic=5")
+    try:
+        t0 = time.time()
+        text = m.read_until(rb"reboot: Restarting system", 150)
+        took = time.time() - t0
+        check("apotheca-early: CANNOT GO ON: no root PARTUUID=deadbeef-02 after 6 s (1 disk seen)" in text,
+              "a root that is not there: the first program gives up after its wait and says why")
+        check(took > 20, "it waits (the lights' time) before it resets: %.0f s" % took)
+    except TimeoutError as e:
+        check(False, "a root that is not there: the machine resets (%s)" % e)
+    m.end(30)
+    log = subprocess.run(["mtype", "-i", fat, "::kernel-log.txt"], capture_output=True, env=env).stdout.decode("utf-8", "replace")
+    check("CANNOT GO ON: no root PARTUUID=deadbeef-02" in log and "stage: stopped: could not start the system; resetting now" in log
+          and "Linux version" in log and "MBR signature 41504f54" in log,
+          "and kernel-log.txt on the boot partition has the reason, the disks and the kernel's messages")
+    # A root that will not mount (the wrong kind named)
+    m = Machine(image, kernel, os.path.join(work, "boot8.log"),
+                append="root=PARTUUID=41504f54-02 rootfstype=vfat ro console=ttyAMA0 apotheca.wait=6 panic=5")
+    try:
+        text = m.read_until(rb"reboot: Restarting system", 150)
+        check("CANNOT GO ON: the root /dev/vda2 will not mount as vfat" in text, "a root that will not mount: said, then a reset")
+    except TimeoutError as e:
+        check(False, "a root that will not mount: the machine resets (%s)" % e)
+    m.end(30)
+    # The kernel stopped before any program ran: the root never comes and
+    # no first program is there to give up (rdinit names nothing, so the
+    # kernel waits for the root itself, for good). Nobody puts the deadline
+    # off: at 3 s here it panics, and with panic=3 the machine resets.
+    m = Machine(image, kernel, os.path.join(work, "boot9.log"),
+                append="root=PARTUUID=deadbeef-02 rootfstype=squashfs ro rootwait console=ttyAMA0 "
+                       "rdinit=/none apotheca_deadline.seconds=3 panic=3")
+    try:
+        text = m.read_until(rb"Kernel panic - not syncing: apotheca_deadline", 60)
+        check("apotheca_deadline: 3 s from now" in text, "the kernel's deadline: armed as it starts (3 s here), and it panics when nobody puts it off")
+        text = m.read_until(rb"Rebooting in 3 seconds", 30)
+        check(True, "and the panic ends in a reset (panic=3)")
+    except TimeoutError as e:
+        check(False, "the kernel's deadline panics and resets (%s)" % e)
+    m.end(30)
+    # The way round the first program, should it ever be the trouble:
+    # rdinit=/none, and the kernel mounts the root itself, as before.
+    m = Machine(image, kernel, os.path.join(work, "boot10.log"), append=CMDLINE + " rdinit=/none")
+    m.wait_shell()
+    out, _ = m.run("dmesg | grep -c apotheca-early; grep -c ' / squashfs ro' /proc/mounts; cat /sys/module/apotheca_deadline/parameters/seconds")
+    check(out.split() == ["0", "1", "0"], "rdinit=/none: the kernel mounts the root itself and the system starts (%s)" % out.split())
+    m.send("poweroff")
+    check(m.end(60), "and powers down")
+
+
+MEMORY_NODES = """
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+		ramoops@4d300000 {
+			compatible = "ramoops";
+			reg = <0x0 0x4d300000 0x0 0x100000>;
+			record-size = <0x20000>;
+			console-size = <0x80000>;
+		};
+		apotheca-crumbs@4d200000 {
+			reg = <0x0 0x4d200000 0x0 0x1000>;
+			no-map;
+		};
+	};
+"""
+
+
+def memory_boot(work, image, kernel):
+    """What the kernel said, kept through a reset (ramoops), and U-Boot's
+    count in memory: on qemu's own device tree with the two pieces of memory
+    the card's trees name (post-image.sh), the same addresses and sizes."""
+    dtc = os.path.join(HOST_BIN, "dtc")
+    if not os.access(dtc, os.X_OK):
+        print("skip  the memory boot: no dtc in build-image/output/host/bin (build the image first)")
+        return
+    virt = os.path.join(work, "virt-m.dtb")
+    subprocess.run(qemu_args(image, kernel, machine="virt,dumpdtb=" + virt),
+                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    dts = subprocess.run([dtc, "-q", "-I", "dtb", "-O", "dts", virt], check=True, capture_output=True, text=True).stdout
+    end = dts.rstrip().rfind("};")
+    with open(os.path.join(work, "memory.dts"), "w") as f:
+        f.write(dts[:end] + MEMORY_NODES + dts[end:])
+    dtb = os.path.join(work, "memory.dtb")
+    subprocess.run([dtc, "-q", "-I", "dts", "-O", "dtb", "-o", dtb, os.path.join(work, "memory.dts")], check=True)
+    m = Machine(image, kernel, os.path.join(work, "boot11.log"), dtb=dtb, append=CMDLINE + " panic=3", resets=True)
+    m.wait_shell()
+    out, _ = m.run("dmesg | grep -c 'ramoops: using 0x100000@0x4d300000'; grep -c ' /sys/fs/pstore pstore ' /proc/mounts; "
+                   "ls /sys/fs/pstore | wc -l")
+    check(out.split() == ["1", "1", "0"], "the kernel keeps its messages in the 1 MiB at 0x4d300000 (ramoops); nothing there from before, on a cold start (%s)" % out.split())
+    # U-Boot's mark and count, as it leaves them; S00early cleared the mark
+    # as the system started, and it can be written and read from Linux.
+    out, _ = m.run("devmem 0x4d200000 32; devmem 0x4d200000 32 0x41504f43; devmem 0x4d200000 32; "
+                   "/etc/init.d/S00early start > /dev/null 2>&1; sleep 1; devmem 0x4d200000 32")
+    marks = [w for w in out.split() if w.startswith("0x")]
+    check(marks == ["0x00000000", "0x41504F43", "0x00000000"], "U-Boot's mark at 0x4d200000 is Linux's to clear, and S00early clears it (%s)" % marks)
+    # A kernel that dies: its last words stay in memory through the reset.
+    m.send("dmesg -n 8; echo apotheca-last-words-4711 > /dev/kmsg; echo c > /proc/sysrq-trigger")
+    try:
+        m.read_until(rb"Rebooting in 3 seconds", 60)
+        m.began = time.time()
+        m.wait_shell()
+        out, _ = m.run("grep -c -e 'apotheca-last-words-4711' -e 'Kernel panic - not syncing: sysrq triggered crash' "
+                       "/sys/fs/pstore/console-ramoops-0; grep -c 'apotheca-last-words-4711' /data/apotheca/logs/boot-latest.txt")
+        check(out.split()[0] == "2" and int(out.split()[1]) >= 1,
+              "after a panic and a reset, the start that follows finds what the kernel said in memory, and its boot log has it (%s)" % out.split())
+    except TimeoutError as e:
+        check(False, "a panic resets the machine and it starts again (%s)" % e)
+    m.send("poweroff")
+    check(m.end(60), "the memory boot powered down")
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     keep = "--keep" in sys.argv
@@ -361,9 +484,25 @@ def main():
         check("boot-0001.txt" in out and "Apotheca boot log" in out, "boot log written to DATA")
         out, _ = m.run("grep -c '^\\[' /data/apotheca/logs/boot-0001.txt")
         check(int(out or 0) > 20, "the boot log holds the kernel's messages (%s lines)" % out)
+        # The kernel's first program (the initramfs's /init) ran before any
+        # of that: it found the root by the disk's signature, wrote
+        # kernel-log.txt to the boot partition, and handed over. S00early
+        # then put the kernel's deadline off and wrote linux-early.txt.
+        out, _ = m.run("dmesg | grep -c 'apotheca-early: the root is vda2, on the disk vda'; "
+                       "cat /sys/module/apotheca_deadline/parameters/seconds; grep -c ' / rootfs' /proc/mounts")
+        check(out.split() == ["1", "0", "0"],
+              "the kernel's first program found the root; the deadline is off; nothing of the initramfs is left mounted (%s)" % out.split())
+        # (mounted as the system's own scripts mount it: one of them may have
+        # it mounted this moment, and other options would be refused)
+        out, _ = m.run("mkdir -p /tmp/b && mount -t vfat -o rw,noatime /dev/vda1 /tmp/b && "
+                       "for w in 'stage: the root is mounted' 'the boot partition is vda1' 'MBR signature 41504f54' 'Linux version'; "
+                       "do grep -q \"$w\" /tmp/b/kernel-log.txt && echo k; done; ls /tmp/b/kernel-log.part 2>/dev/null; "
+                       "for w in 'S00early' '===== running now' 'Linux version'; "
+                       "do grep -q \"$w\" /tmp/b/linux-early.txt && echo e; done; umount /tmp/b")
+        check(out.split() == ["k"] * 4 + ["e"] * 3, "kernel-log.txt (the first program's) and linux-early.txt (S00early's) are on the boot partition (%s)" % " ".join(out.split()))
         # The same log on the BOOT partition (the FAT one), beside U-Boot's
         # report: the one place to look on a card out of a dark handheld.
-        out, _ = m.run("mkdir -p /tmp/b && mount -t vfat -o ro /dev/vda1 /tmp/b && "
+        out, _ = m.run("mkdir -p /tmp/b && mount -t vfat -o rw,noatime /dev/vda1 /tmp/b && "
                        "head -n 1 /tmp/b/linux-report.txt; grep -c . /tmp/b/linux-report.txt; "
                        "cmp /tmp/b/linux-report.txt /data/apotheca/logs/boot-latest.txt && echo same; "
                        "ls /tmp/b/README.txt; umount /tmp/b; grep -c 'could not copy' /run/apotheca/boot.log")
@@ -378,7 +517,7 @@ def main():
         out, _ = m.run("tty; awk '{print $7}' /proc/self/stat")
         check("/dev/ttyAMA0" in out and out.split()[-1] != "0", "the shell has the serial port as its terminal")
         out, _ = m.run("ls /etc/init.d | tr '\\n' ' '")
-        check(out == "S02modules S05data S10usbgadget S20sound S90bootlog S95apotheca rcK rcS",
+        check(out == "S00early S02modules S05data S10usbgadget S20sound S90bootlog S95apotheca rcK rcS",
               "only our start-up scripts are there (%s)" % out)
         out, _ = m.run("ps -o comm | sort -u | tr '\\n' ' '")
         check(not any(d in out.split() for d in ("crond", "syslogd", "klogd", "udhcpc")),
@@ -754,6 +893,8 @@ def main():
         # built into the kernel, the other the one os/tools/panel-dtb.sh put
         # in the device tree (patch 0170): try 4's, 18-bit, stock timings.
         panel_boot(work, image, kernel)
+        early_boots(image, kernel, work, boot_start)
+        memory_boot(work, image, kernel)
     except TimeoutError as e:
         check(False, "timed out: %s" % e)
     finally:

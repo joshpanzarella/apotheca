@@ -101,10 +101,13 @@ check(b'bl31' in fitdata or b'atf' in fitdata, "U-Boot's FIT holds Trusted Firmw
 # then the tree (dtb.img, else screen-first.txt / screen-v2.txt, else PE6)
 # and the report written to the boot partition.
 uboot = read(8 * 1024, 4088 * 1024)
-pre = re.search(rb'gpio set PI12; gpio clear PD28;[^\0]*fatwrite mmc 0:1 [^\0]*', uboot)
+pre = re.search(rb'gpio clear PI12; mmc dev 0; mmc rescan; [^\0]*done; fi', uboot)
 pre = pre.group(0).decode() if pre else ''
-check(pre.startswith('gpio set PI12; gpio clear PD28;'),
-      "U-Boot lights the green light first, and turns the backlight off for the reset pulse")
+check(pre.startswith('gpio clear PI12; mmc dev 0; mmc rescan; setenv apotheca_first failed;')
+      and 0 < pre.find('if fatwrite mmc 0:1 ${scriptaddr} uboot-started.txt ${filesize}; then setenv apotheca_first written; fi; gpio clear PD28;') < pre.find('gpio set PI15'),
+      "U-Boot puts the green light out (red alone: U-Boot runs), looks at the card afresh, and writes uboot-started.txt before anything else")
+spl = read(8 * 1024, 32 * 1024)
+check(True, "the SPL is %d KiB" % (struct.unpack_from('<I', spl, 16)[0] // 1024))
 check('if test -e mmc 0:1 dtb.img; then setenv fdtfile dtb.img;' in pre,
       "U-Boot takes dtb.img when the boot partition has one")
 check('if gpio input PE6; then setenv apotheca_pe6 low; setenv apotheca_screen v2;' in pre
@@ -118,9 +121,20 @@ check('gpio clear PI14; gpio clear PI15; gpio set PD28;' in pre
 check('test -e mmc 0:1 screen-first.txt' in pre and 'test -e mmc 0:1 screen-v2.txt' in pre
       and 0 < pre.find('if test ${apotheca_why} = PE6; then') < pre.find('screen-first.txt'),
       "screen-first.txt or screen-v2.txt on the boot partition overrides the pin (dtb.img overrides both)")
-check(pre.endswith('fatwrite mmc 0:1 ${scriptaddr} uboot-report.txt ${filesize}')
+check('fatwrite mmc 0:1 ${scriptaddr} uboot-report.txt ${filesize};' in pre
       and pre.find('setenv fdtfile device_trees') < pre.find('env export -t'),
-      "last of all it writes uboot-report.txt to the boot partition")
+      "it writes uboot-report.txt to the boot partition, after the tree is chosen")
+check('if itest.l *0x4d380000 == 0x43474244; then' in pre and 'mmc write 0x4d380000 0x1000 0x400;' in pre
+      and 'fatwrite mmc 0:1 0x4d380000 kernel-from-memory.txt 0x80000;' in pre,
+      "the kernel's messages left in memory (ramoops's console piece) are written to the card, bare at 2 MiB and as a file")
+check(0x1000 * 512 >= end and (0x1000 + 0x400) * 512 <= parts[0][2],
+      "those bare sectors (2 MiB to 2.5 MiB) are after U-Boot (%d KiB) and before p1 (%d KiB)" % (end // 1024, parts[0][2] // 1024))
+check('if itest.l *0x4d200000 == 0x41504f43; then setexpr.l apotheca_resets *0x4d200004 + 1;' in pre
+      and pre.endswith('if itest ${apotheca_resets} -ge 3; then echo apotheca: three resets in a row with no start between: not starting again; '
+                       'mw.l 0x4d200000 0; i2c dev 0; i2c mw 0x34 0x27 1; i2c dev 1; i2c mw 0x34 0x27 1; '
+                       'while true; do gpio toggle PI11; sleep 0.25; done; fi')
+      and pre.find('uboot-report.txt ${filesize}') < pre.find('-ge 3'),
+      "resets in a row are counted in memory; at three it does not start again (after the report is written)")
 check(b'Power on by plug-in' not in uboot,
       "the SPL does not turn the power off for a start by the charger (AXP_DISABLE_BOOT_ON_POWERON is off)")
 
@@ -158,16 +172,25 @@ if shutil.which('mdir') and shutil.which('mtype'):
     # Every tree blinks the green light from the moment Linux has the LEDs
     # (the heartbeat post-image.sh puts in): the sign that Linux runs.
     blink = True
+    kept = True
     for f in ['device_trees/sun50i-h700-anbernic-rg40xx-v.dtb', 'device_trees/sun50i-h700-anbernic-rg40xx-v-v2-panel.dtb',
               'device_trees/sun50i-h700-anbernic-rg40xx-v-v2-stock-panel.dtb'] + \
              ['device_trees/try/%s/dtb.img' % t for t in ['1-pins-40ma', '2-backlight-50khz', '3-dither', '4-all-as-stock']] + \
              ([] if auto else ['dtb.img']):
         d = subprocess.run(['mtype', '-i', spec, '::' + f], capture_output=True, env=env).stdout
         blink = blink and b'linux,default-trigger\0' in d and b'heartbeat\0' in d
+        kept = kept and b'ramoops@4d300000\0' in d and b'apotheca-crumbs@4d200000\0' in d and b'console-size\0' in d
     check(blink, "every device tree on p1 blinks the power light once Linux runs (heartbeat)")
+    check(kept, "every device tree gives the kernel its piece of memory to keep its messages in (ramoops), and U-Boot's count its own")
+    conf2 = mt('mtype', '-i', spec, '::extlinux/extlinux.conf').stdout
+    check(' panic=5' in conf2, "extlinux.conf: panic=5 (a kernel that panics resets, so U-Boot can save what it said)")
+    kimage = subprocess.run(['mtype', '-i', spec, '::Image'], capture_output=True, env=env).stdout
+    check(b'apotheca_deadline: nothing put the deadline off' in kimage and b'ramoops' in kimage,
+          "the kernel has the deadline (patch 0171) and ramoops")
     readme = mt('mtype', '-i', spec, '::README.txt').stdout
-    check('screen-first.txt' in readme and 'uboot-report.txt' in readme and 'linux-report.txt' in readme,
-          "README.txt tells of screen-first.txt, uboot-report.txt and linux-report.txt")
+    check(all(w in readme for w in ['screen-first.txt', 'uboot-started.txt', 'memory-kind.txt', 'uboot-report.txt', 'linux-report.txt', 'kernel-log.txt',
+                                    'linux-early.txt', 'kernel-from-memory.txt', 'kernel-from-card.txt']),
+          "README.txt tells of screen-first.txt and of every report file")
     tries = {}
     for t in ['1-pins-40ma', '2-backlight-50khz', '3-dither', '4-all-as-stock']:
         tries[t] = subprocess.run(['mtype', '-i', spec, '::device_trees/try/%s/dtb.img' % t],
@@ -238,6 +261,11 @@ if unsquashfs:
         inittab = cat('/etc/inittab').decode('utf-8', 'replace')
         check(b'screen-seen' in cat('/usr/sbin/apotheca-power') and b'no screen found' in cat('/usr/sbin/apotheca-power'),
               "apotheca-power turns off a screen nobody has seen working, and one that is not there")
+        check(mode('/etc/init.d/S00early').startswith('-rwx') and b'linux-early.txt' in cat('/etc/init.d/S00early')
+              and b'apotheca_deadline' in cat('/etc/init.d/S00early') and b'devmem 0x4d200000 32 0' in cat('/etc/init.d/S00early'),
+              "S00early: puts the deadline off, clears U-Boot's count, writes linux-early.txt")
+        check(b'kernel-from-card.txt' in cat('/etc/init.d/S90bootlog') and b'skip=4096 count=1024' in cat('/etc/init.d/S90bootlog'),
+              "S90bootlog turns a kernel log U-Boot wrote onto the bare card into a file")
         check(b'linux-report.txt' in cat('/etc/init.d/S90bootlog'), "S90bootlog copies the boot log to the boot partition (linux-report.txt)")
         check('::respawn:/usr/sbin/apotheca-power' in inittab, "inittab starts apotheca-power (and again if it stops)")
         check('::respawn:/usr/sbin/apotheca-keep apotheca /usr/libexec/apotheca/run' in inittab,

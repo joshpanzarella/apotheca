@@ -39,6 +39,8 @@ from ROCKNIX's files and keep their licence:
 
 | Here | Made from | Licence |
 | --- | --- | --- |
+| `patches/linux/0171-apotheca-misc-a-deadline-for-the-first-program.patch` | ours: a kernel that has not run its first program in time panics (plan, section 16) | GPL-2.0 |
+| `early/init.c`, `early/initramfs.list` | ours: the kernel's first program, built into the kernel as its initramfs | Apotheca's own; linked with glibc (LGPL-2.1+), statically |
 | `patches/linux/0170-apotheca-panel-mipi-a-panel-file-in-the-device-tree.patch` | ours, a change to kikuchan's driver (patch 0110): a panel file may be the device tree's `apotheca,panel-firmware` | GPL-2.0, as the driver |
 | `firmware/panels/anbernic,rg40xx-v2-stock-panel.panel` | ROCKNIX's `anbernic,rg40xx-v2-panel.panel`, written by `os/tools/make-v2-stock-panel.py`: the same start-up commands, the pixel clock edge and the timings set to the values of Anbernic's own device tree for the RG40XX (`lcd0` in the boot package muOS ships, read on 2026-11-17; numbers, not code) | GPL-2.0, as ROCKNIX's file |
 | `firmware/panels-to-try/v2-dither.panel`, `v2-stock-dither.panel` | ROCKNIX's v2 file and the stock-panel file above, their pixel format set to RGB666_PACKED (`make-v2-stock-panel.py`); put into the trees in `device_trees/try/` by `post-image.sh`, not built into the kernel | GPL-2.0, as ROCKNIX's file |

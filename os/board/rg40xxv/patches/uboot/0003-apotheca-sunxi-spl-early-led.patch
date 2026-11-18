@@ -1,14 +1,18 @@
 From: Apotheca <noreply@apotheca.invalid>
-Subject: [PATCH] sunxi: spl: light a LED as soon as the SPL runs
+Subject: [PATCH] sunxi: spl: two LEDs that say how far the SPL got
 
 A board with no serial console at hand says nothing when the SPL stops in
 the PMIC or DRAM set-up. With CONFIG_SPL_EARLY_LED_GPIO set, the SPL drives
 that pin high right after gpio_init(), before the console, the PMIC and the
-DRAM: the LED says the boot ROM found the SPL and ran it.
+DRAM: the LED says the boot ROM found the SPL and ran it. With
+CONFIG_SPL_DRAM_OK_LED_GPIO set, a second pin goes high once
+sunxi_board_init() is back: the PMIC and the DRAM are set up. The H616 DRAM
+code panics on a memory it cannot train, and a panic in the SPL resets the
+board, so such a board goes round for good: the first LED blinks alone.
 ---
 --- a/arch/arm/mach-sunxi/Kconfig
 +++ b/arch/arm/mach-sunxi/Kconfig
-@@ -952,6 +952,15 @@
+@@ -952,6 +952,24 @@
  	---help---
  	Say Y here to enable support for the gpio pins of the axp PMIC ICs.
  
@@ -20,6 +24,15 @@ DRAM: the LED says the boot ROM found the SPL and ran it.
 +	  the PMIC and the DRAM, so a board that stops in any of those still
 +	  shows that the boot ROM found and ran the SPL. The number is
 +	  32 * port + pin (PI12 is 268). -1 for none.
++
++config SPL_DRAM_OK_LED_GPIO
++	int "GPIO number of a LED the SPL lights once the DRAM is set up"
++	default -1
++	---help---
++	  A second LED (active high), lit by the SPL when the PMIC and the
++	  DRAM are set up, before it loads anything. A board whose DRAM
++	  set-up fails resets and tries again for good: the first LED then
++	  blinks alone, and this one never lights. -1 for none.
 +
  config AXP_DISABLE_BOOT_ON_POWERON
  	bool "Disable device boot on power plug-in"
@@ -37,4 +50,16 @@ DRAM: the LED says the boot ROM found the SPL and ran it.
 +
  	spl_init();
  	preloader_console_init();
+ 
+@@ -489,6 +494,11 @@
+ 	i2c_init(CONFIG_SYS_I2C_SPEED, CONFIG_SYS_I2C_SLAVE);
+ #endif
+ 	sunxi_board_init();
++
++#if CONFIG_SPL_DRAM_OK_LED_GPIO >= 0
++	/* The PMIC and the DRAM are set up: the second sign of life */
++	gpio_direction_output(CONFIG_SPL_DRAM_OK_LED_GPIO, 1);
++#endif
+ }
+ #endif /* CONFIG_XPL_BUILD */
  

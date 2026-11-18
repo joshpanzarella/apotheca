@@ -2,8 +2,20 @@
 # Buildroot merges this on top and runs olddefconfig.
 
 CONFIG_LOCALVERSION="-apotheca"
-# ROCKNIX fills this in with its own initramfs; we boot straight to the root.
-CONFIG_INITRAMFS_SOURCE=""
+# ROCKNIX fills this in with its own initramfs. Ours is one small program
+# (board/rg40xxv/early/init.c, built into the kernel's tree by external.mk):
+# it writes the kernel's messages to the card's boot partition, shows the
+# stage on the lights, then mounts the root and runs its /sbin/init
+# (firmware plan, section 16).
+CONFIG_INITRAMFS_SOURCE="apotheca-early/initramfs.list"
+# CONFIG_INITRAMFS_PRESERVE_MTIME is not set
+
+# What the kernel said, kept in a piece of memory that a reset does not
+# clear (ramoops; the piece is named in every device tree by post-image.sh).
+# After a reset U-Boot finds it there and writes it to the card, so a kernel
+# that could not reach the card still gets its messages out.
+CONFIG_PSTORE_RAM=y
+CONFIG_PSTORE_CONSOLE=y
 
 # The panel's start-up sequence, built in (see external.mk). WiFi and BT
 # firmware come in batch 5.

@@ -87,6 +87,7 @@ done
 
 export BR2_DL_DIR="$work/dl"
 export APOTHECA_DTB="$dtb"
+export APOTHECA_DRAM="$dram"
 APOTHECA_COMMIT=$(git -C "$here" describe --always --dirty 2>/dev/null || echo unknown)
 export APOTHECA_COMMIT
 
@@ -118,8 +119,11 @@ if [ -n "$kstamp" ] && [ -n "$jstamp" ] && [ "$kstamp" -nt "$jstamp" ]; then
     make -C "$br" O="$out" -j"$(nproc)"
 fi
 
-cp "$out/images/apotheca-rg40xxv.img.gz" "$work/apotheca-rg40xxv.img.gz"
-(cd "$work" && sha256sum apotheca-rg40xxv.img.gz > apotheca-rg40xxv.img.gz.sha256)
+# The LPDDR3 card has a name of its own, so the two never get mixed up.
+name=apotheca-rg40xxv
+[ "$dram" = lpddr3 ] && name=apotheca-rg40xxv-lpddr3
+cp "$out/images/apotheca-rg40xxv.img.gz" "$work/$name.img.gz"
+(cd "$work" && sha256sum "$name.img.gz" > "$name.img.gz.sha256")
 
 if [ "$tidy" = all ]; then
     rm -rf "$out"/build/linux-[0-9]* "$out"/build/uboot-[0-9]* "$out"/build/rocknix-joypad-*
@@ -136,5 +140,5 @@ if [ "$tidy" != no ]; then
 fi
 
 echo
-echo "image: $work/apotheca-rg40xxv.img.gz ($dtb, $dram)"
-cat "$work/apotheca-rg40xxv.img.gz.sha256"
+echo "image: $work/$name.img.gz ($dtb, $dram)"
+cat "$work/$name.img.gz.sha256"
