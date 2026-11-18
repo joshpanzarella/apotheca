@@ -13,9 +13,10 @@ enum ScaleKind {
     kScaleMajorPent, kScaleMinorPent, kScaleHarmonicMinor, kScaleBlues, kScaleKinds
 };
 
-// What the SET page reads (the longest, HARMONIC MINOR, is checked at XL by textsize).
+// What the SET page reads (the longest, HARMONIC MINOR, is checked at XL by textsize). OFF reads
+// CHROMATIC (owner, 2026-11-18: "no key" was not seen as there): every key, the roll free.
 inline const char* scaleName(int kind) {
-    static const char* const names[kScaleKinds] = {"OFF", "MAJOR", "MINOR", "DORIAN", "PHRYGIAN", "LYDIAN", "MIXOLYDIAN", "LOCRIAN",
+    static const char* const names[kScaleKinds] = {"CHROMATIC", "MAJOR", "MINOR", "DORIAN", "PHRYGIAN", "LYDIAN", "MIXOLYDIAN", "LOCRIAN",
                                                    "MAJOR PENT", "MINOR PENT", "HARMONIC MINOR", "BLUES"};
     return kind >= 0 && kind < kScaleKinds ? names[kind] : names[0];
 }
