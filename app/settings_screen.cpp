@@ -165,6 +165,7 @@ void SettingsScreen::goTo(int row) {
     if (to >= kRows)
         for (to = row; to > 0 && !here(to); --to) {}
     row_ = to;
+    session_.wifiLooking = row_ == kNetwork && !typing_; // (at once: Session::update asks before this screen's update)
     const int place = placeOf(row_);
     if (place < first_) first_ = place;
     while (first_ < place && !fits(place, first_)) ++first_;

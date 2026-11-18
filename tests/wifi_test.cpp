@@ -16,6 +16,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <memory>
@@ -318,6 +319,7 @@ void testTheRow() {
     CHECK(rig.log().empty() && rig.wifi().calls() == 0);
     // WIFI PAGE on: `up`. The row reached: a scan.
     rig.on();
+    if (std::getenv("WIFI_PRINT")) std::printf("on: %d log [%s]\n", session.transferOn(), rig.log().c_str());
     CHECK(session.transferOn() && rig.log().compare(0, 3, "up\n") == 0 && rig.log().find("scan") == std::string::npos);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kNetwork);
