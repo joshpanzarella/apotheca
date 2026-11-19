@@ -34,3 +34,12 @@
 &panel {
 	compatible = "anbernic,rg40xx-panel", "panel-mipi-dpi-spi";
 };
+
+/* The startup screen at full brightness: without this the backlight driver
+ * starts at half (1250 of 2499). Apotheca dims to BRIGHTNESS once it runs.
+ * In every tree: the v2 ones include this one, and the try-trees derive from
+ * the v2 one's build. 2499 is the most: period 40000 ns over fls, less one
+ * (pwm_backlight_brightness_default). */
+&backlight {
+	default-brightness-level = <2499>;
+};
