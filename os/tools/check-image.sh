@@ -212,9 +212,9 @@ if shutil.which('mdir') and shutil.which('mtype'):
     check(kept, "every device tree gives the kernel its piece of memory to keep its messages in (ramoops), and U-Boot's count its own")
     conf2 = mt('mtype', '-i', spec, '::extlinux/extlinux.conf').stdout
     append = [l for l in conf2.splitlines() if l.strip().startswith('APPEND')]
-    check(len(append) == 1 and ' quiet ' in append[0] and ' loglevel=3 ' in append[0]
+    check(len(append) == 1 and ' quiet ' not in append[0] and ' loglevel=5 ' in append[0]
           and 'initcall_debug' not in append[0] and 'loglevel=8' not in append[0],
-          "extlinux.conf: a quiet kernel (the hunt's initcall_debug and loglevel=8 are off)")
+          "extlinux.conf: loglevel=5 (above quiet, so the boot logo draws; the hunt's initcall_debug and loglevel=8 are off)")
     # The kind of memory this card is for, and the memory's rail in every tree
     kind = mt('mtype', '-i', spec, '::memory-kind.txt').stdout.split(':')[0]
     check(kind in ('both', 'lpddr4', 'lpddr3'), "memory-kind.txt says which memory this card is for (%s)" % kind)

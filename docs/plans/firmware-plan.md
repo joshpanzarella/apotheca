@@ -1033,7 +1033,7 @@ without the hunt's settings):
 
 | Stage | Then | Why | Now (estimated, not measured) |
 | --- | --- | --- | --- |
-| Kernel start to the first program | 3.53 s | **about 2.7 s of it printing 30,700 characters on the serial line at 115,200 baud** (counted from the log) | about 1 s: `quiet loglevel=3` prints errors only |
+| Kernel start to the first program | 3.53 s | **about 2.7 s of it printing 30,700 characters on the serial line at 115,200 baud** (counted from the log) | about 1 s: `loglevel=5` prints warnings and errors (above quiet, so the boot logo draws) |
 | The screen showing anything | 3.18 s (the text console) | the same printing | about 1 s; then APOTHECA STARTING |
 | First program to Apotheca started | 3.9 s (to 7.42 s) | 1.8 s the boot report, written before Apotheca; a card write in the first script; the USB serial set-up; 0.5 s making DATA (first start only) | about 1.5 s (2 s the first start) |
 | **Linux in all** | **7.4 s** | | **about 3 s** |
@@ -1044,8 +1044,9 @@ on the serial line and on the screen. **Off now.**
 
 What changed:
 
-- `extlinux.conf`: `quiet loglevel=3` (the boot log still has every
-  message). `initcall_debug`, `loglevel=8`, `log_buf_len=1M` out.
+- `extlinux.conf`: `loglevel=5` (the boot log still has every
+  message; above quiet, so the boot logo draws). `initcall_debug`,
+  `loglevel=8`, `log_buf_len=1M` out.
 - **APOTHECA STARTING** is written to the screen by the kernel's first
   program, its first act. It shows as soon as the display is up.
 - The first program writes **no `kernel-log.txt` and mounts no boot
@@ -1081,7 +1082,7 @@ means neither kind worked; the one-kind image is next.
 | --- | --- |
 | `os/tools/dram-kind-test.sh` (new) | the rule; the patch's copy of the header equal to ours; **the SPL's own loop, cut out of the patch and compiled against a made-up handheld** of each kind whose wrong-kind set-up refuses, never comes back, lies, aliases or times out, from nine marks, with 0 to 2 set-ups of the right kind lost: always the right kind, the right rail, LPDDR4 settings never at 1.2 V, one run at the next start, the memory left as found. **24 mutants, all die** |
 | `uboot-pick-test.py` | **every check passes (54)**: the mark read into the report as lpddr4, lpddr3 or unknown (the mark stood in for by a word of ordinary memory: the clock's register is not in the emulator), `dram-lpddr3.txt` and `dram-lpddr4.txt` writing PREFER, the five tree picks, the reports, the memory dump, the resets; the card commands for real on an emulated Allwinner board. The PREBOOT broken on purpose (the two kinds swapped) fails three checks |
-| `check-image.sh` | **every check passes (108)** on all three images: the SPL of the kind `memory-kind.txt` says, the rail's range in every tree, the quiet kernel, the charger rule in, the README's words |
+| `check-image.sh` | **every check passes (108)** on all three images: the SPL of the kind `memory-kind.txt` says, the rail's range in every tree, the `loglevel=5` kernel (above quiet, so the boot logo draws), the charger rule in, the README's words |
 | `qemu-test.py` | **every check passes (110)**. It found two faults of the background work on the way, both mended: `/data/apotheca/logs` was made by the boot report (now by `S05data`: `apotheca-power` and the keeper log from their first moment), and the report read Apotheca's log after Apotheca had begun it anew (the start now keeps the last 40 lines first). First boot to a shell 11.5 s, second 7.9 s (emulated CPU; 15 to 22 and 15 to 17 before). APOTHECA STARTING read off the text console |
 | `power-test.py` | **every check passes (50)** |
 | The SPL | 38.6 KiB of 49 allowed. Read in the build: both timing functions and both PHY tables in; `mctl_gave_up` in `.data` (**the SPL's `.bss` is in the memory being set up**, at `0x4ff80000`, so nothing there may be used before it works) |
