@@ -224,4 +224,41 @@ std::string sampleLabel(const std::string& name) {
     return slash == std::string::npos ? name : name.substr(slash + 1);
 }
 
+int sampleNote(const std::string& name) {
+    // The name by itself: a folder's name is not read ("C Major/Piano" is no C).
+    const std::string label = sampleLabel(name);
+    static const int semitone[7] = {9, 11, 0, 2, 4, 5, 7}; // a b c d e f g
+    int found = -1;
+    for (std::size_t i = 0; i < label.size(); ++i) {
+        const char c = static_cast<char>(label[i] >= 'A' && label[i] <= 'Z' ? label[i] - 'A' + 'a' : label[i]);
+        if (c < 'a' || c > 'g') continue;
+        if (i > 0) { // by itself, not in a word ("take2" is no E2)
+            const char before = label[i - 1];
+            if ((before >= 'A' && before <= 'Z') || (before >= 'a' && before <= 'z')) continue;
+        }
+        std::size_t at = i + 1;
+        int accidental = 0;
+        if (at < label.size() && (label[at] == '#' || label[at] == 'b' || label[at] == 'B') && at + 1 < label.size() &&
+            (label[at + 1] == '-' || (label[at + 1] >= '0' && label[at + 1] <= '9'))) {
+            accidental = label[at] == '#' ? 1 : -1; // (a flat sign, not the note B: only where a number follows it)
+            ++at;
+        }
+        int sign = 1, octave = 0, digits = 0;
+        if (at < label.size() && label[at] == '-') {
+            sign = -1;
+            ++at;
+        }
+        while (at < label.size() && label[at] >= '0' && label[at] <= '9') {
+            octave = octave * 10 + (label[at] - '0');
+            ++at;
+            ++digits;
+        }
+        if (!digits) continue;
+        const int midi = 12 * (sign * octave + 1) + semitone[c - 'a'] + accidental;
+        if (midi >= 0 && midi <= 127) found = midi;
+        i = at - 1; // past the whole match
+    }
+    return found;
+}
+
 } // namespace apotheca

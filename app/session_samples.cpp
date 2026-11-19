@@ -400,7 +400,7 @@ std::string Session::transferName() const {
     const WifiStatus status = wifi_.now().status;
     if (status.state != WifiState::Joined || status.hostname.empty()) return "";
     const std::string address = transferAddress();
-    const std::size_t tail = address.find(':');
+    const std::size_t tail = address.find_first_of(":/"); // (no colon on port 80: from the number's slash)
     return status.hostname + (tail == std::string::npos ? "" : address.substr(tail));
 }
 
@@ -413,12 +413,13 @@ bool Session::toggleTransfer(unsigned seed) {
     }
     if (folder_.empty() || sampleFolder_.empty()) return false; // nowhere for files to go
     const std::string chords = chordFolder_.empty() ? folder_ + "/../chords" : chordFolder_;
-    // 8080 if it is free (easy to type), else whatever is.
+    // 80 if it binds (no port to type; needs root: our firmware), else 8080 if it is free, else whatever is.
     transfer_.setDesk(&designer_);
     transfer_.setBounceFolder(bounceFolder_);
     transfer_.setOpenSong(songName_); // (and again from update() whenever it changes)
     toldOpenSong_ = songName_;
-    const bool on = transfer_.start(sampleFolder_, folder_, chords, 8080, seed) || transfer_.start(sampleFolder_, folder_, chords, 0, seed);
+    const bool on = transfer_.start(sampleFolder_, folder_, chords, 80, seed) || transfer_.start(sampleFolder_, folder_, chords, 8080, seed) ||
+                    transfer_.start(sampleFolder_, folder_, chords, 0, seed);
     if (on) std::printf("files over wifi: http://%s\n", transfer_.address().c_str()); // in the log too, for whoever is setting it up
     if (on) wifi_.up(); // (our firmware: the radio on, and a saved network joined by itself)
     return on;

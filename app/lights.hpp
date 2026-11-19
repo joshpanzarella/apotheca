@@ -43,7 +43,7 @@ inline int backlightFor(int percent, int max) {
     const int value = static_cast<int>(part * part * max + 0.5);
     return value < 1 ? 1 : (value > max ? max : value);
 }
-// The ring's level byte for the same percent: the ring dims with the screen (lights-plan.md, call 4).
+// The ring's level byte for a RING LEVEL percent (it was the screen's: lights-plan.md, call 4).
 inline int ringLevelFor(int percent) { return backlightFor(percent, 255); }
 
 // ---- the ring ---------------------------------------------------------------------------------
@@ -174,7 +174,7 @@ struct RingPlace {
     int sceneSteps = 16;
 };
 
-// The ring for STICK LIGHT `mode` at BRIGHTNESS `percent`, the song at `step` of its bar (0..15; -1
+// The ring for STICK LIGHT `mode` at RING LEVEL `percent`, the song at `step` of its bar (0..15; -1
 // stopped). `colour` is the theme's cursor colour; `first` the bar's first step (the theme's brass).
 //   OFF    unpowered
 //   ON     all sixteen in the colour, playing or not

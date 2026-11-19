@@ -9,7 +9,6 @@ namespace pattern_layout {
 constexpr int kGridLeft = 116, kGridTop = 54, kStepW = 32, kLaneH = 41;
 constexpr int kCellW = kStepW - 2, kCellH = kLaneH - 3;
 constexpr int kNameX = 8, kNameW = 104;
-constexpr int kLevelEdgeW = 2, kLevelEdgeH = 7; // the dim edge where a lane's volume ends, in its name's box: a piece at the top and one at the foot
 constexpr int kBlockW = kCellW - 8, kBlockFull = kCellH - 8;
 // The strip under the grid that spells out what is under the cursor: at the
 // same height in both views, so it does not jump when one turns into the other.

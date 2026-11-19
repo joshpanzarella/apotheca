@@ -55,6 +55,7 @@ public:
     void noteOnFrom(int note, float velocity, int from, float seconds) override;
     void noteOff(int note) override;
     void allNotesOff() override;
+    void chokeAll() override;
     void setSample(const float* data, int length) override;
     void render(float* left, float* right, int frames) override;
 
@@ -63,6 +64,8 @@ private:
         int note = -1;       // -1: free
         double position = 0.0, step = 1.0;
         float gain = 0.f;    // velocity
+        float fade = 1.f;    // multiplies the gain; falls while choked
+        float fadeStep = 0.f; // 0: not choking
         envelope::Envelope env; // the shared one (envelope.hpp): attack, full while held, release
         Slide slide;         // a glide still on its way to this voice's pitch
         unsigned age = 0;    // for choosing which to take when all eight are busy

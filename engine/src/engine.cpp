@@ -1287,7 +1287,7 @@ void Engine::apply(const Command& c) {
         ++playsTaken_; // (songEnded says which one stopped at its end; a Play counted in is taken now)
         if (c.d > 0) {
             // A COUNT IN: the song waits for it (render()), and nothing of it plays meanwhile.
-            if (playing_) stopPlaying();
+            if (playing_) stopPlaying(false);
             countPlay_ = c;
             countPlay_.d = 0;
             countSteps_ = c.d;
@@ -1302,7 +1302,7 @@ void Engine::apply(const Command& c) {
         clickOn_ = c.a != 0;
         break;
     case Command::Stop:
-        stopPlaying();
+        stopPlaying(c.b != 0);
         break;
     case Command::SetSongEnd: {
         // Switched while the song's last step plays: that step has asked a step ahead for the early
@@ -1802,13 +1802,18 @@ void Engine::tellHeardDone() {
     heardDone_.store(heardAsked_, std::memory_order_relaxed);
 }
 
-void Engine::stopPlaying() {
+void Engine::stopPlaying(bool byHand) {
     playing_ = false;
     landHeard(); // a mute waiting for a bar line that will not come
     countSteps_ = 0; // a COUNT IN under way is called off
     countShown_.store(0, std::memory_order_relaxed);
     clearPending(); // a hit that was waiting for its moment does not come after the song has stopped
     letGoOfNotes(true); // (Stop: a note that rings after let go rings on, so a bounce's tail keeps it)
+    if (byHand)
+        for (Track& track : tracks_) {
+            track.drums.chokeAll();
+            if (track.synth) track.synth->chokeAll();
+        }
     for (Track& track : tracks_) stillMods(track); // no MOD runs while stopped: every knob is given its centre
     heardTrack_ = -1;
     heardMask_ = 0;
@@ -2191,7 +2196,7 @@ void Engine::render(float* interleaved, int frames) {
         // as a Stop taken there would (before anything of that sample: a Stop is taken first).
         if (playing_ && untilStep_ <= 0.0 && songEndsNow()) {
             barLine(); // Catch: the song's last bar is the last bar it played
-            stopPlaying();
+            stopPlaying(false);
             songEnded_.store(playsTaken_, std::memory_order_relaxed);
         }
         // A COUNT IN: a click on each beat of it; where it ends the song begins, on that very sample.

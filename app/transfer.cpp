@@ -955,7 +955,7 @@ std::string Transfer::address() const {
         }
         freeifaddrs(all);
     }
-    return host + ":" + std::to_string(port_) + "/" + pin_;
+    return host + (port_ == 80 ? "" : ":" + std::to_string(port_)) + "/" + pin_; // (a browser asks port 80 itself)
 }
 
 void Transfer::serve() {

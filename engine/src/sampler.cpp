@@ -63,6 +63,8 @@ void Sampler::noteOn(int note, float velocity) {
     voice->step = std::pow(2.0, (note - value_[Root]) / 12.0 + value_[Tune] / 1200.0);
     voice->slide.stop();
     voice->gain = velocity > 1.f ? 1.f : velocity;
+    voice->fade = 1.f;
+    voice->fadeStep = 0.f;
     voice->env.stop();
     voice->env.on();
     voice->age = ++clock_;
@@ -75,6 +77,11 @@ void Sampler::noteOff(int note) {
 
 void Sampler::allNotesOff() {
     for (Voice& v : voices_) v.env.off();
+}
+
+void Sampler::chokeAll() {
+    for (Voice& v : voices_)
+        if (v.note >= 0 && v.fadeStep == 0.f) v.fadeStep = 1.f / (0.003f * sampleRate_);
 }
 
 void Sampler::noteOnFrom(int note, float velocity, int from, float seconds) {
@@ -103,9 +110,13 @@ void Sampler::render(float* left, float* right, int frames) {
                 }
                 const float envelope = v.env.next(shape_);
                 if (v.env.idle()) { v.note = -1; break; }
+                if (v.fadeStep > 0.f) {
+                    v.fade -= v.fadeStep;
+                    if (v.fade <= 0.f) { v.note = -1; break; }
+                }
                 const int at = static_cast<int>(v.position);
                 const float part = static_cast<float>(v.position - at);
-                left[i] += (data_[at] + part * (data_[at + 1] - data_[at])) * v.gain * envelope * level_ * kVoiceGain;
+                left[i] += (data_[at] + part * (data_[at + 1] - data_[at])) * v.gain * v.fade * envelope * level_ * kVoiceGain;
                 v.position += step;
             }
         }

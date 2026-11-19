@@ -90,12 +90,8 @@ void SamplePicker::show(int depth, const std::string& folder) {
             if (rowKey(rows_[i]) == was->second) cursor_ = static_cast<int>(i);
 }
 
-void SamplePicker::open(std::vector<std::string> names, std::vector<std::string> folders, const std::string& current, const char* title, const char* first, Jobs jobs) {
+void SamplePicker::setLists(std::vector<std::string> names, std::vector<std::string> folders) {
     all_ = std::move(names);
-    original_ = on_ = current;
-    title_ = title;
-    first_ = first;
-    jobs_ = std::move(jobs);
     // Every folder there is: those on the card, and those the names speak of (and the folders those are in).
     dirs_ = std::move(folders);
     for (const std::string& name : all_)
@@ -105,6 +101,19 @@ void SamplePicker::open(std::vector<std::string> names, std::vector<std::string>
     std::sort(dirs_.begin(), dirs_.end());
     dirs_.erase(std::unique(dirs_.begin(), dirs_.end()), dirs_.end());
     index();
+}
+
+void SamplePicker::rescan(std::vector<std::string> names, std::vector<std::string> folders) {
+    setLists(std::move(names), std::move(folders));
+    refresh();
+}
+
+void SamplePicker::open(std::vector<std::string> names, std::vector<std::string> folders, const std::string& current, const char* title, const char* first, Jobs jobs) {
+    setLists(std::move(names), std::move(folders));
+    original_ = on_ = current;
+    title_ = title;
+    first_ = first;
+    jobs_ = std::move(jobs);
     last_.clear();
     // Open in the folder the recording that is on is in, with the cursor on it.
     show(0, "");

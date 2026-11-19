@@ -175,6 +175,7 @@ private:
     bool stepped_ = false; // ...and something was changed with it, so letting go is not a tap
     SamplePicker picker_;
     void openPicker();
+    unsigned sampleFilesSeen_ = 0; // sampleFiles() the picker's lists were read at: behind, it reads them again
     std::vector<std::string> names_; // the recordings there were when A went down
     ui::Playhead head_; // where the lane last heard has got to
     int headLane_ = -1;

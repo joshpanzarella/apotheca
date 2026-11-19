@@ -45,11 +45,11 @@ public:
     //   SONG      TEMPO, CHORD PACK, KEY, SCALE, TRACK NAME, BOUNCE   (kept in the song, or about it)
     //   PLAYING   CLICK, COUNT IN, USB KEYBOARD
     //   LOOK      TEXT SIZE, THEME, PIANO ROLL
-    //   HANDHELD  VOLUME, BRIGHTNESS, STICK LIGHT, LIGHT COLOUR, STICK SPEED
+    //   HANDHELD  VOLUME, BRIGHTNESS, STICK LIGHT, LIGHT COLOUR, RING LEVEL, STICK SPEED
     //   SETUP     WIFI PAGE, NETWORK (our own firmware only: wifi.hpp), BUTTONS, CONTROLS
     // The numbers are kept nowhere (a setting is kept by its word in settings.txt): the order is free.
     enum Row { kTempo, kPack, kKey, kScale, kTrackName, kBounce, kClick, kCountIn, kMutes, kMidi, kTextSize, kTheme, kOctaves,
-               kVolume, kBrightness, kLight, kLightColour, kStick, kWifi, kNetwork, kTest, kControls, kRows };
+               kVolume, kBrightness, kLight, kLightColour, kRingLevel, kStick, kWifi, kNetwork, kTest, kControls, kRows };
     enum Group { kSong, kPlaying, kLook, kHandheld, kSetup, kGroups };
     static constexpr int groupOf(int row) { return row < kClick ? kSong : row < kTextSize ? kPlaying : row < kVolume ? kLook : row < kWifi ? kHandheld : kSetup; }
     static const char* groupName(int group);
@@ -70,7 +70,7 @@ public:
     // eleven with two, ten with three.
     // A row's PLACE is its place among the rows here (a row not here has none: `here`); `placeY` takes
     // places (`first`: the place shown at the top). A group's first row is always here (only
-    // BRIGHTNESS, STICK LIGHT and LIGHT COLOUR can be missing), so every heading has a row to stand on.
+    // BRIGHTNESS, STICK LIGHT, LIGHT COLOUR and RING LEVEL can be missing), so every heading has a row to stand on.
     // A small arrow after the top heading says a row is out of sight above, one after the last heading
     // in view that one is out of sight below.
     static constexpr int kRowH = 32, kRowsTop = 50, kHeadingGap = 22, kHeadingUp = 18, kHeadingY = 34, kRowX = 16, kRowW = 640 - 32;

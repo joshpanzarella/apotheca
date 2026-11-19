@@ -365,7 +365,7 @@ void testTheGesture() {
     rig.frames(150); // (held, as long as a delete would take: it is not one)
     rig.key(B, false);
     CHECK(session.mixDb(1) == 0 && session.mixPan(1) == 0 && rig.project().trackCount() == 2);
-    // Let go having turned something: not a tap, so no keyboard for its name.
+    // Let go having turned something: not a tap, so no instrument list.
     rig.key(A, false);
     rig.frames(1);
     CHECK(rig.app.session().view == View::Song && !song.mixing());
@@ -390,15 +390,22 @@ void testTheGesture() {
     CHECK(session.mixPan(1) == -kPanMost);
     const Heard left = hearTrackOne(rig);
     CHECK(left.left > 0.f && left.right == 0.f);
-    // A tap of A on the head still names the track; a tap of B there empties nothing and changes no level.
+    // A tap of A on the head opens the list of instruments (naming moved to R1); a tap of B there empties nothing and changes no level.
     session.setMix(1, -6, 10);
     rig.tap(B);
     CHECK(session.mixDb(1) == -6 && session.mixPan(1) == 10 && rig.project().trackCount() == 2);
     rig.tap(A);
     rig.frames(1);
+    CHECK(song.choosing() && rig.app.session().view == View::Song);
+    rig.tap(B);
+    rig.frames(1);
+    CHECK(!song.choosing());
+    // ...and a tap of R1 there names the track: the keyboard, on its let go.
+    rig.tap(R1);
+    rig.frames(1);
     CHECK(rig.app.session().view == View::Settings);
     session.view = View::Song;
-    // A held long enough for the card, nothing turned, let go: a look at the level, not a tap. No keyboard
+    // A held long enough for the card, nothing turned, let go: a look at the level, not a tap. No list
     // (owner, 2026-11-14). Just short of the card it is still a tap; the card is drawn only once it is up.
     rig.key(A, true);
     rig.frames(1);
@@ -413,8 +420,9 @@ void testTheGesture() {
     CHECK(!song.mixCardUp());
     rig.key(A, false);
     rig.frames(1);
-    CHECK(rig.app.session().view == View::Settings);
-    session.view = View::Song;
+    CHECK(song.choosing() && rig.app.session().view == View::Song);
+    rig.tap(B);
+    rig.frames(1);
     rig.frames(1);
     // A held on a cell is the cell's length, as it was: no level moves.
     song.moveCursorTo(0, 1);
@@ -527,7 +535,7 @@ void testOtherButtonsWithA() {
     rig.frames(150);
     rig.key(B, false);
     CHECK(rig.project().trackCount() == 2);
-    // Y, X, L1 with A held on a head: no mute, no solo, and A let go is no tap (no keyboard for the name).
+    // Y, X, L1 with A held on a head: no mute, no solo, and A let go is no tap (no instrument list).
     song.moveCursorTo(0, 1);
     rig.tap(UP);
     for (SDL_Keycode other : {Y, X, L1}) {
@@ -620,6 +628,12 @@ void testWhatIsDrawn() {
         CHECK(canvas.is(middle - 4, card.y + 54, ui::kBrass) && !canvas.is(middle + 4, card.y + 54, ui::kBrass));
         // ...and the level bar: brass at the left, the line's colour past -6 dB.
         CHECK(canvas.is(card.x + 10, card.y + 26, ui::kBrass) && canvas.is(card.x + SongScreen::kMixCardW - 10, card.y + 26, ui::kLine));
+        // The head itself fills with the level, as a lane's name does: a brass wash to -6 dB's share
+        // of the box, panel past it (the foot row: clear of the name, the number and the marks).
+        const int filled = (head.w - 2) * (-6 - kMixLeastDb) / (kMixMostDb - kMixLeastDb);
+        const int fy = head.y + head.h - 3;
+        CHECK(!canvas.is(head.x + filled - 1, fy, ui::kPanel2) && !canvas.is(head.x + filled - 1, fy, ui::kBg));
+        CHECK(canvas.is(head.x + filled + 2, fy, ui::kPanel2));
         // At the usual, the values are in the text's colour, and the pan says MIDDLE.
         rig.tap(B);
         CHECK(draw() && inkedRight(right, card.y + 6.f, "0 DB", ui::kText) && inkedRight(right, card.y + 34.f, "MIDDLE", ui::kText));
@@ -641,6 +655,9 @@ void testWhatIsDrawn() {
         const SongScreen::Place masterCard = song.mixCard();
         CHECK(masterCard.x + SongScreen::kMixCardW <= ui::kScreenW - 4); // held on the screen
         CHECK(inkedRight(masterCard.x + SongScreen::kMixCardW - 8.f, masterCard.y + 6.f, "-3 DB", ui::kBrass));
+        const int mfilled = (masterHead.w - 2) * (-3 - kMixLeastDb) / (kMixMostDb - kMixLeastDb);
+        const int my = masterHead.y + masterHead.h - 3;
+        CHECK(!canvas.is(masterHead.x + mfilled - 1, my, ui::kPanel2) && canvas.is(masterHead.x + mfilled + 2, my, ui::kPanel2));
         rig.key(A, false);
         CHECK(draw() && marked(kMasterTrack));
     }

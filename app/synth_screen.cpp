@@ -208,6 +208,7 @@ void SynthScreen::openPicker() {
     jobs.followFailures = [this] { return session_.followFailures(); };
     jobs.used = [this, track](const std::string& name) { return session_.sampleUses(name) - (name == project_.tracks[track].sample ? 1 : 0); };
     picker_.open(session_.sampleNames(), session_.sampleFolders(), trk().sample, "CLOUD: PICK ITS RECORDING", "THE BUILT-IN TONE", jobs);
+    sampleFilesSeen_ = session_.sampleFiles();
 }
 
 void SynthScreen::turn(float amount) {
@@ -386,6 +387,10 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
 void SynthScreen::update(const Input& input, Uint32 nowMs) {
     // A button let go while another screen was showing (a song opened, a tab turned) never told this
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
+    if (picker_.isOpen() && session_.sampleFiles() != sampleFilesSeen_) { // the card's lists changed (WiFi): read them again, the cursor kept
+        sampleFilesSeen_ = session_.sampleFiles();
+        picker_.rescan(session_.sampleNames(), session_.sampleFolders());
+    }
     if (!input.held(Button::A)) holding_ = false;
     // Let go when X is up, off MAIN, or when another track is up (two tracks of one synth share this
     // screen; picked on SONG with X still held): the gesture is the knob's on the track shown.

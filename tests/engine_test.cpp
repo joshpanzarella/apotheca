@@ -1342,6 +1342,30 @@ static void testARecordingOnALane() {
     CHECK(engine->setLaneSample(0, 5, twoHalves(400, 0.2f, 0.2f)));
 }
 
+static void testStopByHand() {
+    // A stop by hand (START: Stop with b = 1) fades sounding samples fast: a drum lane's long
+    // recording and a sampler's note go quiet within milliseconds. A stop on its own (a bounce,
+    // the song's end: b = 0) leaves them ringing, as before.
+    const auto afterStop = [](bool byHand) {
+        Engine engine;
+        CHECK(engine.setLaneSample(0, KICK, steadySample(2 * 48000, 0.5f)));
+        engine.send(step(KICK, 0, 1.f));
+        CHECK(engine.addSynthTrack(1, SynthKind::Sampler));
+        CHECK(engine.setTrackSample(1, steadySample(2 * 48000, 0.5f)));
+        engine.send(make(Command::Play));
+        engine.send(make(Command::NoteOn, 1, 60, 0, 0.8f));
+        CHECK(peakOf(renderFrames(engine, 2000)) > 0.1f); // both sounding
+        Command stop = make(Command::Stop);
+        if (byHand) stop.b = 1;
+        engine.send(stop);
+        return renderFrames(engine, 48000);
+    };
+    const std::vector<float> hand = afterStop(true);
+    CHECK(peakOf(std::vector<float>(hand.begin() + 2 * 2000, hand.end())) == 0.f); // faded in 3 ms, not played out
+    const std::vector<float> alone = afterStop(false);
+    CHECK(peakOf(alone) > 0.1f); // still ringing a second later
+}
+
 static void testWhereAHitStarts() {
     std::unique_ptr<Engine> engine(new Engine);
     CHECK(engine->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.4f)));
@@ -3496,6 +3520,7 @@ int main() {
     testPatternLoopsAfterSixteenSteps();
     testStepVelocityAndClearing();
     testStopAndRestart();
+    testStopByHand();
     testTempo();
     testTrackLevel();
     testTrackMasterSlotsRunInSeries();

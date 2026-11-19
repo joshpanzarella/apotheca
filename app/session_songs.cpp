@@ -295,7 +295,8 @@ void Session::keepSettings() const {
                                                         "\nlight " + std::to_string(stickLight_) + "\nclick " + std::to_string(click_) +
                                                         "\ncountin " + (countIn_ ? "1" : "0") + "\n" +
                                                         (lightColour_ != kLightTheme ? "lightcolour " + std::to_string(lightColour_) + "\n" : "") +
-                                                        (mutes_ != kMutesAtOnce ? "mutes " + std::to_string(mutes_) + "\n" : ""));
+                                                        (mutes_ != kMutesAtOnce ? "mutes " + std::to_string(mutes_) + "\n" : "") +
+                                                        (ringLevel_ != kBrightUsual ? "ringlevel " + std::to_string(ringLevel_) + "\n" : ""));
 }
 
 void Session::setBrightness(int percent) {
@@ -314,6 +315,12 @@ void Session::setLightColour(int which) {
     keepSettings();
 }
 
+void Session::setRingLevel(int percent) {
+    percent = (percent / kBrightStep) * kBrightStep; // in fives, as BRIGHTNESS
+    ringLevel_ = percent < kBrightLeast ? kBrightLeast : (percent > kBrightMost ? kBrightMost : percent);
+    keepSettings();
+}
+
 RingFrame Session::ringNow() const {
     static_assert(kRingThemes == kThemes, "a new theme is given its ring colour (ringThemeColour, lights.hpp)");
     RingPlace at;
@@ -327,7 +334,7 @@ RingFrame Session::ringNow() const {
     ringColours(lightColour_, ringThemeColour(theme_), project.track, beats, colours);
     // A bar's first step in brass; in white where the ring is too near brass to tell (RAINBOW and TRACK: brass).
     const Rgb first = lightColour_ == kLightTrack || lightColour_ == kLightRainbow ? lightColourOf(kLightBrass) : ringFirstFor(colours[0]);
-    return ringPicture(stickLight_, brightness_, at, colours, first);
+    return ringPicture(stickLight_, ringLevel_, at, colours, first);
 }
 
 void Session::setStickSpeed(float speed) {
@@ -372,6 +379,7 @@ void Session::loadSettings() {
         if (name == "countin" && (value == 0 || value == 1)) setCountIn(value == 1);
         if (name == "mutes" && value >= 0 && value < kMutesModes) setMutes(value); // (none: AT ONCE)
         if (name == "lightcolour" && value >= 0 && value < kLightColours) setLightColour(value); // (none: THEME)
+        if (name == "ringlevel" && value >= kBrightLeast && value <= kBrightMost) setRingLevel(value); // (none: 70, as the screen)
     }
     programFolder_ = folder;
 }

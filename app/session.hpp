@@ -225,6 +225,7 @@ public:
     // worked out again.
     void useSampleFolder(const std::string& folder) { sampleFolder_ = folder; }
     std::vector<std::string> sampleNames() const;
+    unsigned sampleFiles() const { return sampleFiles_; } // how many times the card's sample lists changed (WiFi): open pickers read them again
     // Delete a recording's file from the samples folder. Lanes that were playing it go back to
     // their built-in drum (a sampler: to none). False if there is no such recording.
     std::vector<std::string> sampleFolders() const; // the folders in the samples folder, two levels, the empty ones too
@@ -342,6 +343,7 @@ public:
     // and songs go on and come off (transfer.hpp). Off until turned on.
     bool toggleTransfer(unsigned seed);  // true if it is now on
     bool transferOn() const { return transfer_.running() || !pretendAddress_.empty(); }
+    Transfer& transfer() { return transfer_; } // (tests put a WiFi change in by hand: noteChange)
     // WiFi on our own firmware (wifi.hpp): joining a network. Here only where the system gives the
     // program its `apotheca-wifi` (APOTHECA_WIFI); elsewhere nothing of it shows or runs.
     Wifi& wifi() { return wifi_; }
@@ -351,8 +353,8 @@ public:
     // every 10 s as well as the status every second (wifi.hpp), which it asks for on every screen.
     bool wifiLooking = false;
     std::string transferAddress() const { return pretendAddress_.empty() ? transfer_.address() : pretendAddress_; } // what to type into the browser
-    // The page's address by NAME ("apotheca.local:8080/4821": the name our firmware says, with the
-    // address's port and number), or "" where no name is said (the port; not joined; an older system).
+    // The page's address by NAME ("apotheca.local/4821": the name our firmware says, with the
+    // address's port, unless it is 80, and number), or "" where no name is said (the port; not joined; an older system).
     std::string transferName() const;
     // For a still: the WIFI PAGE as if on at this address, and our firmware's WiFi saying this.
     void pretendWifi(const Wifi::Now& now, const std::string& address) { wifi_.pretend(now), pretendAddress_ = address; }
@@ -442,10 +444,12 @@ public:
     void setBrightness(int percent);
     int stickLight() const { return stickLight_; }
     int lightColour() const { return lightColour_; } // LIGHT COLOUR (lights.hpp: LightColour)
+    int ringLevel() const { return ringLevel_; }          // RING LEVEL: the ring's own brightness, percent
     // LIGHT COLOUR is TRACK on a ring that is here and lit: the SONG screen marks each head with its track's colour.
     bool trackColoursShown() const { return ringHere() && stickLight_ != kRingOff && lightColour_ == kLightTrack; }
     void setLightColour(int which);
     void setStickLight(int mode);
+    void setRingLevel(int percent);
     // What the ring shows now (ringPicture with the song's step and the theme's colours).
     RingFrame ringNow() const;
     void loadSettings();
@@ -703,6 +707,31 @@ public:
     BarCopy copyBarHere();
     BarCopy pasteBarHere();
     static std::string barCopyWords(BarCopy answer, bool paste, int bar); // (bar from 0)
+    enum class SceneCopy { Done, Same, NothingCopied, NoScene };
+    struct SceneClip {
+        bool has = false;
+        int scene = 0; // where it came from
+        struct Track {
+            TrackKind kind = TrackKind::None;
+            int bars = 1;
+            DrumPattern drums[kMaxBars];
+            NotePattern notes[kMaxBars];
+            float automation[kAutoLanes][kAutoSteps];
+        };
+        Track tracks[kNumTracks];
+        int repeats = 1, steps = 0;
+    };
+    SceneCopy copyScene(int scene);
+    SceneCopy pasteScene(int scene);
+    // ...on a scene of the SONG screen, and what was done said (say()):
+    // SCENE 1 COPIED, PASTED ON SCENE 2, and why not.
+    SceneCopy copySceneHere(int scene);
+    SceneCopy pasteSceneHere(int scene);
+    static std::string sceneCopyWords(SceneCopy answer, bool paste, int scene); // (scene from 0)
+    int copiedScene() const { return sceneClip_->has ? sceneClip_->scene : -1; }
+    const SceneClip& sceneClip() const { return *sceneClip_; }
+    void setSceneClip(const SceneClip& clip) { *sceneClip_ = clip; } // (the App, putting it back after a panic begun with R1)
+    unsigned sceneCopies() const { return sceneCopies_; }           // how many copies have been made (the App: did one come in a panic?)
     const BarClip& barClip() const { return clip_; }
     void setBarClip(const BarClip& clip) { clip_ = clip; } // (the App, putting it back after a panic began with L1 + R1)
     unsigned barCopies() const { return barCopies_; }      // how many copies have been made (the App: did one come in a panic?)
@@ -750,6 +779,8 @@ private:
     int resyncs_ = 0;
     BarClip clip_;           // what copyBar holds (memory only)
     unsigned barCopies_ = 0;
+    std::unique_ptr<SceneClip> sceneClip_; // what copyScene holds (memory only; itself on the heap: a whole scene)
+    unsigned sceneCopies_ = 0;
     char saidText_[64] = "";
     unsigned saidCount_ = 0;
     TapTempo taps_;
@@ -779,6 +810,7 @@ private:
     int brightness_ = kBrightUsual;
     int stickLight_ = kRingOn;
     int lightColour_ = kLightTheme;
+    int ringLevel_ = kBrightUsual; // the ring's own brightness (70: as the screen until it is turned)
     struct BounceJob {
         std::unique_ptr<Project> song;
         Bounce what = Bounce::Song;
@@ -909,6 +941,7 @@ private:
     bool updateReady_ = false; // accepted this run; the bar says so until the next start
     float updateMegabytes_ = 0.f;
     unsigned seenReceived_ = 0;
+    unsigned sampleFiles_ = 0;
     // Saved songs still to follow a rename (followLater): each batch of renames with the files it
     // goes through, in order.
     struct Follow {

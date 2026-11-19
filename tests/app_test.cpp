@@ -7461,8 +7461,8 @@ void testNamingATrackFromTheSongScreen() {
     rig.tap(B); // a tap of B there empties nothing
     CHECK(song.cursorOnHead() && rig.view() == View::Song && rig.app.drums().level(0, 0) == 0.9f);
     rig.tap(RIGHT);
-    // A: the keyboard, for that track. Type, keep, and the SONG screen is back with the name on the head.
-    rig.tap(A);
+    // R1: the keyboard, for that track. Type, keep, and the SONG screen is back with the name on the head.
+    rig.tap(R1);
     rig.frames(1);
     CHECK(rig.view() == View::Settings && rig.app.settings().typing() && rig.project().track == 1);
     rig.tap(A); // the first key
@@ -7473,18 +7473,27 @@ void testNamingATrackFromTheSongScreen() {
     CHECK(song.cursorOnHead() && song.cursorColumn() == 1);
     // B with nothing typed leaves it as it was, and also comes back.
     const std::string kept = rig.project().tracks[1].name;
-    rig.tap(A);
+    rig.tap(R1);
     rig.frames(1);
     rig.tap(Y, 2);
     rig.tap(B);
     CHECK(rig.view() == View::Song && kept == rig.project().tracks[1].name);
     // B with a name typed keeps it and comes back (owner, 2026-11-15).
-    rig.tap(A);
+    rig.tap(R1);
     rig.frames(1);
     rig.tap(Y);
     CHECK(rig.app.settings().typed() == kept.substr(0, 1));
     rig.tap(B);
     CHECK(rig.view() == View::Song && std::string(rig.project().tracks[1].name) == kept.substr(0, 1) && song.cursorOnHead());
+    // R1 let go after the cursor left the heads names nothing.
+    song.moveCursorTo(0, 1);
+    rig.tap(UP);
+    rig.key(R1, true);
+    rig.frames(1);
+    rig.tap(DOWN);
+    rig.key(R1, false);
+    rig.frames(1);
+    CHECK(rig.view() == View::Song);
     // From the SET tab's own row the keyboard stays on SET when it is done.
     rig.app.session().view = View::Settings;
     rig.app.settings().goTo(SettingsScreen::kTrackName);
@@ -7500,7 +7509,7 @@ void testNamingATrackFromTheSongScreen() {
     CHECK(!song.cursorOnHead());
 }
 
-// On a track's head, R1 changes its instrument.
+// On a track's head, A changes its instrument.
 void testChangingATracksInstrument() {
     Rig rig;
     Session& session = rig.app.session();
@@ -7522,16 +7531,16 @@ void testChangingATracksInstrument() {
     song.moveCursorTo(0, 1);
     rig.tap(UP);
     CHECK(song.cursorOnHead());
-    // R1: the list, on the instrument the track has. B puts it away with nothing changed.
-    rig.tap(R1);
+    // A: the list, on the instrument the track has. B puts it away with nothing changed.
+    rig.tap(A);
     rig.tap(B);
     CHECK(rig.project().tracks[1].kind == TrackKind::Phazed && rig.project().trackCount() == 2);
     // A on the same one: nothing changes either (the sound is not put back to its first).
-    rig.tap(R1);
+    rig.tap(A);
     rig.tap(A);
     CHECK(rig.project().tracks[1].kind == TrackKind::Phazed && rig.project().tracks[1].macro[3] == 0.9f);
     // Down one and A: it is a JAX-EP now. No track was added.
-    rig.tap(R1);
+    rig.tap(A);
     rig.tap(DOWN);
     rig.tap(A);
     TrackData& t = rig.project().tracks[1];
@@ -8789,10 +8798,10 @@ void testTheHintsFitAndSayWhatTheyDo() {
         // ...on a head (mute and solo are said there), on + TRACK, on a repeat count.
         rig.tap(UP);
         CHECK(rig.app.song().cursorOnHead() && draw() && hintedOn(canvas, scratch, "mute") && hintedOn(canvas, scratch, "solo"));
-        CHECK(hintKeyed(canvas, scratch, "X", "solo") && hintKeyed(canvas, scratch, "R1", "instrument"));
-        // ...typing its name (A on the head): Y deletes, B keeps, with something typed; with nothing, B leaves
+        CHECK(hintKeyed(canvas, scratch, "X", "solo") && hintKeyed(canvas, scratch, "R1", "name") && hintKeyed(canvas, scratch, "A", "instrument"));
+        // ...typing its name (R1 on the head): Y deletes, B keeps, with something typed; with nothing, B leaves
         // and START gives the track its instrument's own name (owner, 2026-11-15).
-        rig.tap(A);
+        rig.tap(R1);
         rig.frames(1);
         CHECK(session.view == View::Settings && rig.app.settings().typing());
         rig.tap(A);
@@ -9474,7 +9483,7 @@ void testChangingAnInstrumentSaysWhatGoes() {
     };
     rig.app.song().moveCursorTo(0, 1);
     rig.tap(UP);
-    rig.tap(R1); // the list, on PHAZED: the one it has
+    rig.tap(A); // the list, on PHAZED: the one it has
     CHECK(!says());
     rig.tap(DOWN); // JAX-EP
     CHECK(says());

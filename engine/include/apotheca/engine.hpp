@@ -169,7 +169,8 @@ struct Command {
                         //   d = a COUNT IN of that many steps first (easywins batch 2; 0: none): a click on each
                         //   beat of it, nothing of the song, and the song's step 1 on the sample after its last.
                         //   A Stop or a Panic meanwhile calls it off (and the Play is counted as taken)
-        Stop,           // stop; drums ring out, synth notes are let go
+        Stop,           // stop; b = 1: by hand (START): sounding samples fade out fast (drums, sampler).
+                        //   Otherwise drums ring out, synth notes are let go (a bounce, the song's end).
         Panic,          // silence, now. a = 1: the output fades to nothing in 5 ms and stays shut;
                         //   playing stops, every drum is cut and every note let go. a = 0: it may
                         //   open again, once what is left has died away (or the next thing is played).
@@ -955,7 +956,7 @@ private:
     bool playsOnce() const { return once_ || (songStop_ && !loopScene_); }
     // The step after the song's last: a song that stops at its end stops here (render()).
     bool songEndsNow() const;
-    void stopPlaying(); // Command::Stop, and a song stopping at its end
+    void stopPlaying(bool byHand); // Command::Stop (by hand from START, else tails ring), and a song stopping at its end
     void startPlaying(const Command& c); // Command::Play, at once or at the end of its COUNT IN
     // The METRONOME and the COUNT IN (easywins batch 2). The click is a table worked out once in
     // prepare(), read a sample at a time from where it began, so it is the same in any blocks.

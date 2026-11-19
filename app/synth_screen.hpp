@@ -190,6 +190,7 @@ private:
 
     // CLOUD's recording (SynthSpec::recording).
     SamplePicker picker_;
+    unsigned sampleFilesSeen_ = 0; // sampleFiles() the picker's lists were read at: behind, it reads them again
     std::string said_;
     Uint32 saidUntil_ = 0;
     bool stepped_ = false; // A was used to change something: letting go is not a tap

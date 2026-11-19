@@ -125,7 +125,7 @@ void SettingsScreen::typeButton(Button b) {
 
 bool SettingsScreen::here(int row) const {
     if (row == kBrightness) return session_.screenHere();
-    if (row == kLight || row == kLightColour) return session_.ringHere();
+    if (row == kLight || row == kLightColour || row == kRingLevel) return session_.ringHere();
     if (row == kNetwork) return session_.wifiHere();
     return row >= 0 && row < kRows;
 }
@@ -192,6 +192,7 @@ void SettingsScreen::change(int by) {
     case kBrightness: session_.setBrightness(session_.brightness() + kBrightStep * by); break;
     case kLight: session_.setStickLight(session_.stickLight() + by); break; // (a choice with ends)
     case kLightColour: session_.setLightColour(session_.lightColour() + by); break; // (so is this)
+    case kRingLevel: session_.setRingLevel(session_.ringLevel() + kBrightStep * by); break;
     case kStick: session_.setStickSpeed(session_.stickSpeed() + 0.05f * static_cast<float>(by)); break;
     case kTextSize: session_.setTextSize(session_.textSize() + by); break; // (it has ends, as PIANO ROLL has)
     case kTheme: session_.setTheme(session_.theme() + by); break;       // (so has this; the colours change from the next frame)
@@ -498,7 +499,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     }
 
     const char* names[kRows] = {"TEMPO", "CHORD PACK", "KEY", "SCALE", "TRACK NAME", "BOUNCE", "CLICK", "COUNT IN", "MUTES", "USB KEYBOARD", "TEXT SIZE", "THEME", "PIANO ROLL",
-                                "VOLUME", "BRIGHTNESS", "STICK LIGHT", "LIGHT COLOUR", "STICK SPEED", "WIFI PAGE", "NETWORK", "BUTTONS", "CONTROLS"};
+                                "VOLUME", "BRIGHTNESS", "STICK LIGHT", "LIGHT COLOUR", "RING LEVEL", "STICK SPEED", "WIFI PAGE", "NETWORK", "BUTTONS", "CONTROLS"};
     const int rowH = kRowH, w = kRowW; // (twelve rows shown: 34 a row, as it was with eleven, would run into the hints bar)
     // The heading of the first row in view, above the rows.
     const char* topHeading = groupName(groupOf(rowAt(first_)));
@@ -588,6 +589,11 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             note = which == kLightTheme ? "a colour picked for the theme" : which == kLightTrack ? "a colour for each track" : which == kLightRainbow ? "turns a light a beat" : "";
             break;
         }
+        case kRingLevel:
+            std::snprintf(text, sizeof text, "%d%%", session_.ringLevel());
+            part = static_cast<float>(session_.ringLevel()) / 100.f;
+            note = "how bright the ring is";
+            break;
         case kStick:
             std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(session_.stickSpeed() * 100.f)));
             part = (session_.stickSpeed() - Session::kStickSlowest) / (Session::kStickFastest - Session::kStickSlowest);

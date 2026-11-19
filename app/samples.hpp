@@ -38,6 +38,9 @@ bool sampleNameOk(const std::string& name);
 // "drums/kicks/808": the folder, all of it ("drums/kicks"; "" for a loose one), and the name by itself ("808").
 std::string sampleFolderOf(const std::string& name);
 std::string sampleLabel(const std::string& name);
+// A multisample file's note from its name ("Piano/C2" goes at C): the last note spelled in the
+// name by itself ("C2", "C#3", "Db3", any case), C4 as 60. -1: none there, or past the keys.
+int sampleNote(const std::string& name);
 constexpr int kSampleNameRoom = 64; // the longest a name is kept, with its folder and the ending 0
 
 } // namespace apotheca

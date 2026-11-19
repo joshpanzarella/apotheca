@@ -142,6 +142,7 @@ void SamplerScreen::openPicker() {
     jobs.followFailures = [this] { return session_.followFailures(); };
     jobs.used = [this, track](const std::string& name) { return session_.sampleUses(name) - (name == project_.tracks[track].sample ? 1 : 0); };
     picker_.open(session_.sampleNames(), session_.sampleFolders(), trk().sample, "THE SAMPLER: PICK ITS RECORDING", "NO RECORDING", jobs);
+    sampleFilesSeen_ = session_.sampleFiles();
 }
 
 void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
@@ -192,6 +193,10 @@ void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
 void SamplerScreen::update(const Input& input, Uint32 nowMs) {
     // A button let go while another screen was showing (a song opened, a tab turned) never told this
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
+    if (picker_.isOpen() && session_.sampleFiles() != sampleFilesSeen_) { // the card's lists changed (WiFi): read them again, the cursor kept
+        sampleFilesSeen_ = session_.sampleFiles();
+        picker_.rescan(session_.sampleNames(), session_.sampleFolders());
+    }
     if (!input.held(Button::A)) holding_ = false;
 
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;

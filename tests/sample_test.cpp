@@ -2599,6 +2599,21 @@ void testARecordingEndingInCapitals() {
     rig.tap(SDLK_RETURN);
 }
 
+// A multisample file's note from its name: the last note spelled in the name by
+// itself, C4 as 60. Sharps and flats, any case; folders and take numbers unread.
+void testNoteNames() {
+    CHECK(sampleNote("C2") == 36 && sampleNote("c2") == 36);
+    CHECK(sampleNote("C#3") == 49 && sampleNote("Db3") == 49 && sampleNote("db3") == 49);
+    CHECK(sampleNote("A0") == 21 && sampleNote("Bb1") == 34 && sampleNote("Cb3") == 47);
+    CHECK(sampleNote("C-1") == 0 && sampleNote("G9") == 127 && sampleNote("A-1") == 9);
+    CHECK(sampleNote("Piano/C2") == 36 && sampleNote("Piano C3") == 48 && sampleNote("C3 Piano") == 48);
+    CHECK(sampleNote("C4 take 2") == 60 && sampleNote("C4 C5") == 72); // the last one spelled
+    CHECK(sampleNote("take2") < 0 && sampleNote("EBONY") < 0 && sampleNote("808") < 0 && sampleNote("60") < 0);
+    CHECK(sampleNote("") < 0 && sampleNote("C") < 0 && sampleNote("H2") < 0); // (no German H)
+    CHECK(sampleNote("C10") < 0 && sampleNote("C-2") < 0);                   // past the keys
+    CHECK(sampleNote("C Major/Piano") < 0);                                 // folders unread
+}
+
 int main(int, char**) {
     testThePlayhead();
     testTheSamplePicker();
@@ -2624,6 +2639,7 @@ int main(int, char**) {
     testTheRecorder();
     testRecordingOntoALane();
     testRecordingOntoACloud();
+    testNoteNames();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

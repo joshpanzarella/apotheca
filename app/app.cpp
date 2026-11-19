@@ -16,7 +16,7 @@ constexpr Uint32 kPanicNoteMs = 4000; // how long the notice stays once the butt
 }
 
 App::App(Engine& engine)
-    : project_(new Project), session_(engine, *project_), song_(session_), drums_(session_), notes_(session_), kit_(session_), fx_(session_), mods_(session_), sampler_(session_), settings_(session_),
+    : project_(new Project), session_(engine, *project_), song_(session_), drums_(session_), notes_(session_), kit_(session_), fx_(session_), mods_(session_), sampler_(session_), settings_(session_), sceneClipBeforeShoulders_(new Session::SceneClip),
       phazed_(session_, phazedSpec()), jaxep_(session_, jx3pSpec()), fm6_(session_, fm6Spec()), physic_(session_, physicSpec()), acid_(session_, acidSpec()), cloud_(session_, cloudSpec()), morph_(session_, morphSpec()) {}
 
 // The one screen that is up: by the tab, and for PATTERN and DEVICE by the
@@ -58,6 +58,8 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
             trackBeforeShoulders_ = session_.project.track; // ...or, on FX, L1 / R1 step the track
             clipBeforeShoulders_ = session_.barClip();       // ...or, on the grids, L1 then R1 copy the bar
             copiesBeforeShoulders_ = session_.barCopies();
+            *sceneClipBeforeShoulders_ = session_.sceneClip(); // ...or, on SONG, R1 copies a scene
+            sceneCopiesBeforeShoulders_ = session_.sceneCopies();
         }
         if (down == 4) {
             panicking_ = true;
@@ -68,6 +70,11 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
             session_.wantSlices = -1;
             if (session_.barCopies() != copiesBeforeShoulders_) { // a copy on the way: not meant
                 session_.setBarClip(clipBeforeShoulders_);
+                saidSeen_ = session_.saidCount();
+                undoSaidUntil_ = 0;
+            }
+            if (session_.sceneCopies() != sceneCopiesBeforeShoulders_) { // a scene copied on the way: not meant either
+                session_.setSceneClip(*sceneClipBeforeShoulders_);
                 saidSeen_ = session_.saidCount();
                 undoSaidUntil_ = 0;
             }

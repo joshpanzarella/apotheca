@@ -15,8 +15,10 @@
 //                      Hold R1 and drag: copy it into every cell crossed.
 //   on a repeat count  (the column left of the tracks) hold A + stick up /
 //                      down: how many times the scene plays. Tap A: 1, 2, 4, 8.
+//                      R1 copies the whole scene; R1 on another row pastes it there (on its let go).
 //   on + TRACK         A, then pick the instrument: drums, Phazed, JAX-EP...
-//   on a track's head  (up from the top scene) tap A: its name. R1: its instrument. Hold B: delete it.
+//   on a track's head  (up from the top scene) tap A: its instrument. R1, on its let go: its name.
+//                      Hold B: delete it.
 //                      Hold A + UP / DOWN: its LEVEL, a dB a press; + LEFT / RIGHT: its PAN.
 //                      The stick, with A held, for big moves. B with A held: back to the usual
 //                      level and pan (0 DB, the middle). A changed one has a brass mark on its head.
@@ -68,7 +70,7 @@ public:
     // B held this long on a track deletes it; the warning bar starts after the wait.
     static constexpr Uint32 kTrackHoldWaitMs = 500, kTrackHoldMs = 2000;
     // A held this long on a head is the mixer, not a tap: its card comes up, and letting go then never
-    // names the track, turned or not (owner, 2026-11-14: a look at the level opened the keyboard).
+    // taps, turned or not (owner, 2026-11-14: a look at the level must not tap).
     static constexpr Uint32 kMixCardMs = 300;
     // What the hints bar says while the head fills (the head has room for one word).
     static constexpr const char* kTrackDeletingWords = "deleting the track: cannot be undone";
@@ -111,7 +113,7 @@ public:
     int cursorColumn() const { return column_; }
     bool cursorOnHead() const { return onHead_; }
     bool cursorOnMaster() const { return onMaster_; }
-    void shouldersPressed() { l1OnHead_ = dupArmed_ = false; } // (the App: all four shoulders, a panic: R1 let go copies no track)
+    void shouldersPressed() { l1OnHead_ = dupArmed_ = nameArmed_ = scenePasteArmed_ = false; } // (the App: all four shoulders, a panic: R1 let go copies and pastes nothing)
     bool copyKeyHeld() const { return l1OnHead_; }             // L1 is held on a track's head: R1 copies the track
     static int headMarkWidth(const Fonts& fonts, const char* letter); // a head's M or S mark, made to its letter
     bool mixing() const { return mixing_; } // A is held on a head (a track's or MASTER): the directions are the mixer's
@@ -205,6 +207,9 @@ private:
     // GO with L1 still held, so all four shoulders (a panic) never copy a track on the way.
     bool l1OnHead_ = false; // L1 went down on a track's head, and is held
     bool dupArmed_ = false; // ...and R1 went down after it
+    bool nameArmed_ = false; // R1 went down on a track's head: let go, it names the track (unless the cursor left the heads)
+    bool scenePasteArmed_ = false; // R1 went down on a repeat count with a scene copied: let go, it pastes there
+    int scenePaste_ = 0;           // ...on this scene (where it went down, wherever the cursor is now)
     int copyTrack_ = 0, copyScene_ = 0;
 
     Button repeating_ = Button::None;

@@ -1013,15 +1013,9 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             bar.a = 110;
             fill(r, kNameX + 1, y + 1, filled, kCellH - 2, bar);
         } else {
-            // (The lightest surface, and a dim edge where the volume ends: panel on bg could not be seen
-            // in BLACK, 1.08 to 1; the edge is 8 to 1 there. Owner, 2026-11-18.)
+            // (The lightest surface: panel on bg could not be seen in BLACK, 1.08 to 1. No edge where
+            // it ends: the two pieces confused. Owner, 2026-11-18/19.)
             fill(r, kNameX + 1, y + 1, filled, kCellH - 2, kPanel2);
-        }
-        // (Two pieces, above and below the name's letters: a name written over the edge is not crossed by it.)
-        if (filled >= kLevelEdgeW) {
-            const SDL_Color edge = nameHere && shaping_ ? kBrass : kDim;
-            fill(r, kNameX + 1 + filled - kLevelEdgeW, y + 1, kLevelEdgeW, kLevelEdgeH, edge);
-            fill(r, kNameX + 1 + filled - kLevelEdgeW, y + kCellH - 1 - kLevelEdgeH, kLevelEdgeW, kLevelEdgeH, edge);
         }
         if (nameHere) outline(r, kNameX - 1, y - 1, kNameW + 2, kCellH + 2, cursorColor, 2);
         const Font& nameFont = fonts.within(&Fonts::medium, laneLabel(lane), kNameW - 13.f); // (a long recording's name at XL: held at LARGE)

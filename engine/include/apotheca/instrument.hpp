@@ -43,6 +43,9 @@ public:
     // after they are let go keeps ringing, so a bounce, which sends Stop when the song's last sample
     // has played and then records the tail, keeps it. By default allNotesOff, as it always was.
     virtual void stopNotes() { allNotesOff(); }
+    // A stop by hand (not a bounce, not the song's end): voices playing recordings fade out fast,
+    // so nothing plays on. Default: none (synths let go by stopNotes instead).
+    virtual void chokeAll() {}
     // For an instrument that plays a recording: here it is (or nullptr for
     // none). The samples stay alive until replaced. Realtime safe.
     virtual void setSample(const float* data, int length) { (void)data; (void)length; }

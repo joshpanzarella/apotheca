@@ -1306,6 +1306,61 @@ void testSpreadOverFrames() {
 
 } // namespace
 
+// A recording sent, deleted or moved over WiFi while the list is open: on the list (or off
+// it) at once, the cursor kept where it was. Nothing is read again while the card stands still.
+void testWifiChangesAppearAtOnce() {
+    using Kind = SamplePicker::Kind;
+    Card card;
+    card.folder("kicks");
+    card.wav("kicks/808", 2000);
+    Rig rig(card);
+    Session& session = rig.session();
+    SamplePicker& list = rig.list();
+    rig.tap(A); // the list, on lane 5's SOUND
+    rig.frames(1);
+    CHECK(list.isOpen());
+    CHECK(rig.goTo(Kind::Folder, "kicks"));
+    const int idle = list.rowsMade();
+    rig.frames(10);
+    CHECK(list.rowsMade() == idle); // still: nothing read again
+    // Sent: into the folder showing, and a whole new folder with one in it. The card as the
+    // page would leave it, the changes as the page would tell them (noteChange, as its thread does).
+    card.wav("kicks/909", 100);
+    card.folder("snares");
+    card.wav("snares/909", 3000);
+    session.transfer().noteChange("", "kicks/909.wav");
+    session.transfer().noteChange("", "snares/909.wav");
+    rig.frames(2);
+    CHECK(list.rowsMade() > idle);
+    CHECK(rig.on(Kind::Folder, "kicks", 2)); // the cursor kept, the count up
+    bool snares = false;
+    for (const SamplePicker::Row& row : list.rows())
+        if (row.kind == Kind::Folder && row.name == "snares" && row.count == 1) snares = true;
+    CHECK(snares);
+    // Deleted: off the list, the cursor kept.
+    CHECK(std::remove((card.samples + "/kicks/808.wav").c_str()) == 0);
+    session.transfer().noteChange("kicks/808.wav", "");
+    rig.frames(2);
+    CHECK(rig.on(Kind::Folder, "kicks", 1));
+    // Moved: there under its new name.
+    CHECK(std::rename((card.samples + "/kicks/909.wav").c_str(), (card.samples + "/kicks/707.wav").c_str()) == 0);
+    session.transfer().noteChange("kicks/909.wav", "kicks/707.wav");
+    rig.frames(2);
+    rig.tap(A); // into kicks
+    rig.frames(1);
+    bool moved = false, gone = true;
+    for (const SamplePicker::Row& row : list.rows()) {
+        if (row.kind == Kind::Recording && row.name == "kicks/707") moved = true;
+        if (row.kind == Kind::Recording && row.name == "kicks/909") gone = false;
+    }
+    CHECK(moved && gone);
+    // The row under the cursor deleted: the cursor where rows still are.
+    CHECK(std::remove((card.samples + "/kicks/707.wav").c_str()) == 0);
+    session.transfer().noteChange("kicks/707.wav", "");
+    rig.frames(2);
+    CHECK(list.count() == 1 && list.under() && list.under()->kind == Kind::NewFolder);
+}
+
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--measure") {
         measure();
@@ -1321,6 +1376,7 @@ int main(int argc, char** argv) {
     testAMoveThatCouldNotBeSaved();
     testSpreadOverFrames();
     testTheRest();
+    testWifiChangesAppearAtOnce();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

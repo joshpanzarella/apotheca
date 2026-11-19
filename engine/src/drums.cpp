@@ -295,6 +295,12 @@ void DrumMachine::letGo(int lane) {
         if (v.audition && v.position >= 0.0 && v.fadeStep == 0.f) v.fadeStep = chokeStep_;
 }
 
+void DrumMachine::chokeAll() {
+    for (int lane = 0; lane < kDrumLanes; ++lane)
+        for (Voice& v : voices_[lane])
+            if (v.position >= 0.0 && v.fadeStep == 0.f) v.fadeStep = chokeStep_;
+}
+
 // RUNS (speed plan, batch 2). For a stretch of samples nothing about a voice moves but its place:
 // forward at speed 1, its level at rest (no glide, no rise, no fade), its THROW at rest, and none of
 // the things that change it falls inside (the end of the sound or of its part, where its fade begins,

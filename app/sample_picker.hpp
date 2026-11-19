@@ -118,6 +118,7 @@ public:
     // `folders`: the folders there are (Session::sampleFolders), the empty ones too. `first` names
     // the row before everything ("THE BUILT-IN DRUM").
     void open(std::vector<std::string> names, std::vector<std::string> folders, const std::string& current, const char* title, const char* first, Jobs jobs);
+    void rescan(std::vector<std::string> names, std::vector<std::string> folders); // the card's lists read again (WiFi): the rows again, the cursor kept
     bool isOpen() const { return open_; }
     void onButton(const ButtonEvent& event, bool playing);
     void update(const Input& input, Uint32 nowMs, bool playing);
@@ -172,6 +173,7 @@ private:
     bool emptyFolder(const Row& row) const;  // a folder hold B deletes
     bool carries(const Row* row) const { return row && row->kind == Kind::Recording && jobs_.move && !flat(); } // hold R1 carries it
     void index();                            // all_ or dirs_ changed: the counts again
+    void setLists(std::vector<std::string> names, std::vector<std::string> folders); // all_ and dirs_ new: the folders implied too, then the counts
     const std::vector<Row>& side(std::vector<Row>& rows, std::string& key, int depth, const std::string& folder) const;
     void drawTyping(SDL_Renderer* r, const Fonts& fonts) const;
     void drawColumn(SDL_Renderer* r, const Fonts& fonts, int x, int w, const std::vector<Row>& rows, int lit, bool cursor, int first) const;

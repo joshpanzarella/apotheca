@@ -37,7 +37,7 @@ void Session::togglePlay(bool song) {
     Command c;
     c.type = project.playing ? Command::Play : Command::Stop;
     c.a = project.scene;
-    c.b = song ? 0 : 1;
+    c.b = project.playing ? (song ? 0 : 1) : 1; // a stop by hand (not a bounce, not the song's end): its samples fade out fast
     if (c.type == Command::Play && countsIn()) c.d = kSteps; // COUNT IN: a bar of clicks first
     syncClick(); // (CLICK at RECORDING: on before the Play, so its first beat clicks)
     if (engine.send(c) && c.type == Command::Play) ++playsSent_;
@@ -431,10 +431,15 @@ void Session::update(Uint32 nowMs) {
     if (transfer_.received() != seenReceived_) {
         seenReceived_ = transfer_.received();
         if (!chordFolder_.empty()) packs = loadChordPacks(chordFolder_);
-        // And a recording renamed, moved, deleted or sent from the page: the open song follows.
-        // The songs that are shut follow a rename or a move too, on this thread: the one that autosaves.
+    }
+    // And a recording renamed, moved, deleted or sent from the page: the open song follows.
+    // The songs that are shut follow a rename or a move too, on this thread: the one that autosaves.
+    // Open lists of recordings read the card again (sampleFiles_).
+    const std::vector<Transfer::Change> changes = transfer_.takeChanges();
+    if (!changes.empty()) {
+        ++sampleFiles_;
         std::vector<std::pair<std::string, std::string>> renames;
-        for (const Transfer::Change& change : transfer_.takeChanges()) {
+        for (const Transfer::Change& change : changes) {
             recordingChanged(change.from, change.to);
             renames.push_back({change.from, change.to}); // one sent or deleted has no name on one side, and is passed over there
         }
@@ -631,6 +636,101 @@ std::string Session::barCopyWords(BarCopy answer, bool paste, int bar) {
     case BarCopy::DrumsOnDrums: return "DRUMS GO ON A DRUM TRACK";
     case BarCopy::NotesOnNotes: return "NOTES GO ON A NOTE TRACK";
     case BarCopy::NoTrack: return "NO BAR HERE";
+    }
+    return text;
+}
+
+Session::SceneCopy Session::copyScene(int scene) {
+    if (scene < 0 || scene >= kMaxScenes) return SceneCopy::NoScene;
+    sceneClip_->has = true;
+    sceneClip_->scene = scene;
+    for (int t = 0; t < kNumTracks; ++t) {
+        const TrackData& from = project.tracks[t];
+        SceneClip::Track& to = sceneClip_->tracks[t];
+        to.kind = from.kind;
+        to.bars = from.bars[scene];
+        std::memcpy(to.drums, from.drums[scene], sizeof to.drums);
+        std::memcpy(to.notes, from.notes[scene], sizeof to.notes);
+        std::memcpy(to.automation, from.automation[scene], sizeof to.automation);
+    }
+    sceneClip_->repeats = project.repeats[scene];
+    sceneClip_->steps = project.steps[scene];
+    ++sceneCopies_;
+    return SceneCopy::Done;
+}
+
+Session::SceneCopy Session::pasteScene(int scene) {
+    if (scene < 0 || scene >= kMaxScenes) return SceneCopy::NoScene;
+    if (!sceneClip_->has) return SceneCopy::NothingCopied;
+    // Only what would be pasted counts: a track whose instrument changed since is skipped below.
+    bool same = project.repeats[scene] == sceneClip_->repeats && project.steps[scene] == sceneClip_->steps;
+    for (int t = 0; t < kNumTracks && same; ++t) {
+        const TrackData& target = project.tracks[t];
+        const SceneClip::Track& clip = sceneClip_->tracks[t];
+        if (clip.kind != target.kind) continue;
+        same = target.bars[scene] == clip.bars && std::memcmp(&target.drums[scene], clip.drums, sizeof clip.drums) == 0 &&
+               std::memcmp(&target.notes[scene], clip.notes, sizeof clip.notes) == 0 &&
+               std::memcmp(&target.automation[scene], clip.automation, sizeof clip.automation) == 0;
+    }
+    if (same) return SceneCopy::Same; // nothing to do, and no step of undo
+
+    // A step of undo of its own, as pasteBar's: whatever was being edited just before ends here.
+    if (undoReady_ && cellMark() != cellMark_) noteEdit();
+    if (editing_ || !undoReady_) settled_ = patternsNow();
+    editing_ = false;
+    noteEdit();
+    for (int t = 0; t < kNumTracks; ++t) {
+        TrackData& target = project.tracks[t];
+        const SceneClip::Track& clip = sceneClip_->tracks[t];
+        if (clip.kind != target.kind) continue; // another instrument now: a drum bar cannot go on a synth
+        target.bars[scene] = clip.bars;
+        std::memcpy(target.drums[scene], clip.drums, sizeof clip.drums);
+        std::memcpy(target.notes[scene], clip.notes, sizeof clip.notes);
+        if (target.kind == TrackKind::Drums) sendDrumPattern(t, scene);
+        else if (isSynth(target.kind)) sendNotePattern(t, scene);
+        clearAutomation(t, scene, -1);
+        for (int lane = 0; lane < kAutoLanes; ++lane)
+            for (int step = 0; step < kAutoSteps; ++step)
+                if (clip.automation[lane][step] >= 0.f) setAutomation(t, scene, lane, step, clip.automation[lane][step]);
+    }
+    project.repeats[scene] = sceneClip_->repeats;
+    project.steps[scene] = sceneClip_->steps;
+    Command c;
+    c.type = Command::SetSceneRepeats;
+    c.scene = scene;
+    c.a = sceneClip_->repeats;
+    engine.send(c);
+    c.type = Command::SetSceneSteps;
+    c.a = sceneClip_->steps;
+    engine.send(c);
+    if (scene == project.scene) project.bar = 0;
+    if (undoReady_) {
+        settled_ = patternsNow(); // ...and nothing after it joins its step
+        editing_ = false;
+        cellMark_ = cellMark();
+    }
+    return SceneCopy::Done;
+}
+
+Session::SceneCopy Session::copySceneHere(int scene) {
+    const SceneCopy answer = copyScene(scene);
+    say(sceneCopyWords(answer, false, scene).c_str());
+    return answer;
+}
+
+Session::SceneCopy Session::pasteSceneHere(int scene) {
+    const SceneCopy answer = pasteScene(scene);
+    say(sceneCopyWords(answer, true, scene).c_str());
+    return answer;
+}
+
+std::string Session::sceneCopyWords(SceneCopy answer, bool paste, int scene) {
+    char text[64];
+    switch (answer) {
+    case SceneCopy::Done: std::snprintf(text, sizeof text, paste ? "PASTED ON SCENE %d" : "SCENE %d COPIED", scene + 1); break;
+    case SceneCopy::Same: std::snprintf(text, sizeof text, "SCENE %d IS THE SAME", scene + 1); break;
+    case SceneCopy::NothingCopied: return "NOTHING COPIED YET";
+    case SceneCopy::NoScene: return "NO SCENE HERE";
     }
     return text;
 }
@@ -1844,7 +1944,7 @@ std::unique_ptr<TrackImage> Session::trackImage(int t) const {
 }
 
 // A new handheld's engine is a new song but for the two buses, which hold nothing until they are told.
-Session::Session(Engine& engine, Project& project) : engine(engine), project(project), packs(loadChordPacks("")) {
+Session::Session(Engine& engine, Project& project) : engine(engine), project(project), packs(loadChordPacks("")), sceneClip_(new SceneClip) {
     for (int bus = 0; bus < kBuses; ++bus) sendEffects(busTrack(bus));
 }
 

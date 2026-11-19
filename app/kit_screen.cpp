@@ -116,6 +116,7 @@ void KitScreen::openPicker() {
     std::snprintf(title, sizeof title, "LANE %d: PICK ITS SOUND", lane + 1);
     jobs.used = [this, track, lane](const std::string& name) { return session_.sampleUses(name) - (name == project_.tracks[track].laneSample[lane] ? 1 : 0); };
     picker_.open(session_.sampleNames(), session_.sampleFolders(), trk().laneSample[lane_], title, "THE BUILT-IN DRUM", jobs);
+    sampleFilesSeen_ = session_.sampleFiles();
 }
 
 // The kit after or before in the list, put on at once. From a kit of the player's own making (in no
@@ -271,6 +272,10 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
 void KitScreen::update(const Input& input, Uint32 nowMs) {
     // A button let go while another screen was showing (a song opened, a tab turned) never told this
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
+    if (picker_.isOpen() && session_.sampleFiles() != sampleFilesSeen_) { // the card's lists changed (WiFi): read them again, the cursor kept
+        sampleFilesSeen_ = session_.sampleFiles();
+        picker_.rescan(session_.sampleNames(), session_.sampleFolders());
+    }
     if (!input.held(Button::A)) holding_ = false;
     if (!input.held(Button::B) || !onKit_ || input.held(Button::A)) kitDeleting_ = false;
     // B kept held on a kit of the player's own: its file is deleted when the bar is full.

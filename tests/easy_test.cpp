@@ -886,12 +886,14 @@ void testDuplicateOnSong() {
     CHECK(rig.project().trackCount() == 3 && song.cursorColumn() == 2 && song.cursorOnHead() && rig.said() == "TRACK 3: COPY OF 2");
     rig.key(L1, false);
     rig.frames(1);
-    // R1 alone on a head is still the list of instruments; L1 alone does nothing.
+    // R1 alone on a head names the track now (the list moved to A); L1 alone does nothing.
     rig.tap(L1);
     CHECK(rig.project().trackCount() == 3);
     rig.tap(R1);
-    CHECK(song.choosing() && rig.project().trackCount() == 3);
-    rig.tap(B);
+    CHECK(session.view == View::Settings && rig.project().trackCount() == 3);
+    rig.tap(B); // nothing typed: back, unnamed
+    rig.frames(1);
+    CHECK(session.view == View::Song);
     // R1 first, then L1: nothing.
     rig.key(R1, true), rig.frames(1), rig.tap(B);
     rig.key(L1, true), rig.frames(1), rig.key(R1, false), rig.frames(1), rig.key(L1, false), rig.frames(1);
@@ -921,6 +923,16 @@ void testDuplicateOnSong() {
     rig.key(L1, true), rig.frames(1), rig.key(R1, true), rig.frames(1), rig.key(L2, true), rig.frames(1), rig.key(R2, true), rig.frames(2);
     rig.key(R1, false), rig.frames(1), rig.key(L1, false), rig.key(L2, false), rig.key(R2, false), rig.frames(2);
     CHECK(rig.project().trackCount() == 3);
+    rig.tap(A); // (the panic's notice put away)
+    rig.frames(120);
+    // A panic begun R1 (then L1, L2, R2) on a head: nothing is named either.
+    session.view = View::Song;
+    song.moveCursorTo(0, 1);
+    rig.tap(UP);
+    rig.frames(1);
+    rig.key(R1, true), rig.frames(1), rig.key(L1, true), rig.frames(1), rig.key(L2, true), rig.frames(1), rig.key(R2, true), rig.frames(2);
+    rig.key(R1, false), rig.frames(1), rig.key(L1, false), rig.key(L2, false), rig.key(R2, false), rig.frames(2);
+    CHECK(session.view == View::Song);
     rig.tap(A); // (the panic's notice put away)
     rig.frames(120);
     // On a cell, L1 + R1 copies no track (R1 there is the cell's copy brush).
@@ -1384,8 +1396,8 @@ void testTheLooks() {
     rig.app.drums().moveCursorTo(6, 0); // (the cursor off the lanes looked at)
     Canvas canvas;
     if (!canvas.ok) return;
-    // A lane's volume in its name's box: the lightest surface as far as it is turned up, a dim edge
-    // where it ends, the background past it. In every theme, by the theme's own colours.
+    // A lane's volume in its name's box: the lightest surface as far as it is turned up, the
+    // background past it, no edge where it ends. In every theme, by the theme's own colours.
     for (int theme = 0; theme < kThemes; ++theme) {
         session.setTheme(theme);
         rig.frames(1);
@@ -1393,16 +1405,15 @@ void testTheLooks() {
         rig.app.draw(canvas.r, *canvas.fonts);
         const int y = kGridTop + 1 * kLaneH + kCellH - 3; // (the box's foot: under the name's letters)
         const int filled = static_cast<int>(std::round((kNameW - 2) * 0.5f)), end = kNameX + 1 + filled;
-        CHECK(canvas.is(end - 1, y, ui::kDim) && canvas.is(end - kLevelEdgeW, y, ui::kDim));
-        CHECK(canvas.is(end - kLevelEdgeW - 1, y, ui::kPanel2) && canvas.is(end - 12, y, ui::kPanel2));
+        CHECK(canvas.is(end - 1, y, ui::kPanel2) && canvas.is(end - 12, y, ui::kPanel2));
         CHECK(canvas.is(end, y, ui::kBg) && canvas.is(end + 12, y, ui::kBg));
-        // The edge is two pieces, at the top and the foot: none of it in the rows the name's letters have.
+        // No edge at the top or the foot either: the fill right up to where it ends, whatever the row.
         const int top = kGridTop + 1 * kLaneH;
-        CHECK(canvas.is(end - 1, top + 2, ui::kDim) && canvas.is(end - 1, top + kLevelEdgeH, ui::kDim));
-        CHECK(canvas.is(end - 1, top + kLevelEdgeH + 1, ui::kPanel2) && canvas.is(end - 1, top + kCellH - 2 - kLevelEdgeH, ui::kPanel2));
-        // At full the edge stands at the box's right; at none there is no edge and no fill.
+        CHECK(canvas.is(end - 1, top + 2, ui::kPanel2) && canvas.is(end - 1, top + kCellH - 3, ui::kPanel2));
+        CHECK(canvas.is(end, top + 2, ui::kBg) && canvas.is(end, top + kCellH - 3, ui::kBg));
+        // At full the fill stands at the box's right; at none there is no fill.
         const int y0 = kGridTop + kCellH - 3, y2 = kGridTop + 2 * kLaneH + kCellH - 3;
-        CHECK(canvas.is(kNameX + kNameW - 2, y0, ui::kDim) && canvas.is(kNameX + kNameW - 2 - kLevelEdgeW, y0, ui::kPanel2));
+        CHECK(canvas.is(kNameX + kNameW - 2, y0, ui::kPanel2) && canvas.is(kNameX + kNameW - 3, y0, ui::kPanel2));
         CHECK(canvas.is(kNameX + 20, y2, ui::kBg) && canvas.is(kNameX + 60, y2, ui::kBg));
         // The feel mark, and clear room between it and the name's first letter: nothing of the name's
         // colour left of kNameTextX, in the mark's rows.

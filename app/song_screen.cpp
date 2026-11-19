@@ -117,7 +117,7 @@ void SongScreen::moveCursor(Button direction, bool pressed) {
         }
         return;
     }
-    // Up from the top scene is the track's head: its name. A there types a new one.
+    // Up from the top scene is the track's head: its name. R1 there types a new one.
     if (onHead_) {
         if (direction == Button::Down) onHead_ = false;
         // Along the heads. Off either end is what is drawn beside them: + TRACK on the right
@@ -344,7 +344,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
 
     // The mixer: A held on a head (a track's, or MASTER's). The directions turn its level (up, down) and
     // its pan (left, right); B puts both back to the usual. A let go having turned nothing is a tap:
-    // on a track's head that opens the keyboard for its name (on the SET tab; it comes back here).
+    // on a track's head that opens the list of instruments, to change this track's.
     if ((onHead_ || onMaster_) && b == Button::A) {
         if (event.down) {
             mixing_ = true;
@@ -352,10 +352,11 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             mixSavedDb_ = mixSavedPan_ = 0.f;
             mixShown_ = mixTimed_ = false;
         } else {
-            if (mixing_ && !mixTurned_ && !mixShown_ && onHead_) { // a tap: let go before the card came up
-                project_.track = column_;
-                session_.wantTrackName = true;
-                session_.view = View::Settings;
+            if (mixing_ && !mixTurned_ && !mixShown_ && onHead_ && !input.held(Button::R1)) { // a tap: let go before the card came up (R1 held: naming or duplicating is on its way, not this)
+                choosing_ = true;
+                changing_ = column_;
+                for (int i = 0; i < kInstrumentCount; ++i)
+                    if (kInstruments[i].kind == project_.tracks[column_].kind) choice_ = i;
             }
             mixing_ = false;
         }
@@ -375,7 +376,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down) session_.setMix(mixTrack(), 0, 0), mixTurned_ = true; // back to the usual: 0 DB, the middle
         return;
     }
-    // Any other button with A held on a head: letting go of A is then no tap (no keyboard for the name),
+    // Any other button with A held on a head: letting go of A is then no tap (no instrument list),
     // and only START does its job (Y and X would mute or solo the track under the card).
     if (mixing_ && event.down) mixTurned_ = true;
     if (mixing_ && b != Button::Start) return;
@@ -411,12 +412,17 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             trackHoldTimed_ = false;
             trackHoldPart_ = 0.f;
         }
-        // R1: the list of instruments, to change this track's. It opens on the one it has.
-        if (b == Button::R1 && event.down && !mixing_) {
-            choosing_ = true;
-            changing_ = column_;
-            for (int i = 0; i < kInstrumentCount; ++i)
-                if (kInstruments[i].kind == project_.tracks[column_].kind) choice_ = i;
+        // R1: its name. It happens when R1 is LET GO (as DUPLICATE A TRACK's: on the way to a
+        // panic nothing is named), if the cursor never left the heads meanwhile. The keyboard is on
+        // the SET tab; it comes back here.
+        if (b == Button::R1 && !mixing_) {
+            if (event.down) nameArmed_ = true;
+            else if (nameArmed_) {
+                nameArmed_ = false;
+                project_.track = column_;
+                session_.wantTrackName = true;
+                session_.view = View::Settings;
+            }
         }
         return;
     }
@@ -469,6 +475,18 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (copying_) {
             copyTrack_ = column_;
             copyScene_ = scene_;
+        } else if (event.down && column_ == kRepeatColumn) {
+            // COPY A SCENE: nothing copied, or this one already, and it copies now (the AT END row
+            // too: it is an empty scene like any). Else the paste waits for R1's let go (as DUPLICATE
+            // A TRACK's: on the way to a panic nothing pastes).
+            if (session_.copiedScene() < 0 || session_.copiedScene() == scene_) session_.copySceneHere(scene_);
+            else {
+                scenePasteArmed_ = true;
+                scenePaste_ = scene_;
+            }
+        } else if (!event.down && scenePasteArmed_) {
+            scenePasteArmed_ = false;
+            session_.pasteSceneHere(scenePaste_);
         }
         return;
     }
@@ -523,6 +541,8 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
     if (!input.held(Button::R1)) copying_ = false;
     if (!input.held(Button::L1) || !onHead_) l1OnHead_ = false;
     if (!l1OnHead_ || !input.held(Button::R1)) dupArmed_ = false; // (a let go this screen never saw copies nothing)
+    if (!input.held(Button::R1)) scenePasteArmed_ = false; // (one it never saw pastes nothing either)
+    if (!input.held(Button::R1) || !onHead_) nameArmed_ = false; // (one it never saw names nothing; nor does one that left the heads)
     if (!onCell()) onHead_ = false; // the track under it went
     if (onMaster_ && (listing_ || choosing_)) onMaster_ = false; // (a song opened: start at its top)
     if (!input.held(Button::B)) bHeld_ = false;
@@ -672,6 +692,12 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         // nothing else: the number and the name come back if B is let go. The
         // words flash slowly, three times in the two seconds.
         const bool deleting = trackHoldPart_ > 0.f && t == column_;
+        // The mixer: while A is held on this head, its box fills with the level, as a lane's name
+        // does on the drum grid (the card's scale: from the bottom of the dB range).
+        if (mixing_ && !onMaster_ && t == column_ && !deleting) {
+            const int db = session_.mixDb(t);
+            fill(r, x + 1, kGridTop + 1, static_cast<int>(colW - 2) * (db - kMixLeastDb) / (kMixMostDb - kMixLeastDb), kHeadH - 2, faded(kBrass, 110));
+        }
         if (deleting) {
             const float part = trackHoldPart_ > 1.f ? 1.f : trackHoldPart_;
             fill(r, x + 1, kGridTop + 1, static_cast<int>((colW - 2) * part), kHeadH - 2, faded(kStop, 170));
@@ -755,6 +781,10 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         // MASTER, at the right-hand end: everything, after the tracks are mixed. A head and no cells.
         const int x = masterX();
         box(r, x, kGridTop, colW, kHeadH, kPanel2, kLine);
+        if (mixing_ && onMaster_) {
+            const int db = session_.mixDb(kMasterTrack);
+            fill(r, x + 1, kGridTop + 1, static_cast<int>(colW - 2) * (db - kMixLeastDb) / (kMixMostDb - kMixLeastDb), kHeadH - 2, faded(kBrass, 110));
+        }
         const char* name = fonts.fixed().small.width("MASTER") <= colW - 6.f ? "MASTER" : "MSTR"; // (as a head's name: the narrow columns at LARGE)
         fonts.within(&Fonts::small, name, colW > 60 ? colW - 6.f : 0.f).drawCentered(r, x + colW / 2.f, kGridTop + 14.f, name, kText);
         if (project_.masterDb != 0 || project_.masterPan != 0) fill(r, x + kMixMarkInset, kGridTop + kMixMarkInset, kMixMarkSize, kMixMarkSize, kBrass);
@@ -793,6 +823,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             if (holding_) fill(r, rx + 1, y + 1, (kRepeatW - 6) * repeats / kMaxRepeats, kRowH - 6, faded(kBrass, 110));
             outline(r, rx - 1, y - 1, kRepeatW - 2, kRowH - 2, cursorColor, 2);
         }
+        if (session_.copiedScene() == scene && !end) outline(r, rx + 1, y + 1, kRepeatW - 6, kRowH - 6, kBrass); // the copied scene
 
         for (int t = 0; t < tracks; ++t) {
             const TrackData& track = project_.tracks[t];
@@ -1061,9 +1092,9 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             hints(r, fonts, list, count);
             return;
         }
-        hint("A", "name");
+        hint("A", "instrument");
         hint("HOLD A", "mix");
-        hint("R1", "instrument");
+        hint("R1", "name");
         hint("HOLD B", "delete");
         hint("Y", "mute");
         hint("X", "solo"); // (X does not hear the track on SONG: its DEVICE page does)
@@ -1076,12 +1107,13 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("UP / DOWN", "times the scene plays");
         hint("TAP A", "1 > 2 > 4 > 8");
         hint("LEFT / RIGHT", "steps in a bar");
-    } else if (onSongEnd()) {
-        hint("A", project_.songEnd == kSongStop ? "song end: stop" : "song end: loop");
-        hint("START", project_.playing ? "stop" : "play song");
-    } else if (column_ == kRepeatColumn) {
-        hint("HOLD A", "times it plays");
-        hint("TAP A", "1 > 2 > 4 > 8");
+    } else if (onSongEnd() || column_ == kRepeatColumn) {
+        if (onSongEnd()) hint("A", project_.songEnd == kSongStop ? "song end: stop" : "song end: loop");
+        else {
+            hint("HOLD A", "repeats");
+            hint("TAP A", "1 > 2 > 4 > 8");
+        }
+        hint("R1", session_.copiedScene() < 0 ? "copy" : "paste"); // (which scene: its brass mark)
         hint("START", project_.playing ? "stop" : "play song");
     } else if (column_ == addColumn()) {
         hint("A", "add a track");

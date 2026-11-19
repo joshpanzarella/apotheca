@@ -40,7 +40,7 @@ New screens and gestures keep these; do not invent a variant.
 - **A** places, opens, picks. **Hold A + a direction** shapes or turns what is under the cursor.
 - **B** deletes, empties, goes back. **Hold B deletes for good** (with a bar that fills): never another button. Typing a name, B keeps it and leaves; Y deletes a letter.
 - **X** hears (on SONG it solos the track: owner, 2026-11-15). **Hold X** is "what it does": step effects on a drum hit, ratchet and glide on a note.
-- **Hold R1** drags: paint from an empty step, carry from a note, copy on SONG.
+- **Hold R1** drags: paint from an empty step, carry from a note, copy on SONG. R1 tapped on a scene's REPEATS box copies the whole scene; tapped on another row, it pastes.
 - **Hold L1 on the grids** (drum grid, slices, roll) is the bar key: **+ R1 copies the bar, + A pastes it**.
   So L1's own tap (the slices, the roll's zoom) acts on its LET GO, and only if nothing else was pressed meanwhile.
 - **Y** is the screen's special (chance, chord, mute, catch, roll).
@@ -2687,9 +2687,9 @@ effect in those two groups and fails one that does not.
   folder. Stills `kit-preset`, `-held`, `-own`. **Nobody has heard the kits.**
 - **The owner's five of 2026-11-18** (`easy_test looks`). SONG's column word is REPEATS (`SongScreen::
   kRepeatsWord`, low in the heads' row, 10 above the first box; `kRepeatW` 38, it was 34, so the word
-  fits at LARGE: the columns start 4 further right). **A lane's volume in its name's box is `kPanel2`
-  with a `kDim` edge where it ends** (`kLevelEdgeW`): panel on bg was 1.08 to 1 in BLACK; the fill is
-  1.22 and the edge 8.5 against the bg, 7.0 against the fill (every theme: 5.1 or more on bg). The
+  fits at LARGE: the columns start 4 further right). **A lane's volume in its name's box is `kPanel2`,
+  no edge where it ends** (tried 2026-11-18, confusing): panel on bg was 1.08 to 1 in BLACK; the fill
+  is 1.22. The
   name's word starts at `kNameTextX`, 5 clear of the feel mark (it was 1), in the grid and the slices.
 - **Solo is a tap of X on a track** (a cell or its head; owner, 2026-11-15: "I don't like the hold L1
   for solo since Y for mute is just a one tap"). It was a tap of L1, then for a day L1 HELD 400 ms

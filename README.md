@@ -128,8 +128,9 @@ playing while you undo.
 The bar at the top writes PATTERN as **PTRN** and DEVICE as **DVICE**, to give
 the six tabs room; this manual keeps the full words.
 **SELECT**, tapped by itself, goes to SONG from anywhere (and on SONG opens
-the list of songs). **START** plays: the song from
-the SONG screen, the scene being worked on from the others. **SELECT + START**
+the list of songs). **START** plays and stops: the song from
+the SONG screen, the scene being worked on from the others. A stop fades
+sounding samples fast, so nothing plays on. **SELECT + START**
 quits.
 
 ### DEVICE, the sampler
@@ -404,7 +405,7 @@ and the day it was built. The number goes up by one with every build.
 The rows stand under five headings: **SONG** (TEMPO, CHORD PACK, KEY, SCALE,
 TRACK NAME, BOUNCE), **PLAYING** (CLICK, COUNT IN, MUTES, USB KEYBOARD), **LOOK** (TEXT
 SIZE, THEME, PIANO ROLL), **HANDHELD** (VOLUME, BRIGHTNESS, STICK LIGHT, LIGHT
-COLOUR, STICK SPEED) and **SETUP** (WIFI PAGE, NETWORK, BUTTONS, CONTROLS). The page moves
+COLOUR, RING LEVEL, STICK SPEED) and **SETUP** (WIFI PAGE, NETWORK, BUTTONS, CONTROLS). The page moves
 a row at a time; a small arrow after a heading says there are rows out of sight
 that way.
 
@@ -419,6 +420,7 @@ that way.
 | BRIGHTNESS | The screen, 10% to 100% in fives (also **MENU + the volume keys**, ten at a time). **Only on Apotheca's own system for the RG40XXV** | |
 | STICK LIGHT | The light round the stick: OFF, ON (steady, in LIGHT COLOUR), BEAT (a flash on every beat while the song plays), STEPS (the ring goes round once a scene: its sixteen lights share the scene's length, the bar's first step in brass). **Only on Apotheca's own system** | |
 | LIGHT COLOUR | The ring's colour: THEME (a colour picked for each theme: BROWN's is BRASS, BLUE a sky blue, GREEN a spring green, BLACK white, PAPER amber, GREY an ice blue), TEAL, PURPLE, BRASS, RED, ORANGE, YELLOW, GREEN, BLUE, PINK, WHITE, TRACK (a colour for each track: the track you are on; while it is chosen each track's head on the SONG screen wears a thin bar of its colour along its foot, so the ring can be matched to a track), RAINBOW (each light its own colour, turning a light a beat while the song plays). **Only on Apotheca's own system** | |
+| RING LEVEL | The ring's own brightness, 10% to 100% in fives, apart from the screen's. **Only on Apotheca's own system** | |
 | STICK SPEED | 25% to 150%, kept for next time | |
 | TEXT SIZE | SMALL, MEDIUM, LARGE or XL, kept for next time | |
 | THEME | The colours: BROWN, BLUE, GREEN, BLACK, PAPER or GREY, kept for next time | |
@@ -427,7 +429,7 @@ that way.
 | CLICK | The metronome: OFF, ON (a click on every beat while the song plays, higher on a bar's first), RECORDING (only while it plays with PLAY + RECORD). It is never in a bounce, and CATCH never takes it | |
 | COUNT IN | OFF, or ONE BAR: with PLAY + RECORD, START clicks a bar first (the box above the bar counts 4, 3, 2, 1) and the song starts after it. START again calls it off | |
 | MUTES | AT ONCE, or NEXT BAR: a mute or a solo pressed while the song plays lands on the next bar line. Until then its M or S is drawn hollow on the track's head and the track sounds as it did. Stop lands it at once; pressing it back before the line calls it off | |
-| WIFI PAGE | | On / off. On Apotheca's own system the page's name shows beside its address: `or apotheca.local:8080/4821` |
+| WIFI PAGE | | On / off. On Apotheca's own system the page's name shows beside its address: `or apotheca.local/4821` |
 | NETWORK | | **Only on Apotheca's own system.** Which WiFi network the handheld is on: **hold A + up / down** through those found, let go to join (see "Joining a network" below). **Hold B** a second forgets the one joined |
 | BUTTONS | | The button test |
 | CONTROLS | | Hold a second: set the controls up again |
@@ -439,10 +441,10 @@ The page shows twelve rows. Going down past BUTTONS moves it up a row to show
 CONTROLS; a small arrow after HANDHELD (or PROJECT) says a row is out of sight
 that way.
 
-**BRIGHTNESS and STICK LIGHT** show only on Apotheca's own system for the
+**BRIGHTNESS, STICK LIGHT, LIGHT COLOUR and RING LEVEL** show only on Apotheca's own system for the
 RG40XXV (`os/README.md`), where nothing else looks after the screen's light and
 the ring round the stick. On the stock firmware the firmware keeps them and the
-two rows are not there. The ring dims with BRIGHTNESS. A tap of the power key
+rows are not there. A tap of the power key
 turns the screen off and the ring with it. Hold **MENU** and press a **volume
 key** to change the brightness from any screen (the help card goes while you
 do, so you see the screen itself).
@@ -475,8 +477,8 @@ APOTHECA drive, as any computer keeps its WiFi passwords. It is never written
 to a log.
 
 **`apotheca.local`**: on its own system the handheld also has a name on the
-network, so the page can be opened as `apotheca.local:8080/4821` (the same
-port and number) as well as by its address. Both are shown, on the WIFI PAGE
+network, so the page can be opened as `apotheca.local/4821` (the same
+number) as well as by its address. Both are shown, on the WIFI PAGE
 row and in the list of songs. Where two handhelds share a network the second
 is `apotheca-2.local`. A computer that does not look names up this way
 (some Windows and Android ones) still has the address.
@@ -1351,10 +1353,10 @@ The track columns share the width of the screen: with few tracks they are wide.
 | On | A | Hold A + stick | B | Hold R1 and drag |
 | --- | --- | --- | --- | --- |
 | A cell | Opens it on PATTERN | Left / right: how long it is (1, 2, 4 or 8 bars). **Up / down: TRANSPOSE** its notes and chords a semitone (the stick up / down: an octave), every bar of it; the box above the bar says how far (MOVED +3 SEMITONES). A drum cell does not move. If a key would pass C0 or C8 nothing moves (NO ROOM). One step of undo | Empties it | Copies it into every cell crossed |
-| A track's head (up from the top scene, with the D-pad) | **A** (a quick tap) types its name. Held, it is the mixer: once its card is up, letting go never names the track, turned or not. **Hold L1 and press R1** copies the track: a new track right after it with the same instrument, sound, effects, sends, MODs, mixer, name and every scene's patterns (the tracks after it move a place along; twelve is the most). The copy is not soloed. It is not undone by SELECT + B: hold B on the copy deletes it. **R1** changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go, and the list says so: this cannot be undone. **Hold B** two seconds deletes the track. Y and X work there as on its cells. | | | |
+| A track's head (up from the top scene, with the D-pad) | **A** (a quick tap) changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go, and the list says so: this cannot be undone. Held, it is the mixer: once its card is up, letting go never changes it, turned or not. While it is held the head fills with the level, as a lane's name does. **R1**, on its let go, types its name. **Hold L1 and press R1** copies the track: a new track right after it with the same instrument, sound, effects, sends, MODs, mixer, name and every scene's patterns (the tracks after it move a place along; twelve is the most). The copy is not soloed. It is not undone by SELECT + B: hold B on the copy deletes it. **Hold B** two seconds deletes the track. Y and X work there as on its cells. | | | |
 | A track (any of its cells) | **Y** mutes it and **X** solos it, each a tap, at once, playing or not; again to undo. X does not hear the track here: on its DEVICE page it does. L1 does nothing on a track. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. | | | |
 | A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted. The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
-| A repeat count | Tap: 1, 2, 4, 8 | Times the scene plays, 1 to 16 | Back to 1 | |
+| A repeat count | Tap: 1, 2, 4, 8. **R1** copies the whole scene; **R1** on another row pastes it there | Times the scene plays, 1 to 16 | Back to 1 | |
 | The song's end (the REPEATS box of the first empty row, just past the last scene) | Switches what the song does at its end: LOOP (a loop arrow) or STOP (a square) | | Back to LOOP | |
 | + TRACK | Pick DRUMS, PHAZED, JAX-EP, SAMPLER, FM-6, PHYSIC, ACID, CLOUD or MORPH | | | |
 | MASTER (the head at the right-hand end, right of + TRACK) | | Its level and pan, as a track's (below) | | |
@@ -1362,8 +1364,9 @@ The track columns share the width of the screen: with few tracks they are wide.
 The song runs to the last scene with anything in it. Then, by its **song end**:
 
 - **LOOP** (the usual): it comes round to the first scene, for good.
-- **STOP**: it stops on the step after the last scene's last step, as START
-  stopping it would: notes let go, echoes and tails ring out. The next START
+- **STOP**: it stops on the step after the last scene's last step: notes let go,
+  echoes and tails ring out (a stop by hand instead fades sounding samples
+  fast). The next START
   plays from the scene you are on, as always. Catch (Y) after it gives the
   song's last bar.
 
@@ -1482,7 +1485,7 @@ number: `gStickSpeed` in `app/ui.hpp` (0.75: a quarter slower than first built).
 ### Files over WiFi
 
 **L1 in the song list** turns it on. The list then shows an address, like
-`192.168.1.23:8080/4821`. Open it in a browser on any computer or phone on
+`192.168.1.23/4821` (`:8080` before the number on the stock firmware). Open it in a browser on any computer or phone on
 the same network.
 
 - **Send files**: CHOOSE FILES, or drop them on the page: recordings

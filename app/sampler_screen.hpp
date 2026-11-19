@@ -91,6 +91,7 @@ private:
     bool stepped_ = false; // A was used to change something: letting go is not a tap
     SamplePicker picker_;
     void openPicker();
+    unsigned sampleFilesSeen_ = 0; // sampleFiles() the picker's lists were read at: behind, it reads them again
     std::vector<std::string> names_;
     std::string said_;
     Uint32 saidUntil_ = 0;
