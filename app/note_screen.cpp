@@ -1434,6 +1434,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (under || chordUnder) hint("HOLD X", "effects");
         if (!under && !chordUnder) hint("HOLD B", "delete"); // (on a note, B's own hint says it)
         hint("L1", "zoom");
+        if (project_.bar == 0 && step_ == 0) hint("UP", "bars"); // up from here is the BARS stop
     }
     hints(r, fonts, list, count);
 }

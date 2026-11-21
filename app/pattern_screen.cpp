@@ -1328,6 +1328,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("A", "tap");
         hint("HOLD A", "tempo");
         hint("START", project_.playing ? "stop" : "play");
+        hint("UP", "bars"); // up from here is the BARS stop
     } else if (onName) {
         hint("HOLD A", "volume");
         hint("HOLD Y", "dice");

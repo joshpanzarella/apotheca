@@ -771,6 +771,27 @@ void testTheWordsFit() {
     CHECK(rig.said() == "BAR 1 COPIED");
     rig.frames(100); // (1.5 s: gone)
     CHECK(rig.said().empty());
+    // From the grid, UP advertises BARS exactly where up leads to it.
+    const ui::Hint tempo[] = {{"A", "tap"}, {"HOLD A", "tempo"}, {"START", "play"}, {"UP", "bars"}};
+    rig.project().track = 0;
+    rig.app.drums().moveCursorTo(0, 0);
+    rig.tap(UP);
+    drawn();
+    CHECK(rig.app.drums().cursorOnTempo() && barIs(tempo, 4) && ui::gHintsOver == 0);
+    rig.tap(DOWN);
+    drawn();
+    CHECK(!barIs(tempo, 4)); // back on the lanes: no UP bars
+    const ui::Hint cell[] = {{"A", "place"}, {"HOLD Y", "chord"}, {"HOLD R1", "paint"}, {"HOLD B", "delete"}, {"L1", "zoom"}, {"UP", "bars"}};
+    const ui::Hint cellDown[] = {{"A", "place"}, {"HOLD Y", "chord"}, {"HOLD R1", "paint"}, {"HOLD B", "delete"}, {"L1", "zoom"}};
+    rig.project().track = 1;
+    rig.app.notes().moveCursorTo(60, 0);
+    rig.project().bar = 0;
+    rig.frames(1);
+    drawn();
+    CHECK(barIs(cell, 6) && ui::gHintsOver == 0);
+    rig.tap(DOWN);
+    drawn();
+    CHECK(barIs(cellDown, 5));
 }
 
 } // namespace
