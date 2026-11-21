@@ -2,7 +2,7 @@
 # udhcpc's script for apotheca-wifi: BusyBox's own does the address, and this
 # starts avahi (so the handheld answers as apotheca.local) once there is one,
 # and stops it when the address goes. `wifi-address stop` stops avahi alone
-# (apotheca-wifi down).
+# (apotheca-wifi down), `wifi-address start` starts it (our own network).
 
 run=/run/apotheca-wifi
 
@@ -28,6 +28,7 @@ avahiStart() {
 
 case "$1" in
     stop) avahiStop ;;
+    start) avahiStart ;; # our own network: the name answered there too (its address is set by hand, no lease)
     deconfig|leasefail|nak)
         /usr/share/udhcpc/default.script "$@"
         [ "$1" = deconfig ] && avahiStop

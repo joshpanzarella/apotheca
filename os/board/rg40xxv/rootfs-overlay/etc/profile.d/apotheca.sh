@@ -1,5 +1,7 @@
-# Said at every login shell on the screen, USB serial or UART.
-if [ -z "$APOTHECA_SAID" ]; then
+# Said at every login shell on USB serial or UART. Not on the screen's own
+# shell (tty1): during a start that shell shares the screen with the
+# start-up picture, and no words go over it.
+if [ -z "$APOTHECA_SAID" ] && [ "$(tty 2>/dev/null)" != "/dev/tty1" ]; then
     export APOTHECA_SAID=1
     echo
     echo "Apotheca system, batch 4: Apotheca runs on the screen; the power key and battery are watched."

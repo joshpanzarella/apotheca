@@ -166,6 +166,9 @@ if shutil.which('mdir') and shutil.which('mtype'):
         check(r.returncode == 0, "p1 holds %s" % f)
     conf = mt('mtype', '-i', spec, '::extlinux/extlinux.conf').stdout
     check('root=PARTUUID=41504f54-02' in conf, "extlinux.conf: root=PARTUUID=41504f54-02")
+    appends = [l for l in conf.splitlines() if l.strip().startswith('APPEND')]
+    check(any('console=ttyS0' in l for l in appends) and not any('console=tty1' in l for l in appends),
+          "extlinux.conf: the kernel's messages go to the serial line only (the screen keeps its picture wordless)")
     check('FDTDIR /' in conf and 'LINUX /Image' in conf and 'FDT ' not in conf.replace('FDTDIR', ''),
           "extlinux.conf: LINUX /Image, FDTDIR / (the tree is $fdtfile, which U-Boot sets)")
     r = subprocess.run(['mtype', '-i', spec, '::dtb.img'], capture_output=True, env=env)
@@ -323,6 +326,8 @@ if unsquashfs:
         check(b'kernel-from-card.txt' in cat('/etc/init.d/S90bootlog') and b'skip=4096 count=1024' in cat('/etc/init.d/S90bootlog'),
               "S90bootlog turns a kernel log U-Boot wrote onto the bare card into a file")
         check(b'linux-report.txt' in cat('/etc/init.d/S90bootlog'), "S90bootlog copies the boot log to the boot partition (linux-report.txt)")
+        check(b'tty1' in cat('/etc/profile.d/apotheca.sh'),
+              "the login banner stays off the screen's own shell")
         check('::respawn:/usr/sbin/apotheca-power' in inittab, "inittab starts apotheca-power (and again if it stops)")
         check('::respawn:/usr/sbin/apotheca-keep apotheca /usr/libexec/apotheca/run' in inittab,
               "inittab starts Apotheca under apotheca-keep")
@@ -358,6 +363,13 @@ if unsquashfs:
               "and runs it only if it is an arm64 program")
         check(b'apotheca.rolledback' in cat('/usr/libexec/apotheca/run'),
               "run does not fall back to the CPU for the program put back after a new one failed")
+        wifi = cat('/usr/sbin/apotheca-wifi')
+        check(mode('/usr/sbin/apotheca-wifi').startswith('-rwx') and b'hotspot) hotspot' in wifi and b'mode=2' in wifi and b'udhcpd' in wifi,
+              "apotheca-wifi is there and knows our own network (hotspot: wpa_supplicant's AP mode, udhcpd)")
+        check(any('squashfs-root/usr/sbin/udhcpd' in l for l in listing.splitlines()),
+              "BusyBox's udhcpd is there to hand out addresses on our own network")
+        check(b'start) avahiStart' in cat('/usr/libexec/apotheca/wifi-address'),
+              "wifi-address starts avahi on our own network too (apotheca.local)")
 else:
     print("skip  p2's files (no unsquashfs)")
 

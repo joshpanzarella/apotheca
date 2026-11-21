@@ -6,16 +6,20 @@ in linux.fragment, copied into the kernel tree by external.mk).
 
     python3 os/tools/make-logo.py [--png PREVIEW.png]
 
-Needs Pillow. The lettering is the app's own (assets/fonts/routed-gothic-narrow.ttf
-on main, found beside this tree or named with --font), the colours the BROWN
-theme's (app/ui.hpp). Drawn at four times the size and made smaller, so the
+Needs Pillow and fontTools. The lettering is the app's own (assets/fonts/routed-gothic-narrow.ttf
+on main, found beside this tree or named with --font), but SHAPETAKER is set in the owner's
+Neokarut with its alt K and R (--shapetaker-font names the .otf; --kalt which K, K.alt2: the
+font is not kept in this tree, so regenerating needs the owner's copy). The colours are the
+BROWN theme's (app/ui.hpp). Drawn at four times the size and made smaller, so the
 edges are smooth; then held to 220 colours (the kernel takes 224).
 """
 import argparse, math, os, sys
 
 from PIL import Image, ImageDraw, ImageFont
 
-W, H = 640, 360          # the screen is 640 wide; the console's text starts under it
+W, H = 640, 464          # the screen is 640x480; the console's text keeps a 16 px strip under this
+                        # (the kernel will not show a logo as tall as the screen at all: 464 is the
+                        # tallest shown, 29 of the 8x16 font's 30 rows, and the art sits in the middle)
 S = 4                    # drawn this many times larger
 BG = (0, 0, 0)           # the console's own black, so the picture has no edge
 CREAM = (224, 213, 191)  # BROWN's text
@@ -37,6 +41,31 @@ def font_path(given):
     sys.exit("make-logo: the app's font was not found; name it with --font")
 
 
+def shapetaker_font(path, kalt):
+    """Neokarut with its alt K and R put on the K and R keys (a temporary copy)."""
+    if not path or not os.path.exists(path):
+        sys.exit("make-logo: SHAPETAKER is set in the owner's Neokarut; name the .otf with --shapetaker-font")
+    try:
+        from fontTools.ttLib import TTFont
+    except ImportError:
+        sys.exit("make-logo: fontTools is needed for the alt K and R (pip install fonttools)")
+    import tempfile
+    f = TTFont(path)
+    names = f.getGlyphOrder()
+    if kalt not in names or "R.alt1" not in names:
+        sys.exit("make-logo: %s has no %s / R.alt1" % (path, kalt))
+    for table in f["cmap"].tables:
+        if table.isUnicode():
+            if ord("K") in table.cmap:
+                table.cmap[ord("K")] = kalt
+            if ord("R") in table.cmap:
+                table.cmap[ord("R")] = "R.alt1"
+    tmp = tempfile.NamedTemporaryFile(suffix=".otf", delete=False)
+    tmp.close()
+    f.save(tmp.name)
+    return tmp.name
+
+
 def spaced(d, cx, y, text, font, fill, gap):
     """Text centred on cx, each letter `gap` apart beyond its own width."""
     widths = [d.textlength(c, font=font) for c in text]
@@ -48,14 +77,14 @@ def spaced(d, cx, y, text, font, fill, gap):
     return cx - total / 2, cx + total / 2
 
 
-def draw(font):
+def draw(font, wordmark):
     img = Image.new("RGB", (W * S, H * S), BG)
     d = ImageDraw.Draw(img)
     s = lambda v: int(round(v * S))
 
     # The emblem: a circle, a triangle in it and a bar across (the old sign
     # for air), a small circle at its heart; the theme's four accents round it.
-    cx, cy, r = 320, 98, 66
+    cx, cy, r = 320, 162, 66
     d.ellipse([s(cx - r), s(cy - r), s(cx + r), s(cy + r)], outline=BRASS, width=s(3))
     d.ellipse([s(cx - r + 9), s(cy - r + 9), s(cx + r - 9), s(cy + r - 9)], outline=LINE, width=s(1.5))
     tr = r - 9
@@ -69,18 +98,18 @@ def draw(font):
         x, y = cx + r * math.cos(math.radians(ang)), cy - r * math.sin(math.radians(ang))
         d.ellipse([s(x - 5), s(y - 5), s(x + 5), s(y + 5)], fill=col, outline=BG, width=s(2))
 
-    # SHAPETAKER, small and wide, between two brass rules.
-    small = ImageFont.truetype(font, s(21))
-    left, right = spaced(d, s(320), s(186), "SHAPETAKER", small, BRASS, s(11))
-    y = s(186) + s(13)
+    # SHAPETAKER, small and wide, between two brass rules: the owner's Neokarut, alt K and R.
+    small = ImageFont.truetype(wordmark, s(21))
+    left, right = spaced(d, s(320), s(250), "SHAPETAKER", small, BRASS, s(9))
+    y = s(250) + s(13)
     d.line([(s(150), y), (left - s(16), y)], fill=BRASS, width=s(1.5))
     d.line([(right + s(16), y), (s(490), y)], fill=BRASS, width=s(1.5))
 
     # APOTHECA, large.
     big = ImageFont.truetype(font, s(76))
-    spaced(d, s(320), s(218), "APOTHECA", big, CREAM, s(9))
+    spaced(d, s(320), s(282), "APOTHECA", big, CREAM, s(9))
     # A dim rule under it, teal and purple at its ends.
-    y = s(318)
+    y = s(382)
     d.line([(s(210), y), (s(430), y)], fill=DIM, width=s(1.5))
     d.ellipse([s(204), y - s(3), s(210), y + s(3)], fill=TEAL)
     d.ellipse([s(430), y - s(3), s(436), y + s(3)], fill=PURPLE)
@@ -101,16 +130,18 @@ def write_ppm(img, path):
                 row.extend(str(c) for c in px[x, y])
             for i in range(0, len(row), 15):
                 f.write(" ".join(row[i:i + 15]) + "\n")
-    return len(set(img.get_flattened_data()))
+    return len(set(img.getdata()))
 
 
 def main():
     a = argparse.ArgumentParser()
     a.add_argument("--font")
+    a.add_argument("--shapetaker-font")
+    a.add_argument("--kalt", default="K.alt2")
     a.add_argument("--png")
     a.add_argument("--out", default=OUT)
     o = a.parse_args()
-    img = draw(font_path(o.font))
+    img = draw(font_path(o.font), shapetaker_font(o.shapetaker_font, o.kalt))
     n = write_ppm(img, o.out)
     if o.png:
         img.save(o.png)

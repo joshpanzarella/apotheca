@@ -735,6 +735,12 @@ def main():
               "it got going (update-trying gone), keeps running, and is the program now")
         # 2. An arm64 program that stops at once (BusyBox, run as "apotheca"):
         #    two tries, then the system's program is back, drawing with the GPU.
+        # The swap kills sub-test 1's program: killed before it ran 10 s, apotheca-keep counts even
+        # this clean stop as a failed start, and the count below reads 3, not 2. Waited out (a slow
+        # desk waits without knowing it).
+        m.run("t=$(grep ' start: ' /data/apotheca/logs/apotheca-start.log | tail -n 1 | sed 's/^\\[//; s/\\].*//'); "
+              "n=0; while [ $n -lt 40 ] && awk -v t=\"$t\" 'NR==1{exit (($1 - t) >= 11)}' /proc/uptime; do sleep 1; n=$((n+1)); done",
+              timeout=90)
         swap_program(m, "cp /bin/busybox /data/apotheca/apotheca")
         bb_md5, _ = m.run("md5sum /bin/busybox | cut -d' ' -f1")
         check(wait_log(m, "the new program did not start twice", 120),
@@ -920,8 +926,28 @@ def main():
         m.run(w + " join 'NOBODY HERE' < /dev/null")
         out = wifi_until(r"not-found ", 60)
         check(out == "not-found NOBODY HERE", "a network that is not there: not-found, after a while (%r)" % out)
-        m.run(w + " down; for p in /tmp/d1.pid /tmp/d2.pid; do kill $(cat $p); done; killall wpa_supplicant; sleep 1; "
-              "rmmod mac80211_hwsim; rm -rf /data/apotheca/wifi")
+        # Our own network: `hotspot`, and a made-up radio joins it as a
+        # phone would (wlan2's access point is turned off first, and it
+        # joins with the plain supplicant and udhcpc).
+        m.run(w + " hotspot")
+        out = wifi_until(r"hotspot apotheca 192\.168\.4\.1", 45)
+        check(re.match(r"hotspot apotheca 192\.168\.4\.1( apotheca\.local)?$", out) is not None,
+              "hotspot: our own network is up at 192.168.4.1 (%r)" % out)
+        out, _ = m.run("wpa_cli -p /run/ap2 -i wlan2 terminate > /dev/null 2>&1; "
+                       "for c in /proc/[0-9]*/cmdline; do tr '\\0' ' ' < $c 2>/dev/null | grep -q 'udhcpd /tmp/d2.conf' && { p=${c#/proc/}; kill ${p%/cmdline} 2>/dev/null; }; done; sleep 1; "
+                       "printf 'ctrl_interface=/run/phone\\nnetwork={\\n ssid=\"apotheca\"\\n key_mgmt=NONE\\n}\\n' > /tmp/phone.conf && "
+                       "wpa_supplicant -B -D nl80211 -i wlan2 -c /tmp/phone.conf > /dev/null 2>&1 && sleep 3 && "
+                       "udhcpc -i wlan2 -n -q -s /usr/share/udhcpc/default.script > /dev/null 2>&1; ip -4 addr show dev wlan2",
+                       timeout=90)
+        check("192.168.4." in out,
+              "a phone (wlan2) joins it and gets an address of 192.168.4 (%s)" % out.split())
+        out, _ = m.run("ping -c 1 -W 2 192.168.4.1 > /dev/null 2>&1; echo $?; p=$(pidof udhcpc); [ -n \"$p\" ] && kill $p 2>/dev/null; "
+                       "wpa_cli -p /run/phone -i wlan2 terminate > /dev/null 2>&1; sleep 1; " + w + " down; " + w + " status; "
+                       "ps | grep -v grep | grep -c 'udhcpd.*/run/apotheca-wifi\\|wpa_supplicant.*wlan0'")
+        check(out.split() == ["0", "off", "0"],
+              "the phone reaches the handheld, and down stops our network too (%s)" % out.split())
+        m.run(w + " down; for c in /proc/[0-9]*/cmdline; do tr '\\0' ' ' < $c 2>/dev/null | grep -q 'udhcpd /tmp/d[12].conf' && { p=${c#/proc/}; kill ${p%/cmdline} 2>/dev/null; }; done; "
+              "killall wpa_supplicant; sleep 1; rmmod mac80211_hwsim; rm -rf /data/apotheca/wifi")
 
         # Quit is off: Apotheca, started again with the stand-in joypad there,
         # quit with SEL + START: it saves, leaves the mark, and the machine goes down.

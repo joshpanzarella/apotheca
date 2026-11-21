@@ -13,8 +13,14 @@
 #                   command line, never in a log); a saved network with no
 #                   password given is joined with what is saved
 #   forget NAME     the saved network deleted
+#   hotspot         our own network: the handheld is the access point (open;
+#                   a phone joins with one tap) and hands out addresses, so
+#                   files move with no router about (the page still asks for
+#                   its PIN). `down` turns it off with the rest; `up` and
+#                   `join` go back to joining networks.
 #   status          off | joining NAME | joined NAME ADDRESS [HOSTNAME] |
-#                   wrong-password NAME | not-found NAME
+#                   hotspot NAME ADDRESS [HOSTNAME] | wrong-password NAME |
+#                   not-found NAME
 #
 # Saved networks are /data/apotheca/wifi/networks.conf (wpa_supplicant's own
 # form): on the APOTHECA drive, so they go with the card. Its passwords are
@@ -104,6 +110,9 @@ dhcpStop() {
 }
 
 up() {
+    # Our own network first turned off, when it is on (its supplicant is not
+    # the joining kind, and `running` below could not tell).
+    [ -f "$run/hotspot" ] && down
     # The driver is a module, loaded at boot by its modalias; the interface
     # can take a moment after a resume or a slow probe.
     n=0
@@ -122,6 +131,7 @@ up() {
 
 down() {
     dev=$(iface)
+    hotspotOff
     dhcpStop
     running "$run/wpa.pid" && kill "$(cat "$run/wpa.pid")" 2>/dev/null
     rm -f "$run/wpa.pid"
@@ -134,7 +144,55 @@ down() {
     say "down"
 }
 
+# Our own network (HOTSPOT on the SET page). What joins is given an address
+# of 192.168.4, and nothing else: no way out and no names, so a phone keeps
+# its own way to the internet and the page is reached at 192.168.4.1 (and,
+# where the phone speaks it, apotheca.local).
+apSsid=apotheca
+apAddr=192.168.4.1
+
+hotspot() {
+    n=0
+    while ! dev=$(iface) && [ $n -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+    [ -n "$dev" ] || { say "hotspot: no wireless interface"; return 1; }
+    command -v rfkill >/dev/null && rfkill unblock wifi 2>/dev/null
+    # Whatever of joining runs is stopped (its supplicant, its DHCP, its
+    # target): the radio is ours now.
+    running "$run/wpa.pid" && kill "$(cat "$run/wpa.pid")" 2>/dev/null
+    rm -f "$run/wpa.pid"
+    dhcpStop
+    rm -f "$run/target" "$run/since" "$run/wrong"
+    ip addr flush dev "$dev" 2>/dev/null
+    ip link set "$dev" up 2>/dev/null
+    printf 'ctrl_interface=%s\nap_scan=2\nnetwork={\n\tssid="%s"\n\tmode=2\n\tfrequency=2412\n\tkey_mgmt=NONE\n}\n' \
+        "$ctrl" "$apSsid" > "$run/ap.conf"
+    wpa_supplicant -B -D nl80211 -i "$dev" -c "$run/ap.conf" -C "$ctrl" -P "$run/wpa.pid" < /dev/null > /dev/null 2>&1 \
+        || { say "hotspot: wpa_supplicant did not start"; return 1; }
+    ip addr add "$apAddr/24" dev "$dev" 2>/dev/null
+    printf 'interface %s\nstart 192.168.4.2\nend 192.168.4.20\noption subnet 255.255.255.0\nlease_file %s\n' \
+        "$dev" "$run/udhcpd.leases" > "$run/udhcpd.conf"
+    : > "$run/udhcpd.leases"
+    udhcpd "$run/udhcpd.conf" < /dev/null > /dev/null 2>&1 || { say "hotspot: udhcpd did not start"; return 1; }
+    /usr/libexec/apotheca/wifi-address start > /dev/null 2>&1
+    printf '%s' "$apSsid" > "$run/hotspot"
+    say "hotspot: $dev"
+    echo "hotspot $apSsid"
+}
+
+hotspotOff() {
+    # Only ours is stopped: its command line names our file (a DHCP server for another network is
+    # left alone). By its command line, not udhcpd's pid file, which this build does not write.
+    for cmd in /proc/[0-9]*/cmdline; do
+        if tr '\0' ' ' < "$cmd" 2>/dev/null | grep -q "udhcpd $run/udhcpd.conf"; then
+            p=${cmd#/proc/}
+            kill "${p%/cmdline}" 2>/dev/null
+        fi
+    done
+    rm -f "$run/hotspot"
+}
+
 scan() {
+    [ -f "$run/hotspot" ] && return 0 # our own network is on: the radio cannot look about
     dev=$(iface) || return 0
     running "$run/wpa.pid" || return 0
     cli scan > /dev/null
@@ -165,6 +223,7 @@ scan() {
 join() {
     name=$1
     [ -n "$name" ] || return 1
+    [ -f "$run/hotspot" ] && down # our own network off first: the radio joins another
     dev=$(iface) || return 1
     running "$run/wpa.pid" || up || return 1
     dev=$(iface)
@@ -215,6 +274,14 @@ forget() {
 }
 
 status() {
+    if [ -f "$run/hotspot" ]; then
+        name=$(cat "$run/hotspot")
+        dev=$(iface) && running "$run/wpa.pid" || { rm -f "$run/hotspot"; echo off; return 0; }
+        address=$(ip -4 addr show dev "$dev" 2>/dev/null | sed -n 's/.*inet \([0-9.]*\).*/\1/p' | head -n 1)
+        host=$(grep -o 'Host name is [^ ]*' "$run/avahi.log" 2>/dev/null | tail -n 1 | sed 's/^Host name is //; s/\.$//')
+        echo "hotspot $name${address:+ $address}${host:+ $host}"
+        return 0
+    fi
     dev=$(iface) || { echo off; return 0; }
     running "$run/wpa.pid" || { echo off; return 0; }
     s=$(cli status)
@@ -269,6 +336,7 @@ case "$1" in
     scan) scan ;;
     join) join "$2" ;;
     forget) forget "$2" ;;
+    hotspot) hotspot ;;
     status) status ;;
-    *) echo "usage: apotheca-wifi up|down|scan|status|join NAME|forget NAME" >&2; exit 2 ;;
+    *) echo "usage: apotheca-wifi up|down|scan|status|hotspot|join NAME|forget NAME" >&2; exit 2 ;;
 esac
