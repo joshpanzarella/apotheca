@@ -3,6 +3,7 @@
 #include "apotheca/drum_synth.hpp"
 #include "samples.hpp"
 #include "apotheca/drums.hpp"
+#include "apotheca/mod_rule.hpp"
 
 #include <cmath>
 #include <sstream>
@@ -94,6 +95,17 @@ bool Designer::ask(const std::string& line) {
     } else if (word == "normalize" || word == "trim") {
         r.kind = word == "trim" ? DesignRequest::Trim : DesignRequest::Normalize;
         if (!(in >> r.a) || r.a < 0 || r.a >= kDrumLanes) return false;
+    } else if (word == "fxset") {
+        r.kind = DesignRequest::FxSet;
+        if (!(in >> r.a >> value) || !std::isfinite(value) || r.a < 0 || r.a >= kFxIds) return false;
+        r.value = static_cast<float>(value);
+    } else if (word == "fxtype") {
+        r.kind = DesignRequest::FxType;
+        if (!(in >> r.a >> r.b) || r.a < 0 || r.a >= kFxTypeSlots || r.b < 0) return false;
+    } else if (word == "modset") {
+        r.kind = DesignRequest::ModSet;
+        if (!(in >> r.a >> r.b >> value) || !std::isfinite(value) || r.a < 0 || r.a >= kModsPerTrack || r.b < 0 || r.b >= kModFields + kModSteps) return false;
+        r.value = static_cast<float>(value);
     } else {
         return false;
     }

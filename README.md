@@ -15,7 +15,7 @@ after a classic bass line box, 64 presets), CLOUD (clouds of grains from your re
 one to eight bars, each with its own repeat count. Four screens:
 
 - **SONG**: tracks across, scenes down. Add tracks, set how many times each
-  scene plays, copy bars by dragging.
+  scene plays, copy cells and scenes with R1.
 - **PATTERN**: a drum grid (levels, nudge, chance, paint, lane dice, a live human feel and swing for each lane) or, for
   a synth, a piano roll on its side (keys across, time down) with chords
   from chord packs.
@@ -32,8 +32,8 @@ how far through it is: one block for each time the scene plays, filling as
 the bar goes by.
 
 A sound designer web page (see "The sound designer") sets a synth's sounds,
-a sampler's and a drum kit's, from a computer's browser. Not built yet: the handheld making its own WiFi
-hotspot.
+a sampler's and a drum kit's, from a computer's browser. The handheld makes
+its own WiFi hotspot too (HOTSPOT on the SET tab).
 
 ## Build
 
@@ -143,6 +143,26 @@ plays the recording as it was made; an octave up, twice as fast.
 | --- | --- | --- |
 | SOUND | **Tap A: the list of recordings.** Or hold A + up / down: one at a time | None |
 | PITCH, TUNE, START, END, ATTACK, RELEASE, LOOP, LEVEL | The stick turns it; the D-pad moves it by one | Its usual value |
+| PRESET | The preset after / before: the ends stop | Held a second, on one of your own: deletes its file (the track keeps its sound) |
+
+**PRESET is the sound kept as a preset of its own** (or "-"): the
+recording, its settings, CHOP and the whole sound around it, as a synth's
+save keeps. **R1 on it saves the track's sound under a name**: the keys come
+up (A types, Y deletes, B leaves without saving, START saves, 24 letters at
+most); under a name taken, it replaces that one. A preset is kept as
+`NAME.sampler` in `presets` beside the program.
+
+**A multisample**: where the files beside the picked one spell notes in
+their names (C2, C#3, Db3), they play too, each round its own note — up to 24
+recordings, split halfway between their notes. The picked one plays at its
+spelled note, or where PITCH says where it spells none; PITCH moves the whole
+set as it moves one recording. The song still names only the one picked, and
+the picture says how many play (3 ZONES).
+
+**CHOP (L1)** cuts the one recording into 16 even slices, C1 up: each key
+plays its slice at its own pitch, PITCH moving every slice together. START,
+END and LOOP work within the slice played. Not with a multisample: where one
+is loaded its zones play instead.
 
 **START and END are where a note begins and ends in the recording**, in
 percent of it: a note plays from START to END and stops, and with LOOP on it
@@ -405,7 +425,7 @@ and the day it was built. The number goes up by one with every build.
 The rows stand under five headings: **SONG** (TEMPO, CHORD PACK, KEY, SCALE,
 TRACK NAME, BOUNCE), **PLAYING** (CLICK, COUNT IN, MUTES, USB KEYBOARD), **LOOK** (TEXT
 SIZE, THEME, PIANO ROLL), **HANDHELD** (VOLUME, BRIGHTNESS, STICK LIGHT, LIGHT
-COLOUR, RING LEVEL, STICK SPEED) and **SETUP** (WIFI PAGE, NETWORK, BUTTONS, CONTROLS). The page moves
+COLOUR, RING LEVEL, STICK SPEED) and **SETUP** (WIFI PAGE, NETWORK, HOTSPOT, BUTTONS, CONTROLS). The page moves
 a row at a time; a small arrow after a heading says there are rows out of sight
 that way.
 
@@ -429,8 +449,9 @@ that way.
 | CLICK | The metronome: OFF, ON (a click on every beat while the song plays, higher on a bar's first), RECORDING (only while it plays with PLAY + RECORD). It is never in a bounce, and CATCH never takes it | |
 | COUNT IN | OFF, or ONE BAR: with PLAY + RECORD, START clicks a bar first (the box above the bar counts 4, 3, 2, 1) and the song starts after it. START again calls it off | |
 | MUTES | AT ONCE, or NEXT BAR: a mute or a solo pressed while the song plays lands on the next bar line. Until then its M or S is drawn hollow on the track's head and the track sounds as it did. Stop lands it at once; pressing it back before the line calls it off | |
-| WIFI PAGE | | On / off. On Apotheca's own system the page's name shows beside its address: `or apotheca.local/4821` |
+| WIFI PAGE | | On / off. On Apotheca's own system the row reads the page's name (`ON apotheca.local/4821`), with the address beside it (`or 192.168.1.5/4821`) |
 | NETWORK | | **Only on Apotheca's own system.** Which WiFi network the handheld is on: **hold A + up / down** through those found, let go to join (see "Joining a network" below). **Hold B** a second forgets the one joined |
+| HOTSPOT | | **Only on Apotheca's own system.** On / off. On, the handheld is its own network and a phone joins it (see "Our own network" below) |
 | BUTTONS | | The button test |
 | CONTROLS | | Hold a second: set the controls up again |
 
@@ -475,6 +496,16 @@ there.
 The password goes to the system and is kept in `wifi/networks.conf` on the
 APOTHECA drive, as any computer keeps its WiFi passwords. It is never written
 to a log.
+
+**Our own network**: where there is no router about (a studio, the road), turn
+**HOTSPOT** on instead of joining one (the WIFI PAGE comes on with it: one
+tap does both). The handheld becomes an open network
+called `apotheca`, a phone joins it with one tap, and the page is reached at
+`192.168.4.1` (the same number after it). The page still asks for
+its PIN. The phone gets no way out through the handheld and keeps its own
+internet. A again turns it off: the page goes off too, unless it was on by
+hand (then a saved network rejoins by itself). While
+it is on, NETWORK names it and HOLD B forgets nothing.
 
 **`apotheca.local`**: on its own system the handheld also has a name on the
 network, so the page can be opened as `apotheca.local/4821` (the same
@@ -526,7 +557,7 @@ makes the sound**: the page is only the controls. Turn the WiFi page on
 designer".
 
 - It works on **the track being worked on** on the handheld, if that is a
-  PHAZED, JAX-EP, FM-6, PHYSIC, ACID, SAMPLER or DRUMS track. Move to another track there and the page follows.
+  PHAZED, JAX-EP, FM-6, PHYSIC, ACID, CLOUD, MORPH, SAMPLER or DRUMS track. Move to another track there and the page follows.
 - **A SAMPLER track** shows its recording as a picture, with **START and END
   as marks to drag** (or click: the nearer mark comes to the click). They stop
   a percent short of each other, as on the handheld. Under it are its eight
@@ -534,8 +565,8 @@ designer".
   RELEASE, LOOP, LEVEL). **PLAY** (or the space bar), held, plays it at its
   own pitch; the keys play it higher and lower. The list above the picture
   picks another recording from the card (a recording sent from the WiFi page
-  is in it at once, one put there another way within five seconds). A sampler
-  keeps no presets: its sound is its recording. Every change is the
+  is in it at once, one put there another way within five seconds). The page
+  does not save presets; the handheld's PRESET row does. Every change is the
   handheld's own: undo, the song file and the SAMPLER screen follow.
 - **A DRUMS track** shows its kit: **all eight lanes**, each a card (two
   side by side on a computer, one under another on a phone). A lane's card
@@ -555,6 +586,14 @@ designer".
 - Every setting of the synth is on the page, in the same groups as the
   handheld's pages, with the eight macros at the top. Phazed's envelopes
   are drawn as lines. Turn something on the handheld and the page shows it.
+- Every page ends with **EFFECTS** and **MODS**, whatever the instrument.
+  EFFECTS is the track's three slots (each: which effect it holds, then its
+  settings, read as the handheld reads them), its two sends, the ECHO and
+  SPACE buses, the master's two slots, and the track's LEVEL and PAN on the
+  mixer. MODS is the two MODs: KIND, TARGET, DEPTH, RATE, SHAPE, PHASE,
+  LENGTH, SLEW, CHANCE, SPEED, and a STEPPER's row of 16 steps. Aiming an
+  OFF MOD at something wakes it as an LFO, as the handheld's new one. A bus
+  takes NONE or its own family; a TARGET that does not fit is nothing.
 - **Play it** by clicking the keys or with the computer's keyboard
   (A W S E D F T G Y H U J K; Z and X change octave).
 - **SAVE AS PRESET** keeps the track's whole sound under a name: the synth
@@ -617,6 +656,13 @@ three effects, its ECHO and SPACE sends, GLIDE FROM and its two MODs.
 - **A new track starts plain** on its synth's first preset, whatever that
   preset holds.
 - The mixer's LEVEL and PAN are never in a preset.
+- **R1 on PRESET** on the DEVICE screen saves the sound as a preset of its
+  own: the keys come up to name it (A types, Y deletes, B leaves without
+  saving, START saves, 24 letters at most). It lands in the USER folder with
+  everything above, on every synth; under a name taken, it replaces that one.
+  A sampler saves the same way (recording, settings, CHOP and the whole
+  sound), picked with hold A + up / down and deleted with B held a second;
+  one of yours is kept as `NAME.sampler` in `presets`.
 - Built-in presets beyond the synth's own are added after them, each in a
   folder of its own (JAX-EP's PADS, PHYSIC's SHIMMER, ATMOS, METAL..., FM-6's KEYS, BASS...). How to write one:
   `docs/plans/presets-plan.md`.
@@ -639,6 +685,17 @@ made longer, a scene that was never cut grows with it.
 (Songs kept before this said "steps to a bar"; they open with the same
 length they had for one-bar scenes.)
 
+### A scene's own tempo and meter
+
+Every scene plays at the song's tempo in 4/4 until it is given its own. On
+the scene's `x2` box on SONG, **hold L1: up / down is its tempo in BPM, left /
+right the steps in its bars** (a bar of 12 is 3/4, of 8 is 2/4). **B** puts
+both back (the tempo follows the song, 16 steps). A line says each as it is
+turned. Only the first steps of a pattern bar play in a short bar; the rest
+are shaded on the grids and kept, as past a cut. The metronome clicks the
+downbeat and every fourth step; a bounce and a MIDI file follow each scene
+(a MIDI file writes the tempo and time signature where they change).
+
 ### Next scene: carry on from a copy
 
 You have a loop going and want the next part of the song to start from it.
@@ -647,7 +704,8 @@ You have a loop going and want the next part of the song to start from it.
   press Y.** A line says "SCENE 2: COPY OF 1".
 - The scene you are on is copied whole into a **new scene right after it**:
   every track's cell, how long the scene is, how many times it plays, its
-  automation. The scenes after it move down one. Nothing is written over.
+  tempo and meter, its automation. The scenes after it move down one. Nothing
+  is written over.
 - **You are put on the new scene**, on the same screen, track, bar and
   cursor. Carry on adding; the scene before stays as it was.
 - **A song that is playing does not miss a step.** The two scenes are the
@@ -673,6 +731,7 @@ You have a loop going and want the next part of the song to start from it.
 | THE SONG | One WAV of the whole song: every scene as many times as it plays, then **for as long as its echoes and tails take to die away**. Muted tracks are left out. |
 | EACH TRACK | One WAV for every track by itself (stems), all the same length (the longest one's), so they line up in any other program |
 | THIS TRACK | The track being worked on, by itself |
+| MIDI FILE | One MIDI file of the whole song (Type 1): every scene as many times as it plays, one track per track, at the song's tempo. Notes and chords as written, with ratchets and nudges; drums as General MIDI on channel 10. Muted tracks are left out. Chance, swing and feel, strum, glide and automation have no MIDI in them and are left out |
 
 A bounce is **not recorded as the song plays**. A second engine works the
 song out again from the start, as fast as the handheld can. So you can
@@ -1352,11 +1411,11 @@ The track columns share the width of the screen: with few tracks they are wide.
 
 | On | A | Hold A + stick | B | Hold R1 and drag |
 | --- | --- | --- | --- | --- |
-| A cell | Opens it on PATTERN | Left / right: how long it is (1, 2, 4 or 8 bars). **Up / down: TRANSPOSE** its notes and chords a semitone (the stick up / down: an octave), every bar of it; the box above the bar says how far (MOVED +3 SEMITONES). A drum cell does not move. If a key would pass C0 or C8 nothing moves (NO ROOM). One step of undo | Empties it | Copies it into every cell crossed |
-| A track's head (up from the top scene, with the D-pad) | **A** (a quick tap) changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go, and the list says so: this cannot be undone. Held, it is the mixer: once its card is up, letting go never changes it, turned or not. While it is held the head fills with the level, as a lane's name does. **R1**, on its let go, types its name. **Hold L1 and press R1** copies the track: a new track right after it with the same instrument, sound, effects, sends, MODs, mixer, name and every scene's patterns (the tracks after it move a place along; twelve is the most). The copy is not soloed. It is not undone by SELECT + B: hold B on the copy deletes it. **Hold B** two seconds deletes the track. Y and X work there as on its cells. | | | |
+| A cell | Opens it on PATTERN | Left / right: how long it is (1, 2, 4 or 8 bars). **Up / down: TRANSPOSE** its notes and chords a semitone (the stick up / down: an octave), every bar of it; the box above the bar says how far (MOVED +3 SEMITONES). A drum cell does not move. If a key would pass C0 or C8 nothing moves (NO ROOM). One step of undo | Empties it | **R1** copies it; **R1** on another cell pastes it there, on its let go, and the copy is cleared. Notes go on notes (any synth or sampler) and drums on drums (NO PASTE: OTHER KIND; the copy is kept for elsewhere). **R1** on it again clears the copy without pasting. One step of undo |
+| A track's head (up from the top scene, with the D-pad) | **A** (a quick tap) changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go (the list warns UNSAVED PATCHES WILL BE LOST). This cannot be undone. Held, it is the mixer: once its card is up, letting go never changes it, turned or not. While it is held the head fills with the level, as a lane's name does. **R1**, on its let go, types its name. **Hold L1 and press R1** copies the track: a new track right after it with the same instrument, sound, effects, sends, MODs, mixer, name and every scene's patterns (the tracks after it move a place along; twelve is the most). The copy is not soloed. It is not undone by SELECT + B: hold B on the copy deletes it. **Hold B** two seconds deletes the track. Y and X work there as on its cells. | | | |
 | A track (any of its cells) | **Y** mutes it and **X** solos it, each a tap, at once, playing or not; again to undo. X does not hear the track here: on its DEVICE page it does. L1 does nothing on a track. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. | | | |
 | A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted. The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
-| A repeat count | Tap: 1, 2, 4, 8. **R1** copies the whole scene; **R1** on another row pastes it there | Times the scene plays, 1 to 16 | Back to 1 | |
+| A repeat count | Tap: 1, 2, 4, 8. **R1** copies the whole scene; **R1** on another row pastes it there, on its let go, and the copy is cleared | Times the scene plays, 1 to 16 | Back to 1; held, empties the whole scene (one step of undo) | |
 | The song's end (the REPEATS box of the first empty row, just past the last scene) | Switches what the song does at its end: LOOP (a loop arrow) or STOP (a square) | | Back to LOOP | |
 | + TRACK | Pick DRUMS, PHAZED, JAX-EP, SAMPLER, FM-6, PHYSIC, ACID, CLOUD or MORPH | | | |
 | MASTER (the head at the right-hand end, right of + TRACK) | | Its level and pan, as a track's (below) | | |
@@ -1434,8 +1493,8 @@ On the drum grid (the slice view too) and the piano roll:
 
 | Gesture | Does |
 | --- | --- |
-| **Hold L1, press R1** | **Copy** the bar on screen: BAR 1 COPIED |
-| **Hold L1, press A** | **Paste** it over the bar on screen: PASTED ON BAR 2 |
+| **Hold L1, press R1** | **Copy** the bar on screen: BAR 1 COPIED (on the drums, as it is pressed; on the roll, as R1 is let go unmoved — moved, it carried instead) |
+| **Hold L1, press A** | **Paste** it over the bar on screen: PASTED ON BAR 2, and the copy is cleared |
 
 So steps 1-16 onto 17-32: on bar 1, hold L1 and press R1; run the cursor on
 into bar 2; hold L1 and press A.
@@ -1645,6 +1704,9 @@ Hold **B** and drag to delete every hit the cursor crosses.
 
 **Hold L1 and press R1** to copy the bar on screen, **hold L1 and press A**
 to paste it over the bar on screen (see "Copy a bar, paste it on another").
+**Hold L1, left / right** turns to the bar before or after, round the ends;
+**hold L1, up / down** sets the cell's bars, more or fewer (1, 2, 4 or 8, as
+the SONG screen's hold A).
 
 Hold **R1** and drag to paint hits at one level (the level of the hit you
 started on, or 90%). **Add R2 while R1 is held** and the brush paints
@@ -1685,7 +1747,7 @@ A few things mean one thing everywhere:
 | B | Delete, empty, go back |
 | **Hold B** | **Delete for good**: a track (2 s), a song (1 s), a recording in the list (1 s). The row fills as you hold; let go early and nothing happens |
 | X | Hear it. A recording plays **for as long as X is held** (a tap: a moment). Held on a drum hit: its step effects. Held on a knob: its MOD |
-| Hold R1 | On an empty step: paint as you drag. On a note: carry it. On SONG: copy a bar as you drag |
+| Hold R1 | On an empty step: paint as you drag. On a note: carry it. On SONG: copy a cell; R1 on another cell pastes it there |
 | L2 / R2 | The tabs |
 | **L3** (press the stick in) | **The SONG screen with MASTER under the cursor**: hold A + up / down is the output's level at once, whatever the handheld's own volume. L3 again (still on MASTER): back where you were |
 | SELECT + something | Things about the whole song: undo, tempo, volume, WRITE, the scene's length, the next scene |
@@ -2060,9 +2122,11 @@ is loud; holding A shapes it the way it is drawn.
 | **Hold X on a note**, up / down | **GLIDE**: up is one length longer, down one shorter, down to OFF. The note slides in from the note before it |
 | **Hold X on a note**, A | **THROW**: the note goes to ECHO, to SPACE, to both; off |
 | **Hold X on a note**, L1 / R1 | **GLIDE FROM**, for the whole track: which key of a chord its glides come from. R1 is the next of TOP, PAIRED, NEAREST, RANDOM; L1 the one before. It stops at each end |
-| **Hold R1 on a note** and move | Carry the note (or the whole chord) under the cursor. **D-pad:** to another key, or a whole step. **Stick up / down:** it slides freely in time, off the grid. It stops at the ends of the bar and will not land on another note. |
-| L1 | Zoom. A tap goes closer: 2 octaves, 1, then round to 3. Held, up is closer and down is further. |
-| Hold L1, R1 / A | **Copy** the bar on screen / **paste** it over the bar on screen (see "Copy a bar, paste it on another"). The tap's zoom does not happen as well |
+| **Hold R1 on a note** and move | Carry the note (or the whole chord) under the cursor. **D-pad:** to another key, or a whole step. **Stick up / down:** it slides freely in time, off the grid. **L1 held:** left / right go an octave at a time. It stops at the ends of the bar and will not land on another note. |
+| L1 | Zoom: a tap goes closer (2 octaves, 1, then round to 3) |
+| Hold L1, left / right | The bar before or after, round the ends |
+| Hold L1, up / down | **Bars**: the cell's, more or fewer (1, 2, 4 or 8, as the SONG screen's hold A). One step of undo |
+| Hold L1, R1 / A | **Copy** the bar on screen (let go of R1 unmoved) / **paste** it over the bar on screen (see "Copy a bar, paste it on another"). The tap's zoom does not happen as well |
 
 A note runs at most to the end of the bar, or to the next note on that key.
 It can be as short as a tenth of a step. The engine lets go of each note on

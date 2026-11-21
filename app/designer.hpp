@@ -28,10 +28,22 @@
 //   lanesynth L WORD  a KIT's lane L: a DRUM SYNTH voice of the model whose song-file word is WORD
 //                     ("kick"), at its usual knobs (drum_synth.hpp)
 //   lanevoice L N     a synth lane's named voice N of its model (drum_voices.hpp: 0 is CLASSIC)
+//   fxset ID VALUE    an effect's setting by its id (below), 0..1; the mixer's LEVEL (-40..6 dB) and
+//                     PAN (-50..50) in whole numbers
+//   fxtype SLOT KIND  which effect a slot holds: SLOT 0..2 the track's, 3..4 the buses' (ECHO, SPACE),
+//                     5..6 the master's; KIND an EffectKind's number (a bus takes NONE or its own)
+//   modset M FIELD VALUE
+//                     the track's MOD M (0..1), one field: FIELD a ModField's number (KIND, TARGET,
+//                     DEPTH -1..1, RATE, SHAPE, RESTART, PHASE, LENGTH, SLEW, CHANCE, SPEED), then a
+//                     STEPPER's row (kModFields + step, -1..1). A TARGET that does not fit is nothing;
+//                     aiming an OFF MOD at something wakes it as an LFO (ModKnob::fresh).
 //
 // What the page is shown says what KIND of page it is ("page": "synth", "sampler" or "kit"), and the
 // page builds itself from that: a synth's pages and presets, a sampler's settings round the picture of
 // its recording, or a kit's eight lanes, each with its picture and its settings (Session::designSpec).
+// Every page also carries "fx" (the track's three slots, its sends, the two buses, the master's two
+// slots, the mixer's LEVEL and PAN: each slot the effects it may hold and its readings' names) and
+// "mods" (each MOD's TARGETs with their names, RATEs, SHAPEs, PHASEs), with their values in the state.
 //
 // On a KIT, `set ID VALUE` names a lane's setting: ID is lane * kKitStride + a KitField. Fields 0 to 7
 // are the lane's EDIT rows in LaneEditRow's order (lane_edit.hpp); then FIT (steps), CHOKE (group),
@@ -53,8 +65,18 @@ enum KitField { kKitFit = 8, kKitChoke, kKitVolume, kKitHumanTime, kKitHumanLeve
 // the spec's wave gives the names, the state the readings.
 constexpr int kKitKnobs = 8 * kKitStride;
 
+// EFFECTS (`fxset ID VALUE`, VALUE 0..1; the mixer's two in whole numbers): a track's three slots'
+// settings (slot * 4 + setting), its two sends (ECHO, SPACE), the two buses' settings
+// (bus * 4 + setting), the master's two slots' settings (slot * 4 + setting), the mixer's.
+constexpr int kFxSendIds = 3 * 4, kFxBusIds = kFxSendIds + 2, kFxMasterIds = kFxBusIds + 2 * 4,
+                kFxMixIds = kFxMasterIds + 2 * 4; // 12, 14, 22, 30
+constexpr int kFxMixDb = kFxMixIds, kFxMixPan = kFxMixIds + 1, kFxIds = kFxMixIds + 2; // 30, 31
+// Which effect a slot holds (`fxtype SLOT KIND`, KIND an EffectKind's number): the track's three slots,
+// the two buses', the master's two.
+constexpr int kFxTypeSlots = 7;
+
 struct DesignRequest {
-    enum Kind { Set, Macro, Preset, Note, Save, Name, Roll, Sample, LaneSample, Hear, Normalize, Trim, LaneSynth, LaneVoice } kind = Set;
+    enum Kind { Set, Macro, Preset, Note, Save, Name, Roll, Sample, LaneSample, Hear, Normalize, Trim, LaneSynth, LaneVoice, FxSet, FxType, ModSet } kind = Set;
     int a = 0, b = 0;
     float value = 0.f;
     std::string name;

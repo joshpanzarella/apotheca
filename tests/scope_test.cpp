@@ -182,9 +182,9 @@ void testTheRowsAreSpreadDown() {
         }
     }
     CHECK(SynthScreen::settingH(6) == 55); // FM-6's operator pages: six rows, closer together, each tall enough for its value
-    // The kit's eight lanes and the sampler's two rows of settings.
+    // The kit's eight lanes and the sampler's two rows of settings with PRESET below them.
     CHECK(KitScreen::kLaneTop + kDrumLanes * KitScreen::kLaneRowH - KitScreen::kLaneGap == ui::kAboveScope);
-    CHECK(SamplerScreen::kSettingY + 2 * SamplerScreen::kSettingH + SamplerScreen::kSettingGap == ui::kAboveScope);
+    CHECK(SamplerScreen::kPresetY + SamplerScreen::kPresetH == ui::kAboveScope);
     CHECK(SamplerScreen::kWaveH > 40); // the recording's picture got the room too
 
     // Read off the screen: the kit's last lane, the sampler's last settings and MAIN's ADVANCED end

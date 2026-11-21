@@ -10,6 +10,10 @@
 //                    A new sound is played at once when the song is stopped.
 //   a macro          hold A + stick up / down. B puts it back in the middle.
 //   ADVANCED         A opens the pages.
+//   R1 on PRESET     save the sound as a preset of its own: the keys come up to name it
+//                    (A types, Y deletes, B leaves without saving, START saves). It lands in
+//                    the USER folder with everything the page's SAVE AS PRESET keeps; under a
+//                    name taken, it replaces that one.
 //   X                hear the sound. Held on a macro: its MOD (mod_knob.hpp), its fields in LIVE
 //                    OUTPUT's place while X is held, and the note heard as long as X is.
 //   Y                PHYSIC and CLOUD (SynthSpec::roll): a new sound from the dice.
@@ -140,6 +144,12 @@ public:
     const SamplePicker& picker() const { return picker_; }
     const std::string& said() const { return said_; }
 
+    // Naming a preset to save (R1 on PRESET): the keys, as a track's name is typed.
+    bool typing() const { return typing_; }
+    const std::string& typed() const { return typed_; }
+    int keyAt() const { return key_; }
+    static constexpr int kTypeColumns = 10, kPresetNameLength = 24; // the grid, and a name's most (the page's too)
+
     // Cursor stops on MAIN.
     enum { kFolder, kPreset, kFirstMacro, kAdvanced = kFirstMacro + kSynthMacros, kMainStops };
 
@@ -198,6 +208,14 @@ private:
     void openPicker();
     void stepRecording(int by);
     void hearFromList(SamplePicker::Hear how);
+
+    // Naming a preset to save.
+    void typeButton(Button b);
+    void moveTypeKey(Button direction);
+    void drawTyping(SDL_Renderer* r, const Fonts& fonts) const;
+    bool typing_ = false;
+    std::string typed_;
+    int key_ = 0; // which character of the grid the cursor is on
     void say(const std::string& words, Uint32 ms);
     void drawPicture(SDL_Renderer* r, const Fonts& fonts) const;
     void drawTablePicture(SDL_Renderer* r, const Fonts& fonts) const;

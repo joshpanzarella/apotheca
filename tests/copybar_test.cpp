@@ -37,7 +37,7 @@ static int failures = 0;
 
 namespace {
 
-const SDL_Keycode A = SDLK_x, B = SDLK_z, X = SDLK_s, L1 = SDLK_q, R1 = SDLK_w, L2 = SDLK_1, R2 = SDLK_2, UP = SDLK_UP, RIGHT = SDLK_RIGHT,
+const SDL_Keycode A = SDLK_x, B = SDLK_z, X = SDLK_s, L1 = SDLK_q, R1 = SDLK_w, L2 = SDLK_1, R2 = SDLK_2, UP = SDLK_UP, RIGHT = SDLK_RIGHT, LEFT = SDLK_LEFT, DOWN = SDLK_DOWN,
                   SELECT = SDLK_BACKSPACE;
 const int kStep = 6000; // 120 BPM at 48 kHz
 
@@ -199,6 +199,7 @@ void testDrums() {
     rig.frames(1);
     CHECK(rig.said() == "PASTED ON BAR 2");
     CHECK(sameDrums(rig.track(0).drums[0][1], rig.track(0).drums[0][0]));
+    CHECK(!rig.session().barClip().has); // spent: a paste clears the copy
     CHECK(drums.level(4, 2) == 0.f);
     // A's hold is not A's: the D-pad does not nudge or level anything while it is down.
     const float level = drums.level(0, 8);
@@ -220,7 +221,13 @@ void testDrums() {
     rig.redo();
     CHECK(sameDrums(rig.track(0).drums[0][1], rig.track(0).drums[0][0]) && rig.track(0).automation[0][20][kSteps + 3] == 0.7f);
     rig.settle();
-    // Pasted again on the same: nothing changes, no step of undo.
+    // Pasted again on the same: nothing changes, no step of undo (a fresh copy: the paste spent it).
+    rig.project().bar = 0;
+    rig.frames(1);
+    rig.withL1(R1);
+    CHECK(rig.said() == "BAR 1 COPIED");
+    rig.project().bar = 1;
+    rig.frames(1);
     const int stepsNow = rig.session().undoSteps();
     rig.withL1(A);
     CHECK(rig.said() == "BAR 2 IS THE SAME ALREADY");
@@ -241,6 +248,11 @@ void testDrums() {
     CHECK(rig.said() == "PASTED ON BAR 2" && rig.track(0).drums[0][1].start[5][10] == 0.25f);
     rig.session().setAutomation(0, 0, 20, kSteps + 9, 0.4f);
     rig.settle();
+    rig.project().bar = 0;
+    rig.frames(1);
+    rig.withL1(R1); // again: the paste spent it
+    rig.project().bar = 1;
+    rig.frames(1);
     rig.withL1(A);
     CHECK(rig.said() == "PASTED ON BAR 2" && rig.track(0).automation[0][20][kSteps + 9] < 0.f);
     rig.settle();
@@ -274,6 +286,9 @@ void testDrums() {
     }
 
     // A paste and an edit straight after are two steps, not one burst.
+    rig.project().bar = 0;
+    rig.frames(1);
+    rig.withL1(R1); // again: the paste spent it
     rig.project().bar = 1;
     rig.frames(1);
     drums.setStep(0, 0, 0.f);
@@ -289,6 +304,9 @@ void testDrums() {
     rig.settle();
 
     // An edit and a paste straight after it (no still moment between): two steps too.
+    rig.project().bar = 0;
+    rig.frames(1);
+    rig.withL1(R1); // again: the paste spent it
     rig.project().bar = 1;
     rig.frames(1);
     const int beforeBoth = rig.session().undoSteps();
@@ -315,11 +333,18 @@ void testDrums() {
     }
 
     // Another scene, another drum track: the hits; automation only on the same track.
+    rig.project().bar = 0;
+    rig.frames(1);
+    rig.withL1(R1); // again: the paste spent it
     rig.project().scene = 1;
     rig.project().bar = 0;
     rig.frames(1);
     rig.withL1(A);
     CHECK(sameDrums(rig.track(0).drums[1][0], rig.track(0).drums[0][0]) && rig.track(0).automation[1][20][3] == 0.7f);
+    rig.project().track = 0;
+    rig.project().scene = 0;
+    rig.frames(1);
+    rig.withL1(R1); // again: the paste spent it
     CHECK(rig.session().addTrack(TrackKind::Drums));
     rig.project().track = 1;
     rig.project().scene = 0;
@@ -328,6 +353,9 @@ void testDrums() {
     CHECK(rig.said() == "PASTED ON BAR 1");
     CHECK(sameDrums(rig.track(1).drums[0][0], rig.track(0).drums[0][0]) && rig.track(1).automation[0][20][3] < 0.f);
     // Onto a synth track: refused, nothing placed.
+    rig.project().track = 0;
+    rig.frames(1);
+    rig.withL1(R1); // again: the paste spent it (the refusal keeps it)
     CHECK(rig.session().addTrack(TrackKind::Phazed));
     rig.project().track = 2;
     rig.frames(1);
@@ -378,7 +406,7 @@ void testNotes() {
     NoteScreen& roll = rig.app.notes();
     const int zoom = rig.session().octavesShown();
 
-    // COPY on a note: R1 does not carry it. L1 let go does not zoom.
+    // COPY on a note: R1 takes hold, and letting go unmoved copies the bar. L1 let go does not zoom.
     roll.moveCursorTo(60, 0);
     CHECK(roll.noteHere() != nullptr);
     rig.key(L1, true);
@@ -386,12 +414,23 @@ void testNotes() {
     CHECK(roll.barKeyHeld());
     rig.key(R1, true);
     rig.frames(1);
-    CHECK(!roll.carrying() && rig.said() == "BAR 1 COPIED");
+    CHECK(roll.carrying());
     rig.key(R1, false);
+    CHECK(rig.said() == "BAR 1 COPIED");
     rig.key(L1, false);
     rig.frames(1);
     CHECK(rig.session().octavesShown() == zoom && !roll.barKeyHeld());
     CHECK(rig.session().barClip().has && !rig.session().barClip().drums);
+    // ...but moved first, it was a carry: nothing copies (a note the paste below does not compare).
+    const unsigned copiesBefore = rig.session().barCopies();
+    roll.moveCursorTo(67, 12);
+    rig.key(L1, true);
+    rig.key(R1, true);
+    rig.tap(RIGHT);
+    CHECK(roll.cursorPitch() == 79); // an octave, L1 held
+    rig.key(R1, false);
+    rig.key(L1, false);
+    CHECK(rig.session().barCopies() == copiesBefore);
 
     // PASTE on bar 2, on an empty place: A places no note of its own. The long note is held to the cell's end.
     rig.project().bar = 1;
@@ -424,6 +463,9 @@ void testNotes() {
     CHECK(rig.track(1).notes[0][1].notes[2].length == 4.f);
 
     // Another synth track, a cell of four bars: the long note keeps its length. No automation.
+    rig.project().bar = 0;
+    rig.frames(1);
+    rig.withL1(R1); // again: the paste spent it
     CHECK(rig.session().addTrack(TrackKind::Jx3p));
     rig.session().setCellBars(2, 0, 4);
     rig.project().track = 2;
@@ -432,18 +474,26 @@ void testNotes() {
     rig.withL1(A);
     CHECK(rig.track(2).notes[0][0].notes[2].length == 10.f && rig.track(2).automation[0][0][2] < 0.f);
     // A sampler takes notes too.
+    rig.project().track = 1;
+    rig.project().bar = 0;
+    rig.frames(1);
+    rig.withL1(R1); // again: the paste spent it
     CHECK(rig.session().addTrack(TrackKind::Sampler));
     rig.project().track = 3;
     rig.frames(1);
     rig.withL1(A);
     CHECK(rig.said() == "PASTED ON BAR 1" && rig.track(3).notes[0][0].notes[2].length == 16.f - 12.f);
     // A drum track does not.
+    rig.project().track = 1;
+    rig.project().bar = 0;
+    rig.frames(1);
+    rig.withL1(R1); // again: the paste spent it (the refusal keeps it)
     rig.project().track = 0;
     rig.frames(1);
     rig.withL1(A);
     CHECK(rig.said() == "NOTES GO ON A NOTE TRACK" && rig.track(0).drums[0][0].empty());
 
-    // L1 still zooms: tapped alone (on its let go), and held with UP (and then not tapped as well).
+    // L1 still zooms tapped alone (on its let go); held with UP it sets the cell's bars instead.
     rig.project().track = 1;
     rig.frames(1);
     rig.session().setOctavesShown(2);
@@ -454,8 +504,9 @@ void testNotes() {
     rig.frames(1);
     CHECK(rig.session().octavesShown() == 1);
     rig.session().setOctavesShown(2);
+    rig.session().setCellBars(1, 0, 1);
     rig.withL1(UP);
-    CHECK(rig.session().octavesShown() == 1);
+    CHECK(rig.session().octavesShown() == 2 && rig.track(1).bars[0] == 2); // bars, not zoom
     // With X held on a note, L1 / R1 are its GLIDE FROM, never a copy.
     roll.moveCursorTo(64, 4);
     rig.project().bar = 0;
@@ -680,29 +731,29 @@ void testTheWordsFit() {
         canvas.clear();
         rig.app.draw(canvas.r, *canvas.fonts);
     };
-    const ui::Hint grid[] = {{"R1", "copy bar"}, {"A", "paste bar"}};
-    const ui::Hint roll[] = {{"UP / DOWN", "zoom"}, {"R1", "copy bar"}, {"A", "paste bar"}};
+    const ui::Hint grid[] = {{"UP / DOWN", "bar count"}, {"LEFT / RIGHT", "change bar"}, {"R1", "copy bar"}, {"A", "paste bar"}};
+    const ui::Hint roll[] = {{"UP / DOWN", "bar count"}, {"LEFT / RIGHT", "change bar"}, {"R1", "copy bar"}, {"A", "paste bar"}};
     drawn();
-    CHECK(!barIs(grid, 2));
+    CHECK(!barIs(grid, 4));
     rig.key(L1, true);
     rig.frames(1);
     drawn();
-    CHECK(barIs(grid, 2) && ui::gHintsOver == 0);
+    CHECK(barIs(grid, 4) && ui::gHintsOver == 0);
     rig.key(L1, false);
     rig.frames(1);
     drawn();
-    CHECK(!barIs(grid, 2));
+    CHECK(!barIs(grid, 4));
     CHECK(rig.session().addTrack(TrackKind::Phazed));
     rig.project().track = 1;
     rig.frames(1);
     rig.key(L1, true);
     rig.frames(1);
     drawn();
-    CHECK(barIs(roll, 3) && ui::gHintsOver == 0);
+    CHECK(barIs(roll, 4) && ui::gHintsOver == 0);
     rig.key(L1, false);
     rig.frames(1);
     drawn();
-    CHECK(!barIs(roll, 3));
+    CHECK(!barIs(roll, 4));
     // The line said is drawn in the App's box above the bar.
     rig.withL1(R1);
     drawn();
@@ -713,6 +764,95 @@ void testTheWordsFit() {
 
 } // namespace
 
+// BARS IN THE ROLL: hold L1, up / down steps the cell's bars along 1, 2, 4, 8 (as the Song
+// screen's hold A); hold L1, left / right turns to the bar before or after, round the ends.
+// L1 let go zooms nothing after; shaping keeps the keys.
+void testRollBarsLength() {
+    Rig rig;
+    CHECK(rig.session().addTrack(TrackKind::Phazed));
+    rig.settle();
+    rig.project().track = 1;
+    NoteScreen& roll = rig.app.notes();
+    CHECK(rig.track(1).bars[0] == 1);
+    const int zoom = rig.session().octavesShown();
+    const int pitch = roll.cursorPitch(), step = roll.cursorStep();
+    rig.key(L1, true);
+    rig.frames(1);
+    rig.tap(UP);
+    CHECK(rig.track(1).bars[0] == 2);
+    rig.tap(UP);
+    CHECK(rig.track(1).bars[0] == 4);
+    rig.tap(DOWN);
+    rig.tap(DOWN);
+    CHECK(rig.track(1).bars[0] == 1);
+    rig.tap(DOWN);
+    CHECK(rig.track(1).bars[0] == 1); // the ends stop
+    CHECK(roll.cursorPitch() == pitch && roll.cursorStep() == step); // the cursor never moved
+    rig.key(L1, false);
+    rig.frames(1);
+    CHECK(rig.session().octavesShown() == zoom); // letting go zooms nothing: it set the bars
+    // ...but not while shaping a note: A held keeps up / down for its length.
+    roll.moveCursorTo(60, 0);
+    rig.key(A, true);
+    rig.key(L1, true);
+    rig.tap(UP);
+    CHECK(rig.track(1).bars[0] == 1);
+    rig.key(L1, false);
+    rig.key(A, false);
+    // Left / right turn the bar shown: round the ends, the cursor keeping its place.
+    rig.session().setCellBars(1, 0, 4);
+    rig.project().bar = 0;
+    roll.moveCursorTo(60, 3);
+    rig.key(L1, true);
+    rig.frames(1);
+    rig.tap(RIGHT);
+    CHECK(rig.project().bar == 1 && roll.cursorPitch() == 60 && roll.cursorStep() == 3);
+    rig.tap(RIGHT, 3);
+    CHECK(rig.project().bar == 0); // round the end
+    rig.tap(LEFT);
+    CHECK(rig.project().bar == 3); // ...and back round the start
+    rig.key(L1, false);
+    rig.frames(1);
+    CHECK(rig.session().octavesShown() == zoom);
+    // Shortening under the bar shown puts the roll back on its first bar.
+    rig.project().bar = 3;
+    rig.session().setCellBars(1, 0, 1);
+    rig.frames(1);
+    CHECK(rig.project().bar == 0);
+}
+
+// BARS ON THE GRID: hold L1, left / right turns to the bar shown before or after, round the ends;
+// up / down steps the cell's bars. L1 let go opens no slices after.
+void testDrumBarsLength() {
+    Rig rig;
+    PatternScreen& grid = rig.app.drums();
+    CHECK(rig.track(0).bars[0] == 1);
+    const int lane = grid.cursorLane(), step = grid.cursorStep();
+    rig.key(L1, true);
+    rig.frames(1);
+    rig.tap(UP);
+    CHECK(rig.track(0).bars[0] == 2);
+    rig.tap(DOWN);
+    CHECK(rig.track(0).bars[0] == 1);
+    rig.key(L1, false);
+    rig.frames(1);
+    CHECK(!grid.slicing());
+    // Left / right turn the bar shown: round the ends, the cursor keeping its place.
+    rig.session().setCellBars(0, 0, 4);
+    rig.project().bar = 1;
+    rig.key(L1, true);
+    rig.frames(1);
+    rig.tap(LEFT);
+    CHECK(rig.project().bar == 0 && grid.cursorLane() == lane && grid.cursorStep() == step);
+    rig.tap(LEFT);
+    CHECK(rig.project().bar == 3); // round the start
+    rig.tap(RIGHT);
+    CHECK(rig.project().bar == 0); // ...and back round the end
+    rig.key(L1, false);
+    rig.frames(1);
+    CHECK(!grid.slicing());
+}
+
 int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     struct Test {
@@ -721,6 +861,7 @@ int main(int argc, char** argv) {
     };
     const Test tests[] = {
         {"testDrums", testDrums}, {"testNotes", testNotes}, {"testTheSlicesAndL1", testTheSlicesAndL1}, {"testTheEngineHearsIt", testTheEngineHearsIt}, {"testTheWordsFit", testTheWordsFit},
+        {"testRollBarsLength", testRollBarsLength}, {"testDrumBarsLength", testDrumBarsLength},
     };
     for (const Test& test : tests) {
         bool wanted = argc < 2;

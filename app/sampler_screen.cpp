@@ -1,4 +1,5 @@
 #include "sampler_screen.hpp"
+#include "designer.hpp"
 #include "samples.hpp"
 
 #include "apotheca/envelope.hpp"
@@ -13,6 +14,8 @@ using namespace ui;
 namespace {
 constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs;
 constexpr float kMovesPerSecond = 14.f, kSoundsPerSecond = 8.f;
+constexpr float kTypeMovesPerSecond = 7.f; // over the naming keys, as the synth's
+constexpr char kTypeKeys[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_ "; // as the track name's: presetNameFrom's letters
 const char* const kNames[sampler::kSettings] = {"PITCH", "TUNE", "START", "ATTACK", "RELEASE", "LOOP", "LEVEL", "END"};
 // The order the page shows them in: END beside START (it is the last id: ids are appended).
 const int kShown[sampler::kSettings] = {sampler::Root, sampler::Tune, sampler::Start, sampler::End, sampler::Attack, sampler::Release, sampler::Loop, sampler::Level};
@@ -56,14 +59,17 @@ void SamplerScreen::hear(bool held) {
     // A line runs across the recording's picture while it sounds: from START, at the speed ROOT and
     // TUNE give middle C, until the key is let go and the release has run.
     const TrackData& t = trk();
-    const float speed = std::pow(2.f, static_cast<float>(kHearKey - t.sampler[sampler::Root]) / 12.f + static_cast<float>(t.sampler[sampler::Tune]) / 1200.f);
+    const bool chopped = t.samplerChop && session_.trackSound(project_.track).zones == 0;
+    const int key = chopped ? sampler::kChopBase : kHearKey; // chopped: the first slice (middle C is past the last)
+    const float speed = chopped ? std::pow(2.f, static_cast<float>(60 - t.sampler[sampler::Root]) / 12.f + static_cast<float>(t.sampler[sampler::Tune]) / 1200.f)
+                                : std::pow(2.f, static_cast<float>(kHearKey - t.sampler[sampler::Root]) / 12.f + static_cast<float>(t.sampler[sampler::Tune]) / 1200.f);
     release_ = 0.002f * std::pow(10000.f, static_cast<float>(t.sampler[sampler::Release]) / 100.f);
     headHeld_ = held || (headHeld_ && session_.hearingHeld());
     head_.start(lastMs_, session_.trackSound(project_.track).seconds, static_cast<float>(t.sampler[sampler::Start]) / 100.f, speed,
                 headHeld_ ? 0.f : static_cast<float>(Session::kAuditionMs) / 1000.f + release_); // held: until it is let go (update)
     head_.to = endPart(t);
-    if (held) session_.auditionHeld(project_.track, kHearKey, kPlacedLevel, this);
-    else session_.audition(project_.track, kHearKey, kPlacedLevel);
+    if (held) session_.auditionHeld(project_.track, key, kPlacedLevel, this);
+    else session_.audition(project_.track, key, kPlacedLevel);
 }
 
 // The list of recordings: the preview, half of what a note plays at least (START to END at middle
@@ -111,19 +117,36 @@ void SamplerScreen::stepSound(int by) {
 
 void SamplerScreen::press(Button b) {
     if (!holding_) {
-        // SOUND on top; the settings in two rows of four under it.
+        // SOUND on top; the settings in two rows of four under it; PRESET below those.
+        if (stop_ == kPresetStop) {
+            if (b == Button::Up) goTo(7);
+            return; // (left, right and down: the ends stop)
+        }
         if (b == Button::Left) goTo(stop_ - 1);
         if (b == Button::Right) goTo(stop_ + 1);
         if (b == Button::Up) goTo(stop_ == 0 ? 0 : (stop_ <= 4 ? 0 : stop_ - 4));
-        if (b == Button::Down) goTo(stop_ == 0 ? 1 : (stop_ > 4 ? stop_ : (stop_ + 4 > sampler::kSettings ? sampler::kSettings : stop_ + 4)));
+        if (b == Button::Down) goTo(stop_ == 0 ? 1 : (stop_ > 4 ? kPresetStop : (stop_ + 4 > sampler::kSettings ? sampler::kSettings : stop_ + 4)));
         return;
     }
     if (b != Button::Up && b != Button::Down) return;
     stepped_ = true;
     const int by = b == Button::Up ? 1 : -1;
+    if (stop_ == kPresetStop) {
+        stepPreset(by);
+        return;
+    }
     const int id = settingAt(stop_ - 1);
     if (stop_ == 0) stepSound(by);
     else setSetting(id, trk().sampler[id] + (id == sampler::Root ? -by : by)); // PITCH up is the root key down
+}
+
+void SamplerScreen::stepPreset(int by) {
+    const int count = static_cast<int>(session_.samplerPresets().size());
+    if (!count) return;
+    const int now = session_.samplerPresetOf(project_.track);
+    const int to = now < 0 ? (by > 0 ? 0 : count - 1) : now + by;
+    if (to < 0 || to >= count) return; // the ends stop
+    session_.loadSamplerPreset(project_.track, to);
 }
 
 void SamplerScreen::openPicker() {
@@ -147,11 +170,17 @@ void SamplerScreen::openPicker() {
 
 void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
+    if (typing_) { // naming a preset to save: every button is the keys'.
+        if (event.down) typeButton(b);
+        else if (b == repeating_) repeating_ = Button::None;
+        return;
+    }
     if (picker_.isOpen()) {
         if (b == Button::Start && event.down && !input.held(Button::Select) && !picker_.typing()) session_.togglePlay(false);
         else picker_.onButton(event, project_.playing);
         return;
     }
+    if (event.down && b != Button::B) presetDeleting_ = false; // (any other button calls a delete off)
     if (b == Button::A) {
         if (!event.down && holding_ && !stepped_ && stop_ == 0) openPicker(); // a plain tap on SOUND: the list
         if (event.down) stepped_ = false;
@@ -163,6 +192,7 @@ void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
     if (!event.down) {
         if (b == repeating_) repeating_ = Button::None;
+        if (b == Button::B) presetDeleting_ = false;
         return;
     }
     if (isDirection(b)) {
@@ -171,22 +201,71 @@ void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
         repeatAt_ = 0;
     } else if (b == Button::B && !holding_) {
         if (stop_ == 0) session_.setTrackSample(project_.track, "");
-        else setSetting(settingAt(stop_ - 1), sampler::settingDefault(settingAt(stop_ - 1)));
+        else if (stop_ == kPresetStop) { // one's own sound on the track: B kept held deletes its file
+            presetDeleting_ = session_.samplerPresetOf(project_.track) >= 0;
+            presetDeleteTimed_ = false;
+        } else setSetting(settingAt(stop_ - 1), sampler::settingDefault(settingAt(stop_ - 1)));
     } else if (b == Button::Y && !holding_) {
         const std::string name = session_.catchLastBar(project_.track, 0);
         said_ = name.empty() ? "NOTHING TO CATCH: PLAY SOMETHING FIRST" : "CAUGHT THE LAST BAR AS \"" + name + "\"";
         for (char& c : said_) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
         saidUntil_ = lastMs_ + 2500;
     } else if (b == Button::R1 && !holding_) {
+        if (stop_ == kPresetStop) {
+            typing_ = true; // save the sound: the keys come up to name it
+            typed_.clear();
+            key_ = 0;
+            return;
+        }
         // Record from the input: once to start (it waits for sound), again to stop.
         const Session::Rec now = session_.toggleRecording(project_.track, 0);
         if (now == Session::Rec::NoInput) said_ = "NO INPUT FOUND: PLUG IN A USB MICROPHONE OR INTERFACE";
         else if (now == Session::Rec::Idle && session_.lastRecorded().empty()) said_ = "NOTHING RECORDED: NO SOUND CAME IN";
         saidUntil_ = lastMs_ + 3000;
+    } else if (b == Button::L1 && !holding_) {
+        const bool on = !project_.tracks[project_.track].samplerChop;
+        session_.setSamplerChop(project_.track, on);
+        said_ = on ? "CHOPPED: 16 SLICES FROM C1 UP" : "CHOP OFF: THE WHOLE RECORDING";
+        saidUntil_ = lastMs_ + 3000;
     } else if (b == Button::X) {
         hear(true);
     } else if (b == Button::Start && !input.held(Button::Select)) {
         session_.togglePlay(false);
+    }
+}
+
+// ---- naming a preset to save -----------------------------------------------------------
+
+void SamplerScreen::moveTypeKey(Button direction) {
+    const int count = 40, columns = kTypeColumns;
+    int col = key_ % columns, row = key_ / columns;
+    if (direction == Button::Left) col = (col + columns - 1) % columns;
+    if (direction == Button::Right) col = (col + 1) % columns;
+    if (direction == Button::Up) row = (row + count / columns - 1) % (count / columns);
+    if (direction == Button::Down) row = (row + 1) % (count / columns);
+    key_ = row * columns + col;
+}
+
+void SamplerScreen::typeButton(Button b) {
+    if (isDirection(b)) {
+        moveTypeKey(b);
+        repeating_ = b;
+        repeatAt_ = 0;
+    } else if (b == Button::A) {
+        const char c = kTypeKeys[key_];
+        // No space first, and not two together; 24 at most, as the page's names.
+        const bool space = c == ' ';
+        if (static_cast<int>(typed_.size()) < kPresetNameLength && !(space && (typed_.empty() || typed_.back() == ' '))) typed_ += c;
+    } else if (b == Button::Y) {
+        if (!typed_.empty()) typed_.pop_back(); // the last letter goes
+    } else if (b == Button::B) {
+        typing_ = false; // leaves without saving
+    } else if (b == Button::Start) {
+        if (typed_.empty()) return; // (the keys say to name it)
+        const std::string name = presetNameFrom(typed_);
+        typing_ = false;
+        said_ = name.empty() || !session_.saveSamplerPreset(project_.track, typed_) ? "NOT SAVED" : "SAVED AS " + name;
+        saidUntil_ = lastMs_ + 2500;
     }
 }
 
@@ -198,6 +277,21 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
         picker_.rescan(session_.sampleNames(), session_.sampleFolders());
     }
     if (!input.held(Button::A)) holding_ = false;
+    if (!input.held(Button::B) || stop_ != kPresetStop || input.held(Button::A)) presetDeleting_ = false;
+    // B kept held on a preset of the player's own: its file is deleted when the bar is full.
+    presetDeletePart_ = 0.f;
+    if (presetDeleting_) {
+        if (!presetDeleteTimed_) presetDeleteTimed_ = true, presetDeleteSince_ = nowMs;
+        presetDeletePart_ = static_cast<float>(nowMs - presetDeleteSince_) / static_cast<float>(kPresetDeleteMs);
+        if (nowMs - presetDeleteSince_ >= kPresetDeleteMs) {
+            presetDeleting_ = false;
+            presetDeletePart_ = 0.f;
+            const int now = session_.samplerPresetOf(project_.track);
+            const std::string name = now >= 0 ? session_.samplerPresets()[static_cast<std::size_t>(now)].name : "";
+            said_ = now >= 0 && session_.deleteSamplerPreset(now) ? name + " DELETED. THE TRACK KEEPS ITS SOUND" : "NOT DELETED";
+            saidUntil_ = nowMs + 2500;
+        }
+    }
 
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
@@ -210,6 +304,27 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
     }
     picker_.update(input, nowMs, project_.playing);
     if (picker_.isOpen()) return;
+    if (typing_) {
+        // The stick moves over the keys, one at once and then steadily; a held D-pad direction runs.
+        const float x = input.stickX(), y = input.stickY();
+        const bool sideways = std::fabs(x) >= std::fabs(y);
+        const float push = sideways ? x : y;
+        if (push == 0.f) {
+            saved_ = 0.f;
+            stickWas_ = false;
+        } else {
+            saved_ += stickWas_ ? std::fabs(push) * kTypeMovesPerSecond * dt : 1.f;
+            stickWas_ = true;
+            for (; saved_ >= 1.f; saved_ -= 1.f) moveTypeKey(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
+        }
+        if (repeating_ != Button::None && repeatAt_ == 0) {
+            repeatAt_ = nowMs + kRepeatDelayMs;
+        } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
+            repeatAt_ = nowMs + kRepeatEveryMs;
+            moveTypeKey(repeating_);
+        }
+        return;
+    }
     // While recording, the line says how it is going.
     const Session::Rec rec = session_.recording();
     if (rec == Session::Rec::Waiting || rec == Session::Rec::Recording) {
@@ -264,11 +379,41 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
     }
 }
 
+void SamplerScreen::drawTyping(SDL_Renderer* r, const Fonts& fonts) const {
+    char text[64];
+    fonts.small.draw(r, 40.f, 46.f, "SAVE AS PRESET", kDim);
+    // What has been typed, with a mark where the next letter goes.
+    box(r, 40, 66, kScreenW - 80, 52, kPanel2, kTeal);
+    const float tx = 56.f, ty = 66.f + (52.f - fonts.large.capHeight()) / 2.f;
+    fonts.large.draw(r, tx, ty, typed_.c_str(), kText);
+    if (static_cast<int>(typed_.size()) < kPresetNameLength) fill(r, static_cast<int>(tx + fonts.large.width(typed_.c_str()) + (typed_.empty() ? 0 : 3)), 66 + 14, 2, 24, kTeal);
+    std::snprintf(text, sizeof text, "%d OF %d", static_cast<int>(typed_.size()), kPresetNameLength);
+    fonts.small.drawRight(r, kScreenW - 56.f, 66.f + (52.f - fonts.small.capHeight()) / 2.f, text, kDim);
+    if (typed_.empty()) fonts.small.draw(r, tx + 12.f, 66.f + (52.f - fonts.small.capHeight()) / 2.f, "(empty: name it to save)", kDim);
+    const int kw = 52, kh = 52, gx = (kScreenW - kTypeColumns * kw) / 2, gy = 140;
+    for (int i = 0; i < 40; ++i) {
+        const int x = gx + (i % kTypeColumns) * kw, y = gy + (i / kTypeColumns) * kh;
+        const bool here = i == key_;
+        box(r, x + 2, y + 2, kw - 4, kh - 4, here ? kTeal : kPanel, here ? kTeal : kLine);
+        char one[8];
+        std::snprintf(one, sizeof one, "%s", kTypeKeys[i] == ' ' ? "SPACE" : std::string(1, kTypeKeys[i]).c_str());
+        const Font& font = kTypeKeys[i] == ' ' ? fonts.within(&Fonts::small, one, kw - 4 - 6.f) : fonts.large; // ("SPACE" at XL is wider than its key: held at LARGE)
+        font.drawCentered(r, x + kw / 2.f, y + (kh - font.capHeight()) / 2.f, one, here ? kBg : kText);
+    }
+    const bool none = typed_.empty();
+    const Hint list[] = {{"A", "type"}, {"Y", none ? nullptr : "delete"}, {"B", "leave"}, {"START", "save"}};
+    hints(r, fonts, list, 4);
+}
+
 void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char text[64], name[24];
     trackName(project_, project_.track, name, sizeof name);
     std::snprintf(text, sizeof text, "%s / SOUND", name);
     topBar(r, fonts, View::Device, text, project_);
+    if (typing_) {
+        drawTyping(r, fonts); // naming a preset to save: the keys instead of the rows
+        return;
+    }
     const SDL_Color accent = holding_ ? kBrass : kTeal;
     const TrackData& t = trk();
     const Session::LaneSound& sound = session_.trackSound(project_.track);
@@ -294,8 +439,12 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else if (!sound.peaks.empty()) {
         const int wx = sx + 7, wy = kWaveY, ww = sw - 14, wh = kWaveH;
         wavePicture(r, sound.peaks, wx, wy, ww, wh, static_cast<float>(t.sampler[sampler::Start]) / 100.f, endPart(t)); // what a note plays, lit
+        if (t.samplerChop && sound.zones == 0)
+            for (int i = 1; i < sampler::kChopSlices; ++i) box(r, wx + ww * i / sampler::kChopSlices, wy, 1, wh, kLine, kLine); // its slices
         drawPlayhead(r, head_, lastMs_, wx, wy - 2, ww, wh + 4);
-        std::snprintf(text, sizeof text, "%.1f S", sound.seconds);
+        if (sound.zones > 0) std::snprintf(text, sizeof text, "%.1f S  %d ZONES", sound.seconds, sound.zones);
+        else if (t.samplerChop) std::snprintf(text, sizeof text, "%.1f S  CHOP", sound.seconds);
+        else std::snprintf(text, sizeof text, "%.1f S", sound.seconds);
         fonts.small.drawRight(r, sx + sw - 8.f, sy + 7.f, text, kDim);
     }
     if (stop_ == 0) outline(r, sx - 1, sy - 1, sw + 2, sh + 2, accent, 2);
@@ -309,18 +458,37 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         valueBox(r, fonts, x, y, 153, kSettingH, kNames[id], text, (id == sampler::Root ? static_cast<float>(sampler::settingMax(id) - t.sampler[id]) : static_cast<float>(t.sampler[id] - sampler::settingMin(id))) / range, stop_ == place + 1,
                  holding_, id == sampler::Tune);
     }
+
+    // ---- the preset -----------------------------------------------------------------
+    const int px = 8, py = kPresetY, pw = 624, ph = kPresetH;
+    box(r, px, py, pw, ph, kPanel, kLine);
+    const int presetNow = const_cast<Session&>(session_).samplerPresetOf(project_.track);
+    const char* presetName = presetNow >= 0 ? const_cast<Session&>(session_).samplerPresets()[static_cast<std::size_t>(presetNow)].name.c_str() : "-";
+    fonts.small.draw(r, px + 7.f, py + (ph - fonts.small.capHeight()) / 2.f, "PRESET", kDim);
+    fonts.within(&Fonts::large, presetName, pw - 170.f).drawCentered( // (held at LARGE when it runs past the box)
+        r, px + pw / 2.f, py + (ph - fonts.large.capHeight()) / 2.f, presetName, stop_ == kPresetStop ? accent : (presetNow >= 0 ? kText : kDim));
+    if (presetDeletePart_ > 0.f) fill(r, px, py + ph - 2, static_cast<int>(pw * (presetDeletePart_ > 1.f ? 1.f : presetDeletePart_)), 2, kStop);
+    if (stop_ == kPresetStop) outline(r, px - 1, py - 1, pw + 2, ph + 2, accent, 2);
     scopeStrip(r, fonts, session_.engine);
 
     Hint list[8];
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     if (holding_) {
-        hint("UP / DOWN", stop_ == 0 ? "next / previous recording" : "turn it");
+        hint("UP / DOWN", stop_ == 0 ? "next / previous recording" : (stop_ == kPresetStop ? "next / previous preset" : "turn it"));
+    } else if (stop_ == kPresetStop) {
+        hint("HOLD A", "pick one");
+        if (const_cast<Session&>(session_).samplerPresetOf(project_.track) >= 0) hint("HOLD B", "delete this preset");
+        hint("Y", "catch");
+        hint("R1", "save");
+        hint("L1", "chop");
+        hint("START", project_.playing ? "stop" : "play");
     } else {
-        hint("HOLD A", stop_ == 0 ? "pick the recording" : "turn");
-        hint("B", stop_ == 0 ? "none" : "default value");
+        hint("HOLD A", stop_ == 0 ? "pick one" : "turn");
+        hint("B", stop_ == 0 ? "none" : "default");
         hint("Y", "catch");
         hint("R1", "record");
+        hint("L1", "chop");
         hint("START", project_.playing ? "stop" : "play");
     }
     hints(r, fonts, list, count);

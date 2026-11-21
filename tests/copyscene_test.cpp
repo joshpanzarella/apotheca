@@ -34,6 +34,7 @@ static int failures = 0;
 namespace {
 
 const SDL_Keycode A = SDLK_x, B = SDLK_z, L1 = SDLK_q, R1 = SDLK_w, L2 = SDLK_1, R2 = SDLK_2, DOWN = SDLK_DOWN, SELECT = SDLK_BACKSPACE;
+const SDL_Keycode UP = SDLK_UP, LEFT = SDLK_LEFT, RIGHT = SDLK_RIGHT;
 const int kStep = 6000; // 120 BPM at 48 kHz
 
 struct Rig {
@@ -279,9 +280,11 @@ void testTheSameIsNoStep() {
     rig.settle();
     makeScene(rig, 0);
     CHECK(session.copyScene(0) == Session::SceneCopy::Done && session.pasteScene(1) == Session::SceneCopy::Done);
+    CHECK(session.copiedScene() < 0); // spent: a paste clears the copy
     // An edit, then a paste that changes nothing: undo takes the edit back, not the paste.
     session.setAutomation(0, 5, 0, 0, 0.5f);
     rig.settle();
+    CHECK(session.copyScene(0) == Session::SceneCopy::Done); // again: the paste before spent it
     CHECK(session.pasteScene(1) == Session::SceneCopy::Same);
     CHECK(session.pasteScene(0) == Session::SceneCopy::Same); // onto itself, too
     rig.undo();
@@ -307,6 +310,25 @@ void testRefusals() {
     CHECK(rig.project().repeats[2] == 3 && rig.project().steps[2] == 20);
 }
 
+void testScenePasteAcrossChangedSynths() {
+    Rig rig;
+    Session& session = rig.session();
+    session.addTrack(TrackKind::Phazed);
+    rig.settle();
+    makeScene(rig, 0);
+    CHECK(session.copyScene(0) == Session::SceneCopy::Done);
+    // The synth changed since: its notes come over anyway, as a cell's do.
+    CHECK(session.setTrackKind(1, TrackKind::Fm6));
+    CHECK(session.pasteScene(2) == Session::SceneCopy::Done);
+    CHECK(rig.track(1).notes[2][0].notes[7].pitch == 64 && rig.track(1).notes[2][0].chords[2].root == 48 && rig.track(1).bars[2] == 1);
+    CHECK(rig.track(1).automation[2][5][7] == 0.4f); // its automation too (setTrackKind cleared scene 0's own lanes)
+    // ...but changed the other way, drums onto it stay skipped.
+    CHECK(session.copyScene(0) == Session::SceneCopy::Done);
+    CHECK(session.setTrackKind(1, TrackKind::Drums));
+    CHECK(session.pasteScene(3) == Session::SceneCopy::Done);
+    CHECK(rig.track(1).drums[3][0].empty() && rig.track(1).bars[3] == 1);
+}
+
 void testTheGesture() {
     Rig rig;
     Session& session = rig.session();
@@ -326,7 +348,7 @@ void testTheGesture() {
     rig.key(R1, false);
     rig.frames(1);
     CHECK(rig.track(0).drums[1][0].level[0][0] == 0.9f && rig.said() == "PASTED ON SCENE 2");
-    CHECK(session.copiedScene() == 0); // kept: it pastes again
+    CHECK(session.copiedScene() < 0); // spent: a paste clears the copy
     // The same scene again: copied, not pasted over itself.
     song.moveCursorTo(0, -1);
     rig.tap(R1);
@@ -337,14 +359,318 @@ void testTheGesture() {
     rig.tap(R1);
     CHECK(rig.track(0).drums[2][0].level[0][0] == 0.9f && rig.said() == "PASTED ON SCENE 3");
     CHECK(song.songEndRow() == 3);
-    // R1 on a cell is still the brush, and it touches no clipboard.
+    // A fresh scene copy, so the cell work below proves the scene clipboard untouched.
+    song.moveCursorTo(0, -1);
+    rig.tap(R1);
+    CHECK(session.copiedScene() == 0 && rig.said() == "SCENE 1 COPIED");
+    // R1 on a cell copies it, as R1 on a repeat box copies its scene; R1 on
+    // another cell pastes there, on its let go. The scene clipboard is untouched.
     song.moveCursorTo(0, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL COPIED");
+    song.moveCursorTo(3, 0);
     rig.key(R1, true);
     rig.frames(1);
-    rig.tap(DOWN, 3);
+    CHECK(rig.track(0).drums[3][0].level[0][0] == 0.f); // not yet: on its let go
     rig.key(R1, false);
     rig.frames(1);
-    CHECK(rig.track(0).drums[3][0].level[0][0] == 0.9f && session.copiedScene() == 0);
+    CHECK(rig.track(0).drums[3][0].level[0][0] == 0.9f && rig.said() == "CELL PASTED");
+    CHECK(session.copiedScene() == 0);
+    // Pasted, the copy is cleared: R1 on the source copies it again (nothing to clear).
+    song.moveCursorTo(0, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL COPIED");
+    // R1 on another cell pastes there, on its let go.
+    song.moveCursorTo(4, 0);
+    rig.key(R1, true);
+    rig.frames(1);
+    rig.key(R1, false);
+    rig.frames(1);
+    CHECK(rig.track(0).drums[4][0].level[0][0] == 0.9f && rig.said() == "CELL PASTED");
+    // ...so R1 on the source copies it yet again, and tapping it once more clears.
+    song.moveCursorTo(0, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL COPIED");
+    rig.tap(R1);
+    CHECK(rig.said() == "COPY CLEARED");
+    // The paste is a step of undo of its own.
+    song.moveCursorTo(0, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL COPIED");
+    song.moveCursorTo(4, 0);
+    rig.tap(R1);
+    CHECK(rig.track(0).drums[4][0].level[0][0] == 0.9f);
+    rig.undo();
+    CHECK(rig.track(0).drums[4][0].level[0][0] == 0.f && rig.track(0).drums[0][0].level[0][0] == 0.9f);
+}
+
+void testSceneTempo() {
+    Rig rig;
+    Session& session = rig.session();
+    rig.track(0).drums[0][0].level[0][0] = 0.9f;
+    rig.track(0).drums[1][0].level[0][0] = 0.9f;
+    session.setTempo(120.f);
+    session.setSceneTempo(1, 240.f);
+    CHECK(rig.project().sceneTempo[0] == 0.f && rig.project().sceneTempo[1] == 240.f);
+    // The song body counts each scene at its own tempo (16 steps each here).
+    CHECK(songFrames(rig.project(), 48000.f) == 16 * 6000 + 16 * 3000);
+    // ...and it plays that way: scene 0 in 96000 frames, scene 1 in 48000.
+    rig.project().scene = 0;
+    rig.frames(30);
+    session.togglePlay(true);
+    std::vector<float> out(2 * 1024);
+    long at = 0;
+    const auto renderTo = [&](int scene, long limit) {
+        while (at < limit) {
+            rig.engine->render(out.data(), 1024);
+            at += 1024;
+            if (rig.engine->playScene() == scene) return at;
+        }
+        return -1L;
+    };
+    const long s1 = renderTo(1, 200000);
+    CHECK(s1 > 0 && std::abs(s1 - 96000) < 2048);
+    const long back = renderTo(0, s1 + 100000);
+    CHECK(back > 0 && std::abs(back - s1 - 48000) < 2048);
+    session.togglePlay(true); // stop
+    // A scene with none of its own follows the song's.
+    session.setTempo(60.f);
+    rig.project().scene = 0;
+    rig.frames(30);
+    session.togglePlay(true);
+    at = 0;
+    CHECK(std::abs(renderTo(1, 300000) - 192000) < 2048);
+    session.togglePlay(true);
+}
+
+void testSceneTempoUI() {
+    Rig rig;
+    Session& session = rig.session();
+    SongScreen& song = rig.app.song();
+    session.setTempo(120.f);
+    rig.track(0).drums[0][0].level[0][0] = 0.9f; // scene 0 exists: the cursor stands on it, not AT END
+    song.moveCursorTo(0, -1);
+    rig.key(L1, true);
+    rig.tap(UP);
+    CHECK(rig.project().sceneTempo[0] == 121.f && rig.said() == "SCENE TEMPO 121");
+    rig.tap(UP);
+    CHECK(rig.project().sceneTempo[0] == 122.f);
+    rig.tap(DOWN);
+    CHECK(rig.project().sceneTempo[0] == 121.f);
+    // B with L1 held puts tempo and meter back.
+    rig.tap(B);
+    CHECK(rig.project().sceneTempo[0] == 0.f && rig.said() == "TEMPO FOLLOWS THE SONG, 16 STEPS");
+    // The hints while L1 is held fit the bar.
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (canvas.ok) {
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(ui::gHintsOver == 0.f);
+    }
+    rig.key(L1, false);
+    // Left and right are the steps in its bars.
+    rig.key(L1, true);
+    rig.tap(LEFT);
+    CHECK(rig.project().meterOf(0) == 15 && rig.said() == "15 STEPS IN A BAR");
+    rig.tap(RIGHT);
+    CHECK(rig.project().meterOf(0) == 16);
+    rig.key(L1, false);
+    session.setSceneMeter(0, 99);
+    CHECK(rig.project().meterOf(0) == 16);
+    session.setSceneMeter(0, -5);
+    CHECK(rig.project().meterOf(0) == 1);
+    session.setSceneMeter(0, 16);
+    // ...and B alone is still repeats back to 1.
+    song.moveCursorTo(0, -1);
+    rig.tap(B);
+    CHECK(rig.project().repeats[0] == 1);
+}
+
+void testSceneTempoFile() {
+    Project song;
+    song.tracks[0].kind = TrackKind::Drums;
+    song.tracks[0].drums[0][0].level[0][0] = 0.9f;
+    song.sceneTempo[1] = 150.f;
+    const std::string text = songText(song);
+    CHECK(text.find("\nstempi 0 150") != std::string::npos);
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back));
+    CHECK(back->sceneTempo[0] == 0.f && back->sceneTempo[1] == 150.f);
+    // A song from before has no such line: every scene follows.
+    Project plain;
+    plain.tracks[0].kind = TrackKind::Drums;
+    const std::string old = songText(plain);
+    CHECK(old.find("stempi") == std::string::npos);
+    std::unique_ptr<Project> older(new Project);
+    older->sceneTempo[1] = 150.f;
+    CHECK(parseSong(old, *older) && older->sceneTempo[1] == 0.f);
+}
+
+void testSceneMeter() {
+    Rig rig;
+    Session& session = rig.session();
+    session.setSceneMeter(0, 12);
+    session.setSceneMeter(1, 16);
+    CHECK(rig.project().meterOf(0) == 12 && rig.project().sceneSteps(0) == 12);
+    CHECK(rig.project().barSteps(0, 0) == 12 && rig.project().barSteps(0, 1) == 0);
+    rig.track(0).drums[0][0].level[0][0] = 0.9f;
+    rig.track(0).drums[0][0].level[0][14] = 0.9f; // past the meter: kept, not played
+    rig.track(0).drums[1][0].level[0][0] = 0.9f;
+    session.setTempo(120.f);
+    // Scene 0 plays 12 steps, then scene 1 plays 16.
+    rig.project().scene = 0;
+    rig.frames(30);
+    session.togglePlay(true);
+    std::vector<float> out(2 * 1024);
+    long at = 0;
+    int topStep = -1;
+    const auto renderTo = [&](int scene, long limit) {
+        while (at < limit) {
+            rig.engine->render(out.data(), 1024);
+            at += 1024;
+            if (rig.engine->playScene() == 0) topStep = rig.engine->playStep() > topStep ? rig.engine->playStep() : topStep;
+            if (rig.engine->playScene() == scene) return at;
+        }
+        return -1L;
+    };
+    const long s1 = renderTo(1, 200000);
+    CHECK(s1 > 0 && std::abs(s1 - 12 * 6000) < 2048);
+    CHECK(topStep == 11); // never past the meter's last step
+    const long back = renderTo(0, s1 + 200000);
+    CHECK(back > 0 && std::abs(back - s1 - 16 * 6000) < 2048);
+    session.togglePlay(true); // stop
+    CHECK(rig.track(0).drums[0][0].level[0][14] == 0.9f); // ...and the unplayed hit is still there
+}
+
+void testSceneMeterCarry() {
+    Rig rig;
+    Session& session = rig.session();
+    makeScene(rig, 0);
+    session.setSceneMeter(0, 12);
+    CHECK(session.copyScene(0) == Session::SceneCopy::Done && session.pasteScene(2) == Session::SceneCopy::Done);
+    CHECK(rig.project().meterOf(2) == 12); // pasted with the scene
+    CHECK(session.clearScene(2) == Session::SceneClear::Done && rig.project().meterOf(2) == 16); // cleared with it
+    session.setSceneMeter(3, 12);
+    CHECK(session.clearScene(3) == Session::SceneClear::Done); // a meter alone is something to clear
+    CHECK(rig.project().meterOf(3) == 16);
+}
+
+void testSceneMeterFile() {
+    Project song;
+    song.tracks[0].kind = TrackKind::Drums;
+    song.tracks[0].drums[0][0].level[0][0] = 0.9f;
+    song.sceneMeter[1] = 12;
+    const std::string text = songText(song);
+    CHECK(text.find("\nmeter 16 12") != std::string::npos);
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back));
+    CHECK(back->meterOf(0) == 16 && back->meterOf(1) == 12);
+    Project plain;
+    plain.tracks[0].kind = TrackKind::Drums;
+    CHECK(songText(plain).find("meter") == std::string::npos);
+    std::unique_ptr<Project> older(new Project);
+    CHECK(parseSong(songText(plain), *older) && older->meterOf(1) == 16);
+}
+
+void testCellCopyCleared() {
+    // A new song clears the copy: its cells are gone with the old one.
+    Rig rig;
+    SongScreen& song = rig.app.song();
+    rig.track(0).drums[0][0].level[0][0] = 0.9f;
+    song.moveCursorTo(0, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL COPIED");
+    rig.tap(SELECT); // the list of songs
+    rig.tap(A);      // its first row: a new song
+    song.moveCursorTo(1, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL COPIED"); // copies: nothing pastes from the old song
+    // A scene put in or taken out clears it too: its cells moved.
+    Rig moved;
+    SongScreen& scrolled = moved.app.song();
+    moved.track(0).drums[0][0].level[0][0] = 0.9f;
+    scrolled.moveCursorTo(0, 0);
+    moved.tap(R1);
+    CHECK(moved.said() == "CELL COPIED");
+    scrolled.scenesMoved(0, 1);
+    scrolled.moveCursorTo(2, 0);
+    moved.tap(R1);
+    CHECK(moved.said() == "CELL COPIED");
+}
+
+void testCellCopyRefusals() {
+    Rig rig;
+    Session& session = rig.session();
+    SongScreen& song = rig.app.song();
+    session.addTrack(TrackKind::Phazed);
+    rig.settle();
+    rig.track(0).drums[0][0].level[0][0] = 0.9f;
+    // A drum cell does not paste on a synth track, and the copy is kept.
+    song.moveCursorTo(0, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL COPIED");
+    song.moveCursorTo(0, 1);
+    rig.tap(R1);
+    CHECK(rig.said() == "NO PASTE: OTHER KIND");
+    song.moveCursorTo(1, 0);
+    rig.tap(R1);
+    CHECK(rig.track(0).drums[1][0].level[0][0] == 0.9f && rig.said() == "CELL PASTED");
+}
+
+void testCellCopyAcrossSynths() {
+    Rig rig;
+    Session& session = rig.session();
+    SongScreen& song = rig.app.song();
+    session.addTrack(TrackKind::Phazed);
+    session.addTrack(TrackKind::Fm6);
+    rig.settle();
+    NoteEvent note;
+    note.step = 5;
+    note.pitch = 64;
+    note.length = 2.f;
+    note.velocity = 0.8f;
+    rig.track(1).notes[0][0].notes[3] = note;
+    // A piano roll pastes on another synth: its notes go with it, and the copy is spent.
+    song.moveCursorTo(0, 1);
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL COPIED");
+    song.moveCursorTo(0, 2);
+    rig.key(R1, true);
+    rig.frames(1);
+    rig.key(R1, false);
+    rig.frames(1);
+    CHECK(rig.track(2).notes[0][0].notes[3].pitch == 64 && rig.said() == "CELL PASTED");
+    // ...so R1 there copies that cell instead of pasting again.
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL COPIED");
+    // A synth cell does not paste on drums either, and the copy is kept.
+    song.moveCursorTo(0, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "NO PASTE: OTHER KIND");
+    song.moveCursorTo(1, 1);
+    rig.tap(R1);
+    CHECK(rig.track(1).notes[1][0].notes[3].pitch == 64 && rig.said() == "CELL PASTED");
+    // A panic begun with R1 held for a paste: let go, nothing pastes.
+    song.moveCursorTo(0, 0);
+    rig.tap(R1);
+    song.moveCursorTo(2, 0);
+    rig.key(R1, true);
+    rig.frames(1);
+    rig.key(L1, true);
+    rig.frames(1);
+    rig.key(L2, true);
+    rig.frames(1);
+    rig.key(R2, true);
+    rig.frames(2);
+    rig.key(R1, false);
+    rig.frames(1);
+    rig.key(L1, false);
+    rig.key(L2, false);
+    rig.key(R2, false);
+    rig.frames(2);
+    CHECK(rig.track(0).drums[2][0].level[0][0] == 0.f && session.view == View::Song);
 }
 
 void testTheGesturePanic() {
@@ -390,6 +716,7 @@ void testTheMarkAndHints() {
     };
     song.moveCursorTo(0, -1);
     CHECK(draw() && hintKeyed(canvas, scratch, "R1", "copy"));
+    CHECK(hintKeyed(canvas, scratch, "HOLD B", "delete"));
     rig.tap(R1);
     CHECK(draw() && hintKeyed(canvas, scratch, "R1", "paste"));
     song.moveCursorTo(1, -1);
@@ -398,6 +725,28 @@ void testTheMarkAndHints() {
     CHECK(box.w > 0 && canvas.is(box.x + 1, box.y + 1, ui::kBrass)); // the copied row, brass-marked
     const SDL_Rect other = song.repeatBox(1);
     CHECK(canvas.is(other.x + 1, other.y + 1, ui::kBg)); // the rest, not
+}
+
+void testEmptyCellBars() {
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    Rig rig;
+    Session& session = rig.session();
+    SongScreen& song = rig.app.song();
+    session.addTrack(TrackKind::Phazed);
+    rig.settle();
+    rig.track(1).bars[0] = 2; // empty, two bars long
+    canvas.clear();
+    rig.app.draw(canvas.r, *canvas.fonts);
+    const SDL_Rect c = song.cellBox(1, 0);
+    CHECK(c.w > 0);
+    // A faint line where its second bar starts (16 steps a bar, as the roll draws them).
+    const float stepW = static_cast<float>(c.w - 6) / (16.f * rig.project().sceneBars(0));
+    CHECK(canvas.is(c.x + 3 + static_cast<int>(16 * stepW), c.y + c.h / 2, ui::kDim));
+    // ...and none in an empty cell one bar long.
+    const SDL_Rect one = song.cellBox(1, 1);
+    CHECK(one.w > 0 && !canvas.is(one.x + one.w / 2, one.y + one.h / 2, ui::kDim));
 }
 
 void testTheWordsFit() {
@@ -411,6 +760,100 @@ void testTheWordsFit() {
             const std::string words = Session::sceneCopyWords(answer, paste, kMaxScenes - 1);
             CHECK(!words.empty() && canvas.fonts->medium.width(words.c_str()) <= 248.f);
         }
+    using SL = Session::SceneClear;
+    for (SL answer : {SL::Done, SL::AlreadyEmpty, SL::NoScene}) {
+        const std::string words = Session::sceneClearWords(answer, kMaxScenes - 1);
+        CHECK(!words.empty() && canvas.fonts->medium.width(words.c_str()) <= 248.f);
+    }
+}
+
+void testClearScene() {
+    Rig rig;
+    Session& session = rig.session();
+    session.addTrack(TrackKind::Phazed);
+    rig.settle();
+    makeScene(rig, 0);
+    makeScene(rig, 1);
+    CHECK(session.clearScene(1) == Session::SceneClear::Done);
+    // (The pieces stay, blanked, for undo: what is gone is checked, not them.)
+    for (int t = 0; t < 2; ++t) CHECK(rig.track(t).bars[1] == 1);
+    CHECK(rig.project().repeats[1] == 1 && rig.project().steps[1] == 0);
+    CHECK(rig.track(0).drums[1][1].level[2][9] == 0.f && rig.track(0).automation[1][3][20] < 0.f);
+    CHECK(rig.track(0).drums[0][1].level[2][9] == 0.75f); // the other scene, untouched
+    rig.undo();
+    CHECK(rig.project().repeats[1] == 3 && rig.project().steps[1] == 20 && rig.track(0).bars[1] == 2);
+    CHECK(rig.track(0).drums[1][1].level[2][9] == 0.75f);
+    bool noteBack = false; // (in whatever slot undo put it back in)
+    for (const NoteEvent& n : rig.track(1).notes[1][0].notes)
+        if (n.pitch == 64 && n.step == 5) noteBack = true;
+    CHECK(noteBack);
+    CHECK(rig.track(0).automation[1][3][20] == 0.6f);
+    rig.redo();
+    CHECK(rig.project().repeats[1] == 1 && rig.track(0).drums[1][1].level[2][9] == 0.f);
+    CHECK(peakOf(rig.play(1, 32)) == 0.f); // the engine hears nothing there (after the undo checks: playing steps undo)
+    // The clipboard survives a clear: copy, clear, paste.
+    CHECK(session.copyScene(0) == Session::SceneCopy::Done);
+    CHECK(session.clearScene(0) == Session::SceneClear::Done);
+    CHECK(session.pasteScene(0) == Session::SceneCopy::Done);
+    CHECK(rig.project().repeats[0] == 3 && rig.track(0).drums[0][1].level[2][9] == 0.75f);
+}
+
+void testClearAlreadyEmpty() {
+    Rig rig;
+    Session& session = rig.session();
+    rig.settle();
+    const int steps = session.undoSteps();
+    CHECK(session.clearScene(0) == Session::SceneClear::AlreadyEmpty);
+    CHECK(session.clearScene(-1) == Session::SceneClear::NoScene && session.clearScene(kMaxScenes) == Session::SceneClear::NoScene);
+    CHECK(session.undoSteps() == steps); // nothing stepped
+}
+
+void testClearGesture() {
+    Rig rig;
+    Session& session = rig.session();
+    SongScreen& song = rig.app.song();
+    session.addTrack(TrackKind::Phazed);
+    rig.settle();
+    makeScene(rig, 0);
+    // Hold B on its box: red fills it, and at the second it empties, said.
+    song.moveCursorTo(0, -1);
+    rig.key(B, true);
+    rig.frames(40);
+    {
+        Canvas canvas;
+        CHECK(canvas.ok);
+        if (canvas.ok) {
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            const SDL_Rect box = song.repeatBox(0);
+            const int fy = box.y + box.h - 3; // (the foot row: clear of the count)
+            const int inner = box.w - 2;
+            CHECK(!canvas.is(box.x + 1 + inner * 30 / 100, fy, ui::kBg) && canvas.is(box.x + 1 + inner * 90 / 100, fy, ui::kBg));
+        }
+    }
+    rig.frames(30);
+    rig.key(B, false);
+    rig.frames(1);
+    // (The pieces stay, blanked, for undo: what is gone is checked, not them.)
+    CHECK(rig.project().repeats[0] == 1 && rig.project().steps[0] == 0 && rig.track(0).bars[0] == 1);
+    CHECK(rig.track(0).drums[0][1].level[2][9] == 0.f && rig.track(0).automation[0][3][20] < 0.f);
+    CHECK(rig.said() == "SCENE 1 EMPTIED");
+    // A tap still only takes repeats back to 1.
+    rig.project().repeats[2] = 4;
+    rig.track(0).drums[2][0].level[0][0] = 0.9f;
+    song.moveCursorTo(2, -1);
+    rig.tap(B);
+    CHECK(rig.project().repeats[2] == 1);
+    CHECK(rig.track(0).drums[2][0].level[0][0] == 0.9f);
+    // The AT END row: holding does nothing (still LOOP).
+    const std::string before = rig.said();
+    const int endRow = song.songEndRow();
+    song.moveCursorTo(endRow, -1);
+    rig.key(B, true);
+    rig.frames(70);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(session.view == View::Song && rig.project().songEnd == kSongLoop && song.songEndRow() == endRow && rig.said() == before);
 }
 
 } // namespace
@@ -423,8 +866,18 @@ int main(int argc, char** argv) {
     };
     const Test tests[] = {
         {"testCopyPasteScene", testCopyPasteScene}, {"testTheEngineHearsIt", testTheEngineHearsIt}, {"testOneUndoStep", testOneUndoStep},
-        {"testTheSameIsNoStep", testTheSameIsNoStep}, {"testRefusals", testRefusals}, {"testTheGesture", testTheGesture},
-        {"testTheGesturePanic", testTheGesturePanic}, {"testTheMarkAndHints", testTheMarkAndHints}, {"testTheWordsFit", testTheWordsFit},
+        {"testTheSameIsNoStep", testTheSameIsNoStep}, {"testRefusals", testRefusals}, {"testScenePasteAcrossChangedSynths", testScenePasteAcrossChangedSynths}, {"testTheGesture", testTheGesture},
+        {"testTheGesturePanic", testTheGesturePanic}, {"testTheMarkAndHints", testTheMarkAndHints}, {"testEmptyCellBars", testEmptyCellBars}, {"testTheWordsFit", testTheWordsFit},
+        {"testClearScene", testClearScene}, {"testClearAlreadyEmpty", testClearAlreadyEmpty}, {"testClearGesture", testClearGesture},
+        {"testCellCopyRefusals", testCellCopyRefusals},
+        {"testCellCopyAcrossSynths", testCellCopyAcrossSynths},
+        {"testCellCopyCleared", testCellCopyCleared},
+        {"testSceneTempo", testSceneTempo},
+        {"testSceneTempoUI", testSceneTempoUI},
+        {"testSceneTempoFile", testSceneTempoFile},
+        {"testSceneMeter", testSceneMeter},
+        {"testSceneMeterCarry", testSceneMeterCarry},
+        {"testSceneMeterFile", testSceneMeterFile},
     };
     for (const Test& test : tests) {
         bool wanted = argc < 2;

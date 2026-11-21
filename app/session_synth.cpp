@@ -23,6 +23,8 @@
 #include "kit_screen.hpp"
 #include "lane_edit.hpp"
 #include "lane_feel.hpp"
+#include "mod_screen.hpp"
+#include "mods.hpp"
 #include "sampler_screen.hpp"
 #include "song_file.hpp"
 #include "stretch.hpp"
@@ -192,6 +194,8 @@ std::string kitField(const char* name, int field, const char* rest) {
 void Session::usePresetFolder(const std::string& folder) {
     presetFolder_ = folder;
     kits_.clear(); // (read again when next asked for: the folder's own kits)
+    samplerPresets_.clear(); // (the sampler's: the same)
+    samplerPresetsRead_ = false;
     mkdir(folder.c_str(), 0755);
     for (int i = 0; i < kInstrumentCount; ++i) {
         if (!kInstruments[i].presetEnding) continue; // it keeps no presets
@@ -330,6 +334,7 @@ std::string Session::designSpec(int track) const {
                       morph::TableA, morph::PositionA, morph::TableB, morph::PositionB);
         out += morphTablesText() + oscs;
     }
+    out += designFxSpec(track) + designModsSpec(track);
     return out + ",\"page\":\"synth\"}";
 }
 
@@ -362,7 +367,8 @@ std::string Session::samplerSpec(int track) const {
     std::snprintf(text, sizeof text, ",\"marks\":[%d,%d],\"least\":%d,\"peaks\":[", sampler::Start, sampler::End, sampler::kLeastSpan);
     out += text + peaksText(sound.peaks) + "]}],\"recordings\":[";
     for (std::size_t i = 0; i < designRecordings_.size(); ++i) out += (i ? "," : "") + jsonText(designRecordings_[i].c_str());
-    return out + "]}";
+    out += "]" + designFxSpec(track) + designModsSpec(track);
+    return out + "}";
 }
 
 
@@ -452,7 +458,159 @@ std::string Session::kitSpec(int track) const {
     }
     out += "],\"recordings\":[";
     for (std::size_t i = 0; i < designRecordings_.size(); ++i) out += (i ? "," : "") + jsonText(designRecordings_[i].c_str());
-    return out + "]}";
+    out += "]" + designFxSpec(track) + designModsSpec(track);
+    return out + "}";
+}
+
+// EFFECTS for the page (every instrument's carries it): the track's three slots, its sends, the two
+// buses, the master's two slots, the mixer's LEVEL and PAN. A slot says which effects it may hold
+// (NONE, then every family's types, as the FX page's list holds them: a bus its own short list) and
+// the settings of the one it holds now (their names, and every reading of a setting that is a choice).
+// A slot given another effect is a new spec (serveDesigner: designSpecFx_).
+std::string Session::designFxSpec(int track) const {
+    char text[128];
+    const auto kindsText = [&](int bus) {
+        std::string list = "[{\"id\":0,\"name\":\"NONE\"}";
+        for (int place = 1; place < familyListSize(bus); ++place) {
+            const EffectKind first = familyAt(place, bus);
+            for (int t = 0; t < effectTypes(first); ++t) {
+                const EffectKind kind = effectTypeAt(first, t);
+                std::snprintf(text, sizeof text, ",{\"id\":%d,\"name\":", static_cast<int>(kind));
+                list += text;
+                const char* shown = effectTypeShown(kind);
+                if (shown[0]) {
+                    char both[64];
+                    std::snprintf(both, sizeof both, "%s %s", effectFamily(kind), shown);
+                    list += jsonText(both);
+                } else list += jsonText(effectFamily(kind));
+                list += "}";
+            }
+        }
+        return list + "]";
+    };
+    const auto slotText = [&](const char* name, int bus, EffectKind kind) {
+        std::string out = "{\"name\":" + jsonText(name) + ",\"kinds\":" + kindsText(bus) + ",\"params\":[";
+        const EffectInfo& info = effectInfo(kind);
+        for (int i = 0; i < info.params; ++i) {
+            std::snprintf(text, sizeof text, "%s{\"name\":", i ? "," : "");
+            // On a bus the MIX reads LEVEL: how loud the bus comes back (fx_screen.cpp).
+            out += text + jsonText(bus >= 0 && i == effectMixParam(kind) ? "LEVEL" : info.paramNames[i]);
+            const int choices = effectChoices(kind, i);
+            std::snprintf(text, sizeof text, ",\"choices\":%d", choices);
+            out += text;
+            if (choices > 0) {
+                out += ",\"texts\":[";
+                for (int c = 0; c < choices; ++c) {
+                    effectParamText(kind, i, (static_cast<float>(c) + 0.5f) / static_cast<float>(choices), text, sizeof text);
+                    out += (c ? "," : "") + jsonText(text);
+                }
+                out += "]";
+            }
+            out += "}";
+        }
+        return out + "]}";
+    };
+    const TrackData& t = project.tracks[track];
+    std::string out = ",\"fx\":{\"slots\":[";
+    for (int s = 0; s < kTrackSlots; ++s) {
+        std::snprintf(text, sizeof text, "SLOT %d", s + 1);
+        out += (s ? "," : "") + slotText(text, -1, static_cast<EffectKind>(t.effects[s].kind));
+    }
+    out += "],\"buses\":[";
+    const char* const busNames[kBuses] = {"ECHO", "SPACE"};
+    for (int b = 0; b < kBuses; ++b) out += (b ? "," : "") + slotText(busNames[b], b, static_cast<EffectKind>(project.busEffects[b].kind));
+    out += "],\"master\":[";
+    for (int s = 0; s < kMasterSlots; ++s) {
+        std::snprintf(text, sizeof text, "MASTER %d", s + 1);
+        out += (s ? "," : "") + slotText(text, -1, static_cast<EffectKind>(project.masterEffects[s].kind));
+    }
+    std::snprintf(text, sizeof text, "],\"sends\":[{\"name\":\"ECHO\"},{\"name\":\"SPACE\"}],\"mix\":{\"dbmin\":%d,\"dbmax\":%d,\"pan\":%d}}", kMixLeastDb, kMixMostDb, kPanMost);
+    return out + text;
+}
+
+// The track's MODs for the page: every TARGET it may be aimed at (NOTHING, then what fits, in the MOD
+// page's order: macros, the slots' settings, sends, the mixer), the RATEs, SHAPEs and PHASEs.
+std::string Session::designModsSpec(int track) const {
+    const TrackData& t = project.tracks[track];
+    std::string out = ",\"mods\":{\"targets\":[{\"id\":-1,\"name\":\"NOTHING\"}";
+    char text[64];
+    for (int line = 0; line < ModScreen::kPickLines; ++line) {
+        int targets[8], count = 0;
+        ModScreen::pickLineTargets(t, line, targets, &count);
+        for (int i = 0; i < count; ++i) {
+            ModScreen::targetText(t, targets[i], text, sizeof text);
+            out += ",{\"id\":" + std::to_string(targets[i]) + ",\"name\":" + jsonText(text) + "}";
+        }
+    }
+    out += "],\"rates\":[";
+    for (int r = 0; r < kModRates; ++r) out += (r ? "," : "") + jsonText(modRateInfo(r).name);
+    out += "],\"shapes\":[";
+    for (int s = 0; s < kModShapes; ++s) out += (s ? "," : "") + jsonText(modShapeName(s));
+    // A PHASE in quarters, as the MOD page reads it (ModKnob::moreText).
+    return out + "],\"phases\":[\"0\",\"1/4\",\"1/2\",\"3/4\"]}";
+}
+
+std::string Session::designFxState(int track) const {
+    char text[128];
+    const TrackData& t = project.tracks[track];
+    // Which effect each slot holds: the track's three, the buses', the master's two. Then every
+    // setting's value in the fxset ids' order (designer.hpp), then what each reads.
+    std::snprintf(text, sizeof text, ",\"fxkinds\":[%d,%d,%d,%d,%d,%d,%d],\"fx\":[", t.effects[0].kind, t.effects[1].kind, t.effects[2].kind,
+                  project.busEffects[0].kind, project.busEffects[1].kind, project.masterEffects[0].kind, project.masterEffects[1].kind);
+    std::string out = text;
+    float values[kFxIds - 2];
+    for (int s = 0; s < kTrackSlots; ++s)
+        for (int p = 0; p < kEffectParams; ++p) values[s * kEffectParams + p] = t.effects[s].param[p];
+    values[kFxSendIds] = t.send[0];
+    values[kFxSendIds + 1] = t.send[1];
+    for (int b = 0; b < kBuses; ++b)
+        for (int p = 0; p < kEffectParams; ++p) values[kFxBusIds + b * kEffectParams + p] = project.busEffects[b].param[p];
+    for (int s = 0; s < kMasterSlots; ++s)
+        for (int p = 0; p < kEffectParams; ++p) values[kFxMasterIds + s * kEffectParams + p] = project.masterEffects[s].param[p];
+    for (int i = 0; i < kFxIds - 2; ++i) std::snprintf(text, sizeof text, i ? ",%.4g" : "%.4g", values[i]), out += text;
+    out += "],\"fxreadings\":[";
+    bool first = true;
+    const auto reading = [&](EffectKind kind, int p, const float* all, int i) {
+        // Past what the effect has (NONE has nothing): nothing to read.
+        if (p < effectInfo(kind).params) effectParamText(kind, p, values[i], text, sizeof text, all);
+        else text[0] = 0;
+        out += (first ? "" : ",") + jsonText(text);
+        first = false;
+    };
+    for (int s = 0; s < kTrackSlots; ++s) {
+        const EffectData& d = t.effects[s];
+        for (int p = 0; p < kEffectParams; ++p) reading(static_cast<EffectKind>(d.kind), p, d.param, s * kEffectParams + p);
+    }
+    for (int b = 0; b < kBuses; ++b) {
+        std::snprintf(text, sizeof text, "%s\"%d%%\"", first ? "" : ",", static_cast<int>(t.send[b] * 100.f + 0.5f));
+        out += text;
+        first = false;
+    }
+    for (int b = 0; b < kBuses; ++b) {
+        const EffectData& d = project.busEffects[b];
+        for (int p = 0; p < kEffectParams; ++p) reading(static_cast<EffectKind>(d.kind), p, d.param, kFxBusIds + b * kEffectParams + p);
+    }
+    for (int s = 0; s < kMasterSlots; ++s) {
+        const EffectData& d = project.masterEffects[s];
+        for (int p = 0; p < kEffectParams; ++p) reading(static_cast<EffectKind>(d.kind), p, d.param, kFxMasterIds + s * kEffectParams + p);
+    }
+    std::snprintf(text, sizeof text, "],\"mix\":[%d,%d]", t.mixDb, t.mixPan);
+    return out + text;
+}
+
+std::string Session::designModsState(int track) const {
+    char text[128];
+    const TrackData& t = project.tracks[track];
+    std::string out = ",\"mods\":[";
+    for (int m = 0; m < kModsPerTrack; ++m) {
+        const ModSettings& mod = t.mods[m];
+        std::snprintf(text, sizeof text, "%s{\"kind\":%d,\"target\":%d,\"depth\":%.4g,\"rate\":%d,\"shape\":%d,\"phase\":%d,\"length\":%d,\"slew\":%.4g,\"chance\":%.4g,\"speed\":%.4g,\"steps\":[",
+                      m ? "," : "", mod.kind, mod.target, mod.depth, mod.rate, mod.shape, mod.phase, mod.length, mod.slew, mod.chance, mod.speed);
+        out += text;
+        for (int s = 0; s < kModSteps; ++s) std::snprintf(text, sizeof text, s ? ",%.4g" : "%.4g", mod.steps[s]), out += text;
+        out += "]}";
+    }
+    return out + "]";
 }
 
 std::string Session::designState() const {
@@ -463,7 +621,7 @@ std::string Session::designState() const {
         std::snprintf(text, sizeof text, "{\"track\":%d,\"name\":\"SAMPLER\",\"spec\":%u,\"called\":", project.track + 1, designSpecSerial_);
         std::string out = text + jsonText(t.name) + ",\"presets\":0,\"preset\":-1,\"macros\":[],\"values\":[";
         for (int id = 0; id < sampler::kSettings; ++id) std::snprintf(text, sizeof text, id ? ",%d" : "%d", t.sampler[id]), out += text;
-        return out + "]}";
+        return out + "]" + designFxState(project.track) + designModsState(project.track) + "}";
     }
     if (t.kind == TrackKind::Drums) {
         // Every lane's settings by their ids (kKitStride a lane), and what the handheld reads for each
@@ -507,7 +665,7 @@ std::string Session::designState() const {
             }
             out += "}";
         }
-        return out + "]}";
+        return out + "]" + designFxState(project.track) + designModsState(project.track) + "}";
     }
     if (!spec) {
         std::snprintf(text, sizeof text, "{\"track\":%d,\"name\":\"\",\"spec\":%u}", project.track + 1, designSpecSerial_);
@@ -525,7 +683,7 @@ std::string Session::designState() const {
     for (int id = 0; id < shownSettingCount(t.kind); ++id) std::snprintf(text, sizeof text, id ? ",%d" : "%d", settingValue(*spec, values, id)), out += text;
     out += "],\"macros\":[";
     for (int m = 0; m < kSynthMacros; ++m) std::snprintf(text, sizeof text, m ? ",%.4g" : "%.4g", t.macro[m]), out += text;
-    return out + "]}";
+    return out + "]" + designFxState(project.track) + designModsState(project.track) + "}";
 }
 
 namespace {
@@ -550,6 +708,14 @@ void Session::serveDesigner() {
     const bool sampler = kind == TrackKind::Sampler, kit = kind == TrackKind::Drums;
     for (const DesignRequest& r : designer_.take()) {
         if (!specFor(kind) && !sampler && !kit) continue; // no synth, sampler or kit on this track: nothing to do it to
+        if (r.kind == DesignRequest::FxSet || r.kind == DesignRequest::FxType) { // every instrument's (a kit's too)
+            serveFx(r);
+            continue;
+        }
+        if (r.kind == DesignRequest::ModSet) {
+            serveMod(r);
+            continue;
+        }
         if (kit && r.kind != DesignRequest::Name) { // a kit's own (a synth's or a sampler's asks do nothing to it)
             serveKit(r);
             continue;
@@ -613,11 +779,17 @@ void Session::serveDesigner() {
     unsigned sound = sounds_[project.track][0].version;
     if (kit)
         for (int lane = 1; lane < kDrumLanes; ++lane) sound += sounds_[project.track][lane].version;
-    if (kind != designSpecKind_ || presets != designSpecPresets_ || project.track != designSpecTrack_ || sound != designSpecSound_ || listed) {
+    // The slots', buses' and master's effects, hashed in order (a swap is a new spec too).
+    unsigned fx = 0;
+    for (int s = 0; s < kTrackSlots; ++s) fx = fx * 31u + static_cast<unsigned>(project.tracks[project.track].effects[s].kind);
+    for (int b = 0; b < kBuses; ++b) fx = fx * 31u + static_cast<unsigned>(project.busEffects[b].kind);
+    for (int s = 0; s < kMasterSlots; ++s) fx = fx * 31u + static_cast<unsigned>(project.masterEffects[s].kind);
+    if (kind != designSpecKind_ || presets != designSpecPresets_ || project.track != designSpecTrack_ || sound != designSpecSound_ || fx != designSpecFx_ || listed) {
         designSpecKind_ = kind;
         designSpecPresets_ = presets;
         designSpecTrack_ = project.track;
         designSpecSound_ = sound;
+        designSpecFx_ = fx;
         std::string text = designSpec(project.track);
         if (text != designSpecText_) designSpecText_.swap(text), ++designSpecSerial_;
     }
@@ -665,6 +837,52 @@ void Session::serveKit(const DesignRequest& r) {
     case DesignRequest::Trim: trimLaneSilence(track, r.a); return;
     default: return; // a synth's or a sampler's: nothing on a kit
     }
+}
+
+// EFFECTS from the page, through the calls the FX page makes (so undo, the song file, the engine and
+// automation follow as they do): a setting by its id (designer.hpp), or which effect a slot holds.
+void Session::serveFx(const DesignRequest& r) {
+    const int track = project.track;
+    if (r.kind == DesignRequest::FxType) { // (a bus takes NONE or its own: setEffect says so)
+        const EffectKind kind = static_cast<EffectKind>(r.b);
+        if (r.a < kTrackSlots) setEffect(track, r.a, kind);
+        else if (r.a < kTrackSlots + kBuses) setEffect(r.a == kTrackSlots ? kEchoBus : kSpaceBus, 0, kind);
+        else setEffect(kMasterTrack, r.a - kTrackSlots - kBuses, kind);
+        return;
+    }
+    const int id = r.a;
+    if (id < kFxSendIds) setEffectParam(track, id / kEffectParams, id % kEffectParams, r.value);
+    else if (id < kFxBusIds) setSend(track, id - kFxSendIds, r.value);
+    else if (id < kFxMasterIds) {
+        const int b = id - kFxBusIds;
+        setEffectParam(b / kEffectParams == 0 ? kEchoBus : kSpaceBus, 0, b % kEffectParams, r.value);
+    } else if (id < kFxMixIds) {
+        const int s = id - kFxMasterIds;
+        setEffectParam(kMasterTrack, s / kEffectParams, s % kEffectParams, r.value);
+    } else { // the mixer: whole dB and pan, the other kept
+        const TrackData& t = project.tracks[track];
+        setMix(track, id == kFxMixDb ? static_cast<int>(std::lround(r.value)) : t.mixDb, id == kFxMixPan ? static_cast<int>(std::lround(r.value)) : t.mixPan);
+    }
+}
+
+// A MOD from the page: one field, or one step of a STEPPER's row, through setMod (which holds every
+// field and sends what changed, as the MOD page's turns do). A TARGET that does not fit is nothing:
+// setMod would take the whole MOD for OFF, and the page may hold yesterday's slots.
+void Session::serveMod(const DesignRequest& r) {
+    const int track = project.track;
+    const TrackData& t = project.tracks[track];
+    if (t.kind == TrackKind::None) return;
+    if (r.b == kModFieldTarget) {
+        const int asked = modWhole(r.value);
+        if (asked != kModTargetNone && (!modTargetKnown(asked) || !modTargetFits(t, asked))) return;
+    }
+    ModSettings m = t.mods[r.a];
+    if (r.b < kModFields) modSet(m, r.b, r.value);
+    else m.steps[r.b - kModFields] = r.value != r.value ? 0.f : (r.value < -1.f ? -1.f : (r.value > 1.f ? 1.f : r.value));
+    // Aiming an OFF MOD at something wakes it as an LFO (ModKnob::fresh: the MOD page's new one, and
+    // the only way field-by-field asks can make one: setMod blanks a kind with no target).
+    if (r.b == kModFieldTarget && m.target != kModTargetNone && m.kind == kModOff) m.kind = kModLfo;
+    setMod(track, r.a, m);
 }
 
 void Session::setMidiRecording(bool on) {

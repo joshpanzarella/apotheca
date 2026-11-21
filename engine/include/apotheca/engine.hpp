@@ -175,6 +175,8 @@ struct Command {
                         //   playing stops, every drum is cut and every note let go. a = 0: it may
                         //   open again, once what is left has died away (or the next thing is played).
         SetTempo,       // value = beats per minute
+        SetSceneTempo,  // scene, value = its own tempo (0: the song's)
+        SetSceneMeter,  // scene, a = steps in its bars (1..16)
         SetVolume,      // the last thing before the output: value = linear gain, 0..1. Catch hears the sound before it.
         SetTrackLevel,  // track (or kMasterTrack), value = linear gain. It glides over kSendGlideSeconds, so it does not
                         //   click. A track's usual is kUsualTrackLevel; the master's is 1, after its slots, before the ceiling.
@@ -210,6 +212,8 @@ struct Command {
         SetLaneSample,  // internal: sent by setLaneSample()
         InstallEffect,  // internal: sent by setEffect()
         SetTrackSample, // internal: sent by setTrackSample()
+        SetTrackZones,  // internal: sent by setTrackZones()
+        SetTrackChop,   // a = a sampler chopped (1) or whole (0)
         SetLanePart,    // how much of its sound each hit on a drum lane plays: track, a = lane,
                         //   value = 0..1 of its length (0: all of it). A slice of a longer recording.
         SetStepFx,      // a hit's step effects (StepFx, drums.hpp): track, scene, bar, a = lane, b = step,
@@ -412,6 +416,7 @@ public:
     // Give a synth track's instrument a recording to play (the sampler), or
     // nullptr to take it away. False if the track has no synth, or the queue is full (counted).
     bool setTrackSample(int track, std::unique_ptr<SampleData> sample);
+    bool setTrackZones(int track, std::unique_ptr<sampler::SampleZoneSet> zones);
     // Free what the audio thread has handed back (removed synths, used
     // images). Call now and then from the control thread.
     void collectGarbage();
@@ -674,6 +679,7 @@ private:
         DrumMachine drums;
         SampleData* laneSamples[kDrumLanes] = {}; // owned; freed by the control thread
         SampleData* trackSample = nullptr;        // likewise: a sampler's recording
+        sampler::SampleZoneSet* trackZones = nullptr; // ...or its multisample's zones: one or the other
         std::unique_ptr<Instrument> synth; // set on a synth track
         // The patterns are large (every bar of every scene), so they live
         // on the heap: an Engine can then sit on the stack.
@@ -985,7 +991,11 @@ private:
     // asked from the one it was is dropped, and asked again from the one it is.
     void askAgain(bool endChanged = false); // endChanged: AT END was switched (asked again only on the song's last step, the same bar or not)
     long stepsFired_ = 0;   // steps begun since Play: the clock a note's start is told to its track's GlideTrail by
-    float tempo_ = 120.f;
+    float tempo_ = 120.f;   // the tempo playing now: the scene's, or the song's where it has none of its own
+    float songTempo_ = 120.f;
+    float sceneTempo_[kMaxScenes] = {}; // ...a scene's own (0: the song's)
+    float sceneTempoNow(int scene) const { return scene >= 0 && scene < kMaxScenes && sceneTempo_[scene] > 0.f ? sceneTempo_[scene] : songTempo_; }
+    void useTempo(float bpm); // play at this tempo from here (the step keeps its place, as SetTempo always did)
     double samplesPerStep_ = 6000.0;
     double untilStep_ = 0.0; // samples left before the next step fires
     int nextStep_ = 0;
@@ -995,6 +1005,11 @@ private:
     int sceneCount_ = 1;
     int repeats_[kMaxScenes];
     int steps_[kMaxScenes]; // how many steps each scene lasts, if it has been cut short (0: every step of its longest cell)
+    int meter_[kMaxScenes]; // ...and in each of its bars (a bar of 12 is 3/4)
+    int meterOf(int scene) const {
+        const int m = scene >= 0 && scene < kMaxScenes ? meter_[scene] : kSteps;
+        return m < 1 ? kSteps : (m > kSteps ? kSteps : m);
+    }
     std::atomic<int> playStep_{-1};
     std::atomic<unsigned> playScene_{0}; // the scene playing + 1 in its low byte, movesHeard_ above it: one read gives both
     unsigned movesHeard_ = 0;            // Command::ScenesMoved taken so far (the audio thread's)
@@ -1037,7 +1052,7 @@ private:
     // once a frame (collectGarbage). One song opened throws away at most about
     // 150 (12 tracks: a synth and its recording, or eight lane recordings; 12
     // track images; 40 effects fading out), so this holds several of those.
-    struct Trash { bool isImage = false; void* pointer = nullptr; bool isSample = false; bool isEffect = false; bool isMove = false; bool isStore = false; }; // isImage: a SceneSet
+    struct Trash { bool isImage = false; void* pointer = nullptr; bool isSample = false; bool isZones = false; bool isEffect = false; bool isMove = false; bool isStore = false; }; // isImage: a SceneSet
     SpscQueue<Trash, 1024> trash_;
     static void destroy(const Trash& trash);
     // What found the trash full waits here (the audio thread's alone) and is

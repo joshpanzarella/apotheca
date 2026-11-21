@@ -308,6 +308,17 @@ float PatternScreen::ownStart(int step) const {
     return static_cast<float>((project_.bar * kSteps + step) % count) / static_cast<float>(count);
 }
 
+void PatternScreen::stepBars(int by) {
+    static const int lengths[4] = {1, 2, 4, 8};
+    const int bars = trk().bars[project_.scene] < 1 ? 1 : trk().bars[project_.scene];
+    int now = 0;
+    for (int i = 0; i < 4; ++i)
+        if (lengths[i] <= bars) now = i;
+    const int to = now + by;
+    if (to < 0 || to > 3) return;
+    session_.setCellBars(project_.track, project_.scene, lengths[to]);
+}
+
 int PatternScreen::sliceOf(int step) const {
     const int count = slices();
     const int slice = static_cast<int>(pat().start[lane_][step] * static_cast<float>(count)); // exact: there are 16, 32 or 64
@@ -712,6 +723,21 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         else session_.pasteBarHere(), aSpent_ = true; // (A's hold does nothing either: no nudge with the D-pad)
         return;
     }
+    // Hold L1, left / right: the bar before or after, round the ends. Up / down: the cell's bars,
+    // more or fewer. Only with L1 held first and nothing else going: shaping, painting, the dice,
+    // the step effects and the feel keep the keys, and R1 or A held is a bar copy or paste on its way.
+    if (event.down && l1First_ && input.held(Button::L1) && !input.held(Button::X) && !shaping_ && paint_ == Paint::None && !dicing_ && !fxHeld_ && !feelHeld_ && !onTempo_ &&
+        !input.held(Button::R1) && !input.held(Button::A)) {
+        if (b == Button::Left || b == Button::Right) {
+            const int bars = trk().bars[project_.scene] < 1 ? 1 : trk().bars[project_.scene];
+            project_.bar = (project_.bar + (b == Button::Right ? 1 : bars - 1)) % bars;
+            return;
+        }
+        if (b == Button::Up || b == Button::Down) {
+            stepBars(b == Button::Up ? 1 : -1);
+            return;
+        }
+    }
     if (b == Button::X) {
         // Hears what is under the cursor, as everywhere. On a hit it is also a hold: the stick then sets its step effects.
         fxHeld_ = event.down && hitHere() && !shaping_ && !dicing_ && paint_ == Paint::None;
@@ -968,8 +994,8 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // ---- top bar -----------------------------------------------------------
     char context[96], name[24];
     trackName(project_, project_.track, name, sizeof name);
-    if (trk().bars[project_.scene] > 1) std::snprintf(context, sizeof context, "%s / %sBAR %d OF %d / SCENE %d", name, slicing_ ? "SLICES / " : "", project_.bar + 1, trk().bars[project_.scene], project_.scene + 1);
-    else std::snprintf(context, sizeof context, "%s / %sSCENE %d", name, slicing_ ? "SLICES / " : "", project_.scene + 1);
+    // Always: which bar is shown reads at a glance, one bar or eight.
+    std::snprintf(context, sizeof context, "%s / %sBAR %d OF %d / SCENE %d", name, slicing_ ? "SLICES / " : "", project_.bar + 1, trk().bars[project_.scene], project_.scene + 1);
     const TopBar top = topBar(r, fonts, View::Pattern, context, project_);
     // The tight rows are always at LARGE, whatever TEXT SIZE is: the tempo's box in the top bar
     // and the strip under the grid, whose fields stand at fixed places with a chip under each.
@@ -994,7 +1020,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // ---- step numbers --------------------------------------------------------
     for (int s = 0; s < kSteps; ++s) {
         // Counted through the cell, as the piano roll counts: bar 2 reads 17 to 32; past the scene's end, "-".
-        if (s < project_.barSteps(project_.scene, project_.bar)) std::snprintf(text, sizeof text, "%d", project_.bar * kSteps + s + 1);
+        if (s < project_.barSteps(project_.scene, project_.bar)) std::snprintf(text, sizeof text, "%d", project_.bar * project_.meterOf(project_.scene) + s + 1);
         else std::snprintf(text, sizeof text, "-");
         fonts.small.drawCentered(r, kGridLeft + s * kStepW + kCellW / 2.f, 36.f, text, s % 4 == 0 ? kText : kDim);
     }
@@ -1226,6 +1252,8 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         ui::hintsUnder(r, fonts, "Y", under, 5);
         return;
     } else if (l1First_ && !held && paint_ == Paint::None) {
+        hint("UP / DOWN", "bar count");
+        hint("LEFT / RIGHT", "change bar");
         hint("R1", "copy bar");
         hint("A", "paste bar");
     } else if (slicing_ && paint_ == Paint::OneLevel) {

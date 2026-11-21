@@ -108,12 +108,14 @@
 // Slices that follow each other in order play as one unbroken sound; only a
 // slice out of order is heard as a cut (drums.hpp).
 //
-// COPY A BAR, here and in the slice view: hold L1 and
+// Hold L1, here and in the slice view:
 //
 //   R1                  copy the bar on screen, every lane and every hit with all it is
-//   A                   paste it over the bar on screen (another bar, cell, scene or drum track)
-//
-// One step of undo. On the same track its automation goes with it.
+//   A                   paste it over the bar on screen (another bar, cell, scene or drum track).
+//                       One step of undo; on the same track its automation goes with it
+//   left / right        the bar before or after, round the ends
+//   up / down           BARS: the cell's, more or fewer (1, 2, 4 or 8, as the
+//                       Song screen's hold A). One step of undo
 
 #include "redraw.hpp"
 #include "follow_bar.hpp"
@@ -189,6 +191,7 @@ public:
     // COPY A BAR: hold L1, then R1 copies the bar shown (every lane), A pastes over it (Session::copyBar).
     // L1's own job, the slices, is then done on its LET GO, and only if nothing else was pressed while it was held.
     bool barKeyHeld() const { return l1First_; } // L1 is held, pressed first: R1 copies, A pastes
+    void stepBars(int by); // the cell's bars: 1, 2, 4 or 8, one step along that row
     void shouldersPressed() { l1Used_ = true; } // (the App: another shoulder went down with L1 held, a panic on its way)
     bool fromDice(int lane, int step) const { return pat().fromDice[lane][step]; }
 

@@ -498,6 +498,36 @@ void testTheNamesFitTheStrip() {
     CHECK(widest > 40.f); // (measured, not nothing)
 }
 
+// The picking strip: the inversion stands clear of the count and the right-hand words.
+void testTheInversionStandsClear() {
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    Rig rig;
+    rig.key(Y, true);
+    rig.tap(SDLK_UP, 3); // inversion +3: the widest it reads
+    CHECK(rig.notes().picking());
+    DrawLog drawn;
+    canvas.clear();
+    gDrawLog = &drawn;
+    rig.app.draw(canvas.r, *canvas.fonts);
+    gDrawLog = nullptr;
+    const DrawLog::Text* inv = nullptr, *letgo = nullptr, *count = nullptr;
+    for (const DrawLog::Text& t : drawn.texts) {
+        if (t.words.compare(0, 3, "INV") == 0) inv = &t;
+        if (t.words == "LET GO OF Y TO PLACE") letgo = &t;
+        if (!t.words.empty() && t.words.find_first_not_of("0123456789 /") == std::string::npos) count = &t;
+    }
+    CHECK(inv && letgo && count);
+    if (inv && letgo && count) {
+        if (count->x + count->w > inv->x) std::printf("  count ends %.0f, inversion starts %.0f\n", (double)(count->x + count->w), (double)inv->x);
+        if (inv->x + inv->w > letgo->x) std::printf("  inversion ends %.0f, words start %.0f\n", (double)(inv->x + inv->w), (double)letgo->x);
+        CHECK(count->x + count->w <= inv->x);
+        CHECK(inv->x + inv->w <= letgo->x);
+    }
+    rig.key(Y, false);
+}
+
 void testAChordsNotes() {
     CHECK(keysAre(chord(60, {0, 4, 7}), {60, 64, 67}));
     CHECK(keysAre(chord(60, {7, 0, 4}), {60, 64, 67})); // lowest first, however it was written
@@ -984,6 +1014,7 @@ int main(int, char**) {
     testACardPackTakesAShippedOnesPlace();
     testEveryShippedChordIsWhatItSays();
     testTheNamesFitTheStrip();
+    testTheInversionStandsClear();
     testAChordsNotes();
     testChordsAndLooseNotesShareTheSlots();
     testATapOfYPlacesTheChordInHand();

@@ -216,6 +216,11 @@ enum class TrackKind { None, Drums, Phazed, Jx3p, Sampler, Fm6, Physic, Acid, Cl
 // Played from the piano roll: everything but the drums. (What else there is
 // to know about each instrument is in instruments.hpp.)
 inline bool isSynth(TrackKind kind) { return kind != TrackKind::None && kind != TrackKind::Drums; }
+// Copying a cell or a scene from one instrument onto another: notes go on notes (any piano roll),
+// drums on drums. (A drum bar cannot go on a synth.)
+inline bool pasteKindsFit(TrackKind from, TrackKind to) {
+    return isSynth(from) == isSynth(to) && (from == TrackKind::Drums) == (to == TrackKind::Drums);
+}
 // A track that plays one recording, the track's `sample`: the sampler, and CLOUD (its grains are read
 // from it). Whatever means "this track holds a recording" (its uses, a delete, a rename, a file found
 // again, CATCH, RECORD, the song file's `sound` line) asks this; what means the sampler's own settings
@@ -319,6 +324,7 @@ struct TrackFields {
     char laneSample[kDrumLanes][64] = {}; // a recording on the lane in place of the built-in drum: its file's name ("kick", or "kicks/808" in a folder), or empty
     int laneFit[kDrumLanes] = {};         // stretch that recording to last this many steps at the song's tempo; 0: as recorded
     bool laneOneSlice[kDrumLanes] = {};   // each hit on the lane plays one slice of its sound and stops (false: it runs on to the next hit)
+    bool samplerChop = false;             // a sampler track's recording plays chopped: 16 even slices from C1 up, each at its own pitch (not with a multisample: zones win)
     drumsynth::Voice laneSynth[kDrumLanes]; // DRUM SYNTH: a lane's sound made from a model and its knobs (apotheca/drum_synth.hpp), in
                                           // place of a recording or the built-in drum; model 0 is none. A lane with one has no laneSample
     LaneEdit laneEdit[kDrumLanes];        // EDIT: what each lane does to its sound (START, END, GAIN...: lane_edit.hpp). The file is never written
@@ -426,6 +432,13 @@ inline int songEndKind(int number) { return number == kSongStop ? kSongStop : kS
 struct ProjectHead {
     int repeats[kMaxScenes];
     int steps[kMaxScenes]; // how many steps each scene lasts, if it is cut short: 23 is a bar and seven steps. 0: every step of its longest cell
+    float sceneTempo[kMaxScenes]; // each scene's own tempo, or 0: the song's (a scene just plays at the song's tempo until it is given one)
+    int sceneMeter[kMaxScenes];   // steps in each scene's bars, 1..16 (a bar of 12 is 3/4: only the first steps of a pattern bar play, the rest are kept, as past a cut)
+    // Steps in a scene's bars, held to 1..16.
+    int meterOf(int s) const {
+        const int m = s >= 0 && s < kMaxScenes ? sceneMeter[s] : kSteps;
+        return m < 1 ? kSteps : (m > kSteps ? kSteps : m);
+    }
     EffectData masterEffects[kMasterSlots]; // on everything, after the tracks are mixed
     EffectData busEffects[kBuses];          // what the ECHO and the SPACE bus hold: one effect each, its MIX read as LEVEL
     float tempo = 120.f;
@@ -448,6 +461,8 @@ struct ProjectHead {
     ProjectHead() {
         for (int& r : repeats) r = 1;
         for (int& n : steps) n = 0;
+        for (float& t : sceneTempo) t = 0.f;
+        for (int& m : sceneMeter) m = kSteps;
         for (int bus = 0; bus < kBuses; ++bus) setBusEffect(bus, kNewSongBus[bus]);
     }
     // Put an effect on a bus at its usual settings there (LEVEL at full).
@@ -484,14 +499,14 @@ struct Project : ProjectHead {
             if (t.kind != TrackKind::None && t.bars[s] > most) most = t.bars[s];
         return most;
     }
-    // How many steps a scene lasts, and how many of them fall in one of its bars (16, fewer in the bar it ends in, none after).
+    // How many steps a scene lasts, and how many of them fall in one of its bars (its meter, fewer in the bar it ends in, none after).
     int sceneSteps(int s) const {
-        const int whole = sceneBars(s) * kSteps;
+        const int whole = sceneBars(s) * meterOf(s);
         return steps[s] > 0 && steps[s] < whole ? steps[s] : whole;
     }
     int barSteps(int s, int barIndex) const {
-        const int left = sceneSteps(s) - barIndex * kSteps;
-        return left > kSteps ? kSteps : (left < 0 ? 0 : left);
+        const int left = sceneSteps(s) - barIndex * meterOf(s), meter = meterOf(s);
+        return left > meter ? meter : (left < 0 ? 0 : left);
     }
     // GLIDE, for the roll to draw: what each note of a synth track's cell slides from and for how
     // long, as the scene goes round (lines[bar * kMaxNotes + slot], kMaxBars * kMaxNotes of them;

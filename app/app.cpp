@@ -230,7 +230,7 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down) {
             const int scene = project_->scene;
             session_.setSceneSteps(scene, project_->sceneSteps(scene) + (b == Button::R2 ? 1 : -1));
-            const int steps = project_->sceneSteps(scene), whole = project_->sceneBars(scene) * kSteps;
+            const int steps = project_->sceneSteps(scene), whole = project_->sceneBars(scene) * project_->meterOf(scene);
             if (steps == whole) std::snprintf(undoSaid_, sizeof undoSaid_, "SCENE %d: ALL %d STEPS", scene + 1, steps);
             else std::snprintf(undoSaid_, sizeof undoSaid_, "SCENE %d: %d STEPS OF %d", scene + 1, steps, whole);
             undoSaidUntil_ = now_ + 1500;

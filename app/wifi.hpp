@@ -9,8 +9,9 @@
 //                          system keeps the password of. Anything else needs one typed.
 //   join NAME              the password on its stdin, never on a command line (none: a saved or open one)
 //   forget NAME
-//   status                 off | joining NAME | joined NAME ADDRESS [HOSTNAME] | wrong-password NAME |
-//                          not-found NAME      (HOSTNAME: the name the page is reached by, apotheca.local)
+//   hotspot              our own network (no password; the page still asks for its PIN)
+//   status                 off | joining NAME | joined NAME ADDRESS [HOSTNAME] | hotspot NAME ADDRESS [HOSTNAME] |
+//                          wrong-password NAME | not-found NAME      (HOSTNAME: the name the page is reached by, apotheca.local)
 //
 // EVERY CALL RUNS ON A THREAD OF ITS OWN (one worker, the calls in the order asked): no frame waits
 // for the radio. The worker touches nothing but this class's own answers, under a lock; the app
@@ -37,7 +38,7 @@ struct WifiNetwork {
     bool needsPassword() const { return !open && !saved; }
 };
 
-enum class WifiState { Off, Joining, Joined, WrongPassword, NotFound };
+enum class WifiState { Off, Joining, Joined, Hotspot, WrongPassword, NotFound };
 
 struct WifiStatus {
     WifiState state = WifiState::Off;
@@ -72,6 +73,7 @@ public:
     void status(); // (the same)
     void join(const std::string& name, std::string password); // the password "" for a saved or an open network
     void forget(const std::string& name);
+    void hotspot(); // our own network on; `down` then `up` turns it off and joins again
 
     // Once a frame while the WIFI PAGE is on: asks for the status every kStatusEveryMs, and, while
     // `looking` (the NETWORK row is up), for a scan at once and every kScanEveryMs.
@@ -96,7 +98,7 @@ public:
 
 private:
     struct Job {
-        enum Kind { Up, Down, Scan, Status, Join, Forget } kind = Status;
+        enum Kind { Up, Down, Scan, Status, Join, Forget, Hotspot } kind = Status;
         std::string name, password;
     };
     void ask(Job job, bool always = false); // always: a status or a scan asked for even though one waits (it must come AFTER what was just asked)

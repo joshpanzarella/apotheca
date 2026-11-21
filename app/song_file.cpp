@@ -628,11 +628,13 @@ void putTrack(std::string& out, const TrackData& track) {
         if (track.kind == TrackKind::Sampler) {
             // sound NAME: its recording. sampler: root tune start attack release loop level [end]. END is
             // left out at its usual 100%, so a sampler that does not use it is written as it always was.
+            // chop: chopped into 16 slices from C1 up (left out whole).
             if (track.sample[0]) out += std::string("sound ") + track.sample + "\n";
             out += "sampler";
             for (int id = 0; id < sampler::kSettings; ++id)
                 if (id < sampler::End || track.sampler[id] != sampler::settingDefault(id)) put(out, " %.0f", track.sampler[id]);
             out += "\n";
+            if (track.samplerChop) out += "chop\n";
         } else {
             if (track.kind == TrackKind::Cloud && track.sample[0]) out += std::string("sound ") + track.sample + "\n"; // (CLOUD's recording: the sampler's line)
             put(out, "preset %.0f\n", track.preset + 1);
@@ -668,6 +670,26 @@ void putHead(std::string& out, const ProjectHead& project) {
     if (cut) {
         out += "\nlength";
         for (int s = 0; s < upTo(project.steps, 0); ++s) put(out, " %.0f", project.steps[s]);
+    }
+    // stempi: what each scene plays at (0: the song's tempo). Only if any scene has its own.
+    bool tempi = false;
+    for (float t : project.sceneTempo) tempi = tempi || t > 0.f;
+    if (tempi) {
+        out += "\nstempi";
+        int count = kOldSceneCount;
+        for (int s = kOldSceneCount; s < kMaxScenes; ++s)
+            if (project.sceneTempo[s] > 0.f) count = s + 1;
+        for (int s = 0; s < count; ++s) put(out, " %.0f", project.sceneTempo[s]);
+    }
+    // meter: steps in each scene's bars (a bar of 12 is 3/4). Only if any scene is not 16.
+    bool metered = false;
+    for (int m : project.sceneMeter) metered = metered || (m != kSteps);
+    if (metered) {
+        out += "\nmeter";
+        int count = kOldSceneCount;
+        for (int s = kOldSceneCount; s < kMaxScenes; ++s)
+            if (project.sceneMeter[s] != kSteps) count = s + 1;
+        for (int s = 0; s < count; ++s) put(out, " %.0f", static_cast<double>(project.meterOf(s)));
     }
     out += "\n";
     if (project.chordPack[0]) out += std::string("pack ") + project.chordPack + "\n";
@@ -875,6 +897,12 @@ void readLines(SongReading& r, const std::string& text, std::size_t from, std::s
         } else if (word == "repeats") {
             double r;
             for (int i = 0; i < kMaxScenes && (in >> r); ++i) head.repeats[i] = wholeIn(r, 1, kMaxRepeats);
+        } else if (word == "stempi") {
+            double t;
+            for (int i = 0; i < kMaxScenes && (in >> t); ++i) head.sceneTempo[i] = t < 1.0 ? 0.f : fractionIn(t, kMinTempo, kMaxTempo);
+        } else if (word == "meter") {
+            double m;
+            for (int i = 0; i < kMaxScenes && (in >> m); ++i) head.sceneMeter[i] = wholeIn(m, 1, kSteps);
         } else if (word == "pack") {
             std::string name;
             skipSpace(in);
@@ -1035,6 +1063,8 @@ void readLines(SongReading& r, const std::string& text, std::size_t from, std::s
             for (int id = 0; id < sampler::kSettings && (in >> v); ++id) track->sampler[id] = wholeIn(v, sampler::settingMin(id), sampler::settingMax(id));
             int& end = track->sampler[sampler::End]; // (held after START, as the screen holds it: the engine plays it so anyway)
             end = std::min(sampler::playedEnd(track->sampler[sampler::Start], end), sampler::settingMax(sampler::End));
+        } else if (word == "chop" && track->kind == TrackKind::Sampler) {
+            track->samplerChop = true;
         } else if (oldSound && (word == "preset" || word == "macros" || word == "settings")) {
             continue; // an old Twin Analog or QMOD track's sound: it plays the first preset, the knobs in the middle
         } else if (word == "preset") {
@@ -1184,7 +1214,8 @@ void finishSteps(SongReading& r, const int bars[kMaxScenes]) {
     for (int s = 0; s < kMaxScenes; ++s) {
         // An old song's "13 steps to a bar": its bars but the last whole, and thirteen steps of the last.
         if (r.head.steps[s] == 0 && r.oldSteps[s] < kSteps) r.head.steps[s] = (bars[s] - 1) * kSteps + r.oldSteps[s];
-        if (r.head.steps[s] >= bars[s] * kSteps) r.head.steps[s] = 0; // every step: kept as "all of them"
+        const int meter = r.head.sceneMeter[s] >= 1 && r.head.sceneMeter[s] <= kSteps ? r.head.sceneMeter[s] : kSteps;
+        if (r.head.steps[s] >= bars[s] * meter) r.head.steps[s] = 0; // every step: kept as "all of them"
     }
 }
 
@@ -1253,7 +1284,7 @@ bool cutSongAt(const std::string& text, std::vector<std::size_t>& starts) {
     starts.clear();
     if (text.compare(0, 13, "apotheca-song") != 0) return false;
     bool inTrack = false;
-    static const char* const songsOwn[] = {"tempo", "length", "steps", "repeats", "pack", "busfx", "master", "songend", "scale"};
+    static const char* const songsOwn[] = {"tempo", "length", "steps", "repeats", "stempi", "meter", "pack", "busfx", "master", "songend", "scale"};
     for (std::size_t at = 0; at < text.size();) {
         std::size_t end = text.find('\n', at);
         end = end == std::string::npos ? text.size() : end + 1;

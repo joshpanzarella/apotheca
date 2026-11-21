@@ -338,24 +338,31 @@ void testStartOnTheSongScreenPlaysTheSong() {
     CHECK(sceneHeard(rig) == 0);
 }
 
-void testCopyingABarByDragging() {
+void testCopyingABar() {
     Rig rig;
     rig.app.drums().setStep(0, 0, 0.9f);
     rig.app.drums().setStep(2, 5, 0.4f);
     rig.app.drums().setNudge(2, 5, 0.25f);
     rig.app.drums().setChance(2, 5, 0.5f);
     addPhazed(rig);
-    // The synth has a note in scene 3, which the drag will cross.
+    // The synth has a note in scene 3, which a paste will be tried on.
     rig.app.song().moveCursorTo(2, 1);
     rig.tap(A);
     rig.tap(A);
     rig.tap(L2);
     CHECK(!rig.project().tracks[1].notes[2][0].empty());
     rig.app.song().moveCursorTo(0, 0);
-    rig.key(R1, true);
-    rig.tap(DOWN, 2);
-    rig.tap(RIGHT); // across onto the synth: a drum bar cannot go there
-    rig.key(R1, false);
+    rig.tap(R1); // copy
+    rig.app.song().moveCursorTo(1, 0);
+    rig.tap(R1); // paste: the copy is spent
+    rig.app.song().moveCursorTo(0, 0);
+    rig.tap(R1); // copy again
+    rig.app.song().moveCursorTo(2, 0);
+    rig.tap(R1); // paste
+    rig.app.song().moveCursorTo(0, 0);
+    rig.tap(R1); // copy the drum cell again
+    rig.app.song().moveCursorTo(2, 1);
+    rig.tap(R1); // onto the synth: a drum bar cannot go there
     CHECK(!rig.project().tracks[1].notes[2][0].empty()); // and it did not wipe the synth's bar
     for (int scene = 1; scene <= 2; ++scene) {
         const DrumPattern& p = rig.project().tracks[0].drums[scene][0];
@@ -363,7 +370,7 @@ void testCopyingABarByDragging() {
         CHECK(near(p.nudge[2][5], 0.25f) && near(p.chance[2][5], 0.5f));
     }
     CHECK(rig.project().tracks[0].drums[3][0].empty());
-    // Moving with R1 let go copies nothing.
+    // Moving without R1 pastes nothing.
     rig.app.song().moveCursorTo(2, 0);
     rig.tap(DOWN);
     CHECK(rig.project().tracks[0].drums[3][0].empty());
@@ -381,9 +388,10 @@ void testCopyingABarByDragging() {
     synth.tap(A); // open it
     synth.tap(A); // a note
     synth.tap(L2);
-    synth.key(R1, true);
-    synth.tap(DOWN);
-    synth.key(R1, false);
+    synth.app.song().moveCursorTo(0, 1);
+    synth.tap(R1); // copy
+    synth.app.song().moveCursorTo(1, 1);
+    synth.tap(R1); // paste
     CHECK(!synth.project().tracks[1].notes[1][0].empty());
     CHECK(synth.project().tracks[1].notes[1][0].notes[0].pitch == synth.project().tracks[1].notes[0][0].notes[0].pitch);
 }
@@ -408,23 +416,27 @@ void testBEmptiesACell() {
     CHECK(rig.project().sceneCount() == 1);
 }
 
-void testTheCopyBrushLifts() {
+void testTheCellCopyStaysPut() {
     Rig rig;
     rig.app.drums().setStep(0, 0, 0.9f);
     rig.tap(L2);
-    rig.key(R1, true);
-    rig.tap(DOWN);
-    rig.key(R1, false); // let go on a drum cell
-    rig.tap(DOWN, 3);
+    rig.app.song().moveCursorTo(0, 0);
+    rig.tap(R1); // copy
+    rig.app.song().moveCursorTo(1, 0);
+    rig.tap(R1); // paste
+    rig.tap(DOWN, 3); // moving on pastes nothing more
     CHECK(!rig.project().tracks[0].drums[1][0].empty());
     for (int scene = 2; scene <= 4; ++scene) CHECK(rig.project().tracks[0].drums[scene][0].empty());
-    // R1 on a repeat count or on + TRACK picks nothing up.
+    // R1 on a repeat count or on + TRACK leaves the cell copy alone.
+    rig.app.song().moveCursorTo(0, 0);
+    rig.tap(R1); // copy again: the paste before spent it
     rig.app.song().moveCursorTo(0, -1);
-    rig.key(R1, true);
-    rig.tap(DOWN);
-    rig.tap(RIGHT);
-    rig.key(R1, false);
-    CHECK(rig.project().tracks[0].drums[2][0].empty());
+    rig.tap(R1); // that copies the scene, another clipboard
+    rig.tap(RIGHT, 2); // onto + TRACK
+    rig.tap(R1); // + TRACK: nothing at all
+    rig.app.song().moveCursorTo(2, 0);
+    rig.tap(R1); // the cell copy is still there
+    CHECK(near(rig.project().tracks[0].drums[2][0].level[0][0], 0.9f));
 }
 
 void testTheSongScreenScrolls() {
@@ -835,8 +847,10 @@ void testCellsOfSeveralBars() {
     // ---- copying and emptying take the whole cell ------------------------------------------
     session.view = View::Song;
     song.moveCursorTo(0, 0);
+    rig.tap(R1); // copy, as a scene is copied
+    song.moveCursorTo(1, 0);
     rig.key(R1, true);
-    rig.tap(DOWN);
+    CHECK(track.bars[1] == 1); // not yet: the paste is on its let go
     rig.key(R1, false);
     CHECK(track.bars[1] == 2 && track.drums[1][1].level[0][0] == 0.9f && near(track.drums[1][1].nudge[0][0], 0.1f));
     rig.tap(B); // empty the copy
@@ -1638,9 +1652,10 @@ void testBouncing() {
     const auto plant = [&](const char* name) { std::FILE* f = std::fopen((folder + "/" + name).c_str(), "wb"); std::fputs("half", f); std::fclose(f); };
     const auto there = [&](const char* name) { struct stat st; return stat((folder + "/" + name).c_str(), &st) == 0; };
     plant("old 261112-104548.wav.part");
+    plant("old 261112-104548.mid.part");
     plant("notes.part"); // not a bounce's: left alone
     session.useBounceFolder(folder);
-    CHECK(!there("old 261112-104548.wav.part") && there("notes.part"));
+    CHECK(!there("old 261112-104548.wav.part") && !there("old 261112-104548.mid.part") && there("notes.part"));
     plant("old 261112-104549.wav.part"); // ...and when the next bounce starts
     // A song: scene 1 (two bars' worth: it plays twice) with a kick on each beat, and a JAX-EP track with one long note.
     for (int step = 0; step < kSteps; step += 4) rig.app.drums().setStep(0, step, 1.f);
@@ -3115,6 +3130,57 @@ void testHoldXCarriesANote() {
     CHECK(!notes.carrying());
     rig.tap(LEFT);
     CHECK(bar.notes[slot].pitch == 61 && notes.cursorPitch() == 60);
+    // L1 held while carrying: an octave at a time, up and down.
+    notes.moveCursorTo(61, 5);
+    rig.key(R1, true);
+    CHECK(notes.carrying());
+    const int octaves = rig.app.session().octavesShown();
+    Canvas carried;
+    CHECK(carried.ok);
+    rig.key(L1, true);
+    if (carried.ok) {
+        rig.frames(1);
+        carried.clear();
+        rig.app.draw(carried.r, *carried.fonts);
+        CHECK(ui::gHintsOver == 0.f); // the octave hint fits the bar
+    }
+    rig.tap(RIGHT);
+    CHECK(bar.notes[slot].pitch == 73 && notes.cursorPitch() == 73);
+    rig.tap(LEFT);
+    CHECK(bar.notes[slot].pitch == 61);
+    rig.key(L1, false);
+    rig.key(R1, false);
+    CHECK(rig.app.session().octavesShown() == octaves); // L1 was a carry, not a zoom: nothing zoomed
+    // ...and a chord goes by the octave too.
+    bar.chords[0] = makeChord(builtInPack().chords[0], 48, 10, 3.f, 0.7f, 0);
+    int keys[kChordNotes];
+    bar.chords[0].pitches(keys);
+    notes.moveCursorTo(keys[0], 10);
+    rig.key(R1, true);
+    CHECK(notes.carrying());
+    rig.key(L1, true);
+    rig.tap(RIGHT);
+    CHECK(bar.chords[0].root == 60 && notes.cursorPitch() == keys[0] + 12);
+    rig.tap(LEFT);
+    CHECK(bar.chords[0].root == 48);
+    rig.key(L1, false);
+    rig.key(R1, false);
+    CHECK(rig.app.session().octavesShown() == octaves);
+    // L1 first or R1 first, it carries all the same (and a tap still copies the bar).
+    rig.key(L1, true);
+    rig.key(R1, true);
+    CHECK(notes.carrying());
+    rig.tap(LEFT);
+    CHECK(bar.chords[0].root == 36 && notes.cursorPitch() == keys[0] - 12);
+    rig.key(R1, false);
+    rig.key(L1, false);
+    const unsigned barCopies = rig.app.session().barCopies();
+    bar.chords[0] = ChordEvent(); // put away: later checks want no chords
+    notes.moveCursorTo(61, 5);
+    rig.key(L1, true);
+    rig.tap(R1);
+    rig.key(L1, false);
+    CHECK(rig.app.session().barCopies() == barCopies + 1); // ...unmoved: copied
     // The stick, up and down, slides it FREELY in time, off the grid: a short push is a small move...
     // (The engine is run as the frames go by, as the sound card runs it: each frame of sliding tells it the bar again.)
     const auto hold = [&](int count) { for (int f = 0; f < count; ++f) { rig.frames(1); rig.render(16); } };
@@ -3550,39 +3616,39 @@ void testThePianoRollZooms() {
     rig.tap(L1, 3);
     rig.frames(1);
     CHECK(notes.visibleKeys() == 24 && notes.lowestKeyShown() == 60);
-    // Held, with up and down: closer and further, stopping at the ends; and that is not also a tap.
+    // Held, with up and down: the cell's bars, more or fewer, stopping at the ends; and that is not also a tap.
     rig.key(L1, true);
     rig.tap(UP);
-    CHECK(session.octavesShown() == 1);
+    CHECK(rig.project().tracks[1].bars[0] == 2);
     rig.tap(UP);
-    CHECK(session.octavesShown() == 1 && notes.cursorStep() == 0);
+    CHECK(rig.project().tracks[1].bars[0] == 4 && notes.cursorStep() == 0);
     rig.tap(DOWN, 2);
-    CHECK(session.octavesShown() == 3);
+    CHECK(rig.project().tracks[1].bars[0] == 1);
     rig.tap(DOWN);
-    CHECK(session.octavesShown() == 3);
+    CHECK(rig.project().tracks[1].bars[0] == 1);
     rig.key(L1, false);
-    CHECK(session.octavesShown() == 3);
-    // The stick with L1 held: one step of zoom for each push.
+    CHECK(session.octavesShown() == 2);
+    // The stick with L1 held: one step of bars for each push.
     rig.key(L1, true);
     rig.key(STICK_UP, true);
     rig.frames(40);
-    CHECK(session.octavesShown() == 2 && notes.cursorPitch() == 69 && notes.cursorStep() == 0);
+    CHECK(rig.project().tracks[1].bars[0] == 2 && notes.cursorPitch() == 69 && notes.cursorStep() == 0);
     rig.key(STICK_UP, false);
     rig.frames(1);
     rig.key(STICK_UP, true);
     rig.frames(2);
     rig.key(STICK_UP, false);
     rig.key(L1, false);
-    CHECK(session.octavesShown() == 1);
+    CHECK(rig.project().tracks[1].bars[0] == 4);
+    session.setOctavesShown(1); // the rest zooms from one octave, as it did
+    rig.frames(1);
     // The cursor still scrolls the keys, one octave wide.
     rig.frames(1);
     notes.moveCursorTo(72, 0);
     CHECK(notes.lowestKeyShown() == 61);
     // At the top of the keyboard the keys stop at the last one.
     notes.moveCursorTo(108, 0);
-    rig.key(L1, true);
-    rig.tap(DOWN, 2);
-    rig.key(L1, false);
+    rig.tap(L1); // one octave to three: a tap is the only zoom now
     rig.frames(1);
     CHECK(notes.visibleKeys() == 36 && notes.lowestKeyShown() == 108 - 35);
     notes.moveCursorTo(12, 0);
@@ -6293,6 +6359,169 @@ void testPresetsAndFolders() {
     rig->key(STICK_UP, false);
     rig->key(A, false);
     CHECK(track.preset != before);
+}
+
+void testSavePresetOnDevice() {
+    std::unique_ptr<Rig> rig(onPhazed());
+    Session& session = rig->app.session();
+    SynthScreen& screen = rig->app.phazed();
+    TrackData& track = rig->project().tracks[1];
+    const std::string folder = tempFolder("savepreset");
+    session.usePresetFolder(folder);
+    // R1 on PRESET opens the keys; A types, Y deletes, B leaves without saving.
+    CHECK(screen.cursor() == SynthScreen::kPreset);
+    rig->tap(R1);
+    CHECK(screen.typing() && screen.typed().empty());
+    rig->tap(A);
+    CHECK(screen.typed() == "A");
+    rig->tap(RIGHT);
+    rig->tap(A);
+    CHECK(screen.typed() == "AB");
+    rig->tap(Y);
+    CHECK(screen.typed() == "A");
+    rig->tap(B);
+    CHECK(!screen.typing() && userPresets(TrackKind::Phazed).empty());
+    // Again, kept with START: the file, the list, the track on it.
+    rig->tap(R1);
+    rig->tap(A);
+    rig->tap(RIGHT);
+    rig->tap(A);
+    CHECK(screen.typed() == "AB");
+    rig->tap(START);
+    CHECK(!screen.typing() && screen.said() == "SAVED AS AB");
+    std::string file;
+    CHECK(readTextFile(folder + "/AB.phazed", file));
+    CHECK(userPresets(TrackKind::Phazed).size() == 1 && track.preset == builtInPresets(TrackKind::Phazed));
+    // Under a name taken, it replaces that one.
+    const std::string before = file;
+    session.setSynthSetting(1, phazed::Level, track.patch.value[phazed::Level] == 3 ? 4 : 3);
+    rig->tap(R1);
+    rig->tap(A);
+    rig->tap(RIGHT);
+    rig->tap(A);
+    rig->tap(START);
+    CHECK(userPresets(TrackKind::Phazed).size() == 1);
+    CHECK(readTextFile(folder + "/AB.phazed", file) && file != before);
+    // Empty: START does nothing, B leaves.
+    rig->tap(R1);
+    rig->tap(START);
+    CHECK(screen.typing() && userPresets(TrackKind::Phazed).size() == 1);
+    rig->tap(B);
+    CHECK(!screen.typing());
+    // Every synth keeps presets the same way.
+    for (TrackKind kind : {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Physic, TrackKind::Acid, TrackKind::Cloud, TrackKind::Morph}) {
+        if (track.kind != kind) CHECK(session.setTrackKind(1, kind));
+        CHECK(session.savePreset(1, "T"));
+        const InstrumentInfo* info = instrument(kind);
+        CHECK(info && info->presetEnding);
+        bool found = false;
+        for (const UserPreset& p : userPresets(kind)) found = found || p.name == "T";
+        CHECK(found && readTextFile(folder + "/T" + info->presetEnding, file));
+    }
+    session.usePresetFolder(tempFolder("savepreset-clean")); // the registry is global: leave it empty for later tests
+}
+
+void testSamplerPresetsOnDevice() {
+    Rig rig;
+    Session& session = rig.app.session();
+    SamplerScreen& screen = rig.app.sampler();
+    const std::string folder = tempFolder("savesampler");
+    session.useSampleFolder(folder + "/samples");
+    mkdir((folder + "/samples").c_str(), 0755);
+    CHECK(writeWav(folder + "/samples/long.wav", std::vector<float>(4800, 0.25f), 48000));
+    session.usePresetFolder(folder + "/presets");
+    CHECK(session.addTrack(TrackKind::Sampler)); // track 1
+    TrackData& track = rig.project().tracks[1];
+    rig.project().track = 1;
+    session.setTrackSample(1, "long");
+    session.setSamplerSetting(1, sampler::Level, 33);
+    session.view = View::Device;
+    rig.frames(2);
+    // The row is below the settings; down from the bottom row reaches it, up goes back.
+    screen.goTo(5);
+    rig.tap(DOWN);
+    CHECK(screen.cursor() == SamplerScreen::kPresetStop);
+    rig.tap(UP);
+    CHECK(screen.cursor() == 7);
+    screen.goTo(SamplerScreen::kPresetStop);
+    // R1 on PRESET opens the keys; A types, Y deletes, B leaves without saving.
+    rig.tap(R1);
+    CHECK(screen.typing() && screen.typed().empty());
+    rig.tap(A);
+    CHECK(screen.typed() == "A");
+    rig.tap(RIGHT);
+    rig.tap(A);
+    CHECK(screen.typed() == "AB");
+    rig.tap(Y);
+    CHECK(screen.typed() == "A");
+    rig.tap(B);
+    CHECK(!screen.typing() && session.samplerPresets().empty());
+    // Again, kept with START: the file, the list, the track on it.
+    rig.tap(R1);
+    rig.tap(A);
+    rig.tap(RIGHT);
+    rig.tap(A);
+    rig.tap(START);
+    CHECK(!screen.typing() && screen.said() == "SAVED AS AB");
+    std::string file;
+    CHECK(readTextFile(folder + "/presets/AB.sampler", file));
+    CHECK(session.samplerPresets().size() == 1 && session.samplerPresetOf(1) == 0);
+    // Turned off it, the track is on none; under a name taken, it replaces that one.
+    session.setSamplerSetting(1, sampler::Tune, track.sampler[sampler::Tune] == 50 ? 51 : 50);
+    CHECK(session.samplerPresetOf(1) == -1);
+    const std::string before = file;
+    rig.tap(R1);
+    rig.tap(A);
+    rig.tap(RIGHT);
+    rig.tap(A);
+    rig.tap(START);
+    CHECK(session.samplerPresets().size() == 1);
+    CHECK(readTextFile(folder + "/presets/AB.sampler", file) && file != before);
+    CHECK(session.samplerPresetOf(1) == 0);
+    // Empty: START does nothing, B leaves.
+    rig.tap(R1);
+    rig.tap(START);
+    CHECK(screen.typing() && session.samplerPresets().size() == 1);
+    rig.tap(B);
+    CHECK(!screen.typing());
+    // A second, picked with hold A + up / down; the ends stop.
+    session.setSamplerSetting(1, sampler::Level, 10);
+    rig.tap(R1);
+    rig.tap(RIGHT, 2);
+    rig.tap(A);
+    rig.tap(START);
+    CHECK(!screen.typing() && screen.said() == "SAVED AS C" && session.samplerPresets().size() == 2);
+    rig.key(A, true);
+    rig.tap(DOWN);
+    rig.key(A, false);
+    CHECK(session.samplerPresetOf(1) == 0 && track.sampler[sampler::Level] == 33);
+    rig.key(A, true);
+    rig.tap(DOWN);
+    rig.key(A, false);
+    CHECK(session.samplerPresetOf(1) == 0); // (past the first: stops)
+    // B held deletes the file; another button calls it off; the track keeps its sound.
+    rig.key(B, true);
+    rig.frames(30);
+    CHECK(screen.presetDeletePart() > 0.3f && screen.presetDeletePart() < 0.7f);
+    rig.tap(LEFT);
+    rig.frames(1);
+    CHECK(screen.presetDeletePart() == 0.f);
+    rig.frames(60);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(session.samplerPresets().size() == 2);
+    rig.key(B, true);
+    rig.frames(80);
+    rig.key(B, false);
+    CHECK(session.samplerPresets().size() == 1 && screen.said() == "AB DELETED. THE TRACK KEEPS ITS SOUND");
+    CHECK(session.samplerPresetOf(1) == -1 && track.sampler[sampler::Level] == 33);
+    // The backend refuses the rest: no sampler track, no name, nothing there.
+    CHECK(session.addTrack(TrackKind::Drums)); // track 2
+    CHECK(!session.saveSamplerPreset(2, "X") && !session.saveSamplerPreset(1, "  ") && !session.saveSamplerPreset(1, "???"));
+    CHECK(!session.loadSamplerPreset(2, 0) && !session.loadSamplerPreset(1, 99) && !session.deleteSamplerPreset(99));
+    // Another folder: the old folder's presets do not follow.
+    session.usePresetFolder(folder + "/elsewhere");
+    CHECK(session.samplerPresets().empty() && session.samplerPresetOf(1) == -1);
 }
 
 void testMacros() {
@@ -10868,9 +11097,9 @@ int main(int argc, char** argv) {
     testOpeningACellWorksOnThatScene();
     testRepeatCounts();
     testStartOnTheSongScreenPlaysTheSong();
-    testCopyingABarByDragging();
+    testCopyingABar();
     testBEmptiesACell();
-    testTheCopyBrushLifts();
+    testTheCellCopyStaysPut();
     testTheSongScreenScrolls();
     testPlacingAndDeletingNotes();
     testHeardAsPlaced();
@@ -10930,6 +11159,8 @@ int main(int argc, char** argv) {
     testTheScreensKnowWhereTheSongIs();
     testAPatternHoldsSixtyFourNotes();
     testPresetsAndFolders();
+    testSavePresetOnDevice();
+    testSamplerPresetsOnDevice();
     testABuiltInPresetRestsTheMacrosWhereTheyShow();
     testMacros();
     testTheEngineHearsMacrosAndSettings();

@@ -130,7 +130,7 @@ input.pick{width:17px;height:17px;margin:0;accent-color:#6fbfa3;cursor:pointer;f
 <h2>Recordings <span class="count" id="nSamples"></span><input id="find" type="text" placeholder="find"></h2>
 <div class="line hid" id="bulk"><b id="nPicked"></b><label for="bulkTo">move to</label><select id="bulkTo"></select><input id="bulkNew" class="hid" type="text" maxlength="49" placeholder="new folder, or folder/inner"><button id="bulkMove" class="main">Move</button><button id="bulkDelete" class="del">Delete</button><button id="bulkNone">Choose none</button></div>
 <div id="recordings"></div>
-<h2>Bounces <span class="count" id="nBounces"></span></h2><p>Your songs as sound files.</p><div class="panel"><ul id="bounces"></ul></div>
+<h2>Bounces <span class="count" id="nBounces"></span></h2><p>Your songs as sound files, and as MIDI.</p><div class="panel"><ul id="bounces"></ul></div>
 <h2>Songs <span class="count" id="nSongs"></span></h2><div class="panel"><ul id="songs"></ul></div>
 <h2>Chord packs <span class="count" id="nChords"></span></h2><div class="panel"><ul id="chords"></ul></div>
 
@@ -227,7 +227,7 @@ function draw() {
 function row(kind, name, label, size) {
   const li = el('li', 'row'); li.dataset.kind = kind; li.dataset.name = name;
   if (kind == 'samples') { const tick = el('input', 'pick'); tick.type = 'checkbox'; tick.checked = picked.has(name); tick.title = 'choose it, to move or delete several together'; li.append(tick); }
-  if (kind == 'samples' || kind == 'bounces') {
+  if (kind == 'samples' || (kind == 'bounces' && !/\.mid$/i.test(name))) { // (a MIDI file: download only, nothing to play)
     const on = playing == kind + '/' + name;
     li.append(btn(on ? 'stop' : 'play', 'play', on ? 'play on' : 'play'));
   }
@@ -236,7 +236,7 @@ function row(kind, name, label, size) {
   acts.append(get);
   if (kind == 'samples') { li.draggable = true; acts.append(btn('rename', 'rename'), btn('move', 'move')); }
   acts.append(btn('delete', 'delete', 'del'));
-  li.append(el('span', 'name', label.replace(/\.(wav|song|json)$/i, '')), el('span', 'size', sizeText(size)), acts); // the title, without its ending
+  li.append(el('span', 'name', label.replace(/\.(wav|song|json|mid)$/i, '')), el('span', 'size', sizeText(size)), acts); // the title, without its ending
   return li;
 }
 function drawRecordings() {
@@ -1023,8 +1023,10 @@ void Transfer::answer(int fd) {
 
     if (method == "GET" && (path.empty() || path == "/")) return reply(fd, "200 OK", "text/html; charset=utf-8", kPage);
     if (method == "GET" && path == "/list") {
-        const std::vector<std::string> samples = recordingsIn(samples_), songs = filesEnding(songs_, ".song"), chords = filesEnding(chords_, ".json"),
-                                       bounces = filesEnding(bounces_, ".wav");
+        const std::vector<std::string> samples = recordingsIn(samples_), songs = filesEnding(songs_, ".song"), chords = filesEnding(chords_, ".json");
+        std::vector<std::string> bounces = filesEnding(bounces_, ".wav");
+        for (const std::string& mid : filesEnding(bounces_, ".mid")) bounces.push_back(mid);
+        std::sort(bounces.begin(), bounces.end());
         // "free" is megabytes left on the card; "sizes" are bytes, in the order of the names.
         return reply(fd, "200 OK", "application/json",
                      "{\"version\":\"" + std::string(kVersion) + "\",\"built\":\"" + std::string(kBuilt) + "\",\"free\":" + std::to_string(megabytesFree(exists(samples_) ? samples_ : songs_)) +
@@ -1128,7 +1130,8 @@ void Transfer::answer(int fd) {
     // /samples/<name>.wav, /songs/<name>.song, /chords/<name>.json
     const std::size_t slash = path.find('/', 1);
     const std::string kind = slash == std::string::npos ? "" : path.substr(1, slash - 1);
-    const std::string ending = kind == "samples" || kind == "bounces" ? ".wav" : kind == "songs" ? ".song" : kind == "chords" ? ".json" : "";
+    const bool mid = kind == "bounces" && path.size() >= 4 && path.compare(path.size() - 4, 4, ".mid") == 0;
+    const std::string ending = kind == "samples" ? ".wav" : kind == "bounces" ? (mid ? ".mid" : ".wav") : kind == "songs" ? ".song" : kind == "chords" ? ".json" : "";
     const std::string folder = folderFor(kind);
     // A recording may be in a folder ("samples/kicks/808.wav"); nothing else may.
     const std::string name = ending.empty() ? "" : kind == "samples" ? safeSamplePath(path.substr(slash + 1)) : safeFileName(path.substr(slash + 1), ending);

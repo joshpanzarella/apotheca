@@ -27,6 +27,8 @@
 #include <unistd.h>
 
 #include "apotheca/engine.hpp"
+#include "apotheca/effects.hpp"
+#include "apotheca/mod_rule.hpp"
 #include "presets.hpp"
 #include "app.hpp"
 #include "designer.hpp"
@@ -59,6 +61,12 @@ int count(const std::string& text, const std::string& part) {
     int n = 0;
     for (std::size_t at = text.find(part); at != std::string::npos; at = text.find(part, at + part.size())) ++n;
     return n;
+}
+// A spec before EFFECTS and MODs were appended (every page carries them now): what the counts of an
+// instrument's own settings below are counted on.
+std::string instrumentPart(const std::string& spec) {
+    const std::size_t at = spec.find(",\"fx\":");
+    return at == std::string::npos ? spec : spec.substr(0, at);
 }
 
 struct Answer {
@@ -105,7 +113,8 @@ struct Rig {
         s.usePresetFolder(root + "/presets");
         CHECK(s.toggleTransfer(11));
         const std::string address = s.transferAddress();
-        port = std::atoi(address.c_str() + address.find(':') + 1);
+        const std::size_t colon = address.find(':'); // (none on port 80: a browser asks it itself)
+        port = colon == std::string::npos ? 80 : std::atoi(address.c_str() + colon + 1);
         door = address.substr(address.find('/'));
         frames(1);
     }
@@ -218,6 +227,19 @@ void testNamesAndRequests() {
     CHECK(desk.ask("macro 3 7") && desk.ask("macro 3 -7"));
     const std::vector<DesignRequest> clamped = desk.take();
     CHECK(clamped[0].value == 1.f && clamped[1].value == 0.f);
+    // EFFECTS and MODs: a setting by its id, a slot's effect, a MOD's field or step.
+    CHECK(desk.ask("fxset 0 0.5") && desk.ask("fxset 31 -50") && desk.ask("fxtype 0 3") && desk.ask("fxtype 6 0"));
+    CHECK(desk.ask("modset 0 1 3") && desk.ask("modset 1 26 -0.5"));
+    const std::vector<DesignRequest> fx = desk.take();
+    CHECK(fx.size() == 6);
+    CHECK(fx[0].kind == DesignRequest::FxSet && fx[0].a == 0 && fx[0].value == 0.5f && fx[1].a == 31 && fx[1].value == -50.f);
+    CHECK(fx[2].kind == DesignRequest::FxType && fx[2].a == 0 && fx[2].b == 3 && fx[3].a == 6 && fx[3].b == 0);
+    CHECK(fx[4].kind == DesignRequest::ModSet && fx[4].a == 0 && fx[4].b == 1 && fx[4].value == 3.f);
+    CHECK(fx[5].a == 1 && fx[5].b == kModFields + kModSteps - 1 && fx[5].value == -0.5f);
+    for (const char* bad : {"fxset", "fxset 32 0.5", "fxset -1 0.5", "fxset 0", "fxset 0 nan", "fxset 0 0.5 1", "fxtype", "fxtype 7 3",
+                            "fxtype -1 3", "fxtype 0 -1", "fxtype 0", "modset", "modset 2 1 0", "modset 0 27 0", "modset 0 -1 0", "modset 0 1", "modset 0 1 nan"})
+        CHECK(!desk.ask(bad));
+    CHECK(desk.take().empty());
     // What makes no sense is refused, and nothing is left waiting.
     for (const char* bad : {"", "hello", "set", "set 1", "set x 2", "set 1 2 3", "macro 8 0.5", "macro -1 0.5", "macro 1 nan", "macro 1", "preset", "preset -1",
                             "preset 2 2", "note 128 1", "note -1 1", "note 60 2", "note 60", "save", "save !!!", "delete everything"})
@@ -291,7 +313,7 @@ void testPhazedFromThePage() {
     // Every page but MAIN, with its settings; envelope pages are marked.
     CHECK(count(spec, "\"env\":") == 9 && count(spec, "\"env\":true") == 6);
     CHECK(has(spec, "{\"name\":\"SOUND\",\"env\":false,\"items\":[{\"name\":\"LINES\",\"id\":0,\"min\":0,\"max\":3,\"texts\":[\"LINE 1\",\"LINE 2\",\"1 + 1'\",\"1 + 2'\"]}"));
-    CHECK(count(spec, "\"id\":") == phazed::kSettings); // every setting is on some page, once
+    CHECK(count(instrumentPart(spec), "\"id\":") == phazed::kSettings); // every setting is on some page, once
     CHECK(count(spec, "\"folder\":") == builtInPresets(TrackKind::Phazed) && !has(spec, "\"folder\":\"USER\""));
     // A setting with many values is a slider: no names for each.
     CHECK(has(spec, "{\"name\":\"DETUNE FINE\",\"id\":5,\"min\":0,\"max\":60}"));
@@ -470,7 +492,7 @@ void testFm6FromThePage() {
     CHECK(rig.track().kind == TrackKind::Fm6);
     const std::string spec = rig.get("/design/spec").body;
     // Its 145 settings, and its six ONs (OPERATORS ON is never offered as a number); no ROLL any more.
-    CHECK(has(spec, "\"name\":\"FM-6\",\"macros\":[\"BRIGHT\",\"FEEDBACK\"") && count(spec, "\"id\":") == fm6::kSettings + 5 && !has(spec, "\"roll\""));
+    CHECK(has(spec, "\"name\":\"FM-6\",\"macros\":[\"BRIGHT\",\"FEEDBACK\"") && count(instrumentPart(spec), "\"id\":") == fm6::kSettings + 5 && !has(spec, "\"roll\""));
     CHECK(has(spec, "{\"name\":\"ALGORITHM\",\"id\":134,\"min\":0,\"max\":31,\"texts\":[\"1\",\"2\""));
     CHECK(has(spec, "{\"name\":\"ON\",\"id\":146,\"min\":0,\"max\":1,\"texts\":[\"OFF\",\"ON\"]}") && has(spec, "\"id\":151,") && !has(spec, "\"id\":145,"));
     CHECK(has(spec, "\"name\":\"OPERATOR 6\"") && has(spec, "\"name\":\"PITCH ENVELOPE\""));
@@ -511,13 +533,13 @@ void testPhysicFromThePage() {
     CHECK(rig.track().kind == TrackKind::Physic && rig.track().preset == 0);
     const std::string spec = rig.get("/design/spec").body;
     CHECK(has(spec, "\"name\":\"PHYSIC\",\"roll\":true,\"macros\":[\"TONE\",\"POSITION\",\"DECAY\",\"MATERIAL\",\"STRETCH\",\"RELEASE\",\"DICE\",\"OCTAVE\"]"));
-    CHECK(count(spec, "\"id\":") == physic::kSettings && count(spec, "\"env\":false") == 5 && !has(spec, "\"env\":true"));
+    CHECK(count(instrumentPart(spec), "\"id\":") == physic::kSettings && count(instrumentPart(spec), "\"env\":false") == 5 && !has(spec, "\"env\":true"));
     CHECK(has(spec, "\"name\":\"SOUND\"") && has(spec, "\"name\":\"RING\"") && has(spec, "\"name\":\"PLAY\"") && has(spec, "\"name\":\"DICE\"") && has(spec, "\"name\":\"BODY\",\"env\""));
     CHECK(has(spec, "{\"name\":\"STRIKE\",\"id\":1,\"min\":0,\"max\":2,\"texts\":[\"PLUCK\",\"MALLET\",\"NOISE\"]"));
     CHECK(has(spec, "{\"name\":\"PAIR\",\"id\":18,\"min\":0,\"max\":20,\"texts\":[\"OFF\",\"1 CENTS\"") && has(spec, "{\"name\":\"BODY\",\"id\":20,\"min\":0,\"max\":3,\"texts\":[\"NONE\",\"GUITAR\",\"BOX\",\"TUBES\"]"));
     CHECK(has(spec, "\"name\":\"MOTOR\",\"id\":19,\"min\":0,\"max\":100,\"texts\":[\"OFF\",\"0.20 HZ\"") && has(spec, "\"8.0 HZ\"]") && has(spec, "\"name\":\"BUZZ\",\"id\":22"));
     // Every setting is given its readings, the long ones too (pageReadsAsDevice): DECAY in seconds.
-    CHECK(count(spec, "\"texts\":") == physic::kSettings);
+    CHECK(count(instrumentPart(spec), "\"texts\":") == physic::kSettings);
     CHECK(has(spec, "{\"name\":\"MODEL\",\"id\":0,\"min\":0,\"max\":10,\"texts\":[\"STRING\",\"MARIMBA\""));
     CHECK(has(spec, "\"name\":\"DECAY\",\"id\":4,\"min\":0,\"max\":100,\"texts\":[\"50 MS\"") && has(spec, "\"30 S\"]"));
     CHECK(has(spec, "\"RING\"]") && has(spec, "\"name\":\"LEVEL\",\"id\":12,\"min\":-24,\"max\":6,\"texts\":[\"-24 DB\""));
@@ -617,7 +639,7 @@ void testSamplerFromThePage() {
     spec = rig.get("/design/spec").body;
     CHECK(has(spec, "\"recordings\":[\"drums/kick\",\"stepped\"]") || has(spec, "\"recordings\":[\"stepped\",\"drums/kick\"]"));
     // Its eight settings, in the order its screen shows them, each with every reading the screen gives.
-    CHECK(count(spec, "\"id\":") == sampler::kSettings && count(spec, "\"texts\":") == sampler::kSettings);
+    CHECK(count(instrumentPart(spec), "\"id\":") == sampler::kSettings && count(instrumentPart(spec), "\"texts\":") == sampler::kSettings);
     const char* order[] = {"PITCH", "TUNE", "START", "END", "ATTACK", "RELEASE", "LOOP", "LEVEL"};
     std::size_t at = 0;
     for (const char* name : order) {
@@ -1067,11 +1089,11 @@ void testJaxepFromThePage() {
     CHECK(rig.track().kind == TrackKind::Jx3p);
     const std::string spec = rig.get("/design/spec").body;
     CHECK(has(spec, "\"name\":\"JAX-EP\"") && has(spec, "\"macros\":[\"CUTOFF\",\"RESO\"") && count(spec, "\"env\":") == 5 && !has(spec, "\"env\":true"));
-    CHECK(count(spec, "\"id\":") == jx3p::kSettings);
+    CHECK(count(instrumentPart(spec), "\"id\":") == jx3p::kSettings);
     CHECK(has(spec, "\"texts\":[\"OFF\",\"SYNC\",\"METAL\"]") && has(spec, "\"texts\":[\"SAW\",\"PULSE\",\"SQUARE\",\"NOISE\"]"));
     // A knob reads on the page as on the device, its dial in tenths, 0.0 to 10.0 (batch 6b): the page is given
     // all 101 readings of each of the 19 knobs, and shows the one the slider is at.
-    CHECK(count(spec, "\"texts\":") == jx3p::kSettings && count(spec, "\"texts\":[\"0.0\",\"0.1\",\"0.2\",") == 19 && count(spec, ",\"9.8\",\"9.9\",\"10.0\"]") == 19);
+    CHECK(count(instrumentPart(spec), "\"texts\":") == jx3p::kSettings && count(instrumentPart(spec), "\"texts\":[\"0.0\",\"0.1\",\"0.2\",") == 19 && count(instrumentPart(spec), ",\"9.8\",\"9.9\",\"10.0\"]") == 19);
     CHECK(has(spec, "{\"name\":\"CUTOFF\",\"id\":16,\"min\":0,\"max\":100,\"texts\":[\"0.0\",") && !has(spec, "\"100\"") && !has(spec, "\"10.1\""));
     {
         // ...and only JAX-EP's: Phazed's long settings still show their plain number there.
@@ -1228,6 +1250,63 @@ void testMorphFromThePage() {
     CHECK(std::memcmp(&was, &rig.track().morph, sizeof was) != 0 && rig.track().morph.value[morph::Octave] == was.value[morph::Octave] && rig.track().morph.value[morph::Attack] == was.value[morph::Attack]);
 }
 
+// ---- EFFECTS and MODs from the page -----------------------------------------------------------------
+
+void testFxAndModsFromThePage() {
+    Rig rig;
+    rig.addSynth();
+    TrackData& t = rig.track();
+    // Every page carries EFFECTS and MODs, with their values in the state.
+    const std::string spec = rig.get("/design/spec").body;
+    CHECK(has(spec, "\"fx\"") && has(spec, "\"mods\"") && has(spec, "SLOT 1") && has(spec, "\"dbmin\":-40") && has(spec, "\"targets\""));
+    CHECK(has(rig.get("/design/state").body, "\"fxkinds\"") && has(rig.get("/design/state").body, "\"fxreadings\"") && has(rig.get("/design/state").body, "\"mix\""));
+    const auto serialOf = [](const std::string& s) {
+        const std::size_t at = s.find("\"spec\":");
+        return at == std::string::npos ? -1 : std::atoi(s.c_str() + at + 7);
+    };
+    const int delay = static_cast<int>(EffectKind::Delay), drive = static_cast<int>(EffectKind::Drive);
+    // A slot's effect, then its setting: the track's, a bus's (its own family only), the master's.
+    const int serial = serialOf(rig.get("/design/state").body);
+    CHECK(rig.tell("fxtype 0 " + std::to_string(delay)) && t.effects[0].kind == delay);
+    CHECK(serialOf(rig.get("/design/state").body) > serial); // a new spec: the slot's settings changed
+    CHECK(rig.tell("fxset 0 0.5") && t.effects[0].param[0] == 0.5f);
+    CHECK(has(rig.get("/design/state").body, "\"fxkinds\":[3,"));
+    const int busWas = rig.app.project().busEffects[0].kind;
+    CHECK(rig.tell("fxtype 3 " + std::to_string(drive)) && rig.app.project().busEffects[0].kind == busWas); // ECHO takes no drive
+    CHECK(rig.tell("fxtype 3 " + std::to_string(delay)) && rig.app.project().busEffects[0].kind == delay);
+    CHECK(rig.tell("fxset 14 0.25") && rig.app.project().busEffects[0].param[0] == 0.25f);
+    CHECK(rig.tell("fxtype 5 " + std::to_string(drive)) && rig.app.project().masterEffects[0].kind == drive);
+    CHECK(rig.tell("fxset 22 0.75") && rig.app.project().masterEffects[0].param[0] == 0.75f);
+    // Sends and the mixer: whole dB and pan, the other kept.
+    CHECK(rig.tell("fxset 12 0.75") && t.send[0] == 0.75f);
+    CHECK(rig.tell("fxset 30 -6") && t.mixDb == -6 && t.mixPan == 0);
+    CHECK(rig.tell("fxset 31 50") && t.mixPan == 50 && t.mixDb == -6);
+    // MOD 1 at a macro: kind, target, depth, and a step of its row.
+    CHECK(rig.tell("modset 0 0 1") && rig.tell("modset 0 1 0") && rig.tell("modset 0 2 0.5"));
+    CHECK(t.mods[0].runs() && t.mods[0].kind == kModLfo && t.mods[0].target == 0 && t.mods[0].depth == 0.5f);
+    CHECK(has(rig.get("/design/state").body, "\"target\":0"));
+    CHECK(rig.tell("modset 0 11 0.5") && t.mods[0].steps[0] == 0.5f);
+    // A TARGET that does not fit is nothing (the MOD is kept, not blanked); none at all is OFF's way.
+    CHECK(rig.tell("modset 0 1 99") && t.mods[0].target == 0 && t.mods[0].runs());
+    CHECK(rig.tell("modset 0 1 -1") && t.mods[0].target == kModTargetNone);
+    // FREE is an LFO's alone: a STEPPER made from one starts at 1 BAR (aiming wakes an LFO, so the kind is picked again after).
+    CHECK(rig.tell("modset 0 0 2") && rig.tell("modset 0 1 0") && rig.tell("modset 0 0 2") && rig.tell("modset 0 3 12"));
+    CHECK(t.mods[0].kind == kModStepper && t.mods[0].rate == kModRateBar);
+    CHECK(rig.tell("modset 0 0 1") && rig.tell("modset 0 3 12") && t.mods[0].rate == kModRateFree);
+    // A kit's track: EFFECTS and MODs work there too (no macros, but a send).
+    rig.app.project().track = 0;
+    rig.frames(1);
+    CHECK(has(rig.get("/design/spec").body, "\"page\":\"kit\"") && has(rig.get("/design/spec").body, "\"fx\""));
+    TrackData& kit = rig.track();
+    CHECK(rig.tell("fxset 12 0.5") && kit.send[0] == 0.5f);
+    CHECK(rig.tell("modset 0 0 1") && rig.tell("modset 0 1 0") && !kit.mods[0].runs()); // no macro on a kit
+    CHECK(rig.tell("modset 0 1 " + std::to_string(kModFirstSend)) && kit.mods[0].runs() && kit.mods[0].target == kModFirstSend);
+    // A track with nothing on it: taken, and nothing happens.
+    rig.app.project().track = rig.app.project().trackCount();
+    rig.frames(1);
+    CHECK(rig.tell("fxtype 0 3") && rig.tell("fxset 0 0.5") && rig.tell("modset 0 1 0") && rig.peak(4000) == 0.f);
+}
+
 int main() {
     // The engine's own presets only: the tests here are of their tables. The presets the app's data
     // adds (and any track sound it gives a built-in) are presets_test's.
@@ -1245,6 +1324,7 @@ int main() {
     testKitSynthFromThePage();
     testCloudFromThePage();
     testMorphFromThePage();
+    testFxAndModsFromThePage();
     if (const char* hold = std::getenv("APOTHECA_DESIGN_HOLD")) {
         Rig rig;
         if (std::getenv("APOTHECA_DESIGN_SAMPLER")) { // (a SAMPLER track, on a recording of four hits; two more on the card)

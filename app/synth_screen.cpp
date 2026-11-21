@@ -20,6 +20,8 @@ constexpr float kChoicesPerSecond = 5.f; // the stick held over on a choice
 constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs;
 constexpr float kStickStopsPerSecond = 16.f;
 constexpr float kMacroPerSecond = 2.f;    // stick fully over: bottom to top in half a second
+constexpr float kTypeMovesPerSecond = 7.f; // over the naming keys, as the track name's
+constexpr char kTypeKeys[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_ "; // as the track name's: presetNameFrom's letters
 constexpr float kPresetsPerSecond = 10.f;
 constexpr Uint32 kListPreviewMs = 1500, kListRestMs = 4000; // CLOUD's list of recordings: a preview, and X on it
 
@@ -87,6 +89,41 @@ void SynthScreen::moveCursor(Button direction) {
         next = cursor_ == 2 * kEnvSteps ? kEnvSteps : 2 * kEnvSteps - 1;
     }
     if (next >= 0 && next < count) cursor_ = next;
+}
+
+// ---- naming a preset to save ------------------------------------------------------------
+
+void SynthScreen::moveTypeKey(Button direction) {
+    const int count = 40, columns = kTypeColumns;
+    int col = key_ % columns, row = key_ / columns;
+    if (direction == Button::Left) col = (col + columns - 1) % columns;
+    if (direction == Button::Right) col = (col + 1) % columns;
+    if (direction == Button::Up) row = (row + count / columns - 1) % (count / columns);
+    if (direction == Button::Down) row = (row + 1) % (count / columns);
+    key_ = row * columns + col;
+}
+
+void SynthScreen::typeButton(Button b) {
+    if (isDirection(b)) {
+        moveTypeKey(b);
+        repeating_ = b;
+        repeatAt_ = 0;
+    } else if (b == Button::A) {
+        const char c = kTypeKeys[key_];
+        // No space first, and not two together; 24 at most, as the page's names.
+        const bool space = c == ' ';
+        if (static_cast<int>(typed_.size()) < kPresetNameLength && !(space && (typed_.empty() || typed_.back() == ' '))) typed_ += c;
+    } else if (b == Button::Y) {
+        if (!typed_.empty()) typed_.pop_back(); // the last letter goes
+    } else if (b == Button::B) {
+        typing_ = false; // leaves without saving
+    } else if (b == Button::Start) {
+        if (typed_.empty()) return; // (the keys say to name it)
+        const std::string name = presetNameFrom(typed_);
+        typing_ = false;
+        if (name.empty() || !session_.savePreset(project_.track, typed_)) say("NOT SAVED", 2500);
+        else say("SAVED AS " + name, 2500);
+    }
 }
 
 // ---- changing the sound ----------------------------------------------------------------
@@ -298,6 +335,11 @@ void SynthScreen::endMod(const Input& input) {
 
 void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
+    if (typing_) { // naming a preset to save: every button is the keys'.
+        if (event.down) typeButton(b);
+        else if (b == repeating_) repeating_ = Button::None;
+        return;
+    }
     if (picker_.isOpen()) { // CLOUD's list of recordings: every button is its own but START
         if (b == Button::Start && event.down && !input.held(Button::Select) && !picker_.typing()) session_.togglePlay(false);
         else picker_.onButton(event, project_.playing);
@@ -375,6 +417,10 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
         const Session::Rec now = session_.toggleRecording(project_.track, 0);
         if (now == Session::Rec::NoInput) say("NO INPUT FOUND: PLUG IN A USB MICROPHONE OR INTERFACE", 3000);
         else if (now == Session::Rec::Idle && session_.lastRecorded().empty()) say("NOTHING RECORDED: NO SOUND CAME IN", 3000);
+    } else if (b == Button::R1 && page_ == 0 && cursor_ == kPreset && !holding_) {
+        typing_ = true; // save the sound: the keys come up to name it
+        typed_.clear();
+        key_ = 0;
     } else if (b == Button::R1 && page_ > 0) {
         goTo(page_ == spec_.pages - 1 ? 1 : page_ + 1, 0);
     } else if (b == Button::L1 && page_ > 0) {
@@ -401,6 +447,26 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
     dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number
     lastMs_ = nowMs;
     const float x = input.stickX(), y = input.stickY();
+    if (typing_) {
+        // The stick moves over the keys, one at once and then steadily; a held D-pad direction runs.
+        const bool sideways = std::fabs(x) >= std::fabs(y);
+        const float push = sideways ? x : y;
+        if (push == 0.f) {
+            saved_ = 0.f;
+            stickWasX_ = false;
+        } else {
+            saved_ += stickWasX_ ? std::fabs(push) * kTypeMovesPerSecond * dt : 1.f;
+            stickWasX_ = true;
+            for (; saved_ >= 1.f; saved_ -= 1.f) moveTypeKey(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
+        }
+        if (repeating_ != Button::None && repeatAt_ == 0) {
+            repeatAt_ = nowMs + kRepeatDelayMs;
+        } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
+            repeatAt_ = nowMs + kRepeatEveryMs;
+            moveTypeKey(repeating_);
+        }
+        return;
+    }
     if (modKnob_.held()) {
         modKnob_.update(input, nowMs, dt); // the stick and the D-pad are the MOD's; the cursor stays on the knob
         return;
@@ -463,6 +529,32 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
 // CLOUD's picture on MAIN: the recording's outline (the TONE's, dim, with none), lit within SPRAY of
 // POSITION (both as the knobs have them now, macros on), POSITION a brass line, and each grain
 // sounding a teal tick at its place, top and bottom (Engine::grainPlaces, as of the last chunk).
+void SynthScreen::drawTyping(SDL_Renderer* r, const Fonts& fonts) const {
+    char text[64];
+    fonts.small.draw(r, 40.f, 46.f, "SAVE AS PRESET", kDim);
+    // What has been typed, with a mark where the next letter goes.
+    box(r, 40, 66, kScreenW - 80, 52, kPanel2, kTeal);
+    const float tx = 56.f, ty = 66.f + (52.f - fonts.large.capHeight()) / 2.f;
+    fonts.large.draw(r, tx, ty, typed_.c_str(), kText);
+    if (static_cast<int>(typed_.size()) < kPresetNameLength) fill(r, static_cast<int>(tx + fonts.large.width(typed_.c_str()) + (typed_.empty() ? 0 : 3)), 66 + 14, 2, 24, kTeal);
+    std::snprintf(text, sizeof text, "%d OF %d", static_cast<int>(typed_.size()), kPresetNameLength);
+    fonts.small.drawRight(r, kScreenW - 56.f, 66.f + (52.f - fonts.small.capHeight()) / 2.f, text, kDim);
+    if (typed_.empty()) fonts.small.draw(r, tx + 12.f, 66.f + (52.f - fonts.small.capHeight()) / 2.f, "(empty: name it to save)", kDim);
+    const int kw = 52, kh = 52, gx = (kScreenW - kTypeColumns * kw) / 2, gy = 140;
+    for (int i = 0; i < 40; ++i) {
+        const int x = gx + (i % kTypeColumns) * kw, y = gy + (i / kTypeColumns) * kh;
+        const bool here = i == key_;
+        box(r, x + 2, y + 2, kw - 4, kh - 4, here ? kTeal : kPanel, here ? kTeal : kLine);
+        char one[8];
+        std::snprintf(one, sizeof one, "%s", kTypeKeys[i] == ' ' ? "SPACE" : std::string(1, kTypeKeys[i]).c_str());
+        const Font& font = kTypeKeys[i] == ' ' ? fonts.within(&Fonts::small, one, kw - 4 - 6.f) : fonts.large; // ("SPACE" at XL is wider than its key: held at LARGE)
+        font.drawCentered(r, x + kw / 2.f, y + (kh - font.capHeight()) / 2.f, one, here ? kBg : kText);
+    }
+    const bool none = typed_.empty();
+    const Hint list[] = {{"A", "type"}, {"Y", none ? nullptr : "delete"}, {"B", "leave"}, {"START", "save"}};
+    hints(r, fonts, list, 4);
+}
+
 void SynthScreen::drawPicture(SDL_Renderer* r, const Fonts& fonts) const {
     const int x = 8, y = kPictureY, w = kScreenW - 16, h = kPictureH;
     box(r, x, y, w, h, kPanel, kLine);
@@ -560,6 +652,10 @@ void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
     std::snprintf(text, sizeof text, "%s / %s", name, spec_.pageNames[page_]);
     if (!said_.empty()) std::snprintf(text, sizeof text, "%s", said_.c_str()); // (CATCH, RECORD: for a moment)
     topBar(r, fonts, View::Device, text, project_);
+    if (typing_) {
+        drawTyping(r, fonts); // naming a preset to save: the keys instead of the rows
+        return;
+    }
     const TrackData& t = trk();
     const SDL_Color cursorColor = holding_ ? kBrass : kTeal;
 
@@ -629,6 +725,7 @@ void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
         } else {
             if (cursor_ == kAdvanced) hint("A", "open");
             else hint("HOLD A", cursor_ < kFirstMacro ? "change" : "turn");
+            if (cursor_ == kPreset) hint("R1", "save");
             if (cursor_ >= kFirstMacro && cursor_ < kAdvanced) hint("B", "back to the middle");
             // (Where the bar has room for it with nothing left out. The help card says it everywhere.)
             if (cursor_ >= kFirstMacro && cursor_ < kAdvanced && modTargetFits(t, kModFirstMacro + cursor_ - kFirstMacro)) hint("HOLD X", "mod");

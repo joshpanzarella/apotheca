@@ -483,7 +483,7 @@ void testUndo() {
     CHECK(p.at(60, 4) >= 0 && p.notes[p.at(60, 4)].throwTo == 2 && rig.thrownTo() == 3);
 }
 
-// A bar copied to another scene on the SONG screen (hold R1 and move) takes its throws with it.
+// A bar copied to another scene on the SONG screen (tap R1 to copy, tap R1 to paste) takes its throws with it.
 void testCopiedToAnotherScene() {
     Rig rig;
     Session& session = rig.app.session();
@@ -500,10 +500,11 @@ void testCopiedToAnotherScene() {
     session.sendNotePattern(1, 0);
     session.view = View::Song;
     for (int track = 0; track < 2; ++track) {
+        // (The paste consumes the copy, so the drums copy is already gone for track 1.)
         rig.app.song().moveCursorTo(0, track);
-        rig.key(R1, true);
-        rig.tap(DOWN);
-        rig.key(R1, false);
+        rig.tap(R1); // copy
+        rig.app.song().moveCursorTo(1, track);
+        rig.tap(R1); // paste
     }
     CHECK(rig.project().tracks[0].drums[1][0].fx[1][4].throwTo == 2 && rig.project().tracks[0].drums[1][0].level[1][4] > 0.f);
     CHECK(rig.project().tracks[1].notes[1][0].notes[0].throwTo == 1);

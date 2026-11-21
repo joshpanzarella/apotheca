@@ -287,6 +287,7 @@ void testDeletingAndMoving() {
     const std::string song = "apotheca-song 1\ntempo 97\n", wav = aWav(), other = aWav(0.2f);
     for (const char* name : {"quiet road.song", "quiet road.1.rev", "quiet road.12.rev", "quiet roadster.song", "quiet roadster.1.rev", "quiet road.x.rev", "loud roads.1.rev"}) writeTextFile(songs + "/" + name, song);
     writeTextFile(bounces + "/mix.wav", wav);
+    writeTextFile(bounces + "/mix.mid", wav);
     writeTextFile(root + "/secret.wav", wav); // outside every folder: never to be touched
     writeTextFile(out + "/x.wav", wav);
 
@@ -308,11 +309,12 @@ void testDeletingAndMoving() {
     CHECK(a.body.find(",\"folders\":[\"empty\",\"kicks\"],") != std::string::npos);
     const std::string size = std::to_string(wav.size());
     CHECK(a.body.find("\"sizes\":{\"samples\":[" + size + "," + std::to_string(other.size()) + "," + size + "," + size + "],\"songs\":[" + std::to_string(song.size()) + "," + std::to_string(song.size()) + "],\"chords\":[" +
-                      std::to_string(std::strlen(kPack)) + "],\"bounces\":[" + size + "]}") != std::string::npos);
-    CHECK(a.body.find(",\"samples\":[\"a.wav\",\"b.wav\",\"kicks/one.wav\",\"kicks/two.wav\"],\"songs\":[\"quiet road.song\",\"quiet roadster.song\"],\"chords\":[\"sent.json\"],\"bounces\":[\"mix.wav\"]}") != std::string::npos);
+                      std::to_string(std::strlen(kPack)) + "],\"bounces\":[" + size + "," + size + "]}") != std::string::npos);
+    CHECK(a.body.find(",\"samples\":[\"a.wav\",\"b.wav\",\"kicks/one.wav\",\"kicks/two.wav\"],\"songs\":[\"quiet road.song\",\"quiet roadster.song\"],\"chords\":[\"sent.json\"],\"bounces\":[\"mix.mid\",\"mix.wav\"]}") != std::string::npos);
     // A recording and a bounce are sent as sound, so a browser can play them; a song is not.
     CHECK(get(port, door + "/samples/a.wav").head.find("Content-Type: audio/wav") != std::string::npos);
     CHECK(get(port, door + "/bounces/mix.wav").head.find("Content-Type: audio/wav") != std::string::npos);
+    CHECK(get(port, door + "/bounces/mix.mid").head.find("Content-Type: application/octet-stream") != std::string::npos);
     CHECK(get(port, door + "/songs/quiet%20road.song").head.find("audio") == std::string::npos);
 
     // ---- deleting ----

@@ -335,9 +335,9 @@ firmware rows), `textsize` (every place the page can stand, at four sizes; the s
 
 **What was asked**: duplicate a track; empty a cell; copy a whole cell to another scene or track.
 
-**What was there already, and stays**: B on a cell empties it (`clearCell`); **hold R1 on a cell and
-drag copies the whole cell** (its length and every bar) into every cell crossed, on any track of the
-same kind and any scene (`copyCell`). Nothing was added for those two.
+**What was there already, and stays**: B on a cell empties it (`clearCell`). (R1 on a cell then
+copied the whole cell into every cell crossed by dragging; since 2026-11-19 R1 copies it and R1 on
+another cell pastes it there, as a scene is copied.)
 
 **New: duplicate a track.** On a track's head on SONG, **hold L1 and press R1** (COPY A BAR's two
 keys, on the thing they copy here; L1 did nothing on a head). A new track right after it: the same

@@ -126,7 +126,7 @@ void SettingsScreen::typeButton(Button b) {
 bool SettingsScreen::here(int row) const {
     if (row == kBrightness) return session_.screenHere();
     if (row == kLight || row == kLightColour || row == kRingLevel) return session_.ringHere();
-    if (row == kNetwork) return session_.wifiHere();
+    if (row == kNetwork || row == kHotspot) return session_.wifiHere();
     return row >= 0 && row < kRows;
 }
 
@@ -178,7 +178,7 @@ void SettingsScreen::change(int by) {
     case kPack: session_.choosePack(session_.packIndex() + by); break;
     case kKey: session_.setScale(project_.scaleKey + by, project_.scaleKind); break; // (round: B to C)
     case kScale: session_.setScale(project_.scaleKey, project_.scaleKind + by); break; // (a choice with ends)
-    case kBounce: bounceWhat_ = ((bounceWhat_ + by) % 3 + 3) % 3; break;
+    case kBounce: bounceWhat_ = ((bounceWhat_ + by) % 4 + 4) % 4; break;
     case kTrackName: {
         // Through the list of names, round and round; the first is "its instrument's own".
         int now = 0;
@@ -237,7 +237,7 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (b == Button::B) {
             const WifiStatus status = session_.wifi().now().status;
             if (event.down && picking_) picking_ = false; // (B with A held: nothing is joined)
-            else if (event.down) forgetting_ = session_.transferOn() && status.state != WifiState::Off, forgetTimed_ = false;
+            else if (event.down) forgetting_ = session_.transferOn() && status.state != WifiState::Off && status.state != WifiState::Hotspot, forgetTimed_ = false;
             else forgetting_ = false;
             return;
         }
@@ -257,10 +257,12 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
         holdTimed_ = false;
         holdPart_ = 0.f;
         if (!event.down) return;
-        if (row_ == kBounce && !session_.bouncing()) session_.startBounce(bounceWhat_ == 0 ? Session::Bounce::Song : bounceWhat_ == 1 ? Session::Bounce::EachTrack : Session::Bounce::ThisTrack);
+        if (row_ == kBounce && !session_.bouncing())
+            session_.startBounce(bounceWhat_ == 0 ? Session::Bounce::Song : bounceWhat_ == 1 ? Session::Bounce::EachTrack : bounceWhat_ == 2 ? Session::Bounce::ThisTrack : Session::Bounce::MidiFile);
         if (row_ == kTempo) session_.tapTempo(lastMs_); // TAP TEMPO: A in time
         if (row_ == kTrackName) typing_ = true, password_ = false, typed_ = project_.current().name, key_ = 0;
         if (row_ == kWifi) session_.toggleTransfer(lastMs_ * 2654435761u + 977u);
+        if (row_ == kHotspot) session_.setHotspot(session_.wifi().now().status.state != WifiState::Hotspot, lastMs_ * 2654435761u + 977u);
         if (row_ == kTest) testing_ = true, testTimed_ = false, lastPressed_ = Button::None;
         return;
     }
@@ -298,7 +300,7 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
         if (nowMs - forgetSince_ >= kForgetHoldMs) {
             forgetting_ = false, forgetPart_ = 0.f;
             const WifiStatus status = session_.wifi().now().status;
-            if (status.state != WifiState::Off) {
+            if (status.state != WifiState::Off && status.state != WifiState::Hotspot) {
                 session_.wifi().forget(status.name);
                 networkSaid_ = "FORGOTTEN";
                 networkSaidUntil_ = nowMs + 2500;
@@ -499,7 +501,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     }
 
     const char* names[kRows] = {"TEMPO", "CHORD PACK", "KEY", "SCALE", "TRACK NAME", "BOUNCE", "CLICK", "COUNT IN", "MUTES", "USB KEYBOARD", "TEXT SIZE", "THEME", "PIANO ROLL",
-                                "VOLUME", "BRIGHTNESS", "STICK LIGHT", "LIGHT COLOUR", "RING LEVEL", "STICK SPEED", "WIFI PAGE", "NETWORK", "BUTTONS", "CONTROLS"};
+                                "VOLUME", "BRIGHTNESS", "STICK LIGHT", "LIGHT COLOUR", "RING LEVEL", "STICK SPEED", "WIFI PAGE", "NETWORK", "HOTSPOT", "BUTTONS", "CONTROLS"};
     const int rowH = kRowH, w = kRowW; // (twelve rows shown: 34 a row, as it was with eleven, would run into the hints bar)
     // The heading of the first row in view, above the rows.
     const char* topHeading = groupName(groupOf(rowAt(first_)));
@@ -546,7 +548,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             break;
         }
         case kBounce: {
-            static const char* what[3] = {"THE SONG", "EACH TRACK", "THIS TRACK"};
+            static const char* what[4] = {"THE SONG", "EACH TRACK", "THIS TRACK", "MIDI FILE"};
             if (session_.bouncing()) {
                 // The song's own length is known, so that part is a percentage. A tail's is not
                 // (it runs until it has died away): it says how much of it there is so far.
@@ -558,7 +560,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             } else {
                 std::snprintf(text, sizeof text, "%s", what[bounceWhat_]);
                 if (session_.bounceFiles() > 0) std::snprintf(bounced_, sizeof bounced_, "done: %d file%s, on the WiFi page", session_.bounceFiles(), session_.bounceFiles() == 1 ? "" : "s");
-                note = session_.bounceFiles() > 0 ? bounced_ : "A: write it as a WAV file";
+                note = session_.bounceFiles() > 0 ? bounced_ : (bounceWhat_ == 3 ? "A: write it as a MIDI file" : "A: write it as a WAV file");
             }
             break;
         }
@@ -636,10 +638,16 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             else std::snprintf(text, sizeof text, "OFF");
             note = session_.transferOn() ? "" : "files and updates from a browser";
             if (session_.transferOn() && session_.wifiHere()) {
-                // Our firmware gives the handheld a name on the network: said beside the address (the
-                // same port and number after it). Nothing where the system does not say one.
+                // Our firmware gives the handheld a name on the network: the name is the value, the
+                // address beside it (the same port and number after it). The address alone where the
+                // system says no name.
                 const std::string name = session_.transferName();
-                if (!name.empty()) std::snprintf(said, sizeof said, "or %.60s", name.c_str()), note = said, twoAddresses = true;
+                if (!name.empty()) {
+                    std::snprintf(text, sizeof text, "ON   %s", name.c_str());
+                    std::snprintf(said, sizeof said, "or %.60s", session_.transferAddress().c_str());
+                    note = said;
+                    twoAddresses = true;
+                }
             }
             break;
         case kNetwork: {
@@ -662,9 +670,21 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 else if (status.state == WifiState::Joining) note = "JOINING...";
                 else if (status.state == WifiState::WrongPassword) note = "WRONG PASSWORD";
                 else if (status.state == WifiState::NotFound) note = "NOT FOUND";
-                else if (status.state == WifiState::Joined) std::snprintf(said, sizeof said, "%.40s", status.address.c_str()), note = said;
+                else if (status.state == WifiState::Joined || status.state == WifiState::Hotspot) std::snprintf(said, sizeof said, "%.40s", status.address.c_str()), note = said;
                 else if (!now.scanned) note = "LOOKING...";
                 else std::snprintf(said, sizeof said, "%d FOUND", static_cast<int>(now.networks.size())), note = said;
+            }
+            break;
+        }
+        case kHotspot: {
+            const WifiStatus& status = session_.wifi().now().status;
+            if (status.state == WifiState::Hotspot) {
+                std::snprintf(text, sizeof text, "ON");
+                std::snprintf(said, sizeof said, "%.40s", status.address.c_str());
+                note = said;
+            } else {
+                std::snprintf(text, sizeof text, "OFF");
+                note = "a phone joins it with one tap";
             }
             break;
         }
@@ -733,7 +753,8 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (row_ == kTrackName) hint("A", "type a name");
     if (row_ == kWifi) hint("A", session_.transferOn() ? "turn off" : "turn on");
     if (row_ == kNetwork && session_.transferOn()) {
-        const bool joined = session_.wifi().now().status.state != WifiState::Off;
+        const WifiState state = session_.wifi().now().status.state;
+        const bool joined = state != WifiState::Off && state != WifiState::Hotspot;
         if (forgetPart_ > 0.f) {
             count = 0;
             hint("HOLD B", "forgetting");
@@ -746,6 +767,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             if (joined) hint("HOLD B", "forget");
         }
     }
+    if (row_ == kHotspot) hint("A", session_.wifi().now().status.state == WifiState::Hotspot ? "turn off" : "turn on");
     if (row_ == kTest) hint("A", "open the test");
     if (row_ == kControls) hint("HOLD A", "set up again");
     hint("SELECT", "to SONG");

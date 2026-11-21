@@ -724,7 +724,7 @@ void testTheRow() {
     S& setup = rig.app.settings();
     // Among the handheld's rows, after STICK SPEED; thirteen rows now, THEME after it (tests/theme_test.cpp).
     // (Under LOOK since the page's headings: after USB KEYBOARD, the last of PLAYING.)
-    CHECK(S::kRows == 23 && S::kTextSize == S::kMidi + 1 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::groupOf(S::kTextSize) == S::kLook);
+    CHECK(S::kRows == 24 && S::kTextSize == S::kMidi + 1 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::groupOf(S::kTextSize) == S::kLook);
     setup.goTo(S::kMidi);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kTextSize && session.textSize() == kTextLarge);

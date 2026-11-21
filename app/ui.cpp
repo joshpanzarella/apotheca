@@ -190,8 +190,8 @@ TopBar topBar(SDL_Renderer* r, const Fonts& chosen, View view, const char* conte
     } else if (project.playing && project.playScene >= 0 && project.playScene < kMaxScenes) {
         const int right = static_cast<int>(room) - 6, w = 46;
         const int plays = project.playLoop ? 1 : project.repeats[project.playScene];
-        const int bars = project.sceneBars(project.playScene);
-        sceneProgress(r, right - w, 9, w, 8, plays, project.playRepeat, project.playBar * kSteps + project.playStep, bars * kSteps);
+        const int bars = project.sceneBars(project.playScene), meter = project.meterOf(project.playScene);
+        sceneProgress(r, right - w, 9, w, 8, plays, project.playRepeat, project.playBar * meter + project.playStep, bars * meter);
         char scene[48];
         // The scene's number, then (in a cell of several bars) which bar of it. Short, to leave the title its room.
         if (bars > 1) std::snprintf(scene, sizeof scene, "%d  %d/%d", project.playScene + 1, project.playBar + 1, bars);

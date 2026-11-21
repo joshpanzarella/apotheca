@@ -74,12 +74,13 @@ WifiStatus wifiStatusFrom(const std::string& text) {
     if (words.empty()) return status;
     const std::string& what = words[0];
     std::size_t end = words.size();
-    if (what == "joined") {
-        // joined NAME ADDRESS [HOSTNAME]: read from the right, since NAME may hold spaces.
+    if (what == "joined" || what == "hotspot") {
+        // joined NAME ADDRESS [HOSTNAME] (hotspot: the same words): read from the right, since NAME
+        // may hold spaces.
         if (end > 3 && endsWith(words[end - 1], ".local") && looksLikeAddress(words[end - 2])) status.hostname = words[--end];
         if (end > 2 && looksLikeAddress(words[end - 1])) status.address = words[--end];
         if (end < 2) return status; // (no name: not a line of ours)
-        status.state = WifiState::Joined;
+        status.state = what == "joined" ? WifiState::Joined : WifiState::Hotspot;
     } else if (what == "joining") {
         status.state = WifiState::Joining;
     } else if (what == "wrong-password") {
@@ -240,6 +241,15 @@ void Wifi::forget(const std::string& name) {
     ask(after, true); // (it is no longer a saved one)
 }
 
+void Wifi::hotspot() {
+    Job job;
+    job.kind = Job::Hotspot;
+    ask(job);
+    Job after;
+    after.kind = Job::Status;
+    ask(after, true); // (the address and the name, once the network is up)
+}
+
 void Wifi::update(std::uint32_t nowMs, bool on, bool looking) {
     if (program_.empty() || !on) {
         timed_ = false;
@@ -313,6 +323,11 @@ void Wifi::work() {
                 now_.scanned = false;
                 if (job.kind == Job::Down) now_.status = WifiStatus();
                 ++now_.serial;
+            } else if (job.kind == Job::Hotspot) {
+                now_.networks.clear(); // the radio cannot look about while it is the network
+                now_.scanned = false;
+                if (ran) now_.status = wifiStatusFrom(out); // `hotspot NAME` (the status after says the rest)
+                ++now_.serial;
             }
             busy_ = false;
         }
@@ -323,7 +338,7 @@ void Wifi::work() {
 // Runs `program WORD [NAME]`, the password (if any) on its stdin, and gathers what it says. No shell:
 // a network's name is one argument whatever it holds. Half a minute at most, then it is stopped.
 bool Wifi::run(const std::string& program, const Job& job, std::string& out) {
-    static const char* const kWords[] = {"up", "down", "scan", "status", "join", "forget"};
+    static const char* const kWords[] = {"up", "down", "scan", "status", "join", "forget", "hotspot"};
     int in[2], back[2];
     if (pipe2(in, O_CLOEXEC) != 0) return false;
     if (pipe2(back, O_CLOEXEC) != 0) {

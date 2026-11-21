@@ -672,7 +672,7 @@ the list with the panel files, so it went. Nothing joins a network either: no
 | The driver | rtw88 (`RTW88`, `_SDIO`, `_8821C`, `_8821CS`) **as modules** in `linux.fragment`: S02modules loads them by modalias after the root is mounted, so the firmware is read from `/lib/firmware` (built in, the driver asks before any file system is there) | Also keeps the kernel smaller; the panel files stay built in |
 | Joining | `wpa_supplicant` (nl80211, control socket, `wpa_cli`, WPA2 and WPA3-SAE), no D-Bus. iwd needs D-Bus: more to carry | Small, scriptable |
 | Address | BusyBox `udhcpc` with Buildroot's `default.script` | Already on the card |
-| The glue | `/usr/sbin/apotheca-wifi` (shell, root): `up`, `down`, `scan` (one line a network: signal, security, name), `join NAME` (password on stdin, never on a command line), `forget NAME`, `status` (`off`, `joining NAME`, `joined NAME ADDRESS`, `wrong-password NAME`, `not-found NAME`). Saved networks in `/data/apotheca/wifi/networks.conf` (`wpa_supplicant` format, `update_config=1`): on the APOTHECA drive, so a card moved to a new handheld keeps them, and a Mac can delete the file | One small program the app talks to; testable on its own |
+| The glue | `/usr/sbin/apotheca-wifi` (shell, root): `up`, `down`, `scan` (one line a network: signal, security, name), `join NAME` (password on stdin, never on a command line), `forget NAME`, `hotspot` (our own open network `apotheca`: `wpa_supplicant`'s AP mode on 2412 MHz, the handheld at 192.168.4.1, BusyBox `udhcpd` handing out .2-.20 with no way out and no names, so a phone keeps its own internet), `status` (`off`, `joining NAME`, `joined NAME ADDRESS`, `hotspot NAME ADDRESS`, `wrong-password NAME`, `not-found NAME`). Saved networks in `/data/apotheca/wifi/networks.conf` (`wpa_supplicant` format, `update_config=1`): on the APOTHECA drive, so a card moved to a new handheld keeps them, and a Mac can delete the file | One small program the app talks to; testable on its own |
 | When it runs | **Only while the WIFI PAGE is on**: turning it on runs `apotheca-wifi up` (the radio, `wpa_supplicant`, `udhcpc`; it rejoins a saved network by itself), off runs `down` (the radio off). The app runs it on a thread of its own: no frame waits | Battery, and nothing running beside the sound when WiFi is not wanted |
 | `run` | sets `APOTHECA_WIFI=/usr/sbin/apotheca-wifi`. On the port (stock firmware) it is not set and the app is as today | The same program for both |
 
@@ -693,6 +693,12 @@ set:
   keys left as they are.
 - **Hold B** (the bar that fills) forgets the network joined: "what cannot
   be undone says so".
+- A **HOTSPOT** row under NETWORK (shown only where NETWORK is): **A** turns
+  our own network on and off. On: the value is ON with 192.168.4.1 beside
+  it, and a phone joins `apotheca` with one tap (the page still asks for
+  its PIN). Off: `down` then `up`, so a saved network rejoins by itself.
+  While it is on the NETWORK row names it, HOLD A finds nothing (the radio
+  cannot look about), and HOLD B forgets nothing.
 - The password is never written to a log, the boot log included
   (`networks.conf` holds it, as any computer's WiFi settings do).
 
@@ -703,7 +709,9 @@ system side in `qemu-test.py` with `mac80211_hwsim` (two made-up radios;
 `CONFIG_MAC80211_HWSIM=m`, never loaded on the H700) and `hostapd` on one as
 the access point (WPA2 and an open one): `scan` lists them, `join` with the
 right password gets an address, with the wrong one says so, `forget` and
-`down`, and the WiFi page answers over it. **Only the handheld can show**:
+`down`, `hotspot` (a made-up radio joins it as a phone would and gets an
+address of 192.168.4), and the WiFi page answers over it. **Only the
+handheld can show**:
 the 8821CS loading its firmware and joining the owner's network, the
 transfer rate, and whether the radio is heard in the sound.
 

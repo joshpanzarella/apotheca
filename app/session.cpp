@@ -38,7 +38,7 @@ void Session::togglePlay(bool song) {
     c.type = project.playing ? Command::Play : Command::Stop;
     c.a = project.scene;
     c.b = project.playing ? (song ? 0 : 1) : 1; // a stop by hand (not a bounce, not the song's end): its samples fade out fast
-    if (c.type == Command::Play && countsIn()) c.d = kSteps; // COUNT IN: a bar of clicks first
+    if (c.type == Command::Play && countsIn()) c.d = project.meterOf(project.scene); // COUNT IN: a bar of clicks first
     syncClick(); // (CLICK at RECORDING: on before the Play, so its first beat clicks)
     if (engine.send(c) && c.type == Command::Play) ++playsSent_;
     project.playLoop = !song;
@@ -495,7 +495,7 @@ void Session::setSceneSteps(int scene, int steps) {
     if (scene < 0 || scene >= kMaxScenes) return;
     // Any number from one step to every step of its longest cell; "all of them" is kept as 0,
     // so the scene grows again if a cell in it is made longer.
-    const int whole = project.sceneBars(scene) * kSteps;
+    const int whole = project.sceneBars(scene) * project.meterOf(scene);
     steps = steps < 1 ? 1 : (steps >= whole ? 0 : steps);
     if (project.steps[scene] == steps) return;
     project.steps[scene] = steps;
@@ -612,6 +612,7 @@ Session::BarCopy Session::pasteBar(int track, int scene, int bar) {
         editing_ = false;
         cellMark_ = cellMark();
     }
+    clip_.has = false; // spent: a paste clears the copy (a Same, or a refusal, keeps it)
     return BarCopy::Done;
 }
 
@@ -655,6 +656,8 @@ Session::SceneCopy Session::copyScene(int scene) {
     }
     sceneClip_->repeats = project.repeats[scene];
     sceneClip_->steps = project.steps[scene];
+    sceneClip_->tempo = project.sceneTempo[scene];
+    sceneClip_->meter = project.meterOf(scene);
     ++sceneCopies_;
     return SceneCopy::Done;
 }
@@ -662,12 +665,12 @@ Session::SceneCopy Session::copyScene(int scene) {
 Session::SceneCopy Session::pasteScene(int scene) {
     if (scene < 0 || scene >= kMaxScenes) return SceneCopy::NoScene;
     if (!sceneClip_->has) return SceneCopy::NothingCopied;
-    // Only what would be pasted counts: a track whose instrument changed since is skipped below.
-    bool same = project.repeats[scene] == sceneClip_->repeats && project.steps[scene] == sceneClip_->steps;
+    // Only what would be pasted counts: a track whose instrument changed since to another kind is skipped below.
+    bool same = project.repeats[scene] == sceneClip_->repeats && project.steps[scene] == sceneClip_->steps && project.sceneTempo[scene] == sceneClip_->tempo && project.meterOf(scene) == sceneClip_->meter;
     for (int t = 0; t < kNumTracks && same; ++t) {
         const TrackData& target = project.tracks[t];
         const SceneClip::Track& clip = sceneClip_->tracks[t];
-        if (clip.kind != target.kind) continue;
+        if (!pasteKindsFit(clip.kind, target.kind)) continue;
         same = target.bars[scene] == clip.bars && std::memcmp(&target.drums[scene], clip.drums, sizeof clip.drums) == 0 &&
                std::memcmp(&target.notes[scene], clip.notes, sizeof clip.notes) == 0 &&
                std::memcmp(&target.automation[scene], clip.automation, sizeof clip.automation) == 0;
@@ -682,7 +685,7 @@ Session::SceneCopy Session::pasteScene(int scene) {
     for (int t = 0; t < kNumTracks; ++t) {
         TrackData& target = project.tracks[t];
         const SceneClip::Track& clip = sceneClip_->tracks[t];
-        if (clip.kind != target.kind) continue; // another instrument now: a drum bar cannot go on a synth
+        if (!pasteKindsFit(clip.kind, target.kind)) continue; // another kind now: a drum bar cannot go on a synth
         target.bars[scene] = clip.bars;
         std::memcpy(target.drums[scene], clip.drums, sizeof clip.drums);
         std::memcpy(target.notes[scene], clip.notes, sizeof clip.notes);
@@ -695,6 +698,8 @@ Session::SceneCopy Session::pasteScene(int scene) {
     }
     project.repeats[scene] = sceneClip_->repeats;
     project.steps[scene] = sceneClip_->steps;
+    project.sceneTempo[scene] = sceneClip_->tempo;
+    project.sceneMeter[scene] = sceneClip_->meter;
     Command c;
     c.type = Command::SetSceneRepeats;
     c.scene = scene;
@@ -703,12 +708,19 @@ Session::SceneCopy Session::pasteScene(int scene) {
     c.type = Command::SetSceneSteps;
     c.a = sceneClip_->steps;
     engine.send(c);
+    c.type = Command::SetSceneTempo;
+    c.value = sceneClip_->tempo;
+    engine.send(c);
+    c.type = Command::SetSceneMeter;
+    c.a = sceneClip_->meter;
+    engine.send(c);
     if (scene == project.scene) project.bar = 0;
     if (undoReady_) {
         settled_ = patternsNow(); // ...and nothing after it joins its step
         editing_ = false;
         cellMark_ = cellMark();
     }
+    sceneClip_->has = false; // spent: a paste clears the copy (a Same, or a refusal, keeps it)
     return SceneCopy::Done;
 }
 
@@ -731,6 +743,80 @@ std::string Session::sceneCopyWords(SceneCopy answer, bool paste, int scene) {
     case SceneCopy::Same: std::snprintf(text, sizeof text, "SCENE %d IS THE SAME", scene + 1); break;
     case SceneCopy::NothingCopied: return "NOTHING COPIED YET";
     case SceneCopy::NoScene: return "NO SCENE HERE";
+    }
+    return text;
+}
+
+Session::SceneClear Session::clearScene(int scene) {
+    if (scene < 0 || scene >= kMaxScenes) return SceneClear::NoScene;
+    bool empty = project.repeats[scene] == 1 && project.steps[scene] == 0 && project.sceneTempo[scene] <= 0.f && project.meterOf(scene) == kSteps;
+    for (int t = 0; t < kNumTracks && empty; ++t)
+        empty = project.tracks[t].bars[scene] == 1 && !project.tracks[t].holdsPieces(scene);
+    if (empty) return SceneClear::AlreadyEmpty; // nothing to do, and no step of undo
+
+    // A step of undo of its own, as pasteScene's.
+    if (undoReady_ && cellMark() != cellMark_) noteEdit();
+    if (editing_ || !undoReady_) settled_ = patternsNow();
+    editing_ = false;
+    noteEdit();
+    for (int t = 0; t < kNumTracks; ++t) {
+        TrackData& target = project.tracks[t];
+        if (target.bars[scene] == 1 && !target.holdsPieces(scene)) continue;
+        target.bars[scene] = 1;
+        // Blank, not dropped: undo restores into the pieces (a dropped one stays dropped).
+        if (target.drums.has(scene))
+            for (int bar = 0; bar < kMaxBars; ++bar) target.drums[scene][bar] = DrumPattern();
+        if (target.notes.has(scene))
+            for (int bar = 0; bar < kMaxBars; ++bar) target.notes[scene][bar] = NotePattern();
+        clearAutomation(t, scene, -1);
+        Command c; // what sendDrumPattern/sendNotePattern send for a blank cell (which read back pieces into being)
+        c.track = t;
+        c.scene = scene;
+        c.type = Command::ClearCell;
+        engine.send(c);
+        c.type = Command::SetCellBars;
+        c.a = 1;
+        engine.send(c);
+    }
+    project.repeats[scene] = 1;
+    project.steps[scene] = 0;
+    project.sceneTempo[scene] = 0.f;
+    project.sceneMeter[scene] = kSteps;
+    Command r;
+    r.type = Command::SetSceneRepeats;
+    r.scene = scene;
+    r.a = 1;
+    engine.send(r);
+    r.type = Command::SetSceneSteps;
+    r.a = 0;
+    engine.send(r);
+    r.type = Command::SetSceneTempo;
+    r.value = 0.f;
+    engine.send(r);
+    r.type = Command::SetSceneMeter;
+    r.a = kSteps;
+    engine.send(r);
+    if (scene == project.scene) project.bar = 0;
+    if (undoReady_) {
+        settled_ = patternsNow(); // ...and nothing after it joins its step
+        editing_ = false;
+        cellMark_ = cellMark();
+    }
+    return SceneClear::Done;
+}
+
+Session::SceneClear Session::clearSceneHere(int scene) {
+    const SceneClear answer = clearScene(scene);
+    say(sceneClearWords(answer, scene).c_str());
+    return answer;
+}
+
+std::string Session::sceneClearWords(SceneClear answer, int scene) {
+    char text[64];
+    switch (answer) {
+    case SceneClear::Done: std::snprintf(text, sizeof text, "SCENE %d EMPTIED", scene + 1); break;
+    case SceneClear::AlreadyEmpty: std::snprintf(text, sizeof text, "SCENE %d IS EMPTY", scene + 1); break;
+    case SceneClear::NoScene: return "NO SCENE HERE";
     }
     return text;
 }
@@ -1224,6 +1310,8 @@ void Session::moveScenesHere(int from, int by, const StepRead* last) {
         }
         project.repeats[to] = project.repeats[scene];
         project.steps[to] = project.steps[scene];
+        project.sceneTempo[to] = project.sceneTempo[scene];
+        project.sceneMeter[to] = project.sceneMeter[scene];
     };
     if (by > 0) {
         // Everything a scene holds, moved down one from the end (the last falls off); then `from` is
@@ -1251,6 +1339,8 @@ void Session::moveScenesHere(int from, int by, const StepRead* last) {
     }
     project.repeats[end] = last ? last->head.repeats[end] : 1;
     project.steps[end] = last ? last->head.steps[end] : 0;
+    project.sceneTempo[end] = last ? last->head.sceneTempo[end] : 0.f;
+    project.sceneMeter[end] = last ? last->head.sceneMeter[end] : kSteps;
 }
 
 // ...and the engine, told in one command (Engine::moveScenes): which scene is which, the one
@@ -1263,6 +1353,15 @@ void Session::tellScenesMoved(int from, int by) {
     for (int t = 0; t < project.trackCount(); ++t) scenes[t] = sceneImage(t, made);
     const int count = project.sceneCount();
     if (!engine.moveScenes(from, by, scenes, count, project.repeats[made], project.steps[made])) return; // lost: update() sees it and sends the whole song again
+    Command madeTempo;
+    madeTempo.type = Command::SetSceneTempo; // the made scene's own (the move command has no field to spare)
+    madeTempo.scene = made;
+    madeTempo.value = project.sceneTempo[made];
+    engine.send(madeTempo);
+    madeTempo.type = Command::SetSceneMeter;
+    madeTempo.value = 0.f;
+    madeTempo.a = project.meterOf(made);
+    engine.send(madeTempo);
     sentSceneCount_ = count;
     ++movesSent_;
     moves_.push_back({from, by});
@@ -1454,6 +1553,20 @@ void Session::restorePatterns(const std::string& text, int movedFrom, int movedB
         project.steps[scene] = was.head.steps[scene];
         c.scene = scene;
         c.a = project.steps[scene];
+        engine.send(c);
+    }
+    c.type = Command::SetSceneTempo;
+    for (int scene = 0; scene < kMaxScenes && !asItWas; ++scene) {
+        project.sceneTempo[scene] = was.head.sceneTempo[scene];
+        c.scene = scene;
+        c.value = project.sceneTempo[scene];
+        engine.send(c);
+    }
+    c.type = Command::SetSceneMeter;
+    for (int scene = 0; scene < kMaxScenes && !asItWas; ++scene) {
+        project.sceneMeter[scene] = was.head.sceneMeter[scene];
+        c.scene = scene;
+        c.a = project.sceneMeter[scene];
         engine.send(c);
     }
     restoreSounds(was, same); // effects, sends, sounds, GLIDE FROM, the master and the buses
@@ -2010,6 +2123,9 @@ void Session::sendSong() {
                 c.b = track.sampler[id];
                 engine.send(c);
             }
+            c.type = Command::SetTrackChop;
+            c.a = track.samplerChop ? 1 : 0;
+            engine.send(c);
         }
         if (holdsRecording(track.kind)) loadTrackSample(t); // (CLOUD's too: none, and it plays its TONE)
 
@@ -2106,6 +2222,12 @@ void Session::sendSong() {
         engine.send(c);
         c.type = Command::SetSceneSteps;
         c.a = project.steps[scene];
+        engine.send(c);
+        c.type = Command::SetSceneTempo;
+        c.value = project.sceneTempo[scene];
+        engine.send(c);
+        c.type = Command::SetSceneMeter;
+        c.a = project.sceneMeter[scene];
         engine.send(c);
     }
     c = Command();

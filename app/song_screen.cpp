@@ -86,6 +86,7 @@ void SongScreen::moveCursorTo(int scene, int column) {
 
 // The scenes from `from` on are one place further down the song (by = 1) or back up it (-1).
 void SongScreen::scenesMoved(int from, int by) {
+    cellCopied_ = false; // a scene put in or taken out: the copied cell moved, so the copy goes
     if (scene_ < from || scene_ + by < 0 || scene_ + by >= kMaxScenes) return;
     scene_ += by;
     if (scene_ < top_) top_ = scene_;
@@ -134,20 +135,20 @@ void SongScreen::moveCursor(Button direction, bool pressed) {
         return;
     }
     // Right of + TRACK (drawn at the heads' height) is MASTER.
-    if (direction == Button::Right && column_ == addColumn() && !copying_) {
+    if (direction == Button::Right && column_ == addColumn()) {
         moveToMaster();
         return;
     }
     // Left of + TRACK, come to from the heads (MASTER or the last head): back along the heads, not down into
     // the last track's cell (owner, 2026-11-14). Come to from a cell, left goes back to that cell's row.
-    if (direction == Button::Left && column_ == addColumn() && addFromHeads_ && !copying_ && project_.trackCount() > 0) {
+    if (direction == Button::Left && column_ == addColumn() && addFromHeads_ && project_.trackCount() > 0) {
         onHead_ = true;
         column_ = project_.trackCount() - 1;
         addFromHeads_ = false;
         return;
     }
     // Only by a press of the D-pad: the stick, or a held D-pad, running up the scenes stops at the top one.
-    if (direction == Button::Up && scene_ == 0 && onCell() && !copying_ && pressed) {
+    if (direction == Button::Up && scene_ == 0 && onCell() && pressed) {
         onHead_ = true;
         return;
     }
@@ -155,7 +156,6 @@ void SongScreen::moveCursor(Button direction, bool pressed) {
     if (direction == Button::Down) moveCursorTo(scene_ + 1, column_);
     if (direction == Button::Left) moveCursorTo(scene_, column_ - 1);
     if (direction == Button::Right) moveCursorTo(scene_, column_ + 1);
-    if (copying_) pasteHere();
 }
 
 // TRANSPOSE: the cell's notes and chords `by` semitones (Session::transposeCell), said in the box above the bar.
@@ -184,6 +184,21 @@ void SongScreen::stepBars(int by) {
     const int to = now + by;
     if (to < 0 || to > 3) return;
     session_.setCellBars(column_, scene_, lengths[to]);
+}
+
+void SongScreen::stepSceneTempo(int scene, int by) {
+    const float from = project_.sceneTempo[scene] > 0.f ? project_.sceneTempo[scene] : project_.tempo;
+    session_.setSceneTempo(scene, from + by);
+    char text[48];
+    std::snprintf(text, sizeof text, "SCENE TEMPO %d", static_cast<int>(project_.sceneTempo[scene]));
+    session_.say(text);
+}
+
+void SongScreen::stepSceneMeter(int scene, int by) {
+    session_.setSceneMeter(scene, project_.meterOf(scene) + by);
+    char text[48];
+    std::snprintf(text, sizeof text, "%d STEPS IN A BAR", project_.meterOf(scene));
+    session_.say(text);
 }
 
 void SongScreen::setRepeats(int count) {
@@ -215,7 +230,7 @@ void SongScreen::clearCell(int track, int scene) {
 void SongScreen::copyCell(int fromTrack, int fromScene, int toTrack, int toScene) {
     TrackData& from = project_.tracks[fromTrack];
     TrackData& to = project_.tracks[toTrack];
-    if (from.kind != to.kind || (fromTrack == toTrack && fromScene == toScene)) return; // a drum bar cannot go on a synth
+    if (!pasteKindsFit(from.kind, to.kind) || (fromTrack == toTrack && fromScene == toScene)) return; // a drum bar cannot go on a synth
     to.bars[toScene] = from.bars[fromScene]; // the whole cell: its length and every bar
     if (toTrack == project_.track && toScene == project_.scene) project_.bar = 0;
     if (to.kind == TrackKind::Drums) {
@@ -227,8 +242,15 @@ void SongScreen::copyCell(int fromTrack, int fromScene, int toTrack, int toScene
     }
 }
 
-void SongScreen::pasteHere() {
-    if (onCell()) copyCell(copyTrack_, copyScene_, column_, scene_);
+void SongScreen::pasteCellHere(int toTrack, int toScene) {
+    if (!pasteKindsFit(project_.tracks[copyTrack_].kind, project_.tracks[toTrack].kind)) {
+        session_.say("NO PASTE: OTHER KIND"); // the copy is kept: it pastes elsewhere
+        return;
+    }
+    session_.noteEdit(); // a step of undo of its own
+    copyCell(copyTrack_, copyScene_, toTrack, toScene);
+    cellCopied_ = false; // spent: a paste clears the copy
+    session_.say("CELL PASTED");
 }
 
 void SongScreen::openRevList() {
@@ -300,6 +322,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
                 if (session_.openRev(revs_[static_cast<std::size_t>(revCursor_ - kRevsFirst)])) {
                     listing_ = revsOpen_ = false;
                     scene_ = column_ = top_ = 0;
+                    cellCopied_ = false; // another song: its cells are gone with the old one
                 }
             }
             return;
@@ -323,6 +346,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             if (listCursor_ == 0) session_.newSong();
             else session_.openSong(songs_[static_cast<std::size_t>(listCursor_ - 1)]);
             scene_ = column_ = top_ = 0; // a different song: start at its top
+            cellCopied_ = false;         // ...and its copied cell is gone with the old one
         }
         return;
     }
@@ -384,6 +408,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     // DUPLICATE A TRACK: L1 held on its head, R1 pressed and let go.
     if (b == Button::L1 && !mixing_) {
         l1OnHead_ = event.down && onHead_;
+        l1OnRepeat_ = event.down && column_ == kRepeatColumn && !onSongEnd();
         if (!event.down) dupArmed_ = false;
         return;
     }
@@ -471,10 +496,21 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (b == Button::R1) {
-        copying_ = event.down && onCell();
-        if (copying_) {
+        if (event.down && onCell() && cellCopied_ && copyTrack_ == column_ && copyScene_ == scene_) {
+            // The copied cell again: the copy is cleared.
+            cellCopied_ = false;
+            session_.say("COPY CLEARED");
+        } else if (event.down && onCell() && !cellCopied_) {
+            // COPY A CELL, as a scene is copied: nothing copied, and it copies now.
             copyTrack_ = column_;
             copyScene_ = scene_;
+            cellCopied_ = true;
+            session_.say("CELL COPIED");
+        } else if (event.down && onCell()) {
+            // ...else the paste waits for R1's let go (as the scene's: on the way to a panic nothing pastes).
+            cellPasteArmed_ = true;
+            cellPasteTrack_ = column_;
+            cellPasteScene_ = scene_;
         } else if (event.down && column_ == kRepeatColumn) {
             // COPY A SCENE: nothing copied, or this one already, and it copies now (the AT END row
             // too: it is an empty scene like any). Else the paste waits for R1's let go (as DUPLICATE
@@ -484,9 +520,31 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
                 scenePasteArmed_ = true;
                 scenePaste_ = scene_;
             }
+        } else if (!event.down && cellPasteArmed_) {
+            cellPasteArmed_ = false;
+            pasteCellHere(cellPasteTrack_, cellPasteScene_);
         } else if (!event.down && scenePasteArmed_) {
             scenePasteArmed_ = false;
             session_.pasteSceneHere(scenePaste_);
+        }
+        return;
+    }
+    if (b == Button::B && !input.held(Button::A) && column_ == kRepeatColumn && !onSongEnd()) {
+        // On a repeat count: the press arms the hold (update() empties the scene at the second),
+        // and letting go first is a tap back to 1. Above the early return for a let go, as R1's paste.
+        // With L1 held it puts the scene's own tempo back to the song's instead.
+        if (event.down && l1OnRepeat_) {
+            session_.setSceneTempo(scene_, 0.f);
+            session_.setSceneMeter(scene_, kSteps);
+            session_.say("TEMPO FOLLOWS THE SONG, 16 STEPS");
+            return;
+        }
+        if (event.down) {
+            sceneHold_ = true;
+            sceneHoldTimed_ = false;
+            sceneHoldScene_ = scene_;
+        } else if (sceneHold_ && scene_ == sceneHoldScene_) {
+            setRepeats(1);
         }
         return;
     }
@@ -510,6 +568,13 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             // ...and left and right, how many steps the scene's bars have: 16, or fewer.
             if (b == Button::Right) session_.setSceneSteps(scene_, project_.sceneSteps(scene_) + 1), turned_ = true;
             if (b == Button::Left) session_.setSceneSteps(scene_, project_.sceneSteps(scene_) - 1), turned_ = true;
+        } else if (l1OnRepeat_ && column_ == kRepeatColumn && !onSongEnd()) {
+            // L1 held on a repeat count: up and down are the scene's own tempo (from the song's,
+            // first), left and right the steps in its bars (a bar of 12 is 3/4).
+            if (b == Button::Up) stepSceneTempo(scene_, 1);
+            else if (b == Button::Down) stepSceneTempo(scene_, -1);
+            else if (b == Button::Right) stepSceneMeter(scene_, 1);
+            else if (b == Button::Left) stepSceneMeter(scene_, -1);
         } else {
             moveCursor(b, true);
         }
@@ -524,7 +589,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         trackHoldPart_ = 0.f;
         if (onCell()) clearCell(column_, scene_);
         else if (onSongEnd()) session_.setSongEnd(kSongLoop); // back to the usual
-        else if (column_ == kRepeatColumn) setRepeats(1);
+        // (A repeat count returns earlier, above: a tap back to 1, a hold the whole scene.)
     } else if (b == Button::Start && !input.held(Button::Select)) {
         project_.scene = scene_;
         session_.togglePlay(true); // the song, from this scene
@@ -538,8 +603,9 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
     if (!input.held(Button::A) || (!onHead_ && !onMaster_) || listing_ || choosing_) mixing_ = false;
     if (mixing_ && !mixTimed_) mixTimed_ = true, mixSince_ = nowMs; // (the hold's clock starts on the frame after A)
     if (mixing_ && mixTimed_ && nowMs - mixSince_ >= kMixCardMs) mixShown_ = true;
-    if (!input.held(Button::R1)) copying_ = false;
+    if (!input.held(Button::R1)) cellPasteArmed_ = false; // (one it never saw pastes nothing either)
     if (!input.held(Button::L1) || !onHead_) l1OnHead_ = false;
+    if (!input.held(Button::L1) || column_ != kRepeatColumn || onSongEnd()) l1OnRepeat_ = false;
     if (!l1OnHead_ || !input.held(Button::R1)) dupArmed_ = false; // (a let go this screen never saw copies nothing)
     if (!input.held(Button::R1)) scenePasteArmed_ = false; // (one it never saw pastes nothing either)
     if (!input.held(Button::R1) || !onHead_) nameArmed_ = false; // (one it never saw names nothing; nor does one that left the heads)
@@ -559,6 +625,17 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
             if (session_.removeTrack(column_)) moveCursorTo(scene_, column_ >= project_.trackCount() ? project_.trackCount() - 1 : column_);
         }
     }
+    // B kept held on a repeat count: the box fills red, and at the second the whole scene is emptied.
+    if (!input.held(Button::B) || input.held(Button::A) || column_ != kRepeatColumn || scene_ != sceneHoldScene_ || listing_ || choosing_) sceneHold_ = false, sceneHoldPart_ = 0.f;
+    if (sceneHold_) {
+        if (!sceneHoldTimed_) sceneHoldTimed_ = true, sceneHoldSince_ = nowMs;
+        sceneHoldPart_ = static_cast<float>(nowMs - sceneHoldSince_) / static_cast<float>(kSceneHoldMs);
+        if (nowMs - sceneHoldSince_ >= kSceneHoldMs) {
+            sceneHold_ = false;
+            sceneHoldPart_ = 0.f;
+            session_.clearSceneHere(scene_);
+        }
+    }
 
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
@@ -575,7 +652,10 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
         session_.deleteSong(songs_[static_cast<std::size_t>(listCursor_ - 1)]);
         songs_ = session_.songNames();
         if (listCursor_ > static_cast<int>(songs_.size())) listCursor_ = static_cast<int>(songs_.size());
-        if (wasOpen) scene_ = column_ = top_ = 0;
+        if (wasOpen) {
+            scene_ = column_ = top_ = 0;
+            cellCopied_ = false; // the open song went with it
+        }
     }
 
     if (mixing_) {
@@ -640,6 +720,11 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
         } else if (holding_) {
             if (repeating_ == Button::Up) setRepeats(project_.repeats[scene_] + 1);
             if (repeating_ == Button::Down) setRepeats(project_.repeats[scene_] - 1);
+        } else if (l1OnRepeat_ && column_ == kRepeatColumn && !onSongEnd()) {
+            if (repeating_ == Button::Up) stepSceneTempo(scene_, 1);
+            else if (repeating_ == Button::Down) stepSceneTempo(scene_, -1);
+            else if (repeating_ == Button::Right) stepSceneMeter(scene_, 1);
+            else if (repeating_ == Button::Left) stepSceneMeter(scene_, -1);
         } else {
             moveCursor(repeating_);
         }
@@ -649,6 +734,12 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
 SDL_Rect SongScreen::repeatBox(int scene) const {
     if (scene < top_ || scene >= top_ + kVisibleRows) return SDL_Rect{0, 0, 0, 0};
     return SDL_Rect{8 + kNumberW, kRowsTop + (scene - top_) * kRowH, kRepeatW - 4, kRowH - 4};
+}
+
+SDL_Rect SongScreen::cellBox(int track, int scene) const {
+    if (scene < top_ || scene >= top_ + kVisibleRows) return SDL_Rect{0, 0, 0, 0};
+    const int colW = columnWidth(project_.trackCount());
+    return SDL_Rect{kColumnsLeft + track * (colW + 1), kRowsTop + (scene - top_) * kRowH, colW, kRowH - 4};
 }
 
 // LOOP: a ring that goes round to an arrowhead (the song goes round to its top). STOP: a square,
@@ -677,7 +768,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     topBar(r, fonts, View::Song, text, project_);
 
     const int colW = columnWidth(tracks);
-    const bool held = holding_ || copying_ || mixCardUp();
+    const bool held = holding_ || mixCardUp();
     const SDL_Color cursorColor = held ? kBrass : kTeal;
     const int playScene = session_.playScene(), playStep = session_.engine.playStep();
 
@@ -806,7 +897,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         box(r, rx, y, kRepeatW - 4, kRowH - 4, kBg, inSong ? kLine : kPanel);
         const int repeats = project_.repeats[scene];
         std::snprintf(text, sizeof text, "x%d", repeats);
-        const bool odd = project_.sceneSteps(scene) != project_.sceneBars(scene) * kSteps; // a scene cut short says how many steps it lasts, under its count
+        const bool odd = project_.sceneSteps(scene) != project_.sceneBars(scene) * project_.meterOf(scene); // a scene cut short says how many steps it lasts, under its count
         const bool end = scene == songEndRow(); // where the song ends: what it does there, not a count
         if (end) drawSongEnd(r, rx + (kRepeatW - 4) / 2, y + (kRowH - 4) / 2, project_.songEnd, project_.songEnd == kSongStop ? kBrass : kDim);
         else fonts.small.drawCentered(r, rx + (kRepeatW - 4) / 2.f, y + (playingHere || odd ? 6.f : 15.f), text, inSong ? kText : kDim);
@@ -824,6 +915,10 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             outline(r, rx - 1, y - 1, kRepeatW - 2, kRowH - 2, cursorColor, 2);
         }
         if (session_.copiedScene() == scene && !end) outline(r, rx + 1, y + 1, kRepeatW - 6, kRowH - 6, kBrass); // the copied scene
+        if (sceneHold_ && scene == scene_ && sceneHoldPart_ > 0.f) { // emptying it: red, as a track being deleted
+            const float part = sceneHoldPart_ > 1.f ? 1.f : sceneHoldPart_;
+            fill(r, rx + 1, y + 1, static_cast<int>((kRepeatW - 6) * part), kRowH - 6, faded(kStop, 170));
+        }
 
         for (int t = 0; t < tracks; ++t) {
             const TrackData& track = project_.tracks[t];
@@ -835,7 +930,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             // A small picture of the cell across the whole scene. A cell shorter than
             // the scene goes round, so it is drawn again for each pass, a little
             // dimmer, with a line where it starts over.
-            const int cellBars = track.bars[scene], sceneBars = project_.sceneBars(scene);
+            const int cellBars = track.bars[scene] < 1 ? 1 : track.bars[scene], sceneBars = project_.sceneBars(scene);
             const float stepW = static_cast<float>(colW - 6) / (16.f * sceneBars);
             int low = 127, high = 0; // the notes' range, for the piano-roll kind
             if (track.kind != TrackKind::Drums) {
@@ -847,12 +942,18 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 }
             }
             const int span = high - low < 7 ? 7 : high - low;
-            for (int at = 0; at < sceneBars && !empty; ++at) {
+            for (int at = 0; at < sceneBars; ++at) {
                 const int bar = at % cellBars;
                 const bool again = at >= cellBars; // a later pass
                 // This pass ends where the cell starts over, or where the scene ends.
                 const int passEnd = static_cast<int>(16.f * stepW * std::min(sceneBars, (at / cellBars + 1) * cellBars));
                 if (again && bar == 0) fill(r, x + 3 + static_cast<int>(at * kSteps * stepW), y + 3, 1, kRowH - 10, faded(kPurple, 150)); // fainter than the line that shows where it is playing
+                if (empty) {
+                    // No content, but the bars still read: a faint line where each bar of the
+                    // first pass starts (past the first: the box's own edge says that one).
+                    if (!again && bar > 0) fill(r, x + 3 + static_cast<int>(at * kSteps * stepW), y + 3, 1, kRowH - 10, kDim);
+                    continue;
+                }
                 if (track.kind == TrackKind::Drums) {
                     const DrumPattern& p = track.drums[scene][bar];
                     for (int lane = 0; lane < kDrumLanes; ++lane)
@@ -880,7 +981,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 const int at = session_.engine.playBar() * kSteps + playStep;
                 fill(r, x + 3 + static_cast<int>(at * stepW), y + 2, 2, kRowH - 8, kPurple);
             }
-            if (copying_ && t == copyTrack_ && scene == copyScene_) outline(r, x + 1, y + 1, colW - 2, kRowH - 6, kBrass);
+            if (cellCopied_ && t == copyTrack_ && scene == copyScene_) outline(r, x + 1, y + 1, colW - 2, kRowH - 6, kBrass); // the copied cell
             if (t == column_ && scene == scene_ && !onHead_ && !onMaster_) outline(r, x - 1, y - 1, colW + 2, kRowH - 2, cursorColor, 2);
         }
     }
@@ -1098,8 +1199,6 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("HOLD B", "delete");
         hint("Y", "mute");
         hint("X", "solo"); // (X does not hear the track on SONG: its DEVICE page does)
-    } else if (copying_) {
-        hint("DRAG", "copy this bar into every cell crossed");
     } else if (holding_ && onCell()) {
         hint("LEFT / RIGHT", "bars: 1, 2, 4, 8");
         if (isSynth(project_.tracks[column_].kind)) hint("UP / DOWN", "transpose"); // (the stick: an octave)
@@ -1107,6 +1206,10 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("UP / DOWN", "times the scene plays");
         hint("TAP A", "1 > 2 > 4 > 8");
         hint("LEFT / RIGHT", "steps in a bar");
+    } else if (l1OnRepeat_ && column_ == kRepeatColumn && !onSongEnd()) {
+        hint("UP / DOWN", "scene tempo");
+        hint("LEFT / RIGHT", "steps in a bar");
+        hint("B", "usual tempo, 16");
     } else if (onSongEnd() || column_ == kRepeatColumn) {
         if (onSongEnd()) hint("A", project_.songEnd == kSongStop ? "song end: stop" : "song end: loop");
         else {
@@ -1114,7 +1217,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             hint("TAP A", "1 > 2 > 4 > 8");
         }
         hint("R1", session_.copiedScene() < 0 ? "copy" : "paste"); // (which scene: its brass mark)
-        hint("START", project_.playing ? "stop" : "play song");
+        if (!onSongEnd()) hint("HOLD B", "delete"); // (no START: with it the bar runs over, as on a cell)
     } else if (column_ == addColumn()) {
         hint("A", "add a track");
         hint("START", project_.playing ? "stop" : "play song");
@@ -1124,7 +1227,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("A", "open");
         hint("B", "empty");
         hint("HOLD B", "delete track");
-        hint("HOLD R1", "copy");
+        hint("R1", cellCopied_ ? "paste" : "copy"); // (which cell: its brass mark)
         hint("SELECT", "songs");
     }
     hints(r, fonts, list, count);

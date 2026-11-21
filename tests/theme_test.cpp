@@ -330,8 +330,8 @@ void testTheRow() {
     Session& session = rig.session();
     session.view = View::Settings;
     S& setup = rig.app.settings();
-    // After TEXT SIZE, under LOOK. (Twenty-three rows; BRIGHTNESS, STICK LIGHT, LIGHT COLOUR and RING LEVEL show only on our own firmware, NETWORK only joined: eighteen here.)
-    CHECK(S::kRows == 23 && setup.places() == 18 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kRowsShown == 12 && S::groupOf(S::kTheme) == S::kLook);
+    // After TEXT SIZE, under LOOK. (Twenty-four rows; BRIGHTNESS, STICK LIGHT, LIGHT COLOUR and RING LEVEL show only on our own firmware, NETWORK and HOTSPOT only joined: eighteen here.)
+    CHECK(S::kRows == 24 && setup.places() == 18 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kRowsShown == 12 && S::groupOf(S::kTheme) == S::kLook);
     setup.goTo(S::kTextSize);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kTheme && session.theme() == kThemeBrown);

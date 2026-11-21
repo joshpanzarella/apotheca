@@ -9,6 +9,7 @@
 // backlight and the light round the stick (our own firmware: lights.hpp). Elsewhere the page is
 // as it was, and the cursor passes them by.
 //   A                            on WIFI PAGE: on / off
+//                                on HOTSPOT: our own network on / off (a phone joins it with one tap)
 //                                on TRACK NAME: type a name (below)
 //                                on BOUNCE: write the song (or its tracks) out as WAV files
 //                                on BUTTONS: the button test
@@ -46,10 +47,10 @@ public:
     //   PLAYING   CLICK, COUNT IN, USB KEYBOARD
     //   LOOK      TEXT SIZE, THEME, PIANO ROLL
     //   HANDHELD  VOLUME, BRIGHTNESS, STICK LIGHT, LIGHT COLOUR, RING LEVEL, STICK SPEED
-    //   SETUP     WIFI PAGE, NETWORK (our own firmware only: wifi.hpp), BUTTONS, CONTROLS
+    //   SETUP     WIFI PAGE, NETWORK, HOTSPOT (our own firmware only: wifi.hpp), BUTTONS, CONTROLS
     // The numbers are kept nowhere (a setting is kept by its word in settings.txt): the order is free.
     enum Row { kTempo, kPack, kKey, kScale, kTrackName, kBounce, kClick, kCountIn, kMutes, kMidi, kTextSize, kTheme, kOctaves,
-               kVolume, kBrightness, kLight, kLightColour, kRingLevel, kStick, kWifi, kNetwork, kTest, kControls, kRows };
+               kVolume, kBrightness, kLight, kLightColour, kRingLevel, kStick, kWifi, kNetwork, kHotspot, kTest, kControls, kRows };
     enum Group { kSong, kPlaying, kLook, kHandheld, kSetup, kGroups };
     static constexpr int groupOf(int row) { return row < kClick ? kSong : row < kTextSize ? kPlaying : row < kVolume ? kLook : row < kWifi ? kHandheld : kSetup; }
     static const char* groupName(int group);

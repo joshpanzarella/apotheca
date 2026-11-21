@@ -63,6 +63,7 @@ Engine::Engine() {
                 for (float& c : lane) c = 1.f;
     for (int& r : repeats_) r = 1;
     for (int& n : steps_) n = 0;
+    for (int& m : meter_) m = kSteps;
     caught_.reset(new std::atomic<float>[kCatchFrames]);
     for (int i = 0; i < kCatchFrames; ++i) caught_[i].store(0.f, std::memory_order_relaxed);
     for (auto& s : scope_) s.store(0.f, std::memory_order_relaxed);
@@ -118,11 +119,13 @@ Engine::~Engine() {
     for (Track& track : tracks_)
         for (SampleData* sample : track.laneSamples) delete sample;
     for (Track& track : tracks_) delete track.trackSample;
+    for (Track& track : tracks_) delete track.trackZones;
 }
 
 void Engine::destroy(const Trash& trash) {
     if (trash.isEffect) delete static_cast<Effect*>(trash.pointer);
     else if (trash.isSample) delete static_cast<SampleData*>(trash.pointer);
+    else if (trash.isZones) delete static_cast<sampler::SampleZoneSet*>(trash.pointer);
     else if (trash.isImage) delete static_cast<SceneSet*>(trash.pointer); // and the stores in it
     else if (trash.isStore) delete static_cast<SceneStore*>(trash.pointer);
     else if (trash.isMove) delete static_cast<SceneMove*>(trash.pointer); // and the scenes in it
@@ -206,6 +209,17 @@ bool Engine::setTrackSample(int track, std::unique_ptr<SampleData> sample) {
     c.pointer = sample.get();
     if (!send(c)) return false; // counted: a loss is mended by sending the song again
     sample.release();
+    return true;
+}
+
+bool Engine::setTrackZones(int track, std::unique_ptr<sampler::SampleZoneSet> zones) {
+    if (track < 0 || track >= kNumTracks || !claimed_[track] || claimedDrums_[track]) return false;
+    Command c;
+    c.type = Command::SetTrackZones;
+    c.track = track;
+    c.pointer = zones.get();
+    if (!send(c)) return false; // counted: a loss is mended by sending the song again
+    zones.release();
     return true;
 }
 
@@ -1035,6 +1049,50 @@ void setCutAndThrow(StepFx& fx, float packed) {
 }
 
 // Command::Play, at once or where its COUNT IN ends (render()).
+void Engine::useTempo(float bpm) {
+    if (!std::isfinite(bpm)) return;
+    tempo_ = bpm < kMinTempo ? kMinTempo : (bpm > kMaxTempo ? kMaxTempo : bpm);
+    const double was = samplesPerStep_;
+    samplesPerStep_ = static_cast<double>(sampleRate_) * 60.0 / tempo_ / 4.0;
+    // The step keeps its place: what is left of it is as much of a step as it was, so the
+    // next step comes on the new tempo's beat. An arpeggio keeps its place in the step the
+    // same way, so the two agree: its notes stay on the beat.
+    // So does everything else that waits for a place in the steps: a note nudged or asked a
+    // step ahead, a note's end, a drum hit late or a ratchet's next piece.
+    if (was > 0.0 && countSteps_ > 0) untilCount_ *= samplesPerStep_ / was; // a COUNT IN keeps its place in the step too
+    if (was > 0.0 && playing_) {
+        const double by = samplesPerStep_ / was;
+        untilStep_ *= by;
+        for (Track& track : tracks_) {
+            for (auto& arp : track.arps)
+                if (arp.on) arp.wait *= by;
+            for (auto& p : track.pendingNotes)
+                if (p.velocity > 0.f) p.samplesLeft *= by;
+            for (double& off : track.offIn)
+                if (off < kNoNote) off *= by;
+            for (auto& lane : track.pending)
+                for (auto& p : lane)
+                    if (p.velocity > 0.f) {
+                        p.samplesLeft *= by, p.gap *= by;
+                        // FEEL: a felt hit's wait and its ratchet's gap stay whole samples (a
+                        // part of a sample plays a sample sooner or later by the block).
+                        if (p.whole) {
+                            p.samplesLeft = std::ceil(p.samplesLeft);
+                            p.gap = std::floor(p.gap) < 1.0 ? 1.0 : std::floor(p.gap);
+                        }
+                    }
+        }
+    }
+    // Effects that keep time (the delay) follow.
+    for (Track& track : tracks_)
+        for (auto& effect : track.effects)
+            if (effect) effect->setTempo(tempo_);
+    for (auto& effect : masterEffects_)
+        if (effect) effect->setTempo(tempo_);
+    for (auto& effect : busEffects_)
+        if (effect) effect->setTempo(tempo_);
+}
+
 void Engine::startPlaying(const Command& c) {
     playing_ = true;
     askedFollowing_ = -1; // nothing asked ahead yet in this playing
@@ -1058,6 +1116,7 @@ void Engine::startPlaying(const Command& c) {
         track.chordAsked = -1;
         for (long& asked : track.feelAsked) asked = -1;
     }
+    useTempo(sceneTempoNow(scene_)); // playing starts at the scene's tempo (or the song's)
 }
 
 void Engine::apply(const Command& c) {
@@ -1149,7 +1208,39 @@ void Engine::apply(const Command& c) {
             Track& track = tracks_[c.track];
             trash.pointer = track.trackSample;
             track.trackSample = incoming;
+            if (track.trackZones) { // one recording or zones: the zones go with the swap
+                Trash zones;
+                zones.isZones = true;
+                zones.pointer = track.trackZones;
+                track.trackZones = nullptr;
+                bin(zones);
+            }
             track.synth->setSample(incoming ? incoming->data.data() : nullptr, incoming ? static_cast<int>(incoming->data.size()) : 0);
+        } else {
+            trash.pointer = incoming;
+        }
+        bin(trash);
+        break;
+    }
+    case Command::SetTrackChop:
+        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->setChopped(c.a != 0);
+        break;
+    case Command::SetTrackZones: {
+        sampler::SampleZoneSet* incoming = static_cast<sampler::SampleZoneSet*>(c.pointer);
+        Trash trash;
+        trash.isZones = true;
+        if (validTrack(c.track) && tracks_[c.track].synth) {
+            Track& track = tracks_[c.track];
+            trash.pointer = track.trackZones;
+            track.trackZones = incoming;
+            if (track.trackSample) { // zones or one recording: the recording goes with the swap
+                Trash one;
+                one.isSample = true;
+                one.pointer = track.trackSample;
+                track.trackSample = nullptr;
+                bin(one);
+            }
+            track.synth->setZones(incoming);
         } else {
             trash.pointer = incoming;
         }
@@ -1239,6 +1330,8 @@ void Engine::apply(const Command& c) {
                 for (int scene = gone; scene != made; scene -= c.b) {
                     repeats_[scene] = repeats_[scene - c.b];
                     steps_[scene] = steps_[scene - c.b];
+                    sceneTempo_[scene] = sceneTempo_[scene - c.b];
+                    meter_[scene] = meter_[scene - c.b];
                 }
                 repeats_[made] = c.c < 1 ? 1 : (c.c > kMaxRepeats ? kMaxRepeats : c.c);
                 steps_[made] = c.d < 0 ? 0 : (c.d > kMaxBars * kSteps ? kMaxBars * kSteps : c.d);
@@ -1293,6 +1386,8 @@ void Engine::apply(const Command& c) {
             countSteps_ = c.d;
             countAt_ = 0;
             untilCount_ = 0.0;
+            const int at = validScene(c.a) ? c.a : 0; // it counts at the tempo it is counting into
+            useTempo(sceneTempoNow(c.b == 0 && at >= sceneCount_ ? 0 : at));
             break;
         }
         countSteps_ = 0; // (a Play straight after one counting in starts at once)
@@ -1335,47 +1430,18 @@ void Engine::apply(const Command& c) {
         break;
     case Command::SetTempo:
         if (std::isfinite(c.value)) {
-            tempo_ = c.value < kMinTempo ? kMinTempo : (c.value > kMaxTempo ? kMaxTempo : c.value);
-            const double was = samplesPerStep_;
-            samplesPerStep_ = static_cast<double>(sampleRate_) * 60.0 / tempo_ / 4.0;
-            // The step keeps its place: what is left of it is as much of a step as it was, so the
-            // next step comes on the new tempo's beat. An arpeggio keeps its place in the step the
-            // same way, so the two agree: its notes stay on the beat.
-            // So does everything else that waits for a place in the steps: a note nudged or asked a
-            // step ahead, a note's end, a drum hit late or a ratchet's next piece.
-            if (was > 0.0 && countSteps_ > 0) untilCount_ *= samplesPerStep_ / was; // a COUNT IN keeps its place in the step too
-            if (was > 0.0 && playing_) {
-                const double by = samplesPerStep_ / was;
-                untilStep_ *= by;
-                for (Track& track : tracks_) {
-                    for (auto& arp : track.arps)
-                        if (arp.on) arp.wait *= by;
-                    for (auto& p : track.pendingNotes)
-                        if (p.velocity > 0.f) p.samplesLeft *= by;
-                    for (double& off : track.offIn)
-                        if (off < kNoNote) off *= by;
-                    for (auto& lane : track.pending)
-                        for (auto& p : lane)
-                            if (p.velocity > 0.f) {
-                                p.samplesLeft *= by, p.gap *= by;
-                                // FEEL: a felt hit's wait and its ratchet's gap stay whole samples (a
-                                // part of a sample plays a sample sooner or later by the block).
-                                if (p.whole) {
-                                    p.samplesLeft = std::ceil(p.samplesLeft);
-                                    p.gap = std::floor(p.gap) < 1.0 ? 1.0 : std::floor(p.gap);
-                                }
-                            }
-                }
-            }
-            // Effects that keep time (the delay) follow.
-            for (Track& track : tracks_)
-                for (auto& effect : track.effects)
-                    if (effect) effect->setTempo(tempo_);
-            for (auto& effect : masterEffects_)
-                if (effect) effect->setTempo(tempo_);
-            for (auto& effect : busEffects_)
-                if (effect) effect->setTempo(tempo_);
+            songTempo_ = c.value < kMinTempo ? kMinTempo : (c.value > kMaxTempo ? kMaxTempo : c.value);
+            useTempo(sceneTempoNow(scene_));
         }
+        break;
+    case Command::SetSceneTempo:
+        if (validScene(c.scene) && std::isfinite(c.value)) {
+            sceneTempo_[c.scene] = c.value < 1.f ? 0.f : (c.value > kMaxTempo ? kMaxTempo : c.value);
+            if (c.scene == scene_) useTempo(sceneTempoNow(scene_));
+        }
+        break;
+    case Command::SetSceneMeter:
+        if (validScene(c.scene)) meter_[c.scene] = c.a < 1 ? kSteps : (c.a > kSteps ? kSteps : c.a);
         break;
     case Command::SetGlideFrom:
         if (validTrack(c.track)) tracks_[c.track].glideFrom = static_cast<std::uint8_t>(glideFromKind(c.a));
@@ -1771,7 +1837,7 @@ int Engine::sceneBars(int scene) const {
 
 // How many steps a scene lasts: every step of its longest cell, or fewer if it has been cut short.
 int Engine::sceneSteps(int scene) const {
-    const int whole = sceneBars(scene) * kSteps;
+    const int whole = sceneBars(scene) * meterOf(scene);
     return steps_[scene] > 0 && steps_[scene] < whole ? steps_[scene] : whole;
 }
 
@@ -1825,12 +1891,12 @@ void Engine::stopPlaying(bool byHand) {
 // AT END STOP: the step about to begin is the one after the song's last (the last scene's last
 // bar, its last time round). Not for a scene alone, and not for a bounce, which stops itself.
 bool Engine::songEndsNow() const {
-    return songStop_ && !loopScene_ && !once_ && !firstStep_ && nextStep_ == 0 && (bar_ + 1) * kSteps >= sceneSteps(scene_) &&
+    return songStop_ && !loopScene_ && !once_ && !firstStep_ && nextStep_ == 0 && (bar_ + 1) * meterOf(scene_) >= sceneSteps(scene_) &&
            repeat_ + 1 >= repeats_[scene_] && scene_ + 1 >= sceneCount_;
 }
 
 Engine::Position Engine::afterThisBar() const {
-    if ((bar_ + 1) * kSteps < sceneSteps(scene_)) return {scene_, repeat_, bar_ + 1}; // further into the scene
+    if ((bar_ + 1) * meterOf(scene_) < sceneSteps(scene_)) return {scene_, repeat_, bar_ + 1}; // further into the scene
     if (loopScene_) return {scene_, repeat_, 0};
     if (repeat_ + 1 < repeats_[scene_]) return {scene_, repeat_ + 1, 0};
     return {(scene_ + 1) % sceneCount_, 0, 0};
@@ -1893,7 +1959,7 @@ void Engine::askAgain(bool endChanged) {
     const Position after = afterThisBar();
     const int followingScene = following == 0 ? after.scene : scene_;
     const int followingBar = following == 0 ? after.bar : bar_;
-    const bool lastStep = following == 0 && (bar_ + 1) * kSteps >= sceneSteps(scene_) && repeat_ + 1 >= repeats_[scene_] && scene_ + 1 >= sceneCount_;
+    const bool lastStep = following == 0 && (bar_ + 1) * meterOf(scene_) >= sceneSteps(scene_) && repeat_ + 1 >= repeats_[scene_] && scene_ + 1 >= sceneCount_;
     const bool pastEnd = playsOnce() && lastStep;
     if (endChanged && !lastStep) return; // (AT END switched anywhere else: nothing asked depends on it)
     const double elapsed = samplesPerStep_ - untilStep_ > 0.0 ? samplesPerStep_ - untilStep_ : 0.0;
@@ -1950,6 +2016,7 @@ void Engine::fireStep() {
         scene_ = next.scene;
         repeat_ = next.repeat;
         bar_ = next.bar;
+        if (sceneTempoNow(scene_) != tempo_) useTempo(sceneTempoNow(scene_)); // a scene with its own tempo
     }
     // The very first step after Play. A hit or note on step 1 that is pushed
     // EARLY would have started just before the bar, and there was no
@@ -1967,15 +2034,16 @@ void Engine::fireStep() {
     const double now = static_cast<double>(stepsFired_++); // this step, counted from Play
 
     // A scene may be cut short, to any number of steps: its last bar then ends early.
-    const int left = sceneSteps(scene_) - bar_ * kSteps; // steps this bar has (at least one: the bar would not have begun otherwise)
-    const int following = (nextStep_ + 1) % (left >= kSteps ? kSteps : (left < 1 ? 1 : left));
+    const int meter = meterOf(scene_);
+    const int left = sceneSteps(scene_) - bar_ * meter; // steps this bar has (at least one: the bar would not have begun otherwise)
+    const int following = (nextStep_ + 1) % (left >= meter ? meter : (left < 1 ? 1 : left));
     // An early hit on step 1 belongs to whichever scene the next bar plays.
     const Position after = afterThisBar();
     const int followingScene = following == 0 ? after.scene : scene_;
     const int followingBar = following == 0 ? after.bar : bar_;
     // Played once through (a bounce, or a song that stops at its end), the song's last step asks for nothing of its first: an
     // early hit or note there would sound in the song's last moments, and ring on after them.
-    const bool pastEnd = playsOnce() && following == 0 && (bar_ + 1) * kSteps >= sceneSteps(scene_) && repeat_ + 1 >= repeats_[scene_] && scene_ + 1 >= sceneCount_;
+    const bool pastEnd = playsOnce() && following == 0 && (bar_ + 1) * meter >= sceneSteps(scene_) && repeat_ + 1 >= repeats_[scene_] && scene_ + 1 >= sceneCount_;
 
     for (Track& track : tracks_) {
         if (track.hasDrums) {
@@ -2086,6 +2154,13 @@ void Engine::takeAway(int t) {
         trash.isSample = true;
         trash.pointer = track.trackSample;
         track.trackSample = nullptr;
+        bin(trash);
+    }
+    if (track.trackZones) { // ...and its zones, if it had them
+        Trash trash;
+        trash.isZones = true;
+        trash.pointer = track.trackZones;
+        track.trackZones = nullptr;
         bin(trash);
     }
     track.hasDrums = false;

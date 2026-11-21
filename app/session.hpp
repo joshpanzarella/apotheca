@@ -29,6 +29,9 @@ namespace apotheca {
 struct Project;
 // How many frames the song lasts once through, at this sample rate (bounce.cpp).
 long long songFrames(const Project& project, float sampleRate);
+// The song as a Standard MIDI file (Type 1): every scene as many times as it plays, one track per
+// track, drums as General MIDI on channel 10 (bounce.cpp). For the tests as well as the bounce.
+std::string midiFileBytes(const Project& song, const std::string& title);
 
 // WHERE A BOUNCE ENDS (bounce.cpp). After the song's last step the bounce
 // runs on for as long as there is sound: echoes, a hall, drums ringing out.
@@ -296,6 +299,7 @@ public:
     // runs on until the next hit on the lane.
     int laneSlices(int track, int lane) const;
     void setLaneOneSlice(int track, int lane, bool on);
+    void setSamplerChop(int track, bool on); // chopped or whole: 16 even slices from C1 up, or the one recording
     // Asked for from another screen (the kit's): the drum grid opens on this lane's slices.
     int wantSlices = -1; // a lane, or -1
     // Asked for from the SONG screen: the keyboard for the current track's name (it lives on the SET tab).
@@ -328,6 +332,7 @@ public:
         bool making = false;      // ...and before that its synth voice is made there (DRUM SYNTH: shaping is set too)
         float fittedTempo = 0.f;  // the tempo the one in the engine was made for
         int fittedSteps = 0;
+        int zones = 0;            // a sampler's multisample: how many recordings play (0: one, as always)
         unsigned version = 0;     // goes up whenever the lane's sound changes
     };
     const LaneSound& laneSound(int track, int lane) const { return sounds_[track][lane]; }
@@ -343,6 +348,10 @@ public:
     // and songs go on and come off (transfer.hpp). Off until turned on.
     bool toggleTransfer(unsigned seed);  // true if it is now on
     bool transferOn() const { return transfer_.running() || !pretendAddress_.empty(); }
+    // HOTSPOT on the SET page: our own network, with or without the WIFI PAGE. Turning it on starts
+    // the page too when it is off (the network exists for the page); turning it off stops the page
+    // again only when HOTSPOT started it, else the radio joins again. True if it is now as asked.
+    bool setHotspot(bool on, unsigned seed);
     Transfer& transfer() { return transfer_; } // (tests put a WiFi change in by hand: noteChange)
     // WiFi on our own firmware (wifi.hpp): joining a network. Here only where the system gives the
     // program its `apotheca-wifi` (APOTHECA_WIFI); elsewhere nothing of it shows or runs.
@@ -455,10 +464,10 @@ public:
     void loadSettings();
 
     // ---- bouncing (bounce.cpp) ---------------------------------------------------------
-    // The song, or its tracks, written out as WAV files in the "bounces"
-    // folder. Worked out off to one side, not recorded as it plays, so it is
+    // The song, or its tracks, written out as WAV files (or the song as one MIDI file) in the
+    // "bounces" folder. Worked out off to one side, not recorded as it plays, so it is
     // whole whatever the handheld could keep up with.
-    enum class Bounce { Song, EachTrack, ThisTrack };
+    enum class Bounce { Song, EachTrack, ThisTrack, MidiFile };
     void useBounceFolder(const std::string& folder); // (and what a killed bounce left there is removed)
     bool startBounce(Bounce what); // false if one is under way, or there is nowhere to put it
     bool bouncing() const;
@@ -611,6 +620,22 @@ public:
     bool putKit(int track, const TrackData& kit);  // ...the kit fields of `kit` (copyKit's)
     std::string saveKit(int track);                // as the next free "KIT n": its name, or "" (no folder, or the card refused)
     bool deleteKit(int index);                     // an own kit's file, for good
+    // SAMPLER PRESETS (sampler_presets.cpp): a sampler track's sound kept as a file of its own, "NAME.sampler"
+    // in the preset folder. A preset is its recording, its settings, chopped or whole; and the track's whole
+    // sound (effects, sends, MODs), as a new synth preset's. There are no built-in ones: the list is the
+    // player's own, or empty.
+    static constexpr std::size_t kSamplerPresetNameMost = 24;
+    struct SamplerPreset {
+        std::string name, file, sample;
+        int settings[sampler::kSettings];
+        bool chop = false;
+        TrackSound sound; // the whole sound, when the file holds it
+    };
+    const std::vector<SamplerPreset>& samplerPresets();
+    int samplerPresetOf(int track);                             // which one the track's sound is now, or -1
+    bool loadSamplerPreset(int track, int index);               // put on the track (its settings take a step back; as a kit's, the recording stays)
+    bool saveSamplerPreset(int track, const std::string& name); // under this name (made a file's); false if no good or not written
+    bool deleteSamplerPreset(int index);                        // its file, for good
     // The sound-designer page's way in (see designer.hpp); the WiFi page serves it.
     Designer& designer() { return designer_; }
 
@@ -638,6 +663,10 @@ public:
     int takeMidiKey() { const int key = midiKey_; midiKey_ = -1; return key; }
     // The tempo, from anywhere. Held to what the engine can play.
     void setTempo(float bpm);
+    // One scene's own tempo (0: the song's). Like the song's tempo, no step of undo.
+    void setSceneTempo(int scene, float bpm);
+    // Steps in one scene's bars, 1..16. No step of undo either.
+    void setSceneMeter(int scene, int steps);
     // TAP TEMPO (tap_tempo.hpp): A tapped on a TEMPO row, `ms` the frame's clock. The second tap of a
     // run on sets the tempo; each from the second says what it did in the App's box (TAPPED: 120 BPM).
     void tapTempo(Uint32 ms);
@@ -720,6 +749,8 @@ public:
         };
         Track tracks[kNumTracks];
         int repeats = 1, steps = 0;
+        float tempo = 0.f; // the scene's own (0: the song's)
+        int meter = kSteps;
     };
     SceneCopy copyScene(int scene);
     SceneCopy pasteScene(int scene);
@@ -728,6 +759,10 @@ public:
     SceneCopy copySceneHere(int scene);
     SceneCopy pasteSceneHere(int scene);
     static std::string sceneCopyWords(SceneCopy answer, bool paste, int scene); // (scene from 0)
+    enum class SceneClear { Done, AlreadyEmpty, NoScene };
+    SceneClear clearScene(int scene);
+    SceneClear clearSceneHere(int scene);
+    static std::string sceneClearWords(SceneClear answer, int scene); // (scene from 0)
     int copiedScene() const { return sceneClip_->has ? sceneClip_->scene : -1; }
     const SceneClip& sceneClip() const { return *sceneClip_; }
     void setSceneClip(const SceneClip& clip) { *sceneClip_ = clip; } // (the App, putting it back after a panic begun with R1)
@@ -888,14 +923,23 @@ private:
     std::uint32_t cellMark_ = 0;
     void serveDesigner();
     void serveKit(const DesignRequest& r); // a KIT's requests (serveDesigner)
+    void serveFx(const DesignRequest& r);  // an EFFECTS request (any instrument: serveDesigner)
+    void serveMod(const DesignRequest& r); // a MOD's request (any instrument: serveDesigner)
     std::string designSpec(int track) const;  // what the page builds itself from (a synth's, a sampler's or a kit's)
     std::string kitSpec(int track) const;
     std::string samplerSpec(int track) const;
+    std::string designFxSpec(int track) const;   // ...and its EFFECTS (every instrument's page carries it)
+    std::string designModsSpec(int track) const; // ...and its MODs (the same)
+    std::string designFxState(int track) const;  // their values, for the state
+    std::string designModsState(int track) const;
     std::string designState() const;
     Designer designer_;
     std::string presetFolder_;
     std::vector<Kit> kits_;
     void readKits();
+    std::vector<SamplerPreset> samplerPresets_;
+    bool samplerPresetsRead_ = false; // (empty is usual: no built-ins)
+    void readSamplerPresets();
     bool designHeld_[128] = {}; // keys the page is holding down
     int designHeldTrack_ = 0;
     unsigned designLooks_ = 0;
@@ -903,6 +947,7 @@ private:
     TrackKind designSpecKind_ = TrackKind::None;
     int designSpecPresets_ = -1, designSpecTrack_ = -1;
     unsigned designSpecSound_ = 0;  // the sampler's recording's version (LaneSound::version) it was made from
+    unsigned designSpecFx_ = 0;     // the slots', buses' and master's effects it was made from (their kinds, hashed)
     std::string designSpecText_ = "{}";
     unsigned designSpecSerial_ = 0; // goes up whenever designSpecText_ changes: the page asks for it again
     // The recordings a sampler's page is offered: read from the card on this thread, when the page
@@ -935,6 +980,7 @@ private:
     static float ui_stickSpeed();
     void keepSettings() const;
     Transfer transfer_;
+    bool hotspotOwnsTransfer_ = false; // HOTSPOT turned the page on: turning it off turns it off again
     std::string programFolder_;
     unsigned seenUpdates_ = 0;
     bool updateWaiting_ = false;

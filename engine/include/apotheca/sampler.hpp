@@ -7,6 +7,18 @@
 // goes round from START to END for as long as the key is held). Letting go
 // fades it over RELEASE. END is never before START: a note plays at least
 // kLeastSpan percent of the recording (playedEnd).
+//
+// A multisample: up to kMaxZones recordings, each with the key it was made
+// at (its root) and the keys it plays (lo..hi, which cover every key between
+// them). A key plays its zone's recording, transposed from the zone's root;
+// ROOT moves the whole set as it moves one recording (60: none). START, END,
+// LOOP and the fades work as above, on each zone's own recording.
+//
+// Chopped instead: the one recording in 16 even slices from C1 up, each at its
+// own pitch (PITCH moves every slice together). START, END and LOOP work
+// within the slice played. Never with a multisample: zones win.
+
+#include <vector>
 
 #include "envelope.hpp"
 #include "apotheca/slide.hpp"
@@ -42,6 +54,17 @@ int settingMax(int id);
 int settingDefault(int id);
 constexpr int kVoices = 8;
 constexpr float kVoiceGain = 0.6f; // a full-level note at full velocity; chords have room
+constexpr int kMaxZones = 24;      // recordings in a multisample, at most
+constexpr int kChopSlices = 16;    // ...and in a chop, always sixteen, from kChopBase up
+constexpr int kChopBase = 24;      // C1 plays the first slice
+struct SampleZone {
+    std::vector<float> data; // the zone's recording, mono, at the engine's rate
+    int root = 60;           // the key it was made at: it plays untransposed there
+    int lo = 0, hi = 127;    // the keys that play it
+};
+struct SampleZoneSet {
+    std::vector<SampleZone> zones; // by root, lowest first; lo..hi join with no gaps
+};
 }
 
 class Sampler : public Instrument {
@@ -57,11 +80,16 @@ public:
     void allNotesOff() override;
     void chokeAll() override;
     void setSample(const float* data, int length) override;
+    void setZones(const sampler::SampleZoneSet* zones) override;
+    void setChopped(bool chopped) override;
     void render(float* left, float* right, int frames) override;
 
 private:
     struct Voice {
         int note = -1;       // -1: free
+        const float* data = nullptr; // what it reads: its zone's recording, or the one recording
+        int length = 0;
+        double spanFrom = 0.0, spanTo = 0.0; // the part it may read: a chop's slice, else the whole
         double position = 0.0, step = 1.0;
         float gain = 0.f;    // velocity
         float fade = 1.f;    // multiplies the gain; falls while choked
@@ -72,6 +100,8 @@ private:
     };
     const float* data_ = nullptr;
     int length_ = 0;
+    const std::vector<sampler::SampleZone>* zones_ = nullptr; // a multisample's zones, or null for one recording
+    bool chopped_ = false;                                        // ...played as 16 slices from C1 up (never with zones: they win)
     int value_[sampler::kSettings];
     Voice voices_[sampler::kVoices];
     unsigned clock_ = 0;

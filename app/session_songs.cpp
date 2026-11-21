@@ -408,6 +408,31 @@ void Session::setTempo(float bpm) {
     engine.send(c);
 }
 
+void Session::setSceneTempo(int scene, float bpm) {
+    if (scene < 0 || scene >= kMaxScenes) return;
+    bpm = bpm != bpm ? project.sceneTempo[scene] : std::round(bpm);
+    bpm = bpm < 1.f ? 0.f : (bpm < kMinTempo ? kMinTempo : (bpm > kMaxTempo ? kMaxTempo : bpm));
+    if (bpm == project.sceneTempo[scene]) return;
+    project.sceneTempo[scene] = bpm;
+    Command c;
+    c.type = Command::SetSceneTempo;
+    c.scene = scene;
+    c.value = bpm;
+    engine.send(c);
+}
+
+void Session::setSceneMeter(int scene, int steps) {
+    if (scene < 0 || scene >= kMaxScenes) return;
+    steps = steps < 1 ? 1 : (steps > kSteps ? kSteps : steps);
+    if (steps == project.sceneMeter[scene]) return;
+    project.sceneMeter[scene] = steps;
+    Command c;
+    c.type = Command::SetSceneMeter;
+    c.scene = scene;
+    c.a = steps;
+    engine.send(c);
+}
+
 void Session::tapTempo(Uint32 ms) {
     const float bpm = taps_.tap(ms);
     char text[48];
