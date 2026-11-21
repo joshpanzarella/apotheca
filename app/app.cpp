@@ -2,10 +2,15 @@
 
 #include "battery.hpp"
 #include "redraw.hpp"
+#include "song_file.hpp"
 #include "version.hpp"
+
+#include <unistd.h>
 
 #include <cmath>
 #include <cstdio>
+#include <cstring>
+#include <string>
 
 namespace apotheca {
 
@@ -13,6 +18,10 @@ namespace {
 constexpr Uint32 kUpdateHoldMs = 1000; // A held this long accepts an update
 constexpr Uint32 kHelpAfterMs = 400;   // with no MENU button: SELECT held this long shows the help card
 constexpr Uint32 kPanicNoteMs = 4000; // how long the notice stays once the buttons are let go
+constexpr Uint32 kBatteryLogEveryMs = 60000; // a line a minute, and at once when it moves
+constexpr int kBatteryLogMove = 5;           // percent either way since the last line: a line at once
+constexpr std::size_t kBatteryLogKeep = 3000; // lines kept: two days of minutes
+constexpr long kBatteryLogTrimOver = 256 * 1024; // bytes over: cut back to the lines kept
 }
 
 App::App(Engine& engine)
@@ -292,6 +301,37 @@ void App::volumeKey(bool up, const Input& input) {
     changeVolume(up ? 0.1f : -0.1f);
 }
 
+void App::logBattery(Uint32 nowMs) {
+    if (batteryLog_.empty() || battery_ < 0) return; // nowhere to keep it, or no battery (a desk computer)
+    const int moved = batteryLoggedPercent_ < 0 ? kBatteryLogMove : std::abs(battery_ - batteryLoggedPercent_);
+    if (batteryLoggedAt_ != 0 && nowMs - batteryLoggedAt_ < kBatteryLogEveryMs && moved < kBatteryLogMove && charging_ == batteryLoggedCharging_) return;
+    const long microvolts = batteryRoot_.empty() ? batteryMicrovolts() : batteryMicrovolts(batteryRoot_);
+    char volts[16];
+    if (microvolts < 0) std::snprintf(volts, sizeof volts, "?");
+    else std::snprintf(volts, sizeof volts, "%.2fV", microvolts / 1000000.0);
+    char line[64];
+    std::snprintf(line, sizeof line, "[%.1f] %d%% %s %s\n", nowMs / 1000.f, battery_, volts, charging_ ? "charging" : "discharging");
+    std::FILE* f = std::fopen(batteryLog_.c_str(), "a");
+    if (!f) return;
+    std::fwrite(line, 1, std::strlen(line), f);
+    std::fflush(f);
+    fsync(fileno(f)); // the point is the tail after a power cut: on the card at once
+    const long size = std::ftell(f);
+    std::fclose(f);
+    batteryLoggedAt_ = nowMs ? nowMs : 1;
+    batteryLoggedPercent_ = battery_;
+    batteryLoggedCharging_ = charging_;
+    if (size < kBatteryLogTrimOver) return;
+    // Too long: back to the lines kept, whole or not at all.
+    std::string text;
+    if (!readTextFile(batteryLog_, text)) return;
+    std::size_t lines = 0, cut = text.size();
+    for (std::size_t i = text.size(); i > 0; --i) {
+        if (text[i - 1] == '\n' && ++lines > kBatteryLogKeep) { cut = i; break; }
+    }
+    if (cut < text.size()) writeTextFile(batteryLog_, text.substr(cut));
+}
+
 void App::update(const Input& input, Uint32 nowMs) {
     now_ = nowMs;
     if (session_.view != View::Song || !song_.cursorOnMaster()) cameByL3_ = false; // (moved away: L3 goes to MASTER again)
@@ -299,6 +339,7 @@ void App::update(const Input& input, Uint32 nowMs) {
     if (batteryReadAt_ == 0 || nowMs - batteryReadAt_ >= 10000) {
         batteryReadAt_ = nowMs ? nowMs : 1;
         battery_ = batteryRoot_.empty() ? batteryPercent(&charging_) : batteryPercent(&charging_, batteryRoot_);
+        logBattery(nowMs);
     }
     // The help card: there for as long as MENU is held. On a handheld whose
     // firmware keeps MENU for itself (it was left out of the controls setup),

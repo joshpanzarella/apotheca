@@ -1588,6 +1588,69 @@ void testTheBattery() {
     CHECK(batteryPercent(&charging, root) == -1);
     writeTextFile(root + "/battery/capacity", "0\n");
     CHECK(batteryPercent(nullptr, root) == 0);
+    // Its voltage: the supply with a "capacity", in microvolts.
+    CHECK(batteryMicrovolts(root + "/no-such-folder") == -1 && batteryMicrovolts(root) == -1);
+    writeTextFile(root + "/battery/voltage_now", "3800000\n");
+    CHECK(batteryMicrovolts(root) == 3800000);
+    writeTextFile(root + "/ac/voltage_now", "5000000\n"); // (the supply with no battery: not read)
+    CHECK(batteryMicrovolts(root) == 3800000);
+    writeTextFile(root + "/battery/voltage_now", "nonsense\n");
+    CHECK(batteryMicrovolts(root) == -1);
+}
+
+void testBatteryLog() {
+    Rig rig;
+    const std::string root = tempFolder("batterylog");
+    mkdir((root + "/battery").c_str(), 0755);
+    writeTextFile(root + "/battery/capacity", "61\n");
+    writeTextFile(root + "/battery/status", "Discharging\n");
+    writeTextFile(root + "/battery/voltage_now", "3800000\n");
+    const std::string log = root + "/battery.log";
+    rig.app.useBatteryFolder(root);
+    rig.app.useBatteryLog(log);
+    // The first read writes a line at once.
+    rig.frames(1);
+    std::string text;
+    CHECK(readTextFile(log, text) && text == "[1.0] 61% 3.80V discharging\n");
+    // Under a minute and unmoved: nothing more.
+    rig.clock += 59000;
+    rig.frames(1);
+    CHECK(readTextFile(log, text) && text == "[1.0] 61% 3.80V discharging\n");
+    // A minute on: another line (on the next ten-second read past the minute).
+    rig.clock += 10000;
+    rig.frames(1);
+    CHECK(readTextFile(log, text) && text == "[1.0] 61% 3.80V discharging\n[70.0] 61% 3.80V discharging\n");
+    // Down five: a line at once. The charger on: one too.
+    writeTextFile(root + "/battery/capacity", "55\n");
+    rig.clock += 11000;
+    rig.frames(1);
+    CHECK(readTextFile(log, text) && text.size() > 60 && text.substr(text.size() - 29) == "[81.1] 55% 3.80V discharging\n");
+    writeTextFile(root + "/battery/status", "Charging\n");
+    rig.clock += 11000;
+    rig.frames(1);
+    CHECK(readTextFile(log, text) && text.size() > 60 && text.substr(text.size() - 26) == "[92.1] 55% 3.80V charging\n");
+    // No voltage file: a "?" where the volts go.
+    std::remove((root + "/battery/voltage_now").c_str());
+    rig.clock += 61000;
+    rig.frames(1);
+    CHECK(readTextFile(log, text) && text.size() > 60 && text.substr(text.size() - 23) == "[153.1] 55% ? charging\n");
+    // No battery at all: nothing kept.
+    Rig bare;
+    const std::string root2 = tempFolder("batterylogbare");
+    bare.app.useBatteryFolder(root2);
+    bare.app.useBatteryLog(root2 + "/battery.log");
+    bare.frames(10);
+    CHECK(!readTextFile(root2 + "/battery.log", text));
+    // Over the cap: back to the lines kept, the new line last.
+    std::string big;
+    for (int i = 0; i < 10000; ++i) big += "[0.0] 61% 3.80V discharging\n";
+    writeTextFile(log, big);
+    rig.clock += 61000;
+    rig.frames(1);
+    CHECK(readTextFile(log, text));
+    int lines = 0;
+    for (char c : text) lines += c == '\n';
+    CHECK(lines == 3000 && text.size() > 23 && text.substr(text.size() - 23) == "[214.1] 55% ? charging\n");
 }
 
 // ---- bouncing: tools ---------------------------------------------------------------------
@@ -11118,6 +11181,7 @@ int main(int argc, char** argv) {
     testDeletingATrack();
     testStepsInAScene();
     testTheBattery();
+    testBatteryLog();
     testBouncing();
     testWhereABounceEnds();
     testABounceRunsUntilTheTailEnds();

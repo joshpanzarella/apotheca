@@ -41,4 +41,26 @@ inline int batteryPercent(bool* charging = nullptr, const std::string& root = "/
     return found;
 }
 
+// The same supply's voltage_now, in microvolts (-1: none to read).
+inline long batteryMicrovolts(const std::string& root = "/sys/class/power_supply") {
+    long found = -1;
+    DIR* dir = opendir(root.c_str());
+    if (!dir) return -1;
+    while (const dirent* entry = readdir(dir)) {
+        if (entry->d_name[0] == '.') continue;
+        const std::string base = root + "/" + entry->d_name;
+        std::FILE* cap = std::fopen((base + "/capacity").c_str(), "r");
+        if (!cap) continue; // (no "capacity": not a battery)
+        std::fclose(cap);
+        long microvolts = -1;
+        if (std::FILE* file = std::fopen((base + "/voltage_now").c_str(), "r")) {
+            if (std::fscanf(file, "%ld", &microvolts) == 1 && microvolts >= 0) found = microvolts;
+            std::fclose(file);
+        }
+        break; // the first battery's: there is one
+    }
+    closedir(dir);
+    return found;
+}
+
 } // namespace apotheca
