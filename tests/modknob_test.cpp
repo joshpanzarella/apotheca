@@ -172,21 +172,28 @@ void testTheWords() {
     CHECK(std::strcmp(text, "-100%") == 0);
     ModKnob::depthText(0.f, text, sizeof text);
     CHECK(std::strcmp(text, "0%") == 0);
-    // The dice: an LFO's shape and rate, never both as they were, DEPTH kept; a STEPPER's row.
+    // The dice: an LFO's shape, rate and depth, never all three as they were; a STEPPER's row.
     for (std::uint32_t seed = 0; seed < 300; ++seed) {
         ModSettings lfo = ModKnob::fresh(8);
         lfo.depth = -0.37f;
         const ModSettings r = ModKnob::rolled(lfo, seed);
-        CHECK(r.depth == lfo.depth && r.kind == kModLfo && r.target == 8 && (r.shape != lfo.shape || r.rate != lfo.rate));
+        CHECK(r.kind == kModLfo && r.target == 8 && (r.shape != lfo.shape || r.rate != lfo.rate || r.depth != lfo.depth));
         CHECK(r.rate >= kModRateEighth && r.rate <= kModRateFourBars);
+        const float percent = r.depth * 100.f; // whole percents, 20 to 100 either way
+        CHECK(std::fabs(percent) >= 20.f && std::fabs(percent) <= 100.f && std::fabs(percent - std::round(percent)) < 1e-3f);
     }
-    int shapes = 0, rates = 0;
+    int shapes = 0, rates = 0, signs = 0, depths = 0;
+    float lastDepth = 999.f;
     for (std::uint32_t seed = 0; seed < 300; ++seed) {
         const ModSettings r = ModKnob::rolled(ModKnob::fresh(8), seed);
         shapes |= 1 << r.shape, rates |= 1 << r.rate;
+        signs |= r.depth > 0.f ? 1 : 2;
+        if (r.depth != lastDepth) ++depths;
+        lastDepth = r.depth;
     }
     CHECK(shapes == (1 << kModShapes) - 1); // every shape comes up
     CHECK(rates == 0xff << kModRateEighth); // and the eight rates
+    CHECK(signs == 3 && depths > 200);      // depth both ways, and rarely twice the same
     ModSettings stepper = ModKnob::fresh(20);
     stepper.kind = kModStepper, stepper.length = 5, stepper.slew = 0.3f, stepper.chance = 0.2f;
     const ModSettings a = ModKnob::rolled(stepper, 1), b = ModKnob::rolled(stepper, 2);
@@ -214,14 +221,16 @@ void testFreeOnTheKnob() {
     CHECK(std::strcmp(text, "0.25 HZ") == 0 && std::strcmp(ModKnob::moreName(m), "SPEED") == 0 && ModKnob::rates(m) == kModRates);
     m.kind = kModStepper;
     CHECK(std::strcmp(ModKnob::moreName(m), "LENGTH") == 0 && ModKnob::rates(m) == kModTempoRates);
-    // The dice on a FREE LFO: it stays free; SHAPE and SPEED, never both as they were, a click 0.1 to 5 Hz.
+    // The dice on a FREE LFO: it stays free; SHAPE, SPEED and DEPTH, never all three as they were, a click 0.1 to 5 Hz.
     int shapes = 0, speeds = 0;
     for (std::uint32_t seed = 0; seed < 400; ++seed) {
         ModSettings f = ModKnob::fresh(8);
         f.rate = kModRateFree, f.depth = -0.4f, f.speed = 1.f;
         const ModSettings r = ModKnob::rolled(f, seed);
-        CHECK(r.rate == kModRateFree && r.depth == f.depth && r.kind == kModLfo && (r.shape != f.shape || r.speed != f.speed));
+        CHECK(r.rate == kModRateFree && r.kind == kModLfo && (r.shape != f.shape || r.speed != f.speed || r.depth != f.depth));
         CHECK(r.speed >= 0.1f && r.speed <= 5.f && modSpeedStep(modSpeedStep(r.speed, -1), 1) == r.speed && r.phase == f.phase);
+        const float percent = r.depth * 100.f; // whole percents, 20 to 100 either way
+        CHECK(std::fabs(percent) >= 20.f && std::fabs(percent) <= 100.f && std::fabs(percent - std::round(percent)) < 1e-3f);
         shapes |= 1 << r.shape;
         for (int i = ModKnob::kSpeedRollFirst; i <= ModKnob::kSpeedRollLast; ++i) speeds |= (r.speed == modSpeedClick(i)) << (i - ModKnob::kSpeedRollFirst);
     }
@@ -372,7 +381,8 @@ void testTheGestureOnAMacro() {
     rig.tap(A); // back to an LFO, SINE: its row is kept
     CHECK(rig.mod(t, 0).kind == kModLfo && rig.mod(t, 0).shape == kModSine);
     rig.tap(Y);
-    CHECK(rig.mod(t, 0).kind == kModLfo && rig.mod(t, 0).depth == before.depth && (rig.mod(t, 0).shape != kModSine || rig.mod(t, 0).rate != before.rate));
+    CHECK(rig.mod(t, 0).kind == kModLfo && (rig.mod(t, 0).shape != kModSine || rig.mod(t, 0).rate != before.rate || rig.mod(t, 0).depth != before.depth));
+    CHECK(std::fabs(rig.mod(t, 0).depth) >= 0.2f && std::fabs(rig.mod(t, 0).depth) <= 1.f);
     // The stick: up turns DEPTH smoothly, and the cursor stays on the knob.
     const float depth = rig.mod(t, 0).depth;
     rig.key(StickUp, true);

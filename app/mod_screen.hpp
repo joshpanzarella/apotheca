@@ -16,7 +16,7 @@
 //                    at the one last used there. Hold A on a MOD's line: the list of targets (as
 //                    on TARGET). Hold B on either of a MOD's lines: a bar fills, and at a second
 //                    the MOD is deleted (SEL + B brings it back). Y: the dice (a MOD's line: a
-//                    STEPPER's row, an LFO's shape and rate; STEPS: the row).
+//                    STEPPER's row, an LFO's shape, rate and depth; STEPS: the row).
 //   in the settings  up / down: the next setting (the ends stop); left: back to the list. On the
 //                    row of steps left / right go along it (left from the first: the list), down
 //                    to LENGTH, and up from LENGTH back to the row.

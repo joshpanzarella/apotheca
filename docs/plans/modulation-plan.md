@@ -348,7 +348,7 @@ grids, the X-held check comes before each button's own job:
 | LEFT / RIGHT | RATE, a click a push |
 | A | Steps the KIND and SHAPE (as X + A is THROW on a hit) |
 | L1 / R1 | PHASE, or a stepper's LENGTH (as X + L1 / R1 is GLIDE FROM on a note) |
-| Y | **The dice** (Hold X + Y is the house dice): a stepper's row rolled, or an LFO's shape and rate (depth kept). Owner's call what it rolls |
+| Y | **The dice** (Hold X + Y is the house dice): a stepper's row rolled, or an LFO's shape, rate and depth. Owner's call what it rolls |
 | Hold B | **Deletes the MOD**, with the filling bar (the house rule for deleting) |
 
 Both MODs taken and X held on a third knob: the strip says **MODS FULL** and
@@ -853,7 +853,7 @@ answer. Section 18 says how each is built.
 | C | What the first UP on a knob with no MOD makes | **LFO, SINE, 1 BAR, +25%** (section 7) |
 | D | Two MODs a track (MODS FULL on a third knob), or one per knob | **Two** (call 1) |
 | E | X held while stopped runs the MOD (call 8) | **Yes** |
-| F | What X + Y rolls (call 15) | **A stepper's row; an LFO's shape and rate, DEPTH kept** |
+| F | What X + Y rolls (call 15) | **A stepper's row; an LFO's shape, rate and depth** |
 | G | "HOLD X: MOD" in DEVICE MAIN's hints bar (it is full) | **On the help card only**, unless it fits with `gHintsOver` at 0 |
 | H | Nine effects glide a setting a call at a time, so under a MOD they are not the same to the bit in other blocks (at most 0.0024 apart, about 46 dB down), and a fast MOD on them is mostly smoothed away (CLAUDE.md) | **Leave them**: mending it changes their glide on old songs |
 

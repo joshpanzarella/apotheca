@@ -27,6 +27,7 @@
 #include "canvas.hpp"
 #include "controls.hpp"
 #include "instruments.hpp"
+#include "mod_knob.hpp"
 #include "mods.hpp"
 #include "power_off.hpp"
 #include "samples.hpp"
@@ -678,7 +679,11 @@ void testTheKeysScrollAndStopAtTheEnds() {
     rig->tap(LEFT, 200);
     CHECK(notes.cursorPitch() == NoteScreen::kLowest);
     rig->tap(UP);
-    CHECK(notes.cursorStep() == kSteps - 1); // sideways comes round
+    CHECK(notes.cursorOnBars()); // up from the top step: BARS
+    rig->tap(UP);
+    CHECK(!notes.cursorOnBars() && notes.cursorStep() == kSteps - 1); // up again: round to the bottom
+    rig->tap(DOWN);
+    CHECK(!notes.cursorOnBars() && notes.cursorStep() == 0);
 }
 
 // ---- cells longer than a bar --------------------------------------------------------------
@@ -789,8 +794,20 @@ void testCellsOfSeveralBars() {
     CHECK(bars[1].at(60, 0) >= 0 && bars[0].empty());
     rig.tap(UP);
     CHECK(rig.project().bar == 0 && notes.cursorStep() == 15);
-    rig.tap(UP, 16);
-    CHECK(rig.project().bar == 3 && notes.cursorStep() == 15); // round the top to the last bar
+    rig.tap(UP, 15);
+    CHECK(rig.project().bar == 0 && notes.cursorStep() == 0);
+    rig.tap(UP);
+    CHECK(notes.cursorOnBars()); // up past the top step: BARS
+    rig.tap(LEFT);
+    CHECK(notes.cursorOnBars() && rig.project().bar == 3); // round to the last bar
+    rig.tap(RIGHT);
+    CHECK(notes.cursorOnBars() && rig.project().bar == 0);
+    rig.tap(DOWN);
+    CHECK(!notes.cursorOnBars() && rig.project().bar == 0 && notes.cursorStep() == 0);
+    rig.tap(UP);
+    CHECK(notes.cursorOnBars());
+    rig.tap(UP);
+    CHECK(!notes.cursorOnBars() && rig.project().bar == 3 && notes.cursorStep() == 15); // up again: round to the bottom
     rig.tap(DOWN);
     CHECK(rig.project().bar == 0 && notes.cursorStep() == 0);
     // A note may run on over the bar lines, to the end of the cell and no further.
@@ -3679,30 +3696,42 @@ void testThePianoRollZooms() {
     rig.tap(L1, 3);
     rig.frames(1);
     CHECK(notes.visibleKeys() == 24 && notes.lowestKeyShown() == 60);
-    // Held, with up and down: the cell's bars, more or fewer, stopping at the ends; and that is not also a tap.
-    rig.key(L1, true);
+    // BARS, up from the top step: hold A with up and down: the cell's bars, more or fewer,
+    // stopping at the ends.
+    rig.tap(UP);
+    CHECK(notes.cursorOnBars());
+    rig.key(A, true);
     rig.tap(UP);
     CHECK(rig.project().tracks[1].bars[0] == 2);
     rig.tap(UP);
-    CHECK(rig.project().tracks[1].bars[0] == 4 && notes.cursorStep() == 0);
+    CHECK(rig.project().tracks[1].bars[0] == 4 && notes.cursorOnBars());
     rig.tap(DOWN, 2);
     CHECK(rig.project().tracks[1].bars[0] == 1);
     rig.tap(DOWN);
     CHECK(rig.project().tracks[1].bars[0] == 1);
-    rig.key(L1, false);
-    CHECK(session.octavesShown() == 2);
-    // The stick with L1 held: one step of bars for each push.
-    rig.key(L1, true);
+    rig.key(A, false);
+    CHECK(session.octavesShown() == 2); // (L1 was never held: no zoom)
+    // Left and right on BARS: the bar before or after, round the ends.
+    rig.key(A, true);
+    rig.tap(UP, 2);
+    rig.key(A, false);
+    CHECK(rig.project().tracks[1].bars[0] == 4 && rig.project().bar == 0);
+    rig.tap(LEFT);
+    CHECK(notes.cursorOnBars() && rig.project().bar == 3);
+    rig.tap(RIGHT, 2);
+    CHECK(notes.cursorOnBars() && rig.project().bar == 1);
+    // The stick with A held on BARS: one step of bars for each push.
+    rig.key(A, true);
     rig.key(STICK_UP, true);
     rig.frames(40);
-    CHECK(rig.project().tracks[1].bars[0] == 2 && notes.cursorPitch() == 69 && notes.cursorStep() == 0);
+    CHECK(rig.project().tracks[1].bars[0] == 8 && notes.cursorOnBars() && notes.cursorPitch() == 69 && notes.cursorStep() == 0);
     rig.key(STICK_UP, false);
     rig.frames(1);
     rig.key(STICK_UP, true);
     rig.frames(2);
     rig.key(STICK_UP, false);
-    rig.key(L1, false);
-    CHECK(rig.project().tracks[1].bars[0] == 4);
+    rig.key(A, false);
+    CHECK(rig.project().tracks[1].bars[0] == 8); // (at the end: stops)
     session.setOctavesShown(1); // the rest zooms from one octave, as it did
     rig.frames(1);
     // The cursor still scrolls the keys, one octave wide.
@@ -5636,7 +5665,7 @@ void testTheFxScreenAsDrawn() {
     const bool barFound = hinted("effects");
     CHECK(barFound);
     if (barFound) {
-        CHECK(hinted("settings") && hinted("delete") && hinted("play") && !hinted("default") && !hinted("turn"));
+        CHECK(hinted("settings") && hinted("delete") && hinted("move") && !hinted("play") && !hinted("default") && !hinted("turn"));
         fx.goTo(1, 0);
         session.setEffect(0, 1, EffectKind::None);
         draw();
@@ -5800,6 +5829,56 @@ void testChangingTypeKeepsWhatIsShared() {
         rig.frames(1);
         rig.render(256);
     }
+}
+
+// MOVING an effect a slot up or down: kind, settings, automation, MODs and remembered types,
+// all with it. The ends stop; off a track's three slots it is refused and nothing moves. One
+// step of undo, and the engine plays the new order.
+void testMovingEffectsKeepsEverythingWithThem() {
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& project = rig.project();
+    TrackData& track = project.tracks[0];
+    const auto lane = [](int slot, int p) { return autoLaneOfEffect(slot, p); };
+    const auto written = [&](int slot, int scene = 0) { int n = 0; for (int p = 0; p < 4; ++p) for (float v : track.automation[scene][lane(slot, p)]) n += v >= 0.f ? 1 : 0; return n; };
+    // TAPE in slot 0 (DELAY remembered, as it was), FILTER in slot 1, each turned; automation on
+    // both, in two scenes; a MOD on the TAPE's FEEDBACK.
+    session.setEffect(0, 0, EffectKind::Delay);
+    session.setEffectParam(0, 0, 1, 0.3f);
+    CHECK(switchEffectType(session, 0, 0, EffectKind::Tape));
+    session.setEffect(0, 1, EffectKind::Filter);
+    session.setEffectParam(0, 0, 1, 0.4f);
+    session.setEffectParam(0, 1, 0, 0.9f);
+    session.setAutomation(0, 0, lane(0, 1), 2, 0.5f);
+    session.setAutomation(0, 3, lane(1, 0), 9, 0.25f);
+    CHECK(session.setMod(0, 0, ModKnob::fresh(kModFirstEffect + 0 * 4 + 1)));
+    rig.frames(60); // settled: the setup is no step of undo
+    // Down a slot: everything with it.
+    CHECK(moveEffectSlot(session, 0, 0, 1));
+    CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Filter) && track.effects[0].param[0] == 0.9f);
+    CHECK(track.effects[1].kind == static_cast<int>(EffectKind::Tape) && track.effects[1].param[1] == 0.4f);
+    CHECK(track.automation[0][lane(1, 1)][2] == 0.5f && track.automation[3][lane(0, 0)][9] == 0.25f);
+    CHECK(written(0) == 0 && written(1, 3) == 0); // ...and nothing left on the old lanes
+    CHECK(session.modData(0, 0).target == kModFirstEffect + 1 * 4 + 1);
+    float back[kEffectParams];
+    CHECK(session.rememberedType(0, 1, EffectKind::Delay, back) && back[1] == 0.3f);
+    CHECK(!session.rememberedType(0, 0, EffectKind::Delay, back));
+    // The engine plays the new order.
+    rig.render(4000);
+    CHECK(rig.engine->effectKindIn(0, 0) == static_cast<int>(EffectKind::Filter) && rig.engine->effectKindIn(0, 1) == static_cast<int>(EffectKind::Tape));
+    // One step of undo puts it all back; redo puts it forward again.
+    rig.frames(60);
+    CHECK(session.undo());
+    CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Tape) && track.effects[1].kind == static_cast<int>(EffectKind::Filter));
+    CHECK(track.automation[0][lane(0, 1)][2] == 0.5f && session.modData(0, 0).target == kModFirstEffect + 0 * 4 + 1);
+    CHECK(session.redo());
+    CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Filter) && track.effects[1].kind == static_cast<int>(EffectKind::Tape));
+    // The ends stop, and off the track's slots it is refused: nothing moves.
+    CHECK(!moveEffectSlot(session, 0, 0, -1) && !moveEffectSlot(session, 0, 2, 1));
+    CHECK(!moveEffectSlot(session, 0, 3, 1) && !moveEffectSlot(session, 0, -1, 1) && !moveEffectSlot(session, 0, 1, 0));
+    CHECK(!moveEffectSlot(session, -1, 0, 1) && !moveEffectSlot(session, kNumTracks, 0, 1));
+    CHECK(!moveEffectSlot(session, kMasterTrack, 0, 1) && !moveEffectSlot(session, kEchoBus, 0, 1));
+    CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Filter) && track.effects[1].kind == static_cast<int>(EffectKind::Tape) && written(1) == 1);
 }
 
 // EVERY TEXT FITS ITS BOX, at every value: measured with the program's lettering, and looked for on the drawn screen.
@@ -9043,6 +9122,65 @@ void testHoldBDeletesAnEffect() {
     CHECK(rig.project().tracks[0].send[0] == 0.f);
 }
 
+// HOLD Y on one of the track's own lines: up / down moves it there, the cursor with it; the
+// ends stop. Anywhere else Y moves nothing. The bar says HOLD Y where it moves.
+bool hintKeyed(const Canvas& canvas, Canvas& scratch, const char* key, const char* words);
+void testHoldYMovesAnEffect() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    typedef FxScreen F;
+    Rig rig;
+    Session& session = rig.app.session();
+    FxScreen& fx = rig.app.fx();
+    const Fonts& fonts = *canvas.fonts;
+    session.view = View::Effects;
+    session.setEffect(0, 0, EffectKind::Tape);
+    session.setEffect(0, 1, EffectKind::Filter);
+    const TrackData& track = rig.project().tracks[0];
+    const auto draw = [&] {
+        canvas.clear();
+        fx.draw(canvas.r, fonts);
+    };
+    fx.goTo(0, 0);
+    rig.frames(1);
+    draw();
+    CHECK(hintKeyed(canvas, scratch, "HOLD Y", "move"));
+    rig.key(Y, true);
+    rig.frames(1);
+    draw();
+    CHECK(hintKeyed(canvas, scratch, "UP / DOWN", "move it"));
+    rig.tap(DOWN);
+    CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Filter) && track.effects[1].kind == static_cast<int>(EffectKind::Tape) && fx.cursorRow() == 1);
+    rig.tap(DOWN);
+    CHECK(track.effects[2].kind == static_cast<int>(EffectKind::Tape) && fx.cursorRow() == 2);
+    rig.tap(DOWN);
+    CHECK(track.effects[2].kind == static_cast<int>(EffectKind::Tape) && fx.cursorRow() == 2); // the end stops
+    rig.tap(UP, 2);
+    CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Tape) && fx.cursorRow() == 0);
+    rig.tap(UP);
+    CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Tape) && fx.cursorRow() == 0);
+    rig.key(Y, false);
+    // Y elsewhere moves nothing: the sends' line, a setting, a bus.
+    fx.goTo(F::kSendsRow, 0);
+    rig.key(Y, true);
+    rig.tap(DOWN);
+    CHECK(fx.cursorRow() == F::kSendsRow + 1); // (plain cursor moves)
+    CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Tape) && track.effects[1].kind == static_cast<int>(EffectKind::Filter));
+    rig.key(Y, false);
+    fx.goTo(F::kBusRow, 0);
+    const int busKind = session.effectData(kEchoBus, 0).kind;
+    rig.key(Y, true);
+    rig.tap(UP);
+    rig.key(Y, false);
+    CHECK(session.effectData(kEchoBus, 0).kind == busKind && fx.cursorRow() == F::kBusRow - 1);
+    fx.goTo(0, 1);
+    rig.key(Y, true);
+    rig.tap(DOWN);
+    rig.key(Y, false);
+    CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Tape));
+}
+
 // Is `words` drawn in the hints bar with the chip `key` just before it (its left edge where that chip's would be)?
 bool hintKeyed(const Canvas& canvas, Canvas& scratch, const char* key, const char* words) {
     const Fonts& fonts = *canvas.fonts;
@@ -11104,6 +11242,7 @@ int main(int argc, char** argv) {
         testTheFxScreensList();
         testTheFxScreenAsDrawn();
         testChangingTypeKeepsWhatIsShared();
+        testMovingEffectsKeepsEverythingWithThem();
         testFxTextsFit();
         testTheFxScreenHoldsUp();
         testTheFxScreenSecondReview();
@@ -11139,6 +11278,7 @@ int main(int argc, char** argv) {
     testUndoLeavesWhatTheTextRounds();
     testUndoCoversABusAndASampler();
     testHoldBDeletesAnEffect();
+    testHoldYMovesAnEffect();
     testTheHintsFitAndSayWhatTheyDo();
     testDeletingATrackSaysItCannotBeUndone();
     testChangingAnInstrumentSaysWhatGoes();
@@ -11214,6 +11354,7 @@ int main(int argc, char** argv) {
     testTheFxScreensList();
     testTheFxScreenAsDrawn();
     testChangingTypeKeepsWhatIsShared();
+    testMovingEffectsKeepsEverythingWithThem();
     testFxTextsFit();
     testTheFxScreenHoldsUp();
     testTheFxScreenSecondReview();

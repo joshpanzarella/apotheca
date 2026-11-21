@@ -84,7 +84,7 @@ void testCursorMovesAndWraps() {
     rig.tap(SDLK_RIGHT);
     rig.tap(SDLK_RIGHT);
     CHECK(rig.screen.cursorStep() == 0);
-    // Up from the top lane is the tempo; up again comes round to the bottom.
+    // Up from the top lane is the tempo; up again is BARS; up again comes round to the bottom.
     rig.tap(SDLK_UP);
     CHECK(rig.screen.cursorLane() == 0 && !rig.screen.cursorOnTempo());
     rig.tap(SDLK_UP);
@@ -92,10 +92,19 @@ void testCursorMovesAndWraps() {
     rig.tap(SDLK_LEFT); // nothing beside the tempo
     CHECK(rig.screen.cursorOnTempo());
     rig.tap(SDLK_UP);
-    CHECK(!rig.screen.cursorOnTempo() && rig.screen.cursorLane() == kDrumLanes - 1 && rig.screen.cursorStep() == 0);
+    CHECK(rig.screen.cursorOnBars());
+    rig.tap(SDLK_LEFT); // the bar before (one bar: still it)
+    CHECK(rig.screen.cursorOnBars());
+    rig.tap(SDLK_UP);
+    CHECK(!rig.screen.cursorOnBars() && !rig.screen.cursorOnTempo() && rig.screen.cursorLane() == kDrumLanes - 1 && rig.screen.cursorStep() == 0);
     rig.tap(SDLK_DOWN);
     CHECK(rig.screen.cursorLane() == 0);
     rig.tap(SDLK_UP);
+    CHECK(rig.screen.cursorOnTempo());
+    rig.tap(SDLK_UP);
+    CHECK(rig.screen.cursorOnBars());
+    rig.tap(SDLK_DOWN); // down from BARS is the tempo
+    CHECK(!rig.screen.cursorOnBars() && rig.screen.cursorOnTempo());
     rig.tap(SDLK_DOWN); // down from the tempo is the top lane
     CHECK(!rig.screen.cursorOnTempo() && rig.screen.cursorLane() == 0);
 }
@@ -838,6 +847,9 @@ void testTheBrushSkipsNamesAndTempo() {
     rig.listen(40000); // let those ring out
     rig.tap(SDLK_UP);  // the tempo: nothing is painted from up here
     CHECK(rig.screen.cursorOnTempo());
+    CHECK(rig.listen() == 0.f);
+    rig.tap(SDLK_UP);  // BARS: nothing either
+    CHECK(rig.screen.cursorOnBars());
     CHECK(rig.listen() == 0.f);
     rig.tap(SDLK_UP); // round to the bottom lane
     CHECK(near(rig.screen.level(kDrumLanes - 1, 0), 0.9f));

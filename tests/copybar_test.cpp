@@ -493,7 +493,8 @@ void testNotes() {
     rig.withL1(A);
     CHECK(rig.said() == "NOTES GO ON A NOTE TRACK" && rig.track(0).drums[0][0].empty());
 
-    // L1 still zooms tapped alone (on its let go); held with UP it sets the cell's bars instead.
+    // L1 still zooms tapped alone (on its let go); held with UP it moves the cursor instead,
+    // and the bars live on the BARS stop now.
     rig.project().track = 1;
     rig.frames(1);
     rig.session().setOctavesShown(2);
@@ -505,8 +506,9 @@ void testNotes() {
     CHECK(rig.session().octavesShown() == 1);
     rig.session().setOctavesShown(2);
     rig.session().setCellBars(1, 0, 1);
+    roll.moveCursorTo(72, 7);
     rig.withL1(UP);
-    CHECK(rig.session().octavesShown() == 2 && rig.track(1).bars[0] == 2); // bars, not zoom
+    CHECK(rig.session().octavesShown() == 2 && rig.track(1).bars[0] == 1 && roll.cursorStep() == 6); // moved, not zoomed, no bars
     // With X held on a note, L1 / R1 are its GLIDE FROM, never a copy.
     roll.moveCursorTo(64, 4);
     rig.project().bar = 0;
@@ -718,7 +720,8 @@ void testTheWordsFit() {
             const std::string words = Session::barCopyWords(answer, paste, kMaxBars - 1);
             CHECK(!words.empty() && canvas.fonts->medium.width(words.c_str()) <= 248.f);
         }
-    // The bar with L1 held says what R1 and A do (on the roll, and UP / DOWN the zoom), and it fits.
+    // The bar with L1 held says what R1 and A do, and it fits; on the BARS stop it says the
+    // bar's own: left / right the bar, hold A more or fewer.
     Canvas scratch;
     const int top = ui::kScreenH - ui::kHintsH;
     const auto barIs = [&](const ui::Hint* list, int count) {
@@ -731,29 +734,37 @@ void testTheWordsFit() {
         canvas.clear();
         rig.app.draw(canvas.r, *canvas.fonts);
     };
-    const ui::Hint grid[] = {{"UP / DOWN", "bar count"}, {"LEFT / RIGHT", "change bar"}, {"R1", "copy bar"}, {"A", "paste bar"}};
-    const ui::Hint roll[] = {{"UP / DOWN", "bar count"}, {"LEFT / RIGHT", "change bar"}, {"R1", "copy bar"}, {"A", "paste bar"}};
+    const ui::Hint held[] = {{"R1", "copy bar"}, {"A", "paste bar"}};
+    const ui::Hint grid[] = {{"LEFT / RIGHT", "bar"}, {"HOLD A", "more / fewer"}, {"START", "play"}};
+    const ui::Hint roll[] = {{"LEFT / RIGHT", "bar"}, {"HOLD A", "more / fewer"}};
     drawn();
-    CHECK(!barIs(grid, 4));
+    CHECK(!barIs(held, 2));
     rig.key(L1, true);
     rig.frames(1);
     drawn();
-    CHECK(barIs(grid, 4) && ui::gHintsOver == 0);
+    CHECK(barIs(held, 2) && ui::gHintsOver == 0);
     rig.key(L1, false);
     rig.frames(1);
+    rig.app.drums().moveCursorTo(0, 0);
+    rig.tap(UP);
+    rig.tap(UP);
     drawn();
-    CHECK(!barIs(grid, 4));
+    CHECK(rig.app.drums().cursorOnBars() && barIs(grid, 3) && ui::gHintsOver == 0);
     CHECK(rig.session().addTrack(TrackKind::Phazed));
     rig.project().track = 1;
     rig.frames(1);
+    rig.app.notes().moveCursorTo(60, 0);
+    rig.tap(UP);
+    drawn();
+    CHECK(rig.app.notes().cursorOnBars() && barIs(roll, 2) && ui::gHintsOver == 0);
     rig.key(L1, true);
     rig.frames(1);
     drawn();
-    CHECK(barIs(roll, 4) && ui::gHintsOver == 0);
+    CHECK(barIs(held, 2) && ui::gHintsOver == 0);
     rig.key(L1, false);
     rig.frames(1);
     drawn();
-    CHECK(!barIs(roll, 4));
+    CHECK(barIs(roll, 2));
     // The line said is drawn in the App's box above the bar.
     rig.withL1(R1);
     drawn();
@@ -764,9 +775,9 @@ void testTheWordsFit() {
 
 } // namespace
 
-// BARS IN THE ROLL: hold L1, up / down steps the cell's bars along 1, 2, 4, 8 (as the Song
-// screen's hold A); hold L1, left / right turns to the bar before or after, round the ends.
-// L1 let go zooms nothing after; shaping keeps the keys.
+// BARS IN THE ROLL: up from the top step is the BARS stop: hold A with up / down steps the
+// cell's bars along 1, 2, 4, 8 (as the Song screen's hold A); left / right turn to the bar
+// before or after, round the ends. L1 is never held: no zoom.
 void testRollBarsLength() {
     Rig rig;
     CHECK(rig.session().addTrack(TrackKind::Phazed));
@@ -775,9 +786,10 @@ void testRollBarsLength() {
     NoteScreen& roll = rig.app.notes();
     CHECK(rig.track(1).bars[0] == 1);
     const int zoom = rig.session().octavesShown();
-    const int pitch = roll.cursorPitch(), step = roll.cursorStep();
-    rig.key(L1, true);
-    rig.frames(1);
+    roll.moveCursorTo(60, 0);
+    rig.tap(UP);
+    CHECK(roll.cursorOnBars());
+    rig.key(A, true);
     rig.tap(UP);
     CHECK(rig.track(1).bars[0] == 2);
     rig.tap(UP);
@@ -787,70 +799,81 @@ void testRollBarsLength() {
     CHECK(rig.track(1).bars[0] == 1);
     rig.tap(DOWN);
     CHECK(rig.track(1).bars[0] == 1); // the ends stop
-    CHECK(roll.cursorPitch() == pitch && roll.cursorStep() == step); // the cursor never moved
-    rig.key(L1, false);
-    rig.frames(1);
-    CHECK(rig.session().octavesShown() == zoom); // letting go zooms nothing: it set the bars
-    // ...but not while shaping a note: A held keeps up / down for its length.
+    CHECK(roll.cursorOnBars() && roll.cursorPitch() == 60 && roll.cursorStep() == 0); // the cursor never moved
+    rig.key(A, false);
+    CHECK(rig.session().octavesShown() == zoom);
+    // ...but not while shaping a note on the grid: A held there keeps up / down for its length.
     roll.moveCursorTo(60, 0);
-    rig.key(A, true);
-    rig.key(L1, true);
-    rig.tap(UP);
-    CHECK(rig.track(1).bars[0] == 1);
-    rig.key(L1, false);
+    rig.key(A, true); // a note placed, a step long
+    rig.tap(DOWN);
+    CHECK(rig.track(1).bars[0] == 1 && roll.noteHere() && roll.noteHere()->length == 2.f);
     rig.key(A, false);
     // Left / right turn the bar shown: round the ends, the cursor keeping its place.
     rig.session().setCellBars(1, 0, 4);
     rig.project().bar = 0;
     roll.moveCursorTo(60, 3);
-    rig.key(L1, true);
-    rig.frames(1);
+    rig.tap(UP, 4);
+    CHECK(roll.cursorOnBars());
     rig.tap(RIGHT);
-    CHECK(rig.project().bar == 1 && roll.cursorPitch() == 60 && roll.cursorStep() == 3);
+    CHECK(rig.project().bar == 1 && roll.cursorPitch() == 60 && roll.cursorStep() == 0);
     rig.tap(RIGHT, 3);
     CHECK(rig.project().bar == 0); // round the end
     rig.tap(LEFT);
     CHECK(rig.project().bar == 3); // ...and back round the start
-    rig.key(L1, false);
-    rig.frames(1);
     CHECK(rig.session().octavesShown() == zoom);
+    // Down from BARS is back on the grid; up from BARS rounds to the bottom.
+    rig.tap(DOWN);
+    CHECK(!roll.cursorOnBars() && rig.project().bar == 3 && roll.cursorStep() == 0);
+    roll.moveCursorTo(60, 0);
+    rig.project().bar = 0;
+    rig.tap(UP);
+    CHECK(roll.cursorOnBars());
+    rig.tap(UP);
+    CHECK(!roll.cursorOnBars() && rig.project().bar == 3 && roll.cursorStep() == 15);
     // Shortening under the bar shown puts the roll back on its first bar.
-    rig.project().bar = 3;
     rig.session().setCellBars(1, 0, 1);
     rig.frames(1);
     CHECK(rig.project().bar == 0);
 }
 
-// BARS ON THE GRID: hold L1, left / right turns to the bar shown before or after, round the ends;
-// up / down steps the cell's bars. L1 let go opens no slices after.
+// BARS ON THE GRID: up from the tempo is the BARS stop: hold A with up / down steps the cell's
+// bars; left / right turn the bar shown before or after, round the ends. L1 is never held.
 void testDrumBarsLength() {
     Rig rig;
     PatternScreen& grid = rig.app.drums();
     CHECK(rig.track(0).bars[0] == 1);
-    const int lane = grid.cursorLane(), step = grid.cursorStep();
-    rig.key(L1, true);
-    rig.frames(1);
+    grid.moveCursorTo(0, 0);
+    rig.tap(UP);
+    CHECK(grid.cursorOnTempo());
+    rig.tap(UP);
+    CHECK(grid.cursorOnBars());
+    rig.key(A, true);
     rig.tap(UP);
     CHECK(rig.track(0).bars[0] == 2);
     rig.tap(DOWN);
     CHECK(rig.track(0).bars[0] == 1);
-    rig.key(L1, false);
-    rig.frames(1);
-    CHECK(!grid.slicing());
+    rig.key(A, false);
+    CHECK(grid.cursorOnBars() && grid.cursorLane() == 0 && grid.cursorStep() == 0); // the cursor never moved
     // Left / right turn the bar shown: round the ends, the cursor keeping its place.
     rig.session().setCellBars(0, 0, 4);
     rig.project().bar = 1;
-    rig.key(L1, true);
-    rig.frames(1);
     rig.tap(LEFT);
-    CHECK(rig.project().bar == 0 && grid.cursorLane() == lane && grid.cursorStep() == step);
+    CHECK(rig.project().bar == 0 && grid.cursorLane() == 0 && grid.cursorStep() == 0);
     rig.tap(LEFT);
     CHECK(rig.project().bar == 3); // round the start
     rig.tap(RIGHT);
     CHECK(rig.project().bar == 0); // ...and back round the end
-    rig.key(L1, false);
-    rig.frames(1);
-    CHECK(!grid.slicing());
+    // Down from BARS is back through the tempo to the lanes; up from BARS rounds to the bottom.
+    rig.tap(DOWN);
+    CHECK(!grid.cursorOnBars() && grid.cursorOnTempo());
+    rig.tap(DOWN);
+    CHECK(!grid.cursorOnTempo() && grid.cursorLane() == 0);
+    rig.tap(UP);
+    CHECK(grid.cursorOnTempo());
+    rig.tap(UP);
+    CHECK(grid.cursorOnBars());
+    rig.tap(UP);
+    CHECK(!grid.cursorOnBars() && !grid.cursorOnTempo() && grid.cursorLane() == kDrumLanes - 1);
 }
 
 int main(int argc, char** argv) {

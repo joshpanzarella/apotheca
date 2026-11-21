@@ -64,17 +64,24 @@ ModSettings ModKnob::rolled(const ModSettings& m, std::uint32_t seed) {
     if (modKind(m.kind) == kModStepper) {
         for (int i = 0; i < kModSteps; ++i)
             out.steps[i] = static_cast<float>(static_cast<int>(mix(seed + 977u * static_cast<std::uint32_t>(i)) % 201u) - 100) / 100.f;
-        return out;
+        return out; // the row only: DEPTH stays, as the STEPS line's roll
     }
-    // An LFO: a shape and a rate, never both as they were. The rates a wobble is heard at (the faster
-    // ones are mostly smoothed away on the newer effects: CLAUDE.md). A FREE one stays free: a shape
-    // and a SPEED, 0.1 to 5 Hz (the clicks between), never both as they were.
+    // An LFO: a shape, a rate and a depth, never all three as they were. The rates a wobble is
+    // heard at (the faster ones are mostly smoothed away on the newer effects: CLAUDE.md). DEPTH
+    // whole percents, 20 to 100 either way (less is barely felt). A FREE one stays free: a shape
+    // and a SPEED, 0.1 to 5 Hz (the clicks between), and a depth the same way.
+    const auto depth = [&](std::uint32_t i) {
+        const std::uint32_t d = mix(seed + 104729u * i + 1u);
+        const float magnitude = static_cast<float>(20u + d % 81u) / 100.f;
+        return (d >> 8) & 1u ? magnitude : -magnitude;
+    };
     if (modFree(m)) {
         for (std::uint32_t i = 0;; ++i) {
             const std::uint32_t roll = mix(seed + 7919u * i);
             out.shape = static_cast<int>(roll % kModShapes);
             out.speed = modSpeedClick(kSpeedRollFirst + static_cast<int>((roll >> 8) % (kSpeedRollLast - kSpeedRollFirst + 1)));
-            if (out.shape != m.shape || out.speed != m.speed) return out;
+            out.depth = depth(i);
+            if (out.shape != m.shape || out.speed != m.speed || out.depth != m.depth) return out;
         }
     }
     static const int rates[] = {kModRateEighth, kModRateQuarterTriplet, kModRateQuarter, kModRateDottedQuarter,
@@ -83,7 +90,8 @@ ModSettings ModKnob::rolled(const ModSettings& m, std::uint32_t seed) {
         const std::uint32_t roll = mix(seed + 7919u * i);
         out.shape = static_cast<int>(roll % kModShapes);
         out.rate = rates[(roll >> 8) % (sizeof rates / sizeof rates[0])];
-        if (out.shape != m.shape || out.rate != m.rate) return out;
+        out.depth = depth(i);
+        if (out.shape != m.shape || out.rate != m.rate || out.depth != m.depth) return out;
     }
 }
 

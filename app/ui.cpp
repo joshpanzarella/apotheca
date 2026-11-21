@@ -213,6 +213,7 @@ TopBar topBar(SDL_Renderer* r, const Fonts& chosen, View view, const char* conte
     fonts.small.draw(r, x, textY, shown, kText);
     bar.wordsX = x;
     bar.wordsRoom = room - x;
+    bar.wordsWidth = fonts.small.width(shown);
     return bar;
 }
 

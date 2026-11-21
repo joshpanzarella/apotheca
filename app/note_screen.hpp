@@ -35,16 +35,18 @@
 //                         will not land on another note.
 //   hold R1 on an empty step, and drag    paint a note on every step crossed
 //   L1                    zoom: a tap goes closer (2 octaves, 1, round to 3)
-//   hold L1, left / right the bar before or after, round the ends
-//   hold L1, up / down    BARS: the cell's, more or fewer (1, 2, 4 or 8, as the
-//                         Song screen's hold A). One step of undo
+//   BARS (up from step 1 of bar 1)
+//                         left / right: the bar before or after, round the ends.
+//                         Hold A, up / down: the cell's count, more or fewer
+//                         (1, 2, 4 or 8, as the Song screen's hold A). One step
+//                         of undo. Up from BARS comes round to the bottom.
 //   hold L1, R1           copy the bar on screen: its notes and chords
 //   hold L1, A            paste it over the bar on screen (another bar, cell, scene,
 //                         or synth or sampler track). One step of undo; on the same
 //                         track its automation goes with it
 //   START                 play / stop (this scene, looping)
 //
-// A cell can be 1, 2, 4 or 8 bars long (the Song screen's hold A, or L1 held
+// A cell can be 1, 2, 4 or 8 bars long (the Song screen's hold A, or the BARS stop
 // here). The roll shows one bar; running the cursor off the bottom goes on
 // to the next bar, and the top bar says which (BAR 2 OF 4). A note may run on
 // over the bar lines to the end of the cell; in the bars after, it shows
@@ -97,6 +99,7 @@ public:
     void moveCursorTo(int pitch, int step);
     int cursorPitch() const { return pitch_; }
     int cursorStep() const { return step_; }
+    bool cursorOnBars() const { return onBars_; }
     bool carrying() const { return carrying_ != Carry::Nothing; }
     int lowestKeyShown() const { return low_; }
     // The note under the cursor, or nullptr.
@@ -163,8 +166,9 @@ private:
     int gridTop() const;
     int cellW() const;
     void keepInView();
-    bool barsPushed_ = false;
-    bool zooming_ = false, zoomUsed_ = false; // L1 is held; it did something with up / down (or copied, or pasted)
+    bool barsPushed_ = false; // the stick's push for the next bar more or fewer, on the BARS stop
+    bool onBars_ = false;     // BARS, above the grid: the bar shown, and the cell's count
+    bool zooming_ = false, zoomUsed_ = false; // L1 is held; it did something (copied, pasted, moved)
     bool l1First_ = false; // L1 is held and went down with nothing else held: R1 let go unmoved copies the bar, A pastes it
     bool copyBarArmed_ = false; // ...R1 went down after it: let go where it went down, the bar copies
     int copyBarPitch_ = 0, copyBarStep_ = 0;

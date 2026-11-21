@@ -135,7 +135,7 @@ SDL_Color faded(SDL_Color c, int alpha);
 // whether it is playing. Returns the x where the tempo's number ends and the
 // x of the play mark, for a screen that puts a cursor on the tempo.
 constexpr float kTabPad = 5.f; // either side of a tab's word in the top bar
-struct TopBar { float tempoNumberRight, tempoRight, wordsX = 0.f, wordsRoom = 0.f; }; // wordsX / wordsRoom: where the screen's own words start, and the room they had
+struct TopBar { float tempoNumberRight, tempoRight, wordsX = 0.f, wordsRoom = 0.f, wordsWidth = 0.f; }; // wordsX / wordsRoom: where the screen's own words start, and the room they had; wordsWidth: how wide they drew
 TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* context, const Project& project);
 
 // A line that runs across a recording's picture while it is heard. It is

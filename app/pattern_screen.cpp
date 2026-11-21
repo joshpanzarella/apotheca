@@ -133,7 +133,7 @@ void PatternScreen::fxRoll() {
 // With X held on a lane's name, one click of its FEEL. Left and right: HUMAN TIME. Up and down:
 // HUMAN LEVEL. It stops at each end. Nothing is heard for it: the feel is the playing pattern's.
 void PatternScreen::feelTurn(Button direction) {
-    if (onTempo_ || step_ != kLaneName) return;
+    if (onTempo_ || onBars_ || step_ != kLaneName) return;
     LaneFeel feel = trk().laneFeel[lane_];
     if (direction == Button::Right || direction == Button::Left) feel.time = static_cast<std::uint8_t>(feelAmountStep(feel.time, direction == Button::Right ? 1 : -1));
     else feel.level = static_cast<std::uint8_t>(feelAmountStep(feel.level, direction == Button::Up ? 1 : -1));
@@ -142,7 +142,7 @@ void PatternScreen::feelTurn(Button direction) {
 
 // ...Y rolls the dice for it: a small feel, never none and never what it was.
 void PatternScreen::feelRoll() {
-    if (onTempo_ || step_ != kLaneName) return;
+    if (onTempo_ || onBars_ || step_ != kLaneName) return;
     const LaneFeel feel = feelDice(trk().laneFeel[lane_], dice_);
     session_.setLaneFeel(project_.track, lane_, feel.time, feel.level);
 }
@@ -150,7 +150,7 @@ void PatternScreen::feelRoll() {
 // ...A puts this lane's feel on every lane of the kit, its SWING with it (a lane at OFF: every lane
 // plays plain again).
 void PatternScreen::feelToAll() {
-    if (onTempo_ || step_ != kLaneName) return;
+    if (onTempo_ || onBars_ || step_ != kLaneName) return;
     const LaneFeel feel = trk().laneFeel[lane_];
     const int swing = trk().laneSwing[lane_];
     for (int lane = 0; lane < kDrumLanes; ++lane) {
@@ -161,7 +161,7 @@ void PatternScreen::feelToAll() {
 
 // ...L1 and R1: one click of its SWING, less and more, through the six amounts; it stops at each end.
 void PatternScreen::swingTurn(int by) {
-    if (onTempo_ || step_ != kLaneName) return;
+    if (onTempo_ || onBars_ || step_ != kLaneName) return;
     session_.setLaneSwing(project_.track, lane_, feelAmountStep(trk().laneSwing[lane_], by));
 }
 
@@ -317,6 +317,11 @@ void PatternScreen::stepBars(int by) {
     const int to = now + by;
     if (to < 0 || to > 3) return;
     session_.setCellBars(project_.track, project_.scene, lengths[to]);
+}
+
+void PatternScreen::moveBar(int by) {
+    const int bars = trk().bars[project_.scene] < 1 ? 1 : trk().bars[project_.scene];
+    project_.bar = (project_.bar + by + bars) % bars;
 }
 
 int PatternScreen::sliceOf(int step) const {
@@ -521,6 +526,7 @@ void PatternScreen::diceReshuffle() {
 
 void PatternScreen::moveCursorTo(int lane, int step) {
     onTempo_ = false;
+    onBars_ = false;
     lane_ = (lane % kDrumLanes + kDrumLanes) % kDrumLanes;
     // Seventeen stops across: the lane's name, then the sixteen steps.
     step_ = ((step + 1) % (kSteps + 1) + (kSteps + 1)) % (kSteps + 1) - 1;
@@ -531,10 +537,18 @@ void PatternScreen::moveCursor(Button direction) {
         sliceUpDown(direction == Button::Up ? 1 : -1); // one lane is showing: up and down are the slice
         return;
     }
+    if (onBars_) {
+        // BARS sits above the tempo; down goes back to it, up comes round to the bottom.
+        // Left and right show the bar before or after, round the ends.
+        if (direction == Button::Down) onBars_ = false, onTempo_ = true;
+        if (direction == Button::Up) onBars_ = false, lane_ = kDrumLanes - 1;
+        if (direction == Button::Left || direction == Button::Right) moveBar(direction == Button::Right ? 1 : -1);
+        return;
+    }
     if (onTempo_) {
-        // The tempo sits above the top lane; up from it comes round to the bottom.
+        // The tempo sits above the top lane; up from it is BARS.
         if (direction == Button::Down) onTempo_ = false, lane_ = 0;
-        if (direction == Button::Up) onTempo_ = false, lane_ = kDrumLanes - 1;
+        if (direction == Button::Up) onTempo_ = false, onBars_ = true;
         return;
     }
     if (direction == Button::Up) {
@@ -571,7 +585,12 @@ void PatternScreen::dragCursor(Button direction) {
 
 void PatternScreen::turnUpDown(float amount) {
     if (amount == 0.f) return;
-    if (onTempo_) {
+    if (onBars_) {
+        // BARS, a bar more or fewer for each whole push: the ends stop.
+        barsSaved_ += amount;
+        for (; barsSaved_ >= 1.f; barsSaved_ -= 1.f) stepBars(1);
+        for (; barsSaved_ <= -1.f; barsSaved_ += 1.f) stepBars(-1);
+    } else if (onTempo_) {
         setTempo(tempoExact_ + amount * (feel.tempoPerSecond / feel.fillPerSecond));
     } else if (step_ == kLaneName) {
         setLaneLevel(trk().laneLevel[lane_] + amount);
@@ -589,7 +608,7 @@ void PatternScreen::turnSideways(float amount) {
 
 void PatternScreen::turnChance(float amount) {
     if (amount == 0.f) return;
-    if (!onTempo_ && step_ == kLaneName) {
+    if (!onTempo_ && !onBars_ && step_ == kLaneName) {
         // On a lane's name, Y is the dice: more hits or fewer.
         diceTurn(amount / feel.fillPerSecond * kDiceHitsPerSecond);
         yDidSomething_ = true;
@@ -606,7 +625,7 @@ void PatternScreen::nudgeExact(Button direction, bool withY) {
     const float sign = direction == Button::Up || direction == Button::Right ? 1.f : -1.f;
     const bool vertical = direction == Button::Up || direction == Button::Down;
     if (withY) {
-        if (vertical && !onTempo_ && step_ == kLaneName) {
+        if (vertical && !onTempo_ && !onBars_ && step_ == kLaneName) {
             if (sign > 0.f) diceAdd(); // exactly one hit more, or one fewer
             else diceRemove();
             yDidSomething_ = true;
@@ -614,9 +633,9 @@ void PatternScreen::nudgeExact(Button direction, bool withY) {
             setChance(lane_, step_, nextTenth(pat().chance[lane_][step_], sign));
             turning_ = Turning::Chance;
             yDidSomething_ = true;
-        } else if (!vertical && !onTempo_ && step_ == kLaneName && evening_) {
+        } else if (!vertical && !onTempo_ && !onBars_ && step_ == kLaneName && evening_) {
             evenLane(evenHits_, evenTurn_ + (sign > 0.f ? 1 : -1)); // EVEN: the pattern a step later or earlier
-        } else if (!vertical && !onTempo_ && step_ == kLaneName) {
+        } else if (!vertical && !onTempo_ && !onBars_ && step_ == kLaneName) {
             rolled_ = false;
             turnStart(sign); // roll the lane's starts, or put them back
             rolled_ = false; // each press of the D-pad is its own roll
@@ -630,6 +649,8 @@ void PatternScreen::nudgeExact(Button direction, bool withY) {
         }
     } else if (onTempo_) {
         setTempo(project_.tempo + sign * (vertical ? 1.f : 10.f));
+    } else if (onBars_) {
+        if (vertical) stepBars(sign > 0.f ? 1 : -1); // (sideways never reaches: the bar moves instead)
     } else if (step_ == kLaneName) {
         if (vertical) setLaneLevel(nextTenth(trk().laneLevel[lane_], sign));
     } else if (hitHere()) {
@@ -723,27 +744,14 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         else session_.pasteBarHere(), aSpent_ = true; // (A's hold does nothing either: no nudge with the D-pad)
         return;
     }
-    // Hold L1, left / right: the bar before or after, round the ends. Up / down: the cell's bars,
-    // more or fewer. Only with L1 held first and nothing else going: shaping, painting, the dice,
-    // the step effects and the feel keep the keys, and R1 or A held is a bar copy or paste on its way.
-    if (event.down && l1First_ && input.held(Button::L1) && !input.held(Button::X) && !shaping_ && paint_ == Paint::None && !dicing_ && !fxHeld_ && !feelHeld_ && !onTempo_ &&
-        !input.held(Button::R1) && !input.held(Button::A)) {
-        if (b == Button::Left || b == Button::Right) {
-            const int bars = trk().bars[project_.scene] < 1 ? 1 : trk().bars[project_.scene];
-            project_.bar = (project_.bar + (b == Button::Right ? 1 : bars - 1)) % bars;
-            return;
-        }
-        if (b == Button::Up || b == Button::Down) {
-            stepBars(b == Button::Up ? 1 : -1);
-            return;
-        }
-    }
+    // (The bar shown and the cell's count live on the BARS stop now, above the tempo: L1 is
+    // the slices' zoom, and with R1 or A the bar's copy and paste.)
     if (b == Button::X) {
         // Hears what is under the cursor, as everywhere. On a hit it is also a hold: the stick then sets its step effects.
         fxHeld_ = event.down && hitHere() && !shaping_ && !dicing_ && paint_ == Paint::None;
         // On a lane's name it is the same hold for the lane's FEEL, and the drum is heard as ever
         // (for as long as X is held: a recording to its end; the Session lets it go).
-        feelHeld_ = event.down && !onTempo_ && step_ == kLaneName && !shaping_ && !dicing_ && paint_ == Paint::None;
+        feelHeld_ = event.down && !onTempo_ && !onBars_ && step_ == kLaneName && !shaping_ && !dicing_ && paint_ == Paint::None;
         fxSaved_ = 0.f;
         fxWas_ = false;
         // A direction that was already held (the cursor was on its way here) is not a turn of the
@@ -751,7 +759,7 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         fxWait_ = input.stickX() != 0.f || input.stickY() != 0.f;
         if (fxHeld_ || feelHeld_) repeating_ = Button::None;
         axis_ = Axis::None;
-        if (!event.down || onTempo_) return;
+        if (!event.down || onTempo_ || onBars_) return;
         // On the lane's name or an empty step it sounds for as long as X is held (the Session lets it
         // go). A hit is heard as the pattern plays it: X held there is the step effects' hold.
         if (hitHere()) hearHit();
@@ -766,13 +774,13 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
             l1First_ = !shaping_ && !dicing_ && paint_ == Paint::None;
             l1Used_ = false;
         } else {
-            if (l1First_ && !l1Used_) setSlicing(!slicing_);
+            if (l1First_ && !l1Used_ && !onBars_) setSlicing(!slicing_);
             l1First_ = false;
         }
         return;
     }
     if (b == Button::A) {
-        if (event.down && !onTempo_) {
+        if (event.down && !onTempo_ && !onBars_) {
             if (step_ == kLaneName) audition(lane_, kNewHitLevel);
             else if (!hitHere()) placeHit(1.f);
         }
@@ -789,14 +797,14 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
                 placeHit(kMaybe); // a "maybe" hit
                 yDidSomething_ = true;
             }
-        } else if (!yDidSomething_ && !onTempo_ && step_ == kLaneName) {
+        } else if (!yDidSomething_ && !onTempo_ && !onBars_ && step_ == kLaneName) {
             diceReshuffle(); // a plain tap on a lane's name rolls the dice
         } else if (!yDidSomething_ && hitHere()) {
             // A plain tap on a hit steps its chance down a quarter, and round again.
             const float now = pat().chance[lane_][step_];
             setChance(lane_, step_, now > 0.76f ? 0.75f : now > 0.51f ? 0.5f : now > 0.26f ? 0.25f : 1.f);
         }
-        dicing_ = event.down;
+        dicing_ = event.down && !onBars_;
         diceSaved_ = 0.f;
         axis_ = Axis::None;
         if (!event.down && !shaping_) turning_ = Turning::Nothing;
@@ -806,7 +814,7 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         const Paint mine = Paint::OneLevel;
         if (!event.down) {
             paint_ = Paint::None; // whichever brush it was
-        } else if (!shaping_ && !dicing_ && paint_ == Paint::None) {
+        } else if (!shaping_ && !dicing_ && paint_ == Paint::None && !onBars_) {
             paint_ = mine;
             // The brush takes the level of the hit it starts on, or 90%.
             brush_ = hitHere() ? pat().level[lane_][step_] : kNewHitLevel;
@@ -821,7 +829,8 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
 
     if (isDirection(b)) {
-        if (feelHeld_) feelTurn(b);
+        if (onBars_ && (b == Button::Left || b == Button::Right)) moveBar(b == Button::Right ? 1 : -1);
+        else if (feelHeld_) feelTurn(b);
         else if (fxHeld_) fxTurn(b);
         else if (input.held(Button::Y) && !ySpent_) nudgeExact(b, true);
         else if (input.held(Button::A) && !aSpent_) nudgeExact(b, false);
@@ -832,7 +841,7 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
 
     const bool busy = input.held(Button::A) || input.held(Button::Y);
-    if (b == Button::B && !busy) {
+    if (b == Button::B && !busy && !onBars_) {
         // Deletes the hit under the cursor and, held, every hit the cursor is dragged over.
         erasing_ = true;
         if (hitHere()) setStep(lane_, step_, 0.f);
@@ -849,7 +858,7 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
     if (!input.held(Button::R1)) paint_ = Paint::None;
     if (!input.held(Button::B)) erasing_ = false;
     if (!input.held(Button::X) || !hitHere()) fxHeld_ = false;
-    if (!input.held(Button::X) || onTempo_ || step_ != kLaneName) feelHeld_ = false;
+    if (!input.held(Button::X) || onTempo_ || onBars_ || step_ != kLaneName) feelHeld_ = false;
     if (!input.held(Button::A)) aSpent_ = false;
     if (!input.held(Button::Y)) ySpent_ = false;
     if (!input.held(Button::L1)) l1First_ = false;
@@ -987,7 +996,7 @@ void PatternScreen::drawChokeMark(SDL_Renderer* r, int nameY, int group) {
 
 void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char text[64];
-    const bool onName = !onTempo_ && step_ == kLaneName;
+    const bool onName = !onTempo_ && !onBars_ && step_ == kLaneName;
     const bool held = shaping_ || dicing_;
     const SDL_Color cursorColor = held || paint_ != Paint::None ? kBrass : kTeal;
 
@@ -1012,6 +1021,10 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         std::snprintf(text, sizeof text, "%d", static_cast<int>(project_.tempo));
         tight.small.drawRight(r, top.tempoRight, textY, "BPM", kText);
         tight.small.drawRight(r, top.tempoNumberRight, textY, text, kText);
+    }
+    if (onBars_) {
+        // BARS is the readout itself, outlined where it drew (it shortens while playing).
+        outline(r, static_cast<int>(top.wordsX) - 4, 2, static_cast<int>(top.wordsWidth) + 8, kTopBarH - 4, cursorColor, 2);
     }
 
     if (slicing_) {
@@ -1045,7 +1058,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         }
         if (nameHere) outline(r, kNameX - 1, y - 1, kNameW + 2, kCellH + 2, cursorColor, 2);
         const Font& nameFont = fonts.within(&Fonts::medium, laneLabel(lane), kNameW - 13.f); // (a long recording's name at XL: held at LARGE)
-        nameFont.draw(r, static_cast<float>(kNameTextX), y + (kCellH - nameFont.capHeight()) / 2.f, laneLabel(lane), !onTempo_ && lane == lane_ ? kTeal : kText);
+        nameFont.draw(r, static_cast<float>(kNameTextX), y + (kCellH - nameFont.capHeight()) / 2.f, laneLabel(lane), !onTempo_ && !onBars_ && lane == lane_ ? kTeal : kText);
         drawFeelMark(r, y, trk().laneFeel[lane]);
         drawSwingMark(r, y, trk().laneSwing[lane]);
         drawChokeMark(r, y, trk().laneChoke[lane]);
@@ -1119,7 +1132,11 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fill(r, bx, stripY + 20, 150, 6, kLine);
         if (part > 0.f) fill(r, bx, stripY + 20, static_cast<int>(std::round(150 * part)), 6, color);
     };
-    if (onTempo_) {
+    if (onBars_) {
+        field(8.f, "CELL", "BARS", kText);
+        std::snprintf(text, sizeof text, "%d OF %d", project_.bar + 1, trk().bars[project_.scene]);
+        field(134.f, "BAR", text, cursorColor);
+    } else if (onTempo_) {
         field(8.f, "SONG", "TEMPO", kText);
         std::snprintf(text, sizeof text, "%d", static_cast<int>(project_.tempo));
         field(134.f, "BPM", text, cursorColor);
@@ -1252,8 +1269,6 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         ui::hintsUnder(r, fonts, "Y", under, 5);
         return;
     } else if (l1First_ && !held && paint_ == Paint::None) {
-        hint("UP / DOWN", "bar count");
-        hint("LEFT / RIGHT", "change bar");
         hint("R1", "copy bar");
         hint("A", "paste bar");
     } else if (slicing_ && paint_ == Paint::OneLevel) {
@@ -1304,7 +1319,11 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("R1 / L1", "even");
         hint("TAP Y", "reshuffle");
     } else if (shaping_) {
-        hint("UP / DOWN", onTempo_ ? "tempo" : "drum volume");
+        hint("UP / DOWN", onTempo_ ? "tempo" : onBars_ ? "more / fewer" : "drum volume");
+    } else if (onBars_) {
+        hint("LEFT / RIGHT", "bar");
+        hint("HOLD A", "more / fewer");
+        hint("START", project_.playing ? "stop" : "play");
     } else if (onTempo_) {
         hint("A", "tap");
         hint("HOLD A", "tempo");

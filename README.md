@@ -264,6 +264,7 @@ to the sound just now.
 | | Hold A + left / right | The **TYPE**, for an effect that has types. Tried too, with the settings the two types share; let go and it goes in, its automation moved with it |
 | | Hold A, then **B** | **As it was**: nothing tried goes in. Leaving the screen or the track with A held does the same |
 | | Hold B | **Deletes the effect**, with its settings and its automation: a bar fills for a second, and the heading says DELETING: CANNOT BE UNDONE. Let go sooner and it stays. On SENDS a tap of B: nothing sent. |
+| | Hold Y + up / down | On one of the track's own three lines: **moves it** there, settings, automation and MODs with it. The cursor goes with it; the ends stop. One step of undo. The buses' and the master's never move. |
 | The settings | Up / down | The next setting |
 | | Left | Back to the list, on the same line, from any setting. (Right does nothing here.) |
 | | **Hold A + left / right** | **The TYPE before / after** (COMP to DUCK), at once, in the same grip that turns the value: the cursor stays on its row. The first and the last type stop. |
@@ -816,7 +817,7 @@ Each button's chip in the bottom bar stands under the field it sets.
 | Left / right | RATE: 1/2 STEP up to 8 BARS, then **FREE** (an LFO only), a click a push |
 | A | SHAPE: the next wave; after DRIFT, a STEPPER (its row rolled); then SINE again |
 | L1 / R1 | An LFO's PHASE (0, 1/4, 1/2, 3/4); a FREE LFO's **SPEED** (a click, next rule); a STEPPER's LENGTH (1 to 16) |
-| Y | The dice: a STEPPER's row; an LFO's shape and rate (a FREE one's shape and SPEED, 0.1 to 5 Hz: it stays free; DEPTH stays) |
+| Y | The dice: a STEPPER's row; an LFO's shape, rate and depth (a FREE one's shape, SPEED and depth, 0.1 to 5 Hz: it stays free) |
 | **Hold B** | Deletes the MOD (a second; the strip fills) |
 
 NOW, at the right, shows what the MOD is adding this moment. With the song
@@ -1481,6 +1482,10 @@ A **cell** (one track in one scene) can be **1, 2, 4 or 8 bars** long.
 - On the PATTERN screen the grid shows one bar. Run the cursor off the end
   of step 16 and you are in the next bar; the top bar says **BAR 2 OF 4**.
   On the drum grid the lane's name is always one left of step 1.
+- **Up from the top is the BARS stop** (up from the tempo on the drums, up
+  from step 1 of bar 1 on the roll): left / right show the bar before or
+  after, and hold A with up / down sets the cell's count. The bottom bar
+  says so while you are there.
 - On the piano roll **a note may run on over the bar lines**, to the end of
   the cell. In the bars after, it shows faint from the top; it is changed
   in the bar it starts in.
@@ -1704,9 +1709,9 @@ Hold **B** and drag to delete every hit the cursor crosses.
 
 **Hold L1 and press R1** to copy the bar on screen, **hold L1 and press A**
 to paste it over the bar on screen (see "Copy a bar, paste it on another").
-**Hold L1, left / right** turns to the bar before or after, round the ends;
-**hold L1, up / down** sets the cell's bars, more or fewer (1, 2, 4 or 8, as
-the SONG screen's hold A).
+**Up from the tempo is the BARS stop**: left / right turn to the bar before
+or after, round the ends; hold A with up / down sets the cell's bars, more
+or fewer (1, 2, 4 or 8, as the SONG screen's hold A).
 
 Hold **R1** and drag to paint hits at one level (the level of the hit you
 started on, or 90%). **Add R2 while R1 is held** and the brush paints
@@ -2124,8 +2129,7 @@ is loud; holding A shapes it the way it is drawn.
 | **Hold X on a note**, L1 / R1 | **GLIDE FROM**, for the whole track: which key of a chord its glides come from. R1 is the next of TOP, PAIRED, NEAREST, RANDOM; L1 the one before. It stops at each end |
 | **Hold R1 on a note** and move | Carry the note (or the whole chord) under the cursor. **D-pad:** to another key, or a whole step. **Stick up / down:** it slides freely in time, off the grid. **L1 held:** left / right go an octave at a time. It stops at the ends of the bar and will not land on another note. |
 | L1 | Zoom: a tap goes closer (2 octaves, 1, then round to 3) |
-| Hold L1, left / right | The bar before or after, round the ends |
-| Hold L1, up / down | **Bars**: the cell's, more or fewer (1, 2, 4 or 8, as the SONG screen's hold A). One step of undo |
+| BARS (up from step 1 of bar 1) | Left / right: the bar before or after, round the ends. **Hold A, up / down**: the cell's count, more or fewer (1, 2, 4 or 8, as the SONG screen's hold A). One step of undo |
 | Hold L1, R1 / A | **Copy** the bar on screen (let go of R1 unmoved) / **paste** it over the bar on screen (see "Copy a bar, paste it on another"). The tap's zoom does not happen as well |
 
 A note runs at most to the end of the bar, or to the next note on that key.
