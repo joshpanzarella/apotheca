@@ -160,7 +160,15 @@ private:
     void stepSceneTempo(int scene, int by);
     void stepSceneMeter(int scene, int by);
     void clearCell(int track, int scene);
-    void copyCell(int fromTrack, int fromScene, int toTrack, int toScene);
+    struct CellCopy { // R1's cell, as it was copied: edits after COPY never leak into the paste
+        bool has = false;
+        TrackKind kind = TrackKind::None;
+        int bars = 1;
+        DrumPattern drums[kMaxBars];
+        NotePattern notes[kMaxBars];
+        float automation[kAutoLanes][kAutoSteps];
+    };
+    void copyCell(const CellCopy& from, int toTrack, int toScene);
     void pasteCellHere(int toTrack, int toScene);
 
     Session& session_;
@@ -211,7 +219,9 @@ private:
     float sceneHoldPart_ = 0.f;
     int sceneHoldScene_ = 0; // ...on this scene (leaving it calls it off)
     float trackHoldPart_ = 0.f;
-    bool cellCopied_ = false; // R1 copied a cell: the clipboard carries it (copyTrack_, copyScene_)
+    bool cellCopied_ = false; // R1 copied a cell: the clipboard carries it (cellCopy_)
+    CellCopy cellCopy_;
+    int tracksSeen_ = -1; // track count last frame: a change clears the copy (its cell moved)
     bool cellPasteArmed_ = false; // R1 went down on another cell with one copied: let go, it pastes there
     int cellPasteTrack_ = 0, cellPasteScene_ = 0; // ...on this cell (where it went down, wherever the cursor is now)
     // DUPLICATE A TRACK: L1 held on a track's head, then R1 (COPY A BAR's keys). It is done when R1 is LET

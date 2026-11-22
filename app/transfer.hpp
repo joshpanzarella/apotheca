@@ -109,6 +109,7 @@ public:
     static std::string selfCommand(const std::string& args);
 
     static constexpr std::size_t kLargestFile = 30u * 1024u * 1024u;
+    static int requestMs; // 120000: a request that takes longer is closed; tests make it short
 
 private:
     void serve();

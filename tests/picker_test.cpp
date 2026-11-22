@@ -1359,6 +1359,29 @@ void testWifiChangesAppearAtOnce() {
     session.transfer().noteChange("kicks/707.wav", "");
     rig.frames(2);
     CHECK(list.count() == 1 && list.under() && list.under()->kind == Kind::NewFolder);
+    // A rescan in the middle of hold-B calls the delete off: the recording WiFi took is not
+    // replaced by whatever slid under the cursor, and letting go is no tap (audit #5).
+    card.wav("snares/606", 100);
+    session.transfer().noteChange("", "snares/606.wav");
+    rig.frames(2);
+    rig.tap(LEFT);
+    rig.frames(1);
+    CHECK(rig.goTo(Kind::Folder, "snares"));
+    rig.tap(A);
+    rig.frames(1);
+    for (int i = 0; i < 3 && !(list.under() && list.under()->kind == Kind::Recording && list.under()->name == "snares/606"); ++i) rig.tap(DOWN);
+    CHECK(list.under() && list.under()->name == "snares/606");
+    rig.key(B, true);
+    rig.frames(30);
+    CHECK(list.deletePart() > 0.3f);
+    CHECK(std::remove((card.samples + "/snares/606.wav").c_str()) == 0);
+    session.transfer().noteChange("snares/606.wav", "");
+    rig.frames(2); // rescan: the hold is called off (snares/909 slid under the cursor)
+    CHECK(list.deletePart() == 0.f && list.isOpen());
+    rig.frames(70); // held past the second all the same: nothing goes
+    CHECK(exists(card.samples + "/snares/909.wav") && list.isOpen());
+    rig.key(B, false);
+    CHECK(list.isOpen()); // swallowed, not B's tap (which closes)
 }
 
 int main(int argc, char** argv) {

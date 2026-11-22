@@ -49,9 +49,9 @@ void Session::setSynthSetting(int track, int id, int value) {
     c.a = realId;
     c.b = realValue;
     engine.send(c);
-    // MORPH reads TABLE A, TABLE B (B on or off) and UNISON at a key's strike: a key X holds on this track
-    // is struck again, so the change is heard (wavetable-plan.md, call 13). It stays held.
-    if (t.kind == TrackKind::Morph && (realId == morph::TableA || realId == morph::TableB || realId == morph::Unison) && hearingHeld() &&
+    // MORPH reads TABLE A, TABLE B (B on or off), UNISON and WIDTH at a key's strike: a key X holds
+    // on this track is struck again, so the change is heard (wavetable-plan.md, call 13). It stays held.
+    if (t.kind == TrackKind::Morph && (realId == morph::TableA || realId == morph::TableB || realId == morph::Unison || realId == morph::Width) && hearingHeld() &&
         heard_.lane < 0 && heard_.track == track)
         audition(track, heard_.pitch, kPlacedLevel);
 }
@@ -237,6 +237,7 @@ bool Session::savePreset(int track, const std::string& typed) {
     const std::vector<UserPreset>& mine = userPresets(t.kind);
     for (std::size_t i = 0; i < mine.size(); ++i)
         if (mine[i].name == name) t.preset = builtInPresets(t.kind) + static_cast<int>(i);
+    if (undoReady_) soundMark_ = soundMark(); // retargeting the number is not an edit (a file saved)
     return true;
 }
 
@@ -859,9 +860,11 @@ void Session::serveFx(const DesignRequest& r) {
     } else if (id < kFxMixIds) {
         const int s = id - kFxMasterIds;
         setEffectParam(kMasterTrack, s / kEffectParams, s % kEffectParams, r.value);
-    } else { // the mixer: whole dB and pan, the other kept
+    } else { // the mixer: whole dB and pan, the other kept (held first: past long's end it is no int)
         const TrackData& t = project.tracks[track];
-        setMix(track, id == kFxMixDb ? static_cast<int>(std::lround(r.value)) : t.mixDb, id == kFxMixPan ? static_cast<int>(std::lround(r.value)) : t.mixPan);
+        const float db = !(r.value >= kMixLeastDb) ? kMixLeastDb : (r.value > kMixMostDb ? kMixMostDb : r.value);
+        const float pan = !(r.value >= -kPanMost) ? -kPanMost : (r.value > kPanMost ? kPanMost : r.value);
+        setMix(track, id == kFxMixDb ? static_cast<int>(std::lround(db)) : t.mixDb, id == kFxMixPan ? static_cast<int>(std::lround(pan)) : t.mixPan);
     }
 }
 
@@ -913,7 +916,7 @@ void Session::hearMidi() {
     while (midi_.poll(event)) {
         ++midiHeard_;
         if (event.kind == MidiEvent::NoteOn) midiKey_ = event.note;
-        const int scene = playScene(), step = engine.playStep();
+        const int scene = project.playScene, step = project.playStep;
         // Let go: the recorded note is as long as it was held, in whole steps, to the end of its bar at most.
         Recording& rec = recordingNote_[event.note];
         if (event.kind == MidiEvent::NoteOff && rec.on) {
@@ -922,7 +925,7 @@ void Session::hearMidi() {
             NoteEvent& note = track.notes[rec.scene][rec.bar].notes[rec.slot];
             if (note.velocity > 0.f && note.pitch == event.note) {
                 const int bars = track.bars[rec.scene];
-                const int all = bars * kSteps, now = scene == rec.scene && step >= 0 ? (engine.playBar() % bars) * kSteps + step : rec.startedAt;
+                const int all = bars * kSteps, now = scene == rec.scene && step >= 0 ? (project.playBar % bars) * kSteps + step : rec.startedAt;
                 int held = ((now - rec.startedAt) % all + all) % all;
                 if (held < 1) held = 1;
                 if (held > kSteps - note.step) held = kSteps - note.step;
@@ -933,7 +936,7 @@ void Session::hearMidi() {
         }
         if (event.kind != MidiEvent::NoteOn || !midiRecord_ || !project.playing || scene < 0 || step < 0) continue;
         TrackData& track = project.current();
-        const int bar = engine.playBar() % track.bars[scene];
+        const int bar = project.playBar % track.bars[scene];
         if (kind == TrackKind::Drums) {
             DrumPattern& pattern = track.drums[scene][bar];
             const int lane = midiDrumLane(event.note);

@@ -414,6 +414,7 @@ void Session::setSceneTempo(int scene, float bpm) {
     bpm = bpm < 1.f ? 0.f : (bpm < kMinTempo ? kMinTempo : (bpm > kMaxTempo ? kMaxTempo : bpm));
     if (bpm == project.sceneTempo[scene]) return;
     project.sceneTempo[scene] = bpm;
+    noteEdit(); // a step of undo: undo restores it, so changing it must mark one
     Command c;
     c.type = Command::SetSceneTempo;
     c.scene = scene;
@@ -426,6 +427,7 @@ void Session::setSceneMeter(int scene, int steps) {
     steps = steps < 1 ? 1 : (steps > kSteps ? kSteps : steps);
     if (steps == project.sceneMeter[scene]) return;
     project.sceneMeter[scene] = steps;
+    noteEdit(); // a step of undo: undo restores it, so changing it must mark one
     Command c;
     c.type = Command::SetSceneMeter;
     c.scene = scene;

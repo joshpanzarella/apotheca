@@ -205,6 +205,7 @@ private:
     Uint32 saidUntil_ = 0;
     bool stepped_ = false; // A was used to change something: letting go is not a tap
     std::vector<std::string> names_; // the recordings, read as A goes down on RECORDING
+    unsigned namesSeen_ = 0;        // sampleFiles() names_ was read at: behind, the next step reads it again
     void openPicker();
     void stepRecording(int by);
     void hearFromList(SamplePicker::Hear how);

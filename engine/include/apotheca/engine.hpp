@@ -442,6 +442,8 @@ public:
     // to wait (trashLost; never seen, it would take thousands in one frame).
     int trashHeld() const { return heldNow_.load(std::memory_order_relaxed); }
     unsigned trashLost() const { return trashLost_.load(std::memory_order_relaxed); }
+    unsigned notesLost() const { return notesLost_.load(std::memory_order_relaxed); } // waiting notes dropped: the pool was full
+    unsigned hitsLost() const { return hitsLost_.load(std::memory_order_relaxed); } // waiting hits dropped: the lane's slots were full
     bool caughtUp() const { return commands_.empty() && !holding_.load(std::memory_order_acquire); }
     // A track taken away while it sounds fades over this long first (no click). Commands sent
     // after the taking away wait for the fade: they are applied in the order sent.
@@ -494,7 +496,7 @@ public:
     // QUEUED MUTES: the number of the last SetTrackHeard asking (its c) once no track's gate waits for a
     // bar line any more: landed, called off, or never made to wait. Any thread, no lock.
     int heardDone() const { return heardDone_.load(std::memory_order_relaxed); }
-    bool trackHeard(int track) const { return tracks_[track].heard; } // (for the tests: the audio thread's own)
+    bool trackHeard(int track) const { return track >= 0 && track < kNumTracks ? tracks_[track].heard : false; } // (for the tests: the audio thread's own)
     bool clickOn() const { return clickOn_; } // what SetClick last said (for the tests: the audio thread's own)
     bool songStopsAtEnd() const { return songStop_; } // what SetSongEnd last said (for the tests: the audio thread's own)
     int playRepeat() const { return playRepeat_.load(std::memory_order_relaxed); } // 0-based pass through the scene
@@ -1064,6 +1066,8 @@ private:
     int heldCount_ = 0;
     std::atomic<int> heldNow_{0};
     std::atomic<unsigned> trashLost_{0};
+    std::atomic<unsigned> notesLost_{0};
+    std::atomic<unsigned> hitsLost_{0};
     void bin(const Trash& trash); // the audio thread only, with no helper at work
     void binHeld();               // the same
 };

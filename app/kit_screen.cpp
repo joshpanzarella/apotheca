@@ -70,6 +70,10 @@ void KitScreen::hearFromList(SamplePicker::Hear how) {
 // The built-in drum in the middle: UP the recordings by name, DOWN the twelve synth models (KICK
 // first, each at its usual knobs). So each is a press away, and the recordings are where they were.
 void KitScreen::stepSound(int by) {
+    if (session_.sampleFiles() != namesSeen_) { // the card changed mid-hold (WiFi): step through what is there now
+        namesSeen_ = session_.sampleFiles();
+        names_ = session_.sampleNames();
+    }
     const int models = drumsynth::kModels - 1, count = static_cast<int>(names_.size());
     const drumsynth::Voice& voice = trk().laneSynth[lane_];
     int now = voice.on() ? -voice.model : 0; // -1 KICK ... -12 NOISE, 0 the drum, 1.. the recordings
@@ -227,7 +231,7 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         holding_ = event.down;
         saved_ = 0.f;
-        if (event.down) names_ = session_.sampleNames(), stepped_ = false;
+        if (event.down) names_ = session_.sampleNames(), namesSeen_ = session_.sampleFiles(), stepped_ = false;
         return;
     }
     if (!event.down) {
@@ -1000,8 +1004,11 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (!holding_) {
         hint("Y", "catch");
         hint("R1", "record");
-        if (trk().laneSample[lane_][0]) hint("L1", "slices");
-        hint("START", project_.playing ? "stop" : "play");
+        // A recording on the lane has all six it can hold: START yields to the slices (it is on
+        // every other bar, and the top bar shows playing).
+        const bool slices = trk().laneSample[lane_][0] != 0;
+        if (slices) hint("L1", "slices");
+        if (!slices) hint("START", project_.playing ? "stop" : "play");
     }
     hints(r, fonts, list, count);
     picker_.draw(r, fonts); // over everything, when it is open

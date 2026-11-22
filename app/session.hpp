@@ -510,6 +510,10 @@ public:
     int undoSteps() const;
     int redoSteps() const { return static_cast<int>(redo_.size()); }
     void noteEdit(); // something in a pattern has just changed
+    // An edit's own step of undo, from outside (SongScreen::pasteCellHere): whatever was being
+    // edited just before ends here, and nothing after it joins the step (as pasteBar's inline).
+    void beginOwnUndoStep();
+    void endOwnUndoStep();
     void readUndoWhole(bool on) { readUndoWhole_ = on; } // the tests: every step of undo read back whole, as it was before (to hold the two the same)
 
     // ---- next scene ---------------------------------------------------------------------
@@ -616,7 +620,7 @@ public:
     };
     const std::vector<Kit>& kits();
     int kitOf(int track);                          // which kit of the list the track's kit is now, or -1 (its own)
-    bool loadKit(int track, int index);            // put on the track: every lane told to the engine. Not a step of undo
+    bool loadKit(int track, int index);            // put on the track: every lane told to the engine. One step of undo, the whole kit back (recordings with it)
     bool putKit(int track, const TrackData& kit);  // ...the kit fields of `kit` (copyKit's)
     std::string saveKit(int track);                // as the next free "KIT n": its name, or "" (no folder, or the card refused)
     bool deleteKit(int index);                     // an own kit's file, for good
@@ -699,6 +703,7 @@ public:
     void sendDrumPattern(int track, int scene);
     void sendDrumHit(int track, int scene, int bar, int lane, int step); // one hit of it, all of what it is: what a keyboard records
     void sendNotePattern(int track, int scene);
+    void sendTrackImage(int track); // every pattern of a track to the engine, in one piece (patterns and automation)
     // TRANSPOSE (easywins batch 3): every note and chord of a synth or sampler track's cell in a scene
     // (every bar of it, hidden ones too) `by` semitones, a chord's name with it (transposeChordName).
     // All or nothing: kTransposed, kNothingToMove (a drum track, an empty cell, no track), or
@@ -863,7 +868,6 @@ private:
     // (moved: a "next scene" lies between; see moveScenesHere). Only undo and redo call it, each just
     // after patternsNow(): readStep takes the text of each track now from what that made.
     void restorePatterns(const std::string& text, int movedFrom = 0, int movedBy = 0);
-    void sendTrackImage(int track);                  // every pattern of a track to the engine, in one piece
     std::unique_ptr<TrackImage> trackImage(int track) const; // ...made, not yet sent
     std::unique_ptr<SceneImage> sceneImage(int track, int scene) const; // one scene of a track
     unsigned imagesSent_ = 0;

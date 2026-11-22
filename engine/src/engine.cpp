@@ -104,6 +104,7 @@ Engine::~Engine() {
         if (command.type == Command::SetLaneSample) delete static_cast<SampleData*>(command.pointer);
         if (command.type == Command::InstallEffect) delete static_cast<Effect*>(command.pointer);
         if (command.type == Command::SetTrackSample) delete static_cast<SampleData*>(command.pointer);
+        if (command.type == Command::SetTrackZones) delete static_cast<sampler::SampleZoneSet*>(command.pointer);
         if (command.type == Command::ScenesMoved) delete static_cast<SceneMove*>(command.pointer);
     }
     if (holding_.load(std::memory_order_relaxed)) { // a command waiting for a fade that never ended
@@ -112,6 +113,7 @@ Engine::~Engine() {
         if (held_.type == Command::GiveScene) delete static_cast<SceneStore*>(held_.pointer);
         if (held_.type == Command::SetLaneSample || held_.type == Command::SetTrackSample) delete static_cast<SampleData*>(held_.pointer);
         if (held_.type == Command::InstallEffect) delete static_cast<Effect*>(held_.pointer);
+        if (held_.type == Command::SetTrackZones) delete static_cast<sampler::SampleZoneSet*>(held_.pointer);
         if (held_.type == Command::ScenesMoved) delete static_cast<SceneMove*>(held_.pointer);
     }
     collectGarbage();
@@ -812,6 +814,7 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples, doub
         p.ahead = asking_;
         return;
     }
+    notesLost_.fetch_add(1, std::memory_order_relaxed); // the pool was full: the note is dropped, and counted
 }
 
 // A chord's note, when the chord has an effect set: where in the strum it comes, how far
@@ -1571,7 +1574,7 @@ void Engine::apply(const Command& c) {
         }
         break;
     case Command::SetMacro:
-        if (validTrack(c.track) && tracks_[c.track].synth) {
+        if (validTrack(c.track) && tracks_[c.track].synth && c.value == c.value) {
             Track& track = tracks_[c.track];
             if (c.a >= 0 && c.a < 8) { // the knob itself: where the setting rests when nothing automates it
                 track.autoBase[c.a] = track.autoNow[c.a] = c.value;
@@ -1595,10 +1598,16 @@ void Engine::apply(const Command& c) {
     case Command::SetSetting:
         if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->setSetting(c.a, c.b);
         break;
-    case Command::InstallSynth:
+    case Command::InstallSynth: {
         // addSynthTrack() only sends this for a track it found empty.
         if (validTrack(c.track) && !tracks_[c.track].hasInstrument()) tracks_[c.track].synth.reset(static_cast<Instrument*>(c.pointer));
+        else {
+            Trash trash; // nowhere to put it (no flags: an Instrument)
+            trash.pointer = c.pointer;
+            bin(trash);
+        }
         break;
+    }
     case Command::InstallDrums:
         if (validTrack(c.track) && !tracks_[c.track].hasInstrument()) tracks_[c.track].hasDrums = true;
         break;
@@ -1674,6 +1683,7 @@ void Engine::apply(const Command& c) {
         }
         break;
     case Command::SetEffectParam: {
+        if (c.value != c.value) break; // never valid: drop it (as SetAutomation drops its NaNs)
         std::unique_ptr<Effect>* place = effectPlace(c.track, c.a);
         if (!place) break;
         const int bus = busOfTrack(c.track);
@@ -1802,6 +1812,7 @@ void Engine::playHit(Track& track, int lane, float velocity, float start, float 
             return;
         }
     }
+    hitsLost_.fetch_add(1, std::memory_order_relaxed); // the lane's slots were full: the hit is dropped, and counted
 }
 
 void Engine::firePending() {
@@ -2258,7 +2269,7 @@ void Engine::render(float* interleaved, int frames) {
     const FlushDenormals flushed(flush_.load(std::memory_order_relaxed)); // if asked for: on for this call, then the thread is as it was
     takeCommands();
     Command command;
-    while (live_.pop(command)) apply(command);
+    if (going_ == 0) while (live_.pop(command)) apply(command); // after everything sent: held while a track fades out, as those are
 
     float peaks[kNumTracks] = {};
     while (frames > 0) {

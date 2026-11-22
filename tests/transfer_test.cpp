@@ -279,6 +279,71 @@ void testTheServer() {
     CHECK(!second.start(samples, songs, chords, transfer.port(), 1) && !second.running());
 }
 
+// Hungry and slow requests: a chord pack of small values past counting is refused (audit #1),
+// a file past reading whole is not fetched (audit #2), and a trickle holds the door only up to
+// the request's time (audit #6). The server answers after all of them.
+void testHungryAndSlowRequests() {
+    const std::string root = tempFolder("transferhungry");
+    const std::string samples = root + "/samples", songs = root + "/songs", chords = root + "/chords";
+    mkdir(songs.c_str(), 0755);
+    Transfer transfer;
+    CHECK(transfer.start(samples, songs, chords, 0, 777));
+    const int port = transfer.port();
+    const std::string door = "/" + transfer.pin();
+    // Twenty thousand tiny chords: refused, nothing written.
+    std::string many = "{\"name\":\"Many\",\"chords\":[";
+    for (int i = 0; i < 20000; ++i) many += std::string(i ? "," : "") + "{\"intervals\":[0],\"root\":{\"degree\":0}}";
+    many += "]}";
+    CHECK(put(port, door + "/chords/many.json", many).status == 400 && !exists(chords + "/many.json"));
+    // Five hundred: a big honest pack, taken.
+    std::string hundreds = "{\"name\":\"Hundreds\",\"chords\":[";
+    for (int i = 0; i < 500; ++i) hundreds += std::string(i ? "," : "") + "{\"intervals\":[0,4,7],\"root\":{\"degree\":0}}";
+    hundreds += "]}";
+    CHECK(put(port, door + "/chords/hundreds.json", hundreds).status == 200 && exists(chords + "/hundreds.json"));
+    // Sixty-five megabytes on the card: not fetched, and not read whole anywhere.
+    const std::string huge = songs + "/huge.song";
+    if (std::FILE* f = std::fopen(huge.c_str(), "wb")) {
+        std::fseek(f, 65 * 1024 * 1024 - 1, SEEK_SET);
+        std::fputc(0, f);
+        std::fclose(f);
+    }
+    CHECK(get(port, door + "/songs/huge.song").status == 413);
+    std::string tooBig;
+    CHECK(!readTextFile(huge, tooBig) && tooBig.empty());
+    const std::string full = songs + "/full.song"; // exactly the most: read whole
+    if (std::FILE* f = std::fopen(full.c_str(), "wb")) {
+        std::fseek(f, static_cast<long>(kLargestRead) - 1, SEEK_SET);
+        std::fputc(0, f);
+        std::fclose(f);
+    }
+    std::string all;
+    CHECK(readTextFile(full, all) && all.size() == kLargestRead);
+    // A trickle of header bytes: the door shuts at the request's time, with no answer (not at the
+    // five-second quiet timeout: about a second here, not six).
+    Transfer::requestMs = 400;
+    const auto trickledAt = std::chrono::steady_clock::now();
+    {
+        const int fd = socket(AF_INET, SOCK_STREAM, 0);
+        sockaddr_in where = {};
+        where.sin_family = AF_INET;
+        where.sin_port = htons(static_cast<uint16_t>(port));
+        inet_pton(AF_INET, "127.0.0.1", &where.sin_addr);
+        CHECK(connect(fd, reinterpret_cast<sockaddr*>(&where), sizeof where) == 0);
+        const std::string head = "GET " + door + "/list HTTP/1.1\r\nHost: x\r\n";
+        CHECK(send(fd, head.data(), head.size(), MSG_NOSIGNAL) == static_cast<ssize_t>(head.size()));
+        for (int i = 0; i < 10; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            send(fd, " ", 1, MSG_NOSIGNAL); // kept alive past the deadline (may fail: the door shuts)
+        }
+        char block[256];
+        CHECK(recv(fd, block, sizeof block, 0) == 0);
+        close(fd);
+    }
+    Transfer::requestMs = 120000;
+    CHECK(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - trickledAt).count() < 3000);
+    CHECK(get(port, door + "/list").status == 200);
+}
+
 // Deleting, renaming and moving from the page, and what the page is told about the card.
 void testDeletingAndMoving() {
     const std::string root = tempFolder("transfer");
@@ -1458,6 +1523,7 @@ int main(int argc, char** argv) {
     testTheOpenSongFollows();
     testMovingWhereRenameIsRefused();
     testNames();
+    testHungryAndSlowRequests();
     testTheServer();
     testDeletingAndMoving();
     testTurningItOnFromTheDevice();

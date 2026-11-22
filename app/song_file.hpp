@@ -169,6 +169,7 @@ bool doubleTrackText(std::string& text, int track);
 bool binSong(const std::string& folder, const std::string& name);
 
 bool writeTextFile(const std::string& path, const std::string& text); // whole or not at all
-bool readTextFile(const std::string& path, std::string& text);
+constexpr std::size_t kLargestRead = 64u * 1024u * 1024u; // the most a file read whole may hold
+bool readTextFile(const std::string& path, std::string& text); // false past kLargestRead, and nothing is kept
 
 } // namespace apotheca

@@ -873,6 +873,7 @@ void testTheDepthLanes() {
     session.togglePlay(false);
     rig.frames(1);
     rig.render(4000);
+    rig.frames(1); // the UI reads the frame's snapshot: update first, as the main loop does
     CHECK(std::fabs(rig.engine->modShown(t, 0) - 0.6f) < 1e-6f && std::fabs(session.modDepthShown(t, 0) - 0.6f) < 1e-6f);
     CHECK(session.modDepthShown(t, 1) == 0.f); // MOD 2 (OFF): its lane not written, nothing
     session.togglePlay(false);
@@ -942,6 +943,7 @@ void testTheDepthLanes() {
     session.togglePlay(false); // from the scene worked on: the copy
     rig.frames(1);
     rig.render(4000);
+    rig.frames(1); // the UI reads the frame's snapshot: update first, as the main loop does
     CHECK(rig.engine->playScene() == 1 && rig.engine->modShown(t, 0) == -1.f && session.modDepthShown(t, 0) == -1.f);
     session.togglePlay(false);
     rig.settle();

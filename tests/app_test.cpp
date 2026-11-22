@@ -810,7 +810,8 @@ void testCellsOfSeveralBars() {
     CHECK(!notes.cursorOnBars() && rig.project().bar == 3 && notes.cursorStep() == 15); // up again: round to the bottom
     rig.tap(DOWN);
     CHECK(rig.project().bar == 0 && notes.cursorStep() == 0);
-    // A note may run on over the bar lines, to the end of the cell and no further.
+
+// A note may run on over the bar lines, to the end of the cell and no further.
     notes.moveCursorTo(64, 8);
     rig.key(A, true);
     rig.tap(DOWN, 80);
@@ -914,6 +915,53 @@ void testCellsOfSeveralBars() {
     CHECK(back->tracks[0].drums[1][0].level[4][4] == 1.f && back->tracks[0].bars[1] == 1); // a new scene starts at its first bar
     CHECK(parseSong("apotheca-song 1\ntrack phazed\nscene 1\nnote 9 60 40 1\nscene 2\nbars 2\nnote 9 60 40 1\n", *back));
     CHECK(back->tracks[0].notes[0][0].notes[0].length == 8.f && back->tracks[0].notes[1][0].notes[0].length == 24.f);
+}
+
+// The strip counts steps as the grid numbers do (bar * meter + step), and on BARS it shows the bar.
+static bool inked(const Canvas& canvas, Canvas& scratch, int size, float x, float y, const char* text, SDL_Color colour);
+void testStripCountsWithTheGrid() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    Rig rig;
+    Session& session = rig.app.session();
+    addPhazed(rig);
+    const Fonts& fonts = *canvas.fonts;
+    const auto stripHas = [&](const char* text, SDL_Color color, float x0, float x1, float y0, float y1) {
+        for (float y = y0; y <= y1; y += 1.f)
+            for (float x = x0; x <= x1; x += 1.f)
+                if (inked(canvas, scratch, 2, x, y, text, color)) return true; // values are large lettering
+        return false;
+    };
+    session.setSceneMeter(0, 12);
+    session.setCellBars(1, 0, 2);
+    session.setCellBars(0, 0, 2);
+    // The roll, bar 1 step 0: STEP reads 13, as its number does (not 17).
+    rig.project().track = 1;
+    session.view = View::Pattern;
+    NoteScreen& notes = rig.app.notes();
+    notes.moveCursorTo(60, 0);
+    rig.project().bar = 1;
+    rig.frames(1);
+    canvas.clear();
+    rig.app.draw(canvas.r, fonts);
+    CHECK(stripHas("13", ui::kText, 99.f, 135.f, 400.f, 445.f) && !stripHas("17", ui::kText, 99.f, 135.f, 400.f, 445.f));
+    // BARS: CELL/BARS and BAR n OF n.
+    notes.moveCursorTo(60, 0);
+    rig.project().bar = 0;
+    rig.tap(UP);
+    canvas.clear();
+    rig.app.draw(canvas.r, fonts);
+    CHECK(notes.cursorOnBars() && stripHas("BARS", ui::kText, 7.f, 60.f, 400.f, 445.f) && stripHas("1 OF 2", ui::kTeal, 99.f, 160.f, 400.f, 445.f));
+    // The drums, bar 1 step 0: STEP reads 13 too.
+    rig.project().track = 0;
+    PatternScreen& drums = rig.app.drums();
+    drums.moveCursorTo(0, 0);
+    rig.project().bar = 1;
+    rig.frames(1);
+    canvas.clear();
+    rig.app.draw(canvas.r, fonts);
+    CHECK(stripHas("13", ui::kText, 119.f, 155.f, 380.f, 452.f) && !stripHas("17", ui::kText, 119.f, 155.f, 380.f, 452.f));
 }
 
 void testNudgingWithTheOuterShoulderButtons() {
@@ -5881,6 +5929,99 @@ void testMovingEffectsKeepsEverythingWithThem() {
     CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Filter) && track.effects[1].kind == static_cast<int>(EffectKind::Tape) && written(1) == 1);
 }
 
+// A scene's tempo and meter are steps of undo of their own: no later undo silently reverts them.
+void testSceneTempoMeterUndo() {
+    Rig rig;
+    Session& session = rig.app.session();
+    rig.frames(60); // settled: undo starts counting here
+    session.setSceneTempo(0, 100);
+    rig.frames(60);
+    session.setSceneMeter(0, 12);
+    rig.frames(60);
+    CHECK(rig.project().sceneTempo[0] == 100.f && rig.project().meterOf(0) == 12);
+    CHECK(session.undo());
+    CHECK(rig.project().meterOf(0) == kSteps && rig.project().sceneTempo[0] == 100.f);
+    CHECK(session.undo());
+    CHECK(rig.project().sceneTempo[0] == 0.f);
+}
+
+// Kit VOLUME/FIT/one-slice and the sampler's CHOP undo and redo like any sound change.
+void testLaneAndChopUndo() {
+    Rig rig;
+    Session& session = rig.app.session();
+    CHECK(session.addTrack(TrackKind::Sampler));
+    rig.frames(60); // settled: undo starts counting here
+    session.setLaneLevel(0, 0, 0.5f);
+    session.setLaneFit(0, 0, 8);
+    session.setLaneOneSlice(0, 0, true);
+    session.setSamplerChop(1, true);
+    rig.frames(60);
+    CHECK(session.undo());
+    CHECK(rig.project().tracks[0].laneLevel[0] == 1.f && rig.project().tracks[0].laneFit[0] == 0);
+    CHECK(!rig.project().tracks[0].laneOneSlice[0] && !rig.project().tracks[1].samplerChop);
+    CHECK(session.redo());
+    CHECK(rig.project().tracks[0].laneLevel[0] == 0.5f && rig.project().tracks[0].laneFit[0] == 8);
+    CHECK(rig.project().tracks[0].laneOneSlice[0] && rig.project().tracks[1].samplerChop);
+}
+
+// Saving a preset retargets the number without minting an undo step.
+void testSavePresetMakesNoStep() {
+    Rig rig;
+    Session& session = rig.app.session();
+    addPhazed(rig);
+    session.usePresetFolder(tempFolder("presetnostep"));
+    rig.frames(60);
+    const int steps = session.undoSteps();
+    CHECK(session.savePreset(1, "MINE"));
+    rig.frames(60);
+    CHECK(session.undoSteps() == steps);
+    session.usePresetFolder(tempFolder("savepreset-clean")); // the registry is global: leave it empty for later tests
+}
+
+// Setting the cell's bars to what they are mints no step and sends nothing new.
+void testSetCellBarsNoOpMakesNoStep() {
+    Rig rig;
+    Session& session = rig.app.session();
+    rig.frames(60);
+    const int steps = session.undoSteps();
+    session.setCellBars(0, 0, 1);
+    rig.frames(60);
+    CHECK(session.undoSteps() == steps && rig.project().tracks[0].bars[0] == 1);
+}
+
+// The cell mark watches automation: a lone direct write still makes a step, and undoes.
+void testAutomationMarkCatchesDirectWrites() {
+    Rig rig;
+    Session& session = rig.app.session();
+    rig.frames(60);
+    const int steps = session.undoSteps();
+    rig.project().tracks[0].automation[0][autoLaneOfEffect(0, 0)][2] = 0.5f; // past every setter
+    rig.frames(60);
+    CHECK(session.undoSteps() == steps + 1);
+    CHECK(session.undo());
+    CHECK(rig.project().tracks[0].automation[0][autoLaneOfEffect(0, 0)][2] < 0.f);
+}
+
+// Loading a kit is one step that puts the whole kit back, recordings with it.
+void testKitLoadRestoresRecordings() {
+    Rig rig;
+    Session& session = rig.app.session();
+    rig.frames(60); // settled: undo starts counting here
+    TrackData kit;
+    kit.kind = TrackKind::Drums;
+    std::strcpy(kit.laneSample[0], "break");
+    kit.laneEdit[0].pitch = 7;
+    kit.laneLevel[0] = 0.5f;
+    CHECK(session.putKit(0, kit));
+    rig.frames(60);
+    CHECK(std::strcmp(rig.project().tracks[0].laneSample[0], "break") == 0);
+    CHECK(session.undo());
+    CHECK(std::strcmp(rig.project().tracks[0].laneSample[0], "break") != 0);
+    CHECK(rig.project().tracks[0].laneLevel[0] == 1.f);
+    CHECK(session.redo());
+    CHECK(std::strcmp(rig.project().tracks[0].laneSample[0], "break") == 0);
+}
+
 // EVERY TEXT FITS ITS BOX, at every value: measured with the program's lettering, and looked for on the drawn screen.
 void testFxTextsFit() {
     Canvas canvas;
@@ -6605,6 +6746,8 @@ void testSamplerPresetsOnDevice() {
     rig.tap(A);
     rig.tap(START);
     CHECK(!screen.typing() && screen.said() == "SAVED AS AB");
+    rig.frames(200);
+    CHECK(screen.said().empty()); // the line clears: not only recording synths say things
     std::string file;
     CHECK(readTextFile(folder + "/presets/AB.sampler", file));
     CHECK(session.samplerPresets().size() == 1 && session.samplerPresetOf(1) == 0);
@@ -6664,6 +6807,45 @@ void testSamplerPresetsOnDevice() {
     // Another folder: the old folder's presets do not follow.
     session.usePresetFolder(folder + "/elsewhere");
     CHECK(session.samplerPresets().empty() && session.samplerPresetOf(1) == -1);
+    // Leaving the keys with the stick pushed: the next push starts over, with its free step (audit #43).
+    screen.goTo(SamplerScreen::kPresetStop);
+    rig.tap(R1);
+    CHECK(screen.typing());
+    rig.key(STICK_UP, true);
+    rig.frames(3);
+    rig.tap(B);
+    CHECK(!screen.typing());
+    rig.frames(1);
+    CHECK(screen.cursor() == 7); // moved at once, not after the keys' leftover
+    rig.key(STICK_UP, false);
+}
+
+// Hold A on SOUND and step while WiFi deletes a recording: the step goes through what is there
+// now, and nothing missing goes on the track (audit #42).
+void testHeldAStepsThroughLiveSamples() {
+    Rig rig;
+    Session& session = rig.app.session();
+    SamplerScreen& screen = rig.app.sampler();
+    const std::string folder = tempFolder("livesamples");
+    session.useSampleFolder(folder + "/samples");
+    mkdir((folder + "/samples").c_str(), 0755);
+    CHECK(writeWav(folder + "/samples/a.wav", std::vector<float>(480, 0.25f), 48000));
+    CHECK(writeWav(folder + "/samples/b.wav", std::vector<float>(480, 0.25f), 48000));
+    CHECK(session.addTrack(TrackKind::Sampler)); // track 1
+    TrackData& track = rig.project().tracks[1];
+    rig.project().track = 1;
+    session.setTrackSample(1, "a");
+    session.view = View::Device;
+    rig.frames(2);
+    screen.goTo(0); // SOUND
+    rig.key(A, true);
+    rig.frames(1);
+    CHECK(std::remove((folder + "/samples/b.wav").c_str()) == 0);
+    session.transfer().noteChange("b.wav", "");
+    rig.frames(1);
+    rig.tap(UP);
+    CHECK(std::string(track.sample) == "a"); // the end stops; b (gone) never goes on
+    rig.key(A, false);
 }
 
 void testMacros() {
@@ -9179,6 +9361,21 @@ void testHoldYMovesAnEffect() {
     rig.tap(DOWN);
     rig.key(Y, false);
     CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Tape));
+    // A held while trying, the screen left and back (the try called off, the hold kept), then Y:
+    // directions try again, not move the slot (audit #41).
+    fx.goTo(0, 0);
+    rig.key(A, true);
+    rig.tap(DOWN);
+    CHECK(fx.trying());
+    session.view = View::Song;
+    rig.frames(1);
+    session.view = View::Effects;
+    rig.frames(1);
+    rig.key(Y, true);
+    rig.tap(DOWN);
+    CHECK(fx.trying() && fx.cursorRow() == 0 && session.effectData(0, 0).kind == static_cast<int>(EffectKind::Tape));
+    rig.key(Y, false);
+    rig.key(A, false);
 }
 
 // Is `words` drawn in the hints bar with the chip `key` just before it (its left edge where that chip's would be)?
@@ -10803,7 +11000,7 @@ void testMorphOnATrack() {
     session.audition(1, 60, 0.9f);
     CHECK(rig.listen(4000) > 0.01f);
     rig.render(48000);
-    // A key X holds is struck again when TABLE A, TABLE B or UNISON changes (each read at the strike):
+    // A key X holds is struck again when TABLE A, TABLE B, UNISON or WIDTH changes (each read at the strike):
     // UNISON 2 heard on the held key at once, as two streams. Any other setting changes the key as it sounds.
     {
         const Morph* synth = dynamic_cast<const Morph*>(rig.engine->synthForTests(1));
@@ -10821,9 +11018,13 @@ void testMorphOnATrack() {
         session.setSynthSetting(1, morph::Cutoff, 40); // not read at the strike: no new strike
         rig.render(2048);
         CHECK(synth && synth->streamsInUse() == 4 && synth->keysSounding() == 1 && synth->strikes() == struck);
+        session.setSynthSetting(1, morph::Width, 100); // read at the strike: struck again
+        rig.render(2048);
+        CHECK(synth && synth->strikes() == struck + 1 && synth->keysSounding() == 1 && session.hearingHeld());
         session.letGoHeard();
         session.setSynthSetting(1, morph::Unison, 1);
         session.setSynthSetting(1, morph::TableB, 0);
+        session.setSynthSetting(1, morph::Width, first.value[morph::Width]);
         session.setSynthSetting(1, morph::Cutoff, first.value[morph::Cutoff]);
         rig.frames(1), rig.render(48000);
     }
@@ -11311,6 +11512,7 @@ int main(int argc, char** argv) {
     testPaintingNotes();
     testTheKeysScrollAndStopAtTheEnds();
     testCellsOfSeveralBars();
+    testStripCountsWithTheGrid();
     testNudgingWithTheOuterShoulderButtons();
     testAFreeLengthReachesTheEngine();
     testAllFourShoulderButtonsIsPanic();
@@ -11355,6 +11557,12 @@ int main(int argc, char** argv) {
     testTheFxScreenAsDrawn();
     testChangingTypeKeepsWhatIsShared();
     testMovingEffectsKeepsEverythingWithThem();
+    testSceneTempoMeterUndo();
+    testLaneAndChopUndo();
+    testSavePresetMakesNoStep();
+    testSetCellBarsNoOpMakesNoStep();
+    testAutomationMarkCatchesDirectWrites();
+    testKitLoadRestoresRecordings();
     testFxTextsFit();
     testTheFxScreenHoldsUp();
     testTheFxScreenSecondReview();
@@ -11366,6 +11574,7 @@ int main(int argc, char** argv) {
     testPresetsAndFolders();
     testSavePresetOnDevice();
     testSamplerPresetsOnDevice();
+    testHeldAStepsThroughLiveSamples();
     testABuiltInPresetRestsTheMacrosWhereTheyShow();
     testMacros();
     testTheEngineHearsMacrosAndSettings();

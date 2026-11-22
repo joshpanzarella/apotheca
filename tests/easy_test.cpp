@@ -1123,9 +1123,11 @@ void testTheKitsText() {
     CHECK(!readKit("apotheca-song 1\ntrack drums\nswing 0 90\n", *other));
     CHECK(!readKit("", *other) && !readKit("swing 0 90\n", *other));
     CHECK(other->laneSwing[0] == 30);
-    // A kit's text cannot bring a track, a pattern or a synth's lines in with it.
-    CHECK(readKit("apotheca-kit 1\nswing 1 90\ntrack phazed\nswing 2 80\n", *other));
-    CHECK(other->laneSwing[0] == 90 && other->laneSwing[1] == 0);
+    // A kit's text cannot bring a track, a pattern or a synth's lines in with it: refused whole, and nothing changed.
+    CHECK(!readKit("apotheca-kit 1\nswing 1 90\ntrack phazed\nswing 2 80\n", *other));
+    CHECK(!readKit("apotheca-kit 1\nscene 1\nhit 1 1 0.8\n", *other));
+    CHECK(!readKit("apotheca-kit 1\nlanes 1 1 1 1 1 1 1 1\nname SNEAKY\n", *other));
+    CHECK(other->laneSwing[0] == 30);
     // copyKit takes the kit and nothing else.
     std::unique_ptr<TrackData> to(new TrackData);
     to->mixDb = -6;

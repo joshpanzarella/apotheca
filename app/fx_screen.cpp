@@ -419,7 +419,7 @@ void FxScreen::emptySend(int bus) {
 // A direction. Without A: the cursor. With A held: change the thing under it by one notch.
 void FxScreen::press(Button b) {
     const bool upDown = b == Button::Up || b == Button::Down;
-    if (yHeld_ && column_ == 0 && row_ < kTrackSlots && upDown && tryRow_ < 0 && !deleting_) {
+    if (yHeld_ && !holding_ && column_ == 0 && row_ < kTrackSlots && upDown && tryRow_ < 0 && !deleting_) {
         // Y held on one of the track's own lines: up / down moves it there, settings, automation
         // and MODs with it. The cursor goes with it; the ends stop.
         const int by = b == Button::Up ? -1 : 1;
@@ -443,7 +443,7 @@ void FxScreen::press(Button b) {
         return;
     }
     if (column_ == 0) {
-        if (sends(row_)) return; // the sends are turned one at a time, on the right
+        if (sends(row_)) return; // the sends are turned one at a time, on the right: the D-pad is dead here, and the bar says so
         const EffectKind kind = static_cast<EffectKind>(data(row_).kind);
         const int bus = busOf(row_);
         if (tryRow_ != row_) startTrying();
@@ -1014,6 +1014,8 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             hint("UP / DOWN", "effect");
             if (effectTypes(kind) > 1) hint("LEFT / RIGHT", "type");
             hint("B", "as it was");
+        } else {
+            hint("LET GO", "then RIGHT");
         }
     } else if (yHeld_ && column_ == 0 && row_ < kTrackSlots) {
         hint("UP / DOWN", "move it");

@@ -777,8 +777,8 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
     {
         // The view follows the bar playing, unless the player is at the controls (follow_bar.hpp).
         const int bars = cellBars();
-        const bool here = project_.playing && session_.playScene() == project_.scene && session_.engine.playStep() >= 0 && bars > 0;
-        const int at = follow_.step(here, here ? session_.engine.playBar() % bars : -1, input.anyHeld() || x != 0.f || y != 0.f, nowMs);
+        const bool here = project_.playing && project_.playScene == project_.scene && project_.playStep >= 0 && bars > 0;
+        const int at = follow_.step(here, here ? project_.playBar % bars : -1, input.anyHeld() || x != 0.f || y != 0.f, nowMs);
         if (at >= 0) project_.bar = at;
     }
     // A key played on a USB keyboard: the cursor goes to it, so A places there.
@@ -1218,7 +1218,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     }
     if (picking_ && editing_ < 0) drawChord(inHand(), false, true); // where it will land
     if (!onBars_) outline(r, gx(pitch_) - 1, gy(step_) - 1, cellW() + 2, kCellH + 2, cursorColor, 2);
-    const int playStep = session_.playScene() == project_.scene && session_.engine.playBar() % cellBars() == project_.bar ? session_.engine.playStep() : -1;
+    const int playStep = project_.playScene == project_.scene && project_.playBar % cellBars() == project_.bar ? project_.playStep : -1;
     if (playStep >= 0) fill(r, kGridLeft, gy(playStep), visibleKeys() * keyW() - 2, kCellH, faded(kPurple, 76));
     // A scene of fewer than sixteen steps: the steps past its end are never played, and are shaded.
     if (const int steps = project_.barSteps(project_.scene, project_.bar); steps < kSteps)
@@ -1285,12 +1285,15 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             field(kChordFxThrowX, "THROW", throwName(chordUnder->throwTo), chordUnder->throwTo ? kBrass : kText);
         } else if (chordUnder) {
             field(8.f, "CHORD", chordUnder->name, kPurple);
+        } else if (onBars_) {
+            field(8.f, "CELL", "BARS", kText);
         } else {
             noteName(pitch_, text, sizeof text);
             field(8.f, "KEY", text, kText);
         }
-        std::snprintf(text, sizeof text, "%d", project_.bar * kSteps + step_ + 1); // as the numbers at the left read
-        if (!chordFx) field(100.f, "STEP", text, kText);
+        if (onBars_) std::snprintf(text, sizeof text, "%d OF %d", project_.bar + 1, cellBars());
+        else std::snprintf(text, sizeof text, "%d", project_.bar * project_.meterOf(project_.scene) + step_ + 1); // as the numbers at the left read
+        if (!chordFx) field(100.f, onBars_ ? "BAR" : "STEP", text, onBars_ ? cursorColor : kText);
         const int ratchetHere = under ? under->ratchet : (chordUnder ? chordUnder->ratchet : 0);
         const int glideKindHere = under ? glideKind(under->glide) : kGlideOff;
         const bool glideHere = glideKindHere != kGlideOff;

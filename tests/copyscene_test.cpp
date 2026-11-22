@@ -393,13 +393,15 @@ void testTheGesture() {
     CHECK(rig.said() == "CELL COPIED");
     rig.tap(R1);
     CHECK(rig.said() == "COPY CLEARED");
-    // The paste is a step of undo of its own.
+    // Each paste is a step of undo of its own: one takes back the latest paste, another the one before.
     song.moveCursorTo(0, 0);
     rig.tap(R1);
     CHECK(rig.said() == "CELL COPIED");
     song.moveCursorTo(4, 0);
     rig.tap(R1);
     CHECK(rig.track(0).drums[4][0].level[0][0] == 0.9f);
+    rig.undo();
+    CHECK(rig.track(0).drums[4][0].level[0][0] == 0.9f && rig.track(0).drums[0][0].level[0][0] == 0.9f);
     rig.undo();
     CHECK(rig.track(0).drums[4][0].level[0][0] == 0.f && rig.track(0).drums[0][0].level[0][0] == 0.9f);
 }
@@ -441,6 +443,81 @@ void testSceneTempo() {
     at = 0;
     CHECK(std::abs(renderTo(1, 300000) - 192000) < 2048);
     session.togglePlay(true);
+}
+
+// A cell copy carries its automation, and is a snapshot: edits after COPY never leak into the
+// paste. Emptying a cell clears its automation too. The paste is its own undo step.
+void testCellCopyCarriesAutomation() {
+    Rig rig;
+    Session& session = rig.session();
+    SongScreen& song = rig.app.song();
+    TrackData& track = rig.track(0);
+    track.drums[0][0].level[0][0] = 0.9f;
+    const int lane = autoLaneOfEffect(0, 0);
+    session.setAutomation(0, 0, lane, 3, 0.5f);
+    rig.settle();
+    song.moveCursorTo(0, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL COPIED");
+    track.drums[0][0].level[1][1] = 0.8f; // edited after COPY: not in the paste
+    session.setAutomation(0, 0, lane, 4, 0.7f);
+    song.moveCursorTo(1, 0);
+    rig.key(R1, true);
+    rig.frames(1);
+    rig.key(R1, false);
+    rig.frames(1);
+    CHECK(rig.track(0).drums[1][0].level[0][0] == 0.9f && rig.track(0).drums[1][0].level[1][1] == 0.f);
+    CHECK(rig.track(0).automation[1][lane][3] == 0.5f && rig.track(0).automation[1][lane][4] < 0.f);
+    CHECK(rig.said() == "CELL PASTED");
+    // The paste was its own step: undo takes back the paste, not the source edits.
+    rig.settle();
+    rig.undo();
+    CHECK(rig.track(0).drums[1][0].level[0][0] == 0.f && !session.hasAutomation(0, 1, lane));
+    CHECK(rig.track(0).drums[0][0].level[1][1] == 0.8f && rig.track(0).automation[0][lane][4] == 0.7f);
+    // Emptying clears automation too.
+    song.moveCursorTo(0, 0);
+    rig.tap(B);
+    CHECK(!session.hasAutomation(0, 0, lane));
+}
+
+// A scene copied, then a track deleted: the paste stays aligned with the tracks it came from.
+void testScenePasteAfterTrackDelete() {
+    Rig rig;
+    Session& session = rig.session();
+    SongScreen& song = rig.app.song();
+    rig.track(0).drums[0][0].level[0][0] = 0.9f;
+    CHECK(session.addTrack(TrackKind::Drums));
+    rig.track(1).drums[0][0].level[1][1] = 0.8f;
+    rig.settle();
+    song.moveCursorTo(0, -1);
+    rig.tap(R1);
+    CHECK(session.copiedScene() == 0 && rig.said() == "SCENE 1 COPIED");
+    CHECK(session.removeTrack(0)); // track 1 (the 0.8 hit) moves to 0
+    song.moveCursorTo(1, -1);
+    rig.tap(R1);
+    CHECK(rig.track(0).drums[1][0].level[1][1] == 0.8f && rig.track(0).drums[1][0].level[0][0] == 0.f);
+    CHECK(rig.said() == "PASTED ON SCENE 2");
+}
+
+// A scene copied, then a track duplicated: the paste stays aligned too (the copy, like its track,
+// is its source's).
+void testScenePasteAfterTrackDuplicate() {
+    Rig rig;
+    Session& session = rig.session();
+    SongScreen& song = rig.app.song();
+    rig.track(0).drums[0][0].level[0][0] = 0.9f;
+    CHECK(session.addTrack(TrackKind::Drums));
+    rig.track(1).drums[0][0].level[4][4] = 0.8f;
+    rig.settle();
+    song.moveCursorTo(0, -1);
+    rig.tap(R1);
+    CHECK(session.copiedScene() == 0);
+    CHECK(session.duplicateTrack(0) == 1); // [old0, copy, old1]
+    song.moveCursorTo(1, -1);
+    rig.tap(R1);
+    CHECK(rig.track(0).drums[1][0].level[0][0] == 0.9f);
+    CHECK(rig.track(1).drums[1][0].level[0][0] == 0.9f);
+    CHECK(rig.track(2).drums[1][0].level[4][4] == 0.8f);
 }
 
 void testSceneTempoUI() {
@@ -872,6 +949,9 @@ int main(int argc, char** argv) {
         {"testCellCopyRefusals", testCellCopyRefusals},
         {"testCellCopyAcrossSynths", testCellCopyAcrossSynths},
         {"testCellCopyCleared", testCellCopyCleared},
+        {"testCellCopyCarriesAutomation", testCellCopyCarriesAutomation},
+        {"testScenePasteAfterTrackDelete", testScenePasteAfterTrackDelete},
+        {"testScenePasteAfterTrackDuplicate", testScenePasteAfterTrackDuplicate},
         {"testSceneTempo", testSceneTempo},
         {"testSceneTempoUI", testSceneTempoUI},
         {"testSceneTempoFile", testSceneTempoFile},

@@ -1281,6 +1281,9 @@ void testFxAndModsFromThePage() {
     CHECK(rig.tell("fxset 12 0.75") && t.send[0] == 0.75f);
     CHECK(rig.tell("fxset 30 -6") && t.mixDb == -6 && t.mixPan == 0);
     CHECK(rig.tell("fxset 31 50") && t.mixPan == 50 && t.mixDb == -6);
+    // Past long's end: held to the mixer's ends, not made into no int (audit #3).
+    CHECK(rig.tell("fxset 30 1e30") && t.mixDb == kMixMostDb && t.mixPan == 50);
+    CHECK(rig.tell("fxset 31 -1e30") && t.mixPan == -kPanMost && t.mixDb == kMixMostDb);
     // MOD 1 at a macro: kind, target, depth, and a step of its row.
     CHECK(rig.tell("modset 0 0 1") && rig.tell("modset 0 1 0") && rig.tell("modset 0 2 0.5"));
     CHECK(t.mods[0].runs() && t.mods[0].kind == kModLfo && t.mods[0].target == 0 && t.mods[0].depth == 0.5f);

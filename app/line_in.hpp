@@ -92,11 +92,9 @@ public:
             v = 0.0;
             fail_ = true;
         } else if (read == std::numeric_limits<double>::infinity()) {
-            v = std::numeric_limits<double>::max();
-            fail_ = true;
+            v = std::numeric_limits<double>::max(); // past the end: held there, and the line goes on
         } else if (read == -std::numeric_limits<double>::infinity()) {
             v = -std::numeric_limits<double>::max();
-            fail_ = true;
         } else {
             v = read;
         }

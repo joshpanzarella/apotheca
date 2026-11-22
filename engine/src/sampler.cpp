@@ -23,7 +23,7 @@ Sampler::Sampler() {
 }
 
 void Sampler::prepare(float sampleRate) {
-    sampleRate_ = sampleRate;
+    sampleRate_ = sampleRate > 0.f ? sampleRate : 48000.f; // (0, negative or NaN: the usual)
     for (int i = 0; i < kSettings; ++i) setSetting(i, value_[i]);
     allNotesOff();
     for (Voice& v : voices_) v = Voice();

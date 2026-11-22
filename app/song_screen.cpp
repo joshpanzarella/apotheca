@@ -87,6 +87,7 @@ void SongScreen::moveCursorTo(int scene, int column) {
 // The scenes from `from` on are one place further down the song (by = 1) or back up it (-1).
 void SongScreen::scenesMoved(int from, int by) {
     cellCopied_ = false; // a scene put in or taken out: the copied cell moved, so the copy goes
+    cellCopy_.has = false;
     if (scene_ < from || scene_ + by < 0 || scene_ + by >= kMaxScenes) return;
     scene_ += by;
     if (scene_ < top_) top_ = scene_;
@@ -215,41 +216,48 @@ void SongScreen::setRepeats(int count) {
 
 void SongScreen::clearCell(int track, int scene) {
     TrackData& t = project_.tracks[track];
-    // Every bar of it, and it is one bar long again.
+    // Every bar of it, and it is one bar long again. Its automation goes too: an emptied cell
+    // must not keep running lanes (as Session::clearScene).
     t.bars[scene] = 1;
     if (track == project_.track && scene == project_.scene) project_.bar = 0;
     if (t.kind == TrackKind::Drums) {
         for (DrumPattern& bar : t.drums[scene]) bar = DrumPattern();
-        session_.sendDrumPattern(track, scene);
     } else if (isSynth(t.kind)) {
         for (NotePattern& bar : t.notes[scene]) bar = NotePattern();
-        session_.sendNotePattern(track, scene);
     }
+    session_.clearAutomation(track, scene, -1);
+    session_.sendTrackImage(track); // patterns and automation, in one piece (as pasteBar)
 }
 
-void SongScreen::copyCell(int fromTrack, int fromScene, int toTrack, int toScene) {
-    TrackData& from = project_.tracks[fromTrack];
+void SongScreen::copyCell(const CellCopy& from, int toTrack, int toScene) {
     TrackData& to = project_.tracks[toTrack];
-    if (!pasteKindsFit(from.kind, to.kind) || (fromTrack == toTrack && fromScene == toScene)) return; // a drum bar cannot go on a synth
-    to.bars[toScene] = from.bars[fromScene]; // the whole cell: its length and every bar
+    if (!pasteKindsFit(from.kind, to.kind)) return; // a drum bar cannot go on a synth
+    to.bars[toScene] = from.bars; // the whole cell: its length and every bar
     if (toTrack == project_.track && toScene == project_.scene) project_.bar = 0;
     if (to.kind == TrackKind::Drums) {
-        for (int bar = 0; bar < kMaxBars; ++bar) to.drums[toScene][bar] = from.drums[fromScene][bar];
-        session_.sendDrumPattern(toTrack, toScene);
+        for (int bar = 0; bar < kMaxBars; ++bar) to.drums[toScene][bar] = from.drums[bar];
     } else if (isSynth(to.kind)) {
-        for (int bar = 0; bar < kMaxBars; ++bar) to.notes[toScene][bar] = from.notes[fromScene][bar];
-        session_.sendNotePattern(toTrack, toScene);
+        for (int bar = 0; bar < kMaxBars; ++bar) to.notes[toScene][bar] = from.notes[bar];
     }
+    // Its automation with it (as pasteBar's): the destination's stale lanes go first.
+    session_.clearAutomation(toTrack, toScene, -1);
+    for (int lane = 0; lane < kAutoLanes; ++lane)
+        for (int step = 0; step < kAutoSteps; ++step)
+            if (from.automation[lane][step] >= 0.f) to.automation[toScene][lane][step] = from.automation[lane][step];
+    session_.sendTrackImage(toTrack); // patterns and automation, in one piece (as pasteBar)
 }
 
 void SongScreen::pasteCellHere(int toTrack, int toScene) {
-    if (!pasteKindsFit(project_.tracks[copyTrack_].kind, project_.tracks[toTrack].kind)) {
+    if (!cellCopy_.has) return; // armed, then the copy went (tracks came or went mid-hold)
+    if (!pasteKindsFit(cellCopy_.kind, project_.tracks[toTrack].kind)) {
         session_.say("NO PASTE: OTHER KIND"); // the copy is kept: it pastes elsewhere
         return;
     }
-    session_.noteEdit(); // a step of undo of its own
-    copyCell(copyTrack_, copyScene_, toTrack, toScene);
+    session_.beginOwnUndoStep();
+    copyCell(cellCopy_, toTrack, toScene);
     cellCopied_ = false; // spent: a paste clears the copy
+    cellCopy_.has = false;
+    session_.endOwnUndoStep();
     session_.say("CELL PASTED");
 }
 
@@ -323,6 +331,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
                     listing_ = revsOpen_ = false;
                     scene_ = column_ = top_ = 0;
                     cellCopied_ = false; // another song: its cells are gone with the old one
+                    cellCopy_.has = false;
                 }
             }
             return;
@@ -347,6 +356,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             else session_.openSong(songs_[static_cast<std::size_t>(listCursor_ - 1)]);
             scene_ = column_ = top_ = 0; // a different song: start at its top
             cellCopied_ = false;         // ...and its copied cell is gone with the old one
+            cellCopy_.has = false;
         }
         return;
     }
@@ -499,11 +509,26 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down && onCell() && cellCopied_ && copyTrack_ == column_ && copyScene_ == scene_) {
             // The copied cell again: the copy is cleared.
             cellCopied_ = false;
+            cellCopy_.has = false;
             session_.say("COPY CLEARED");
         } else if (event.down && onCell() && !cellCopied_) {
-            // COPY A CELL, as a scene is copied: nothing copied, and it copies now.
+            // COPY A CELL, as a scene is copied: nothing copied, and it copies now. A snapshot:
+            // edits after COPY never leak into the paste (as a scene copy's).
+            const TrackData& from = project_.tracks[column_];
             copyTrack_ = column_;
             copyScene_ = scene_;
+            cellCopy_.has = true;
+            cellCopy_.kind = from.kind;
+            cellCopy_.bars = from.bars[scene_];
+            for (int bar = 0; bar < kMaxBars; ++bar) {
+                cellCopy_.drums[bar] = from.drums[scene_][bar];
+                cellCopy_.notes[bar] = from.notes[scene_][bar];
+            }
+            for (int lane = 0; lane < kAutoLanes; ++lane)
+                for (int step = 0; step < kAutoSteps; ++step) cellCopy_.automation[lane][step] = kAutoNone;
+            if (from.automation.has(scene_))
+                for (int lane = 0; lane < kAutoLanes; ++lane)
+                    for (int step = 0; step < kAutoSteps; ++step) cellCopy_.automation[lane][step] = from.automation[scene_][lane][step];
             cellCopied_ = true;
             session_.say("CELL COPIED");
         } else if (event.down && onCell()) {
@@ -612,6 +637,12 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
     if (!onCell()) onHead_ = false; // the track under it went
     if (onMaster_ && (listing_ || choosing_)) onMaster_ = false; // (a song opened: start at its top)
     if (!input.held(Button::B)) bHeld_ = false;
+    if (tracksSeen_ < 0) tracksSeen_ = project_.trackCount();
+    else if (tracksSeen_ != project_.trackCount()) { // tracks came or went: the copied cell moved, so the copy goes
+        cellCopied_ = false;
+        cellCopy_.has = false;
+        tracksSeen_ = project_.trackCount();
+    }
     // B kept held on a track: after a moment a bar begins to fill on its head, and when it is full the track is deleted.
     // A pressed while it fills calls it off, as any other button does on the FX screen.
     if (!input.held(Button::B) || input.held(Button::A) || !onCell() || listing_ || choosing_) trackHold_ = false, trackHoldPart_ = 0.f;
@@ -655,6 +686,7 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
         if (wasOpen) {
             scene_ = column_ = top_ = 0;
             cellCopied_ = false; // the open song went with it
+            cellCopy_.has = false;
         }
     }
 
@@ -770,7 +802,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const int colW = columnWidth(tracks);
     const bool held = holding_ || mixCardUp();
     const SDL_Color cursorColor = held ? kBrass : kTeal;
-    const int playScene = session_.playScene(), playStep = session_.engine.playStep();
+    const int playScene = project_.playScene, playStep = project_.playStep;
 
     // ---- column heads ----------------------------------------------------------
     // (REPEATS, it was PLAYS: owner, 2026-11-18. Low in the heads' row, nearer the boxes it names; held at LARGE where it would leave the screen.)
@@ -907,8 +939,8 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         }
         if (playingHere) {
             // One block per pass, filling as the bar goes by.
-                sceneProgress(r, rx + 4, y + kRowH - 14, kRepeatW - 12, 6, project_.playLoop ? 1 : repeats, session_.engine.playRepeat(),
-                          session_.engine.playBar() * kSteps + playStep, project_.sceneSteps(scene));
+                sceneProgress(r, rx + 4, y + kRowH - 14, kRepeatW - 12, 6, project_.playLoop ? 1 : repeats, project_.playRepeat,
+                          project_.playBar * project_.meterOf(scene) + playStep, project_.sceneSteps(scene));
         }
         if (column_ == kRepeatColumn && scene == scene_ && !onMaster_) {
             if (holding_) fill(r, rx + 1, y + 1, (kRepeatW - 6) * repeats / kMaxRepeats, kRowH - 6, faded(kBrass, 110));
@@ -978,7 +1010,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             // (No bar count in the corner: it hid the notes, and the bar lines say it. Owner, 2026-11-14.)
             // Where the cell has got to: a short one goes round under a long scene.
             if (playingHere && playStep >= 0) {
-                const int at = session_.engine.playBar() * kSteps + playStep;
+                const int at = project_.playBar * kSteps + playStep; // 16-coords, as the cell is drawn
                 fill(r, x + 3 + static_cast<int>(at * stepW), y + 2, 2, kRowH - 8, kPurple);
             }
             if (cellCopied_ && t == copyTrack_ && scene == copyScene_) outline(r, x + 1, y + 1, colW - 2, kRowH - 6, kBrass); // the copied cell

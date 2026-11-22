@@ -897,6 +897,48 @@ void testDrumBarsLength() {
     CHECK(!grid.cursorOnBars() && !grid.cursorOnTempo() && grid.cursorLane() == kDrumLanes - 1);
 }
 
+// A bar copied, then tracks coming or going: the copy tracks its track, or goes with it.
+void testBarCopyTracksItsTrack() {
+    Rig rig;
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Drums));
+    const int lane = autoLaneOfEffect(0, 0);
+    session.setAutomation(1, 0, lane, 2, 0.5f);
+    rig.settle();
+    CHECK(session.copyBar(1, 0, 0) == Session::BarCopy::Done);
+    CHECK(session.removeTrack(0)); // track 1 moves to 0; the copy tracks it
+    CHECK(session.pasteBar(0, 1, 0) == Session::BarCopy::Done);
+    CHECK(rig.track(0).automation[1][lane][2] == 0.5f); // the lanes land: the same track
+    // ...and removing the source track clears the copy.
+    CHECK(session.copyBar(0, 0, 0) == Session::BarCopy::Done);
+    CHECK(session.addTrack(TrackKind::Drums));
+    CHECK(session.removeTrack(0));
+    CHECK(session.pasteBar(0, 0, 0) == Session::BarCopy::NothingCopied);
+    // Duplicating ahead of it shifts it down with its track (pasted back onto that track, its lanes land).
+    CHECK(session.addTrack(TrackKind::Drums));
+    session.setAutomation(1, 0, lane, 2, 0.5f);
+    CHECK(session.copyBar(1, 0, 0) == Session::BarCopy::Done);
+    CHECK(session.duplicateTrack(0) == 1);
+    CHECK(session.pasteBar(2, 1, 0) == Session::BarCopy::Done);
+    CHECK(rig.track(2).automation[1][lane][2] == 0.5f);
+}
+
+// A paste is its own step even with an unmarked change in flight: the drift keeps its own step.
+void testPasteSeparatesUnmarkedDrift() {
+    Rig rig;
+    Session& session = rig.session();
+    rig.track(0).drums[0][0].level[0][0] = 0.9f;
+    rig.settle();
+    CHECK(session.copyBar(0, 0, 0) == Session::BarCopy::Done);
+    rig.project().tracks[0].laneLevel[0] = 0.5f; // unmarked drift, as a direct edit would leave
+    CHECK(session.pasteBar(0, 1, 0) == Session::BarCopy::Done);
+    rig.settle();
+    rig.undo();
+    CHECK(rig.track(0).drums[1][0].level[0][0] == 0.f && rig.project().tracks[0].laneLevel[0] == 0.5f);
+    rig.undo();
+    CHECK(rig.project().tracks[0].laneLevel[0] != 0.5f);
+}
+
 int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     struct Test {
@@ -906,6 +948,7 @@ int main(int argc, char** argv) {
     const Test tests[] = {
         {"testDrums", testDrums}, {"testNotes", testNotes}, {"testTheSlicesAndL1", testTheSlicesAndL1}, {"testTheEngineHearsIt", testTheEngineHearsIt}, {"testTheWordsFit", testTheWordsFit},
         {"testRollBarsLength", testRollBarsLength}, {"testDrumBarsLength", testDrumBarsLength},
+        {"testBarCopyTracksItsTrack", testBarCopyTracksItsTrack}, {"testPasteSeparatesUnmarkedDrift", testPasteSeparatesUnmarkedDrift},
     };
     for (const Test& test : tests) {
         bool wanted = argc < 2;

@@ -104,6 +104,15 @@ void SamplePicker::setLists(std::vector<std::string> names, std::vector<std::str
 }
 
 void SamplePicker::rescan(std::vector<std::string> names, std::vector<std::string> folders) {
+    // A hold filling, or a recording carried, is called off: the rows have moved under it, and it
+    // would finish on whatever is under the cursor now. Letting go is swallowed, not a tap or a page.
+    deleting_ = refusing_ = false;
+    deleteTimed_ = false;
+    deletePart_ = 0.f;
+    bDown_ = false;
+    r1Down_ = false;
+    r1Timed_ = false;
+    carried_.clear();
     setLists(std::move(names), std::move(folders));
     refresh();
 }
@@ -284,6 +293,8 @@ void SamplePicker::keepFolder() {
     for (char& c : name) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c);
     if (name.empty()) {
         typing_ = false;
+        saved_ = 0.f;
+        stickWas_ = false; // the keys' stick is not the rows': the next push starts over
         return;
     }
     const std::string whole = typingIn_.empty() ? name : typingIn_ + "/" + name;
@@ -293,6 +304,8 @@ void SamplePicker::keepFolder() {
         std::sort(dirs_.begin(), dirs_.end());
         index();
         typing_ = false;
+        saved_ = 0.f;
+        stickWas_ = false;
         refresh(rowKey({Kind::Folder, whole, 0}));
         say("MADE " + upper(name));
     } else {

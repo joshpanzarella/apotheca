@@ -44,18 +44,22 @@ void SettingsScreen::passwordButton(Button b) {
     } else if (b == Button::X) {
         keySet_ = (keySet_ + 1) % 3;
     } else if (b == Button::B || b == Button::Start) {
-        // Keeps it and joins. Nothing typed: B leaves, and nothing is joined.
-        if (typed_.empty()) {
-            if (b == Button::B) typing_ = false, password_ = false;
-        } else if (static_cast<int>(typed_.size()) < kWifiPasswordLeast) {
-            networkSaid_ = "8 AT LEAST";
-            networkSaidUntil_ = lastMs_ + 2500;
-        } else {
+        // B leaves, keeping what is typed for the next try at this network; with eight or more it
+        // joins, as START does. START with fewer says how many it takes.
+        const bool short_ = static_cast<int>(typed_.size()) < kWifiPasswordLeast;
+        if (b == Button::B && short_) {
+            typing_ = false;
+            saved_ = 0.f;
+            stickWas_ = false;
+        } else if (!short_) {
             session_.wifi().join(passwordFor_, typed_);
             std::fill(typed_.begin(), typed_.end(), '\0'); // (it goes no further than the program's stdin)
             typed_.clear();
-            typing_ = false, password_ = false;
-        }
+            typing_ = false, password_ = false, saved_ = 0.f, stickWas_ = false;
+        } else if (!typed_.empty()) {
+            networkSaid_ = "8 AT LEAST";
+            networkSaidUntil_ = lastMs_ + 2500;
+        } // (START with nothing yet: nothing at all)
     }
 }
 
@@ -76,8 +80,8 @@ void SettingsScreen::joinPicked() {
     if (pick_ < 0 || pick_ >= static_cast<int>(nets_.size())) return;
     const WifiNetwork& net = nets_[static_cast<std::size_t>(pick_)];
     if (net.needsPassword()) {
+        if (passwordFor_ != net.name) typed_.clear(); // another network: no draft of it
         typing_ = true, password_ = true, fromSong_ = false;
-        typed_.clear();
         passwordFor_ = net.name;
         key_ = 0, keySet_ = 0;
     } else {
@@ -112,9 +116,13 @@ void SettingsScreen::typeButton(Button b) {
         // name stays as it was.
         if (!typed_.empty()) session_.setTrackName(project_.track, typed_);
         typing_ = false;
+        saved_ = 0.f;
+        stickWas_ = false; // the keys' stick is not the rows': the next push starts over
     } else if (b == Button::Start) {
         session_.setTrackName(project_.track, typed_); // (nothing typed: the instrument's own name)
         typing_ = false;
+        saved_ = 0.f;
+        stickWas_ = false;
     }
     // Opened from the SONG screen: back to it when the typing is over.
     if (!typing_ && fromSong_) {
@@ -442,8 +450,13 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             font.drawCentered(r, x + kw / 2.f, y + (kh - font.capHeight()) / 2.f, one, here ? kBg : kText);
         }
         const bool none = typed_.empty();
-        const Hint list[] = {{"A", "type"}, {"Y", none ? nullptr : "delete"}, {"X", kPasswordSetNames[(keySet_ + 1) % 3]}, {"B", none ? "leave" : "join"}};
-        hints(r, fonts, list, 4);
+        const bool short_ = static_cast<int>(typed_.size()) < kWifiPasswordLeast;
+        const Hint list[] = {{"A", "type"},
+                             {"Y", none ? nullptr : "delete"},
+                             {"X", kPasswordSetNames[(keySet_ + 1) % 3]},
+                             {"B", short_ ? "leave" : "join"},
+                             {"START", short_ ? nullptr : "join"}};
+        hints(r, fonts, list, 5);
         return;
     }
     if (typing_) {

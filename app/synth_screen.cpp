@@ -117,10 +117,14 @@ void SynthScreen::typeButton(Button b) {
         if (!typed_.empty()) typed_.pop_back(); // the last letter goes
     } else if (b == Button::B) {
         typing_ = false; // leaves without saving
+        saved_ = 0.f;
+        stickWasX_ = false; // the keys' stick is not the knobs': the next push starts over
     } else if (b == Button::Start) {
         if (typed_.empty()) return; // (the keys say to name it)
         const std::string name = presetNameFrom(typed_);
         typing_ = false;
+        saved_ = 0.f;
+        stickWasX_ = false;
         if (name.empty() || !session_.savePreset(project_.track, typed_)) say("NOT SAVED", 2500);
         else say("SAVED AS " + name, 2500);
     }
@@ -211,6 +215,10 @@ void SynthScreen::say(const std::string& words, Uint32 ms) {
 // the song is stopped. The ends stop.
 void SynthScreen::stepRecording(int by) {
     stepped_ = true;
+    if (session_.sampleFiles() != namesSeen_) { // the card changed mid-hold (WiFi): step through what is there now
+        namesSeen_ = session_.sampleFiles();
+        names_ = session_.sampleNames();
+    }
     const int count = static_cast<int>(names_.size()) + 1;
     int now = 0;
     for (int i = 0; i < count - 1; ++i)
@@ -362,7 +370,7 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
     // A tap of A on CLOUD's RECORDING: the list of recordings. Held, it turns to the next one.
     if (b == Button::A && onRecording()) {
         if (!event.down && holding_ && !stepped_) openPicker();
-        if (event.down) stepped_ = false, names_ = session_.sampleNames();
+        if (event.down) stepped_ = false, names_ = session_.sampleNames(), namesSeen_ = session_.sampleFiles();
         holding_ = event.down;
         saved_ = 0.f;
         return;
@@ -486,8 +494,8 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
             wasRecording_ = false; // it has just stopped, by R1 or at ten seconds
             say(session_.lastRecorded().empty() ? std::string("NOTHING RECORDED: NO SOUND CAME IN") : "RECORDED AS \"" + session_.lastRecorded() + "\"", 3000);
         }
-        if (!said_.empty() && nowMs >= saidUntil_) said_.clear();
     }
+    if (!said_.empty() && nowMs >= saidUntil_) said_.clear(); // every synth says things (R1 saves); not only ones that record
     if (stickWait_ && x == 0.f && y == 0.f) stickWait_ = false;
 
     if (stickWait_) {

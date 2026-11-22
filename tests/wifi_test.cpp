@@ -590,14 +590,16 @@ void testThePassword() {
     CHECK(setup.typed() == "aA ");
     rig.tap(Y, 5);
     CHECK(setup.typed().empty());
-    // Under eight: not joined, said, the keys stay. B or START alike.
+    // Under eight: START says how many it takes and the keys stay; B leaves, keeping the draft. Neither joins.
     type(rig, "Mill");
-    rig.tap(B);
-    CHECK(setup.typingPassword() && setup.networkSaid() == "8 AT LEAST" && setup.typed() == "Mill");
     rig.tap(START);
-    CHECK(setup.typingPassword());
+    CHECK(setup.typingPassword() && setup.networkSaid() == "8 AT LEAST" && setup.typed() == "Mill");
     rig.settle();
     CHECK(rig.log().find("join") == std::string::npos && !rig.project().playing); // (START did not play either)
+    rig.tap(B);
+    CHECK(!setup.typing() && setup.typed() == "Mill");
+    open(); // the same network again: the draft is still there
+    CHECK(setup.typingPassword() && setup.typed() == "Mill" && setup.passwordFor() == "The Old Mill");
     // The whole of it, signs and all; B keeps it and joins. The words the program got do not hold it.
     type(rig, "-stone 42!{~}");
     CHECK(setup.typed() == "Mill-stone 42!{~}");
@@ -624,6 +626,21 @@ void testThePassword() {
     for (int i = 0; i < 70; ++i) rig.tap(A);
     CHECK(static_cast<int>(setup.typed().size()) == 63);
     rig.tap(Y, 63);
+    rig.tap(B);
+    CHECK(!setup.typing());
+    // A draft is this network's: back to it, it is still there; another network starts empty.
+    open();
+    type(rig, "draft12");
+    rig.tap(B);
+    CHECK(!setup.typing() && setup.typed() == "draft12");
+    open();
+    CHECK(setup.typingPassword() && setup.passwordFor() == "Other Mill" && setup.typed() == "draft12");
+    rig.tap(B);
+    rig.say("scan", "-50 wpa2 The Old Mill\n");
+    rig.wifi().scan();
+    rig.settle();
+    open();
+    CHECK(setup.typingPassword() && setup.passwordFor() == "The Old Mill" && setup.typed().empty());
     rig.tap(B);
     CHECK(!setup.typing());
     // The track name's keys still type a name, capitals only, ten at most, and join nothing.
@@ -696,9 +713,17 @@ void testDrawn() {
     rig.tap(A, 3);
     fits("the keys, typed");
     CHECK(rig.drew("aaa") && rig.drew("3 OF 63"));
-    rig.tap(B);
+    rig.tap(START);
     rig.draw(canvas);
-    CHECK(rig.drew("8 AT LEAST"));
+    CHECK(rig.drew("8 AT LEAST")); // START with fewer: says how many, the keys stay
+    rig.tap(B); // leaves, keeping the draft
+    rig.draw(canvas);
+    CHECK(!rig.drew("PASSWORD FOR The Old Mill"));
+    rig.key(A, true), rig.frames(1); // back: the draft is still there
+    rig.tap(DOWN, 2);
+    rig.key(A, false), rig.frames(1);
+    rig.draw(canvas);
+    CHECK(rig.drew("aaa"));
     // A long one shows its end.
     for (int i = 0; i < 59; ++i) rig.tap(A);
     rig.tap(RIGHT), rig.tap(A);

@@ -13,6 +13,8 @@
 #include "apotheca/slide.hpp"
 #include "apotheca/envelope.hpp"
 #include "apotheca/jx3p.hpp"
+#include "apotheca/morph_rule.hpp"
+#include "apotheca/phazed.hpp"
 #include "apotheca/sampler.hpp"
 #include "apotheca/rate_converter.hpp"
 
@@ -3472,6 +3474,154 @@ static void testScenesHaveStoresWhenWritten() {
     CHECK(engine->trashHeld() == 0 && engine->trashLost() == 0 && Engine::blankStillBlank());
 }
 
+// trackHeard outside the tracks: false, not a read past the end (audit #4).
+static void testTrackHeardOutOfRange() {
+    Engine engine;
+    CHECK(!engine.trackHeard(-1));
+    CHECK(!engine.trackHeard(kNumTracks));
+    CHECK(engine.trackHeard(0)); // a real track: its own value (heard, to begin with)
+}
+
+// A second synth for a track that already has one goes nowhere: the old one is
+// kept, and the new one is binned (audit #47: it used to leak).
+static void testSecondSynthInstallIsDropped() {
+    Engine engine;
+    CHECK(engine.addSynthTrack(1, SynthKind::Phazed));
+    renderFrames(engine, 64);
+    const Instrument* first = engine.synthForTests(1);
+    CHECK(first != nullptr);
+    Command c = make(Command::InstallSynth, 1);
+    c.pointer = new Sampler;
+    engine.send(c);
+    renderFrames(engine, 64);
+    CHECK(engine.synthForTests(1) == first);
+    Command nowhere = make(Command::InstallSynth, kNumTracks);
+    nowhere.pointer = new Sampler;
+    engine.send(nowhere);
+    renderFrames(engine, 64); // no track either: binned, not leaked
+    engine.collectGarbage();
+}
+
+// A macro set to NaN is dropped: the knob stays where it was (audit #28).
+static void testNaNMacroIsDropped() {
+    Engine engine;
+    CHECK(engine.addSynthTrack(1, SynthKind::Phazed));
+    engine.send(make(Command::SetMacro, 1, 0, 0, 0.5f));
+    renderFrames(engine, 64);
+    CHECK(engine.laneCentre(1, 0) == 0.5f);
+    engine.send(make(Command::SetMacro, 1, 0, 0, std::nanf("")));
+    renderFrames(engine, 64);
+    CHECK(engine.laneCentre(1, 0) == 0.5f);
+}
+
+// An effect's setting set to NaN is dropped: the note goes on through the
+// filter as it was, finite and loud (audit #28).
+static void testNaNEffectParamIsDropped() {
+    Engine engine;
+    CHECK(engine.addSynthTrack(1, SynthKind::Fm6));
+    CHECK(engine.setEffect(1, 0, EffectKind::Filter));
+    engine.send(effectParam(1, 0, 0, 0.5f)); // cutoff: mid
+    engine.send(make(Command::NoteOn, 1, 45, 0, 0.8f));
+    renderFrames(engine, 4800);
+    engine.send(effectParam(1, 0, 0, std::nanf("")));
+    const std::vector<float> out = renderFrames(engine, 4800);
+    bool finite = true;
+    for (float s : out) finite = finite && std::isfinite(s);
+    CHECK(finite);
+    CHECK(peakOf(out) > 0.02f);
+}
+
+// A trigger starting at or past the sample's end plays nothing AND cuts
+// nothing: the lane's ringing voice is left alone (audit #26).
+static void testPastEndTriggerLeavesTheVoiceAlone() {
+    Engine engine;
+    CHECK(engine.setLaneSample(0, KICK, steadySample(4800, 0.5f)));
+    renderFrames(engine, 64);
+    engine.send(trigger(KICK));
+    const std::vector<float> before = renderFrames(engine, 100); // ringing
+    const float level = before[2 * 99];
+    CHECK(level > 0.1f);
+    Command past = trigger(KICK);
+    past.b = 10000; // start 1.0: at the end
+    engine.send(past);
+    const std::vector<float> out = renderFrames(engine, 200);
+    for (std::size_t i = 0; i < out.size(); i += 2) CHECK(std::fabs(out[i] - level) < 0.01f);
+}
+
+// MORPH's WIDTH reads at a key's strike, with TABLE A, TABLE B and UNISON
+// (audit #27: a switch mid-note would step the wave).
+static void testWidthReadsAtStrike() {
+    CHECK(morph::readAtStrike(morph::TableA));
+    CHECK(morph::readAtStrike(morph::TableB));
+    CHECK(morph::readAtStrike(morph::Unison));
+    CHECK(morph::readAtStrike(morph::Width));
+    CHECK(!morph::readAtStrike(morph::Level));
+}
+
+// Notes and hits played by hand wait out a track's fade, as sent commands do:
+// the kick sounds after the 5 ms, not at once, and is not lost (audit #29).
+static void testLiveWaitsForAFade() {
+    Engine engine;
+    CHECK(engine.addDrumTrack(1));
+    renderFrames(engine, 64);
+    engine.send(trigger(RIM, 0.01f)); // track 0: ringing, but barely
+    renderFrames(engine, 64);
+    CHECK(engine.removeTrack(0)); // sounding: fades first
+    Command kick = trigger(KICK, 1.f, 1);
+    CHECK(engine.sendLive(kick));
+    int onset = -1;
+    for (int b = 0; b < 10; ++b) {
+        if (peakOf(renderFrames(engine, 64)) > 0.3f) {
+            onset = b * 64;
+            break;
+        }
+    }
+    CHECK(onset >= 128);
+    CHECK(onset >= 0);
+}
+
+// A lane's waiting slots are three: the fourth ratchet chain in one block is
+// dropped, and counted (audit #31).
+static void testHitsLostCountsFullLanes() {
+    Engine engine;
+    CHECK(engine.hitsLost() == 0);
+    for (int k = 0; k < 4; ++k) {
+        Command c = trigger(KICK);
+        c.bar = 4; // a ratchet of four: three pieces wait
+        engine.send(c);
+    }
+    renderFrames(engine, 64); // too short for any piece to fire
+    CHECK(engine.hitsLost() == 1);
+}
+
+// prepare() with 0, a negative rate or NaN falls back to 48 kHz: the same
+// sound, to the sample, as preparing with it (audit #49).
+static void testBadPrepareFallsBack() {
+    const std::vector<float> wav(4800, 0.5f);
+    for (float bad : {0.f, -1.f, std::nanf("")}) {
+        Sampler weird, usual;
+        weird.prepare(bad);
+        usual.prepare(48000.f);
+        weird.setSample(wav.data(), static_cast<int>(wav.size()));
+        usual.setSample(wav.data(), static_cast<int>(wav.size()));
+        weird.noteOn(60, 0.8f);
+        usual.noteOn(60, 0.8f);
+        std::vector<float> wl(256), wr(256), ul(256), ur(256);
+        weird.render(wl.data(), wr.data(), 256);
+        usual.render(ul.data(), ur.data(), 256);
+        CHECK(wl == ul && wr == ur);
+        Phazed odd, even;
+        odd.prepare(bad);
+        even.prepare(48000.f);
+        odd.noteOn(60, 0.8f);
+        even.noteOn(60, 0.8f);
+        odd.render(wl.data(), wr.data(), 256);
+        even.render(ul.data(), ur.data(), 256);
+        CHECK(wl == ul && wr == ur);
+        for (float s : wl) CHECK(std::isfinite(s));
+    }
+}
+
 int main() {
     testScenesHaveStoresWhenWritten();
     testAPresetPutsTheMacrosRestBack();
@@ -3532,6 +3682,15 @@ int main() {
     testOpeningASongDropsEveryOldInstrument();
     testTrashThatDoesNotFitWaits();
     testEveryLostCommandIsCounted();
+    testTrackHeardOutOfRange();
+    testSecondSynthInstallIsDropped();
+    testNaNMacroIsDropped();
+    testNaNEffectParamIsDropped();
+    testPastEndTriggerLeavesTheVoiceAlone();
+    testWidthReadsAtStrike();
+    testLiveWaitsForAFade();
+    testHitsLostCountsFullLanes();
+    testBadPrepareFallsBack();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

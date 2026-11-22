@@ -177,6 +177,7 @@ private:
     void openPicker();
     unsigned sampleFilesSeen_ = 0; // sampleFiles() the picker's lists were read at: behind, it reads them again
     std::vector<std::string> names_; // the recordings there were when A went down
+    unsigned namesSeen_ = 0;         // sampleFiles() names_ was read at: behind, the next step reads it again
     ui::Playhead head_; // where the lane last heard has got to
     int headLane_ = -1;
     bool headHeld_ = false; // head_ runs for as long as X holds the sound

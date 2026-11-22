@@ -873,8 +873,8 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
     {
         // The view follows the bar playing, unless the player is at the controls (follow_bar.hpp).
         const int bars = trk().bars[project_.scene];
-        const bool here = project_.playing && session_.playScene() == project_.scene && engine_.playStep() >= 0 && bars > 0;
-        const int at = follow_.step(here, here ? engine_.playBar() % bars : -1, input.anyHeld() || x != 0.f || y != 0.f, nowMs);
+        const bool here = project_.playing && project_.playScene == project_.scene && project_.playStep >= 0 && bars > 0;
+        const int at = follow_.step(here, here ? project_.playBar % bars : -1, input.anyHeld() || x != 0.f || y != 0.f, nowMs);
         if (at >= 0) project_.bar = at;
     }
     // Another screen (the kit's) asked for a lane's slices.
@@ -1110,7 +1110,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         outline(r, kGridLeft + step_ * kStepW - 1, kGridTop + lane_ * kLaneH - 1, kCellW + 2, kCellH + 2, cursorColor, 2);
     }
     // The play line shows when the bar on screen is the one sounding: a short cell goes round under a long scene.
-    const int playStep = session_.playScene() == project_.scene && engine_.playBar() % trk().bars[project_.scene] == project_.bar ? engine_.playStep() : -1;
+    const int playStep = project_.playScene == project_.scene && project_.playBar % trk().bars[project_.scene] == project_.bar ? project_.playStep : -1;
     if (playStep >= 0) {
         SDL_Color glow = kPurple;
         glow.a = 76;
@@ -1181,7 +1181,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else {
         tight.small.draw(r, 8.f, stripY, "LANE", kDim);
         tight.fit(laneLabel(lane_), 104.f).draw(r, 8.f, stripY + 16.f, laneLabel(lane_), kText);
-        std::snprintf(text, sizeof text, "%d", project_.bar * kSteps + step_ + 1);
+        std::snprintf(text, sizeof text, "%d", project_.bar * project_.meterOf(project_.scene) + step_ + 1);
         field(120.f, "STEP", text, kText);
         if (!hitHere()) {
             field(190.f, "LEVEL", "-", kDim);

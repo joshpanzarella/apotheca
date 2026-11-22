@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <new>
 
 #include "chords.hpp"
 #include "samples.hpp"
@@ -892,6 +893,7 @@ std::vector<Transfer::Change> Transfer::takeChanges() {
 }
 
 int Transfer::lockoutMs = 60000;
+int Transfer::requestMs = 120000;
 
 void Transfer::setOpenSong(const std::string& name) {
     std::lock_guard<std::mutex> hold(openMutex_);
@@ -967,7 +969,11 @@ void Transfer::serve() {
         timeval patience = {5, 0}; // a browser that goes quiet does not hold the door
         setsockopt(connection, SOL_SOCKET, SO_RCVTIMEO, &patience, sizeof patience);
         setsockopt(connection, SOL_SOCKET, SO_SNDTIMEO, &patience, sizeof patience);
-        answer(connection);
+        try {
+            answer(connection);
+        } catch (const std::bad_alloc&) { // out of RAM mid-request: the door shuts, the song plays on
+        } catch (...) {
+        }
         shutdown(connection, SHUT_WR);
         char rest[512]; // let the browser finish reading before the door shuts
         while (recv(connection, rest, sizeof rest, 0) > 0) {}
@@ -976,16 +982,22 @@ void Transfer::serve() {
 }
 
 void Transfer::answer(int fd) {
+    // One request may take this long altogether (a trickle of bytes must not hold the door forever).
+    const auto started = std::chrono::steady_clock::now();
+    const auto tooSlow = [&] {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count() > requestMs;
+    };
     // The request line and headers: up to 8 KB, ending in a blank line.
     std::string head;
     std::size_t end = std::string::npos;
     char block[2048];
-    while (end == std::string::npos && head.size() < 8192) {
+    while (end == std::string::npos && head.size() < 8192 && !tooSlow()) {
         const ssize_t got = recv(fd, block, sizeof block, 0);
         if (got <= 0) return;
         head.append(block, static_cast<std::size_t>(got));
         end = head.find("\r\n\r\n");
     }
+    if (tooSlow()) return;
     if (end == std::string::npos) return reply(fd, "431 Too Much", "text/plain", "too much before the file\n");
     std::string body = head.substr(end + 4); // the start of the file, if one is coming
     head.resize(end);
@@ -1049,7 +1061,7 @@ void Transfer::answer(int fd) {
         const unsigned long long size = where == std::string::npos ? 0 : std::strtoull(lowerHead.c_str() + where + 17, nullptr, 10);
         if (size == 0 || size > 200) return reply(fd, "400 Bad Request", "text/plain", "one short line\n");
         if (body.size() > size) body.resize(static_cast<std::size_t>(size));
-        while (body.size() < size) {
+        while (body.size() < size && !tooSlow()) {
             const ssize_t got = recv(fd, block, sizeof block, 0);
             if (got <= 0) return;
             body.append(block, std::min(static_cast<std::size_t>(got), static_cast<std::size_t>(size) - body.size()));
@@ -1097,7 +1109,7 @@ void Transfer::answer(int fd) {
         if (size > kLargestFile) return reply(fd, "413 Too Large", "text/plain", "too big: 30 MB at most\n");
         if (lowerHead.find("\r\nexpect: 100-continue") != std::string::npos) sendAll(fd, "HTTP/1.1 100 Continue\r\n\r\n", 25);
         if (body.size() > size) body.resize(static_cast<std::size_t>(size));
-        while (body.size() < size) {
+        while (body.size() < size && !tooSlow()) {
             const ssize_t got = recv(fd, block, sizeof block, 0);
             if (got <= 0) return;
             body.append(block, std::min(static_cast<std::size_t>(got), static_cast<std::size_t>(size) - body.size()));
@@ -1139,6 +1151,9 @@ void Transfer::answer(int fd) {
     const std::string file = folder + "/" + name;
 
     if (method == "GET") {
+        struct stat info;
+        if (stat(file.c_str(), &info) == 0 && static_cast<unsigned long long>(info.st_size) > kLargestRead)
+            return reply(fd, "413 Too Large", "text/plain", "too big to fetch\n");
         std::string contents;
         if (!readTextFile(file, contents)) return reply(fd, "404 Not Found", "text/plain", "no such file\n");
         return reply(fd, "200 OK", ending == ".wav" ? "audio/wav" : "application/octet-stream", contents); // a browser can play a recording
@@ -1203,7 +1218,7 @@ void Transfer::answer(int fd) {
     if (length > kLargestFile) return reply(fd, "413 Too Large", "text/plain", "too big: 30 MB at most\n");
     if (lower.find("\r\nexpect: 100-continue") != std::string::npos) sendAll(fd, "HTTP/1.1 100 Continue\r\n\r\n", 25);
     if (body.size() > length) body.resize(static_cast<std::size_t>(length));
-    while (body.size() < length) {
+    while (body.size() < length && !tooSlow()) {
         const ssize_t got = recv(fd, block, sizeof block, 0);
         if (got <= 0) return; // gave up part-way: nothing is kept
         body.append(block, std::min(static_cast<std::size_t>(got), static_cast<std::size_t>(length) - body.size()));

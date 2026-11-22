@@ -2110,6 +2110,17 @@ void testOneSliceIsKeptInTheSong() {
     CHECK(parseSong(odd, *other) && other->tracks[0].laneOneSlice[4] && !other->tracks[0].laneOneSlice[2] && !other->tracks[0].laneOneSlice[0]);
     CHECK(other->tracks[0].preset == 0); // lane 9 did not land on whatever comes after the lanes
 
+    // FIT with no recording on the lane is kept on a lanefit line (a recording's is on its sample line).
+    rig.session().setLaneFit(0, 1, 8);
+    const std::string fitted = songText(rig.project());
+    CHECK(fitted.find("\nlanefit 2 8\n") != std::string::npos);
+    std::unique_ptr<Project> fit(new Project);
+    CHECK(parseSong(fitted, *fit) && songText(*fit) == fitted);
+    CHECK(fit->tracks[0].laneFit[1] == 8);
+    rig.session().setLaneSample(0, 1, "break");
+    const std::string sampled = songText(rig.project());
+    CHECK(sampled.find("lanefit") == std::string::npos && sampled.find("sample 2 8 break\n") != std::string::npos);
+
     // Opened afresh, the lane's hits play one slice: the setting reached the engine with the song.
     Rig opened(folder);
     opened.project() = *back;
@@ -2846,6 +2857,24 @@ void testSamplerChop() {
         canvas.clear();
         rig.app.draw(canvas.r, *canvas.fonts);
         CHECK(ui::gHintsOver == 0.f);
+        // ...and on PRESET, with and without an own preset, stopped and playing.
+        session.usePresetFolder(tempFolder("presetfit"));
+        rig.app.sampler().goTo(SamplerScreen::kPresetStop);
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(ui::gHintsOver == 0.f);
+        CHECK(session.saveSamplerPreset(1, "FIT"));
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(ui::gHintsOver == 0.f);
+        session.togglePlay(false);
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(ui::gHintsOver == 0.f);
+        session.togglePlay(false);
     }
 }
 

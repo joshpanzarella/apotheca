@@ -351,8 +351,8 @@ bool Wifi::run(const std::string& program, const Job& job, std::string& out) {
     posix_spawn_file_actions_adddup2(&actions, back[1], 1);
     std::string word = kWords[job.kind], name = job.name;
     std::string path = program;
-    char* argv[4] = {&path[0], &word[0], nullptr, nullptr};
-    if (job.kind == Job::Join || job.kind == Job::Forget) argv[2] = &name[0];
+    char* argv[4] = {const_cast<char*>(path.c_str()), const_cast<char*>(word.c_str()), nullptr, nullptr}; // (never &s[0]: empty is no place)
+    if (job.kind == Job::Join || job.kind == Job::Forget) argv[2] = const_cast<char*>(name.c_str());
     pid_t child = 0;
     const int failed = posix_spawn(&child, program.c_str(), &actions, nullptr, argv, environ);
     posix_spawn_file_actions_destroy(&actions);

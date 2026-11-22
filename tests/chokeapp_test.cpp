@@ -293,6 +293,18 @@ void testTheKitPage() {
         rig.key(A, false);
         rig.frames(1);
     }
+    // With a recording on the lane the L1 slices hint joins: still fits (START yields to it).
+    rig.session().setLaneSample(0, kOpenHatLane, "break");
+    for (int column = 0; column < KitScreen::kColumns; ++column) {
+        kit.goTo(kOpenHatLane, column);
+        rig.draw();
+        CHECK(ui::gHintsOver == 0.f);
+        rig.key(A, true);
+        rig.draw();
+        CHECK(ui::gHintsOver == 0.f);
+        rig.key(A, false);
+        rig.frames(1);
+    }
 }
 
 // ---- the mark on the grid -----------------------------------------------------------------------------

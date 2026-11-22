@@ -366,7 +366,7 @@ void Acid::noteOff(int note) {
 
 void Acid::allNotesOff() {
     State& s = *state_;
-    if (!s.voice.asleep) {
+    if (!s.voice.asleep && s.tail.asleep) { // a tail still ringing keeps ringing: swapping it mid-fade clicks
         s.tail = s.voice;
         s.tail.fadeLeft = s.eff.tailSamples;
     }

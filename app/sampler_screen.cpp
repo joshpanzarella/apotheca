@@ -105,6 +105,10 @@ void SamplerScreen::setSetting(int id, int value) {
 }
 
 void SamplerScreen::stepSound(int by) {
+    if (session_.sampleFiles() != namesSeen_) { // the card changed mid-hold (WiFi): step through what is there now
+        namesSeen_ = session_.sampleFiles();
+        names_ = session_.sampleNames();
+    }
     const int count = static_cast<int>(names_.size()) + 1; // "none" first
     int now = 0;
     for (int i = 0; i < count - 1; ++i)
@@ -187,7 +191,7 @@ void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
         holding_ = event.down;
         saved_ = turned_ = 0.f;
         stickWas_ = false;
-        if (event.down) names_ = session_.sampleNames();
+        if (event.down) names_ = session_.sampleNames(), namesSeen_ = session_.sampleFiles();
         return;
     }
     if (!event.down) {
@@ -260,10 +264,14 @@ void SamplerScreen::typeButton(Button b) {
         if (!typed_.empty()) typed_.pop_back(); // the last letter goes
     } else if (b == Button::B) {
         typing_ = false; // leaves without saving
+        saved_ = 0.f;
+        stickWas_ = false; // the keys' stick is not the knobs': the next push starts over
     } else if (b == Button::Start) {
         if (typed_.empty()) return; // (the keys say to name it)
         const std::string name = presetNameFrom(typed_);
         typing_ = false;
+        saved_ = 0.f;
+        stickWas_ = false;
         said_ = name.empty() || !session_.saveSamplerPreset(project_.track, typed_) ? "NOT SAVED" : "SAVED AS " + name;
         saidUntil_ = lastMs_ + 2500;
     }
@@ -478,11 +486,14 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("UP / DOWN", stop_ == 0 ? "next / previous recording" : (stop_ == kPresetStop ? "next / previous preset" : "turn it"));
     } else if (stop_ == kPresetStop) {
         hint("HOLD A", "pick one");
-        if (const_cast<Session&>(session_).samplerPresetOf(project_.track) >= 0) hint("HOLD B", "delete this preset");
+        // With an own preset the bar holds five: START yields to the delete (it is on every
+        // other bar, and the top bar shows playing).
+        const bool own = const_cast<Session&>(session_).samplerPresetOf(project_.track) >= 0;
+        if (own) hint("HOLD B", "delete this preset");
         hint("Y", "catch");
         hint("R1", "save");
         hint("L1", "chop");
-        hint("START", project_.playing ? "stop" : "play");
+        if (!own) hint("START", project_.playing ? "stop" : "play");
     } else {
         hint("HOLD A", stop_ == 0 ? "pick one" : "turn");
         hint("B", stop_ == 0 ? "none" : "default");

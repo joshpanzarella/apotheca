@@ -110,6 +110,7 @@ private:
     void openPicker();
     unsigned sampleFilesSeen_ = 0; // sampleFiles() the picker's lists were read at: behind, it reads them again
     std::vector<std::string> names_;
+    unsigned namesSeen_ = 0; // sampleFiles() names_ was read at: behind, the next step reads it again
     std::string said_;
     Uint32 saidUntil_ = 0;
     bool wasRecording_ = false;

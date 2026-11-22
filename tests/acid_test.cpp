@@ -381,6 +381,24 @@ static void testTail() {
     CHECK(largestJump(out) < 0.05f);
 }
 
+// allNotesOff twice inside the tail's 3 ms: the first tail rings out unchanged,
+// to the sample, not swapped mid-fade for the second voice (audit #32).
+static void testTailNotSwapped() {
+    std::unique_ptr<Acid> first = synth();
+    play(*first, {on(0, 48)}, 9600);
+    first->allNotesOff();
+    play(*first, {}, 20);
+    const std::vector<float> tail = play(*first, {}, 380);
+    std::unique_ptr<Acid> second = synth();
+    play(*second, {on(0, 48)}, 9600);
+    second->allNotesOff();
+    play(*second, {}, 10);
+    second->noteOn(52, 0.9f);
+    play(*second, {}, 10);
+    second->allNotesOff();
+    CHECK(play(*second, {}, 380) == tail);
+}
+
 // A line with everything in it: plain notes, ties (both orders), accents, a rest long enough to
 // sleep, macros turned, allNotesOff.
 static std::vector<Ev> busyLine() {
@@ -813,6 +831,7 @@ int main(int argc, char** argv) {
         {"testEnvelopes", testEnvelopes},
         {"testNewestWins", testNewestWins},
         {"testTail", testTail},
+        {"testTailNotSwapped", testTailNotSwapped},
         {"testTuneTick", testTuneTick},
         {"testLevelAndDrive", testLevelAndDrive},
         {"testBlocks", testBlocks},

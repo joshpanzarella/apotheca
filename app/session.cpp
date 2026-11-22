@@ -103,6 +103,14 @@ bool Session::removeTrack(int track) {
         for (int s = 0; s < kTrackSlots; ++s) typeMemory_[t * kTrackSlots + s] = t + 1 < kNumTracks ? typeMemory_[(t + 1) * kTrackSlots + s] : TypeMemory();
         presetSounds_[t] = t + 1 < kNumTracks ? presetSounds_[t + 1] : PresetSoundMemory();
     }
+    if (clip_.has) { // the bar copy tracks its track, or goes with it
+        if (clip_.track == track) clip_.has = false;
+        else if (clip_.track > track) --clip_.track;
+    }
+    if (sceneClip_->has) { // the scene copy's tracks move up with the song's
+        for (int t = track; t + 1 < kNumTracks; ++t) sceneClip_->tracks[t] = sceneClip_->tracks[t + 1];
+        sceneClip_->tracks[kNumTracks - 1] = SceneClip::Track();
+    }
     {
         std::unique_ptr<TrackData> blank(new TrackData); // large: not on the stack
         project.tracks[kNumTracks - 1] = *blank;
@@ -136,6 +144,11 @@ int Session::duplicateTrack(int track) {
     project.tracks[track + 1].solo = false; // (two soloed tracks where there was one: the copy is heard with the rest)
     for (int s = 0; s < kTrackSlots; ++s) typeMemory_[(track + 1) * kTrackSlots + s] = typeMemory_[track * kTrackSlots + s];
     presetSounds_[track + 1] = presetSounds_[track];
+    if (clip_.has && clip_.track > track) ++clip_.track; // the bar copy tracks its track
+    if (sceneClip_->has) { // the scene copy's tracks move down with the song's (the copy, like its track, is its source's)
+        for (int t = kNumTracks - 1; t > track + 1; --t) sceneClip_->tracks[t] = sceneClip_->tracks[t - 1];
+        sceneClip_->tracks[track + 1] = sceneClip_->tracks[track];
+    }
     if (project.track > track) ++project.track;
     sendSong(); // every track told to the engine afresh, in its new place
     for (UndoStep& step : undo_) doubleTrackText(step.text, track);
@@ -367,10 +380,16 @@ void Session::update(Uint32 nowMs) {
         const std::size_t done = moves_.size() - movesUnheard(heard); // the moves the engine has heard are done with
         if (done > 0) moves_.erase(moves_.begin(), moves_.begin() + static_cast<std::ptrdiff_t>(done));
     }
-    project.playScene = playScene();
-    project.playStep = engine.playStep();
-    project.playRepeat = engine.playRepeat();
-    project.playBar = engine.playBar();
+    // One consistent snapshot of where playing is, for every screen to draw from: the audio thread
+    // stores step/scene/repeat/bar separately as it advances, so read the step around the rest and
+    // try again while it moved under us (steps are milliseconds apart; this is nanoseconds).
+    for (;;) {
+        const int step = engine.playStep();
+        project.playScene = playScene();
+        project.playRepeat = engine.playRepeat();
+        project.playBar = engine.playBar();
+        if (engine.playStep() == step) { project.playStep = step; break; }
+    }
     // AT END STOP: the engine has stopped the playing it was last sent, by itself, at the song's end.
     if (project.playing && playsSent_ != 0 && engine.songEnded() == playsSent_) project.playing = false;
     syncClick();
@@ -512,6 +531,7 @@ void Session::setCellBars(int track, int scene, int bars) {
     bars = bars < 2 ? 1 : (bars < 4 ? 2 : (bars < 8 ? 4 : 8));
     TrackData& t = project.tracks[track];
     const int was = t.bars[scene] < 1 ? 1 : t.bars[scene];
+    if (bars == was) return;
     t.bars[scene] = bars;
     // Made longer: the new bars are filled with what the cell already plays, round and round, so a
     // one-bar loop made two bars long is the loop twice, ready to be changed in its second half.
@@ -597,21 +617,14 @@ Session::BarCopy Session::pasteBar(int track, int scene, int bar) {
     if (same) return BarCopy::Same; // nothing to do, and no step of undo
 
     // A step of undo of its own, as NEXT SCENE's: whatever was being edited just before ends here.
-    if (undoReady_ && cellMark() != cellMark_) noteEdit();
-    if (editing_ || !undoReady_) settled_ = patternsNow();
-    editing_ = false;
-    noteEdit();
+    beginOwnUndoStep();
     if (clip_.drums) t.drums[scene][bar] = clip_.drumBar;
     else t.notes[scene][bar] = notes;
     if (lanes)
         for (int lane = 0; lane < kAutoLanes; ++lane)
             for (int step = 0; step < kSteps; ++step) t.automation[scene][lane][bar * kSteps + step] = clip_.automation[lane][step];
     sendTrackImage(track); // every bar of it, in one piece (as setCellBars)
-    if (undoReady_) {
-        settled_ = patternsNow(); // ...and nothing after it joins its step
-        editing_ = false;
-        cellMark_ = cellMark();
-    }
+    endOwnUndoStep();
     clip_.has = false; // spent: a paste clears the copy (a Same, or a refusal, keeps it)
     return BarCopy::Done;
 }
@@ -678,10 +691,7 @@ Session::SceneCopy Session::pasteScene(int scene) {
     if (same) return SceneCopy::Same; // nothing to do, and no step of undo
 
     // A step of undo of its own, as pasteBar's: whatever was being edited just before ends here.
-    if (undoReady_ && cellMark() != cellMark_) noteEdit();
-    if (editing_ || !undoReady_) settled_ = patternsNow();
-    editing_ = false;
-    noteEdit();
+    beginOwnUndoStep();
     for (int t = 0; t < kNumTracks; ++t) {
         TrackData& target = project.tracks[t];
         const SceneClip::Track& clip = sceneClip_->tracks[t];
@@ -715,11 +725,7 @@ Session::SceneCopy Session::pasteScene(int scene) {
     c.a = sceneClip_->meter;
     engine.send(c);
     if (scene == project.scene) project.bar = 0;
-    if (undoReady_) {
-        settled_ = patternsNow(); // ...and nothing after it joins its step
-        editing_ = false;
-        cellMark_ = cellMark();
-    }
+    endOwnUndoStep();
     sceneClip_->has = false; // spent: a paste clears the copy (a Same, or a refusal, keeps it)
     return SceneCopy::Done;
 }
@@ -755,10 +761,7 @@ Session::SceneClear Session::clearScene(int scene) {
     if (empty) return SceneClear::AlreadyEmpty; // nothing to do, and no step of undo
 
     // A step of undo of its own, as pasteScene's.
-    if (undoReady_ && cellMark() != cellMark_) noteEdit();
-    if (editing_ || !undoReady_) settled_ = patternsNow();
-    editing_ = false;
-    noteEdit();
+    beginOwnUndoStep();
     for (int t = 0; t < kNumTracks; ++t) {
         TrackData& target = project.tracks[t];
         if (target.bars[scene] == 1 && !target.holdsPieces(scene)) continue;
@@ -797,11 +800,7 @@ Session::SceneClear Session::clearScene(int scene) {
     r.a = kSteps;
     engine.send(r);
     if (scene == project.scene) project.bar = 0;
-    if (undoReady_) {
-        settled_ = patternsNow(); // ...and nothing after it joins its step
-        editing_ = false;
-        cellMark_ = cellMark();
-    }
+    endOwnUndoStep();
     return SceneClear::Done;
 }
 
@@ -1046,18 +1045,18 @@ bool Session::hasAutomation(int track, int scene, int lane) const {
 }
 
 float Session::automated(int track, int lane, float resting) const {
-    const int scene = playScene(), step = engine.playStep();
+    const int scene = project.playScene, step = project.playStep;
     if (!project.playing || scene < 0 || step < 0 || track < 0 || track >= kNumTracks || lane < 0 || lane >= kAutoLanes) return resting;
     const TrackData& t = project.tracks[track];
-    const float written = t.automation[scene][lane][(engine.playBar() % t.bars[scene]) * kSteps + step];
+    const float written = t.automation[scene][lane][(project.playBar % t.bars[scene]) * kSteps + step];
     return written >= 0.f ? written : resting;
 }
 
 // A knob was moved. With WRITE on and the song playing, that is written into the pattern where the song is.
 void Session::recordAutomation(int track, int lane, float value) {
-    const int scene = playScene(), step = engine.playStep();
+    const int scene = project.playScene, step = project.playStep;
     if (!project.writing || !project.playing || scene < 0 || step < 0) return;
-    setAutomation(track, scene, lane, (engine.playBar() % project.tracks[track].bars[scene]) * kSteps + step, value);
+    setAutomation(track, scene, lane, (project.playBar % project.tracks[track].bars[scene]) * kSteps + step, value);
 }
 
 // ---- undo -----------------------------------------------------------------------------------
@@ -1081,6 +1080,8 @@ std::uint32_t Session::cellMark() const {
             mix(p.chance, sizeof p.chance);
             mix(p.start, sizeof p.start);
             mix(p.fx, sizeof p.fx);
+            mix(p.fromDice, sizeof p.fromDice);
+            mix(p.diceSeed, sizeof p.diceSeed);
         }
     } else if (isSynth(t.kind)) {
         for (int bar = 0; bar < kMaxBars; ++bar) {
@@ -1091,6 +1092,7 @@ std::uint32_t Session::cellMark() const {
                 if (c.velocity > 0.f) mix(&c, sizeof c);
         }
     }
+    if (t.kind == TrackKind::Drums || isSynth(t.kind)) mix(t.automation[project.scene], sizeof t.automation[project.scene]);
     return h;
 }
 
@@ -1104,18 +1106,17 @@ std::uint32_t Session::soundMark() const {
     for (int t = 0; t < kNumTracks; ++t) {
         const TrackData& track = project.tracks[t];
         if (track.kind == TrackKind::None) continue;
-        mix(&t, sizeof t);
         mix(track.effects, sizeof track.effects);
         mix(track.send, sizeof track.send);
         mix(&track.glideFrom, sizeof track.glideFrom);
         mix(track.mods, sizeof track.mods);
-        if (track.kind == TrackKind::Drums) mix(track.laneFeel, sizeof track.laneFeel), mix(track.laneSwing, sizeof track.laneSwing), mix(track.laneChoke, sizeof track.laneChoke), mix(track.laneEdit, sizeof track.laneEdit), mix(track.laneSynth, sizeof track.laneSynth);
+        if (track.kind == TrackKind::Drums) mix(track.laneFeel, sizeof track.laneFeel), mix(track.laneSwing, sizeof track.laneSwing), mix(track.laneChoke, sizeof track.laneChoke), mix(track.laneEdit, sizeof track.laneEdit), mix(track.laneSynth, sizeof track.laneSynth), mix(track.laneLevel, sizeof track.laneLevel), mix(track.laneFit, sizeof track.laneFit), mix(track.laneOneSlice, sizeof track.laneOneSlice);
         if (const SynthSpec* spec = specFor(track.kind)) {
             mix(&track.preset, sizeof track.preset);
             mix(spec->values(const_cast<TrackData&>(track)), sizeof(int) * static_cast<std::size_t>(settingCount(track.kind)));
             mix(track.macro, sizeof track.macro);
         }
-        if (track.kind == TrackKind::Sampler) mix(track.sampler, sizeof track.sampler);
+        if (track.kind == TrackKind::Sampler) mix(track.sampler, sizeof track.sampler), mix(&track.samplerChop, sizeof track.samplerChop);
     }
     mix(project.masterEffects, sizeof project.masterEffects);
     mix(project.busEffects, sizeof project.busEffects);
@@ -1227,8 +1228,13 @@ void Session::restoreSounds(const StepRead& was, const bool same[kNumTracks]) {
             for (int lane = 0; lane < kDrumLanes; ++lane)
                 if (now.laneChoke[lane] != then.laneChoke[lane]) setLaneChoke(t, lane, then.laneChoke[lane]);
         if (now.kind == TrackKind::Drums)
-            for (int lane = 0; lane < kDrumLanes; ++lane)
+            for (int lane = 0; lane < kDrumLanes; ++lane) {
+                if (std::strcmp(now.laneSample[lane], then.laneSample[lane]) != 0) setLaneSample(t, lane, then.laneSample[lane]);
                 if (now.laneEdit[lane] != then.laneEdit[lane]) setLaneEdit(t, lane, then.laneEdit[lane]);
+                if (!sameAsText(now.laneLevel[lane], then.laneLevel[lane])) setLaneLevel(t, lane, then.laneLevel[lane]);
+                if (now.laneFit[lane] != then.laneFit[lane]) setLaneFit(t, lane, then.laneFit[lane]);
+                if (now.laneOneSlice[lane] != then.laneOneSlice[lane]) setLaneOneSlice(t, lane, then.laneOneSlice[lane]);
+            }
         if (now.kind == TrackKind::Drums)
             for (int lane = 0; lane < kDrumLanes; ++lane)
                 if (now.laneSynth[lane] != then.laneSynth[lane]) {
@@ -1255,9 +1261,11 @@ void Session::restoreSounds(const StepRead& was, const bool same[kNumTracks]) {
                 sendSynthPatch(t); // every setting and macro: the engine's sound is the step's, whatever preset it was on
             }
         }
-        if (now.kind == TrackKind::Sampler)
+        if (now.kind == TrackKind::Sampler) {
             for (int id = 0; id < sampler::kSettings; ++id)
                 if (now.sampler[id] != then.sampler[id]) setSamplerSetting(t, id, then.sampler[id]);
+            if (now.samplerChop != then.samplerChop) setSamplerChop(t, then.samplerChop);
+        }
     }
     for (int slot = 0; slot < kMasterSlots; ++slot)
         if (!effectSameAsText(project.masterEffects[slot], was.head.masterEffects[slot])) restoreEffect(kMasterTrack, slot, was.head.masterEffects[slot]);
@@ -1276,6 +1284,22 @@ void Session::noteEdit() {
         redo_.clear(); // a new change: there is no "forward" any more
     }
     editedAt_ = now_;
+}
+
+void Session::beginOwnUndoStep() {
+    if (undoReady_ && (cellMark() != cellMark_ || soundMark() != soundMark_)) noteEdit();
+    if (editing_ || !undoReady_) settled_ = patternsNow();
+    editing_ = false;
+    noteEdit();
+}
+
+void Session::endOwnUndoStep() {
+    if (undoReady_) {
+        settled_ = patternsNow(); // ...and nothing after it joins its step
+        editing_ = false;
+        cellMark_ = cellMark();
+        soundMark_ = soundMark();
+    }
 }
 
 // ---- next scene -----------------------------------------------------------------------------
@@ -1398,6 +1422,7 @@ int Session::nextScene() {
 
     settled_ = patternsNow();
     cellMark_ = cellMark();
+    soundMark_ = soundMark();
     return to;
 }
 
