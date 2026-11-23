@@ -2,7 +2,7 @@
 
 A pocket music workstation for the Anbernic RG40XXV (640x480, buttons and one
 stick, Linux aarch64, stock firmware). Part of the Shapetaker family. The
-manual is `README.md`; this file is the rules that bite when changing the code.
+manual is `docs/manual.md`; this file is the rules that bite when changing the code.
 
 ## How to write to me
 
@@ -216,7 +216,7 @@ effect in those two groups and fails one that does not.
 - **The JX-3P clone is JAX-EP wherever a player reads** (owner, 2026-11-14):
   "a virtual analog synth modeled after a popular DCO synth". **No maker's or
   model's name** (Roland, JX-3P, PG-200, Juno) in a text of `app/`, on the two
-  web pages or in README.md; `ctest -R words` fails one, with its own plants.
+  web pages, in README.md or in docs/manual.md; `ctest -R words` fails one, with its own plants.
   **It reads the engine's texts for those names too** (preset and folder names
   are there: `kBeside` in `tests/words_test.sh` lists `engine/`'s folders, the
   two copied-in synths under `third_party/` and `tools/`; `.c` and `.h` as
@@ -304,7 +304,7 @@ effect in those two groups and fails one that does not.
       LEVEL 4 or under is within 2 dB of how it sounded, higher LEVELs
       quieter and clean (LEVEL 6 about 4 dB, LEVEL 8 about 10 dB before its
       old clip). From 0.502 or earlier: brighter, and about 12 dB louder**
-      (said in README).
+      (said in the manual).
   - **Builds 0.485 to 0.493 shipped JAX-EP with one preset, "Start", as
     preset 1.** A song from them keeps its sound (all 34 settings are read
     after the preset) under String I's name (`save_test`
@@ -325,7 +325,7 @@ effect in those two groups and fails one that does not.
   one: **not to be remade**. An old `NAME.twin` preset is left on the card,
   unlisted. **Twin's code is out (batch 8b, 2026-11-15), and that reader is
   the one place the word lives**: `kOldTwinWord` and its comments, the tests
-  of the old song and the old preset file, README's note on old files. There
+  of the old song and the old preset file, the manual's note on old files. There
   is no `SynthKind::Twin` (the kinds are memory only: Phazed, Sampler, Jx3p,
   Fm6). `ctest -R words` fails a text of `app/` that says TWIN ANALOG or
   OVERSAMPLING, with its own plants, **or BEST QUALITY: a bounce is the song
@@ -1435,8 +1435,8 @@ effect in those two groups and fails one that does not.
   and a help-card key are written in full and drawn short (`keyWords`); any
   other text on the screen is written `SEL` ("also SEL + L1 / R1"); a button's
   name goes through `buttonLabel`, never `buttonName` (that is the word in
-  controls.txt, which stays SELECT). The web pages and README keep the full
-  word. `ctest -R words` (`tests/words_test.sh`) reads the sources and fails
+  controls.txt, which stays SELECT). The web pages, README and the manual keep
+  the full word. `ctest -R words` (`tests/words_test.sh`) reads the sources and fails
   on a string that would show it spelled out; it plants its own faults at the
   end and must catch each (add a plant with a new rule).
 - **The lettering's size is a setting, and the program holds TWO sets of

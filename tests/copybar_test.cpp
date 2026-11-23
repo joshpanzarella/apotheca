@@ -493,8 +493,8 @@ void testNotes() {
     rig.withL1(A);
     CHECK(rig.said() == "NOTES GO ON A NOTE TRACK" && rig.track(0).drums[0][0].empty());
 
-    // L1 still zooms tapped alone (on its let go); held with UP it moves the cursor instead,
-    // and the bars live on the BARS stop now.
+    // L1 still zooms tapped alone (on its let go); held with a direction it steps bars: up / down
+    // the bar shown, round the ends, left / right the cell's count. The cursor stays put.
     rig.project().track = 1;
     rig.frames(1);
     rig.session().setOctavesShown(2);
@@ -507,8 +507,19 @@ void testNotes() {
     rig.session().setOctavesShown(2);
     rig.session().setCellBars(1, 0, 1);
     roll.moveCursorTo(72, 7);
+    rig.withL1(RIGHT);
+    CHECK(rig.session().octavesShown() == 2 && rig.track(1).bars[0] == 2 && roll.cursorStep() == 7); // bars, not zoomed
+    rig.withL1(LEFT);
+    CHECK(rig.track(1).bars[0] == 1);
+    rig.withL1(DOWN); // one bar: round to it
+    CHECK(rig.project().bar == 0 && roll.cursorStep() == 7);
+    rig.session().setCellBars(1, 0, 4);
+    rig.withL1(DOWN);
+    CHECK(rig.project().bar == 1 && roll.cursorStep() == 7);
     rig.withL1(UP);
-    CHECK(rig.session().octavesShown() == 2 && rig.track(1).bars[0] == 1 && roll.cursorStep() == 6); // moved, not zoomed, no bars
+    CHECK(rig.project().bar == 0);
+    rig.withL1(UP);
+    CHECK(rig.project().bar == 3); // round the ends
     // With X held on a note, L1 / R1 are its GLIDE FROM, never a copy.
     roll.moveCursorTo(64, 4);
     rig.project().bar = 0;
@@ -585,13 +596,20 @@ void testTheSlicesAndL1() {
     rig.tap(L1);
     CHECK(!drums.slicing());
 
-    // L1 held with something else pressed is no tap: RIGHT (the cursor moves, as ever) and then L1 let go.
-    rig.key(L1, true);
+    // L1 held with a direction steps bars, not the cursor or the slices: up / down the bar
+    // shown, left / right the cell's count.
+    rig.session().setCellBars(0, 0, 2);
+    drums.moveCursorTo(2, 3);
+    rig.project().bar = 0;
     rig.frames(1);
-    rig.tap(RIGHT);
-    rig.key(L1, false);
-    rig.frames(1);
-    CHECK(!drums.slicing());
+    rig.withL1(DOWN);
+    CHECK(rig.project().bar == 1 && drums.cursorLane() == 2 && drums.cursorStep() == 3 && !drums.slicing());
+    rig.withL1(UP);
+    CHECK(rig.project().bar == 0);
+    rig.withL1(RIGHT);
+    CHECK(rig.track(0).bars[0] == 4);
+    rig.withL1(LEFT);
+    CHECK(rig.track(0).bars[0] == 2);
 
     // X held on a hit: L1 and R1 are its REVERSE and CUT, not a copy.
     drums.moveCursorTo(2, 3);
@@ -734,15 +752,15 @@ void testTheWordsFit() {
         canvas.clear();
         rig.app.draw(canvas.r, *canvas.fonts);
     };
-    const ui::Hint held[] = {{"R1", "copy bar"}, {"A", "paste bar"}};
+    const ui::Hint held[] = {{"UP / DOWN", "change bar"}, {"LEFT / RIGHT", "bar count"}, {"R1", "copy bar"}, {"A", "paste bar"}};
     const ui::Hint grid[] = {{"LEFT / RIGHT", "bar"}, {"HOLD A", "more / fewer"}, {"START", "play"}};
     const ui::Hint roll[] = {{"LEFT / RIGHT", "bar"}, {"HOLD A", "more / fewer"}};
     drawn();
-    CHECK(!barIs(held, 2));
+    CHECK(!barIs(held, 4));
     rig.key(L1, true);
     rig.frames(1);
     drawn();
-    CHECK(barIs(held, 2) && ui::gHintsOver == 0);
+    CHECK(barIs(held, 4) && ui::gHintsOver == 0);
     rig.key(L1, false);
     rig.frames(1);
     rig.app.drums().moveCursorTo(0, 0);
@@ -760,7 +778,7 @@ void testTheWordsFit() {
     rig.key(L1, true);
     rig.frames(1);
     drawn();
-    CHECK(barIs(held, 2) && ui::gHintsOver == 0);
+    CHECK(barIs(roll, 2) && ui::gHintsOver == 0); // on BARS the bar's own hints stay, L1 held or not
     rig.key(L1, false);
     rig.frames(1);
     drawn();
@@ -781,17 +799,38 @@ void testTheWordsFit() {
     rig.tap(DOWN);
     drawn();
     CHECK(!barIs(tempo, 4)); // back on the lanes: no UP bars
-    const ui::Hint cell[] = {{"A", "place"}, {"HOLD Y", "chord"}, {"HOLD R1", "paint"}, {"HOLD B", "delete"}, {"L1", "zoom"}, {"UP", "bars"}};
+    const ui::Hint cell[] = {{"A", "place"}, {"HOLD Y", "chord"}, {"HOLD R1", "paint"}, {"HOLD B", "delete"}, {"UP", "bars"}};
     const ui::Hint cellDown[] = {{"A", "place"}, {"HOLD Y", "chord"}, {"HOLD R1", "paint"}, {"HOLD B", "delete"}, {"L1", "zoom"}};
     rig.project().track = 1;
     rig.app.notes().moveCursorTo(60, 0);
     rig.project().bar = 0;
     rig.frames(1);
     drawn();
-    CHECK(barIs(cell, 6) && ui::gHintsOver == 0);
+    CHECK(barIs(cell, 5) && ui::gHintsOver == 0);
     rig.tap(DOWN);
     drawn();
     CHECK(barIs(cellDown, 5));
+    // Two bars: up from the second bar's top step says where it goes, as down from an end does.
+    rig.session().setCellBars(1, 0, 2);
+    const ui::Hint prevBar[] = {{"A", "place"}, {"HOLD Y", "chord"}, {"HOLD R1", "paint"}, {"HOLD B", "delete"}, {"UP", "prev bar"}};
+    rig.app.notes().moveCursorTo(60, 0);
+    rig.project().bar = 1;
+    rig.frames(1);
+    drawn();
+    CHECK(barIs(prevBar, 5) && ui::gHintsOver == 0);
+    const ui::Hint nextBar[] = {{"A", "place"}, {"HOLD Y", "chord"}, {"HOLD R1", "paint"}, {"HOLD B", "delete"}, {"DOWN", "next bar"}};
+    rig.app.notes().moveCursorTo(60, 15);
+    rig.project().bar = 0;
+    rig.frames(1);
+    drawn();
+    CHECK(barIs(nextBar, 5) && ui::gHintsOver == 0);
+    // On a note at the very top step the way to BARS is still said, and fits.
+    rig.app.notes().moveCursorTo(60, 0);
+    rig.project().bar = 0;
+    rig.tap(A);
+    drawn();
+    const ui::Hint onNote[] = {{"A", "level / length"}, {"B", "delete"}, {"HOLD Y", "chord"}, {"HOLD R1", "move"}, {"HOLD X", "effects"}, {"UP", "bars"}};
+    CHECK(barIs(onNote, 6)); // all six show; the help yields, as on a crowded bar
 }
 
 } // namespace

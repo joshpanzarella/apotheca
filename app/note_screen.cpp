@@ -688,8 +688,24 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         return;
     }
-    // (The bar shown and the cell's count live on the BARS stop now, above the grid: L1 is the
-    // zoom, and with R1 or A the bar's copy and paste.)
+    // (The bar shown and the cell's count live on the BARS stop too, above the grid.)
+    // Hold L1, up / down: the bar before or after, round the ends (the roll runs down, so down
+    // is the next bar). Only with L1 held first and nothing else going: shaping, painting, carrying,
+    // the chord in hand, erasing and what X holds keep the keys, and R1 held is a bar copy on its way.
+    // Hold L1, left / right: the cell's bars, more or fewer (as the Song screen's hold A).
+    if (zooming_ && l1First_ && event.down && !shaping_ && !painting_ && !erasing_ && !picking_ && !fxHeld_ && carrying_ == Carry::Nothing && !input.held(Button::R1) && !onBars_) {
+        if (b == Button::Up || b == Button::Down) {
+            const int bars = cellBars();
+            project_.bar = (project_.bar + (b == Button::Down ? 1 : bars - 1)) % (bars < 1 ? 1 : bars);
+            zoomUsed_ = true; // (letting go of L1 zooms nothing: it moved bars)
+            return;
+        }
+        if (b == Button::Left || b == Button::Right) {
+            stepBars(b == Button::Right ? 1 : -1);
+            zoomUsed_ = true; // (letting go of L1 zooms nothing: it set the bars)
+            return;
+        }
+    }
     if (b == Button::R1) {
         // On a note or a chord, R1 takes hold of it: moving now carries it. On an empty step it is the
         // brush: every step crossed gets a note. (Hold X used to carry; X is kept for what a note does.)
@@ -1407,7 +1423,9 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const HintUnder below[] = {{kStripHeldRatchetX, "LEFT / RIGHT"}, {kStripHeldGlideX, "UP / DOWN"}, {kStripHeldThrowX, "A"}, {kStripHeldFromX, "L1 / R1"}};
         hintsUnder(r, fonts, "Y", below, 4);
         return;
-    } else if (l1First_ && !held && carrying_ == Carry::Nothing) {
+    } else if (l1First_ && !held && carrying_ == Carry::Nothing && !onBars_) {
+        hint("UP / DOWN", "change bar");
+        hint("LEFT / RIGHT", "bar count");
         hint("R1", "copy bar");
         hint("A", "paste bar");
     } else if (carrying_ != Carry::Nothing) {
@@ -1436,8 +1454,11 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("HOLD R1", under || chordUnder ? "move" : "paint");
         if (under || chordUnder) hint("HOLD X", "effects");
         if (!under && !chordUnder) hint("HOLD B", "delete"); // (on a note, B's own hint says it)
-        hint("L1", "zoom");
-        if (project_.bar == 0 && step_ == 0) hint("UP", "bars"); // up from here is the BARS stop
+        // Up and down past a bar's ends move across the cell's bars (up from the very top is the BARS stop).
+        // Said instead of the zoom there: the bar has no room for both.
+        if (step_ == 0) hint("UP", project_.bar == 0 ? "bars" : "prev bar");
+        else if (step_ == kSteps - 1 && project_.bar + 1 < cellBars()) hint("DOWN", "next bar");
+        else hint("L1", "zoom");
     }
     hints(r, fonts, list, count);
 }

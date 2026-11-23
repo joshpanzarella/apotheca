@@ -836,6 +836,19 @@ int main(int argc, char** argv) {
             app.sampler().goTo(0);
             tapKey(SDLK_x);
         }
+    } else if (std::strcmp(view, "bars-stop-roll") == 0) { // the roll with the cursor on BARS
+        app.project().track = 1;
+        app.session().view = View::Pattern;
+        app.session().setCellBars(1, 0, 2);
+        app.notes().moveCursorTo(60, 0);
+        app.project().bar = 0;
+        tapKey(SDLK_UP);
+    } else if (std::strcmp(view, "bars-stop-grid") == 0) { // the drums with the cursor on BARS
+        app.project().track = 0;
+        app.session().view = View::Pattern;
+        app.session().setCellBars(0, 0, 2);
+        app.drums().moveCursorTo(0, 0);
+        tapKey(SDLK_UP, 2); // lane, tempo, BARS
     } else if (std::strncmp(view, "bars", 4) == 0) {
         // Scene 1 with cells of different lengths: the pads four bars (a
         // chord a bar, the last held over two), the bass two, the drums one.

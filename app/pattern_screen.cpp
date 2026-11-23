@@ -744,8 +744,23 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         else session_.pasteBarHere(), aSpent_ = true; // (A's hold does nothing either: no nudge with the D-pad)
         return;
     }
-    // (The bar shown and the cell's count live on the BARS stop now, above the tempo: L1 is
-    // the slices' zoom, and with R1 or A the bar's copy and paste.)
+    // (The bar shown and the cell's count live on the BARS stop too, above the tempo.)
+    // Hold L1, up / down: the bar before or after, round the ends (as on the roll). Left / right:
+    // the cell's bars, more or fewer. Only with L1 held first and nothing else going: shaping,
+    // painting, the dice, the step effects and the feel keep the keys, and R1 or A held is a bar
+    // copy or paste on its way.
+    if (event.down && l1First_ && input.held(Button::L1) && !input.held(Button::X) && !shaping_ && paint_ == Paint::None && !dicing_ && !fxHeld_ && !feelHeld_ && !onTempo_ && !onBars_ &&
+        !input.held(Button::R1) && !input.held(Button::A)) {
+        if (b == Button::Up || b == Button::Down) {
+            const int bars = trk().bars[project_.scene] < 1 ? 1 : trk().bars[project_.scene];
+            project_.bar = (project_.bar + (b == Button::Down ? 1 : bars - 1)) % bars;
+            return;
+        }
+        if (b == Button::Left || b == Button::Right) {
+            stepBars(b == Button::Right ? 1 : -1);
+            return;
+        }
+    }
     if (b == Button::X) {
         // Hears what is under the cursor, as everywhere. On a hit it is also a hold: the stick then sets its step effects.
         fxHeld_ = event.down && hitHere() && !shaping_ && !dicing_ && paint_ == Paint::None;
@@ -1268,7 +1283,9 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const HintUnder under[] = {{kFxPitchX, "UP / DOWN"}, {kFxRatchetX, "LEFT / RIGHT"}, {kFxReverseX, "L1"}, {kFxCutX, "R1"}, {kFxThrowX, "A"}};
         ui::hintsUnder(r, fonts, "Y", under, 5);
         return;
-    } else if (l1First_ && !held && paint_ == Paint::None) {
+    } else if (l1First_ && !held && paint_ == Paint::None && !onBars_ && !onTempo_) {
+        hint("UP / DOWN", "change bar");
+        hint("LEFT / RIGHT", "bar count");
         hint("R1", "copy bar");
         hint("A", "paste bar");
     } else if (slicing_ && paint_ == Paint::OneLevel) {
