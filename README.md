@@ -2,6 +2,7 @@
 
 A pocket music workstation for Linux handhelds (first target: Anbernic
 RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
+<br>
 
 ![Apotheca on the SONG screen](docs/manual/song.png)
 
