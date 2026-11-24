@@ -475,6 +475,15 @@ inline Tuning tuningOf(double f0, double sampleRate, double pole, double dispers
     t.eta = std::sin(w * (1.0 - t.part) * 0.5) / std::sin(w * (1.0 + t.part) * 0.5);
     return t;
 }
+// A loop with no room for its part (under half a sample left after one whole): the part held at
+// 0.5, where the tuning allpass is stable (eta about 1/3), a note slightly flat rather than a loop
+// that blows up. Under 0 eta passes 1 and the loop grows without end.
+inline Tuning heldTuning(Tuning t, double f0, double sampleRate) {
+    const double w = 2.0 * 3.141592653589793 * f0 / sampleRate;
+    t.part = 0.5;
+    t.eta = std::sin(w * 0.25) / std::sin(w * 0.75);
+    return t;
+}
 
 // ---- batch 10: NOISE, PAIR, MOTOR, BODY, BUZZ (the plan's sections 2 and 3) ------------------
 

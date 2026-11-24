@@ -351,9 +351,11 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
                 openRevList(); // the song that is open: its revs
                 return;
             }
+            // Not made or not opened (the song open could not be saved: said; or the file would not
+            // read): the list stays, and so does the song.
+            const bool went = listCursor_ == 0 ? session_.newSong() : session_.openSong(songs_[static_cast<std::size_t>(listCursor_ - 1)]);
+            if (!went) return;
             listing_ = false;
-            if (listCursor_ == 0) session_.newSong();
-            else session_.openSong(songs_[static_cast<std::size_t>(listCursor_ - 1)]);
             scene_ = column_ = top_ = 0; // a different song: start at its top
             cellCopied_ = false;         // ...and its copied cell is gone with the old one
             cellCopy_.has = false;

@@ -122,6 +122,14 @@ private:
     int port_ = 0;
     int listening_ = -1;
     std::atomic<bool> stopping_{false};
+    // What `stop` cuts short, so it never waits on a browser or a speed test (review 2026-11-23: a
+    // trickle of bytes, or a SPEED TEST under way, held the app thread in `stop` for minutes):
+    // the connection being answered (shut down under `servingMutex_`, so a number closed and given
+    // to another file is never touched) and the speed test's process group (killed).
+    std::mutex servingMutex_;
+    int serving_ = -1;               // under servingMutex_
+    std::atomic<int> benchGroup_{0}; // the speed test's process group, while it runs
+    bool stopped() const { return stopping_.load(); }
     std::atomic<unsigned> received_{0};
     std::mutex changesMutex_, songFiles_, openMutex_;
     std::string openSong_; // under openMutex_

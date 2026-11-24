@@ -5,6 +5,7 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -1511,11 +1512,111 @@ static void testTooManyWrongNumbers() {
     CHECK(Transfer::kWrongMost == 5);
 }
 
+// Turning the page off never waits on a browser or a speed test (review 2026-11-23: `stop` joined
+// the server's thread, which read on while a client sent a byte every few seconds, or until a
+// SPEED TEST of minutes ended; the app thread, and the screen, stood still all that while).
+static int dialLocal(int port) {
+    const int fd = socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in where = {};
+    where.sin_family = AF_INET;
+    where.sin_port = htons(static_cast<uint16_t>(port));
+    inet_pton(AF_INET, "127.0.0.1", &where.sin_addr);
+    if (connect(fd, reinterpret_cast<sockaddr*>(&where), sizeof where) != 0) {
+        close(fd);
+        return -1;
+    }
+    return fd;
+}
+static double secondsSince(std::chrono::steady_clock::time_point t) { return std::chrono::duration<double>(std::chrono::steady_clock::now() - t).count(); }
+
+static void testStopNeverWaits() {
+    const std::string root = tempFolder("transfer");
+    const std::string was = Transfer::benchCommand;
+    {
+        // A speed test under way: stopped at once, and its process (the shell's group) ended.
+        Transfer transfer;
+        CHECK(transfer.start(root + "/samples", root + "/songs", root + "/chords", 0, 77));
+        Transfer::benchCommand = "echo pid $$; sleep 60; echo never";
+        const int fd = dialLocal(transfer.port());
+        CHECK(fd >= 0);
+        const std::string ask = "GET /" + transfer.pin() + "/bench HTTP/1.1\r\n\r\n";
+        CHECK(send(fd, ask.data(), ask.size(), MSG_NOSIGNAL) == static_cast<ssize_t>(ask.size()));
+        std::string got;
+        char block[1024];
+        while (got.find("pid ") == std::string::npos || got.find('\n', got.find("pid ")) == std::string::npos) {
+            const ssize_t n = recv(fd, block, sizeof block, 0);
+            if (n <= 0) break;
+            got.append(block, static_cast<std::size_t>(n));
+        }
+        const std::size_t at = got.find("pid ");
+        const int pid = at == std::string::npos ? 0 : std::atoi(got.c_str() + at + 4);
+        CHECK(pid > 0);
+        const auto t0 = std::chrono::steady_clock::now();
+        transfer.stop();
+        const double took = secondsSince(t0);
+        if (took >= 1.5) std::printf("  stop during a speed test took %.2f s\n", took);
+        CHECK(took < 1.5);
+        CHECK(pid > 0 && kill(pid, 0) != 0); // gone, and reaped
+        close(fd);
+    }
+    {
+        // A client sending a byte every 300 ms and never finishing its request: stopped at once.
+        Transfer transfer;
+        CHECK(transfer.start(root + "/samples", root + "/songs", root + "/chords", 0, 78));
+        const int fd = dialLocal(transfer.port());
+        CHECK(fd >= 0);
+        std::atomic<bool> done{false};
+        std::thread trickle([&] {
+            for (int i = 0; i < 60 && !done.load(); ++i) {
+                if (send(fd, "G", 1, MSG_NOSIGNAL) != 1) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            }
+        });
+        std::this_thread::sleep_for(std::chrono::milliseconds(700));
+        const auto t0 = std::chrono::steady_clock::now();
+        transfer.stop();
+        const double took = secondsSince(t0);
+        if (took >= 1.5) std::printf("  stop with a trickling client took %.2f s\n", took);
+        CHECK(took < 1.5);
+        done.store(true);
+        trickle.join();
+        close(fd);
+    }
+    {
+        // A client that has its answer and keeps sending holds the door a second at most: the next
+        // browser is answered (it waited for good before).
+        Transfer transfer;
+        CHECK(transfer.start(root + "/samples", root + "/songs", root + "/chords", 0, 79));
+        const int fd = dialLocal(transfer.port());
+        CHECK(fd >= 0);
+        const std::string ask = "GET /" + transfer.pin() + "/ HTTP/1.1\r\n\r\n";
+        CHECK(send(fd, ask.data(), ask.size(), MSG_NOSIGNAL) == static_cast<ssize_t>(ask.size()));
+        std::atomic<bool> done{false};
+        std::thread chatter([&] {
+            for (int i = 0; i < 100 && !done.load(); ++i) {
+                if (send(fd, "x", 1, MSG_NOSIGNAL) != 1) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        });
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        const auto t0 = std::chrono::steady_clock::now();
+        const Answer next = get(transfer.port(), "/" + transfer.pin() + "/");
+        const double took = secondsSince(t0);
+        if (next.status != 200 || took >= 3.0) std::printf("  the next browser: %d after %.2f s\n", next.status, took);
+        CHECK(next.status == 200 && took < 3.0);
+        done.store(true);
+        chatter.join();
+        close(fd);
+    }
+    Transfer::benchCommand = was;
+}
+
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--say-hello") { std::printf("hello from transfer_test\n"); return 0; } // (testTheSpeedTest runs this program again)
     testTheOpenSongIsRefused();
     testTooManyWrongNumbers();
     testTheSpeedTest();
+    testStopNeverWaits();
     testTheServerWaitsForTheSongs();
     testRenamingInSongText();
     testFoundOnLoad();

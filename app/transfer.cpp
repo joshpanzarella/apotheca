@@ -6,10 +6,14 @@
 #include <dirent.h>
 #include <ifaddrs.h>
 #include <netinet/in.h>
+#include <fcntl.h>
 #include <poll.h>
+#include <signal.h>
+#include <spawn.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -24,6 +28,8 @@
 #include "samples.hpp"
 #include "song_file.hpp"
 #include "version.hpp"
+
+extern char** environ;
 
 namespace apotheca {
 
@@ -909,6 +915,7 @@ bool Transfer::start(const std::string& sampleFolder, const std::string& songFol
     chords_ = chordFolder;
     const int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) return false;
+    fcntl(fd, F_SETFD, FD_CLOEXEC); // a program started from here (a speed test, the WiFi's) does not keep port 80
     const int yes = 1;
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes);
     sockaddr_in where = {};
@@ -938,7 +945,14 @@ bool Transfer::start(const std::string& sampleFolder, const std::string& songFol
 void Transfer::stop() {
     if (listening_ < 0) return;
     stopping_.store(true);
-    if (thread_.joinable()) thread_.join(); // it looks at `stopping_` five times a second
+    {
+        // A request under way ends now: its receives and sends come back at once, and a speed test
+        // is ended. (The server looks at `stopping_` five times a second besides.)
+        std::lock_guard<std::mutex> lock(servingMutex_);
+        if (serving_ >= 0) shutdown(serving_, SHUT_RDWR);
+        if (const int group = benchGroup_.load()) kill(-group, SIGTERM);
+    }
+    if (thread_.joinable()) thread_.join();
     close(listening_);
     listening_ = -1;
 }
@@ -966,18 +980,38 @@ void Transfer::serve() {
         if (poll(&waiting, 1, 200) <= 0) continue;
         const int connection = accept(listening_, nullptr, nullptr);
         if (connection < 0) continue;
+        fcntl(connection, F_SETFD, FD_CLOEXEC); // (not handed to a speed test or the WiFi's programs)
         timeval patience = {5, 0}; // a browser that goes quiet does not hold the door
         setsockopt(connection, SOL_SOCKET, SO_RCVTIMEO, &patience, sizeof patience);
         setsockopt(connection, SOL_SOCKET, SO_SNDTIMEO, &patience, sizeof patience);
+        {
+            std::lock_guard<std::mutex> lock(servingMutex_);
+            serving_ = connection;
+            if (stopped()) shutdown(connection, SHUT_RDWR); // `stop` came between: nothing to wait for
+        }
         try {
             answer(connection);
         } catch (const std::bad_alloc&) { // out of RAM mid-request: the door shuts, the song plays on
         } catch (...) {
         }
         shutdown(connection, SHUT_WR);
-        char rest[512]; // let the browser finish reading before the door shuts
-        while (recv(connection, rest, sizeof rest, 0) > 0) {}
-        close(connection);
+        // Let the browser finish reading before the door shuts: a second at most and 64 KB at most,
+        // so a client that keeps sending cannot hold the server (or `stop`) for good.
+        timeval brief = {0, 200000};
+        setsockopt(connection, SOL_SOCKET, SO_RCVTIMEO, &brief, sizeof brief);
+        const auto drainFrom = std::chrono::steady_clock::now();
+        char rest[512];
+        std::size_t drained = 0;
+        while (!stopped() && drained < 65536 && std::chrono::steady_clock::now() - drainFrom < std::chrono::seconds(1)) {
+            const ssize_t got = recv(connection, rest, sizeof rest, 0);
+            if (got <= 0) break;
+            drained += static_cast<std::size_t>(got);
+        }
+        {
+            std::lock_guard<std::mutex> lock(servingMutex_);
+            serving_ = -1;
+            close(connection);
+        }
     }
 }
 
@@ -985,7 +1019,7 @@ void Transfer::answer(int fd) {
     // One request may take this long altogether (a trickle of bytes must not hold the door forever).
     const auto started = std::chrono::steady_clock::now();
     const auto tooSlow = [&] {
-        return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count() > requestMs;
+        return stopped() || std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count() > requestMs;
     };
     // The request line and headers: up to 8 KB, ending in a blank line.
     std::string head;
@@ -1079,20 +1113,61 @@ void Transfer::answer(int fd) {
         std::string first = "Apotheca " + std::string(kVersion) + ", built " + std::string(kBuilt) + "\n" + kBenchSays;
         if (!sendAll(fd, head, std::strlen(head)) || !sendAll(fd, first.data(), first.size())) return;
         const std::string command = benchCommand.empty() ? selfCommand("--bench 2>&1") : benchCommand;
-        FILE* run = command.empty() ? nullptr : popen(command.c_str(), "r");
-        if (!run) {
+        // Run through /bin/sh in a process group of its own (so `stop` can end it, shell and all),
+        // its output read as it comes, and given up on the moment the server is asked to stop.
+        int out[2] = {-1, -1};
+        pid_t child = 0;
+        bool started = !command.empty() && pipe(out) == 0;
+        if (started) {
+            fcntl(out[0], F_SETFD, FD_CLOEXEC);
+            posix_spawn_file_actions_t actions;
+            posix_spawn_file_actions_init(&actions);
+            posix_spawn_file_actions_adddup2(&actions, out[1], 1);
+            posix_spawn_file_actions_addclose(&actions, out[1]);
+            posix_spawnattr_t attributes;
+            posix_spawnattr_init(&attributes);
+            posix_spawnattr_setflags(&attributes, POSIX_SPAWN_SETPGROUP);
+            posix_spawnattr_setpgroup(&attributes, 0);
+            std::string shell = "/bin/sh", dashC = "-c", text = command;
+            char* argv[] = {&shell[0], &dashC[0], &text[0], nullptr};
+            started = posix_spawn(&child, "/bin/sh", &actions, &attributes, argv, environ) == 0;
+            posix_spawn_file_actions_destroy(&actions);
+            posix_spawnattr_destroy(&attributes);
+            close(out[1]);
+            if (!started) close(out[0]);
+        }
+        if (!started) {
             const char* no = "could not start the speed test\n";
             sendAll(fd, no, std::strlen(no));
             return;
         }
-        char line[1024];
+        {
+            std::lock_guard<std::mutex> lock(servingMutex_);
+            benchGroup_.store(child);
+            if (stopped()) kill(-child, SIGTERM); // `stop` came between
+        }
+        char said[1024];
         std::size_t sent = 0;
         bool listening = true;
-        while (std::fgets(line, sizeof line, run)) { // read to the end even if the page went away, so the run is not left stuck
-            const std::size_t n = std::strlen(line);
-            if (listening && sent < 65536) listening = sendAll(fd, line, n), sent += n;
+        for (;;) { // read to the end even if the page went away, so the run is not left stuck
+            pollfd ready = {out[0], POLLIN, 0};
+            const int seen = poll(&ready, 1, 200); // (`stop` kills the group: the pipe then ends)
+            if (seen == 0 || (seen < 0 && errno == EINTR)) continue;
+            const ssize_t n = read(out[0], said, sizeof said);
+            if (n < 0 && errno == EINTR) continue;
+            if (n <= 0) break;
+            if (listening && sent < 65536) listening = sendAll(fd, said, static_cast<std::size_t>(n)), sent += static_cast<std::size_t>(n);
         }
-        const char* end = pclose(run) != 0 ? "(the speed test did not finish)\n" : "(done)\n";
+        close(out[0]);
+        {
+            // Let go of the group before it is reaped (unreaped, its number cannot be given to another).
+            std::lock_guard<std::mutex> lock(servingMutex_);
+            benchGroup_.store(0);
+        }
+        int status = 0;
+        while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
+        const bool finished = WIFEXITED(status) && WEXITSTATUS(status) == 0;
+        const char* end = finished ? "(done)\n" : "(the speed test did not finish)\n";
         if (listening) sendAll(fd, end, std::strlen(end));
         return;
     }

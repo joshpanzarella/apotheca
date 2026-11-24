@@ -24,6 +24,7 @@
 #include "song_file.hpp"
 #include "synth_spec.hpp"
 #include "temp_folder.hpp"
+#include "canvas.hpp"
 
 #ifdef __linux__
 #include <fcntl.h>
@@ -1707,6 +1708,43 @@ static void testScenesPastSixteen() {
     CHECK(odd->tracks[0].drums.held() == 1 && odd->tracks[0].drums[63][0].level[1][0] == 0.8f && odd->sceneCount() == 64);
 }
 
+// A song that cannot be saved is not shut (review 2026-11-23): with the card refusing (here the
+// song's file is a folder with something in it, which no rename can write over, even as root), a
+// new song or another one opened changes nothing and says why; once the card takes it again, the
+// change is saved and the new song made.
+void testASongThatCannotBeSavedStaysOpen() {
+    const std::string folder = tempFolder("test");
+    Rig rig(folder);
+    fillSong(rig);
+    CHECK(rig.session().saveNow());
+    const std::string name = rig.session().songName(), path = folder + "/" + name + ".song";
+    rig.session().newSong(); // a second song on the card, to open
+    fillSong(rig);
+    CHECK(rig.session().saveNow());
+    const std::string other = rig.session().songName();
+    CHECK(rig.session().openSong(name) && rig.session().songName() == name);
+    rig.project().tempo = 133.f; // a change since the last save
+    CHECK(std::remove(path.c_str()) == 0 && mkdir(path.c_str(), 0755) == 0);
+    const std::string inside = path + "/in the way";
+    CHECK(writeTextFile(inside, "x"));
+    const unsigned saidBefore = rig.session().saidCount();
+    CHECK(!rig.session().newSong());
+    CHECK(rig.session().songName() == name && rig.project().tempo == 133.f);
+    CHECK(rig.session().saidCount() == saidBefore + 1 && std::string(rig.session().saidText()) == "NOT SAVED: CARD FULL?");
+    CHECK(!rig.session().openSong(other));
+    CHECK(rig.session().songName() == name && rig.project().tempo == 133.f && rig.session().saidCount() == saidBefore + 2);
+    {
+        // The words fit the App's box at LARGE (copybar_test's measure).
+        Canvas canvas;
+        if (canvas.ok) CHECK(canvas.fonts->medium.width(rig.session().saidText()) <= 248.f);
+    }
+    // The card takes it again: saved first, then the new song.
+    CHECK(std::remove(inside.c_str()) == 0 && rmdir(path.c_str()) == 0);
+    CHECK(rig.session().newSong() && rig.session().songName() != name);
+    std::string kept;
+    CHECK(readTextFile(path, kept) && kept.find("\ntempo 133\n") != std::string::npos);
+}
+
 int main(int, char**) {
     testScenesPastSixteen();
     testNumbersAsSnprintfWritesThem();
@@ -1720,6 +1758,7 @@ int main(int, char**) {
     testAnOldTwinSong();
     testASongFromTheOnePresetBuilds();
     testBadFiles();
+    testASongThatCannotBeSavedStaysOpen();
     testSavedAsYouGoAndBackAtTheNextStart();
     testAnOpenedSongSoundsLikeTheOneSaved();
     testNewSongAndTheList();

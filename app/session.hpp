@@ -406,8 +406,8 @@ public:
     void useSongFolder(const std::string& folder, std::uint32_t seed);
     const std::string& songName() const { return songName_; }
     std::vector<std::string> songNames() const; // most recently saved first
-    void newSong();                             // saves the current one first
-    bool openSong(const std::string& name);     // likewise
+    bool newSong();                             // saves the current one first; false (and said) if it could not be saved: nothing changes
+    bool openSong(const std::string& name);     // likewise (false too if the file could not be read)
     bool saveNow();                             // only writes if something changed; false: it had to and could not
     // Give the open song a new two-word name (there is no keyboard to type
     // one). Its file and its revs follow. Returns the new name.

@@ -111,19 +111,30 @@ bool Session::saveNow() {
     return true;
 }
 
-void Session::newSong() {
-    saveNow();
+// A song that cannot be saved is not shut (review 2026-11-23: on a full card, a new song or another
+// opened threw away everything since the last autosave that worked, without a word).
+constexpr const char* kNotSavedWords = "NOT SAVED: CARD FULL?";
+
+bool Session::newSong() {
+    if (!saveNow()) {
+        say(kNotSavedWords);
+        return false;
+    }
     std::unique_ptr<Project> fresh(new Project);
     project = *fresh;
     chokeTheHats(project.tracks[0]); // its kit's hats in CHOKE 1 (told with the song, next)
     songName_ = freshName();
     savedText_.clear();
     applyProject();
+    return true;
 }
 
 bool Session::openSong(const std::string& name) {
     followNow(); // what it reads has followed every rename
-    saveNow();
+    if (!saveNow()) {
+        say(kNotSavedWords);
+        return false;
+    }
     std::string text;
     if (folder_.empty() || !readTextFile(pathOf(name), text) || !parseSong(text, project)) return false;
     songName_ = name;
