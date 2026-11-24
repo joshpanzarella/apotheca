@@ -85,11 +85,14 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - **The list of effects is eight lines, EMPTY and the seven families**
     (`kPickLines`), each a family's name and, from `kPickTypesX`, its types
     in small letters with ", " between ("clean, tape, ping"), the slot's type
-    in brass on the cursor's line. In one row at the size chosen if they fit
-    `kPickTypesRoom`, else held at LARGE (MOD's five planned at XL), else two
-    rows at LARGE (`pickRows`; no planned name needs it, made-up ones as long
-    as SATURATE do). `textsize_test` (`testTheListOfEffectsHoldsTheLaterTypes`)
-    holds the fifteen planned types to it at every size.
+    in brass on the cursor's line. **How many rows is LARGE's at every size**
+    (as the TYPE row's view is, 2026-11-24): one row where LARGE fits it in
+    `kPickTypesRoom` (at the size chosen if that fits too, else LARGE); two where
+    LARGE needs two, split where the longer row is shortest, drawn at the size
+    chosen where each row fits, else LARGE (`pickRows`). Since PITCH, MOD's six
+    are two rows ("chorus, flanger, ensemble" over "phaser, tremolo, pitch") at
+    every size. `textsize_test` (`testTheListOfEffectsHoldsTheLaterTypes`)
+    holds the planned types (WAH and PITCH among them) to it at every size.
   - **The heading's TYPE row shows as many types as fit** about the one the
     slot is, "..." (`kTypeMore`) for the rest (`typesInView`, in the room the
     row keeps for the LEFT / RIGHT key held or not). **Which are in view is
@@ -424,6 +427,11 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   while the song plays the scene on screen; never while a button is held or the stick pushed, nor
   `kFollowRestMs` (1.5 s) after, so a bar looked at by hand stays until the playhead next enters a bar.
   The cursor keeps its step.
+  **The roll's keys follow the notes too** (owner, 2026-11-24; `keysToShow` in follow_bar.hpp, `NoteScreen::followTheNotes`):
+  when FOLLOW shows a bar, the keys go to the stretch holding the most of its notes (then the most of their length,
+  then centred on them, then nearest where they were); a bar with none leaves them; the cursor, if left out of view,
+  goes to the nearest key shown. Read only (the const `pat()`: the writable one makes a scene's piece).
+  `follow_test` `testTheKeysRule`, `testTheRollsKeys`.
 - **SCALE's OFF reads CHROMATIC** (owner, 2026-11-18: "no key" was not seen as there; `scaleName`):
   the number in songs is unchanged.
 - **The one colour on the screen that is not the theme's: a track's ring colour on its SONG head**

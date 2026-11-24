@@ -857,6 +857,11 @@ private:
     void fireArps();
 
     void apply(const Command& command);
+    // apply()'s areas, each true where the command was its own (engine.cpp).
+    bool applyDrums(const Command& c);
+    bool applySound(const Command& c);
+    bool applySong(const Command& c);
+    bool applyMix(const Command& c);
     void takeAway(int t);      // RemoveInstrument's work, at once (after its fade, if it sounded)
     void takeCommands();       // the queue, in order, up to a command that waits for a fade
     int going_ = 0;            // tracks fading before they are taken away (the audio thread's)

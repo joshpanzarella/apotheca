@@ -174,12 +174,12 @@ if(APOTHECA_BUILD_APP)
   find_package(Threads REQUIRED)
   # Everything of the app but main(): compiled ONCE, and linked by the program and by every test
   # of it. (It used to be compiled again for each of the nine tests: ten times in all.)
-  add_library(apotheca_app STATIC app/app.cpp app/lane_edit.cpp app/bench_run.cpp app/chords.cpp app/controls.cpp app/sampler_screen.cpp app/settings_screen.cpp app/samples.cpp app/stretch.cpp app/stretch_smooth.cpp app/fx_screen.cpp app/fx_picture.cpp app/icons.cpp app/input.cpp app/kit_screen.cpp app/note_screen.cpp app/pattern_screen.cpp app/pattern_slices.cpp
+  add_library(apotheca_app STATIC app/app.cpp app/lane_edit.cpp app/bench_run.cpp app/chords.cpp app/controls.cpp app/sampler_screen.cpp app/settings_screen.cpp app/samples.cpp app/stretch.cpp app/stretch_smooth.cpp app/fx_screen.cpp app/fx_picture.cpp app/icons.cpp app/stills.cpp app/input.cpp app/kit_screen.cpp app/note_screen.cpp app/pattern_screen.cpp app/pattern_slices.cpp
       app/instruments.cpp app/synth_screen.cpp app/mod_knob.cpp app/mod_screen.cpp app/recorder.cpp app/session.cpp app/session_songs.cpp app/session_synth.cpp app/session_samples.cpp app/kits.cpp app/sampler_presets.cpp app/song_file.cpp app/song_screen.cpp app/synth_spec.cpp app/presets.cpp app/drum_voices.cpp app/transfer.cpp app/wifi.cpp app/midi.cpp app/bounce.cpp app/sample_picker.cpp app/designer.cpp app/design_page.cpp
       app/text.cpp app/ui.cpp app/realtime.cpp app/redraw.cpp app/lights.cpp
       app/version.cpp)
   target_include_directories(apotheca_app PUBLIC app third_party)
-  target_compile_options(apotheca_app PRIVATE -Wall -Wextra)
+  target_compile_options(apotheca_app PRIVATE -Wall -Wextra -Wno-missing-field-initializers) # (as the handheld build: a note or a kit's line is written in part on purpose)
   # stb_truetype is someone else's code; do not hold it to our warnings.
   set_source_files_properties(app/text.cpp PROPERTIES COMPILE_OPTIONS "-Wno-unused-function")
   set_source_files_properties(app/version.cpp PROPERTIES COMPILE_DEFINITIONS "APOTHECA_VERSION=\"0.${APOTHECA_CHANGES}\";APOTHECA_BUILT=\"${APOTHECA_BUILT}\"")
@@ -191,7 +191,7 @@ if(APOTHECA_BUILD_APP)
   endif()
 
   add_executable(apotheca app/main.cpp)
-  target_compile_options(apotheca PRIVATE -Wall -Wextra)
+  target_compile_options(apotheca PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
   target_link_libraries(apotheca PRIVATE apotheca_app)
 
   # Timings, for keeping an eye on what things cost: ./build/bench
@@ -239,13 +239,15 @@ if(APOTHECA_BUILD_APP)
     add_test(NAME speed COMMAND speed_test)
     set_tests_properties(speed PROPERTIES TIMEOUT 120)
     # The screen drawn only when it can have changed (app/redraw.hpp): a long session, every pass held
-    # to the picture, and each reason taken away in turn, a third of them in each of idle1 to idle3.
+    # to the picture, and each reason taken away in turn, a fifth of them in each of idle1 to idle5.
     add_executable(idle_test tests/idle_test.cpp)
     target_link_libraries(idle_test PRIVATE apotheca_app)
     add_test(NAME idle1 COMMAND idle_test --part 1)
     add_test(NAME idle2 COMMAND idle_test --part 2)
     add_test(NAME idle3 COMMAND idle_test --part 3)
-    set_tests_properties(idle1 idle2 idle3 PROPERTIES TIMEOUT 120)
+    add_test(NAME idle4 COMMAND idle_test --part 4)
+    add_test(NAME idle5 COMMAND idle_test --part 5)
+    set_tests_properties(idle1 idle2 idle3 idle4 idle5 PROPERTIES TIMEOUT 120)
     target_compile_definitions(chord_test PRIVATE APOTHECA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     # TEXT SIZE: the setting and its row; and every still the program knows, drawn by the program at all four sizes.
     add_executable(textsize_test tests/textsize_test.cpp)

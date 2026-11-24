@@ -919,7 +919,6 @@ void testCellsOfSeveralBars() {
 }
 
 // The strip counts steps as the grid numbers do (bar * meter + step), and on BARS it shows the bar.
-static bool inked(const Canvas& canvas, Canvas& scratch, int size, float x, float y, const char* text, SDL_Color colour);
 void testStripCountsWithTheGrid() {
     Canvas canvas, scratch;
     CHECK(canvas.ok && scratch.ok);
@@ -4656,7 +4655,6 @@ void testSendsThroughTheSession() {
     }
 }
 
-static bool inked(const Canvas& canvas, Canvas& scratch, int size, float x, float y, const char* text, SDL_Color colour);
 
 // EVERY SETTING HAS AN ICON (owner, 2026-11-24): every synth's macros and its pages' settings, and every effect's
 // settings (and LEVEL, a bus's MIX), take a drawing by the rules in icons.cpp. A new name no rule takes fails here.
@@ -4776,16 +4774,66 @@ void testTheFxPictureFollowsTheSettings() {
             CHECK(picture(kind, usual, 0.f, live) != first);
         }
     }
-    // The track's level is in a DRIVE's wave and on COMP's curve.
-    for (EffectKind kind : {EffectKind::Drive, EffectKind::Comp}) {
+    // The track's level is in a DRIVE's wave, on COMP's curve and in where WAH's corner is.
+    for (EffectKind kind : {EffectKind::Drive, EffectKind::Comp, EffectKind::Wah}) {
         float usual[kEffectParams] = {0.f, 0.f, 0.f, 0.f};
         for (int p = 0; p < effectInfo(kind).params; ++p) usual[p] = effectDefault(kind, p, false);
         FxLive live;
         live.playing = true;
-        live.level = 0.1f;
+        live.level = 0.01f; // (at its usual SENSE, WAH is all the way open from about 0.1)
         const auto quiet = picture(kind, usual, 0.f, live);
         live.level = 0.9f;
         CHECK(picture(kind, usual, 0.f, live) != quiet);
+    }
+    // WAH's curve opens with the playing: loud, the area under it reaches far further up the notes than quiet.
+    {
+        const EffectKind wah = EffectKind::Wah;
+        float usual[kEffectParams] = {0.f, 0.f, 0.f, 0.f};
+        for (int p = 0; p < effectInfo(wah).params; ++p) usual[p] = effectDefault(wah, p, false);
+        const auto under = [&](float level) {
+            FxLive live;
+            live.playing = true;
+            live.level = level;
+            picture(wah, usual, 0.f, live);
+            int n = 0;
+            for (int y = F::kPicY + 12; y < F::kPicY + F::kPicH - 12; ++y)
+                for (int x = F::kPaneX + 12; x < F::kPaneX + F::kPaneW - 12; ++x) n += canvas.is(x, y, ui::kPanel2) || canvas.is(x, y, ui::kText) ? 1 : 0;
+            return n;
+        };
+        const int shut = under(0.f), open = under(0.9f);
+        CHECK(open > shut * 3 / 2);
+        if (open <= shut * 3 / 2) std::printf("    WAH: %d pixels under its curve shut, %d open\n", shut, open);
+    }
+    // PITCH draws the shifted sound at its own speed (2026-11-24): along the middle of the waves, an octave up
+    // crosses it twice as often as no shift, an octave down half as often. Under them the heads' fades: at no shift
+    // they stand still, one at full (its line along the top of the strip); an octave up they turn twice as often as
+    // an octave down (once a GRAIN, against once in two).
+    {
+        const int px = F::kPaneX + 12, pw = F::kPaneW - 24, py = F::kPicY + 12, ph = F::kPicH - 24, wh = ph * 7 / 10;
+        const int mid = py + wh - 1 - static_cast<int>(std::round(0.5f * static_cast<float>(wh - 1)));
+        const int fy = py + ph * 4 / 5; // the strip's top row
+        struct Read { int crossings, peaks, full; };
+        const auto read = [&](int semis) {
+            float shown[kEffectParams] = {(static_cast<float>(semis + 12) + 0.5f) / 25.f, 0.5f, 0.4f, 0.5f};
+            picture(EffectKind::Pitch, shown, 0.f);
+            Read got{0, 0, 0};
+            bool in = false, top = false;
+            for (int x = px; x < px + pw; ++x) {
+                const bool t = canvas.is(x, mid, ui::kText), inked = canvas.is(x, fy, ui::kText) || canvas.is(x, fy, ui::kDim);
+                got.crossings += t && !in ? 1 : 0;
+                got.peaks += inked && !top ? 1 : 0;
+                in = t, top = inked;
+                got.full += canvas.is(x, fy, ui::kDim) ? 1 : 0;
+            }
+            return got;
+        };
+        const Read same = read(0), up = read(12), down = read(-12);
+        const bool crossings = same.crossings >= 4 && same.crossings <= 6 && up.crossings >= 8 && up.crossings <= 10 && down.crossings >= 2 && down.crossings <= 4;
+        const bool heads = same.full > pw * 9 / 10 && up.full < pw / 4 && up.peaks >= 9 && up.peaks <= 11 && down.peaks >= 4 && down.peaks <= 6;
+        CHECK(crossings && heads);
+        if (!crossings || !heads)
+            std::printf("    PITCH crosses %d / %d / %d times; the strip's top: %d / %d of %d inked, %d / %d peaks\n", same.crossings, up.crossings,
+                        down.crossings, same.full, up.full, pw, up.peaks, down.peaks);
     }
     // EACH THEME'S STYLE: VINTAGE engraves a scale outside the ring, NEON lights a glow ring outside the lit arc, CLEAN neither.
     for (int theme : {static_cast<int>(kThemeBrown), static_cast<int>(kThemeDracula), static_cast<int>(kThemeNord), static_cast<int>(kThemeSolarized)}) {
@@ -5564,21 +5612,6 @@ void testTheFxScreensList() {
 // Is `text` drawn at (x, y) in `colour`? It is drawn there on a second screen, and wherever that
 // has a pixel of the full colour (the body of a letter, not its soft edge) the screen looked at
 // must have it too.
-bool inked(const Canvas& canvas, Canvas& scratch, int size, float x, float y, const char* text, SDL_Color colour) {
-    const Font& font = size == 0 ? scratch.fonts->small : (size == 1 ? scratch.fonts->medium : scratch.fonts->large);
-    const int x0 = std::max(0, static_cast<int>(x) - 2), x1 = std::min(ui::kScreenW, static_cast<int>(x + font.width(text)) + 3);
-    const int y0 = std::max(0, static_cast<int>(y) - 4), y1 = std::min(ui::kScreenH, static_cast<int>(y) + 30);
-    ui::fill(scratch.r, x0, y0, x1 - x0, y1 - y0, SDL_Color{255, 0, 255, 255}); // a ground no lettering is drawn in
-    font.draw(scratch.r, x, y, text, colour);
-    int body = 0;
-    for (int py = y0; py < y1; ++py)
-        for (int px = x0; px < x1; ++px) {
-            if (!scratch.is(px, py, colour)) continue;
-            ++body;
-            if (!canvas.is(px, py, colour)) return false;
-        }
-    return body >= 6;
-}
 
 void testTheFxScreenAsDrawn() {
     Canvas canvas, scratch;
@@ -5691,10 +5724,14 @@ void testTheFxScreenAsDrawn() {
     // A family's types on its line, each in its place, the one lit (kBrass) or none (-1).
     const auto typesOn = [&](int place, int lit, int bus = -1) {
         const std::vector<std::string> words = F::typeWords(familyAt(place, bus));
-        float x = static_cast<float>(F::kPickTypesX);
+        // In one row or two, as the screen splits it (FxScreen::pickRows; MOD's six since PITCH are two at LARGE).
+        const F::PickRows rows = F::pickRows(fonts, words);
+        const float capH = rows.set->small.capHeight(), rowsH = rows.rows * capH + (rows.rows - 1) * F::kPickRowGap;
+        float x = static_cast<float>(F::kPickTypesX), y = pickY(place) + (F::kPickLineH - rowsH) / 2.f - 1.f;
         bool all = true;
         for (int t = 0; t < static_cast<int>(words.size()); ++t) {
-            all = all && inked(canvas, scratch, 0, x, pickY(place) + pickSmallMid, words[t].c_str(), t == lit ? kBrass : kDim);
+            if (t == rows.split && t > 0) x = static_cast<float>(F::kPickTypesX), y += capH + F::kPickRowGap;
+            all = all && inked(canvas, scratch, 0, x, y, words[t].c_str(), t == lit ? kBrass : kDim);
             x += fonts.small.width(words[t].c_str());
             if (t + 1 < static_cast<int>(words.size())) x += fonts.small.width(", "); // (a comma has no pixel of full ink to look for)
         }
@@ -5718,7 +5755,7 @@ void testTheFxScreenAsDrawn() {
     CHECK(typesOn(2, -1) && typesOn(4, -1) && typesOn(5, -1) && typesOn(6, -1) && typesOn(7, -1) && !typesOn(5, 1)); // (the check can tell)
     // FILTER names its types since COMB, VOWEL and EQ (it said "low, band, high, DJ"); CRUSH since RING (it said "fewer bits").
     CHECK(typesOn(1, -1) && inked(canvas, scratch, 0, static_cast<float>(F::kPickTypesX), pickY(1) + pickSmallMid, "filter", kDim) && inked(canvas, scratch, 0, static_cast<float>(F::kPickTypesX), pickY(3) + pickSmallMid, "crush", kDim));
-    CHECK(inked(canvas, scratch, 0, static_cast<float>(F::kPickTypesX), pickY(5) + pickSmallMid, "clean", kDim) && inked(canvas, scratch, 0, static_cast<float>(F::kPickTypesX), pickY(4) + pickSmallMid, "chorus", kDim));
+    CHECK(inked(canvas, scratch, 0, static_cast<float>(F::kPickTypesX), pickY(5) + pickSmallMid, "clean", kDim)); // (MOD's "chorus" is on the first of two rows since PITCH: typesOn above)
     // The box goes down to the page's foot, the last line in it.
     CHECK(canvas.is(F::kPaneX + 50, F::kPageBottom - 1, kLine) && canvas.is(F::kPaneX + 50, F::kPageBottom, kBg) && pickY(7) + F::kPickLineH + F::kPickPad == F::kPageBottom);
     CHECK(heading("EMPTY", kBrass) && canvas.is(F::kPaneX - 1, F::kPaneY + 20, kBrass) && canvas.is(F::kListX - 1, F::lineY(1) + 10, kBrass)); // A held: brass
@@ -6298,7 +6335,14 @@ void testFxTextsFit() {
         CHECK(F::kPickNameX + fonts.medium.width(effectFamily(kind)) <= F::kPickTypesX - 8);
         effectFamilySays(kind, text, sizeof text);
         CHECK(fonts.small.width(text) <= F::kPickTypesRoom);
-        if (effectFamilyNamesTypes(kind)) CHECK(F::pickRows(fonts, F::typeWords(kind)).rows == 1 && F::typesWidth(fonts.small, F::typeWords(kind), 0, effectTypes(kind)) <= F::kPickTypesRoom);
+        // (MOD's six, since PITCH, take two rows at LARGE: the list's own way for a line too long, pickRows.)
+        if (effectFamilyNamesTypes(kind)) {
+            const std::vector<std::string> words = F::typeWords(kind);
+            const F::PickRows rows = F::pickRows(fonts, words);
+            const int types = effectTypes(kind), split = rows.rows == 1 ? types : rows.split;
+            CHECK(rows.rows == 1 || effectInfo(kind).family == EffectFamily::Mod);
+            CHECK(F::typesWidth(rows.set->small, words, 0, split) <= F::kPickTypesRoom && F::typesWidth(rows.set->small, words, split, types) <= F::kPickTypesRoom);
+        }
         // Where a send goes.
         if (effectBus(kind) >= 0) {
             std::snprintf(text, sizeof text, "to the SPACE bus: %s, %s", effectFamily(kind), effectTypeShown(kind));
@@ -10381,7 +10425,8 @@ void testDeletingASongSaysItCannotBeUndone() {
         rig.frames(1);
         CHECK(session.songNames().size() == 1);
     }
-    std::system(("rm -rf '" + folder + "'").c_str());
+    const int gone = std::system(("rm -rf '" + folder + "'").c_str());
+    (void)gone;
 }
 
 // PHYSIC (physic-plan.md, sections 3, 7 and 8): the sixth instrument, last in the list. A new track is on
@@ -11657,8 +11702,6 @@ int main(int argc, char** argv) {
         testTheFxScreenSecondReview();
         testSongFilesAreAsTheyWere();
         testTheFxScreenShowsCompAtWork();
-    testTheFxPictureFollowsTheSettings();
-    testEverySettingHasAnIcon();
         testTheFxPictureFollowsTheSettings();
         testEverySettingHasAnIcon();
         if (failures == 0) std::printf("app tests passed (FX only)\n");
@@ -11781,6 +11824,8 @@ int main(int argc, char** argv) {
     testTheFxScreenSecondReview();
     testSongFilesAreAsTheyWere();
     testTheFxScreenShowsCompAtWork();
+    testTheFxPictureFollowsTheSettings(); // (only --fx ran these two until 2026-11-24)
+    testEverySettingHasAnIcon();
     testTheKeysShownFollowTheCursor();
     testTheScreensKnowWhereTheSongIs();
     testAPatternHoldsSixtyFourNotes();

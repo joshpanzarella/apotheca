@@ -463,7 +463,7 @@ static void testTheTable() {
     CHECK(effectChoices(EffectKind::Filter, -1) == 0 && effectChoices(EffectKind::Filter, 4) == 0 && effectChoices(EffectKind::None, 0) == 0);
     CHECK(effectChoices(static_cast<EffectKind>(77), 0) == 0);
     // The list as it is today, in its seven families (FILTER, DRIVE, CRUSH, MOD, DELAY, REVERB, LEVEL), the types of a family side by side.
-    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Comb, EffectKind::Vowel, EffectKind::Eq, EffectKind::Drive, EffectKind::Saturate, EffectKind::Fold, EffectKind::Fuzz, EffectKind::Crush, EffectKind::Ring, EffectKind::Wear, EffectKind::Chorus, EffectKind::Flanger, EffectKind::Ensemble, EffectKind::Phaser, EffectKind::Tremolo, EffectKind::Delay, EffectKind::Tape, EffectKind::Ping, EffectKind::Dub, EffectKind::Reverse, EffectKind::Stutter, EffectKind::Reverb, EffectKind::Hall, EffectKind::Spring, EffectKind::Plate, EffectKind::Bloom, EffectKind::Shimmer, EffectKind::Comp, EffectKind::Duck, EffectKind::Limiter, EffectKind::Snap};
+    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Comb, EffectKind::Vowel, EffectKind::Eq, EffectKind::Wah, EffectKind::Drive, EffectKind::Saturate, EffectKind::Fold, EffectKind::Fuzz, EffectKind::Crush, EffectKind::Ring, EffectKind::Wear, EffectKind::Chorus, EffectKind::Flanger, EffectKind::Ensemble, EffectKind::Phaser, EffectKind::Tremolo, EffectKind::Pitch, EffectKind::Delay, EffectKind::Tape, EffectKind::Ping, EffectKind::Dub, EffectKind::Reverse, EffectKind::Stutter, EffectKind::Reverb, EffectKind::Hall, EffectKind::Spring, EffectKind::Plate, EffectKind::Bloom, EffectKind::Shimmer, EffectKind::Comp, EffectKind::Duck, EffectKind::Limiter, EffectKind::Snap};
     CHECK(effectListSize() == static_cast<int>(sizeof list / sizeof list[0]));
     for (int i = 0; i < effectListSize(); ++i) CHECK(effectAt(i) == list[i]);
     // ...and the families in EffectFamily's order, so a family is never in two pieces (the list a player picks from has each once).
@@ -831,6 +831,8 @@ static void testEveryEffect() {
             {1.00, 1.19, 1.00, 1.00, 1.19},   // STUTTER
             {1.48, 1.23, 1.13, 1.08, 1.14},   // BLOOM
             {1.16, 1.30, 1.10, 1.12, 1.13},   // SHIMMER
+            {0.54, 0.54, 1.00, 1.00, 0.54},   // WAH (a low-pass: the sine comes out gentler)
+            {1.47, 1.53, 1.50, 1.97, 1.50},   // PITCH (an octave up beside the sine: steeper held still too)
         };
         for (int p = 0; p < info.params; ++p) {
             double steady = 0.0;
@@ -848,7 +850,7 @@ static void testEveryEffect() {
                                          (kind == EffectKind::Eq && (p == 0 || p == 3)) ||
                                          kind == EffectKind::Fold || kind == EffectKind::Fuzz || kind == EffectKind::Ring ||
                                          kind == EffectKind::Wear || (kind == EffectKind::Limiter && p == 0) || kind == EffectKind::Reverse ||
-                                         (kind == EffectKind::Bloom && p == 0);
+                                         (kind == EffectKind::Bloom && p == 0) || kind == EffectKind::Pitch; // (PITCH: an octave up is twice as steep)
             if (k > static_cast<int>(EffectKind::Crush) && !steeperByDesign) CHECK(jump < 1.5);
         }
     }
@@ -4481,9 +4483,9 @@ static void testSendsOnAnyHelperCount() {
 static void testFamiliesAndTypes() {
     const EffectKind N = EffectKind::None, D = EffectKind::Delay, T = EffectKind::Tape, R = EffectKind::Reverb, H = EffectKind::Hall;
     // Nothing moved underneath: the numbers and the song-file words of every effect, as they shipped.
-    static const char* const words[kEffectKinds] = {"", "filter", "drive", "delay", "reverb", "crush", "tape", "hall", "chorus", "comp", "saturate", "duck", "ping", "spring", "plate", "comb", "vowel", "eq", "fold", "fuzz", "ring", "wear", "limiter", "snap", "flanger", "ensemble", "phaser", "tremolo", "dub", "reverse", "stutter", "bloom", "shimmer"};
-    static const char* const names[kEffectKinds] = {"NONE", "FILTER", "DRIVE", "DELAY", "REVERB", "CRUSH", "TAPE", "HALL", "CHORUS", "COMP", "SATURATE", "DUCK", "PING", "SPRING", "PLATE", "COMB", "VOWEL", "EQ", "FOLD", "FUZZ", "RING", "WEAR", "LIMITER", "SNAP", "FLANGER", "ENSEMBLE", "PHASER", "TREMOLO", "DUB", "REVERSE", "STUTTER", "BLOOM", "SHIMMER"};
-    CHECK(kEffectKinds == 33);
+    static const char* const words[kEffectKinds] = {"", "filter", "drive", "delay", "reverb", "crush", "tape", "hall", "chorus", "comp", "saturate", "duck", "ping", "spring", "plate", "comb", "vowel", "eq", "fold", "fuzz", "ring", "wear", "limiter", "snap", "flanger", "ensemble", "phaser", "tremolo", "dub", "reverse", "stutter", "bloom", "shimmer", "wah", "pitch"};
+    static const char* const names[kEffectKinds] = {"NONE", "FILTER", "DRIVE", "DELAY", "REVERB", "CRUSH", "TAPE", "HALL", "CHORUS", "COMP", "SATURATE", "DUCK", "PING", "SPRING", "PLATE", "COMB", "VOWEL", "EQ", "FOLD", "FUZZ", "RING", "WEAR", "LIMITER", "SNAP", "FLANGER", "ENSEMBLE", "PHASER", "TREMOLO", "DUB", "REVERSE", "STUTTER", "BLOOM", "SHIMMER", "WAH", "PITCH"};
+    CHECK(kEffectKinds == 35);
     for (int k = 0; k < kEffectKinds; ++k) {
         const EffectKind kind = static_cast<EffectKind>(k);
         CHECK(std::string(effectInfo(kind).word) == words[k] && std::string(effectInfo(kind).name) == names[k]);
@@ -4492,10 +4494,11 @@ static void testFamiliesAndTypes() {
     // Every old kind in its family, as its type, in the families' order.
     struct Row { EffectKind kind; const char* family; const char* type; const char* shown; int types, index; EffectFamily id; };
     static const Row rows[] = {
-        {EffectKind::Filter, "FILTER", "FILTER", "", 4, 0, EffectFamily::Filter},
-        {EffectKind::Comb, "FILTER", "COMB", "COMB", 4, 1, EffectFamily::Filter},
-        {EffectKind::Vowel, "FILTER", "VOWEL", "VOWEL", 4, 2, EffectFamily::Filter},
-        {EffectKind::Eq, "FILTER", "EQ", "EQ", 4, 3, EffectFamily::Filter},
+        {EffectKind::Filter, "FILTER", "FILTER", "", 5, 0, EffectFamily::Filter},
+        {EffectKind::Comb, "FILTER", "COMB", "COMB", 5, 1, EffectFamily::Filter},
+        {EffectKind::Vowel, "FILTER", "VOWEL", "VOWEL", 5, 2, EffectFamily::Filter},
+        {EffectKind::Eq, "FILTER", "EQ", "EQ", 5, 3, EffectFamily::Filter},
+        {EffectKind::Wah, "FILTER", "WAH", "WAH", 5, 4, EffectFamily::Filter},
         {EffectKind::Drive, "DRIVE", "DRIVE", "", 4, 0, EffectFamily::Drive},
         {EffectKind::Saturate, "DRIVE", "SATURATE", "SATURATE", 4, 1, EffectFamily::Drive},
         {EffectKind::Fold, "DRIVE", "FOLD", "FOLD", 4, 2, EffectFamily::Drive},
@@ -4503,11 +4506,12 @@ static void testFamiliesAndTypes() {
         {EffectKind::Crush, "CRUSH", "CRUSH", "", 3, 0, EffectFamily::Crush},
         {EffectKind::Ring, "CRUSH", "RING", "RING", 3, 1, EffectFamily::Crush},
         {EffectKind::Wear, "CRUSH", "WEAR", "WEAR", 3, 2, EffectFamily::Crush},
-        {EffectKind::Chorus, "MOD", "CHORUS", "CHORUS", 5, 0, EffectFamily::Mod},
-        {EffectKind::Flanger, "MOD", "FLANGER", "FLANGER", 5, 1, EffectFamily::Mod},
-        {EffectKind::Ensemble, "MOD", "ENSEMBLE", "ENSEMBLE", 5, 2, EffectFamily::Mod},
-        {EffectKind::Phaser, "MOD", "PHASER", "PHASER", 5, 3, EffectFamily::Mod},
-        {EffectKind::Tremolo, "MOD", "TREMOLO", "TREMOLO", 5, 4, EffectFamily::Mod},
+        {EffectKind::Chorus, "MOD", "CHORUS", "CHORUS", 6, 0, EffectFamily::Mod},
+        {EffectKind::Flanger, "MOD", "FLANGER", "FLANGER", 6, 1, EffectFamily::Mod},
+        {EffectKind::Ensemble, "MOD", "ENSEMBLE", "ENSEMBLE", 6, 2, EffectFamily::Mod},
+        {EffectKind::Phaser, "MOD", "PHASER", "PHASER", 6, 3, EffectFamily::Mod},
+        {EffectKind::Tremolo, "MOD", "TREMOLO", "TREMOLO", 6, 4, EffectFamily::Mod},
+        {EffectKind::Pitch, "MOD", "PITCH", "PITCH", 6, 5, EffectFamily::Mod},
         {D, "DELAY", "CLEAN", "CLEAN", 6, 0, EffectFamily::Delay},
         {T, "DELAY", "TAPE", "TAPE", 6, 1, EffectFamily::Delay},
         {EffectKind::Ping, "DELAY", "PING", "PING", 6, 2, EffectFamily::Delay},
@@ -4754,8 +4758,10 @@ static void testTypeChangeCarriesSettings() {
     // with TAPE (22), REVERSE TIME, FEEDBACK and MIX with each of the four (24), STUTTER only MIX with each (10):
     // its LENGTH is a slice, not an echo's time. REVERB's six since batch c3: thirty pairs, eighteen of them new;
     // BLOOM and SHIMMER share DECAY, TONE and MIX with HALL, SPRING, PLATE and each other, MIX alone with ROOM (46).
+    // WAH (2026-11-24): FILTER's five, eight pairs new; it shares RESONANCE and MIX with FILTER and VOWEL, MIX with
+    // COMB (10). PITCH: MOD's six, ten pairs new; MIX with CHORUS, FLANGER, ENSEMBLE and PHASER (8).
     SAY("carry    %d pairs, %d settings carried, %d the same, %d to the nearest\n", pairs, carried, same, nearest);
-    CHECK(pairs == 122 && carried == 240 && same > 250 && nearest >= 2);
+    CHECK(pairs == 140 && carried == 258 && same > 250 && nearest >= 2);
     // FILTER and VOWEL read RESONANCE alike (a percentage): it goes over untouched, both ways, as MIX does; EQ shares nothing.
     for (float v : {0.f, 0.2f, 0.37f, 1.f}) {
         CHECK(effectCarryFrom(EffectKind::Filter, EffectKind::Vowel, 2) == 1 && effectCarryValue(EffectKind::Filter, 1, EffectKind::Vowel, 2, v) == v);
@@ -8201,6 +8207,83 @@ static double loudnessThrough(Effect& effect, const std::vector<float>& in) {
     return dB(rmsOf(io.l, 24000) / rmsOf(in, 24000));
 }
 
+// Through one effect, its settings as given, in blocks of 256, the same into both sides.
+static std::vector<float> throughOne(EffectKind kind, const float* settings, const std::vector<float>& in) {
+    std::unique_ptr<Effect> fx = makeEffect(kind, 48000.f, 120.f);
+    for (int i = 0; i < 4; ++i) fx->setParam(i, settings[i]);
+    std::vector<float> left = in, right = in;
+    for (std::size_t at = 0; at < in.size(); at += 256) {
+        const int n = static_cast<int>(std::min<std::size_t>(256, in.size() - at));
+        fx->process(left.data() + at, right.data() + at, n);
+    }
+    return left;
+}
+
+// WAH (2026-11-24): an auto-wah, a TYPE of FILTER. A loud sound opens it: a 2 kHz tone comes through louder, as a
+// share of what went in, at full level than quietly; SENSE up opens it further for the same sound; MIX 0 is the
+// sound untouched to the sample.
+static void testWah() {
+    const EffectKind wah = EffectKind::Wah;
+    const EffectInfo& info = effectInfo(wah);
+    CHECK(static_cast<int>(wah) == 33 && std::string(info.word) == "wah" && effectFromWord("wah") == wah);
+    CHECK(info.family == EffectFamily::Filter && effectBus(wah) == -1 && std::string(effectTypeName(wah)) == "WAH");
+    CHECK(std::string(info.paramNames[2]) == "RESONANCE" && std::string(info.paramNames[3]) == "MIX"); // (as FILTER's: carried)
+    CHECK(reads(wah, 1, 0.f) == "2/60 MS" && reads(wah, 1, 1.f) == "30/600 MS" && reads(wah, 2, 0.5f) == "50%");
+    // RESONANCE reads as FILTER's and VOWEL's, so changing TYPE leaves the knob where it was, to the bit (read as a
+    // Q it was carried by the number: a FILTER at 50% came over as Q 12, the top).
+    for (float v : {0.f, 0.3f, 0.5f, 0.77f, 1.f})
+        CHECK(effectCarryValue(EffectKind::Filter, 1, wah, 2, v) == v && effectCarryValue(wah, 2, EffectKind::Vowel, 2, v) == v && effectCarryValue(wah, 3, EffectKind::Comb, 3, v) == v);
+    const float settings[4] = {0.5f, 0.3f, 0.5f, 1.f};
+    const auto share = [&](float amp, float sense) {
+        float s[4] = {sense, settings[1], settings[2], settings[3]};
+        const std::vector<float> in = sineOf(2000.0, amp, 48000);
+        const std::vector<float> out = throughOne(wah, s, in);
+        return rmsOf(out, 24000) / rmsOf(in, 24000);
+    };
+    const double loud = share(0.5f, 0.5f), quiet = share(0.01f, 0.5f);
+    SAY("wah      2 kHz through: loud %.3f, quiet %.3f (SENSE 50%%)\n", loud, quiet);
+    CHECK(loud > 3.0 * quiet); // the loud one opens it
+    CHECK(share(0.05f, 1.f) > 2.0 * share(0.05f, 0.2f)); // SENSE: further for the same sound
+    // MIX 0: untouched, to the sample.
+    const float none[4] = {0.5f, 0.3f, 0.5f, 0.f};
+    const std::vector<float> in = sineOf(300.0, 0.4, 9600);
+    CHECK(throughOne(wah, none, in) == in);
+}
+
+// PITCH (2026-11-24): a pitch shifter, a TYPE of MOD. MIX full: a 440 Hz tone comes out an octave up (880), an octave
+// down (220), a fifth up (659), as near as the pitch can be read; PITCH is a choice of 25 (-12..+12) read in
+// semitones; MIX 0 is the sound untouched to the sample.
+static void testPitch() {
+    const EffectKind pitch = EffectKind::Pitch;
+    const EffectInfo& info = effectInfo(pitch);
+    CHECK(static_cast<int>(pitch) == 34 && std::string(info.word) == "pitch" && effectFromWord("pitch") == pitch);
+    CHECK(info.family == EffectFamily::Mod && effectBus(pitch) == -1 && effectChoices(pitch, 0) == 25 && effectChoices(pitch, 1) == 0);
+    CHECK(reads(pitch, 0, 0.f) == "-12 ST" && reads(pitch, 0, 0.5f) == "0 ST" && reads(pitch, 0, 1.f) == "+12 ST" && reads(pitch, 0, info.defaults[0]) == "+12 ST");
+    CHECK(reads(pitch, 1, 0.f) == "-50 CENTS" && reads(pitch, 1, 0.5f) == "0 CENTS" && reads(pitch, 2, 0.f) == "20 MS" && reads(pitch, 2, 1.f) == "120 MS");
+    const auto out = [&](int semis) {
+        const float s[4] = {(static_cast<float>(semis + 12) + 0.5f) / 25.f, 0.5f, 0.4f, 1.f};
+        return throughOne(pitch, s, sineOf(440.0, 0.5, 48000));
+    };
+    // Read by bands (half an octave about each pitch): a grain shifter spreads a tone a few hertz either side (each
+    // head fades in and out some 17 times a second), so one exact frequency misses most of it.
+    const std::vector<float> plain = sineOf(440.0, 0.5, 48000);
+    const double reference = rmsOf(bandOf(plain, 440.0), 24000);
+    for (int semis : {12, -12, 7}) {
+        const std::vector<float> o = out(semis);
+        const double want = 440.0 * std::pow(2.0, semis / 12.0);
+        const double there = rmsOf(bandOf(o, want), 24000), old = rmsOf(bandOf(o, 440.0), 24000);
+        SAY("pitch    440 Hz, %+d: about %.1f Hz %.1f dB of the tone in, about 440 Hz %.1f dB under it\n", semis, want, dB(there / reference), dB(there / (old > 1e-9 ? old : 1e-9)));
+        // The new pitch within 6 dB of the tone; the old one 9.5 dB under it (the octaves read 20 dB under; the fifth 11, as
+        // its own band's skirt reaches 440 Hz, seven semitones off).
+        CHECK(there > 0.5 * reference && there > 3.0 * old);
+    }
+    // It is as loud as it went in, near enough (two heads crossfading: within 3 dB).
+    const std::vector<float> o = out(12), in = sineOf(440.0, 0.5, 48000);
+    CHECK(std::fabs(dB(rmsOf(o, 24000) / rmsOf(in, 24000))) < 3.0);
+    const float none[4] = {0.98f, 0.5f, 0.4f, 0.f};
+    CHECK(throughOne(pitch, none, in) == in);
+}
+
 static void testVowel() {
     const EffectKind vowel = EffectKind::Vowel;
     const EffectInfo& info = effectInfo(vowel);
@@ -9648,7 +9731,7 @@ static void modRow(EffectKind kind, int number, const char* word, const char* na
     const EffectInfo& info = effectInfo(kind);
     CHECK(static_cast<int>(kind) == number && std::string(info.word) == word && effectFromWord(word) == kind && std::string(info.name) == name);
     CHECK(info.family == EffectFamily::Mod && effectBus(kind) == -1 && info.params == 4 && effectMeterParam(kind) == -1);
-    CHECK(std::string(effectTypeName(kind)) == name && effectTypes(kind) == 5 && effectTypeIndex(kind) == index && effectTypeAt(EffectKind::Chorus, index) == kind);
+    CHECK(std::string(effectTypeName(kind)) == name && effectTypes(kind) == 6 && effectTypeIndex(kind) == index && effectTypeAt(EffectKind::Chorus, index) == kind);
 }
 
 static void testFlanger() {
@@ -11388,6 +11471,8 @@ int main(int argc, char** argv) {
         {"testStutter", testStutter},
         {"testBloom", testBloom},
         {"testShimmer", testShimmer},
+        {"testWah", testWah},
+        {"testPitch", testPitch},
     };
     // `effects_test --part 1` and `--part 2`: ctest runs it as two tests, each about half the time,
     // so neither comes near its two minutes on a busy machine. Part 2 is everything from

@@ -53,6 +53,8 @@ const EffectInfo* const kTable[kEffectKinds] = {
     &fx::kStutterInfo, // 30
     &fx::kBloomInfo,  // 31
     &fx::kShimmerInfo, // 32
+    &fx::kWahInfo,     // 33
+    &fx::kPitchInfo,   // 34
 };
 
 // The order a player meets them in: the families in EffectFamily's order, and
@@ -65,6 +67,7 @@ const EffectKind kList[] = {
     EffectKind::Comb,     //         COMB
     EffectKind::Vowel,    //         VOWEL
     EffectKind::Eq,       //         EQ
+    EffectKind::Wah,      //         WAH
     EffectKind::Drive,    // DRIVE:  DRIVE
     EffectKind::Saturate, //         SATURATE
     EffectKind::Fold,     //         FOLD
@@ -77,6 +80,7 @@ const EffectKind kList[] = {
     EffectKind::Ensemble, //         ENSEMBLE
     EffectKind::Phaser,   //         PHASER
     EffectKind::Tremolo,  //         TREMOLO
+    EffectKind::Pitch,    //         PITCH
     EffectKind::Delay,    // DELAY:  CLEAN
     EffectKind::Tape,     //         TAPE
     EffectKind::Ping,     //         PING

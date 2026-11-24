@@ -154,6 +154,29 @@ void NoteScreen::keepInView() {
     if (low_ + keys - 1 > kHighest) low_ = kHighest - (keys - 1);
 }
 
+// FOLLOW has shown a bar: the keys go to where its notes are, the most of them and centred on them (follow_bar.hpp,
+// keysToShow). A bar with none leaves them be. The cursor keeps its step and, if it is no longer in view, goes to the
+// nearest key shown, so A places among the notes.
+void NoteScreen::followTheNotes() {
+    std::vector<HeldNote> held;
+    const NotePattern& p = static_cast<const NoteScreen*>(this)->pat(); // (read only: the writable one makes a scene's piece)
+    for (const NoteEvent& n : p.notes)
+        if (n.velocity > 0.f) held.push_back({n.pitch, n.length});
+    for (const ChordEvent& c : p.chords) {
+        if (c.count <= 0) continue;
+        int keys[kChordNotes];
+        const int count = c.pitches(keys);
+        for (int k = 0; k < count; ++k) held.push_back({keys[k], c.length});
+    }
+    const int keys = visibleKeys();
+    const int low = keysToShow(held, keys, kLowest, kHighest, low_);
+    if (low < 0) return;
+    low_ = low;
+    shownKeys_ = keys;
+    if (pitch_ < low_) pitch_ = low_;
+    if (pitch_ > low_ + keys - 1) pitch_ = low_ + keys - 1;
+}
+
 // X held on a note or chord: it goes one key or one step that way, and the
 // cursor with it. It does not leave the bar, go off the keyboard, or land
 // on top of another note (a chord: on steps another chord has).
@@ -798,7 +821,10 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
         const int bars = cellBars();
         const bool here = project_.playing && project_.playScene == project_.scene && project_.playStep >= 0 && bars > 0;
         const int at = follow_.step(here, here ? project_.playBar % bars : -1, input.anyHeld() || x != 0.f || y != 0.f, nowMs);
-        if (at >= 0) project_.bar = at;
+        if (at >= 0) {
+            project_.bar = at;
+            followTheNotes();
+        }
     }
     // A key played on a USB keyboard: the cursor goes to it, so A places there.
     if (const int key = session_.takeMidiKey(); key >= 0 && !shaping_ && !picking_ && !painting_) moveCursorTo(key, step_);

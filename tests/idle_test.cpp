@@ -12,7 +12,7 @@
 // a reason taken away draws only what it shows and what it decides unlike the program as it is.
 //
 //   idle_test            the session, and every reason taken away
-//   idle_test --part N   the session, and the Nth third of the reasons (ctest: idle1 to idle3)
+//   idle_test --part N   the session, and the Nth fifth of the reasons (ctest: idle1 to idle5)
 //   idle_test --quick    the session alone
 //   idle_test --measure  a pass's update, its asking and its drawing, on five screens left alone
 //   IDLE_PRINT=WORDS     each pass's reasons, in the parts whose name has WORDS in it
@@ -714,7 +714,7 @@ int main(int argc, char** argv) {
     SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
     const std::string first = argc > 1 ? argv[1] : "";
     const bool quick = first == "--quick";
-    const int third = first == "--part" && argc > 2 ? std::atoi(argv[2]) : 0; // 1 to 3: that third of the reasons taken away
+    const int third = first == "--part" && argc > 2 ? std::atoi(argv[2]) : 0; // 1 to 5: that fifth of the reasons taken away
     const std::string samples = tempFolder("idle-samples");
     writeWav(samples + "/long.wav", tone(3.f, 0.25f), 48000);
     writeWav(samples + "/short.wav", tone(0.4f, 0.25f), 48000);
@@ -734,7 +734,7 @@ int main(int argc, char** argv) {
     unsigned alone = 0;
     CHECK(runSession(samples, 0, &alone));
     if (!quick) {
-        // Each reason, and which third of them it is in (ctest runs the three side by side: idle1 to idle3).
+        // Each reason, and which fifth of them it is in (ctest runs the five side by side: idle1 to idle5).
         // Four are known to be covered by others where the session can show it (kept all the same: the
         // rule is "when unsure, draw", and a later change may leave one alone): PLAYING (nothing moves
         // within a step; the step itself is "place"), RECORDING (the kit and the sampler say how it is
@@ -744,10 +744,13 @@ int main(int argc, char** argv) {
         // SELECT, is held, so "held" draws every pass of it). Every other one must be needed.
         const unsigned belts = kStirPlaying | kStirRecording | kStirPicker | kStirLoad;
         struct Reason { unsigned bit; int third; };
-        const Reason reasons[] = {{kStirEvent, 1}, {kStirHeld, 1}, {kStirStick, 1}, {kStirPlaying, 1}, {kStirPlace, 1}, {kStirScope, 1},
-                                  {kStirMeters, 1}, {kStirMidi, 1}, {kStirVolume, 1}, {kStirSaid, 1}, {kStirPanicNote, 2},
-                                  {kStirUpdateSaid, 2}, {kStirFitting, 2}, {kStirRecording, 2}, {kStirBouncing, 2}, {kStirWifi, 2},
-                                  {kStirScreenSaid, 3}, {kStirPlayhead, 3}, {kStirPicker, 3}, {kStirButtonTest, 3}, {kStirAfter, 3}, {kStirLoad, 3}, {kStirGrains, 3}};
+        // (Five parts since 2026-11-24: each runs the whole session first (about a minute), then its reasons; UPDATE
+        // SAID, BOUNCING and WIFI take about 18 s each, so each is in a part of its own. In three parts the first came
+        // within 17 s of its two minutes on a busy machine.)
+        const Reason reasons[] = {{kStirEvent, 1}, {kStirHeld, 1}, {kStirStick, 1}, {kStirPlaying, 1}, {kStirPlace, 1}, {kStirScope, 1}, {kStirFitting, 1},
+                                  {kStirMeters, 2}, {kStirMidi, 2}, {kStirVolume, 2}, {kStirSaid, 2}, {kStirPanicNote, 2}, {kStirScreenSaid, 2},
+                                  {kStirUpdateSaid, 3}, {kStirRecording, 3}, {kStirBouncing, 4}, {kStirWifi, 5},
+                                  {kStirPlayhead, 4}, {kStirPicker, 4}, {kStirButtonTest, 4}, {kStirAfter, 4}, {kStirLoad, 5}, {kStirGrains, 5}};
         // A reason that was never the only one on a pass changes nothing when taken away: it is not
         // run again, and is said as surviving. The others are run, and must fail.
         for (const Reason& r : reasons) {

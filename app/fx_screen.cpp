@@ -319,9 +319,12 @@ float FxScreen::typesWidth(const Font& font, const std::vector<std::string>& nam
 FxScreen::PickRows FxScreen::pickRows(const Fonts& fonts, const std::vector<std::string>& names) {
     const int count = static_cast<int>(names.size());
     const float room = static_cast<float>(kPickTypesRoom);
-    if (typesWidth(fonts.small, names, 0, count) <= room) return {&fonts, 1, count};
     const Fonts& large = fonts.fixed();
-    if (count <= 1 || typesWidth(large.small, names, 0, count) <= room) return {&large, 1, count}; // (one name is never split)
+    // How many rows is LARGE's at every size (as the TYPE row's view is): a smaller size in one row where LARGE needs
+    // two would be other words (the comma at the split). MOD's six since PITCH are two rows at LARGE.
+    const bool oneAtLarge = count <= 1 || typesWidth(large.small, names, 0, count) <= room; // (one name is never split)
+    if (oneAtLarge && typesWidth(fonts.small, names, 0, count) <= room) return {&fonts, 1, count};
+    if (oneAtLarge) return {&large, 1, count};
     // Two rows: where the longer of the two is shortest.
     int split = 1;
     float best = -1.f;
@@ -329,7 +332,9 @@ FxScreen::PickRows FxScreen::pickRows(const Fonts& fonts, const std::vector<std:
         const float a = typesWidth(large.small, names, 0, s), b = typesWidth(large.small, names, s, count), w = a > b ? a : b;
         if (best < 0.f || w < best) best = w, split = s;
     }
-    return {&large, 2, split};
+    // Two rows: in the size chosen where each fits, else LARGE's.
+    const bool fits = typesWidth(fonts.small, names, 0, split) <= room && typesWidth(fonts.small, names, split, count) <= room;
+    return {fits ? &fonts : &large, 2, split};
 }
 
 float FxScreen::typeRowRoom(const Fonts& fonts, int types) {

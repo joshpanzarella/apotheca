@@ -458,6 +458,17 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   under 40 Hz (an octave of a steady offset is itself) or over 7 kHz (with the tank's damping, a steady 14 or 15 kHz folds back 42 dB under itself; `testShimmer` holds it under 30). The
   octaves climb out past 7 kHz, so at SHIMMER full a 20 s tail is 0.58 as long
   (tested). A ceiling of 64 on a line is a guard only.
+- **WAH (FILTER) and PITCH (MOD), 2026-11-24.** WAH's level is followed every sample (louder of left
+  and right, in fast, back slowly) but its corner is aimed once a TICK from the level then and slid to
+  (`Slide`), as VOWEL's; its low-pass is made up by `1/sqrt(Q)` so RESONANCE does not make it much
+  louder. It sleeps after a tick with nothing in and the filters under kQuiet, the level with them, and
+  wakes with the level at zero. **PITCH is two heads half a GRAIN apart with triangle gains that add to
+  one** (no gain is lost or added at a splice); the speed is worked out once a TICK from where PITCH and
+  FINE are gliding to, in semitones, so a click of PITCH slides. Its line holds 0.12 s; it sleeps only
+  after 4 s of nothing AND once every place in the line has been written as zero, and wakes with the
+  write place and the heads at 0, so a render is the same however long the silence was. At 0 shift the
+  wet is the dry a GRAIN late: a comb against the dry, as any shifter. `testPitch` measures the new
+  pitch by band level against the input (a zero-crossing count is thrown by the splices).
 - **A per-sample loop works on locals** (WEAR's `stretch`: up to the tick's
   end, everything the samples change copied in, worked on, copied back).
   Written straight on the effect's own numbers WEAR cost 0.40% of a core; the

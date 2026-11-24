@@ -11,7 +11,7 @@ namespace stills {
 
 // ---- every still the program knows ---------------------------------------------------------
 // As they are asked for: the view's name, then any flags. (An empty name is the drum grid, which
-// has no name of its own.) testEveryViewIsListed reads main.cpp and fails if it knows one that
+// has no name of its own.) testEveryViewIsListed reads main.cpp and stills.cpp and fails if it knows one that
 // is not here.
 inline const char* const kViews[] = {
     "song", "deleting", "effects", "effects-held",

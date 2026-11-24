@@ -166,6 +166,7 @@ private:
     int gridTop() const;
     int cellW() const;
     void keepInView();
+    void followTheNotes(); // FOLLOW showed a bar: the keys to its notes (follow_bar.hpp, keysToShow)
     bool barsPushed_ = false; // the stick's push for the next bar more or fewer, on the BARS stop
     bool onBars_ = false;     // BARS, above the grid: the bar shown, and the cell's count
     bool zooming_ = false, zoomUsed_ = false; // L1 is held; it did something (copied, pasted, moved)

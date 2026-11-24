@@ -1,0 +1,1249 @@
+// The stills (--view NAME): what main() sets up before the first frame, so a picture shows that screen in that
+// state. Moved out of main() on 2026-11-24 (it was 1,190 of its 1,703 lines), word for word: each view's lines as
+// they were, the options main() read handed over in StillOptions. Every NAME: docs/dev/stills.md; a new one goes
+// in kViews in tests/stills.hpp too (textviews fails one that is missing).
+#include <thread>
+#include <SDL.h>
+#include <atomic>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <strings.h>
+#include <sys/stat.h>
+#include <ctime>
+#include <string>
+#include "version.hpp"
+#include "apotheca/engine.hpp"
+#include "app.hpp"
+#include "scales.hpp"
+#include "drum_voices.hpp"
+#include "power_off.hpp"
+#include "redraw.hpp"
+#include "bench_run.hpp"
+#include "controls.hpp"
+#include "input.hpp"
+#include "joysticks.hpp"
+#include "realtime.hpp"
+#include "song_file.hpp"
+#include "text.hpp"
+#include "stills.hpp"
+
+namespace apotheca {
+
+namespace {
+
+// Keys pressed for a still, as a player would (they reach the App with the first frame's events).
+void pushKey(SDL_Keycode key, bool down) {
+    SDL_Event event = {};
+    event.type = down ? SDL_KEYDOWN : SDL_KEYUP;
+    event.key.keysym.sym = key;
+    SDL_PushEvent(&event);
+}
+void tapKey(SDL_Keycode key, int times = 1) {
+    for (int i = 0; i < times; ++i) {
+        pushKey(key, true);
+        pushKey(key, false);
+    }
+}
+
+} // namespace
+
+void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap& controlMap, int& stillMs) {
+    const char* view = options.view;
+    const char* samples = options.samples;
+    const char* songs = options.songs;
+    const char* shot = options.shot;
+    const bool demo = options.demo, smoke = options.smoke, holdA = options.holdA, holdY = options.holdY;
+    const bool onName = options.onName, onTempo = options.onTempo, dice = options.dice, noMenu = options.noMenu;
+    const int paint = options.paint;
+    (void)songs, (void)shot, (void)noMenu, (void)demo, (void)samples;
+    if (std::strcmp(view, "song") == 0) {
+        app.session().view = View::Song;
+    } else if (std::strcmp(view, "deleting") == 0) {
+        // B held on a track: its head a second into DELETING.
+        app.session().view = View::Song;
+        pushKey(SDLK_z, true);
+    } else if (std::strncmp(view, "effects", 7) == 0) {
+        // Step effects on the drum grid: hits that are pitched, ratcheted, backwards, cut and thrown; with X held on one.
+        PatternScreen& drums = app.drums();
+        const auto fx = [&](int lane, int step, int pitch, int ratchet, bool reverse, int cut, int throwTo = 0) {
+            StepFx f;
+            f.throwTo = static_cast<std::uint8_t>(throwTo);
+            f.pitch = static_cast<std::int8_t>(pitch);
+            f.ratchet = static_cast<std::uint8_t>(ratchet);
+            f.reverse = reverse;
+            f.cut = static_cast<std::uint8_t>(cut);
+            if (drums.level(lane, step) <= 0.f) drums.setStep(lane, step, 0.8f);
+            drums.setFx(lane, step, f);
+        };
+        fx(1, 4, 0, 3, false, 0, kThrowEcho);
+        fx(1, 12, 5, 0, false, 0);
+        fx(1, 15, 0, 4, false, 2, kThrowSpace);
+        fx(0, 6, -7, 0, true, 0);
+        fx(2, 2, 0, 2, false, 0);
+        fx(2, 6, 12, 0, false, 3, 3);
+        fx(4, 10, -12, 2, true, 1);
+        fx(5, 3, 0, 0, true, 0);
+        fx(0, 0, 0, 0, false, 0, 3);           // a hit at full height, thrown to both
+        fx(3, 14, 0, 0, false, 0, kThrowSpace);
+        fx(6, 3, 0, 0, false, 0, kThrowEcho);  // a quiet one
+        drums.moveCursorTo(1, 4);
+        if (std::strcmp(view, "effects-held") == 0) pushKey(SDLK_s, true); // X held
+    } else if (std::strncmp(view, "feel", 4) == 0) {
+        // FEEL on the drum grid: lanes with a HUMAN TIME, a HUMAN LEVEL, both (each wears its mark),
+        // the cursor on a lane's name. feel: the strip's one line says the lane's. feel-held: X held,
+        // the strip is its feel. feel-off-held: on a lane with none. feel-same-held: every lane at
+        // 100% and 100%, the strip at its widest. feel-said: L1 pressed on that built-in drum (the
+        // message has the row; the feel's line gives way to it). SWING too: lanes 2, 3 and 6 swung
+        // (lane 6 alone, its mark by itself), every lane at 100% in feel-same-held. feel-swing: the
+        // cursor on lane 6, SWING alone in its line; feel-swing-held: X held there.
+        Session& session = app.session();
+        session.setLaneFeel(0, 0, 10, 0);
+        session.setLaneFeel(0, 1, 25, 10);
+        session.setLaneFeel(0, 2, 50, 25);
+        session.setLaneFeel(0, 4, 0, 75);
+        session.setLaneSwing(0, 1, 100);
+        session.setLaneSwing(0, 2, 50);
+        session.setLaneSwing(0, 5, 25);
+        if (std::strstr(view, "same"))
+            for (int lane = 0; lane < kDrumLanes; ++lane) session.setLaneFeel(0, lane, 100, 100), session.setLaneSwing(0, lane, 100);
+        app.drums().moveCursorTo(std::strstr(view, "off") ? 3 : (std::strstr(view, "swing") ? 5 : 2), -1);
+        if (std::strstr(view, "-held")) pushKey(SDLK_s, true); // X held
+        if (std::strstr(view, "-said")) app.drums().setSlicing(true); // L1 on a built-in drum: why it has no slices, said on the row the feel's line has
+    } else if (std::strcmp(view, "choke") == 0 || std::strncmp(view, "kit-choke", 9) == 0) {
+        // CHOKE: the hats in 1 (the demo's kit, as a new kit's), TOM and CRASH in 2, the closed hat with a
+        // feel too (its two marks side by side). choke: the drum grid, the cursor on the open hat's name.
+        // kit-choke: the KIT page on the open hat's CHOKE. kit-choke-held: A held there (what UP / DOWN do).
+        Session& session = app.session();
+        session.setLaneChoke(0, 5, 2);
+        session.setLaneChoke(0, 7, 2);
+        session.setLaneFeel(0, 2, 50, 25);
+        app.drums().moveCursorTo(3, -1);
+        if (view[0] == 'k') {
+            session.view = View::Device;
+            app.kit().goTo(3, KitScreen::kChoke);
+            if (std::strstr(view, "-held")) pushKey(SDLK_x, true); // A held
+        }
+    } else if (std::strncmp(view, "kit-preset", 10) == 0) {
+        // KIT PRESETS: the KIT page on the kit's stop, above lane 1. kit-preset: the built-in kit HAND DRUMS on (the longest name);
+        // -held: A held (what UP / DOWN do); -own: a lane's swing turned since (YOUR OWN: Y saves it).
+        Session& session = app.session();
+        session.loadKit(0, 6);
+        if (std::strstr(view, "-own")) session.setLaneSwing(0, 1, 40);
+        session.finishStretching();
+        session.view = View::Device;
+        app.kit().goToKit();
+        if (std::strstr(view, "-held")) pushKey(SDLK_x, true); // A held
+    } else if (std::strncmp(view, "kit-synth", 9) == 0 || std::strncmp(view, "kit-voice", 9) == 0) {
+        // DRUM SYNTH: the first four lanes synth voices (KICK with its TUNE turned, SNARE, CL HAT, OP HAT),
+        // lane 6 a CLAP. kit-synth: the KIT page on lane 1's SOUND. kit-voice: lane 1's VOICE view on TUNE;
+        // -held: A held there; -deleting: B held (its bar filling); kit-voice-clap: lane 6's, on SPREAD.
+        Session& session = app.session();
+        drumsynth::Voice kick = drumsynth::usualVoice(drumsynth::kKick);
+        kick.dial[drumsynth::kTune] = 40;
+        session.setLaneSynth(0, 0, kick);
+        session.setLaneSynth(0, 1, drumsynth::usualVoice(drumsynth::kSnare));
+        session.setLaneSynth(0, 2, drumsynth::usualVoice(drumsynth::kClHat));
+        session.setLaneSynth(0, 3, drumsynth::usualVoice(drumsynth::kOpHat));
+        session.setLaneSynth(0, 5, drumsynth::usualVoice(drumsynth::kClap));
+        session.finishStretching();
+        session.view = View::Device;
+        const bool named = std::strcmp(view, "kit-voice-named") == 0;
+        if (named)
+            for (int place = 0; place < voiceCount(drumsynth::kClap); ++place)
+                if (std::strcmp(voiceName(drumsynth::kClap, place), "FINGER SNAP") == 0) session.setLaneSynth(0, 5, voiceAt(drumsynth::kClap, place));
+        const bool clap = named || std::strcmp(view, "kit-voice-clap") == 0;
+        app.kit().goTo(clap ? 5 : 0, KitScreen::kSound);
+        if (view[4] == 'v') app.kit().openVoice(named ? KitScreen::kVoiceModel : clap ? drumsynth::kOwn : drumsynth::kTune);
+        if (named) pushKey(SDLK_x, true); // A held on MODEL
+        if (std::strcmp(view, "kit-voice-held") == 0) pushKey(SDLK_x, true); // A held
+        if (std::strcmp(view, "kit-voice-deleting") == 0) {
+            pushKey(SDLK_z, true); // B held
+            if (stillMs > 600) stillMs = 600; // (the picture is taken before the second is up)
+        }
+    } else if (std::strncmp(view, "kit-edit", 8) == 0) {
+        // EDIT on a lane: with --samples the first recording on lane 6, else lane 1's built-in kick; cut
+        // to its middle, GAIN +3, a fade out, PITCH -2, backwards. kit-edit: the edit view on GAIN.
+        // kit-edit-held: A held there. kit-edit-deleting: B held (its bar filling). kit-edit-column: the
+        // KIT page, the cursor on the lane's picture (EDIT), its seconds purple.
+        Session& session = app.session();
+        const std::vector<std::string> names = session.sampleNames();
+        const int lane = names.empty() ? 0 : 5;
+        if (!names.empty()) session.setLaneSample(0, lane, names[0]);
+        LaneEdit e;
+        e.start = kEditUnits / 8;
+        e.end = kEditUnits * 7 / 8;
+        e.gain = 30;
+        e.fadeOut = 150;
+        e.pitch = -2;
+        e.reverse = 1;
+        session.setLaneEdit(0, lane, e);
+        session.view = View::Device;
+        app.kit().goTo(lane, KitScreen::kEdit);
+        if (std::strcmp(view, "kit-edit-column") != 0) app.kit().openEdit(kEditGain);
+        if (std::strcmp(view, "kit-edit-held") == 0) pushKey(SDLK_x, true); // A held
+        if (std::strcmp(view, "kit-edit-deleting") == 0) {
+            pushKey(SDLK_z, true); // B held
+            if (stillMs > 600) stillMs = 600; // (the picture is taken before the second is up)
+        }
+    } else if (std::strncmp(view, "chordfx", 7) == 0) {
+        // Chord effects on the piano roll. chordfx: four chords, the cursor on a strummed one.
+        // chordfx-held: X held on it (the strip is its six effects). chordfx-ratchet, -strum,
+        // -order, -time, -level, -lengths: X held with that one picked. chordfx-off: X held on a
+        // chord with nothing set. chordfx-arp: on an arpeggio with a ratchet (which waits).
+        // chordfx-worst: everything at its widest. chordfx-line: X let go, the strip's one line
+        // at its longest, thrown and nudged.
+        Project& project = app.project();
+        project.track = 2;
+        NotePattern& p = project.tracks[2].notes[0][0];
+        p = NotePattern();
+        const ChordPack& pack = builtInPack();
+        p.chords[0] = makeChord(pack.chords[0], 48, 0, 3.f, .7f, 0);  // plain
+        p.chords[1] = makeChord(pack.chords[1], 50, 4, 3.f, .7f, 0);  // strummed, humanised: under the cursor
+        p.chords[1].play = chordPlayOf(kStrumTight, kOrderDown, 25, 10, 0);
+        p.chords[2] = makeChord(pack.chords[2], 53, 8, 3.f, .7f, 0);  // a ratchet and nothing else
+        p.chords[2].ratchet = 3;
+        p.chords[3] = makeChord(pack.chords[0], 55, 12, 4.f, .7f, 0); // an arpeggio, thrown
+        p.chords[3].play = chordPlayOf(kStrumHalf, kOrderUpDown, 0, 0, 25);
+        p.chords[3].throwTo = kThrowEcho;
+        int cursorKey = 50, cursorStep = 4;
+        if (std::strstr(view, "off")) cursorKey = 48, cursorStep = 0;
+        if (std::strstr(view, "arp")) {
+            int keys[kChordNotes];
+            p.chords[3].ratchet = 2;
+            p.chords[3].pitches(keys); // (a pack's chord sits where the pack puts it: the cursor goes to its lowest key)
+            cursorKey = keys[0], cursorStep = 12;
+        }
+        if (std::strstr(view, "worst")) {
+            p.chords[1].play = chordPlayOf(kStrumWide, kOrderUpDown, 100, 100, 100);
+            p.chords[1].ratchet = 4;
+            p.chords[1].throwTo = 3;
+            p.chords[1].nudge = -0.45f;
+        }
+        if (std::strstr(view, "line")) {
+            p.chords[1].play = chordPlayOf(kStrumWide, kOrderRandom, 100, 100, 100);
+            p.chords[1].throwTo = kThrowSpace;
+            p.chords[1].nudge = -0.45f;
+        }
+        app.session().sendNoteBar(2, 0, 0);
+        app.notes().moveCursorTo(cursorKey, cursorStep);
+        static const char* const picks[kChordEffects] = {"ratchet", "strum", "order", "time", "level", "lengths"};
+        bool held = std::strstr(view, "held") || std::strstr(view, "off") || std::strstr(view, "arp") || std::strstr(view, "worst");
+        for (int effect = 0; effect < kChordEffects; ++effect)
+            if (std::strstr(view, picks[effect])) app.notes().pickEffect(effect), held = true;
+        if (std::strstr(view, "worst")) app.notes().pickEffect(kFxStrum);
+        if (held) pushKey(SDLK_s, true); // X held
+    } else if (std::strncmp(view, "notefx", 6) == 0) {
+        // Note effects on the piano roll: ratchets of two, three and four, a glide, both, and a short one.
+        Project& project = app.project();
+        project.track = 2;
+        NotePattern& p = project.tracks[2].notes[0][0];
+        p = NotePattern();
+        const auto note = [&](int slot, int step, int pitch, float length, int ratchet, int glide, int throwTo = 0) {
+            p.notes[slot] = NoteEvent{step, pitch, length, 0.f, 0.8f};
+            p.notes[slot].ratchet = static_cast<std::uint8_t>(ratchet);
+            p.notes[slot].glide = static_cast<std::uint8_t>(glide);
+            p.notes[slot].throwTo = static_cast<std::uint8_t>(throwTo);
+        };
+        note(0, 0, 60, 1.f, 0, 0, kThrowEcho);
+        note(1, 2, 62, 1.f, 2, 0);
+        note(2, 4, 64, 2.f, 3, 0, kThrowSpace);
+        note(3, 7, 65, 1.f, 4, 0);
+        note(4, 9, 67, 3.f, 0, 1, 3);
+        note(5, 12, 64, 2.f, 3, 1, 3);
+        note(6, 14, 60, 0.5f, 2, 0, kThrowEcho);
+        note(7, 5, 69, 2.f, 0, 0, kThrowSpace);
+        if (std::strstr(view, "chord")) { // notefx-chord, notefx-chord-held: a thrown chord under the cursor
+            p.chords[0] = makeChord(builtInPack().chords[0], 48, 1, 3.f, .7f, 0);
+            p.chords[0].throwTo = 3;
+            p.chords[0].ratchet = 2;
+        }
+        if (std::strstr(view, "worst")) { // notefx-worst: the strip's longest line, everything on one note
+            p.notes[5].ratchet = 4;
+            p.notes[5].throwTo = kThrowSpace;
+            p.notes[5].nudge = -0.45f;
+            p.notes[5].length = 2.25f;
+        }
+        if (std::strstr(view, "glides")) { // notefx-glides: every length of glide, one into step 1 from the loop's end, one from a key off the roll
+            p = NotePattern();
+            note(0, 0, 62, 1.f, 0, kGlideFull);        // into step 1: from the last note of the loop (step 15)
+            note(1, 2, 67, 1.f, 0, kGlideQuarter);
+            note(2, 4, 60, 1.f, 0, kGlideHalf);
+            note(3, 6, 69, 1.f, 0, kGlideOne);
+            note(4, 9, 64, 2.f, 0, kGlideTwo);
+            note(5, 11, 71, 1.f, 3, kGlideFull);       // a ratchet: the slide is over by its second piece
+            note(6, 12, 30, 0.5f, 0, 0);               // far below the roll...
+            note(7, 13, 65, 1.f, 0, kGlideOne, kThrowEcho); // ...and a glide up from it
+            note(8, 14, 57, 1.f, 0, kGlideFull);
+            p.notes[8].nudge = 0.4f;
+            if (std::strstr(view, "alone")) p.notes[4].nudge = -0.45f, p.notes[4].glide = kGlideQuarter, p.notes[4].throwTo = kThrowSpace; // a glide and no ratchet: the strip says its length
+            if (std::strstr(view, "longest")) p.notes[4].nudge = -0.45f, p.notes[4].ratchet = 4, p.notes[4].throwTo = kThrowSpace; // the strip with X held, at its fullest
+        }
+        app.session().sendNoteBar(2, 0, 0);
+        app.notes().moveCursorTo(64, 12);
+        if (std::strstr(view, "glides")) app.notes().moveCursorTo(64, 9);
+        if (std::strstr(view, "far")) { // notefx-glides-far1, -far2, -far3, -far4: a FULL glide from a note two bars before it, each bar of the four
+            p = NotePattern();
+            app.session().setCellBars(2, 0, 4);
+            note(0, 3, 60, 1.f, 0, 0);
+            project.tracks[2].notes[0][2].notes[0] = NoteEvent{9, 67, 1.f, 0.f, 0.8f};
+            project.tracks[2].notes[0][2].notes[0].glide = kGlideFull;
+            app.session().sendNotePattern(2, 0);
+            project.bar = std::strstr(view, "far")[3] >= '1' && std::strstr(view, "far")[3] <= '4' ? std::strstr(view, "far")[3] - '1' : 0;
+            app.notes().moveCursorTo(64, 12);
+            // notefx-glides-far2-short: the scene is 25 steps, so bar 2 reads 17 to 25 and then "-";
+            // ...-short-drums: the same scene on the drum grid.
+            if (std::strstr(view, "short")) project.steps[0] = 25;
+            if (std::strstr(view, "drums")) app.session().setCellBars(0, 0, 4), project.track = 0;
+        }
+        if (std::strstr(view, "from")) {
+            // notefx-from (TOP), notefx-from-paired, -nearest, -random, and each with -held (X held:
+            // the strip says GLIDE FROM): a chord of four keys, two notes that glide out of it in
+            // FULL, and four that glide out of those two. The same notes; only the track's GLIDE
+            // FROM differs, and with it where the lines come from.
+            p = NotePattern();
+            const int chord[4] = {60, 64, 67, 71};
+            for (int k = 0; k < 4; ++k) note(k, 1, chord[k], 3.f, 0, 0);
+            note(4, 7, 62, 2.f, 0, kGlideFull);
+            note(5, 7, 69, 2.f, 0, kGlideFull);
+            note(6, 13, 59, 2.f, 0, kGlideFull);
+            note(7, 13, 63, 2.f, 0, kGlideFull);
+            note(8, 13, 66, 2.f, 0, kGlideFull);
+            note(9, 13, 70, 2.f, 0, kGlideFull);
+            app.session().setGlideFrom(2, std::strstr(view, "paired") ? kFromPaired : std::strstr(view, "nearest") ? kFromNearest : std::strstr(view, "random") ? kFromRandom : kFromTop);
+            app.session().sendNotePattern(2, 0);
+            app.notes().moveCursorTo(62, 7);
+        }
+        if (std::strstr(view, "chord")) app.notes().moveCursorTo(48, 1);
+        if (std::strstr(view, "space")) app.notes().moveCursorTo(69, 5); // notefx-space: a note thrown to SPACE and nothing else (THROW's widest value)
+        if (std::strstr(view, "held")) pushKey(SDLK_s, true); // X held
+    } else if (std::strcmp(view, "under") == 0) {
+        // A held chord with notes written under it, and a short note under a long one.
+        Session& session = app.session();
+        Project& project = app.project();
+        project.track = 2;
+        NotePattern& p = project.tracks[2].notes[0][0];
+        p = NotePattern();
+        const ChordPack& pack = builtInPack();
+        p.chords[0] = makeChord(pack.chords[0], 60, 0, 12.f, .7f, 0);
+        int keys[kChordNotes];
+        p.chords[0].pitches(keys);
+        p.notes[0] = NoteEvent{4, keys[1], 2.f, 0.f, 0.9f};
+        p.notes[1] = NoteEvent{8, keys[2], 3.f, 0.f, 0.6f};
+        p.notes[2] = NoteEvent{2, 70, 10.f, 0.f, 0.8f};
+        p.notes[3] = NoteEvent{6, 70, 2.f, 0.f, 0.8f};
+        p.notes[4] = NoteEvent{13, keys[0], 2.f, 0.f, 0.8f}; // after the chord has ended: plain
+        p.notes[5] = NoteEvent{1, 65, 3.f, 0.f, 0.8f};
+        p.notes[5].ratchet = 3;
+        p.notes[6] = NoteEvent{6, 67, 2.f, 0.f, 0.8f};
+        p.notes[6].glide = 1;
+        p.notes[7] = NoteEvent{11, 62, 2.f, 0.f, 0.8f};
+        p.notes[7].ratchet = 2;
+        p.notes[7].glide = 1;
+        session.sendNotePattern(2, 0);
+        app.notes().moveCursorTo(72, 14);
+    } else if (std::strcmp(view, "songs") == 0) {
+        app.session().view = View::Song;
+        tapKey(SDLK_BACKSPACE); // SELECT: the list of songs
+    } else if (std::strncmp(view, "sampler", 7) == 0) {
+        // With --samples: a sampler track playing the first recording.
+        if (!app.session().addTrack(TrackKind::Sampler)) app.session().setTrackKind(app.project().trackCount() - 1, TrackKind::Sampler); // (the demo has all twelve: the last becomes one)
+        app.project().track = app.project().trackCount() - 1;
+        const std::vector<std::string> names = app.session().sampleNames();
+        if (!names.empty()) app.session().setTrackSample(app.project().track, names[0]);
+        app.session().setSamplerSetting(app.project().track, sampler::Start, 12);
+        app.session().setSamplerSetting(app.project().track, sampler::End, 80); // (its mark too)
+        app.session().view = View::Device;
+        app.sampler().goTo(std::strcmp(view, "sampler-end") == 0 ? 4 : 3); // START; sampler-end: END, beside it
+        if (std::strcmp(view, "sampler-picker") == 0) { // its list of recordings, open on the one that is on
+            app.sampler().goTo(0);
+            tapKey(SDLK_x);
+        }
+    } else if (std::strcmp(view, "bars-stop-roll") == 0) { // the roll with the cursor on BARS
+        app.project().track = 1;
+        app.session().view = View::Pattern;
+        app.session().setCellBars(1, 0, 2);
+        app.notes().moveCursorTo(60, 0);
+        app.project().bar = 0;
+        tapKey(SDLK_UP);
+    } else if (std::strcmp(view, "bars-stop-grid") == 0) { // the drums with the cursor on BARS
+        app.project().track = 0;
+        app.session().view = View::Pattern;
+        app.session().setCellBars(0, 0, 2);
+        app.drums().moveCursorTo(0, 0);
+        tapKey(SDLK_UP, 2); // lane, tempo, BARS
+    } else if (std::strncmp(view, "bars", 4) == 0) {
+        // Scene 1 with cells of different lengths: the pads four bars (a
+        // chord a bar, the last held over two), the bass two, the drums one.
+        Session& session = app.session();
+        Project& project = app.project();
+        session.setCellBars(2, 0, 4);
+        const ChordPack& pack = builtInPack();
+        const int order[3] = {10, 7, 11};
+        for (int bar = 1; bar < 3; ++bar) {
+            NotePattern& p = project.tracks[2].notes[0][bar];
+            p.chords[0] = makeChord(pack.chords[static_cast<std::size_t>(order[bar])], 57, 0, bar == 2 ? 28.f : 14.f, .7f, 0);
+        }
+        project.tracks[2].notes[0][0].chords[0].length = 14.f;
+        project.tracks[2].notes[0][0].chords[1] = ChordEvent();
+        session.sendNotePattern(2, 0);
+        session.setCellBars(1, 0, 2);
+        project.tracks[1].notes[0][1] = project.tracks[1].notes[1][0];
+        session.sendNotePattern(1, 0);
+        if (std::strcmp(view, "bars-roll") == 0) {
+            project.track = 2;
+            project.bar = 3;
+            app.notes().moveCursorTo(64, 4);
+        } else {
+            session.view = View::Song;
+            app.song().moveCursorTo(0, 2);
+        }
+    } else if (std::strncmp(view, "fx", 2) == 0 && (view[2] == 0 || view[2] == '-')) {
+        // The FX screen: the list on the left, the line picked large on the right.
+        //   fx          in the list, on the track's first effect (DELAY, TAPE)
+        //   fx-type     the same; with --hold-a its TYPE row and the list of effects
+        //   fx-pick     on an empty slot; with --hold-a the list of effects is open
+        //   fx-comp     COMP on the track, on its THRESHOLD, with its meter
+        //   fx-switch   COMP on the track, on its second setting: with --hold-a, A held, RIGHT switches its TYPE (the key in the heading; LEFT stops, COMP is LEVEL's first)
+        //   fx-master   COMP on the master, on its THRESHOLD
+        //   fx-duck     DUCK on the track, on its SOURCE (a choice: one piece for each)
+        //   fx-choice   FILTER's TYPE (a choice)
+        //   fx-auto     a setting that moves with the pattern
+        //   fx-sends    the track's sends, on ECHO
+        //   fx-bus      in the list, on the SPACE bus; with --hold-a its short list
+        //   fx-level    the ECHO bus's LEVEL
+        //   fx-ping     PING on the track, in the list; with --hold-a its TYPE row (the DELAY's third)
+        //   fx-ping-bus PING on the ECHO bus, in the list; with --hold-a the bus's short list
+        //   fx-spring   REVERB (SPRING) on the track and on the SPACE bus, on its DECAY
+        //   fx-plate    PLATE in the track's second slot, its line in the list; with --hold-a its TYPE and the list
+        //   fx-trying   A held on the TAPE's line and moved up two: another family tried, the TAPE kept aside
+        //   fx-family-N the last type of family N (1 FILTER ... 7 LEVEL) in the track's second slot, its line in the
+        //               list; with --hold-a the list of effects on that family's line, the type lit
+        //   fx-kind-WORD the effect whose song-file word is WORD (comb, vowel, eq...) in the track's second slot, its
+        //               line in the list; fx-kind-WORD-N on its Nth setting (1 to 4)
+        // Each also with --hold-a.
+        Session& s = app.session();
+        s.setEffect(0, 0, EffectKind::Tape);
+        s.setEffect(0, 1, EffectKind::Filter);
+        s.setEffectParam(0, 1, 0, 0.45f);
+        s.setEffect(0, 2, EffectKind::Comp);
+        s.setEffectParam(0, 2, 0, 0.3f);
+        s.setEffect(kMasterTrack, 0, EffectKind::Comp);
+        s.setEffectParam(kMasterTrack, 0, 0, 0.45f);
+        s.setEffectParam(kSpaceBus, 0, 3, 0.8f);
+        s.setSend(0, 0, 0.35f);
+        s.setSend(0, 1, 0.1f);
+        s.setAutomation(0, 0, autoLaneOfSend(1), 0, 0.5f);
+        s.view = View::Effects;
+        FxScreen& fx = app.fx();
+        if (std::strcmp(view, "fx-sends") == 0) fx.goTo(FxScreen::kSendsRow, 1);
+        else if (std::strcmp(view, "fx-pick") == 0) {
+            s.setEffect(0, 1, EffectKind::None);
+            fx.goTo(1, 0);
+        } else if (std::strcmp(view, "fx-comp") == 0) fx.goTo(2, 1);
+        else if (std::strcmp(view, "fx-switch") == 0) fx.goTo(2, 2);
+        else if (std::strcmp(view, "fx-master") == 0) fx.goTo(FxScreen::kMasterRow, 1);
+        else if (std::strcmp(view, "fx-bus") == 0) fx.goTo(FxScreen::kBusRow + 1, 0);
+        else if (std::strcmp(view, "fx-level") == 0) fx.goTo(FxScreen::kBusRow, 4);
+        else if (std::strcmp(view, "fx-choice") == 0) fx.goTo(1, 3);
+        else if (std::strcmp(view, "fx-spring") == 0) {
+            s.setEffect(0, 1, EffectKind::Spring);
+            s.setEffect(kSpaceBus, 0, EffectKind::Spring);
+            fx.goTo(1, 2);
+        }
+        else if (std::strcmp(view, "fx-auto") == 0) {
+            for (int step = 0; step < kSteps; ++step) s.setAutomation(0, 0, autoLaneOfEffect(1, 0), step, 0.2f + 0.04f * static_cast<float>(step));
+            fx.goTo(1, 1);
+        } else if (std::strcmp(view, "fx-duck") == 0) {
+            // DUCK at work: the strip on AMOUNT is how far it is dipping.
+            s.setEffect(0, 2, EffectKind::Duck);
+            s.setEffectParam(0, 2, 1, 0.9f);
+            fx.goTo(2, 3);
+        } else if (std::strcmp(view, "fx-ping") == 0) {
+            s.setEffect(0, 0, EffectKind::Ping);
+            fx.goTo(0, 0);
+        } else if (std::strcmp(view, "fx-ping-bus") == 0) {
+            s.setEffect(kEchoBus, 0, EffectKind::Ping);
+            fx.goTo(FxScreen::kBusRow, 0);
+        } else if (std::strcmp(view, "fx-plate") == 0) {
+            s.setEffect(0, 1, EffectKind::Plate);
+            fx.goTo(1, 0);
+        } else if (std::strncmp(view, "fx-family-", 10) == 0) {
+            const EffectKind family = familyAt(std::atoi(view + 10));
+            s.setEffect(0, 1, effectTypeAt(family, effectTypes(family) - 1));
+            fx.goTo(1, 0);
+        } else if (std::strncmp(view, "fx-kind-", 8) == 0) {
+            std::string word = view + 8;
+            int column = 0;
+            const std::size_t dash = word.find('-');
+            if (dash != std::string::npos) column = std::atoi(word.c_str() + dash + 1), word.resize(dash);
+            s.setEffect(0, 1, effectFromWord(word.c_str()));
+            fx.goTo(1, column);
+        } else if (std::strcmp(view, "fx-trying") == 0) {
+            // A held on the TAPE's line (its FEEDBACK automated) and up two: MOD tried, the TAPE kept aside.
+            s.setAutomation(0, 0, autoLaneOfEffect(0, 1), 0, 0.3f);
+            fx.goTo(0, 0);
+            pushKey(SDLK_x, true);
+            tapKey(SDLK_UP, 2);
+        } else if (std::strncmp(view, "fx-mod", 6) == 0 || std::strcmp(view, "fx-sends-mod-held") == 0) {
+            // X held on a setting of the track's TAPE (FEEDBACK), or on its ECHO send: its MOD's fields in
+            // the heading's place (on SENDS, in the other send's row). fx-mod-held: an LFO (RAMP DOWN, -100%,
+            // 1/2 STEP). fx-mod-stepper: a STEPPER. fx-mod-new: none on it yet. fx-mod-full: both MODs on
+            // other knobs. fx-sends-mod-held: a STEPPER on ECHO.
+            ModSettings lfo;
+            lfo.kind = kModLfo, lfo.target = kModFirstEffect + 1, lfo.shape = kModRampDown, lfo.depth = -1.f, lfo.rate = kModRateHalfStep, lfo.phase = 3;
+            ModSettings steps;
+            steps.kind = kModStepper, steps.target = kModFirstEffect + 1, steps.depth = 1.f, steps.rate = kModRateEighthTriplet, steps.length = 16;
+            for (int i = 0; i < kModSteps; ++i) steps.steps[i] = (i % 2 ? 0.7f : -0.5f) + 0.03f * static_cast<float>(i);
+            if (std::strcmp(view, "fx-modded") == 0) {
+                // The song playing, no X: the TAPE's FEEDBACK under its LFO and its AGE under a STEPPER,
+                // each bar with the thin brass mark where it is given now (batch 6); on FEEDBACK.
+                lfo.depth = -0.5f, lfo.rate = kModRateHalf;
+                s.setMod(0, 0, lfo);
+                steps.target = kModFirstEffect + 2, steps.depth = 0.6f;
+                s.setMod(0, 1, steps);
+            } else if (std::strcmp(view, "fx-mod-held") == 0) s.setMod(0, 0, lfo);
+            else if (std::strcmp(view, "fx-mod-stepper") == 0) s.setMod(0, 1, steps);
+            else if (std::strcmp(view, "fx-mod-full") == 0) {
+                lfo.target = kModFirstEffect + 4 * 1 + 0; // the FILTER's CUTOFF
+                s.setMod(0, 0, lfo);
+                steps.target = kModFirstSend + 1;
+                s.setMod(0, 1, steps);
+            } else if (std::strcmp(view, "fx-sends-mod-held") == 0) {
+                steps.target = kModFirstSend;
+                s.setMod(0, 0, steps);
+            }
+            if (std::strcmp(view, "fx-sends-mod-held") == 0) fx.goTo(FxScreen::kSendsRow, 1);
+            else fx.goTo(0, 2);
+            if (std::strcmp(view, "fx-modded") != 0) pushKey(SDLK_s, true); // X held
+        } else if (std::strcmp(view, "fx-deleting") == 0) {
+            // B held on the TAPE's line: its bar filling (it is deleted at a second; stills are taken sooner).
+            fx.goTo(0, 0);
+            pushKey(SDLK_z, true);
+        } else fx.goTo(0, 0);
+    } else if (std::strcmp(view, "bounce") == 0 || std::strcmp(view, "bounce-tail") == 0 || std::strcmp(view, "bounce-ready") == 0) {
+        // The BOUNCE row while one is under way: part-way through the song, or 12 seconds into its tail.
+        // "bounce-ready": the row at rest, with what A does.
+        app.session().view = View::Settings;
+        app.settings().goTo(SettingsScreen::kBounce);
+        if (view[6] == 0) app.session().pretendBounce(0.37f, -1.f);
+        else if (std::strcmp(view, "bounce-tail") == 0) app.session().pretendBounce(1.f, 12.4f);
+    } else if (std::strcmp(view, "panic") == 0) {
+        for (SDL_Keycode key : {SDLK_1, SDLK_2, SDLK_q, SDLK_w}) pushKey(key, true); // all four shoulder buttons
+        for (SDL_Keycode key : {SDLK_1, SDLK_2, SDLK_q, SDLK_w}) pushKey(key, false);
+    } else if (std::strcmp(view, "wifi") == 0) {
+        app.session().view = View::Song;
+        tapKey(SDLK_BACKSPACE); // SELECT: the list
+        tapKey(SDLK_q);         // L1: files over WiFi
+    } else if (std::strcmp(view, "revs") == 0) {
+        app.session().view = View::Song;
+        tapKey(SDLK_BACKSPACE); // SELECT
+        tapKey(SDLK_a, 2);      // Y twice: two revs
+        tapKey(SDLK_DOWN);
+        tapKey(SDLK_x);         // A on the open song: its revs
+    } else if (std::strcmp(view, "change-instrument") == 0) {
+        // R1 on track 2's head: the list of instruments, on the next one, saying what goes with the old.
+        app.session().view = View::Song;
+        app.song().moveCursorTo(0, 1);
+        tapKey(SDLK_UP);
+        tapKey(SDLK_w);
+        tapKey(SDLK_DOWN);
+    } else if (std::strncmp(view, "song-mixer", 10) == 0) {
+        // The mixer, on four tracks: A held on track 2's head (-6 DB, L 30), or on MASTER (-3 DB); "-12" with twelve tracks.
+        app.session().view = View::Song;
+        const bool master = std::strstr(view, "-master") != nullptr;
+        if (std::strstr(view, "-12")) {
+            const TrackKind kinds[3] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Drums};
+            for (int i = 0; app.project().trackCount() < kNumTracks; ++i) app.session().addTrack(kinds[i % 3]);
+            app.session().setMix(11, 3, 50);
+            app.session().setMix(6, 0, -20);
+        } else {
+            app.session().addTrack(TrackKind::Fm6); // four tracks
+        }
+        app.session().setMix(1, -6, -30);
+        if (master) {
+            app.session().setMix(kMasterTrack, -3, 0);
+            app.song().moveToMaster();
+        } else {
+            app.song().moveCursorTo(0, std::strstr(view, "-12") ? kNumTracks - 1 : 1);
+            tapKey(SDLK_UP); // onto its head
+        }
+        pushKey(SDLK_x, true); // A, held
+        app.song().showMixCardForStill();
+    } else if (std::strncmp(view, "song-marks", 10) == 0) {
+        // The heads' marks: track 2 muted (M), track 3 soloed (S); "-12" with twelve tracks, the narrow heads.
+        app.session().view = View::Song;
+        if (std::strstr(view, "-12")) {
+            const TrackKind kinds[3] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Drums};
+            for (int i = 0; app.project().trackCount() < kNumTracks; ++i) app.session().addTrack(kinds[i % 3]);
+            app.session().setMuted(10, true);
+            app.session().setSolo(11, true);
+        }
+        app.session().setMuted(1, true);
+        app.session().setSolo(2, true);
+    } else if (std::strncmp(view, "song-track-colours", 18) == 0) {
+        // LIGHT COLOUR at TRACK: each head wears its track's ring colour along its foot; "-12" the narrow
+        // heads, tracks 11 muted and 12 soloed and track 1's mixer mark on. The files pretended.
+        app.session().useLights(Lights::pretend());
+        app.session().setLightColour(kLightTrack);
+        app.session().view = View::Song;
+        if (std::strstr(view, "-12")) {
+            const TrackKind kinds[3] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Drums};
+            for (int i = 0; app.project().trackCount() < kNumTracks; ++i) app.session().addTrack(kinds[i % 3]);
+            app.session().setMuted(10, true);
+            app.session().setSolo(11, true);
+            app.session().setMix(0, -6, 10);
+        }
+    } else if (std::strcmp(view, "song-copy-track") == 0) {
+        // DUPLICATE A TRACK (easywins batch 6): track 2 just copied (TRACK 3: COPY OF 2), L1 still held on the copy's head.
+        app.session().view = View::Song;
+        app.song().moveCursorTo(0, 1);
+        tapKey(SDLK_UP);
+        pushKey(SDLK_q, true);
+        tapKey(SDLK_w);
+    } else if (std::strcmp(view, "song-head") == 0) {
+        // The cursor on track 2's head: its hints (A name, HOLD A mix, R1 instrument, HOLD B delete, Y mute, X solo).
+        app.session().view = View::Song;
+        app.song().moveCursorTo(0, 1);
+        tapKey(SDLK_UP);
+    } else if (std::strcmp(view, "song-end-loop") == 0 || std::strcmp(view, "song-end-stop") == 0) {
+        // AT END: the cursor on the PLAYS box of the row just past the last scene, where the song ends.
+        app.session().view = View::Song;
+        if (view[9] == 's') app.session().setSongEnd(kSongStop);
+        app.song().moveCursorTo(app.song().songEndRow(), -1);
+    } else if (std::strcmp(view, "song-deleting") == 0) {
+        // B held on a song in the list: its row filling (it is deleted at a second; stills are taken sooner).
+        app.session().view = View::Song;
+        tapKey(SDLK_BACKSPACE); // SELECT: the list
+        tapKey(SDLK_a);         // Y: a rev, so the song is on the card
+        tapKey(SDLK_DOWN);
+        pushKey(SDLK_z, true);
+    } else if (std::strcmp(view, "add-track") == 0) {
+        app.session().view = View::Song;
+        app.song().moveCursorTo(0, app.project().trackCount());
+        tapKey(SDLK_x);
+    } else if (std::strncmp(view, "chords", 6) == 0) {
+        // The pads, with Y held: "chords" to place one, "chords-swap" on one, "chords-smoke" deep in
+        // a big pack (SMOKE, 23 chords: the tiles scrolled to its middle, a chord with a flat root).
+        app.project().track = 2;
+        const bool swap = std::strcmp(view, "chords-swap") == 0, deep = std::strcmp(view, "chords-smoke") == 0;
+        app.notes().moveCursorTo(60, swap ? 2 : 14);
+        if (swap) app.session().choosePack(1);
+        for (std::size_t i = 0; deep && i < app.session().packs.size(); ++i)
+            if (app.session().packs[i].name == "Smoke") app.session().choosePack(static_cast<int>(i));
+        app.session().view = View::Pattern;
+        pushKey(SDLK_a, true); // Y, held
+        tapKey(SDLK_RIGHT, swap ? 1 : deep ? 7 : 2);
+    } else if (std::strcmp(view, "notes") == 0) {
+        app.project().track = 1;
+        app.notes().moveCursorTo(57, 6);
+    } else if (std::strcmp(view, "phazed") == 0) {
+        app.project().track = 1;
+        app.session().view = View::Device;
+        app.phazed().goTo(0, SynthScreen::kFirstMacro);
+        pushKey(SDLK_x, true);  // hold A on TONE
+        tapKey(SDLK_UP, 6);     // and turn it up
+    } else if (std::strcmp(view, "mod") == 0 || std::strncmp(view, "mod-", 4) == 0) {
+        // The MOD tab. A Phazed track with an LFO (TRIANGLE, +40%, 1/2, PHASE 1/4) on TONE and a STEPPER (8 long,
+        // 1/4) on its ECHO send. mod: in the list, on MOD 1. mod-lfo: on MOD 1's DEPTH, X held (stopped: it runs,
+        // the dot moves). mod-steps: MOD 2's row, on step 5. mod-target: on MOD 1's TARGET (--hold-a: the list
+        // of targets). mod-off: no MOD, on MOD 1's TARGET. mod-drums: the drum track, a STEPPER on its first
+        // effect (--hold-a: the list of targets, no macros). mod-deleting: B held on MOD 1's line (the still is
+        // taken before the second is up). mod-12: twelve tracks, on the last, its MODs as above. mod-free: MOD 1
+        // FREE at 0.025 Hz (the longest SPEED there is to read), on its SPEED, X held (it runs, the dot moves).
+        Session& s = app.session();
+        int track = 1;
+        if (std::strcmp(view, "mod-12") == 0) {
+            const TrackKind kinds[] = {TrackKind::Drums, TrackKind::Phazed, TrackKind::Fm6};
+            for (int i = 0; app.project().trackCount() < kNumTracks; ++i) app.session().addTrack(kinds[i % 3]);
+            track = kNumTracks - 1;
+        }
+        app.project().track = track;
+        s.view = View::Mods;
+        ModSettings lfo;
+        lfo.kind = kModLfo, lfo.target = kModFirstMacro, lfo.shape = kModTriangle, lfo.depth = 0.4f, lfo.rate = kModRateHalf, lfo.phase = 1;
+        ModSettings steps;
+        steps.kind = kModStepper, steps.target = kModFirstSend, steps.depth = -0.6f, steps.rate = kModRateQuarter, steps.length = 8, steps.slew = 0.25f, steps.chance = 0.1f;
+        for (int i = 0; i < kModSteps; ++i) steps.steps[i] = (i % 3 == 0 ? 0.8f : -0.4f) + 0.05f * static_cast<float>(i % 5);
+        if (std::strcmp(view, "mod-free") == 0) lfo.rate = kModRateFree, lfo.speed = 0.025f;
+        if (std::strcmp(view, "mod-drums") == 0) {
+            app.project().track = track = 0;
+            s.setEffect(0, 0, EffectKind::Filter);
+            steps.target = kModFirstEffect; // the FILTER's CUTOFF
+            s.setMod(0, 1, steps);
+        } else if (std::strcmp(view, "mod-mixer") == 0) {
+            // LEVEL under the LFO, PAN under the STEPPER (batch 8): the mixer's own two as targets.
+            lfo.target = kModTargetLevel;
+            steps.target = kModTargetPan;
+            s.setMod(track, 0, lfo);
+            s.setMod(track, 1, steps);
+        } else if (std::strcmp(view, "mod-off") != 0) {
+            s.setMod(track, 0, lfo);
+            s.setMod(track, 1, steps);
+        }
+        ModScreen& mods = app.mods();
+        if (std::strcmp(view, "mod-lfo") == 0 || std::strcmp(view, "mod-free") == 0) {
+            mods.goTo(0, std::strcmp(view, "mod-free") == 0 ? ModScreen::kMore : ModScreen::kDepth);
+            pushKey(SDLK_s, true); // X held
+        } else if (std::strcmp(view, "mod-depth") == 0) {
+            // MOD 1's DEPTH lane written in this scene (batch 7): -60% on every step (one reading, whenever
+            // the still is taken: textviews holds the words at every size); the row with its purple line,
+            // reading the lane while the demo plays.
+            for (int i = 0; i < kSteps; ++i) s.setAutomation(track, 0, modDepthLane(0), i, modDepthToLane(-0.6f));
+            mods.goTo(0, ModScreen::kDepth);
+        } else if (std::strcmp(view, "mod-steps") == 0) {
+            mods.goTo(3, ModScreen::kFirstStep + 4);
+        } else if (std::strcmp(view, "mod-target") == 0 || std::strcmp(view, "mod-off") == 0 || std::strcmp(view, "mod-drums") == 0) {
+            mods.goTo(std::strcmp(view, "mod-drums") == 0 ? 2 : 0, ModScreen::kTarget);
+        } else if (std::strcmp(view, "mod-deleting") == 0) {
+            mods.goTo(0, 0);
+            pushKey(SDLK_z, true); // B held
+            if (stillMs > 600) stillMs = 600; // (the picture is taken before the second is up)
+        } else {
+            mods.goTo(0, 0);
+        }
+    } else if (std::strncmp(view, "device-mod", 10) == 0) {
+        // X held on a macro of a Phazed track (TONE): its MOD's fields in SIGNAL's place, each button's
+        // chip under its field. device-mod-held: an LFO (TRIANGLE, +40%, 1/2, PHASE 1/4). device-mod-stepper:
+        // a STEPPER. device-mod-new: no MOD on it yet (UP makes one). device-mod-full: both MODs on other knobs
+        // (MODS FULL). device-mod-deleting: B held on its LFO, the bar filling (the still is taken before the
+        // second is up). device-mod-free: the LFO FREE at 0.025 Hz (RATE reads FREE, SPEED its longest).
+        Session& s = app.session();
+        app.project().track = 1;
+        s.view = View::Device;
+        app.phazed().goTo(0, SynthScreen::kFirstMacro);
+        ModSettings lfo;
+        lfo.kind = kModLfo, lfo.target = kModFirstMacro, lfo.shape = kModTriangle, lfo.depth = 0.4f, lfo.rate = kModRateHalf, lfo.phase = 1;
+        ModSettings steps;
+        steps.kind = kModStepper, steps.target = kModFirstMacro, steps.depth = -0.6f, steps.rate = kModRateQuarter, steps.length = 8;
+        for (int i = 0; i < kModSteps; ++i) steps.steps[i] = (i % 3 == 0 ? 0.8f : -0.35f) + 0.05f * static_cast<float>(i % 4);
+        if (std::strcmp(view, "device-mod-free") == 0) lfo.rate = kModRateFree, lfo.speed = 0.025f;
+        if (std::strcmp(view, "device-modded") == 0) {
+            // The song playing, no X: TONE under its LFO, the third macro under a STEPPER, each bar with
+            // the thin brass mark where it is given now (batch 6).
+            s.setMod(1, 0, lfo);
+            steps.target = kModFirstMacro + 2;
+            s.setMod(1, 1, steps);
+        } else if (std::strcmp(view, "device-mod-stepper") == 0) s.setMod(1, 1, steps);
+        else if (std::strcmp(view, "device-mod-full") == 0) {
+            lfo.target = kModFirstMacro + 1;
+            s.setMod(1, 0, lfo);
+            steps.target = kModFirstSend;
+            s.setMod(1, 1, steps);
+        } else if (std::strcmp(view, "device-mod-new") != 0) s.setMod(1, 0, lfo);
+        if (std::strcmp(view, "device-modded") != 0) pushKey(SDLK_s, true); // X held
+        if (std::strcmp(view, "device-mod-deleting") == 0) {
+            pushKey(SDLK_z, true); // B held
+            if (stillMs > 600) stillMs = 600;
+        }
+    } else if (std::strncmp(view, "page", 4) == 0) {
+        app.project().track = 1;
+        app.session().view = View::Device;
+        app.phazed().goTo(std::atoi(view + 4), 1);
+    } else if (std::strncmp(view, "jaxep", 5) == 0) {
+        // A JAX-EP track, added the way the Song screen adds one.
+        app.session().addTrack(TrackKind::Jx3p);
+        app.project().track = app.project().trackCount() - 1;
+        app.session().view = View::Device;
+        if (std::strcmp(view, "jaxep-bank") == 0) {
+            // BANK B, on the longest of the 32 names (B7): what a bank's folder says, beside it.
+            app.session().chooseSynthPreset(app.project().track, 22);
+            app.jaxep().goTo(0, SynthScreen::kPreset);
+        } else if (std::strcmp(view, "jaxep-held") == 0) {
+            app.jaxep().goTo(3, 2);  // VCF: CUTOFF
+            pushKey(SDLK_x, true);  // hold A
+            tapKey(SDLK_DOWN, 27);  // and turn it down: 7.3
+        } else {
+            app.jaxep().goTo(std::atoi(view + 5), view[5] ? 0 : SynthScreen::kFirstMacro + 1);
+        }
+    } else if (std::strcmp(view, "kit") == 0 || std::strncmp(view, "slices", 6) == 0 || std::strcmp(view, "starts") == 0 || std::strncmp(view, "picker", 6) == 0) {
+        // With --samples: the first recording goes on lane 6, fitted to one
+        // bar, with hits on the beat whose starts have been rolled.
+        const std::vector<std::string> names = app.session().sampleNames();
+        if (!names.empty()) {
+            // The break, if there is one, for the slice view; else the first recording there is.
+            std::string pick = names[0];
+            if (std::strncmp(view, "slices", 6) == 0)
+                for (const std::string& n : names)
+                    if (n.find("break") != std::string::npos) pick = n;
+            app.session().setLaneSample(0, 5, pick);
+            app.session().setLaneFit(0, 5, std::strcmp(view, "slices-32") == 0 ? 32 : 16);
+            app.session().finishStretching();
+            for (int step = 0; step < kSteps; ++step) app.drums().setStep(5, step, 0.f);
+            const float starts[8] = {0.f, 0.375f, 0.25f, 0.75f, 0.f, 0.125f, 0.5f, 0.875f};
+            for (int i = 0; i < 8; ++i) {
+                app.drums().setStep(5, i * 2, 0.9f);
+                app.drums().setStart(5, i * 2, starts[i]);
+            }
+        }
+        if (std::strncmp(view, "slices", 6) == 0) {
+            // The slice view: the break laid out in order, four of its slices moved, one hit taken out.
+            for (int step = 0; step < kSteps; ++step) {
+                app.drums().setStep(5, step, step % 4 == 0 ? 1.f : 0.75f);
+                app.drums().setStart(5, step, step / 16.f);
+            }
+            app.drums().setStart(5, 5, 12.f / 16.f);
+            app.drums().setStart(5, 6, 2.f / 16.f);
+            app.drums().setStart(5, 10, 3.f / 16.f);
+            app.drums().setStart(5, 13, 9.f / 16.f);
+            app.drums().setStep(5, 11, 0.f);
+            app.session().setLaneOneSlice(0, 5, true);
+            if (std::strcmp(view, "slices-32") == 0) app.drums().setStart(5, 5, 25.f / 32.f + 0.012f); // on a finer cut, and slid a little off it
+            app.drums().moveCursorTo(5, std::strncmp(view, "slices-name", 11) == 0 ? -1 : 5);
+            if (std::strcmp(view, "slices-name-feel") == 0) app.session().setLaneFeel(0, 5, 25, 50), app.session().setLaneSwing(0, 5, 75); // the lane's feel and swing: their marks by the name, their line on the strip
+            app.drums().setSlicing(true);
+            if (std::strcmp(view, "slices-throw") == 0) { // slices thrown to a bus, and X held on one
+                StepFx f;
+                f.throwTo = kThrowSpace;
+                app.drums().setFx(5, 5, f);
+                f.throwTo = kThrowEcho;
+                app.drums().setFx(5, 0, f);
+                f.throwTo = 3;
+                f.ratchet = 2;
+                app.drums().setFx(5, 9, f);
+                pushKey(SDLK_s, true); // X held
+            }
+        } else if (std::strcmp(view, "starts") == 0) {
+            app.drums().moveCursorTo(5, 6);
+            pushKey(SDLK_a, true); // Y held
+            pushKey(SDLK_l, true); // the stick, to the right
+        } else {
+            app.session().view = View::Device;
+            app.kit().goTo(5, KitScreen::kSound);
+            if (std::strncmp(view, "picker", 6) == 0) {
+                // The list of recordings, three columns. It opens in the folder of the recording that is on, on it.
+                // picker: out to SAMPLES, on a folder (what it holds beside it). picker-in: in a folder, on a
+                // recording. picker-deep and picker-deleting: two folders down (the second with B held: its bar filling).
+                // picker-new: on + NEW FOLDER, the last row of SAMPLES. picker-typing: its name being typed.
+                // picker-carrying: R1 held on a recording in a folder, steered out onto the folder (the top line says where it would go).
+                // picker-folder-deleting: B held on an empty folder, its bar filling.
+                const int levels = std::strcmp(view, "picker-in") == 0 || std::strcmp(view, "picker-carrying") == 0 ? 1 : std::strcmp(view, "picker-deep") == 0 || std::strcmp(view, "picker-deleting") == 0 ? 2 : 0;
+                for (const std::string& n : app.session().sampleNames())
+                    if (levels > 0 && std::count(n.begin(), n.end(), '/') == levels) {
+                        app.session().setLaneSample(0, 5, n);
+                        break;
+                    }
+                tapKey(SDLK_x); // A: the list
+                if (levels == 0) tapKey(SDLK_LEFT);
+                if (std::strcmp(view, "picker-new") == 0 || std::strcmp(view, "picker-typing") == 0) {
+                    tapKey(SDLK_w, 3); // R1: a page at a time, to the last row
+                    if (std::strcmp(view, "picker-typing") == 0) {
+                        tapKey(SDLK_x);
+                        for (const char* k = "\x02x\x01\x01x\x03x"; *k; ++k) tapKey(*k == 1 ? SDLK_RIGHT : *k == 2 ? SDLK_DOWN : *k == 3 ? SDLK_UP : SDLK_x);
+                    }
+                }
+                if (std::strcmp(view, "picker-carrying") == 0) {
+                    pushKey(SDLK_w, true); // R1 held
+                    tapKey(SDLK_LEFT);     // and a direction: carried at once
+                }
+                if (std::strcmp(view, "picker-folder-deleting") == 0) {
+                    // The first folder of SAMPLES with nothing in it, if there is one.
+                    const std::vector<std::string> have = app.session().sampleNames(), folders = app.session().sampleFolders();
+                    int row = 1 + (std::count_if(have.begin(), have.end(), [](const std::string& n) { return n.find('/') == std::string::npos; }) > 0 ? 1 : 0);
+                    for (const std::string& folder : folders) {
+                        if (folder.find('/') != std::string::npos) continue;
+                        bool empty = true;
+                        for (const std::string& other : folders) empty = empty && other.compare(0, folder.size() + 1, folder + "/") != 0;
+                        for (const std::string& n : have) empty = empty && n.compare(0, folder.size() + 1, folder + "/") != 0;
+                        if (empty) {
+                            tapKey(SDLK_UP, 20);
+                            tapKey(SDLK_DOWN, row);
+                            pushKey(SDLK_z, true);
+                            if (stillMs > 600) stillMs = 600; // (well before the second is up: this one deletes a FOLDER)
+                            break;
+                        }
+                        ++row;
+                    }
+                }
+                if (std::strcmp(view, "picker-deleting") == 0) {
+                    pushKey(SDLK_z, true);
+                    if (stillMs > 600) stillMs = 600; // the picture is taken well before the second is up: this one deletes a FILE
+                }
+            }
+        }
+    } else if (std::strcmp(view, "setup") == 0 || std::strcmp(view, "buttons") == 0) {
+        app.session().view = View::Settings;
+        app.settings().goTo(std::strcmp(view, "buttons") == 0 ? SettingsScreen::kTest : SettingsScreen::kStick);
+        if (std::strcmp(view, "buttons") == 0) {
+            tapKey(SDLK_x);
+            pushKey(SDLK_w, true);
+            pushKey(SDLK_l, true);
+        }
+    } else if (std::strncmp(view, "setup-network", 13) == 0) {
+        // NETWORK (our firmware's WiFi; pretended, nothing is run): the WIFI PAGE on, The Old Mill joined,
+        // the page's name beside its address. setup-network: the cursor on NETWORK. -held: A held and
+        // DOWN to the next network, one that needs a password (its lock). -keys: the password's keys,
+        // a few letters typed, on the capitals. -forgetting: B held, its bar filling. -long: a
+        // network's name at its longest (32 wide letters), joining.
+        Wifi::Now now;
+        now.scanned = true;
+        now.networks = wifiNetworksFrom("-40 wpa2+saved The Old Mill\n-52 wpa2 Hollow Lane Guest\n-60 open Cafe\n-71 sae Next Door\n");
+        now.status = wifiStatusFrom(std::strstr(view, "-long") ? "joining WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW\n" : "joined The Old Mill 192.168.1.27 apotheca.local\n");
+        app.session().pretendWifi(now, "192.168.1.27:8080/4821");
+        app.session().view = View::Settings;
+        app.settings().goTo(SettingsScreen::kNetwork);
+        if (std::strstr(view, "-held") || std::strstr(view, "-keys")) {
+            pushKey(SDLK_x, true); // A held
+            tapKey(SDLK_DOWN);
+        }
+        if (std::strstr(view, "-keys")) {
+            pushKey(SDLK_x, false);
+            tapKey(SDLK_x, 3);  // aaa
+            tapKey(SDLK_s);     // X: the capitals
+            tapKey(SDLK_RIGHT);
+            tapKey(SDLK_x, 2);  // BB
+        }
+        if (std::strstr(view, "-forgetting")) {
+            pushKey(SDLK_z, true); // B held
+            if (stillMs > 600) stillMs = 600; // (the picture is taken before the second is up)
+        }
+        if (std::strstr(view, "-songs")) { // the list of songs, the page's address by name and by number
+            app.session().view = View::Song;
+            tapKey(SDLK_BACKSPACE); // SELECT
+        }
+    } else if (std::strcmp(view, "song-mute-waiting") == 0 || std::strcmp(view, "setup-mutes") == 0) {
+        // QUEUED MUTES (easywins batch 8): track 2's mute asked for and waiting for the bar line (its M
+        // hollow, its head not dark yet), track 3 muted and landed; or the SET page on MUTES at NEXT BAR.
+        app.session().setMutes(Session::kMutesNextBar);
+        if (view[1] == 'e') {
+            app.session().view = View::Settings;
+            app.settings().goTo(SettingsScreen::kMutes);
+        } else {
+            app.session().view = View::Song;
+            app.session().setMuted(1, true);
+            app.session().setMuted(2, true);
+            app.session().pretendMuteWaits(1, 'M');
+        }
+    } else if (std::strcmp(view, "setup-click") == 0) {
+        // The METRONOME's row (easywins batch 2): CLICK at RECORDING, COUNT IN at ONE BAR.
+        app.session().view = View::Settings;
+        app.session().setClick(Session::kClickRecording);
+        app.session().setCountIn(true);
+        app.settings().goTo(SettingsScreen::kClick);
+    } else if (std::strcmp(view, "scale-roll") == 0 || std::strcmp(view, "setup-scale") == 0) {
+        // SCALE LOCK (easywins batch 4): D DORIAN; the roll on the demo's synth track (the keys out of it dim),
+        // or the SET page on SCALE.
+        app.session().setScale(2, kScaleDorian);
+        if (view[0] == 's' && view[1] == 'e') {
+            app.session().view = View::Settings;
+            app.settings().goTo(SettingsScreen::kScale);
+        } else {
+            app.project().track = 1;
+            app.session().view = View::Pattern;
+            app.notes().moveCursorTo(62, 2);
+        }
+    } else if (std::strcmp(view, "even") == 0) {
+        // EVEN (easywins batch 5): Y held on the open hat's name, R1 five times: five hits spread evenly.
+        app.session().view = View::Pattern;
+        app.drums().moveCursorTo(3, -1);
+        pushKey(SDLK_a, true);
+        tapKey(SDLK_w, 4);
+    } else if (std::strcmp(view, "tap-tempo") == 0) {
+        // TAP TEMPO (easywins batch 1): two taps half a second apart, the cursor on the drum grid's tempo row.
+        app.session().view = View::Pattern;
+        app.drums().moveCursorTo(0, 0);
+        app.session().tapTempo(1000);
+        app.session().tapTempo(1500);
+        tapKey(SDLK_UP); // (the App takes what was said with the next button)
+    } else if (std::strcmp(view, "typing") == 0) {
+        app.session().view = View::Settings;
+        app.settings().goTo(SettingsScreen::kTrackName);
+        tapKey(SDLK_x);
+        for (const char* k = "\x01\x01x\x02x\x02\x02x"; *k; ++k) tapKey(*k == 1 ? SDLK_RIGHT : *k == 2 ? SDLK_DOWN : SDLK_x);
+    } else if (std::strncmp(view, "fm6", 3) == 0) {
+        // An FM-6 track, added the way the Song screen adds one: MAIN, a macro lit ("fm6"); a page
+        // ("fm6-1" .. "fm6-8"); MAIN on the widest of the 32 names ("fm6-long", HARPSICH 1); TUB BELLS'
+        // OPERATOR 5, a FIXED pitch, on FINE ("fm6-fixed"); OPERATOR 2 turned off, on its ON ("fm6-off").
+        app.session().addTrack(TrackKind::Fm6);
+        const int track = app.project().trackCount() - 1;
+        app.project().track = track;
+        app.session().view = View::Device;
+        if (std::strcmp(view, "fm6-long") == 0) {
+            app.session().chooseSynthPreset(track, 18);
+            app.fm6().goTo(0, SynthScreen::kPreset);
+        } else if (std::strcmp(view, "fm6-fixed") == 0) {
+            app.session().chooseSynthPreset(track, 25);
+            app.fm6().goTo(6, 3); // OPERATOR 5: FINE
+        } else if (std::strcmp(view, "fm6-off") == 0) {
+            app.session().setSynthSetting(track, fm6::kSettings + 1, 0); // OPERATOR 2 ON: OFF
+            app.fm6().goTo(3, 0);
+        } else if (view[3] == '-') {
+            app.fm6().goTo(std::atoi(view + 4), 0);
+        } else {
+            app.fm6().goTo(0, SynthScreen::kFirstMacro + 1);
+        }
+    } else if (std::strncmp(view, "physic", 6) == 0) {
+        // A PHYSIC track, added the way the Song screen adds one: MAIN, a macro lit ("physic"); a page
+        // ("physic-1" .. "physic-5": SOUND, RING, PLAY, DICE, BODY; BODY on Vibes, PAIR 7 and BUZZ 30); MAIN
+        // on the widest of its names ("physic-long"); RING on STEEL, a string, STRETCH under the cursor
+        // reading B ("physic-string"); SOUND on Hand Drum, HARDNESS read as a NOISE burst ("physic-noise").
+        app.session().addTrack(TrackKind::Physic);
+        const int track = app.project().trackCount() - 1;
+        app.project().track = track;
+        app.session().view = View::Device;
+        if (std::strcmp(view, "physic-long") == 0) {
+            int widest = 0;
+            for (int i = 1; i < Physic::presetCount(); ++i)
+                if (std::strlen(Physic::presetName(i)) > std::strlen(Physic::presetName(widest))) widest = i;
+            app.session().chooseSynthPreset(track, widest);
+            app.physic().goTo(0, SynthScreen::kPreset);
+        } else if (std::strcmp(view, "physic-string") == 0) {
+            for (int i = 0; i < Physic::presetCount(); ++i)
+                if (std::strcmp(Physic::presetName(i), "Steel") == 0) app.session().chooseSynthPreset(track, i);
+            app.physic().goTo(2, 2); // RING: STRETCH
+        } else if (std::strcmp(view, "physic-noise") == 0) {
+            for (int i = 0; i < Physic::presetCount(); ++i)
+                if (std::strcmp(Physic::presetName(i), "Hand Drum") == 0) app.session().chooseSynthPreset(track, i);
+            app.physic().goTo(1, 2); // SOUND: HARDNESS
+        } else if (std::strcmp(view, "physic-5") == 0) {
+            for (int i = 0; i < Physic::presetCount(); ++i)
+                if (std::strcmp(Physic::presetName(i), "Vibes") == 0) app.session().chooseSynthPreset(track, i);
+            app.session().setSynthSetting(track, physic::Pair, 7);
+            app.session().setSynthSetting(track, physic::Buzz, 30);
+            app.physic().goTo(5, 1); // BODY: MOTOR
+        } else if (view[6] == '-') {
+            app.physic().goTo(std::atoi(view + 7), 0);
+        } else {
+            app.physic().goTo(0, SynthScreen::kFirstMacro + 1);
+        }
+    } else if (std::strncmp(view, "morph", 5) == 0) {
+        // A MORPH track, added the way the Song screen adds one: MAIN with its picture, a macro lit
+        // ("morph"); B on, a fifth up, MIX 40 ("morph-b": the two waves); a page ("morph-1" to "morph-5":
+        // OSC, VOICE, FILTER, AMP, ENV); VOICE on UNISON 4 with B on, three keys ("morph-keys"); MAIN on the
+        // widest of its names ("morph-long"); a key held ("morph-sounding": the still is taken before the
+        // engine renders, so the sounding place does not show there).
+        app.session().addTrack(TrackKind::Morph);
+        const int track = app.project().trackCount() - 1;
+        app.project().track = track;
+        app.session().view = View::Device;
+        if (std::strcmp(view, "morph-long") == 0) {
+            int widest = 0;
+            for (int i = 1; i < morphSpec().presetCount(); ++i)
+                if (std::strlen(morphSpec().presetName(i)) > std::strlen(morphSpec().presetName(widest))) widest = i;
+            app.session().chooseSynthPreset(track, widest);
+            app.morph().goTo(0, SynthScreen::kPreset);
+        } else if (std::strcmp(view, "morph-b") == 0) {
+            app.session().setSynthSetting(track, morph::TableB, 1 + morph::Vowel);
+            app.session().setSynthSetting(track, morph::PositionB, 60);
+            app.session().setSynthSetting(track, morph::BSemi, 7);
+            app.session().setSynthSetting(track, morph::Mix, 40);
+            app.morph().goTo(0, SynthScreen::kFirstMacro);
+        } else if (std::strcmp(view, "morph-keys") == 0) {
+            app.session().setSynthSetting(track, morph::TableB, 1 + morph::Pulse);
+            app.session().setSynthSetting(track, morph::Unison, 4);
+            app.morph().goTo(2, 2);
+        } else if (std::strcmp(view, "morph-sounding") == 0) {
+            app.session().auditionHeld(track, 60, kPlacedLevel, &app);
+            app.morph().goTo(0, SynthScreen::kFirstMacro);
+        } else if (view[5] == '-') {
+            app.morph().goTo(std::atoi(view + 6), 0);
+        } else {
+            app.morph().goTo(0, SynthScreen::kFirstMacro + 1);
+        }
+    } else if (std::strncmp(view, "cloud", 5) == 0) {
+        // A CLOUD track, added the way the Song screen adds one, on the TONE (no recording): MAIN with its
+        // picture, a macro lit ("cloud"); a page ("cloud-1" to "cloud-3": SOURCE, on RECORDING; GRAINS;
+        // PLAY); MAIN on the widest of its names ("cloud-long"); a key held, its grains ticked on the
+        // picture ("cloud-sounding").
+        app.session().addTrack(TrackKind::Cloud);
+        const int track = app.project().trackCount() - 1;
+        app.project().track = track;
+        app.session().view = View::Device;
+        if (std::strcmp(view, "cloud-long") == 0) {
+            int widest = 0;
+            for (int i = 1; i < cloudSpec().presetCount(); ++i)
+                if (std::strlen(cloudSpec().presetName(i)) > std::strlen(cloudSpec().presetName(widest))) widest = i;
+            app.session().chooseSynthPreset(track, widest);
+            app.cloud().goTo(0, SynthScreen::kPreset);
+        } else if (std::strcmp(view, "cloud-sounding") == 0) {
+            app.session().setSynthSetting(track, cloud::Density, 85);
+            app.session().setSynthSetting(track, cloud::Spray, 40);
+            app.session().auditionHeld(track, 60, kPlacedLevel, &app);
+            app.cloud().goTo(0, SynthScreen::kFirstMacro);
+        } else if (view[5] == '-') {
+            app.cloud().goTo(std::atoi(view + 6), 0);
+        } else {
+            app.cloud().goTo(0, SynthScreen::kFirstMacro + 1);
+        }
+    } else if (std::strncmp(view, "acid", 4) == 0) {
+        // An ACID track, added the way the Song screen adds one: MAIN, a macro lit ("acid"); a page
+        // ("acid-1", "acid-2": SOUND, FILTER); SOUND on SLIDE at FIXED ("acid-fixed"); MAIN on the widest
+        // of its names ("acid-long"); and the piano roll with a line on it ("acid-roll"): accents (their
+        // brass corner), slides, a GLIDE to the same key, an accent with a ratchet and one with a glide.
+        app.session().addTrack(TrackKind::Acid);
+        const int track = app.project().trackCount() - 1;
+        app.project().track = track;
+        app.session().view = View::Device;
+        if (std::strcmp(view, "acid-long") == 0) {
+            int widest = 0;
+            for (int i = 1; i < acidSpec().presetCount(); ++i)
+                if (std::strlen(acidSpec().presetName(i)) > std::strlen(acidSpec().presetName(widest))) widest = i;
+            app.session().chooseSynthPreset(track, widest);
+            app.acid().goTo(0, SynthScreen::kPreset);
+        } else if (std::strcmp(view, "acid-fixed") == 0) {
+            app.session().setSynthSetting(track, acid::Slide, acid::kSlideFixed);
+            app.acid().goTo(1, 5); // SOUND: SLIDE
+        } else if (std::strcmp(view, "acid-roll") == 0) {
+            NotePattern& p = app.project().tracks[track].notes[0][0];
+            p = NotePattern();
+            const auto note = [&](int slot, int step, int pitch, float length, float velocity, int glide, int ratchet = 0) {
+                p.notes[slot] = NoteEvent{step, pitch, length, 0.f, velocity};
+                p.notes[slot].glide = static_cast<std::uint8_t>(glide);
+                p.notes[slot].ratchet = static_cast<std::uint8_t>(ratchet);
+            };
+            note(0, 0, 48, 1.f, 1.f, 0);              // an accent
+            note(1, 2, 48, 1.f, 0.9f, 0);
+            note(2, 3, 60, 1.f, 1.f, kGlideHalf);     // a slide, accented
+            note(3, 4, 60, 1.f, 0.9f, kGlideHalf);    // a GLIDE to the same key: tied, one long note
+            note(4, 6, 51, 0.5f, 0.9f, 0);
+            note(5, 7, 55, 1.f, 0.9f, kGlideHalf);    // ties over the half step's gap
+            note(6, 8, 48, 1.f, 1.f, 0, 2);           // an accent with a ratchet
+            note(7, 10, 63, 1.f, 1.f, 0);
+            note(8, 11, 58, 1.f, 0.9f, kGlideHalf);
+            note(9, 12, 48, 1.f, 1.f, 0);
+            note(10, 14, 46, 1.f, 0.9f, kGlideHalf);
+            note(11, 15, 48, 1.f, 1.f, kGlideHalf);
+            app.session().sendNoteBar(track, 0, 0);
+            app.session().view = View::Pattern;
+            app.notes().moveCursorTo(55, 9);
+        } else if (view[4] == '-') {
+            app.acid().goTo(std::atoi(view + 5), 0);
+        } else {
+            app.acid().goTo(0, SynthScreen::kFirstMacro + 1);
+        }
+    } else if (std::strcmp(view, "help") == 0 || std::strcmp(view, "help-load") == 0) {
+        pushKey(SDLK_TAB, true); // MENU, held
+        // How hard the program works, above the battery: the owner's example, or (help-load) the longest it can say.
+        if (std::strcmp(view, "help") == 0) app.pretendLoad(43, 88, 37);
+        else app.pretendLoad(100, 999, 100);
+    } else if (std::strncmp(view, "next-scene", 10) == 0) {
+        // NEXT SCENE (SELECT + Y) just pressed: on the drum grid, on the piano roll ("next-scene-notes"),
+        // and with every scene of the song used ("next-scene-full").
+        if (std::strcmp(view + 10, "-notes") == 0) {
+            app.project().track = 1;
+            app.notes().moveCursorTo(57, 6);
+        }
+        pushKey(SDLK_BACKSPACE, true); // SELECT, held
+        tapKey(SDLK_a, std::strcmp(view + 10, "-full") == 0 ? kMaxScenes : 1); // Y
+        pushKey(SDLK_BACKSPACE, false);
+    } else if (std::strncmp(view, "scenes", 6) == 0) {
+        // A song past sixteen scenes (scenes-plan.md): the demo's last scene copied with NEXT SCENE up to 48
+        // ("scenes-full": all 64). On SONG with the cursor on scene 48 (rows 41 to 48); "-end" on the row past
+        // the last scene (AT END); "-full" on scene 64; "-grid" and "-roll" the drum grid and the piano roll on
+        // scene 48, its cells eight bars long, on the eighth, just after SEL + L2 ("SCENE 48: 127 STEPS OF 128");
+        // "-playing" SONG with scene 48 playing (the top bar's scene).
+        const char* kind = view + 6;
+        const int want = std::strcmp(kind, "-full") == 0 ? kMaxScenes : 48;
+        for (int i = 0; i < kMaxScenes && app.project().sceneCount() < want; ++i) {
+            app.project().scene = app.project().sceneCount() - 1;
+            app.session().nextScene();
+        }
+        const int last = want - 1;
+        app.project().scene = last;
+        if (std::strcmp(kind, "-grid") == 0 || std::strcmp(kind, "-roll") == 0) {
+            app.project().track = kind[1] == 'r' ? 1 : 0;
+            app.session().setCellBars(app.project().track, last, kMaxBars);
+            app.project().bar = kMaxBars - 1;
+            if (kind[1] == 'r') app.notes().moveCursorTo(57, 6);
+            pushKey(SDLK_BACKSPACE, true); // SELECT, held
+            tapKey(SDLK_1);                // L2: a step shorter
+            pushKey(SDLK_BACKSPACE, false);
+        } else {
+            app.session().view = View::Song;
+            if (std::strcmp(kind, "-end") == 0) app.song().moveCursorTo(app.song().songEndRow(), -1);
+            else app.song().moveCursorTo(last, 0);
+            if (std::strcmp(kind, "-playing") == 0) tapKey(SDLK_RETURN); // START: from the scene worked on
+        }
+    } else if (std::strncmp(view, "copy-bar", 8) == 0) {
+        // COPY A BAR: L1 held (the bar says what R1 and A do) just after R1 copied the bar (BAR 1 COPIED),
+        // on the drum grid; on the piano roll ("copy-bar-notes"); and a drum bar refused on a synth track
+        // ("copy-bar-refused": DRUMS GO ON A DRUM TRACK).
+        if (std::strcmp(view + 8, "-notes") == 0 || std::strcmp(view + 8, "-refused") == 0) {
+            if (view[9] == 'r') app.session().copyBar(0, 0, 0);
+            app.project().track = 1;
+            app.notes().moveCursorTo(57, 6);
+        }
+        pushKey(SDLK_q, true); // L1, held
+        tapKey(view[9] == 'r' ? SDLK_x : SDLK_w); // A pastes, R1 copies
+    } else if (std::strcmp(view, "update-ready") == 0 || std::strcmp(view, "update-ready-drums") == 0) {
+        // An update accepted, waiting for the next start: the bar's end says so.
+        app.session().markUpdateReadyForStill();
+        app.session().view = std::strcmp(view, "update-ready") == 0 ? View::Song : View::Pattern;
+    } else if (std::strcmp(view, "update-accepted") == 0) {
+        app.session().markUpdateReadyForStill();
+        app.sayUpdateAcceptedForStill();
+    } else if (std::strcmp(view, "volume") == 0) {
+        app.session().view = View::Settings;
+        app.settings().goTo(SettingsScreen::kVolume);
+    } else if (std::strcmp(view, "setup-light-colour") == 0) {
+        // LIGHT COLOUR (easywins, the stick light's colours): on RAINBOW, the ring on STEPS. The files pretended.
+        app.session().useLights(Lights::pretend());
+        app.session().view = View::Settings;
+        app.session().setStickLight(kRingSteps);
+        app.session().setLightColour(kLightRainbow);
+        app.settings().goTo(SettingsScreen::kLightColour);
+  } else if (std::strcmp(view, "setup-lights") == 0 || std::strcmp(view, "setup-light") == 0 || std::strcmp(view, "brightness") == 0) {
+        // On our own firmware: the SET page's BRIGHTNESS ("setup-lights") and STICK LIGHT on STEPS
+        // ("setup-light"), and the box MENU + a volume key shows, over the drum grid ("brightness": over
+        // the SET page its bar would lie on a row's words). The files pretended.
+        app.session().useLights(Lights::pretend());
+        app.session().view = std::strcmp(view, "brightness") == 0 ? View::Pattern : View::Settings;
+        if (std::strcmp(view, "setup-light") == 0) app.session().setStickLight(kRingSteps);
+        app.settings().goTo(std::strcmp(view, "setup-light") == 0 ? SettingsScreen::kLight : SettingsScreen::kBrightness);
+        if (std::strcmp(view, "brightness") == 0) app.changeBrightness(-kBrightKeyStep);
+    } else if (std::strcmp(view, "nomenu") == 0 || std::strcmp(view, "help-nomenu") == 0) {
+        // A handheld whose firmware keeps MENU: the hint bar says how the card is opened there.
+        input.useMap(&controlMap); // nothing learned: the keyboard stand-ins, and no MENU
+        app.session().view = View::Settings; // a screen whose hints leave room for it
+        if (std::strcmp(view, "help-nomenu") == 0) pushKey(SDLK_BACKSPACE, true); // SELECT, held
+    } else if (std::strcmp(view, "kit-old") == 0) {
+        app.session().view = View::Device;
+    }
+
+    if (smoke) {
+        // What a tester would do: A to place a kick, START to play.
+        tapKey(SDLK_x);
+        tapKey(SDLK_RETURN);
+    } else if (demo && !*view) {
+        tapKey(SDLK_RETURN);
+    } else if (demo && std::strcmp(view, "panic") == 0) {
+        // nothing more: any press would put the notice away
+    } else if (demo && std::strcmp(view, "help-nomenu") == 0) {
+        // nothing more: START with SELECT held is "quit"
+    } else if (demo && std::strcmp(view, "add-track") != 0 && std::strstr(view, "-deleting") == nullptr && std::strstr(view, "-forgetting") == nullptr && std::strcmp(view, "setup-network-keys") != 0 && std::strcmp(view, "picker-typing") != 0 && std::strcmp(view, "typing") != 0) { // (another press calls a held B off; START keeps a name being typed, and makes the folder: the "typing" still showed the SET page, not the keys, until 2026-11-15)
+        tapKey(SDLK_RETURN); // playing, so the stills show the play position and the scope
+    }
+    // A gesture held on the drum grid.
+    PatternScreen& drums = app.drums();
+    if (dice) {
+        drums.moveCursorTo(5, -1);
+        pushKey(SDLK_a, true);
+        tapKey(SDLK_UP, 6);
+    } else if (paint) {
+        drums.moveCursorTo(5, 2);
+        pushKey(paint == 1 ? SDLK_w : SDLK_2, true);
+        tapKey(SDLK_RIGHT, 10);
+    } else if (onName) {
+        drums.moveCursorTo(1, -1);
+        pushKey(SDLK_x, true);
+        tapKey(SDLK_DOWN, 3);
+    } else if (onTempo) {
+        drums.moveCursorTo(0, 0);
+        tapKey(SDLK_UP);
+        pushKey(SDLK_x, true);
+    } else if (holdA && std::strncmp(view, "mod", 3) == 0) {
+        pushKey(SDLK_x, true); // A, held on the MOD tab: the list of targets, or a setting being turned
+    } else if (holdA && std::strncmp(view, "fx", 2) == 0) {
+        pushKey(SDLK_x, true); // A, held on the FX screen: the list of effects, or a setting being turned
+    } else if (holdA) {
+        drums.setStep(drums.cursorLane(), drums.cursorStep(), 0.55f);
+        drums.setNudge(drums.cursorLane(), drums.cursorStep(), 0.3f);
+        pushKey(SDLK_x, true);
+        tapKey(SDLK_RIGHT);
+    } else if (holdY) {
+        pushKey(SDLK_a, true);
+        tapKey(SDLK_DOWN, 4);
+    }
+}
+
+} // namespace apotheca

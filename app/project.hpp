@@ -501,6 +501,7 @@ struct Project : ProjectHead {
     }
     // How many steps a scene lasts, and how many of them fall in one of its bars (its meter, fewer in the bar it ends in, none after).
     int sceneSteps(int s) const {
+        if (s < 0 || s >= kMaxScenes) return 0; // (never asked; it tells GCC so, which warned of steps[] past its end)
         const int whole = sceneBars(s) * meterOf(s);
         return steps[s] > 0 && steps[s] < whole ? steps[s] : whole;
     }

@@ -37,6 +37,8 @@ struct WholeSongTimes {
 };
 // `mods`: how many MODs run (0, 1, or 24: two on every track), for the bench's own rows.
 WholeSongTimes timeWholeSong(int helpers, double seconds, int mods = 0);
+// The typical song (8 tracks, one effect each, sends: typicalSong in bench_run.cpp), as timeWholeSong.
+WholeSongTimes timeTypicalSong(int helpers, double seconds);
 
 // That song, sent to a fresh engine and set playing (what the rows above time). For bench_test,
 // which holds what the song is: nothing else in ctest runs the timings.
