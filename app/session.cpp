@@ -489,6 +489,7 @@ void Session::update(Uint32 nowMs) {
     }
     if (nowMs - tempoMovedAt_ >= kTempoSettleMs) steadyTempo_ = seenTempo_;
     collectJob(false);
+    reapJobs(false);
     if (!job_ && steadyTempo_ > 0.f) {
         for (int track = 0; track < kNumTracks && !job_; ++track)
             for (int lane = 0; lane < kDrumLanes && !job_; ++lane)
@@ -2010,6 +2011,7 @@ Session::~Session() {
     cancelBounce();
     if (input_ && rec_ != Rec::Idle && rec_ != Rec::NoInput) input_->stop();
     if (job_ && job_->thread.joinable()) job_->thread.join();
+    reapJobs(true);
 }
 
 
@@ -2126,8 +2128,22 @@ void Session::applyProject() {
     undoReady_ = false;
 }
 
+void Session::reapJobs(bool wait) {
+    for (auto it = leftJobs_.begin(); it != leftJobs_.end();) {
+        if (!wait && !(*it)->done.load()) {
+            ++it;
+            continue;
+        }
+        if ((*it)->thread.joinable()) (*it)->thread.join();
+        it = leftJobs_.erase(it);
+    }
+}
+
 void Session::sendSong() {
-    collectJob(true); // nothing half-made carries over
+    // Nothing half-made carries over: every lane is made again below (a new version), so a job under
+    // way is for nothing. Done: collected (and not taken). Running: handed off, never waited for.
+    if (job_ && !job_->done.load()) leftJobs_.push_back(std::move(job_));
+    collectJob(true);
     Command c;
     c.type = Command::Stop;
     engine.send(c);

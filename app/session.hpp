@@ -1050,6 +1050,16 @@ private:
     int lookups_ = 0;
     LaneSound sounds_[kNumTracks][kDrumLanes];
     std::unique_ptr<Job> job_;
+    // Jobs handed off by a song sent whole (sendSong): their sound is for lanes made again since, so it
+    // is never taken; each is joined once it is done (reapJobs, every frame) or as the Session ends.
+    // (sendSong waited for the job, seconds of a long FIT or PITCH on the handheld, only to throw it
+    // away: review 2026-11-23.)
+    std::vector<std::unique_ptr<Job>> leftJobs_;
+    void reapJobs(bool wait);
+public:
+    std::size_t jobsLeftRunning() const { return leftJobs_.size(); } // (for tests)
+    bool jobUnderWay() const { return job_ != nullptr; }              // (for tests)
+private:
     float steadyTempo_ = 0.f;  // the tempo, once it has stopped moving
     float seenTempo_ = 0.f;
     Uint32 tempoMovedAt_ = 0;

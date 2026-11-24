@@ -10,6 +10,7 @@
 #include <SDL.h>
 #include <unistd.h>
 
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -903,6 +904,40 @@ void testTheGestures() {
 
 } // namespace
 
+// A song sent whole (another song opened, a resync, a track deleted) does not wait for the helper
+// thread: its job is for lanes that are made again anyway (review 2026-11-23: it waited, seconds of a
+// long PITCH or FIT on the handheld, and the screen stood still). The job is handed off, finishes by
+// itself and is let go of; the lane is made again and comes out as it should.
+void testASongSentDoesNotWait() {
+    TempFolder folder;
+    const std::string longFile = folder.path + "/long.wav";
+    CHECK(writeWav(longFile, made(48000 * 20), 48000)); // (read as the longest a recording is taken)
+    Rig rig(folder.path);
+    rig.session().setLaneSample(0, kLane, "long");
+    LaneEdit e;
+    e.pitch = -12;
+    rig.session().setLaneEdit(0, kLane, e);
+    for (int i = 0; i < 100 && !rig.session().jobUnderWay(); ++i) rig.frames(1); // (the job starts once the tempo has settled)
+    CHECK(rig.session().jobUnderWay());
+    const auto t0 = std::chrono::steady_clock::now();
+    rig.session().sendSong();
+    const double sent = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    const bool handedOff = rig.session().jobsLeftRunning() == 1;
+    for (int i = 0; i < 5000 && rig.session().jobsLeftRunning() > 0; ++i) {
+        rig.frames(1);
+        usleep(2000);
+    }
+    const double whole = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    if (!handedOff || sent > 0.5 * whole) std::printf("  sending the song took %.3f s; the job %.3f s (handed off: %d)\n", sent, whole, handedOff ? 1 : 0);
+    CHECK(handedOff && sent < 0.5 * whole);
+    CHECK(rig.session().jobsLeftRunning() == 0);
+    // The lane is made again from the song, and the new job's sound is taken.
+    rig.session().finishStretching();
+    const Session::LaneSound& sound = rig.session().laneSound(0, kLane);
+    CHECK(!sound.shaping && !sound.waiting && sound.shaped && sound.source && sound.shaped->size() == 2u * sound.source->size()); // (an octave down: twice as long)
+    std::remove(longFile.c_str());
+}
+
 int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     struct Test {
@@ -912,7 +947,7 @@ int main(int argc, char** argv) {
     const Test tests[] = {
         {"testAtRest", testAtRest}, {"testTheCut", testTheCut}, {"testReverse", testReverse}, {"testTheLevel", testTheLevel}, {"testPitch", testPitch},
         {"testNormalizeAndTrim", testNormalizeAndTrim}, {"testTheRows", testTheRows}, {"testTheEnginePlaysIt", testTheEnginePlaysIt},
-        {"testTheBuiltInDrums", testTheBuiltInDrums}, {"testALongShapeWaits", testALongShapeWaits}, {"testFitAndSlices", testFitAndSlices}, {"testTheFileIsUntouched", testTheFileIsUntouched},
+        {"testTheBuiltInDrums", testTheBuiltInDrums}, {"testALongShapeWaits", testALongShapeWaits}, {"testASongSentDoesNotWait", testASongSentDoesNotWait}, {"testFitAndSlices", testFitAndSlices}, {"testTheFileIsUntouched", testTheFileIsUntouched},
         {"testNormalizeAndTrimOnALane", testNormalizeAndTrimOnALane}, {"testTheSongFile", testTheSongFile}, {"testUndoAndANewRecording", testUndoAndANewRecording},
         {"testTheGestures", testTheGestures},
     };
