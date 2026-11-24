@@ -51,6 +51,7 @@ float ceiling(float x) {
     const float knee = 0.8f;
     const float a = std::fabs(x);
     if (a <= knee) return x;
+    if (a != a) return 0.f; // not a number: silence, never handed to the sound card
     const float y = knee + (1.f - knee) * std::tanh((a - knee) / (1.f - knee));
     return x < 0.f ? -y : y;
 }
@@ -2336,6 +2337,17 @@ void Engine::render(float* interleaved, int frames) {
             const int toNext = static_cast<int>(std::ceil(next));
             if (toNext < chunk) chunk = toNext < 1 ? 1 : toNext;
         }
+        // A chunk ends where a fade of a track taken away does. Here, with the other cuts and before
+        // anything is moved on by the chunk's length: cut after the clock had moved, a step, its notes
+        // and its hits came up to a chunk early (review 2026-11-23).
+        if (going_ > 0) {
+            const double down = 1.0 / (kGoneFadeSeconds * sampleRate_);
+            for (const Track& track : tracks_)
+                if (track.going) {
+                    const int left = static_cast<int>(std::ceil(track.goingGain / down - 1e-6));
+                    if (left >= 1 && left < chunk) chunk = left;
+                }
+        }
         // MOD: a tick every kModTick samples, counted from the first sample of the step playing (or,
         // stopped, from X going down on a modulated knob). The chunk is cut on the next tick, but
         // only while some MOD runs: a song with none is cut as it always was, to the bit.
@@ -2371,14 +2383,6 @@ void Engine::render(float* interleaved, int frames) {
                 Track::Pending& p = track.pending[i / 3][i % 3];
                 if (p.velocity > 0.f) p.samplesLeft -= chunk;
             });
-        }
-        if (going_ > 0) { // a chunk ends where a fade of a track taken away does
-            const double down = 1.0 / (kGoneFadeSeconds * sampleRate_);
-            for (const Track& track : tracks_)
-                if (track.going) {
-                    const int left = static_cast<int>(std::ceil(track.goingGain / down - 1e-6));
-                    if (left >= 1 && left < chunk) chunk = left;
-                }
         }
         if (playing_) sinceStep_ += chunk, playedFor_ += chunk;
         else if (heardMask_) heardFor_ += chunk;
@@ -2676,8 +2680,9 @@ void Engine::renderTrack(int t) {
 
 void Engine::shareOutTracks() {
     for (;;) {
-        const int i = nextActive_.fetch_add(1, std::memory_order_acq_rel);
-        if (i >= activeCount_.load(std::memory_order_acquire)) return;
+        const std::uint32_t claim = claims_.fetch_add(1, std::memory_order_acq_rel);
+        const int i = static_cast<int>(claim & 0xffffu);
+        if (i >= static_cast<int>(claim >> 16)) return; // past this chunk's list, or shut
         const int t = taken_[i];
         if (heaviestFirst_) { // (timed only when it is asked for: two clock reads a track a chunk)
             const auto t0 = std::chrono::steady_clock::now();
@@ -2914,7 +2919,7 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
     if (workers_.empty() || count < 2) {
         for (int i = 0; i < count; ++i) renderTrack(active_[i]);
     } else {
-        // Shared out. Everything above is set before the list is opened (nextActive_ = 0), so a
+        // Shared out. Everything above is set before the list is opened (claims_), so a
         // helper arriving late for the chunk before finds nothing, or this chunk whole.
         // Taken in track order, or heaviest first (by last chunk's times; equal ones in track order).
         for (int i = 0; i < count; ++i) {
@@ -2924,8 +2929,7 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
             taken_[at] = active_[i];
         }
         finished_.store(0, std::memory_order_relaxed);
-        activeCount_.store(count, std::memory_order_release);
-        nextActive_.store(0, std::memory_order_release);
+        claims_.store(static_cast<std::uint32_t>(count) << 16, std::memory_order_release); // open: place 0 of `count`
         {
             std::lock_guard<std::mutex> lock(wakeMutex_);
             wakeups_ = static_cast<int>(workers_.size()) < count - 1 ? static_cast<int>(workers_.size()) : count - 1;
@@ -2933,7 +2937,7 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
         wake_.notify_all();
         shareOutTracks(); // the audio thread does its share
         while (finished_.load(std::memory_order_acquire) < count) std::this_thread::yield();
-        nextActive_.store(kNumTracks, std::memory_order_release); // the list is shut again
+        claims_.store(0, std::memory_order_release); // the list is shut again
     }
     // Mixed in track order, always, so the sum is the same however the work was shared.
     for (int i = 0; i < count; ++i) {
@@ -2951,6 +2955,13 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
     feedBuses(active_, count, frames, busL, busR, fed);
     runBuses(frames, busL, busR, fed, mixL, mixR);
 
+    // What reaches the master's slots is sound or silence, as what is sent to a bus: one sample that
+    // was not a number, from any track, stayed in an old DELAY or REVERB there for good, and the song
+    // was silent until the effect was changed (review 2026-11-23).
+    for (int f = 0; f < frames; ++f) {
+        if (!(std::fabs(mixL[f]) <= kBusLoudest)) mixL[f] = 0.f;
+        if (!(std::fabs(mixR[f]) <= kBusLoudest)) mixR[f] = 0.f;
+    }
     for (int slot = 0; slot < kMasterSlots; ++slot) {
         runSlot(masterEffects_[slot], masterFades_[slot], mixL, mixR, frames, false, chunkHits_);
         masterMeters_[slot].store(masterEffects_[slot] ? masterEffects_[slot]->meter() : 0.f, std::memory_order_relaxed);

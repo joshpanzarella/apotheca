@@ -1282,6 +1282,8 @@ std::size_t afterFirstLine(const std::string& text) {
 }
 } // namespace
 
+bool isSongText(const std::string& text) { return hasHead(text, "apotheca-song"); }
+
 bool parseSong(const std::string& text, Project& project) {
     gBytesRead += text.size();
     if (!hasHead(text, "apotheca-song")) return false;

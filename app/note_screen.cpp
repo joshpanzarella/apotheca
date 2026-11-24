@@ -617,6 +617,9 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
 
     // R1 let go with L1 held first copies the bar, but only a tap does: anything else first means it was not one.
     if (copyBarArmed_ && event.down && b != Button::R1 && !isDirection(b)) copyBarArmed_ = false;
+    // L1's own tap (the zoom) acts on its let go, and only if nothing else was pressed meanwhile: any
+    // button, as the drum grid's slices (review 2026-11-23: B, X, Y or START with L1 held still zoomed).
+    if (event.down && zooming_ && b != Button::L1) zoomUsed_ = true;
 
     if (fxHeld_ && b == Button::Y) {
         if (event.down) fxRoll(); // the dice, for what this note does. (Chords wait until X is let go.)

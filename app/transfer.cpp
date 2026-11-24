@@ -1322,8 +1322,10 @@ void Transfer::answer(int fd) {
         ChordPack pack;
         good = parseChordPack(body, pack);
     } else {
-        std::unique_ptr<Project> song(new Project);
-        good = parseSong(body, *song);
+        // A song is what parseSong would take: its first line (the only thing it refuses one for).
+        // Not parsed here (review 2026-11-23): a `preset N` line reads the app's preset lists, which
+        // the app thread replaces when a preset is saved, under this thread's feet.
+        good = isSongText(body);
     }
     if (!good) {
         return reply(fd, "400 Bad Request", "text/plain",

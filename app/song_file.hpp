@@ -103,6 +103,9 @@ std::uint64_t bytesRead();
 // lines it does not understand are skipped. False (and `project` untouched)
 // if the text is not a song at all.
 bool parseSong(const std::string& text, Project& project);
+// What parseSong takes as a song (its first line), read without parsing it: for the WiFi server's
+// thread, which must not touch the app's preset lists (a `preset N` line reads them) or its counts.
+bool isSongText(const std::string& text);
 
 // A song's text read a part at a time, as parseSong reads it whole (Session::readStep: a step of
 // undo reads only the tracks whose text differs from the track's now). The text must cut

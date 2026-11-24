@@ -3719,6 +3719,36 @@ void testTheButtonTestAndSettingUpAgain() {
 
 // ---- the piano roll's zoom ---------------------------------------------------------------
 
+// L1's tap zooms the roll on its let go, and only if nothing else was pressed while it was held, as
+// the drum grid's slices (review 2026-11-23: B, X, Y or START with L1 held still zoomed). On an empty
+// place and on a note.
+void testTheRollsZoomIsATapOnly() {
+    Rig rig;
+    addPhazed(rig);
+    rig.project().track = 1;
+    rig.app.session().view = View::Pattern;
+    NoteScreen& notes = rig.app.notes();
+    Session& session = rig.app.session();
+    rig.project().tracks[1].notes[0][0].notes[0] = NoteEvent{4, 64, 2.f, 0.f, 0.8f};
+    for (const int onNote : {0, 1}) {
+        notes.moveCursorTo(onNote ? 64 : 70, onNote ? 4 : 1);
+        for (const SDL_Keycode other : {B, X, Y, START}) {
+            const int before = session.octavesShown();
+            rig.key(L1, true);
+            rig.tap(other);
+            if (other == START) rig.tap(START); // (playing: stopped again)
+            rig.key(L1, false);
+            rig.frames(2);
+            if (session.octavesShown() != before) std::printf("  L1 with key %d pressed zoomed (%s)\n", static_cast<int>(other), onNote ? "on a note" : "empty");
+            CHECK(session.octavesShown() == before);
+        }
+    }
+    const int before = session.octavesShown();
+    rig.tap(L1);
+    rig.frames(1);
+    CHECK(session.octavesShown() != before); // (a tap alone still zooms)
+}
+
 void testThePianoRollZooms() {
     Rig rig;
     addPhazed(rig);
@@ -11544,6 +11574,7 @@ int main(int argc, char** argv) {
     testTheSetupScreen();
     testTheButtonTestAndSettingUpAgain();
     testThePianoRollZooms();
+    testTheRollsZoomIsATapOnly();
     testTheStickSpeedAndTheVolume();
     testTheTempoFromAnyScreen();
     testTheEffectsScreen();

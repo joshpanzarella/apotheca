@@ -920,7 +920,12 @@ private:
     int taken_[kNumTracks] = {};      // active_ in the order the helpers take them (heaviestFirst_: by tookNs_)
     bool heaviestFirst_ = false;
     long tookNs_[kNumTracks] = {};    // heaviestFirst_: how long each track took last chunk (written by whoever did it)
-    std::atomic<int> activeCount_{0}, nextActive_{kNumTracks}, finished_{0};
+    // The list of tracks being shared out: the count in the high half, the next place to take in the
+    // low half, ONE atomic, so a place taken is always held to its own chunk's count. (Apart, a helper
+    // that took a place past the end of one chunk and read the count of the next, larger one rendered
+    // a track another thread was rendering too: review 2026-11-23.) 0: shut.
+    std::atomic<std::uint32_t> claims_{0};
+    std::atomic<int> finished_{0};
     std::vector<std::thread> workers_;
     std::mutex wakeMutex_;
     std::condition_variable wake_;

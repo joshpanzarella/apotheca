@@ -478,6 +478,9 @@ effect in those two groups and fails one that does not.
   times (`setHeaviestFirst`, off: only the SPEED TEST's rows ask for it, speed
   plan batch 0); the mix always walks `active_`. `speed_test` holds both to
   the bit.
+- **A helper takes a track by ONE atomic that holds the chunk's count and the next place** (`claims_`:
+  count << 16 | place, 0 shut). Read apart, a helper that took a place past one chunk's end and then read
+  the next chunk's larger count rendered a track another thread was rendering (review 2026-11-23).
 - **The built-in drum kit is built once per sample rate** and shared
   (`DrumKit::builtIn`). It never changes after that.
 - **A track taken away while it sounds fades for 5 ms first** (`RemoveInstrument`,
@@ -490,6 +493,10 @@ effect in those two groups and fails one that does not.
   `caughtUp()` counts the held command. A test that takes a sounding track away
   and wants the next thing at once renders 5 ms first (`engine_test`
   `testATrackTakenAwayFades` holds it beside a second engine, sample for sample).
+- **Every cut of a chunk is made before anything is moved on by its length** (`render()`: the steps,
+  waiting notes and hits, the MOD tick, the fade of a track taken away). The fade's cut came after the
+  clocks had moved, and every step after it came up to 63 samples early (review 2026-11-23;
+  `engine_test` `testATrackTakenAwayKeepsTheClock`).
 - **A lane with nothing written in a scene goes back to the knob** (`Track::autoBase`, read in `fireStep`
   and by `settleAutomation` at Stop), not to the last value written. So a FILTER's CUTOFF automated in
   the last scene only opens up at the wrap when the knob is more open, which sounds like the filter
@@ -584,6 +591,9 @@ effect in those two groups and fails one that does not.
 - **What is sent to a bus is sound or it is silence**: not-a-number, infinity
   and anything beyond `kBusLoudest` are zeroed in `feedBuses`, since the old
   DELAY and REVERB cannot look after themselves and would hold it for good.
+- **What reaches the master's slots is sound or silence too** (`renderChunk`, the same test as
+  `feedBuses`), and `ceiling` gives silence for not-a-number: one such sample from any track stayed in an
+  old DELAY or REVERB on the master for good (review 2026-11-23; `testNotANumberNeverStays`).
 - **A tail always ends** (owner, 2026-11-12). `kLongestTailSeconds` (450) is
   the promise: from the last sound a bus is sent to the bus at rest, at every
   setting of every effect a bus can hold, at 40 BPM. `effects_test`
@@ -1142,6 +1152,12 @@ effect in those two groups and fails one that does not.
 - **Every screen's `update()` re-reads held buttons from `input` each frame**
   and drops its own "held" flags when they are not held. Trusting the release
   event left A "stuck down" after a screen change.
+- **The joysticks are kept open as they come and go** (`app/joysticks.hpp`; a gamepad that dropped
+  out was never read again). A gamepad gone or come back lets go of every button (`Input::letGoOfAll`,
+  each let-go handed on). **After every event main.cpp asks `Input::pending`** until it says no: a hat
+  sends one event for two changes (a diagonal let go, one way straight to another), and RIGHT stayed held.
+  A sound card gone (`SDL_AUDIODEVICEREMOVED`) is opened again a second apart. `controls_test`
+  (`testAGamepadComesBack`, SDL's make-believe joystick). **The sound card's return is not tested.**
 - **Undo is a text snapshot of the song** (`songText`), one step per burst
   of edits, 20 deep. Anything that changes a pattern outside the grids calls
   `noteEdit()`. **It puts back the patterns and, since 2026-11-14 (owner),
@@ -2778,6 +2794,12 @@ effect in those two groups and fails one that does not.
   at the end too) giving way to it (`hintsEnd`). MENU still opens the help.
   `ui_test` (`testTheBarSaysAnUpdateWaits`) and `transfer_test` hold it;
   stills `update-ready`, `update-ready-drums`, `update-accepted`.
+- **`Transfer::stop` never waits on a browser or a SPEED TEST** (review 2026-11-23: it joined the
+  server's thread for minutes). It shuts the connection being answered (`serving_`, under
+  `servingMutex_`), kills the speed test's process group (`benchGroup_`; started by `posix_spawn` in a
+  group of its own, read with `poll`), and the drain after an answer is a second and 64 KB at most. Its
+  sockets are close-on-exec. **A song sent is checked by its first line only** (`isSongText`): parsing it
+  there read the app's preset lists under the app thread's feet. `transfer_test` `testStopNeverWaits`.
 - **A song sent under the open song's name is refused** (409, "that song is
   open on the handheld", case not counted: a card may not tell them apart).
   The Session tells the server the name (`Transfer::setOpenSong`, from

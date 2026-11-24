@@ -140,9 +140,10 @@ void Sampler::render(float* left, float* right, int frames) {
         const double endAt = v.spanFrom + static_cast<double>(playedEnd(value_[Start], value_[End])) / 100.0 * (v.spanTo - v.spanFrom);
         const double last = endAt < v.spanTo - 1 ? endAt : v.spanTo - 1;
         const bool loop = value_[Loop] != 0 && loopFrom < last - 1;
-        const float off = v.slide.take(frames); // a glide: semitones from its own pitch, for this block
-        const double step = off == 0.f ? v.step : v.step * std::exp2(static_cast<double>(off) / 12.0);
+        // A glide moves a sample at a time, as JAX-EP's does (review 2026-11-23: worked out once a block,
+        // it moved in steps, and a bounce was not live play: up to 0.45 apart in a song with glides).
         for (int i = 0; i < frames; ++i) {
+            const double step = v.slide.semitones == 0.f ? v.step : v.step * std::exp2(static_cast<double>(v.slide.take(1)) / 12.0); // (semitones off its own pitch, at this sample)
             if (v.position >= last) {
                 if (!loop) { v.note = -1; break; }
                 v.position = loopFrom + std::fmod(v.position - loopFrom, last - loopFrom);

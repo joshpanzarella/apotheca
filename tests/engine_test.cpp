@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -1740,6 +1741,63 @@ static void testStepEffectCut() {
 
 // A track taken away while it sounds fades over 5 ms (its instrument and its effects' tails), no
 // click; then it is gone. Beside a second engine where it stays, the sound is the same times the fade.
+// A track taken away while the song plays keeps the step clock where it was (review 2026-11-23: the
+// fade's end cut the chunk after the clock had been moved on by the whole chunk, so every step after
+// came up to 63 samples early). A drum hit on every step of track 0 and a synth sounding on track 1,
+// taken away mid-step: once its fade is over, the sound is the drums alone, to the sample, as an
+// engine that never had the synth plays them.
+// A sample that is not a number never reaches the sound card, and does not stay in the master's
+// effects (review 2026-11-23: one from any track stayed in an old REVERB on the master for good, and
+// the song was silent, or noise, until the effect was changed). A drum lane whose recording holds a
+// not-a-number is hit; then a plain drum: heard, and every sample out is a number.
+static void testNotANumberNeverStays() {
+    std::unique_ptr<Engine> e(new Engine);
+    e->setMasterEffect(0, makeEffect(EffectKind::Reverb, 48000.f, 120.f));
+    std::unique_ptr<SampleData> bad(new SampleData);
+    bad->data.assign(1000, 0.1f);
+    bad->data[10] = std::numeric_limits<float>::quiet_NaN();
+    CHECK(e->setLaneSample(0, 0, std::move(bad)));
+    CHECK(e->setLaneSample(0, 1, click()));
+    renderFrames(*e, 1000);
+    e->send(hitWith(0, 0, false, 0)); // lane 0: the not-a-number
+    std::vector<float> out = renderFrames(*e, 4800);
+    Command plain = hitWith(0, 0, false, 0);
+    plain.a = 1; // lane 1: the click
+    e->send(plain);
+    const std::vector<float> after = renderFrames(*e, 4800);
+    out.insert(out.end(), after.begin(), after.end());
+    bool numbers = true;
+    for (float v : out) numbers = numbers && std::isfinite(v);
+    CHECK(numbers);
+    float heard = 0.f;
+    for (float v : after) heard = std::max(heard, std::fabs(v));
+    if (!(heard > 0.01f)) std::printf("  after a not-a-number the click is heard at %g\n", heard);
+    CHECK(heard > 0.01f);
+}
+
+static void testATrackTakenAwayKeepsTheClock() {
+    std::unique_ptr<Engine> a(new Engine), b(new Engine);
+    for (Engine* e : {a.get(), b.get()}) {
+        CHECK(e->setLaneSample(0, 0, click()));
+        for (int i = 0; i < 16; ++i) e->send(step(0, i, 1.f));
+    }
+    CHECK(a->addSynthTrack(1, SynthKind::Phazed));
+    a->send(make(Command::NoteOn, 1, 57, 0, 0.8f));
+    renderFrames(*a, 3000);
+    renderFrames(*b, 3000);
+    for (Engine* e : {a.get(), b.get()}) e->send(make(Command::Play));
+    std::vector<float> one = renderFrames(*a, 2 * kStep + 1000), two = renderFrames(*b, 2 * kStep + 1000);
+    CHECK(a->removeTrack(1)); // mid-step, the synth still sounding: it fades for 240 samples
+    const std::vector<float> gone = renderFrames(*a, 4 * kStep), alone = renderFrames(*b, 4 * kStep);
+    int off = 0;
+    for (std::size_t i = 2 * 300; i < gone.size(); ++i) off += std::fabs(gone[i] - alone[i]) > 1e-6f;
+    if (off) std::printf("  %d samples off after the fade\n", off);
+    CHECK(off == 0);
+    float hits = 0.f;
+    for (float v : alone) hits = std::max(hits, std::fabs(v));
+    CHECK(hits > 0.1f); // (the drums were playing)
+}
+
 static void testATrackTakenAwayFades() {
     for (int kind = 0; kind < 2; ++kind) {
         const int t = kind == 0 ? 1 : 0;
@@ -3350,6 +3408,33 @@ static void testTheSamplersEndInAnyBlocks() {
     }
 }
 
+// A sampler's glide moves a sample at a time (review 2026-11-23: worked out once a block, it moved in
+// steps, and the sound hung on how it was cut into blocks: a bounce was not live play). Up an octave
+// and down a fifth, in blocks of 1 to 333: the same to the bit.
+static void testTheSamplersGlideInAnyBlocks() {
+    std::vector<float> data(96000);
+    for (int i = 0; i < 96000; ++i) data[static_cast<std::size_t>(i)] = static_cast<float>(i) / 96000.f; // its value: where it is read
+    for (const int from : {48, 67}) {
+        std::vector<float> first;
+        for (int block : {1, 7, 64, 256, 333}) {
+            std::unique_ptr<Sampler> s(new Sampler);
+            s->prepare(48000.f);
+            s->setSample(data.data(), 96000);
+            s->setSetting(sampler::Attack, 0);
+            s->noteOnFrom(60, 1.f, from, 0.25f);
+            std::vector<float> out, left(static_cast<std::size_t>(block)), right(static_cast<std::size_t>(block));
+            for (int done = 0; done < 24000; done += block) {
+                s->render(left.data(), right.data(), block);
+                out.insert(out.end(), left.begin(), left.end());
+            }
+            out.resize(24000);
+            if (first.empty()) first = out;
+            if (out != first) std::printf("  a glide from %d in blocks of %d is not as in blocks of 1\n", from, block);
+            CHECK(out == first);
+        }
+    }
+}
+
 static void testTheSamplerTakesTheOldest() {
     Sampler s;
     s.prepare(48000.f);
@@ -3629,6 +3714,7 @@ int main() {
     testANoteNudgedOffItsStep();
     testTheSampler();
     testTheSamplersEndInAnyBlocks();
+    testTheSamplersGlideInAnyBlocks();
     testTheSamplerTakesTheOldest();
     testEffectsOneByOne();
     testEffectsInTheEngine();
@@ -3644,6 +3730,8 @@ int main() {
     testStepEffectCut();
     testStepEffectRatchet();
     testATrackTakenAwayFades();
+    testATrackTakenAwayKeepsTheClock();
+    testNotANumberNeverStays();
     testStepEffectsTravel();
     testANoteRatchets();
     testRatchetsHoldUp();

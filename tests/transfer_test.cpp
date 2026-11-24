@@ -155,6 +155,15 @@ void testTheServer() {
     CHECK(put(port, door + "/chords/sent.json", kPack).status == 200 && exists(chords + "/sent.json"));
     CHECK(put(port, door + "/songs/new%20one.song", "apotheca-song 1\ntrack drums\n").status == 200 && exists(songs + "/new one.song"));
     CHECK(transfer.received() == 3);
+    {
+        // A song sent is taken by its first line, and not parsed on the server's thread (review
+        // 2026-11-23): a `preset N` line read the app's preset lists there, which the app thread
+        // replaces when a preset is saved. Nothing of it was read (the reader counts what it reads).
+        const std::uint64_t read = bytesRead();
+        CHECK(put(port, door + "/songs/with%20a%20preset.song", "apotheca-song 1\ntrack fm6\npreset 3\n").status == 200);
+        CHECK(put(port, door + "/songs/not%20one.song", "apotheca-song\ntrack fm6\n").status == 400 && !exists(songs + "/not one.song"));
+        CHECK(bytesRead() == read);
+    }
     // A browser's query string on the end is ignored.
     CHECK(get(port, door + "/list?x=1").status == 200);
 
