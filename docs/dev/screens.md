@@ -424,6 +424,11 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   while the song plays the scene on screen; never while a button is held or the stick pushed, nor
   `kFollowRestMs` (1.5 s) after, so a bar looked at by hand stays until the playhead next enters a bar.
   The cursor keeps its step.
+  **The roll's keys follow the notes too** (owner, 2026-11-24; `keysToShow` in follow_bar.hpp, `NoteScreen::followTheNotes`):
+  when FOLLOW shows a bar, the keys go to the stretch holding the most of its notes (then the most of their length,
+  then centred on them, then nearest where they were); a bar with none leaves them; the cursor, if left out of view,
+  goes to the nearest key shown. Read only (the const `pat()`: the writable one makes a scene's piece).
+  `follow_test` `testTheKeysRule`, `testTheRollsKeys`.
 - **SCALE's OFF reads CHROMATIC** (owner, 2026-11-18: "no key" was not seen as there; `scaleName`):
   the number in songs is unchanged.
 - **The one colour on the screen that is not the theme's: a track's ring colour on its SONG head**
