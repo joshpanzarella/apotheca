@@ -37,6 +37,10 @@
 //                    settings and its automation. It cannot be undone, and
 //                    the heading says so while the bar fills. Let go sooner
 //                    and nothing goes. (On SENDS a tap of B: nothing sent.)
+//                    Hold Y on one of the track's own lines: up / down moves
+//                    it there, settings, automation and MODs with it. The
+//                    cursor goes with it; the ends stop. One step of undo.
+//                    (The buses' and the master's never move.)
 //   in the settings  up / down: the next setting. Right: the slot's next TYPE (COMP to DUCK); left: the
 //                    type before, except on the first setting, where left is back to the list (and on
 //                    a family of one, or the sends, left is back to the list from any setting). The ends
@@ -53,7 +57,6 @@
 //                    place (on SENDS, in the other send's row) while X is held; a synth's
 //                    note is heard as long as X is
 //   START            play / stop
-//   (Y does nothing here.)
 
 #include "screen.hpp"
 #include <SDL.h>
@@ -78,6 +81,11 @@ namespace apotheca {
 // written by WRITE. False, and nothing done, if `to` is not another type of
 // what the slot holds.
 bool changeEffectType(Session& session, int track, int slot, EffectKind to);
+
+// One of a track's own effects a slot up or down (the buses' and the master's never move):
+// kind, settings, automation, MODs aimed at it and remembered types, all with it. The ends
+// stop. False, and nothing done, off a track's three slots or past an end.
+bool moveEffectSlot(Session& session, int track, int slot, int by);
 // The same, as the player switches TYPE (LEFT / RIGHT in a slot's settings, or let go on another type in the
 // list of effects): the slot remembers the type it leaves, its settings as they are (Session::rememberType),
 // and a type it has held before comes back with ITS settings as it was left, to the bit, not with ones carried
@@ -262,6 +270,7 @@ private:
     int last_[kRows] = {1, 1, 1, 1, 1, 1, 1, 1};
     static_assert(kRows == 8, "last_ has a place for each line");
     bool holding_ = false;
+    bool yHeld_ = false; // Y is held: on one of the track's lines, up / down moves it
     int tryRow_ = -1, tryTrack_ = 0; // A held on a slot's line: which, and whose
     int trySlot_ = 0;                // and its slot, kept after tryRow_ is let go (the engine's hold is let go by it)
     EffectData tried_;               // what it is trying

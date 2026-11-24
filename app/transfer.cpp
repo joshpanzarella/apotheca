@@ -6,10 +6,14 @@
 #include <dirent.h>
 #include <ifaddrs.h>
 #include <netinet/in.h>
+#include <fcntl.h>
 #include <poll.h>
+#include <signal.h>
+#include <spawn.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -18,11 +22,14 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <new>
 
 #include "chords.hpp"
 #include "samples.hpp"
 #include "song_file.hpp"
 #include "version.hpp"
+
+extern char** environ;
 
 namespace apotheca {
 
@@ -130,7 +137,7 @@ input.pick{width:17px;height:17px;margin:0;accent-color:#6fbfa3;cursor:pointer;f
 <h2>Recordings <span class="count" id="nSamples"></span><input id="find" type="text" placeholder="find"></h2>
 <div class="line hid" id="bulk"><b id="nPicked"></b><label for="bulkTo">move to</label><select id="bulkTo"></select><input id="bulkNew" class="hid" type="text" maxlength="49" placeholder="new folder, or folder/inner"><button id="bulkMove" class="main">Move</button><button id="bulkDelete" class="del">Delete</button><button id="bulkNone">Choose none</button></div>
 <div id="recordings"></div>
-<h2>Bounces <span class="count" id="nBounces"></span></h2><p>Your songs as sound files.</p><div class="panel"><ul id="bounces"></ul></div>
+<h2>Bounces <span class="count" id="nBounces"></span></h2><p>Your songs as sound files, and as MIDI.</p><div class="panel"><ul id="bounces"></ul></div>
 <h2>Songs <span class="count" id="nSongs"></span></h2><div class="panel"><ul id="songs"></ul></div>
 <h2>Chord packs <span class="count" id="nChords"></span></h2><div class="panel"><ul id="chords"></ul></div>
 
@@ -227,7 +234,7 @@ function draw() {
 function row(kind, name, label, size) {
   const li = el('li', 'row'); li.dataset.kind = kind; li.dataset.name = name;
   if (kind == 'samples') { const tick = el('input', 'pick'); tick.type = 'checkbox'; tick.checked = picked.has(name); tick.title = 'choose it, to move or delete several together'; li.append(tick); }
-  if (kind == 'samples' || kind == 'bounces') {
+  if (kind == 'samples' || (kind == 'bounces' && !/\.mid$/i.test(name))) { // (a MIDI file: download only, nothing to play)
     const on = playing == kind + '/' + name;
     li.append(btn(on ? 'stop' : 'play', 'play', on ? 'play on' : 'play'));
   }
@@ -236,7 +243,7 @@ function row(kind, name, label, size) {
   acts.append(get);
   if (kind == 'samples') { li.draggable = true; acts.append(btn('rename', 'rename'), btn('move', 'move')); }
   acts.append(btn('delete', 'delete', 'del'));
-  li.append(el('span', 'name', label.replace(/\.(wav|song|json)$/i, '')), el('span', 'size', sizeText(size)), acts); // the title, without its ending
+  li.append(el('span', 'name', label.replace(/\.(wav|song|json|mid)$/i, '')), el('span', 'size', sizeText(size)), acts); // the title, without its ending
   return li;
 }
 function drawRecordings() {
@@ -892,6 +899,7 @@ std::vector<Transfer::Change> Transfer::takeChanges() {
 }
 
 int Transfer::lockoutMs = 60000;
+int Transfer::requestMs = 120000;
 
 void Transfer::setOpenSong(const std::string& name) {
     std::lock_guard<std::mutex> hold(openMutex_);
@@ -907,6 +915,7 @@ bool Transfer::start(const std::string& sampleFolder, const std::string& songFol
     chords_ = chordFolder;
     const int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) return false;
+    fcntl(fd, F_SETFD, FD_CLOEXEC); // a program started from here (a speed test, the WiFi's) does not keep port 80
     const int yes = 1;
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes);
     sockaddr_in where = {};
@@ -936,7 +945,14 @@ bool Transfer::start(const std::string& sampleFolder, const std::string& songFol
 void Transfer::stop() {
     if (listening_ < 0) return;
     stopping_.store(true);
-    if (thread_.joinable()) thread_.join(); // it looks at `stopping_` five times a second
+    {
+        // A request under way ends now: its receives and sends come back at once, and a speed test
+        // is ended. (The server looks at `stopping_` five times a second besides.)
+        std::lock_guard<std::mutex> lock(servingMutex_);
+        if (serving_ >= 0) shutdown(serving_, SHUT_RDWR);
+        if (const int group = benchGroup_.load()) kill(-group, SIGTERM);
+    }
+    if (thread_.joinable()) thread_.join();
     close(listening_);
     listening_ = -1;
 }
@@ -955,7 +971,7 @@ std::string Transfer::address() const {
         }
         freeifaddrs(all);
     }
-    return host + ":" + std::to_string(port_) + "/" + pin_;
+    return host + (port_ == 80 ? "" : ":" + std::to_string(port_)) + "/" + pin_; // (a browser asks port 80 itself)
 }
 
 void Transfer::serve() {
@@ -964,28 +980,58 @@ void Transfer::serve() {
         if (poll(&waiting, 1, 200) <= 0) continue;
         const int connection = accept(listening_, nullptr, nullptr);
         if (connection < 0) continue;
+        fcntl(connection, F_SETFD, FD_CLOEXEC); // (not handed to a speed test or the WiFi's programs)
         timeval patience = {5, 0}; // a browser that goes quiet does not hold the door
         setsockopt(connection, SOL_SOCKET, SO_RCVTIMEO, &patience, sizeof patience);
         setsockopt(connection, SOL_SOCKET, SO_SNDTIMEO, &patience, sizeof patience);
-        answer(connection);
+        {
+            std::lock_guard<std::mutex> lock(servingMutex_);
+            serving_ = connection;
+            if (stopped()) shutdown(connection, SHUT_RDWR); // `stop` came between: nothing to wait for
+        }
+        try {
+            answer(connection);
+        } catch (const std::bad_alloc&) { // out of RAM mid-request: the door shuts, the song plays on
+        } catch (...) {
+        }
         shutdown(connection, SHUT_WR);
-        char rest[512]; // let the browser finish reading before the door shuts
-        while (recv(connection, rest, sizeof rest, 0) > 0) {}
-        close(connection);
+        // Let the browser finish reading before the door shuts: a second at most and 64 KB at most,
+        // so a client that keeps sending cannot hold the server (or `stop`) for good.
+        timeval brief = {0, 200000};
+        setsockopt(connection, SOL_SOCKET, SO_RCVTIMEO, &brief, sizeof brief);
+        const auto drainFrom = std::chrono::steady_clock::now();
+        char rest[512];
+        std::size_t drained = 0;
+        while (!stopped() && drained < 65536 && std::chrono::steady_clock::now() - drainFrom < std::chrono::seconds(1)) {
+            const ssize_t got = recv(connection, rest, sizeof rest, 0);
+            if (got <= 0) break;
+            drained += static_cast<std::size_t>(got);
+        }
+        {
+            std::lock_guard<std::mutex> lock(servingMutex_);
+            serving_ = -1;
+            close(connection);
+        }
     }
 }
 
 void Transfer::answer(int fd) {
+    // One request may take this long altogether (a trickle of bytes must not hold the door forever).
+    const auto started = std::chrono::steady_clock::now();
+    const auto tooSlow = [&] {
+        return stopped() || std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count() > requestMs;
+    };
     // The request line and headers: up to 8 KB, ending in a blank line.
     std::string head;
     std::size_t end = std::string::npos;
     char block[2048];
-    while (end == std::string::npos && head.size() < 8192) {
+    while (end == std::string::npos && head.size() < 8192 && !tooSlow()) {
         const ssize_t got = recv(fd, block, sizeof block, 0);
         if (got <= 0) return;
         head.append(block, static_cast<std::size_t>(got));
         end = head.find("\r\n\r\n");
     }
+    if (tooSlow()) return;
     if (end == std::string::npos) return reply(fd, "431 Too Much", "text/plain", "too much before the file\n");
     std::string body = head.substr(end + 4); // the start of the file, if one is coming
     head.resize(end);
@@ -1023,8 +1069,10 @@ void Transfer::answer(int fd) {
 
     if (method == "GET" && (path.empty() || path == "/")) return reply(fd, "200 OK", "text/html; charset=utf-8", kPage);
     if (method == "GET" && path == "/list") {
-        const std::vector<std::string> samples = recordingsIn(samples_), songs = filesEnding(songs_, ".song"), chords = filesEnding(chords_, ".json"),
-                                       bounces = filesEnding(bounces_, ".wav");
+        const std::vector<std::string> samples = recordingsIn(samples_), songs = filesEnding(songs_, ".song"), chords = filesEnding(chords_, ".json");
+        std::vector<std::string> bounces = filesEnding(bounces_, ".wav");
+        for (const std::string& mid : filesEnding(bounces_, ".mid")) bounces.push_back(mid);
+        std::sort(bounces.begin(), bounces.end());
         // "free" is megabytes left on the card; "sizes" are bytes, in the order of the names.
         return reply(fd, "200 OK", "application/json",
                      "{\"version\":\"" + std::string(kVersion) + "\",\"built\":\"" + std::string(kBuilt) + "\",\"free\":" + std::to_string(megabytesFree(exists(samples_) ? samples_ : songs_)) +
@@ -1047,7 +1095,7 @@ void Transfer::answer(int fd) {
         const unsigned long long size = where == std::string::npos ? 0 : std::strtoull(lowerHead.c_str() + where + 17, nullptr, 10);
         if (size == 0 || size > 200) return reply(fd, "400 Bad Request", "text/plain", "one short line\n");
         if (body.size() > size) body.resize(static_cast<std::size_t>(size));
-        while (body.size() < size) {
+        while (body.size() < size && !tooSlow()) {
             const ssize_t got = recv(fd, block, sizeof block, 0);
             if (got <= 0) return;
             body.append(block, std::min(static_cast<std::size_t>(got), static_cast<std::size_t>(size) - body.size()));
@@ -1065,20 +1113,61 @@ void Transfer::answer(int fd) {
         std::string first = "Apotheca " + std::string(kVersion) + ", built " + std::string(kBuilt) + "\n" + kBenchSays;
         if (!sendAll(fd, head, std::strlen(head)) || !sendAll(fd, first.data(), first.size())) return;
         const std::string command = benchCommand.empty() ? selfCommand("--bench 2>&1") : benchCommand;
-        FILE* run = command.empty() ? nullptr : popen(command.c_str(), "r");
-        if (!run) {
+        // Run through /bin/sh in a process group of its own (so `stop` can end it, shell and all),
+        // its output read as it comes, and given up on the moment the server is asked to stop.
+        int out[2] = {-1, -1};
+        pid_t child = 0;
+        bool started = !command.empty() && pipe(out) == 0;
+        if (started) {
+            fcntl(out[0], F_SETFD, FD_CLOEXEC);
+            posix_spawn_file_actions_t actions;
+            posix_spawn_file_actions_init(&actions);
+            posix_spawn_file_actions_adddup2(&actions, out[1], 1);
+            posix_spawn_file_actions_addclose(&actions, out[1]);
+            posix_spawnattr_t attributes;
+            posix_spawnattr_init(&attributes);
+            posix_spawnattr_setflags(&attributes, POSIX_SPAWN_SETPGROUP);
+            posix_spawnattr_setpgroup(&attributes, 0);
+            std::string shell = "/bin/sh", dashC = "-c", text = command;
+            char* argv[] = {&shell[0], &dashC[0], &text[0], nullptr};
+            started = posix_spawn(&child, "/bin/sh", &actions, &attributes, argv, environ) == 0;
+            posix_spawn_file_actions_destroy(&actions);
+            posix_spawnattr_destroy(&attributes);
+            close(out[1]);
+            if (!started) close(out[0]);
+        }
+        if (!started) {
             const char* no = "could not start the speed test\n";
             sendAll(fd, no, std::strlen(no));
             return;
         }
-        char line[1024];
+        {
+            std::lock_guard<std::mutex> lock(servingMutex_);
+            benchGroup_.store(child);
+            if (stopped()) kill(-child, SIGTERM); // `stop` came between
+        }
+        char said[1024];
         std::size_t sent = 0;
         bool listening = true;
-        while (std::fgets(line, sizeof line, run)) { // read to the end even if the page went away, so the run is not left stuck
-            const std::size_t n = std::strlen(line);
-            if (listening && sent < 65536) listening = sendAll(fd, line, n), sent += n;
+        for (;;) { // read to the end even if the page went away, so the run is not left stuck
+            pollfd ready = {out[0], POLLIN, 0};
+            const int seen = poll(&ready, 1, 200); // (`stop` kills the group: the pipe then ends)
+            if (seen == 0 || (seen < 0 && errno == EINTR)) continue;
+            const ssize_t n = read(out[0], said, sizeof said);
+            if (n < 0 && errno == EINTR) continue;
+            if (n <= 0) break;
+            if (listening && sent < 65536) listening = sendAll(fd, said, static_cast<std::size_t>(n)), sent += static_cast<std::size_t>(n);
         }
-        const char* end = pclose(run) != 0 ? "(the speed test did not finish)\n" : "(done)\n";
+        close(out[0]);
+        {
+            // Let go of the group before it is reaped (unreaped, its number cannot be given to another).
+            std::lock_guard<std::mutex> lock(servingMutex_);
+            benchGroup_.store(0);
+        }
+        int status = 0;
+        while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
+        const bool finished = WIFEXITED(status) && WEXITSTATUS(status) == 0;
+        const char* end = finished ? "(done)\n" : "(the speed test did not finish)\n";
         if (listening) sendAll(fd, end, std::strlen(end));
         return;
     }
@@ -1095,7 +1184,7 @@ void Transfer::answer(int fd) {
         if (size > kLargestFile) return reply(fd, "413 Too Large", "text/plain", "too big: 30 MB at most\n");
         if (lowerHead.find("\r\nexpect: 100-continue") != std::string::npos) sendAll(fd, "HTTP/1.1 100 Continue\r\n\r\n", 25);
         if (body.size() > size) body.resize(static_cast<std::size_t>(size));
-        while (body.size() < size) {
+        while (body.size() < size && !tooSlow()) {
             const ssize_t got = recv(fd, block, sizeof block, 0);
             if (got <= 0) return;
             body.append(block, std::min(static_cast<std::size_t>(got), static_cast<std::size_t>(size) - body.size()));
@@ -1128,7 +1217,8 @@ void Transfer::answer(int fd) {
     // /samples/<name>.wav, /songs/<name>.song, /chords/<name>.json
     const std::size_t slash = path.find('/', 1);
     const std::string kind = slash == std::string::npos ? "" : path.substr(1, slash - 1);
-    const std::string ending = kind == "samples" || kind == "bounces" ? ".wav" : kind == "songs" ? ".song" : kind == "chords" ? ".json" : "";
+    const bool mid = kind == "bounces" && path.size() >= 4 && path.compare(path.size() - 4, 4, ".mid") == 0;
+    const std::string ending = kind == "samples" ? ".wav" : kind == "bounces" ? (mid ? ".mid" : ".wav") : kind == "songs" ? ".song" : kind == "chords" ? ".json" : "";
     const std::string folder = folderFor(kind);
     // A recording may be in a folder ("samples/kicks/808.wav"); nothing else may.
     const std::string name = ending.empty() ? "" : kind == "samples" ? safeSamplePath(path.substr(slash + 1)) : safeFileName(path.substr(slash + 1), ending);
@@ -1136,6 +1226,9 @@ void Transfer::answer(int fd) {
     const std::string file = folder + "/" + name;
 
     if (method == "GET") {
+        struct stat info;
+        if (stat(file.c_str(), &info) == 0 && static_cast<unsigned long long>(info.st_size) > kLargestRead)
+            return reply(fd, "413 Too Large", "text/plain", "too big to fetch\n");
         std::string contents;
         if (!readTextFile(file, contents)) return reply(fd, "404 Not Found", "text/plain", "no such file\n");
         return reply(fd, "200 OK", ending == ".wav" ? "audio/wav" : "application/octet-stream", contents); // a browser can play a recording
@@ -1150,6 +1243,7 @@ void Transfer::answer(int fd) {
         if (kind == "songs") songs.unlock();
         if (!gone) return reply(fd, "500 Could Not Delete", "text/plain", "could not delete it\n");
         if (kind == "samples") noteChange(name, ""); // (its folder stays, empty or not)
+        if (kind == "chords") chordsReceived_.fetch_add(1); // (before received_: the session reads that first)
         received_.fetch_add(1);
         return reply(fd, "200 OK", "text/plain", "deleted\n");
     }
@@ -1200,7 +1294,7 @@ void Transfer::answer(int fd) {
     if (length > kLargestFile) return reply(fd, "413 Too Large", "text/plain", "too big: 30 MB at most\n");
     if (lower.find("\r\nexpect: 100-continue") != std::string::npos) sendAll(fd, "HTTP/1.1 100 Continue\r\n\r\n", 25);
     if (body.size() > length) body.resize(static_cast<std::size_t>(length));
-    while (body.size() < length) {
+    while (body.size() < length && !tooSlow()) {
         const ssize_t got = recv(fd, block, sizeof block, 0);
         if (got <= 0) return; // gave up part-way: nothing is kept
         body.append(block, std::min(static_cast<std::size_t>(got), static_cast<std::size_t>(length) - body.size()));
@@ -1229,8 +1323,10 @@ void Transfer::answer(int fd) {
         ChordPack pack;
         good = parseChordPack(body, pack);
     } else {
-        std::unique_ptr<Project> song(new Project);
-        good = parseSong(body, *song);
+        // A song is what parseSong would take: its first line (the only thing it refuses one for).
+        // Not parsed here (review 2026-11-23): a `preset N` line reads the app's preset lists, which
+        // the app thread replaces when a preset is saved, under this thread's feet.
+        good = isSongText(body);
     }
     if (!good) {
         return reply(fd, "400 Bad Request", "text/plain",
@@ -1248,6 +1344,7 @@ void Transfer::answer(int fd) {
     if (kind == "songs") songs.unlock();
     if (!written) return reply(fd, "500 Could Not Save", "text/plain", "could not save it: is the card full?\n");
     if (kind == "samples") noteChange("", name);
+    if (kind == "chords") chordsReceived_.fetch_add(1); // (before received_: the session reads that first)
     received_.fetch_add(1);
     reply(fd, "200 OK", "text/plain", "saved\n");
 }

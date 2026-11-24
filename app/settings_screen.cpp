@@ -44,18 +44,22 @@ void SettingsScreen::passwordButton(Button b) {
     } else if (b == Button::X) {
         keySet_ = (keySet_ + 1) % 3;
     } else if (b == Button::B || b == Button::Start) {
-        // Keeps it and joins. Nothing typed: B leaves, and nothing is joined.
-        if (typed_.empty()) {
-            if (b == Button::B) typing_ = false, password_ = false;
-        } else if (static_cast<int>(typed_.size()) < kWifiPasswordLeast) {
-            networkSaid_ = "8 AT LEAST";
-            networkSaidUntil_ = lastMs_ + 2500;
-        } else {
+        // B leaves, keeping what is typed for the next try at this network; with eight or more it
+        // joins, as START does. START with fewer says how many it takes.
+        const bool short_ = static_cast<int>(typed_.size()) < kWifiPasswordLeast;
+        if (b == Button::B && short_) {
+            typing_ = false;
+            saved_ = 0.f;
+            stickWas_ = false;
+        } else if (!short_) {
             session_.wifi().join(passwordFor_, typed_);
             std::fill(typed_.begin(), typed_.end(), '\0'); // (it goes no further than the program's stdin)
             typed_.clear();
-            typing_ = false, password_ = false;
-        }
+            typing_ = false, password_ = false, saved_ = 0.f, stickWas_ = false;
+        } else if (!typed_.empty()) {
+            networkSaid_ = "8 AT LEAST";
+            networkSaidUntil_ = lastMs_ + 2500;
+        } // (START with nothing yet: nothing at all)
     }
 }
 
@@ -76,8 +80,8 @@ void SettingsScreen::joinPicked() {
     if (pick_ < 0 || pick_ >= static_cast<int>(nets_.size())) return;
     const WifiNetwork& net = nets_[static_cast<std::size_t>(pick_)];
     if (net.needsPassword()) {
+        if (passwordFor_ != net.name) typed_.clear(); // another network: no draft of it
         typing_ = true, password_ = true, fromSong_ = false;
-        typed_.clear();
         passwordFor_ = net.name;
         key_ = 0, keySet_ = 0;
     } else {
@@ -112,9 +116,13 @@ void SettingsScreen::typeButton(Button b) {
         // name stays as it was.
         if (!typed_.empty()) session_.setTrackName(project_.track, typed_);
         typing_ = false;
+        saved_ = 0.f;
+        stickWas_ = false; // the keys' stick is not the rows': the next push starts over
     } else if (b == Button::Start) {
         session_.setTrackName(project_.track, typed_); // (nothing typed: the instrument's own name)
         typing_ = false;
+        saved_ = 0.f;
+        stickWas_ = false;
     }
     // Opened from the SONG screen: back to it when the typing is over.
     if (!typing_ && fromSong_) {
@@ -125,8 +133,8 @@ void SettingsScreen::typeButton(Button b) {
 
 bool SettingsScreen::here(int row) const {
     if (row == kBrightness) return session_.screenHere();
-    if (row == kLight || row == kLightColour) return session_.ringHere();
-    if (row == kNetwork) return session_.wifiHere();
+    if (row == kLight || row == kLightColour || row == kRingLevel) return session_.ringHere();
+    if (row == kNetwork || row == kHotspot) return session_.wifiHere();
     return row >= 0 && row < kRows;
 }
 
@@ -178,7 +186,7 @@ void SettingsScreen::change(int by) {
     case kPack: session_.choosePack(session_.packIndex() + by); break;
     case kKey: session_.setScale(project_.scaleKey + by, project_.scaleKind); break; // (round: B to C)
     case kScale: session_.setScale(project_.scaleKey, project_.scaleKind + by); break; // (a choice with ends)
-    case kBounce: bounceWhat_ = ((bounceWhat_ + by) % 3 + 3) % 3; break;
+    case kBounce: bounceWhat_ = ((bounceWhat_ + by) % 4 + 4) % 4; break;
     case kTrackName: {
         // Through the list of names, round and round; the first is "its instrument's own".
         int now = 0;
@@ -192,6 +200,7 @@ void SettingsScreen::change(int by) {
     case kBrightness: session_.setBrightness(session_.brightness() + kBrightStep * by); break;
     case kLight: session_.setStickLight(session_.stickLight() + by); break; // (a choice with ends)
     case kLightColour: session_.setLightColour(session_.lightColour() + by); break; // (so is this)
+    case kRingLevel: session_.setRingLevel(session_.ringLevel() + kBrightStep * by); break;
     case kStick: session_.setStickSpeed(session_.stickSpeed() + 0.05f * static_cast<float>(by)); break;
     case kTextSize: session_.setTextSize(session_.textSize() + by); break; // (it has ends, as PIANO ROLL has)
     case kTheme: session_.setTheme(session_.theme() + by); break;       // (so has this; the colours change from the next frame)
@@ -236,7 +245,7 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (b == Button::B) {
             const WifiStatus status = session_.wifi().now().status;
             if (event.down && picking_) picking_ = false; // (B with A held: nothing is joined)
-            else if (event.down) forgetting_ = session_.transferOn() && status.state != WifiState::Off, forgetTimed_ = false;
+            else if (event.down) forgetting_ = session_.transferOn() && status.state != WifiState::Off && status.state != WifiState::Hotspot, forgetTimed_ = false;
             else forgetting_ = false;
             return;
         }
@@ -256,10 +265,12 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
         holdTimed_ = false;
         holdPart_ = 0.f;
         if (!event.down) return;
-        if (row_ == kBounce && !session_.bouncing()) session_.startBounce(bounceWhat_ == 0 ? Session::Bounce::Song : bounceWhat_ == 1 ? Session::Bounce::EachTrack : Session::Bounce::ThisTrack);
+        if (row_ == kBounce && !session_.bouncing())
+            session_.startBounce(bounceWhat_ == 0 ? Session::Bounce::Song : bounceWhat_ == 1 ? Session::Bounce::EachTrack : bounceWhat_ == 2 ? Session::Bounce::ThisTrack : Session::Bounce::MidiFile);
         if (row_ == kTempo) session_.tapTempo(lastMs_); // TAP TEMPO: A in time
         if (row_ == kTrackName) typing_ = true, password_ = false, typed_ = project_.current().name, key_ = 0;
         if (row_ == kWifi) session_.toggleTransfer(lastMs_ * 2654435761u + 977u);
+        if (row_ == kHotspot) session_.setHotspot(session_.wifi().now().status.state != WifiState::Hotspot, lastMs_ * 2654435761u + 977u);
         if (row_ == kTest) testing_ = true, testTimed_ = false, lastPressed_ = Button::None;
         return;
     }
@@ -297,7 +308,7 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
         if (nowMs - forgetSince_ >= kForgetHoldMs) {
             forgetting_ = false, forgetPart_ = 0.f;
             const WifiStatus status = session_.wifi().now().status;
-            if (status.state != WifiState::Off) {
+            if (status.state != WifiState::Off && status.state != WifiState::Hotspot) {
                 session_.wifi().forget(status.name);
                 networkSaid_ = "FORGOTTEN";
                 networkSaidUntil_ = nowMs + 2500;
@@ -439,8 +450,13 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             font.drawCentered(r, x + kw / 2.f, y + (kh - font.capHeight()) / 2.f, one, here ? kBg : kText);
         }
         const bool none = typed_.empty();
-        const Hint list[] = {{"A", "type"}, {"Y", none ? nullptr : "delete"}, {"X", kPasswordSetNames[(keySet_ + 1) % 3]}, {"B", none ? "leave" : "join"}};
-        hints(r, fonts, list, 4);
+        const bool short_ = static_cast<int>(typed_.size()) < kWifiPasswordLeast;
+        const Hint list[] = {{"A", "type"},
+                             {"Y", none ? nullptr : "delete"},
+                             {"X", kPasswordSetNames[(keySet_ + 1) % 3]},
+                             {"B", short_ ? "leave" : "join"},
+                             {"START", short_ ? nullptr : "join"}};
+        hints(r, fonts, list, 5);
         return;
     }
     if (typing_) {
@@ -498,7 +514,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     }
 
     const char* names[kRows] = {"TEMPO", "CHORD PACK", "KEY", "SCALE", "TRACK NAME", "BOUNCE", "CLICK", "COUNT IN", "MUTES", "USB KEYBOARD", "TEXT SIZE", "THEME", "PIANO ROLL",
-                                "VOLUME", "BRIGHTNESS", "STICK LIGHT", "LIGHT COLOUR", "STICK SPEED", "WIFI PAGE", "NETWORK", "BUTTONS", "CONTROLS"};
+                                "VOLUME", "BRIGHTNESS", "STICK LIGHT", "LIGHT COLOUR", "RING LEVEL", "STICK SPEED", "WIFI PAGE", "NETWORK", "HOTSPOT", "BUTTONS", "CONTROLS"};
     const int rowH = kRowH, w = kRowW; // (twelve rows shown: 34 a row, as it was with eleven, would run into the hints bar)
     // The heading of the first row in view, above the rows.
     const char* topHeading = groupName(groupOf(rowAt(first_)));
@@ -545,7 +561,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             break;
         }
         case kBounce: {
-            static const char* what[3] = {"THE SONG", "EACH TRACK", "THIS TRACK"};
+            static const char* what[4] = {"THE SONG", "EACH TRACK", "THIS TRACK", "MIDI FILE"};
             if (session_.bouncing()) {
                 // The song's own length is known, so that part is a percentage. A tail's is not
                 // (it runs until it has died away): it says how much of it there is so far.
@@ -557,7 +573,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             } else {
                 std::snprintf(text, sizeof text, "%s", what[bounceWhat_]);
                 if (session_.bounceFiles() > 0) std::snprintf(bounced_, sizeof bounced_, "done: %d file%s, on the WiFi page", session_.bounceFiles(), session_.bounceFiles() == 1 ? "" : "s");
-                note = session_.bounceFiles() > 0 ? bounced_ : "A: write it as a WAV file";
+                note = session_.bounceFiles() > 0 ? bounced_ : (bounceWhat_ == 3 ? "A: write it as a MIDI file" : "A: write it as a WAV file");
             }
             break;
         }
@@ -588,6 +604,11 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             note = which == kLightTheme ? "a colour picked for the theme" : which == kLightTrack ? "a colour for each track" : which == kLightRainbow ? "turns a light a beat" : "";
             break;
         }
+        case kRingLevel:
+            std::snprintf(text, sizeof text, "%d%%", session_.ringLevel());
+            part = static_cast<float>(session_.ringLevel()) / 100.f;
+            note = "how bright the ring is";
+            break;
         case kStick:
             std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(session_.stickSpeed() * 100.f)));
             part = (session_.stickSpeed() - Session::kStickSlowest) / (Session::kStickFastest - Session::kStickSlowest);
@@ -630,10 +651,16 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             else std::snprintf(text, sizeof text, "OFF");
             note = session_.transferOn() ? "" : "files and updates from a browser";
             if (session_.transferOn() && session_.wifiHere()) {
-                // Our firmware gives the handheld a name on the network: said beside the address (the
-                // same port and number after it). Nothing where the system does not say one.
+                // Our firmware gives the handheld a name on the network: the name is the value, the
+                // address beside it (the same port and number after it). The address alone where the
+                // system says no name.
                 const std::string name = session_.transferName();
-                if (!name.empty()) std::snprintf(said, sizeof said, "or %.60s", name.c_str()), note = said, twoAddresses = true;
+                if (!name.empty()) {
+                    std::snprintf(text, sizeof text, "ON   %s", name.c_str());
+                    std::snprintf(said, sizeof said, "or %.60s", session_.transferAddress().c_str());
+                    note = said;
+                    twoAddresses = true;
+                }
             }
             break;
         case kNetwork: {
@@ -656,9 +683,21 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 else if (status.state == WifiState::Joining) note = "JOINING...";
                 else if (status.state == WifiState::WrongPassword) note = "WRONG PASSWORD";
                 else if (status.state == WifiState::NotFound) note = "NOT FOUND";
-                else if (status.state == WifiState::Joined) std::snprintf(said, sizeof said, "%.40s", status.address.c_str()), note = said;
+                else if (status.state == WifiState::Joined || status.state == WifiState::Hotspot) std::snprintf(said, sizeof said, "%.40s", status.address.c_str()), note = said;
                 else if (!now.scanned) note = "LOOKING...";
                 else std::snprintf(said, sizeof said, "%d FOUND", static_cast<int>(now.networks.size())), note = said;
+            }
+            break;
+        }
+        case kHotspot: {
+            const WifiStatus& status = session_.wifi().now().status;
+            if (status.state == WifiState::Hotspot) {
+                std::snprintf(text, sizeof text, "ON");
+                std::snprintf(said, sizeof said, "%.40s", status.address.c_str());
+                note = said;
+            } else {
+                std::snprintf(text, sizeof text, "OFF");
+                note = "a phone joins it with one tap";
             }
             break;
         }
@@ -727,7 +766,8 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (row_ == kTrackName) hint("A", "type a name");
     if (row_ == kWifi) hint("A", session_.transferOn() ? "turn off" : "turn on");
     if (row_ == kNetwork && session_.transferOn()) {
-        const bool joined = session_.wifi().now().status.state != WifiState::Off;
+        const WifiState state = session_.wifi().now().status.state;
+        const bool joined = state != WifiState::Off && state != WifiState::Hotspot;
         if (forgetPart_ > 0.f) {
             count = 0;
             hint("HOLD B", "forgetting");
@@ -740,6 +780,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             if (joined) hint("HOLD B", "forget");
         }
     }
+    if (row_ == kHotspot) hint("A", session_.wifi().now().status.state == WifiState::Hotspot ? "turn off" : "turn on");
     if (row_ == kTest) hint("A", "open the test");
     if (row_ == kControls) hint("HOLD A", "set up again");
     hint("SELECT", "to SONG");

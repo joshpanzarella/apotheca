@@ -24,6 +24,7 @@
 #include "song_file.hpp"
 #include "synth_spec.hpp"
 #include "temp_folder.hpp"
+#include "canvas.hpp"
 
 #ifdef __linux__
 #include <fcntl.h>
@@ -963,6 +964,106 @@ void testADeletedSongIsNeverWrittenOver() {
     CHECK(!binSong(folder, "never was"));
 }
 
+// A folder named like a song or a rev is not one: deleting leaves it where it is (audit #8).
+void testADeletedSongLeavesFoldersAlone() {
+    const std::string folder = tempFolder("test");
+    CHECK(writeTextFile(folder + "/x.song", "apotheca-song 1\n") && writeTextFile(folder + "/x.2.rev", "apotheca-song 1\n"));
+    mkdir((folder + "/x.1.rev").c_str(), 0755); // a folder named like a rev
+    mkdir((folder + "/y.song").c_str(), 0755);  // a folder named like a song
+    CHECK(binSong(folder, "x"));
+    CHECK(!exists(folder + "/x.song") && !exists(folder + "/x.2.rev"));
+    CHECK(exists(folder + "/x.1.rev") && exists(folder + "/deleted/x.song") && exists(folder + "/deleted/x.2.rev"));
+    CHECK(!binSong(folder, "y") && exists(folder + "/y.song")); // no song file: nothing to bin
+}
+
+// A move that fails halfway is put back: the song is all where it was (audit #7).
+void testADeletedSongRollsBack() {
+    const std::string folder = tempFolder("test");
+    CHECK(writeTextFile(folder + "/x.song", "apotheca-song 1\n") && writeTextFile(folder + "/x.1.rev", "apotheca-song 1\n"));
+    mkdir((folder + "/deleted").c_str(), 0755);
+    mkdir((folder + "/deleted/x.1.rev").c_str(), 0755); // in the way of the rev's move
+    CHECK(!binSong(folder, "x"));
+    CHECK(exists(folder + "/x.song") && exists(folder + "/x.1.rev") && !exists(folder + "/deleted/x.song"));
+}
+
+// Past the doubles' end, numbers are held to their limits and the line goes on (audit #9).
+void testPastDoubleEndNumbersAreHeld() {
+    std::unique_ptr<Project> p(new Project);
+    CHECK(parseSong("apotheca-song 1\ntempo 1e999\nrepeats 1 1e999 3\ntrack drums\nscene 1\nhit 1 1 1e999\n", *p));
+    CHECK(p->tempo == kMaxTempo);
+    CHECK(p->repeats[0] == 1 && p->repeats[1] == kMaxRepeats && p->repeats[2] == 3);
+    CHECK(p->tracks[0].drums[0][0].level[0][0] == 1.f);
+}
+
+// "settings" before "preset" reads as "preset" before "settings": the preset never eats them (audit #33).
+void testSettingsBeforePresetAreKept() {
+    std::string settings = "settings";
+    for (int i = 0; i < 40; ++i) settings += " 5";
+    settings += "\n";
+    std::unique_ptr<Project> a(new Project), b(new Project), c(new Project);
+    CHECK(parseSong("apotheca-song 1\ntrack phazed\npreset 1\n" + settings, *a));
+    CHECK(parseSong("apotheca-song 1\ntrack phazed\n" + settings + "preset 1\n", *b));
+    CHECK(parseSong("apotheca-song 1\ntrack phazed\npreset 1\n", *c));
+    CHECK(songText(*a) == songText(*b)); // the order changes nothing
+    CHECK(songText(*a) != songText(*c)); // the settings took, not the bare preset
+}
+
+// A note or chord before its scene's "bars" keeps its length; past even the longest cell it is cut (audit #34).
+void testNotesBeforeBarsKeepTheirLength() {
+    std::unique_ptr<Project> p(new Project);
+    CHECK(parseSong("apotheca-song 1\ntrack phazed\nscene 1\nnote 1 60 100 0.8\nbars 8\n", *p));
+    CHECK(p->tracks[0].notes[0][0].notes[0].length == 100.f);
+    std::unique_ptr<Project> q(new Project);
+    CHECK(parseSong("apotheca-song 1\ntrack phazed\nscene 1\nnote 1 60 200 0.8\nbars 1\n", *q));
+    CHECK(q->tracks[0].notes[0][0].notes[0].length == 16.f);
+    std::unique_ptr<Project> r(new Project);
+    CHECK(parseSong("apotheca-song 1\ntrack phazed\nscene 1\nchord 1 100 0.8 0 60 C 0 4 7\nbars 8\n", *r));
+    CHECK(r->tracks[0].notes[0][0].chords[0].length == 100.f);
+}
+
+// A fractional address is no address: the line is refused, not cut down (audit #35).
+void testFractionalAddressesAreRefused() {
+    std::unique_ptr<Project> p(new Project);
+    CHECK(parseSong("apotheca-song 1\ntrack drums\nscene 1\nhit 1.9 1.9 0.5\nhit 2 3 0.8\n", *p));
+    CHECK(p->tracks[0].drums[0][0].level[0][0] == 0.f);  // not lane 1 step 1
+    CHECK(p->tracks[0].drums[0][0].level[1][2] == 0.8f); // whole ones land
+    std::unique_ptr<Project> q(new Project);
+    CHECK(parseSong("apotheca-song 1\ntrack drums\nscene 1.5\nhit 1 1 0.8\n", *q));
+    CHECK(q->tracks[0].drums[0][0].level[0][0] == 0.f); // a fractional scene is no scene
+}
+
+// The first line is "<word> <version>": the word with anything stuck to it, or with no version,
+// is not a song (audit #37).
+void testSongHeaders() {
+    std::unique_ptr<Project> p(new Project);
+    CHECK(!parseSong("apotheca-songXYZ\ntempo 100\n", *p));
+    CHECK(!parseSong("apotheca-song", *p));
+    CHECK(!parseSong("apotheca-song\n", *p));
+    CHECK(!parseSong("apotheca-song \ntempo 100\n", *p));
+    CHECK(!parseSong("apotheca-song 1 X\ntempo 100\n", *p));
+    CHECK(parseSong("apotheca-song 1\r\ntempo 100\n", *p) && p->tempo == 100.f);
+    CHECK(parseSong("apotheca-song 7\ntempo 100\n", *p) && p->tempo == 100.f); // a later version still opens
+    std::vector<std::size_t> starts;
+    CHECK(!cutSongAt("apotheca-songXYZ\n", starts));
+    std::unique_ptr<TrackData> kit(new TrackData);
+    CHECK(!readKit("apotheca-kitXYZ\n", *kit) && !readKit("apotheca-kit\n", *kit));
+}
+
+// A send to no bus is refused, even as not-a-number through a stream (audit #51: its neighbors' shape).
+void testSendWithABadBusIsRefused() {
+    EffectData effects[kTrackSlots] = {};
+    float send[kBuses] = {};
+    std::uint8_t glideFrom = 0;
+    ModSettings mods[kModsPerTrack] = {};
+    const SoundParts parts{TrackKind::Phazed, effects, send, &glideFrom, mods};
+    std::istringstream nan("nan 0.5");
+    CHECK(readSoundLine("send", nan, parts) == SoundLine::Refused);
+    std::istringstream fract("1.9 0.5");
+    CHECK(readSoundLine("send", fract, parts) == SoundLine::Refused);
+    std::istringstream whole("2 0.5");
+    CHECK(readSoundLine("send", whole, parts) == SoundLine::Taken && send[1] == 0.5f);
+}
+
 // A song kept with Windows' line ends (edited on a computer, sent from the page) reads as the same
 // song: its recordings, its sampler's sound, its chord pack and its names. They were dropped, as
 // a name that ends in the line end's \r is not a name.
@@ -1607,6 +1708,68 @@ static void testScenesPastSixteen() {
     CHECK(odd->tracks[0].drums.held() == 1 && odd->tracks[0].drums[63][0].level[1][0] == 0.8f && odd->sceneCount() == 64);
 }
 
+// A song that cannot be saved is not shut (review 2026-11-23): with the card refusing (here the
+// song's file is a folder with something in it, which no rename can write over, even as root), a
+// new song or another one opened changes nothing and says why; once the card takes it again, the
+// change is saved and the new song made.
+void testASongThatCannotBeSavedStaysOpen() {
+    const std::string folder = tempFolder("test");
+    Rig rig(folder);
+    fillSong(rig);
+    CHECK(rig.session().saveNow());
+    const std::string name = rig.session().songName(), path = folder + "/" + name + ".song";
+    rig.session().newSong(); // a second song on the card, to open
+    fillSong(rig);
+    CHECK(rig.session().saveNow());
+    const std::string other = rig.session().songName();
+    CHECK(rig.session().openSong(name) && rig.session().songName() == name);
+    rig.project().tempo = 133.f; // a change since the last save
+    CHECK(std::remove(path.c_str()) == 0 && mkdir(path.c_str(), 0755) == 0);
+    const std::string inside = path + "/in the way";
+    CHECK(writeTextFile(inside, "x"));
+    const unsigned saidBefore = rig.session().saidCount();
+    CHECK(!rig.session().newSong());
+    CHECK(rig.session().songName() == name && rig.project().tempo == 133.f);
+    CHECK(rig.session().saidCount() == saidBefore + 1 && std::string(rig.session().saidText()) == "NOT SAVED: CARD FULL?");
+    CHECK(!rig.session().openSong(other));
+    CHECK(rig.session().songName() == name && rig.project().tempo == 133.f && rig.session().saidCount() == saidBefore + 2);
+    {
+        // The words fit the App's box at LARGE (copybar_test's measure).
+        Canvas canvas;
+        if (canvas.ok) CHECK(canvas.fonts->medium.width(rig.session().saidText()) <= 248.f);
+    }
+    // The card takes it again: saved first, then the new song.
+    CHECK(std::remove(inside.c_str()) == 0 && rmdir(path.c_str()) == 0);
+    CHECK(rig.session().newSong() && rig.session().songName() != name);
+    std::string kept;
+    CHECK(readTextFile(path, kept) && kept.find("\ntempo 133\n") != std::string::npos);
+}
+
+// last.txt is written when the song open changes, not with every autosave (review 2026-11-23: two
+// fsyncs every two seconds of editing). Written over by hand after the first save, it stays so through
+// edits and saves; another song open writes it.
+void testLastIsWrittenOnlyWhenTheSongChanges() {
+    const std::string folder = tempFolder("test");
+    Rig rig(folder);
+    fillSong(rig);
+    CHECK(rig.session().saveNow());
+    const std::string last = folder + "/last.txt";
+    std::string said;
+    CHECK(readTextFile(last, said) && said == rig.session().songName() + "\n");
+    CHECK(writeTextFile(last, "left alone\n"));
+    for (int i = 0; i < 5; ++i) {
+        rig.project().tempo = 101.f + static_cast<float>(i);
+        CHECK(rig.session().saveNow());
+    }
+    CHECK(readTextFile(last, said) && said == "left alone\n");
+    const std::string first = rig.session().songName();
+    CHECK(rig.session().newSong());
+    fillSong(rig);
+    CHECK(rig.session().saveNow());
+    CHECK(readTextFile(last, said) && said == rig.session().songName() + "\n" && rig.session().songName() != first);
+    CHECK(rig.session().openSong(first) && readTextFile(last, said) && said == first + "\n");
+}
+
 int main(int, char**) {
     testScenesPastSixteen();
     testNumbersAsSnprintfWritesThem();
@@ -1620,6 +1783,8 @@ int main(int, char**) {
     testAnOldTwinSong();
     testASongFromTheOnePresetBuilds();
     testBadFiles();
+    testASongThatCannotBeSavedStaysOpen();
+    testLastIsWrittenOnlyWhenTheSongChanges();
     testSavedAsYouGoAndBackAtTheNextStart();
     testAnOpenedSongSoundsLikeTheOneSaved();
     testNewSongAndTheList();
@@ -1629,6 +1794,14 @@ int main(int, char**) {
     testHiddenBarsAreKept();
     testSavedToTheCardBeforeItIsMoved();
     testADeletedSongIsNeverWrittenOver();
+    testADeletedSongLeavesFoldersAlone();
+    testADeletedSongRollsBack();
+    testPastDoubleEndNumbersAreHeld();
+    testSettingsBeforePresetAreKept();
+    testNotesBeforeBarsKeepTheirLength();
+    testFractionalAddressesAreRefused();
+    testSongHeaders();
+    testSendWithABadBusIsRefused();
     testWindowsLineEnds();
     testHugeNumbersAreHeldToTheirLimits();
     testParseSongOnASmallStack();

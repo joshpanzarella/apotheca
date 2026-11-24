@@ -89,8 +89,8 @@ static void testSettings() {
     CHECK(near(envelope::attackSeconds(static_cast<float>(settingUsual(Attack))), 0.002, 0.0002));
     CHECK(near(envelope::fallSeconds(static_cast<float>(settingUsual(Release))), 0.2, 0.001));
     CHECK(near(envelope::fallSeconds(static_cast<float>(settingUsual(EnvDecay))), 0.5, 0.01));
-    // Only the three choices that change what a key is made of wait for a strike.
-    for (int id = 0; id < kSettings; ++id) CHECK(readAtStrike(id) == (id == TableA || id == TableB || id == Unison));
+    // Only the settings that change what a key is made of wait for a strike (WIDTH's streams with them: audit #27).
+    for (int id = 0; id < kSettings; ++id) CHECK(readAtStrike(id) == (id == TableA || id == TableB || id == Unison || id == Width));
     // Names.
     CHECK(std::strcmp(tableName(Analog), "ANALOG") == 0 && std::strcmp(tableName(Glass), "GLASS") == 0);
     CHECK(std::strcmp(tableName(-3), "ANALOG") == 0 && std::strcmp(tableName(99), "ANALOG") == 0);

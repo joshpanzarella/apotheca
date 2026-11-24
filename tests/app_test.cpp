@@ -27,6 +27,7 @@
 #include "canvas.hpp"
 #include "controls.hpp"
 #include "instruments.hpp"
+#include "mod_knob.hpp"
 #include "mods.hpp"
 #include "power_off.hpp"
 #include "samples.hpp"
@@ -338,24 +339,31 @@ void testStartOnTheSongScreenPlaysTheSong() {
     CHECK(sceneHeard(rig) == 0);
 }
 
-void testCopyingABarByDragging() {
+void testCopyingABar() {
     Rig rig;
     rig.app.drums().setStep(0, 0, 0.9f);
     rig.app.drums().setStep(2, 5, 0.4f);
     rig.app.drums().setNudge(2, 5, 0.25f);
     rig.app.drums().setChance(2, 5, 0.5f);
     addPhazed(rig);
-    // The synth has a note in scene 3, which the drag will cross.
+    // The synth has a note in scene 3, which a paste will be tried on.
     rig.app.song().moveCursorTo(2, 1);
     rig.tap(A);
     rig.tap(A);
     rig.tap(L2);
     CHECK(!rig.project().tracks[1].notes[2][0].empty());
     rig.app.song().moveCursorTo(0, 0);
-    rig.key(R1, true);
-    rig.tap(DOWN, 2);
-    rig.tap(RIGHT); // across onto the synth: a drum bar cannot go there
-    rig.key(R1, false);
+    rig.tap(R1); // copy
+    rig.app.song().moveCursorTo(1, 0);
+    rig.tap(R1); // paste: the copy is spent
+    rig.app.song().moveCursorTo(0, 0);
+    rig.tap(R1); // copy again
+    rig.app.song().moveCursorTo(2, 0);
+    rig.tap(R1); // paste
+    rig.app.song().moveCursorTo(0, 0);
+    rig.tap(R1); // copy the drum cell again
+    rig.app.song().moveCursorTo(2, 1);
+    rig.tap(R1); // onto the synth: a drum bar cannot go there
     CHECK(!rig.project().tracks[1].notes[2][0].empty()); // and it did not wipe the synth's bar
     for (int scene = 1; scene <= 2; ++scene) {
         const DrumPattern& p = rig.project().tracks[0].drums[scene][0];
@@ -363,7 +371,7 @@ void testCopyingABarByDragging() {
         CHECK(near(p.nudge[2][5], 0.25f) && near(p.chance[2][5], 0.5f));
     }
     CHECK(rig.project().tracks[0].drums[3][0].empty());
-    // Moving with R1 let go copies nothing.
+    // Moving without R1 pastes nothing.
     rig.app.song().moveCursorTo(2, 0);
     rig.tap(DOWN);
     CHECK(rig.project().tracks[0].drums[3][0].empty());
@@ -381,9 +389,10 @@ void testCopyingABarByDragging() {
     synth.tap(A); // open it
     synth.tap(A); // a note
     synth.tap(L2);
-    synth.key(R1, true);
-    synth.tap(DOWN);
-    synth.key(R1, false);
+    synth.app.song().moveCursorTo(0, 1);
+    synth.tap(R1); // copy
+    synth.app.song().moveCursorTo(1, 1);
+    synth.tap(R1); // paste
     CHECK(!synth.project().tracks[1].notes[1][0].empty());
     CHECK(synth.project().tracks[1].notes[1][0].notes[0].pitch == synth.project().tracks[1].notes[0][0].notes[0].pitch);
 }
@@ -408,23 +417,27 @@ void testBEmptiesACell() {
     CHECK(rig.project().sceneCount() == 1);
 }
 
-void testTheCopyBrushLifts() {
+void testTheCellCopyStaysPut() {
     Rig rig;
     rig.app.drums().setStep(0, 0, 0.9f);
     rig.tap(L2);
-    rig.key(R1, true);
-    rig.tap(DOWN);
-    rig.key(R1, false); // let go on a drum cell
-    rig.tap(DOWN, 3);
+    rig.app.song().moveCursorTo(0, 0);
+    rig.tap(R1); // copy
+    rig.app.song().moveCursorTo(1, 0);
+    rig.tap(R1); // paste
+    rig.tap(DOWN, 3); // moving on pastes nothing more
     CHECK(!rig.project().tracks[0].drums[1][0].empty());
     for (int scene = 2; scene <= 4; ++scene) CHECK(rig.project().tracks[0].drums[scene][0].empty());
-    // R1 on a repeat count or on + TRACK picks nothing up.
+    // R1 on a repeat count or on + TRACK leaves the cell copy alone.
+    rig.app.song().moveCursorTo(0, 0);
+    rig.tap(R1); // copy again: the paste before spent it
     rig.app.song().moveCursorTo(0, -1);
-    rig.key(R1, true);
-    rig.tap(DOWN);
-    rig.tap(RIGHT);
-    rig.key(R1, false);
-    CHECK(rig.project().tracks[0].drums[2][0].empty());
+    rig.tap(R1); // that copies the scene, another clipboard
+    rig.tap(RIGHT, 2); // onto + TRACK
+    rig.tap(R1); // + TRACK: nothing at all
+    rig.app.song().moveCursorTo(2, 0);
+    rig.tap(R1); // the cell copy is still there
+    CHECK(near(rig.project().tracks[0].drums[2][0].level[0][0], 0.9f));
 }
 
 void testTheSongScreenScrolls() {
@@ -666,7 +679,11 @@ void testTheKeysScrollAndStopAtTheEnds() {
     rig->tap(LEFT, 200);
     CHECK(notes.cursorPitch() == NoteScreen::kLowest);
     rig->tap(UP);
-    CHECK(notes.cursorStep() == kSteps - 1); // sideways comes round
+    CHECK(notes.cursorOnBars()); // up from the top step: BARS
+    rig->tap(UP);
+    CHECK(!notes.cursorOnBars() && notes.cursorStep() == kSteps - 1); // up again: round to the bottom
+    rig->tap(DOWN);
+    CHECK(!notes.cursorOnBars() && notes.cursorStep() == 0);
 }
 
 // ---- cells longer than a bar --------------------------------------------------------------
@@ -777,11 +794,24 @@ void testCellsOfSeveralBars() {
     CHECK(bars[1].at(60, 0) >= 0 && bars[0].empty());
     rig.tap(UP);
     CHECK(rig.project().bar == 0 && notes.cursorStep() == 15);
-    rig.tap(UP, 16);
-    CHECK(rig.project().bar == 3 && notes.cursorStep() == 15); // round the top to the last bar
+    rig.tap(UP, 15);
+    CHECK(rig.project().bar == 0 && notes.cursorStep() == 0);
+    rig.tap(UP);
+    CHECK(notes.cursorOnBars()); // up past the top step: BARS
+    rig.tap(LEFT);
+    CHECK(notes.cursorOnBars() && rig.project().bar == 3); // round to the last bar
+    rig.tap(RIGHT);
+    CHECK(notes.cursorOnBars() && rig.project().bar == 0);
+    rig.tap(DOWN);
+    CHECK(!notes.cursorOnBars() && rig.project().bar == 0 && notes.cursorStep() == 0);
+    rig.tap(UP);
+    CHECK(notes.cursorOnBars());
+    rig.tap(UP);
+    CHECK(!notes.cursorOnBars() && rig.project().bar == 3 && notes.cursorStep() == 15); // up again: round to the bottom
     rig.tap(DOWN);
     CHECK(rig.project().bar == 0 && notes.cursorStep() == 0);
-    // A note may run on over the bar lines, to the end of the cell and no further.
+
+// A note may run on over the bar lines, to the end of the cell and no further.
     notes.moveCursorTo(64, 8);
     rig.key(A, true);
     rig.tap(DOWN, 80);
@@ -835,8 +865,10 @@ void testCellsOfSeveralBars() {
     // ---- copying and emptying take the whole cell ------------------------------------------
     session.view = View::Song;
     song.moveCursorTo(0, 0);
+    rig.tap(R1); // copy, as a scene is copied
+    song.moveCursorTo(1, 0);
     rig.key(R1, true);
-    rig.tap(DOWN);
+    CHECK(track.bars[1] == 1); // not yet: the paste is on its let go
     rig.key(R1, false);
     CHECK(track.bars[1] == 2 && track.drums[1][1].level[0][0] == 0.9f && near(track.drums[1][1].nudge[0][0], 0.1f));
     rig.tap(B); // empty the copy
@@ -883,6 +915,53 @@ void testCellsOfSeveralBars() {
     CHECK(back->tracks[0].drums[1][0].level[4][4] == 1.f && back->tracks[0].bars[1] == 1); // a new scene starts at its first bar
     CHECK(parseSong("apotheca-song 1\ntrack phazed\nscene 1\nnote 9 60 40 1\nscene 2\nbars 2\nnote 9 60 40 1\n", *back));
     CHECK(back->tracks[0].notes[0][0].notes[0].length == 8.f && back->tracks[0].notes[1][0].notes[0].length == 24.f);
+}
+
+// The strip counts steps as the grid numbers do (bar * meter + step), and on BARS it shows the bar.
+static bool inked(const Canvas& canvas, Canvas& scratch, int size, float x, float y, const char* text, SDL_Color colour);
+void testStripCountsWithTheGrid() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    Rig rig;
+    Session& session = rig.app.session();
+    addPhazed(rig);
+    const Fonts& fonts = *canvas.fonts;
+    const auto stripHas = [&](const char* text, SDL_Color color, float x0, float x1, float y0, float y1) {
+        for (float y = y0; y <= y1; y += 1.f)
+            for (float x = x0; x <= x1; x += 1.f)
+                if (inked(canvas, scratch, 2, x, y, text, color)) return true; // values are large lettering
+        return false;
+    };
+    session.setSceneMeter(0, 12);
+    session.setCellBars(1, 0, 2);
+    session.setCellBars(0, 0, 2);
+    // The roll, bar 1 step 0: STEP reads 13, as its number does (not 17).
+    rig.project().track = 1;
+    session.view = View::Pattern;
+    NoteScreen& notes = rig.app.notes();
+    notes.moveCursorTo(60, 0);
+    rig.project().bar = 1;
+    rig.frames(1);
+    canvas.clear();
+    rig.app.draw(canvas.r, fonts);
+    CHECK(stripHas("13", ui::kText, 99.f, 135.f, 400.f, 445.f) && !stripHas("17", ui::kText, 99.f, 135.f, 400.f, 445.f));
+    // BARS: CELL/BARS and BAR n OF n.
+    notes.moveCursorTo(60, 0);
+    rig.project().bar = 0;
+    rig.tap(UP);
+    canvas.clear();
+    rig.app.draw(canvas.r, fonts);
+    CHECK(notes.cursorOnBars() && stripHas("BARS", ui::kText, 7.f, 60.f, 400.f, 445.f) && stripHas("1 OF 2", ui::kTeal, 99.f, 160.f, 400.f, 445.f));
+    // The drums, bar 1 step 0: STEP reads 13 too.
+    rig.project().track = 0;
+    PatternScreen& drums = rig.app.drums();
+    drums.moveCursorTo(0, 0);
+    rig.project().bar = 1;
+    rig.frames(1);
+    canvas.clear();
+    rig.app.draw(canvas.r, fonts);
+    CHECK(stripHas("13", ui::kText, 119.f, 155.f, 380.f, 452.f) && !stripHas("17", ui::kText, 119.f, 155.f, 380.f, 452.f));
 }
 
 void testNudgingWithTheOuterShoulderButtons() {
@@ -1574,6 +1653,69 @@ void testTheBattery() {
     CHECK(batteryPercent(&charging, root) == -1);
     writeTextFile(root + "/battery/capacity", "0\n");
     CHECK(batteryPercent(nullptr, root) == 0);
+    // Its voltage: the supply with a "capacity", in microvolts.
+    CHECK(batteryMicrovolts(root + "/no-such-folder") == -1 && batteryMicrovolts(root) == -1);
+    writeTextFile(root + "/battery/voltage_now", "3800000\n");
+    CHECK(batteryMicrovolts(root) == 3800000);
+    writeTextFile(root + "/ac/voltage_now", "5000000\n"); // (the supply with no battery: not read)
+    CHECK(batteryMicrovolts(root) == 3800000);
+    writeTextFile(root + "/battery/voltage_now", "nonsense\n");
+    CHECK(batteryMicrovolts(root) == -1);
+}
+
+void testBatteryLog() {
+    Rig rig;
+    const std::string root = tempFolder("batterylog");
+    mkdir((root + "/battery").c_str(), 0755);
+    writeTextFile(root + "/battery/capacity", "61\n");
+    writeTextFile(root + "/battery/status", "Discharging\n");
+    writeTextFile(root + "/battery/voltage_now", "3800000\n");
+    const std::string log = root + "/battery.log";
+    rig.app.useBatteryFolder(root);
+    rig.app.useBatteryLog(log);
+    // The first read writes a line at once.
+    rig.frames(1);
+    std::string text;
+    CHECK(readTextFile(log, text) && text == "[1.0] 61% 3.80V discharging\n");
+    // Under a minute and unmoved: nothing more.
+    rig.clock += 59000;
+    rig.frames(1);
+    CHECK(readTextFile(log, text) && text == "[1.0] 61% 3.80V discharging\n");
+    // A minute on: another line (on the next ten-second read past the minute).
+    rig.clock += 10000;
+    rig.frames(1);
+    CHECK(readTextFile(log, text) && text == "[1.0] 61% 3.80V discharging\n[70.0] 61% 3.80V discharging\n");
+    // Down five: a line at once. The charger on: one too.
+    writeTextFile(root + "/battery/capacity", "55\n");
+    rig.clock += 11000;
+    rig.frames(1);
+    CHECK(readTextFile(log, text) && text.size() > 60 && text.substr(text.size() - 29) == "[81.1] 55% 3.80V discharging\n");
+    writeTextFile(root + "/battery/status", "Charging\n");
+    rig.clock += 11000;
+    rig.frames(1);
+    CHECK(readTextFile(log, text) && text.size() > 60 && text.substr(text.size() - 26) == "[92.1] 55% 3.80V charging\n");
+    // No voltage file: a "?" where the volts go.
+    std::remove((root + "/battery/voltage_now").c_str());
+    rig.clock += 61000;
+    rig.frames(1);
+    CHECK(readTextFile(log, text) && text.size() > 60 && text.substr(text.size() - 23) == "[153.1] 55% ? charging\n");
+    // No battery at all: nothing kept.
+    Rig bare;
+    const std::string root2 = tempFolder("batterylogbare");
+    bare.app.useBatteryFolder(root2);
+    bare.app.useBatteryLog(root2 + "/battery.log");
+    bare.frames(10);
+    CHECK(!readTextFile(root2 + "/battery.log", text));
+    // Over the cap: back to the lines kept, the new line last.
+    std::string big;
+    for (int i = 0; i < 10000; ++i) big += "[0.0] 61% 3.80V discharging\n";
+    writeTextFile(log, big);
+    rig.clock += 61000;
+    rig.frames(1);
+    CHECK(readTextFile(log, text));
+    int lines = 0;
+    for (char c : text) lines += c == '\n';
+    CHECK(lines == 3000 && text.size() > 23 && text.substr(text.size() - 23) == "[214.1] 55% ? charging\n");
 }
 
 // ---- bouncing: tools ---------------------------------------------------------------------
@@ -1638,9 +1780,10 @@ void testBouncing() {
     const auto plant = [&](const char* name) { std::FILE* f = std::fopen((folder + "/" + name).c_str(), "wb"); std::fputs("half", f); std::fclose(f); };
     const auto there = [&](const char* name) { struct stat st; return stat((folder + "/" + name).c_str(), &st) == 0; };
     plant("old 261112-104548.wav.part");
+    plant("old 261112-104548.mid.part");
     plant("notes.part"); // not a bounce's: left alone
     session.useBounceFolder(folder);
-    CHECK(!there("old 261112-104548.wav.part") && there("notes.part"));
+    CHECK(!there("old 261112-104548.wav.part") && !there("old 261112-104548.mid.part") && there("notes.part"));
     plant("old 261112-104549.wav.part"); // ...and when the next bounce starts
     // A song: scene 1 (two bars' worth: it plays twice) with a kick on each beat, and a JAX-EP track with one long note.
     for (int step = 0; step < kSteps; step += 4) rig.app.drums().setStep(0, step, 1.f);
@@ -2705,6 +2848,28 @@ void testUndoAndRedo() {
     session.newSong();
     rig.frames(2);
     CHECK(session.undoSteps() == 0 && session.redoSteps() == 0 && !session.undo());
+    {
+        // A cell that is NOT the one open, emptied from the SONG screen: a step of undo all the same
+        // (review 2026-11-23: none was made, the cell's mark only watching the open cell), and an
+        // empty cell emptied makes none.
+        TrackData& t = rig.project().tracks[0];
+        t.drums[2][0].level[1][4] = 0.7f;
+        session.sendTrackImage(0);
+        session.noteEdit(); // (as the grid marks a hit it writes)
+        settle();
+        const int steps = session.undoSteps();
+        session.view = View::Song;
+        rig.app.song().moveCursorTo(2, 0); // scene 3, track 1: not the cell open (scene 1)
+        rig.tap(B);
+        settle();
+        CHECK(static_cast<const TrackData&>(t).drums[2][0].empty() && session.undoSteps() == steps + 1);
+        rig.tap(B); // empty already
+        settle();
+        CHECK(session.undoSteps() == steps + 1);
+        CHECK(session.undo());
+        CHECK(static_cast<const TrackData&>(rig.project().tracks[0]).drums[2][0].level[1][4] == 0.7f);
+        session.view = View::Pattern;
+    }
 }
 
 void testHoldBErasesDrumHits() {
@@ -3115,6 +3280,57 @@ void testHoldXCarriesANote() {
     CHECK(!notes.carrying());
     rig.tap(LEFT);
     CHECK(bar.notes[slot].pitch == 61 && notes.cursorPitch() == 60);
+    // L1 held while carrying: an octave at a time, up and down.
+    notes.moveCursorTo(61, 5);
+    rig.key(R1, true);
+    CHECK(notes.carrying());
+    const int octaves = rig.app.session().octavesShown();
+    Canvas carried;
+    CHECK(carried.ok);
+    rig.key(L1, true);
+    if (carried.ok) {
+        rig.frames(1);
+        carried.clear();
+        rig.app.draw(carried.r, *carried.fonts);
+        CHECK(ui::gHintsOver == 0.f); // the octave hint fits the bar
+    }
+    rig.tap(RIGHT);
+    CHECK(bar.notes[slot].pitch == 73 && notes.cursorPitch() == 73);
+    rig.tap(LEFT);
+    CHECK(bar.notes[slot].pitch == 61);
+    rig.key(L1, false);
+    rig.key(R1, false);
+    CHECK(rig.app.session().octavesShown() == octaves); // L1 was a carry, not a zoom: nothing zoomed
+    // ...and a chord goes by the octave too.
+    bar.chords[0] = makeChord(builtInPack().chords[0], 48, 10, 3.f, 0.7f, 0);
+    int keys[kChordNotes];
+    bar.chords[0].pitches(keys);
+    notes.moveCursorTo(keys[0], 10);
+    rig.key(R1, true);
+    CHECK(notes.carrying());
+    rig.key(L1, true);
+    rig.tap(RIGHT);
+    CHECK(bar.chords[0].root == 60 && notes.cursorPitch() == keys[0] + 12);
+    rig.tap(LEFT);
+    CHECK(bar.chords[0].root == 48);
+    rig.key(L1, false);
+    rig.key(R1, false);
+    CHECK(rig.app.session().octavesShown() == octaves);
+    // L1 first or R1 first, it carries all the same (and a tap still copies the bar).
+    rig.key(L1, true);
+    rig.key(R1, true);
+    CHECK(notes.carrying());
+    rig.tap(LEFT);
+    CHECK(bar.chords[0].root == 36 && notes.cursorPitch() == keys[0] - 12);
+    rig.key(R1, false);
+    rig.key(L1, false);
+    const unsigned barCopies = rig.app.session().barCopies();
+    bar.chords[0] = ChordEvent(); // put away: later checks want no chords
+    notes.moveCursorTo(61, 5);
+    rig.key(L1, true);
+    rig.tap(R1);
+    rig.key(L1, false);
+    CHECK(rig.app.session().barCopies() == barCopies + 1); // ...unmoved: copied
     // The stick, up and down, slides it FREELY in time, off the grid: a short push is a small move...
     // (The engine is run as the frames go by, as the sound card runs it: each frame of sliding tells it the bar again.)
     const auto hold = [&](int count) { for (int f = 0; f < count; ++f) { rig.frames(1); rig.render(16); } };
@@ -3525,6 +3741,36 @@ void testTheButtonTestAndSettingUpAgain() {
 
 // ---- the piano roll's zoom ---------------------------------------------------------------
 
+// L1's tap zooms the roll on its let go, and only if nothing else was pressed while it was held, as
+// the drum grid's slices (review 2026-11-23: B, X, Y or START with L1 held still zoomed). On an empty
+// place and on a note.
+void testTheRollsZoomIsATapOnly() {
+    Rig rig;
+    addPhazed(rig);
+    rig.project().track = 1;
+    rig.app.session().view = View::Pattern;
+    NoteScreen& notes = rig.app.notes();
+    Session& session = rig.app.session();
+    rig.project().tracks[1].notes[0][0].notes[0] = NoteEvent{4, 64, 2.f, 0.f, 0.8f};
+    for (const int onNote : {0, 1}) {
+        notes.moveCursorTo(onNote ? 64 : 70, onNote ? 4 : 1);
+        for (const SDL_Keycode other : {B, X, Y, START}) {
+            const int before = session.octavesShown();
+            rig.key(L1, true);
+            rig.tap(other);
+            if (other == START) rig.tap(START); // (playing: stopped again)
+            rig.key(L1, false);
+            rig.frames(2);
+            if (session.octavesShown() != before) std::printf("  L1 with key %d pressed zoomed (%s)\n", static_cast<int>(other), onNote ? "on a note" : "empty");
+            CHECK(session.octavesShown() == before);
+        }
+    }
+    const int before = session.octavesShown();
+    rig.tap(L1);
+    rig.frames(1);
+    CHECK(session.octavesShown() != before); // (a tap alone still zooms)
+}
+
 void testThePianoRollZooms() {
     Rig rig;
     addPhazed(rig);
@@ -3550,39 +3796,51 @@ void testThePianoRollZooms() {
     rig.tap(L1, 3);
     rig.frames(1);
     CHECK(notes.visibleKeys() == 24 && notes.lowestKeyShown() == 60);
-    // Held, with up and down: closer and further, stopping at the ends; and that is not also a tap.
-    rig.key(L1, true);
+    // BARS, up from the top step: hold A with up and down: the cell's bars, more or fewer,
+    // stopping at the ends.
     rig.tap(UP);
-    CHECK(session.octavesShown() == 1);
+    CHECK(notes.cursorOnBars());
+    rig.key(A, true);
     rig.tap(UP);
-    CHECK(session.octavesShown() == 1 && notes.cursorStep() == 0);
+    CHECK(rig.project().tracks[1].bars[0] == 2);
+    rig.tap(UP);
+    CHECK(rig.project().tracks[1].bars[0] == 4 && notes.cursorOnBars());
     rig.tap(DOWN, 2);
-    CHECK(session.octavesShown() == 3);
+    CHECK(rig.project().tracks[1].bars[0] == 1);
     rig.tap(DOWN);
-    CHECK(session.octavesShown() == 3);
-    rig.key(L1, false);
-    CHECK(session.octavesShown() == 3);
-    // The stick with L1 held: one step of zoom for each push.
-    rig.key(L1, true);
+    CHECK(rig.project().tracks[1].bars[0] == 1);
+    rig.key(A, false);
+    CHECK(session.octavesShown() == 2); // (L1 was never held: no zoom)
+    // Left and right on BARS: the bar before or after, round the ends.
+    rig.key(A, true);
+    rig.tap(UP, 2);
+    rig.key(A, false);
+    CHECK(rig.project().tracks[1].bars[0] == 4 && rig.project().bar == 0);
+    rig.tap(LEFT);
+    CHECK(notes.cursorOnBars() && rig.project().bar == 3);
+    rig.tap(RIGHT, 2);
+    CHECK(notes.cursorOnBars() && rig.project().bar == 1);
+    // The stick with A held on BARS: one step of bars for each push.
+    rig.key(A, true);
     rig.key(STICK_UP, true);
     rig.frames(40);
-    CHECK(session.octavesShown() == 2 && notes.cursorPitch() == 69 && notes.cursorStep() == 0);
+    CHECK(rig.project().tracks[1].bars[0] == 8 && notes.cursorOnBars() && notes.cursorPitch() == 69 && notes.cursorStep() == 0);
     rig.key(STICK_UP, false);
     rig.frames(1);
     rig.key(STICK_UP, true);
     rig.frames(2);
     rig.key(STICK_UP, false);
-    rig.key(L1, false);
-    CHECK(session.octavesShown() == 1);
+    rig.key(A, false);
+    CHECK(rig.project().tracks[1].bars[0] == 8); // (at the end: stops)
+    session.setOctavesShown(1); // the rest zooms from one octave, as it did
+    rig.frames(1);
     // The cursor still scrolls the keys, one octave wide.
     rig.frames(1);
     notes.moveCursorTo(72, 0);
     CHECK(notes.lowestKeyShown() == 61);
     // At the top of the keyboard the keys stop at the last one.
     notes.moveCursorTo(108, 0);
-    rig.key(L1, true);
-    rig.tap(DOWN, 2);
-    rig.key(L1, false);
+    rig.tap(L1); // one octave to three: a tap is the only zoom now
     rig.frames(1);
     CHECK(notes.visibleKeys() == 36 && notes.lowestKeyShown() == 108 - 35);
     notes.moveCursorTo(12, 0);
@@ -5507,7 +5765,7 @@ void testTheFxScreenAsDrawn() {
     const bool barFound = hinted("effects");
     CHECK(barFound);
     if (barFound) {
-        CHECK(hinted("settings") && hinted("delete") && hinted("play") && !hinted("default") && !hinted("turn"));
+        CHECK(hinted("settings") && hinted("delete") && hinted("move") && !hinted("play") && !hinted("default") && !hinted("turn"));
         fx.goTo(1, 0);
         session.setEffect(0, 1, EffectKind::None);
         draw();
@@ -5671,6 +5929,163 @@ void testChangingTypeKeepsWhatIsShared() {
         rig.frames(1);
         rig.render(256);
     }
+}
+
+// MOVING an effect a slot up or down: kind, settings, automation, MODs and remembered types,
+// all with it. The ends stop; off a track's three slots it is refused and nothing moves. One
+// step of undo, and the engine plays the new order.
+void testMovingEffectsKeepsEverythingWithThem() {
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& project = rig.project();
+    TrackData& track = project.tracks[0];
+    const auto lane = [](int slot, int p) { return autoLaneOfEffect(slot, p); };
+    const auto written = [&](int slot, int scene = 0) { int n = 0; for (int p = 0; p < 4; ++p) for (float v : track.automation[scene][lane(slot, p)]) n += v >= 0.f ? 1 : 0; return n; };
+    // TAPE in slot 0 (DELAY remembered, as it was), FILTER in slot 1, each turned; automation on
+    // both, in two scenes; a MOD on the TAPE's FEEDBACK.
+    session.setEffect(0, 0, EffectKind::Delay);
+    session.setEffectParam(0, 0, 1, 0.3f);
+    CHECK(switchEffectType(session, 0, 0, EffectKind::Tape));
+    session.setEffect(0, 1, EffectKind::Filter);
+    session.setEffectParam(0, 0, 1, 0.4f);
+    session.setEffectParam(0, 1, 0, 0.9f);
+    session.setAutomation(0, 0, lane(0, 1), 2, 0.5f);
+    session.setAutomation(0, 3, lane(1, 0), 9, 0.25f);
+    CHECK(session.setMod(0, 0, ModKnob::fresh(kModFirstEffect + 0 * 4 + 1)));
+    rig.frames(60); // settled: the setup is no step of undo
+    // Down a slot: everything with it.
+    CHECK(moveEffectSlot(session, 0, 0, 1));
+    CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Filter) && track.effects[0].param[0] == 0.9f);
+    CHECK(track.effects[1].kind == static_cast<int>(EffectKind::Tape) && track.effects[1].param[1] == 0.4f);
+    CHECK(track.automation[0][lane(1, 1)][2] == 0.5f && track.automation[3][lane(0, 0)][9] == 0.25f);
+    CHECK(written(0) == 0 && written(1, 3) == 0); // ...and nothing left on the old lanes
+    CHECK(session.modData(0, 0).target == kModFirstEffect + 1 * 4 + 1);
+    float back[kEffectParams];
+    CHECK(session.rememberedType(0, 1, EffectKind::Delay, back) && back[1] == 0.3f);
+    CHECK(!session.rememberedType(0, 0, EffectKind::Delay, back));
+    // The engine plays the new order.
+    rig.render(4000);
+    CHECK(rig.engine->effectKindIn(0, 0) == static_cast<int>(EffectKind::Filter) && rig.engine->effectKindIn(0, 1) == static_cast<int>(EffectKind::Tape));
+    // One step of undo puts it all back; redo puts it forward again.
+    rig.frames(60);
+    CHECK(session.undo());
+    CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Tape) && track.effects[1].kind == static_cast<int>(EffectKind::Filter));
+    CHECK(track.automation[0][lane(0, 1)][2] == 0.5f && session.modData(0, 0).target == kModFirstEffect + 0 * 4 + 1);
+    CHECK(session.redo());
+    CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Filter) && track.effects[1].kind == static_cast<int>(EffectKind::Tape));
+    // The ends stop, and off the track's slots it is refused: nothing moves.
+    CHECK(!moveEffectSlot(session, 0, 0, -1) && !moveEffectSlot(session, 0, 2, 1));
+    CHECK(!moveEffectSlot(session, 0, 3, 1) && !moveEffectSlot(session, 0, -1, 1) && !moveEffectSlot(session, 0, 1, 0));
+    CHECK(!moveEffectSlot(session, -1, 0, 1) && !moveEffectSlot(session, kNumTracks, 0, 1));
+    CHECK(!moveEffectSlot(session, kMasterTrack, 0, 1) && !moveEffectSlot(session, kEchoBus, 0, 1));
+    CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Filter) && track.effects[1].kind == static_cast<int>(EffectKind::Tape) && written(1) == 1);
+    // A busy track: four lanes of each slot written at every step of 40 scenes (40960 steps). The move
+    // is one image of the track, not a command a step, so nothing is lost from the engine's queue
+    // (review 2026-11-23: past 16384 commands the whole song was sent again).
+    for (int scene = 0; scene < 40; ++scene)
+        for (int slot = 0; slot < 2; ++slot)
+            for (int p = 0; p < 4; ++p)
+                for (int step = 0; step < kAutoSteps; ++step) track.automation[scene][lane(slot, p)][step] = 0.25f + 0.5f * static_cast<float>(slot);
+    session.sendTrackImage(0);
+    rig.frames(2);
+    rig.render(512);
+    const unsigned dropped = rig.engine->dropped(), images = session.imagesSent();
+    CHECK(moveEffectSlot(session, 0, 0, 1));
+    CHECK(rig.engine->dropped() == dropped && session.imagesSent() == images + 1);
+    CHECK(track.automation[39][lane(0, 3)][kAutoSteps - 1] == 0.75f && track.automation[39][lane(1, 3)][kAutoSteps - 1] == 0.25f);
+}
+
+// A scene's tempo and meter are steps of undo of their own: no later undo silently reverts them.
+void testSceneTempoMeterUndo() {
+    Rig rig;
+    Session& session = rig.app.session();
+    rig.frames(60); // settled: undo starts counting here
+    session.setSceneTempo(0, 100);
+    rig.frames(60);
+    session.setSceneMeter(0, 12);
+    rig.frames(60);
+    CHECK(rig.project().sceneTempo[0] == 100.f && rig.project().meterOf(0) == 12);
+    CHECK(session.undo());
+    CHECK(rig.project().meterOf(0) == kSteps && rig.project().sceneTempo[0] == 100.f);
+    CHECK(session.undo());
+    CHECK(rig.project().sceneTempo[0] == 0.f);
+}
+
+// Kit VOLUME/FIT/one-slice and the sampler's CHOP undo and redo like any sound change.
+void testLaneAndChopUndo() {
+    Rig rig;
+    Session& session = rig.app.session();
+    CHECK(session.addTrack(TrackKind::Sampler));
+    rig.frames(60); // settled: undo starts counting here
+    session.setLaneLevel(0, 0, 0.5f);
+    session.setLaneFit(0, 0, 8);
+    session.setLaneOneSlice(0, 0, true);
+    session.setSamplerChop(1, true);
+    rig.frames(60);
+    CHECK(session.undo());
+    CHECK(rig.project().tracks[0].laneLevel[0] == 1.f && rig.project().tracks[0].laneFit[0] == 0);
+    CHECK(!rig.project().tracks[0].laneOneSlice[0] && !rig.project().tracks[1].samplerChop);
+    CHECK(session.redo());
+    CHECK(rig.project().tracks[0].laneLevel[0] == 0.5f && rig.project().tracks[0].laneFit[0] == 8);
+    CHECK(rig.project().tracks[0].laneOneSlice[0] && rig.project().tracks[1].samplerChop);
+}
+
+// Saving a preset retargets the number without minting an undo step.
+void testSavePresetMakesNoStep() {
+    Rig rig;
+    Session& session = rig.app.session();
+    addPhazed(rig);
+    session.usePresetFolder(tempFolder("presetnostep"));
+    rig.frames(60);
+    const int steps = session.undoSteps();
+    CHECK(session.savePreset(1, "MINE"));
+    rig.frames(60);
+    CHECK(session.undoSteps() == steps);
+    session.usePresetFolder(tempFolder("savepreset-clean")); // the registry is global: leave it empty for later tests
+}
+
+// Setting the cell's bars to what they are mints no step and sends nothing new.
+void testSetCellBarsNoOpMakesNoStep() {
+    Rig rig;
+    Session& session = rig.app.session();
+    rig.frames(60);
+    const int steps = session.undoSteps();
+    session.setCellBars(0, 0, 1);
+    rig.frames(60);
+    CHECK(session.undoSteps() == steps && rig.project().tracks[0].bars[0] == 1);
+}
+
+// The cell mark watches automation: a lone direct write still makes a step, and undoes.
+void testAutomationMarkCatchesDirectWrites() {
+    Rig rig;
+    Session& session = rig.app.session();
+    rig.frames(60);
+    const int steps = session.undoSteps();
+    rig.project().tracks[0].automation[0][autoLaneOfEffect(0, 0)][2] = 0.5f; // past every setter
+    rig.frames(60);
+    CHECK(session.undoSteps() == steps + 1);
+    CHECK(session.undo());
+    CHECK(rig.project().tracks[0].automation[0][autoLaneOfEffect(0, 0)][2] < 0.f);
+}
+
+// Loading a kit is one step that puts the whole kit back, recordings with it.
+void testKitLoadRestoresRecordings() {
+    Rig rig;
+    Session& session = rig.app.session();
+    rig.frames(60); // settled: undo starts counting here
+    TrackData kit;
+    kit.kind = TrackKind::Drums;
+    std::strcpy(kit.laneSample[0], "break");
+    kit.laneEdit[0].pitch = 7;
+    kit.laneLevel[0] = 0.5f;
+    CHECK(session.putKit(0, kit));
+    rig.frames(60);
+    CHECK(std::strcmp(rig.project().tracks[0].laneSample[0], "break") == 0);
+    CHECK(session.undo());
+    CHECK(std::strcmp(rig.project().tracks[0].laneSample[0], "break") != 0);
+    CHECK(rig.project().tracks[0].laneLevel[0] == 1.f);
+    CHECK(session.redo());
+    CHECK(std::strcmp(rig.project().tracks[0].laneSample[0], "break") == 0);
 }
 
 // EVERY TEXT FITS ITS BOX, at every value: measured with the program's lettering, and looked for on the drawn screen.
@@ -6293,6 +6708,210 @@ void testPresetsAndFolders() {
     rig->key(STICK_UP, false);
     rig->key(A, false);
     CHECK(track.preset != before);
+}
+
+void testSavePresetOnDevice() {
+    std::unique_ptr<Rig> rig(onPhazed());
+    Session& session = rig->app.session();
+    SynthScreen& screen = rig->app.phazed();
+    TrackData& track = rig->project().tracks[1];
+    const std::string folder = tempFolder("savepreset");
+    session.usePresetFolder(folder);
+    // R1 on PRESET opens the keys; A types, Y deletes, B leaves without saving.
+    CHECK(screen.cursor() == SynthScreen::kPreset);
+    rig->tap(R1);
+    CHECK(screen.typing() && screen.typed().empty());
+    rig->tap(A);
+    CHECK(screen.typed() == "A");
+    rig->tap(RIGHT);
+    rig->tap(A);
+    CHECK(screen.typed() == "AB");
+    rig->tap(Y);
+    CHECK(screen.typed() == "A");
+    rig->tap(B);
+    CHECK(!screen.typing() && userPresets(TrackKind::Phazed).empty());
+    // Again, kept with START: the file, the list, the track on it.
+    rig->tap(R1);
+    rig->tap(A);
+    rig->tap(RIGHT);
+    rig->tap(A);
+    CHECK(screen.typed() == "AB");
+    rig->tap(START);
+    CHECK(!screen.typing() && screen.said() == "SAVED AS AB");
+    std::string file;
+    CHECK(readTextFile(folder + "/AB.phazed", file));
+    CHECK(userPresets(TrackKind::Phazed).size() == 1 && track.preset == builtInPresets(TrackKind::Phazed));
+    // Under a name taken, it replaces that one.
+    const std::string before = file;
+    session.setSynthSetting(1, phazed::Level, track.patch.value[phazed::Level] == 3 ? 4 : 3);
+    rig->tap(R1);
+    rig->tap(A);
+    rig->tap(RIGHT);
+    rig->tap(A);
+    rig->tap(START);
+    CHECK(userPresets(TrackKind::Phazed).size() == 1);
+    CHECK(readTextFile(folder + "/AB.phazed", file) && file != before);
+    // Empty: START does nothing, B leaves.
+    rig->tap(R1);
+    rig->tap(START);
+    CHECK(screen.typing() && userPresets(TrackKind::Phazed).size() == 1);
+    rig->tap(B);
+    CHECK(!screen.typing());
+    // Every synth keeps presets the same way.
+    for (TrackKind kind : {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Physic, TrackKind::Acid, TrackKind::Cloud, TrackKind::Morph}) {
+        if (track.kind != kind) CHECK(session.setTrackKind(1, kind));
+        CHECK(session.savePreset(1, "T"));
+        const InstrumentInfo* info = instrument(kind);
+        CHECK(info && info->presetEnding);
+        bool found = false;
+        for (const UserPreset& p : userPresets(kind)) found = found || p.name == "T";
+        CHECK(found && readTextFile(folder + "/T" + info->presetEnding, file));
+    }
+    session.usePresetFolder(tempFolder("savepreset-clean")); // the registry is global: leave it empty for later tests
+}
+
+void testSamplerPresetsOnDevice() {
+    Rig rig;
+    Session& session = rig.app.session();
+    SamplerScreen& screen = rig.app.sampler();
+    const std::string folder = tempFolder("savesampler");
+    session.useSampleFolder(folder + "/samples");
+    mkdir((folder + "/samples").c_str(), 0755);
+    CHECK(writeWav(folder + "/samples/long.wav", std::vector<float>(4800, 0.25f), 48000));
+    session.usePresetFolder(folder + "/presets");
+    CHECK(session.addTrack(TrackKind::Sampler)); // track 1
+    TrackData& track = rig.project().tracks[1];
+    rig.project().track = 1;
+    session.setTrackSample(1, "long");
+    session.setSamplerSetting(1, sampler::Level, 33);
+    session.view = View::Device;
+    rig.frames(2);
+    // The row is below the settings; down from the bottom row reaches it, up goes back.
+    screen.goTo(5);
+    rig.tap(DOWN);
+    CHECK(screen.cursor() == SamplerScreen::kPresetStop);
+    rig.tap(UP);
+    CHECK(screen.cursor() == 7);
+    screen.goTo(SamplerScreen::kPresetStop);
+    // R1 on PRESET opens the keys; A types, Y deletes, B leaves without saving.
+    rig.tap(R1);
+    CHECK(screen.typing() && screen.typed().empty());
+    rig.tap(A);
+    CHECK(screen.typed() == "A");
+    rig.tap(RIGHT);
+    rig.tap(A);
+    CHECK(screen.typed() == "AB");
+    rig.tap(Y);
+    CHECK(screen.typed() == "A");
+    rig.tap(B);
+    CHECK(!screen.typing() && session.samplerPresets().empty());
+    // Again, kept with START: the file, the list, the track on it.
+    rig.tap(R1);
+    rig.tap(A);
+    rig.tap(RIGHT);
+    rig.tap(A);
+    rig.tap(START);
+    CHECK(!screen.typing() && screen.said() == "SAVED AS AB");
+    rig.frames(200);
+    CHECK(screen.said().empty()); // the line clears: not only recording synths say things
+    std::string file;
+    CHECK(readTextFile(folder + "/presets/AB.sampler", file));
+    CHECK(session.samplerPresets().size() == 1 && session.samplerPresetOf(1) == 0);
+    // Turned off it, the track is on none; under a name taken, it replaces that one.
+    session.setSamplerSetting(1, sampler::Tune, track.sampler[sampler::Tune] == 50 ? 51 : 50);
+    CHECK(session.samplerPresetOf(1) == -1);
+    const std::string before = file;
+    rig.tap(R1);
+    rig.tap(A);
+    rig.tap(RIGHT);
+    rig.tap(A);
+    rig.tap(START);
+    CHECK(session.samplerPresets().size() == 1);
+    CHECK(readTextFile(folder + "/presets/AB.sampler", file) && file != before);
+    CHECK(session.samplerPresetOf(1) == 0);
+    // Empty: START does nothing, B leaves.
+    rig.tap(R1);
+    rig.tap(START);
+    CHECK(screen.typing() && session.samplerPresets().size() == 1);
+    rig.tap(B);
+    CHECK(!screen.typing());
+    // A second, picked with hold A + up / down; the ends stop.
+    session.setSamplerSetting(1, sampler::Level, 10);
+    rig.tap(R1);
+    rig.tap(RIGHT, 2);
+    rig.tap(A);
+    rig.tap(START);
+    CHECK(!screen.typing() && screen.said() == "SAVED AS C" && session.samplerPresets().size() == 2);
+    rig.key(A, true);
+    rig.tap(DOWN);
+    rig.key(A, false);
+    CHECK(session.samplerPresetOf(1) == 0 && track.sampler[sampler::Level] == 33);
+    rig.key(A, true);
+    rig.tap(DOWN);
+    rig.key(A, false);
+    CHECK(session.samplerPresetOf(1) == 0); // (past the first: stops)
+    // B held deletes the file; another button calls it off; the track keeps its sound.
+    rig.key(B, true);
+    rig.frames(30);
+    CHECK(screen.presetDeletePart() > 0.3f && screen.presetDeletePart() < 0.7f);
+    rig.tap(LEFT);
+    rig.frames(1);
+    CHECK(screen.presetDeletePart() == 0.f);
+    rig.frames(60);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(session.samplerPresets().size() == 2);
+    rig.key(B, true);
+    rig.frames(80);
+    rig.key(B, false);
+    CHECK(session.samplerPresets().size() == 1 && screen.said() == "AB DELETED. THE TRACK KEEPS ITS SOUND");
+    CHECK(session.samplerPresetOf(1) == -1 && track.sampler[sampler::Level] == 33);
+    // The backend refuses the rest: no sampler track, no name, nothing there.
+    CHECK(session.addTrack(TrackKind::Drums)); // track 2
+    CHECK(!session.saveSamplerPreset(2, "X") && !session.saveSamplerPreset(1, "  ") && !session.saveSamplerPreset(1, "???"));
+    CHECK(!session.loadSamplerPreset(2, 0) && !session.loadSamplerPreset(1, 99) && !session.deleteSamplerPreset(99));
+    // Another folder: the old folder's presets do not follow.
+    session.usePresetFolder(folder + "/elsewhere");
+    CHECK(session.samplerPresets().empty() && session.samplerPresetOf(1) == -1);
+    // Leaving the keys with the stick pushed: the next push starts over, with its free step (audit #43).
+    screen.goTo(SamplerScreen::kPresetStop);
+    rig.tap(R1);
+    CHECK(screen.typing());
+    rig.key(STICK_UP, true);
+    rig.frames(3);
+    rig.tap(B);
+    CHECK(!screen.typing());
+    rig.frames(1);
+    CHECK(screen.cursor() == 7); // moved at once, not after the keys' leftover
+    rig.key(STICK_UP, false);
+}
+
+// Hold A on SOUND and step while WiFi deletes a recording: the step goes through what is there
+// now, and nothing missing goes on the track (audit #42).
+void testHeldAStepsThroughLiveSamples() {
+    Rig rig;
+    Session& session = rig.app.session();
+    SamplerScreen& screen = rig.app.sampler();
+    const std::string folder = tempFolder("livesamples");
+    session.useSampleFolder(folder + "/samples");
+    mkdir((folder + "/samples").c_str(), 0755);
+    CHECK(writeWav(folder + "/samples/a.wav", std::vector<float>(480, 0.25f), 48000));
+    CHECK(writeWav(folder + "/samples/b.wav", std::vector<float>(480, 0.25f), 48000));
+    CHECK(session.addTrack(TrackKind::Sampler)); // track 1
+    TrackData& track = rig.project().tracks[1];
+    rig.project().track = 1;
+    session.setTrackSample(1, "a");
+    session.view = View::Device;
+    rig.frames(2);
+    screen.goTo(0); // SOUND
+    rig.key(A, true);
+    rig.frames(1);
+    CHECK(std::remove((folder + "/samples/b.wav").c_str()) == 0);
+    session.transfer().noteChange("b.wav", "");
+    rig.frames(1);
+    rig.tap(UP);
+    CHECK(std::string(track.sample) == "a"); // the end stops; b (gone) never goes on
+    rig.key(A, false);
 }
 
 void testMacros() {
@@ -7461,8 +8080,8 @@ void testNamingATrackFromTheSongScreen() {
     rig.tap(B); // a tap of B there empties nothing
     CHECK(song.cursorOnHead() && rig.view() == View::Song && rig.app.drums().level(0, 0) == 0.9f);
     rig.tap(RIGHT);
-    // A: the keyboard, for that track. Type, keep, and the SONG screen is back with the name on the head.
-    rig.tap(A);
+    // R1: the keyboard, for that track. Type, keep, and the SONG screen is back with the name on the head.
+    rig.tap(R1);
     rig.frames(1);
     CHECK(rig.view() == View::Settings && rig.app.settings().typing() && rig.project().track == 1);
     rig.tap(A); // the first key
@@ -7473,18 +8092,27 @@ void testNamingATrackFromTheSongScreen() {
     CHECK(song.cursorOnHead() && song.cursorColumn() == 1);
     // B with nothing typed leaves it as it was, and also comes back.
     const std::string kept = rig.project().tracks[1].name;
-    rig.tap(A);
+    rig.tap(R1);
     rig.frames(1);
     rig.tap(Y, 2);
     rig.tap(B);
     CHECK(rig.view() == View::Song && kept == rig.project().tracks[1].name);
     // B with a name typed keeps it and comes back (owner, 2026-11-15).
-    rig.tap(A);
+    rig.tap(R1);
     rig.frames(1);
     rig.tap(Y);
     CHECK(rig.app.settings().typed() == kept.substr(0, 1));
     rig.tap(B);
     CHECK(rig.view() == View::Song && std::string(rig.project().tracks[1].name) == kept.substr(0, 1) && song.cursorOnHead());
+    // R1 let go after the cursor left the heads names nothing.
+    song.moveCursorTo(0, 1);
+    rig.tap(UP);
+    rig.key(R1, true);
+    rig.frames(1);
+    rig.tap(DOWN);
+    rig.key(R1, false);
+    rig.frames(1);
+    CHECK(rig.view() == View::Song);
     // From the SET tab's own row the keyboard stays on SET when it is done.
     rig.app.session().view = View::Settings;
     rig.app.settings().goTo(SettingsScreen::kTrackName);
@@ -7500,7 +8128,7 @@ void testNamingATrackFromTheSongScreen() {
     CHECK(!song.cursorOnHead());
 }
 
-// On a track's head, R1 changes its instrument.
+// On a track's head, A changes its instrument.
 void testChangingATracksInstrument() {
     Rig rig;
     Session& session = rig.app.session();
@@ -7522,16 +8150,16 @@ void testChangingATracksInstrument() {
     song.moveCursorTo(0, 1);
     rig.tap(UP);
     CHECK(song.cursorOnHead());
-    // R1: the list, on the instrument the track has. B puts it away with nothing changed.
-    rig.tap(R1);
+    // A: the list, on the instrument the track has. B puts it away with nothing changed.
+    rig.tap(A);
     rig.tap(B);
     CHECK(rig.project().tracks[1].kind == TrackKind::Phazed && rig.project().trackCount() == 2);
     // A on the same one: nothing changes either (the sound is not put back to its first).
-    rig.tap(R1);
+    rig.tap(A);
     rig.tap(A);
     CHECK(rig.project().tracks[1].kind == TrackKind::Phazed && rig.project().tracks[1].macro[3] == 0.9f);
     // Down one and A: it is a JAX-EP now. No track was added.
-    rig.tap(R1);
+    rig.tap(A);
     rig.tap(DOWN);
     rig.tap(A);
     TrackData& t = rig.project().tracks[1];
@@ -8742,6 +9370,80 @@ void testHoldBDeletesAnEffect() {
     CHECK(rig.project().tracks[0].send[0] == 0.f);
 }
 
+// HOLD Y on one of the track's own lines: up / down moves it there, the cursor with it; the
+// ends stop. Anywhere else Y moves nothing. The bar says HOLD Y where it moves.
+bool hintKeyed(const Canvas& canvas, Canvas& scratch, const char* key, const char* words);
+void testHoldYMovesAnEffect() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    typedef FxScreen F;
+    Rig rig;
+    Session& session = rig.app.session();
+    FxScreen& fx = rig.app.fx();
+    const Fonts& fonts = *canvas.fonts;
+    session.view = View::Effects;
+    session.setEffect(0, 0, EffectKind::Tape);
+    session.setEffect(0, 1, EffectKind::Filter);
+    const TrackData& track = rig.project().tracks[0];
+    const auto draw = [&] {
+        canvas.clear();
+        fx.draw(canvas.r, fonts);
+    };
+    fx.goTo(0, 0);
+    rig.frames(1);
+    draw();
+    CHECK(hintKeyed(canvas, scratch, "HOLD Y", "move"));
+    rig.key(Y, true);
+    rig.frames(1);
+    draw();
+    CHECK(hintKeyed(canvas, scratch, "UP / DOWN", "move it"));
+    rig.tap(DOWN);
+    CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Filter) && track.effects[1].kind == static_cast<int>(EffectKind::Tape) && fx.cursorRow() == 1);
+    rig.tap(DOWN);
+    CHECK(track.effects[2].kind == static_cast<int>(EffectKind::Tape) && fx.cursorRow() == 2);
+    rig.tap(DOWN);
+    CHECK(track.effects[2].kind == static_cast<int>(EffectKind::Tape) && fx.cursorRow() == 2); // the end stops
+    rig.tap(UP, 2);
+    CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Tape) && fx.cursorRow() == 0);
+    rig.tap(UP);
+    CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Tape) && fx.cursorRow() == 0);
+    rig.key(Y, false);
+    // Y elsewhere moves nothing: the sends' line, a setting, a bus.
+    fx.goTo(F::kSendsRow, 0);
+    rig.key(Y, true);
+    rig.tap(DOWN);
+    CHECK(fx.cursorRow() == F::kSendsRow + 1); // (plain cursor moves)
+    CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Tape) && track.effects[1].kind == static_cast<int>(EffectKind::Filter));
+    rig.key(Y, false);
+    fx.goTo(F::kBusRow, 0);
+    const int busKind = session.effectData(kEchoBus, 0).kind;
+    rig.key(Y, true);
+    rig.tap(UP);
+    rig.key(Y, false);
+    CHECK(session.effectData(kEchoBus, 0).kind == busKind && fx.cursorRow() == F::kBusRow - 1);
+    fx.goTo(0, 1);
+    rig.key(Y, true);
+    rig.tap(DOWN);
+    rig.key(Y, false);
+    CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Tape));
+    // A held while trying, the screen left and back (the try called off, the hold kept), then Y:
+    // directions try again, not move the slot (audit #41).
+    fx.goTo(0, 0);
+    rig.key(A, true);
+    rig.tap(DOWN);
+    CHECK(fx.trying());
+    session.view = View::Song;
+    rig.frames(1);
+    session.view = View::Effects;
+    rig.frames(1);
+    rig.key(Y, true);
+    rig.tap(DOWN);
+    CHECK(fx.trying() && fx.cursorRow() == 0 && session.effectData(0, 0).kind == static_cast<int>(EffectKind::Tape));
+    rig.key(Y, false);
+    rig.key(A, false);
+}
+
 // Is `words` drawn in the hints bar with the chip `key` just before it (its left edge where that chip's would be)?
 bool hintKeyed(const Canvas& canvas, Canvas& scratch, const char* key, const char* words) {
     const Fonts& fonts = *canvas.fonts;
@@ -8789,10 +9491,10 @@ void testTheHintsFitAndSayWhatTheyDo() {
         // ...on a head (mute and solo are said there), on + TRACK, on a repeat count.
         rig.tap(UP);
         CHECK(rig.app.song().cursorOnHead() && draw() && hintedOn(canvas, scratch, "mute") && hintedOn(canvas, scratch, "solo"));
-        CHECK(hintKeyed(canvas, scratch, "X", "solo") && hintKeyed(canvas, scratch, "R1", "instrument"));
-        // ...typing its name (A on the head): Y deletes, B keeps, with something typed; with nothing, B leaves
+        CHECK(hintKeyed(canvas, scratch, "X", "solo") && hintKeyed(canvas, scratch, "R1", "name") && hintKeyed(canvas, scratch, "A", "instrument"));
+        // ...typing its name (R1 on the head): Y deletes, B keeps, with something typed; with nothing, B leaves
         // and START gives the track its instrument's own name (owner, 2026-11-15).
-        rig.tap(A);
+        rig.tap(R1);
         rig.frames(1);
         CHECK(session.view == View::Settings && rig.app.settings().typing());
         rig.tap(A);
@@ -9474,7 +10176,7 @@ void testChangingAnInstrumentSaysWhatGoes() {
     };
     rig.app.song().moveCursorTo(0, 1);
     rig.tap(UP);
-    rig.tap(R1); // the list, on PHAZED: the one it has
+    rig.tap(A); // the list, on PHAZED: the one it has
     CHECK(!says());
     rig.tap(DOWN); // JAX-EP
     CHECK(says());
@@ -10364,7 +11066,7 @@ void testMorphOnATrack() {
     session.audition(1, 60, 0.9f);
     CHECK(rig.listen(4000) > 0.01f);
     rig.render(48000);
-    // A key X holds is struck again when TABLE A, TABLE B or UNISON changes (each read at the strike):
+    // A key X holds is struck again when TABLE A, TABLE B, UNISON or WIDTH changes (each read at the strike):
     // UNISON 2 heard on the held key at once, as two streams. Any other setting changes the key as it sounds.
     {
         const Morph* synth = dynamic_cast<const Morph*>(rig.engine->synthForTests(1));
@@ -10382,9 +11084,13 @@ void testMorphOnATrack() {
         session.setSynthSetting(1, morph::Cutoff, 40); // not read at the strike: no new strike
         rig.render(2048);
         CHECK(synth && synth->streamsInUse() == 4 && synth->keysSounding() == 1 && synth->strikes() == struck);
+        session.setSynthSetting(1, morph::Width, 100); // read at the strike: struck again
+        rig.render(2048);
+        CHECK(synth && synth->strikes() == struck + 1 && synth->keysSounding() == 1 && session.hearingHeld());
         session.letGoHeard();
         session.setSynthSetting(1, morph::Unison, 1);
         session.setSynthSetting(1, morph::TableB, 0);
+        session.setSynthSetting(1, morph::Width, first.value[morph::Width]);
         session.setSynthSetting(1, morph::Cutoff, first.value[morph::Cutoff]);
         rig.frames(1), rig.render(48000);
     }
@@ -10650,7 +11356,7 @@ void testAcidsAccentMark() {
             session.sendNoteBar(t, 0, 0);
             rig->app.notes().moveCursorTo(62, 10);
             rig->frames(1);
-            for (int theme : {kThemeBrown, kThemePaper}) {
+            for (int theme : {kThemeBrown, kThemeSolarized}) {
                 session.setTheme(theme);
                 p.notes[0].velocity = 0.9f;
                 rig->frames(1);
@@ -10803,6 +11509,7 @@ int main(int argc, char** argv) {
         testTheFxScreensList();
         testTheFxScreenAsDrawn();
         testChangingTypeKeepsWhatIsShared();
+        testMovingEffectsKeepsEverythingWithThem();
         testFxTextsFit();
         testTheFxScreenHoldsUp();
         testTheFxScreenSecondReview();
@@ -10838,6 +11545,7 @@ int main(int argc, char** argv) {
     testUndoLeavesWhatTheTextRounds();
     testUndoCoversABusAndASampler();
     testHoldBDeletesAnEffect();
+    testHoldYMovesAnEffect();
     testTheHintsFitAndSayWhatTheyDo();
     testDeletingATrackSaysItCannotBeUndone();
     testChangingAnInstrumentSaysWhatGoes();
@@ -10859,9 +11567,9 @@ int main(int argc, char** argv) {
     testOpeningACellWorksOnThatScene();
     testRepeatCounts();
     testStartOnTheSongScreenPlaysTheSong();
-    testCopyingABarByDragging();
+    testCopyingABar();
     testBEmptiesACell();
-    testTheCopyBrushLifts();
+    testTheCellCopyStaysPut();
     testTheSongScreenScrolls();
     testPlacingAndDeletingNotes();
     testHeardAsPlaced();
@@ -10870,6 +11578,7 @@ int main(int argc, char** argv) {
     testPaintingNotes();
     testTheKeysScrollAndStopAtTheEnds();
     testCellsOfSeveralBars();
+    testStripCountsWithTheGrid();
     testNudgingWithTheOuterShoulderButtons();
     testAFreeLengthReachesTheEngine();
     testAllFourShoulderButtonsIsPanic();
@@ -10880,6 +11589,7 @@ int main(int argc, char** argv) {
     testDeletingATrack();
     testStepsInAScene();
     testTheBattery();
+    testBatteryLog();
     testBouncing();
     testWhereABounceEnds();
     testABounceRunsUntilTheTailEnds();
@@ -10900,6 +11610,7 @@ int main(int argc, char** argv) {
     testTheSetupScreen();
     testTheButtonTestAndSettingUpAgain();
     testThePianoRollZooms();
+    testTheRollsZoomIsATapOnly();
     testTheStickSpeedAndTheVolume();
     testTheTempoFromAnyScreen();
     testTheEffectsScreen();
@@ -10912,6 +11623,13 @@ int main(int argc, char** argv) {
     testTheFxScreensList();
     testTheFxScreenAsDrawn();
     testChangingTypeKeepsWhatIsShared();
+    testMovingEffectsKeepsEverythingWithThem();
+    testSceneTempoMeterUndo();
+    testLaneAndChopUndo();
+    testSavePresetMakesNoStep();
+    testSetCellBarsNoOpMakesNoStep();
+    testAutomationMarkCatchesDirectWrites();
+    testKitLoadRestoresRecordings();
     testFxTextsFit();
     testTheFxScreenHoldsUp();
     testTheFxScreenSecondReview();
@@ -10921,6 +11639,9 @@ int main(int argc, char** argv) {
     testTheScreensKnowWhereTheSongIs();
     testAPatternHoldsSixtyFourNotes();
     testPresetsAndFolders();
+    testSavePresetOnDevice();
+    testSamplerPresetsOnDevice();
+    testHeldAStepsThroughLiveSamples();
     testABuiltInPresetRestsTheMacrosWhereTheyShow();
     testMacros();
     testTheEngineHearsMacrosAndSettings();

@@ -5,10 +5,12 @@
 //   calls     the Wifi itself: each call run as asked and in order, the password on stdin and never
 //             among the words, no program, a program that fails, asked from the app thread only
 //   row       the SET page's NETWORK row: here only with the program, its words in each state, hold A
-//             + up / down and the join on letting go, B with A held, a let go unseen, hold B forgets
+//             + up / down and the join on letting go, B with A held, a let go unseen, hold B forgets;
+//             the HOTSPOT row: on and off again, and no forgetting while it is on
 //   password  the keys' password mode: three sets, every sign, 63 at most, 8 at least, Y, B and START,
 //             the track name's keys as they were
-//   drawn     the hints at 0 over in every state, the lock mark, the page's name beside the address
+//   drawn     the hints at 0 over in every state, the lock mark, the page's name beside the address,
+//             the HOTSPOT row's words
 //
 // `wifi_test NAME...` runs just those.
 
@@ -148,8 +150,13 @@ void testTheLines() {
     CHECK(s.state == WifiState::WrongPassword && s.name == "The Old Mill");
     s = wifiStatusFrom("not-found Home\nmore\n");
     CHECK(s.state == WifiState::NotFound && s.name == "Home");
+    // Our own network: the joined words, and the name alone while it comes up.
+    s = wifiStatusFrom("hotspot apotheca 192.168.4.1 apotheca.local\n");
+    CHECK(s.state == WifiState::Hotspot && s.name == "apotheca" && s.address == "192.168.4.1" && s.hostname == "apotheca.local");
+    s = wifiStatusFrom("hotspot apotheca\n");
+    CHECK(s.state == WifiState::Hotspot && s.name == "apotheca" && s.address.empty());
     // Not ours: off.
-    for (const char* line : {"", "\n", "joined", "joining", "sideways Home", "JOINED Home 1.2.3.4"}) CHECK(wifiStatusFrom(line).state == WifiState::Off && wifiStatusFrom(line).name.empty());
+    for (const char* line : {"", "\n", "joined", "joining", "hotspot", "sideways Home", "JOINED Home 1.2.3.4"}) CHECK(wifiStatusFrom(line).state == WifiState::Off && wifiStatusFrom(line).name.empty());
     // A name is held to a network name's most.
     s = wifiStatusFrom("joining " + std::string(80, 'x'));
     CHECK(static_cast<int>(s.name.size()) == kWifiNameMost);
@@ -185,7 +192,7 @@ void testTheCalls() {
         wifi.useProgram(""); // (whatever this desk's environment says)
         CHECK(!wifi.here());
         // No program: nothing runs, nothing waits, nothing is said.
-        wifi.up(), wifi.scan(), wifi.join("Home", "secret"), wifi.forget("Home"), wifi.down();
+        wifi.up(), wifi.scan(), wifi.join("Home", "secret"), wifi.forget("Home"), wifi.hotspot(), wifi.down();
         wifi.finish();
         CHECK(wifi.calls() == 0 && wifi.now().status.state == WifiState::Off && wifi.now().serial == 0);
     }
@@ -226,6 +233,18 @@ void testTheCalls() {
         wifi.finish();
         CHECK(wifi.now().status.state == WifiState::Off);
         CHECK(wifiFileText(folder + "/log").find("forget Cafe\nstatus\nscan\n") != std::string::npos);
+        // Our own network: the name from the call itself, the rest from the status after, the old
+        // list gone (the radio cannot look about while it is the network).
+        wifi.hotspot();
+        wifi.finish();
+        now = wifi.now();
+        CHECK(now.status.state == WifiState::Hotspot && now.status.name == "apotheca" && now.status.address == "192.168.4.1" && now.status.hostname == "apotheca.local");
+        CHECK(now.networks.empty() && !now.scanned);
+        CHECK(wifiFileText(folder + "/log").find("hotspot\nstatus\n") != std::string::npos);
+        wifiFile(folder + "/status", "off\n");
+        wifi.down(), wifi.up();
+        wifi.finish();
+        CHECK(wifi.now().status.state == WifiState::Off);
         // Asked twice before it has run, a scan or a status runs once.
         const int calls = wifi.calls();
         wifiFile(folder + "/status", "joining Cafe\n");
@@ -431,11 +450,82 @@ void testTheRow() {
         if (!(statuses >= 10 && statuses <= 12 && scans >= 1 && scans <= 2)) std::printf("statuses %d scans %d\n", statuses, scans);
         CHECK(statuses >= 10 && statuses <= 12 && scans >= 1 && scans <= 2);
     }
+    // HOTSPOT: A turns our own network on (the name from the call, the address from the status
+    // after); HOLD B on NETWORK forgets nothing while it is on; A again turns it off and joins again.
+    CHECK(setup.here(S::kHotspot) && S::groupOf(S::kHotspot) == S::kSetup);
+    setup.goTo(S::kHotspot);
+    CHECK(setup.cursorRow() == S::kHotspot);
+    rig.say("log", "");
+    rig.tap(A);
+    rig.settle();
+    CHECK(session.wifi().now().status.state == WifiState::Hotspot && rig.log().find("hotspot\n") != std::string::npos);
+    setup.goTo(S::kNetwork);
+    rig.key(B, true), rig.frames(70);
+    rig.settle();
+    CHECK(rig.log().find("forget") == std::string::npos && setup.forgetPart() == 0.f);
+    rig.key(B, false), rig.frames(1);
+    setup.goTo(S::kHotspot);
+    rig.say("status", "off\n");
+    rig.say("log", "");
+    rig.tap(A);
+    rig.settle();
+    CHECK(rig.log().find("down\n") != std::string::npos && rig.log().find("up\n") != std::string::npos);
+    CHECK(session.wifi().now().status.state == WifiState::Off);
     // WIFI PAGE off: `down`, and the row says NONE whatever the radio was doing.
     rig.setup().goTo(S::kWifi);
     rig.tap(A);
     rig.settle();
     CHECK(!session.transferOn() && rig.log().find("down\n") != std::string::npos);
+    // HOTSPOT with the page off: the page comes on with it, and goes off with it again.
+    setup.goTo(S::kHotspot);
+    rig.say("log", "");
+    rig.tap(A);
+    rig.settle();
+    CHECK(session.transferOn() && session.wifi().now().status.state == WifiState::Hotspot && rig.log().find("hotspot\n") != std::string::npos);
+    rig.say("status", "off\n");
+    rig.say("log", "");
+    rig.tap(A);
+    rig.settle();
+    CHECK(!session.transferOn() && session.wifi().now().status.state == WifiState::Off);
+    CHECK(rig.log().find("down\n") != std::string::npos && rig.log().find("up\n") == std::string::npos);
+    // The page turned on by hand: HOTSPOT off leaves it on, back to joining.
+    setup.goTo(S::kWifi);
+    rig.tap(A);
+    rig.settle();
+    CHECK(session.transferOn());
+    setup.goTo(S::kHotspot);
+    rig.say("log", "");
+    rig.tap(A);
+    rig.settle();
+    CHECK(session.wifi().now().status.state == WifiState::Hotspot);
+    rig.say("status", "off\n");
+    rig.say("log", "");
+    rig.tap(A);
+    rig.settle();
+    CHECK(session.transferOn() && session.wifi().now().status.state == WifiState::Off);
+    CHECK(rig.log().find("down\n") != std::string::npos && rig.log().find("up\n") != std::string::npos);
+    // A hand on the WIFI PAGE clears the ownership: off and on by hand, HOTSPOT off leaves it on.
+    setup.goTo(S::kHotspot);
+    rig.tap(A);
+    rig.settle();
+    CHECK(session.wifi().now().status.state == WifiState::Hotspot);
+    setup.goTo(S::kWifi);
+    rig.tap(A);
+    rig.settle();
+    CHECK(!session.transferOn());
+    rig.say("status", "off\n");
+    rig.tap(A);
+    rig.settle();
+    CHECK(session.transferOn() && session.wifi().now().status.state == WifiState::Off);
+    setup.goTo(S::kHotspot);
+    rig.tap(A);
+    rig.settle();
+    CHECK(session.wifi().now().status.state == WifiState::Hotspot);
+    rig.say("status", "off\n");
+    rig.say("log", "");
+    rig.tap(A);
+    rig.settle();
+    CHECK(session.transferOn() && session.wifi().now().status.state == WifiState::Off);
 }
 
 // ---- the password's keys -----------------------------------------------------------------------
@@ -500,14 +590,16 @@ void testThePassword() {
     CHECK(setup.typed() == "aA ");
     rig.tap(Y, 5);
     CHECK(setup.typed().empty());
-    // Under eight: not joined, said, the keys stay. B or START alike.
+    // Under eight: START says how many it takes and the keys stay; B leaves, keeping the draft. Neither joins.
     type(rig, "Mill");
-    rig.tap(B);
-    CHECK(setup.typingPassword() && setup.networkSaid() == "8 AT LEAST" && setup.typed() == "Mill");
     rig.tap(START);
-    CHECK(setup.typingPassword());
+    CHECK(setup.typingPassword() && setup.networkSaid() == "8 AT LEAST" && setup.typed() == "Mill");
     rig.settle();
     CHECK(rig.log().find("join") == std::string::npos && !rig.project().playing); // (START did not play either)
+    rig.tap(B);
+    CHECK(!setup.typing() && setup.typed() == "Mill");
+    open(); // the same network again: the draft is still there
+    CHECK(setup.typingPassword() && setup.typed() == "Mill" && setup.passwordFor() == "The Old Mill");
     // The whole of it, signs and all; B keeps it and joins. The words the program got do not hold it.
     type(rig, "-stone 42!{~}");
     CHECK(setup.typed() == "Mill-stone 42!{~}");
@@ -534,6 +626,21 @@ void testThePassword() {
     for (int i = 0; i < 70; ++i) rig.tap(A);
     CHECK(static_cast<int>(setup.typed().size()) == 63);
     rig.tap(Y, 63);
+    rig.tap(B);
+    CHECK(!setup.typing());
+    // A draft is this network's: back to it, it is still there; another network starts empty.
+    open();
+    type(rig, "draft12");
+    rig.tap(B);
+    CHECK(!setup.typing() && setup.typed() == "draft12");
+    open();
+    CHECK(setup.typingPassword() && setup.passwordFor() == "Other Mill" && setup.typed() == "draft12");
+    rig.tap(B);
+    rig.say("scan", "-50 wpa2 The Old Mill\n");
+    rig.wifi().scan();
+    rig.settle();
+    open();
+    CHECK(setup.typingPassword() && setup.passwordFor() == "The Old Mill" && setup.typed().empty());
     rig.tap(B);
     CHECK(!setup.typing());
     // The track name's keys still type a name, capitals only, ten at most, and join nothing.
@@ -568,6 +675,10 @@ void testDrawn() {
     setup.goTo(S::kNetwork);
     fits("off");
     CHECK(rig.drew("NETWORK") && rig.drew("NONE") && rig.drew("turn WIFI PAGE on first"));
+    // HOTSPOT needs no page: off, and A turns it on from here.
+    setup.goTo(S::kHotspot);
+    fits("hotspot, page off");
+    CHECK(rig.drew("HOTSPOT") && rig.drew("OFF") && rig.drew("a phone joins it with one tap"));
     rig.on();
     setup.goTo(S::kNetwork);
     rig.frames(1);
@@ -577,7 +688,7 @@ void testDrawn() {
     fits("none joined");
     CHECK(rig.drew("NONE") && rig.drew("2 FOUND"));
     // Held: the network picked, its place in the list, and a lock only where a password is needed.
-    const int y = setup.rowNowY(S::kNetwork);
+    int y = setup.rowNowY(S::kNetwork);
     const auto lockAfter = [&](const char* name) {
         const int x = static_cast<int>(S::kValueX + canvas.fonts->large.width(name)) + 8;
         return canvas.is(x + 1, y + (S::kRowH - 6 - S::kLockH) / 2 + 6, ui::kBrass);
@@ -602,9 +713,17 @@ void testDrawn() {
     rig.tap(A, 3);
     fits("the keys, typed");
     CHECK(rig.drew("aaa") && rig.drew("3 OF 63"));
-    rig.tap(B);
+    rig.tap(START);
     rig.draw(canvas);
-    CHECK(rig.drew("8 AT LEAST"));
+    CHECK(rig.drew("8 AT LEAST")); // START with fewer: says how many, the keys stay
+    rig.tap(B); // leaves, keeping the draft
+    rig.draw(canvas);
+    CHECK(!rig.drew("PASSWORD FOR The Old Mill"));
+    rig.key(A, true), rig.frames(1); // back: the draft is still there
+    rig.tap(DOWN, 2);
+    rig.key(A, false), rig.frames(1);
+    rig.draw(canvas);
+    CHECK(rig.drew("aaa"));
     // A long one shows its end.
     for (int i = 0; i < 59; ++i) rig.tap(A);
     rig.tap(RIGHT), rig.tap(A);
@@ -628,13 +747,25 @@ void testDrawn() {
     rig.aSecond();
     fits("not found");
     CHECK(rig.drew("NOT FOUND"));
+    // Our own network: the row says ON with its address, NETWORK names it with the address beside.
+    rig.say("status", "hotspot apotheca 192.168.4.1 apotheca.local\n");
+    rig.aSecond();
+    setup.goTo(S::kHotspot);
+    fits("hotspot");
+    CHECK(rig.drew("HOTSPOT") && rig.drew("ON") && rig.drew("192.168.4.1"));
+    setup.goTo(S::kNetwork);
+    rig.draw(canvas);
+    CHECK(rig.drew("apotheca") && rig.drew("192.168.4.1"));
+    CHECK(rig.session().transferName().find("apotheca.local") == 0); // the page named on our own network too
+    y = setup.rowNowY(S::kNetwork); // the excursion moved the page: the forgetting bar's row again
     // Joined: its address on the row; the WIFI PAGE row keeps its own address and says the name beside it.
     rig.say("status", "joined The Old Mill 192.168.1.7 apotheca-2.local\n");
     rig.aSecond();
     fits("joined");
     CHECK(rig.drew("The Old Mill") && rig.drew("192.168.1.7"));
     const std::string address = rig.session().transferAddress();
-    const std::string on = "ON   " + address, beside = "or apotheca-2.local" + address.substr(address.find(':'));
+    const std::size_t addrTail = address.find_first_of(":/"); // (no colon on port 80: from the number's slash, as the page does)
+    const std::string on = "ON   apotheca-2.local" + (addrTail == std::string::npos ? "" : address.substr(addrTail)), beside = "or " + address;
     CHECK(rig.drew(on.c_str()) && rig.drew(beside.c_str()));
     // HOLD B: what cannot be undone says so, and a bar fills in the row.
     rig.key(B, true), rig.frames(30);
@@ -646,7 +777,7 @@ void testDrawn() {
     rig.say("status", "joined The Old Mill 192.168.1.7\n");
     rig.aSecond();
     rig.draw(canvas);
-    CHECK(rig.drew(on.c_str()) && !rig.drew(beside.c_str()));
+    CHECK(rig.drew(("ON   " + address).c_str()) && !rig.drew(beside.c_str()));
     for (const DrawLog::Text& t : rig.drawn.texts) CHECK(t.words.compare(0, 3, "or ") != 0);
     // A name at its longest is cut to its room, and what is said beside it still stands clear.
     rig.say("status", "joined " + std::string(32, 'W') + " 192.168.100.200 apotheca.local\n");
@@ -656,7 +787,7 @@ void testDrawn() {
         if (t.words.compare(0, 3, "WWW") == 0) CHECK(t.words.size() < 32 && t.words.compare(t.words.size() - 3, 3, "...") == 0 && t.x + t.w <= S::kNoteRight - canvas.fonts->small.width("192.168.100.200") - S::kNoteGap + 1.f);
     CHECK(rig.drew("192.168.100.200"));
     // The list of songs says the address too: by name and by number, where the name is said.
-    const std::string named = "OPEN  apotheca.local" + address.substr(address.find(':')), numbered = "OR  " + address;
+    const std::string named = "OPEN  apotheca.local" + (addrTail == std::string::npos ? "" : address.substr(addrTail)), numbered = "OR  " + address;
     rig.session().view = View::Song;
     rig.frames(1);
     rig.tap(SDLK_BACKSPACE); // SELECT: the list of songs

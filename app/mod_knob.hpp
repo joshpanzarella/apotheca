@@ -12,7 +12,7 @@
 //     A               SHAPE: SINE ... DRIFT, then STEPPER, then SINE again
 //     L1 / R1         an LFO's PHASE (a FREE one's SPEED, a click of mod_rule.hpp's list), a
 //                     STEPPER's LENGTH (the ends stop)
-//     Y               the dice (call F): a STEPPER's row; an LFO's shape and rate, DEPTH kept
+//     Y               the dice (call F): a STEPPER's row; an LFO's shape, rate and depth
 //     hold B          deletes the MOD (a bar fills for a second; undo brings it back)
 //   X held while the song is stopped runs the MOD (call E: Session::hearMods), and the screen's
 //   own note is held as long as X is, so the wobble is heard. Everything X held changes is a step
@@ -103,8 +103,9 @@ public:
     static constexpr int kShapePlaces = kModShapes + 1;
     static int shapePlace(const ModSettings& m) { return modKind(m.kind) == kModStepper ? kModShapes : modShape(m.shape); }
     static ModSettings shapeAt(const ModSettings& m, int place, int track);
-    // The dice (owner's call F), from a seed: a STEPPER's row rolled, LENGTH, SLEW and CHANCE kept; an
-    // LFO's SHAPE and RATE, never both as they were, DEPTH kept (a FREE one's SHAPE and SPEED: it stays free).
+    // The dice (owner's call F), from a seed: a STEPPER's row rolled, LENGTH, SLEW, CHANCE and
+    // DEPTH kept; an LFO's SHAPE, RATE and DEPTH, never all three as they were (a FREE one's SHAPE,
+    // SPEED and DEPTH: it stays free).
     static ModSettings rolled(const ModSettings& m, std::uint32_t seed);
     // The words where there is no MOD to show.
     static constexpr const char* kNoModWords = "UP: A NEW LFO HERE";

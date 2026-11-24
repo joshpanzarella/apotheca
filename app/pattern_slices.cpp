@@ -77,7 +77,7 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
     for (int s = 0; s < kSteps; ++s)
         if (pat().level[lane_][s] > 0.f) used[sliceOf(s)] = true;
     const int cursorSlice = onName ? -1 : (hitHere() ? sliceOf(step_) : static_cast<int>(std::round(ownStart(step_) * count)));
-    const int playStep = session_.playScene() == project_.scene && engine_.playBar() % trk().bars[project_.scene] == project_.bar ? engine_.playStep() : -1;
+    const int playStep = project_.playScene == project_.scene && project_.playBar % trk().bars[project_.scene] == project_.bar ? project_.playStep : -1;
     int playSlice = -1;
     if (playStep >= 0) {
         // The hit that is sounding: the last one at or before the step being played. One slice of it,
@@ -120,7 +120,7 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
     for (int s = 0; s < kSteps; ++s) {
         const int x = kGridLeft + s * kStepW;
         box(r, x, kStepsY, kCellW, kStepsH, s % 4 == 0 ? kPanel2 : kPanel, kLine);
-        if (s < project_.barSteps(project_.scene, project_.bar)) std::snprintf(text, sizeof text, "%d", project_.bar * kSteps + s + 1);
+        if (s < project_.barSteps(project_.scene, project_.bar)) std::snprintf(text, sizeof text, "%d", project_.bar * project_.meterOf(project_.scene) + s + 1);
         else std::snprintf(text, sizeof text, "-");
         fonts.small.drawCentered(r, x + kCellW / 2.f, kStepsY + kStepsH + 5.f, text, s % 4 == 0 ? kText : kDim);
     }

@@ -53,8 +53,10 @@ void Session::useSongFolder(const std::string& folder, std::uint32_t seed) {
     songName_.clear(); // (no song is open while what is owed is finished: every saved one is gone through)
     finishOwed();      // a program stopped while saved songs followed a rename: finished before any is opened
     std::string last;
+    lastSaid_.clear();
     if (readTextFile(folder_ + "/last.txt", last)) {
         while (!last.empty() && (last.back() == '\n' || last.back() == '\r')) last.pop_back();
+        lastSaid_ = last;
         std::string text;
         if (!last.empty() && readTextFile(pathOf(last), text) && parseSong(text, project)) {
             songName_ = last;
@@ -107,28 +109,46 @@ bool Session::saveNow() {
         if (!writeTextFile(pathOf(songName_), text)) return false; // try again next time
     }
     savedText_ = text;
-    writeTextFile(folder_ + "/last.txt", songName_ + "\n");
+    rememberLast();
     return true;
 }
 
-void Session::newSong() {
-    saveNow();
+// last.txt names the song open, for the next start: written only when that changes (review
+// 2026-11-23: it was written, two fsyncs, with every autosave, every two seconds of editing).
+void Session::rememberLast() {
+    if (songName_ == lastSaid_) return;
+    if (writeTextFile(folder_ + "/last.txt", songName_ + "\n")) lastSaid_ = songName_;
+}
+
+// A song that cannot be saved is not shut (review 2026-11-23: on a full card, a new song or another
+// opened threw away everything since the last autosave that worked, without a word).
+constexpr const char* kNotSavedWords = "NOT SAVED: CARD FULL?";
+
+bool Session::newSong() {
+    if (!saveNow()) {
+        say(kNotSavedWords);
+        return false;
+    }
     std::unique_ptr<Project> fresh(new Project);
     project = *fresh;
     chokeTheHats(project.tracks[0]); // its kit's hats in CHOKE 1 (told with the song, next)
     songName_ = freshName();
     savedText_.clear();
     applyProject();
+    return true;
 }
 
 bool Session::openSong(const std::string& name) {
     followNow(); // what it reads has followed every rename
-    saveNow();
+    if (!saveNow()) {
+        say(kNotSavedWords);
+        return false;
+    }
     std::string text;
     if (folder_.empty() || !readTextFile(pathOf(name), text) || !parseSong(text, project)) return false;
     songName_ = name;
     savedText_ = songText(project);
-    writeTextFile(folder_ + "/last.txt", songName_ + "\n");
+    rememberLast();
     applyProject();
     findMissing(); // a recording moved while this song was shut: the new name is saved with the next autosave
     return true;
@@ -295,7 +315,8 @@ void Session::keepSettings() const {
                                                         "\nlight " + std::to_string(stickLight_) + "\nclick " + std::to_string(click_) +
                                                         "\ncountin " + (countIn_ ? "1" : "0") + "\n" +
                                                         (lightColour_ != kLightTheme ? "lightcolour " + std::to_string(lightColour_) + "\n" : "") +
-                                                        (mutes_ != kMutesAtOnce ? "mutes " + std::to_string(mutes_) + "\n" : ""));
+                                                        (mutes_ != kMutesAtOnce ? "mutes " + std::to_string(mutes_) + "\n" : "") +
+                                                        (ringLevel_ != kBrightUsual ? "ringlevel " + std::to_string(ringLevel_) + "\n" : ""));
 }
 
 void Session::setBrightness(int percent) {
@@ -314,6 +335,12 @@ void Session::setLightColour(int which) {
     keepSettings();
 }
 
+void Session::setRingLevel(int percent) {
+    percent = (percent / kBrightStep) * kBrightStep; // in fives, as BRIGHTNESS
+    ringLevel_ = percent < kBrightLeast ? kBrightLeast : (percent > kBrightMost ? kBrightMost : percent);
+    keepSettings();
+}
+
 RingFrame Session::ringNow() const {
     static_assert(kRingThemes == kThemes, "a new theme is given its ring colour (ringThemeColour, lights.hpp)");
     RingPlace at;
@@ -327,7 +354,7 @@ RingFrame Session::ringNow() const {
     ringColours(lightColour_, ringThemeColour(theme_), project.track, beats, colours);
     // A bar's first step in brass; in white where the ring is too near brass to tell (RAINBOW and TRACK: brass).
     const Rgb first = lightColour_ == kLightTrack || lightColour_ == kLightRainbow ? lightColourOf(kLightBrass) : ringFirstFor(colours[0]);
-    return ringPicture(stickLight_, brightness_, at, colours, first);
+    return ringPicture(stickLight_, ringLevel_, at, colours, first);
 }
 
 void Session::setStickSpeed(float speed) {
@@ -372,6 +399,7 @@ void Session::loadSettings() {
         if (name == "countin" && (value == 0 || value == 1)) setCountIn(value == 1);
         if (name == "mutes" && value >= 0 && value < kMutesModes) setMutes(value); // (none: AT ONCE)
         if (name == "lightcolour" && value >= 0 && value < kLightColours) setLightColour(value); // (none: THEME)
+        if (name == "ringlevel" && value >= kBrightLeast && value <= kBrightMost) setRingLevel(value); // (none: 70, as the screen)
     }
     programFolder_ = folder;
 }
@@ -400,6 +428,33 @@ void Session::setTempo(float bpm) {
     engine.send(c);
 }
 
+void Session::setSceneTempo(int scene, float bpm) {
+    if (scene < 0 || scene >= kMaxScenes) return;
+    bpm = bpm != bpm ? project.sceneTempo[scene] : std::round(bpm);
+    bpm = bpm < 1.f ? 0.f : (bpm < kMinTempo ? kMinTempo : (bpm > kMaxTempo ? kMaxTempo : bpm));
+    if (bpm == project.sceneTempo[scene]) return;
+    project.sceneTempo[scene] = bpm;
+    noteEdit(); // a step of undo: undo restores it, so changing it must mark one
+    Command c;
+    c.type = Command::SetSceneTempo;
+    c.scene = scene;
+    c.value = bpm;
+    engine.send(c);
+}
+
+void Session::setSceneMeter(int scene, int steps) {
+    if (scene < 0 || scene >= kMaxScenes) return;
+    steps = steps < 1 ? 1 : (steps > kSteps ? kSteps : steps);
+    if (steps == project.sceneMeter[scene]) return;
+    project.sceneMeter[scene] = steps;
+    noteEdit(); // a step of undo: undo restores it, so changing it must mark one
+    Command c;
+    c.type = Command::SetSceneMeter;
+    c.scene = scene;
+    c.a = steps;
+    engine.send(c);
+}
+
 void Session::tapTempo(Uint32 ms) {
     const float bpm = taps_.tap(ms);
     char text[48];
@@ -423,7 +478,7 @@ std::string Session::renameSong() {
         songName_ = old;
     }
     songName_ = fresh;
-    writeTextFile(folder_ + "/last.txt", songName_ + "\n");
+    rememberLast();
     return songName_;
 }
 
@@ -497,6 +552,10 @@ bool Session::openRev(int rev) {
     for (int other : revs()) {
         std::string theirs;
         if (kept) break;
+        // Only a rev of the same size can be the same: the rest are not read (review 2026-11-23: every
+        // rev was read whole, fifty of a long song at each rev opened).
+        struct stat info;
+        if (stat(revPath(other).c_str(), &info) != 0 || static_cast<std::size_t>(info.st_size) != now.size()) continue;
         kept = readTextFile(revPath(other), theirs) && theirs == now;
     }
     if (!kept && saveRev() == 0) return false; // could not keep it: do not throw it away

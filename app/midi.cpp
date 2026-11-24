@@ -95,6 +95,7 @@ void MidiInput::run() {
         std::string name;
         int fd;
         MidiParser parser;
+        bool keys[128] = {}; // the keys this keyboard holds down: let go if it is pulled out
     };
     std::vector<Device> open;
     int sinceScan = 1000;
@@ -129,21 +130,28 @@ void MidiInput::run() {
                 const ssize_t got = read(open[i].fd, bytes, sizeof bytes);
                 MidiEvent event;
                 for (ssize_t b = 0; b < got; ++b)
-                    if (open[i].parser.feed(bytes[b], event)) play(event);
+                    if (open[i].parser.feed(bytes[b], event)) {
+                        if (event.note >= 0 && event.note < 128 && (event.kind == MidiEvent::NoteOn || event.kind == MidiEvent::NoteOff))
+                            open[i].keys[event.note] = event.kind == MidiEvent::NoteOn;
+                        play(event);
+                    }
                 if (got == 0 || (got < 0 && errno != EAGAIN && errno != EINTR)) gone = true;
             } else if (fds[i].revents & POLLHUP) {
                 gone = true;
             }
             if (gone) {
-                // Pulled out. Any key it was holding is let go.
+                // Pulled out. Any key it was holding is let go: its own, whatever the others hold
+                // (review 2026-11-23: only when the last keyboard went, so a note held on one of two
+                // pulled out sounded for good). With none left, every key still on.
                 close(open[i].fd);
+                MidiEvent off;
+                off.kind = MidiEvent::NoteOff;
+                for (int note = 0; note < 128; ++note)
+                    if (open[i].keys[note] && heldOn_[note]) off.note = note, play(off);
                 open.erase(open.begin() + static_cast<long>(i));
-                if (open.empty()) {
-                    MidiEvent off;
-                    off.kind = MidiEvent::NoteOff;
+                if (open.empty())
                     for (int note = 0; note < 128; ++note)
                         if (heldOn_[note]) off.note = note, play(off);
-                }
                 devices_.store(static_cast<int>(open.size()), std::memory_order_relaxed);
             }
         }

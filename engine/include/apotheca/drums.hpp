@@ -131,6 +131,10 @@ public:
     // or a hit that has carried the audition's sound on, plays as it would have.
     void letGo(int lane);
 
+    // A stop by hand: every voice still sounding fades out over the choke's few milliseconds
+    // (auditions too). A stop on its own (a bounce, the song's end) leaves them ringing.
+    void chokeAll();
+
     // Writes `frames` samples (replacing what was there).
     //
     // THROW: `echo` and `space`, if given, are a second way out, one for each

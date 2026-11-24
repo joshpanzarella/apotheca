@@ -8,6 +8,7 @@
 //                   none there, for an open or saved one) makes the status "joined NAME 192.168.1.7
 //                   apotheca.local", any other "wrong-password NAME"
 //   forget NAME     the status "off"
+//   hotspot         the status "hotspot apotheca 192.168.4.1 apotheca.local"
 //   up, down        nothing more
 // Every call's words are a line of FOLDER/log, as the program was given them (so a test can see the
 // password was never among them).
@@ -49,6 +50,8 @@ inline std::string wifiStandIn(const std::string& folder) {
                    "  if [ \"$(cat \"$d/password\")\" = \"$(cat \"$d/right\" 2>/dev/null)\" ]; then echo \"joined $2 192.168.1.7 apotheca.local\" > \"$d/status\"\n"
                    "  else echo \"wrong-password $2\" > \"$d/status\"; fi ;;\n"
                    "forget) echo off > \"$d/status\" ;;\n"
+                   "hotspot) echo \"hotspot apotheca 192.168.4.1 apotheca.local\" > \"$d/status\"\n"
+                   "  echo \"hotspot apotheca\" ;;\n"
                    "up|down) ;;\n"
                    "*) exit 2 ;;\n"
                    "esac\n"

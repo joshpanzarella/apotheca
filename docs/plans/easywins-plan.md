@@ -335,9 +335,9 @@ firmware rows), `textsize` (every place the page can stand, at four sizes; the s
 
 **What was asked**: duplicate a track; empty a cell; copy a whole cell to another scene or track.
 
-**What was there already, and stays**: B on a cell empties it (`clearCell`); **hold R1 on a cell and
-drag copies the whole cell** (its length and every bar) into every cell crossed, on any track of the
-same kind and any scene (`copyCell`). Nothing was added for those two.
+**What was there already, and stays**: B on a cell empties it (`clearCell`). (R1 on a cell then
+copied the whole cell into every cell crossed by dragging; since 2026-11-19 R1 copies it and R1 on
+another cell pastes it there, as a scene is copied.)
 
 **New: duplicate a track.** On a track's head on SONG, **hold L1 and press R1** (COPY A BAR's two
 keys, on the thing they copy here; L1 did nothing on a head). A new track right after it: the same
@@ -425,10 +425,10 @@ FIT and a recording on a lane are carried by the same calls but no test puts a k
 | SONG: PLAYS becomes REPEATS, nearer the x1 box | REPEATS, 10 above the first box (was 20). It is 67 wide at LARGE, so the REPEATS column is 4 wider (38) and the track columns start 4 further right |
 | Drum grid: the feel mark too close to the name | The name's word starts 5 clear of the mark (was 1), grid and slices; names have 3 less room before they are held at LARGE |
 | Tabs: PTRN, DVICE, evenly spaced | Done; each word has 5 either side again (was 3). The words after the tabs gained 15: 182 stopped, 109 playing, 47 with WRITE. Help card says PTRN; README keeps the full words and says so |
-| The lane's volume hard to see in BLACK | The fill is the lightest surface (panel2) with a dim edge where the volume ends. BLACK: fill on bg 1.08 before, 1.22 after, and the edge is 8.5 on bg |
+| The lane's volume hard to see in BLACK | The fill is the lightest surface (panel2). BLACK: fill on bg 1.08 before, 1.22 after. A dim edge tried where the volume ends confused, and is gone (owner, 2026-11-19) |
 
-**Tests**: `easy_test looks` (the volume's fill, edge and bg off the drawn screen in all six themes, at
-50%, full and none; the clear room by the mark; REPEATS inside the screen and near its boxes), 5
+**Tests**: `easy_test looks` (the volume's fill and bg off the drawn screen in all six themes, at
+50%, full and none, no edge; the clear room by the mark; REPEATS inside the screen and near its boxes), 5
 mutants, each fails. `modtab_test` holds the tabs.
 
 ## Batch 8: QUEUED MUTES

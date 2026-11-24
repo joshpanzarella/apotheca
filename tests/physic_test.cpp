@@ -735,6 +735,58 @@ static void testGlideClicks() {
     }
 }
 
+// A string gliding up keeps the stiffness of where it began (review 2026-11-23): three octaves or so
+// up, that stiffness waited longer than the whole loop and the tuning allpass blew up, on every
+// STRING preset (Plucked Bass from key 48 to 96). Every engine preset that is a string, gliding four
+// octaves up and down, and the plain string from C1 to the top at every STRETCH: finite, under 2,
+// and landed in tune where the key still leaves the loop room.
+static void testWideGlidesHold() {
+    int strings = 0;
+    for (int preset = 0; preset < Physic::presetCount(); ++preset) {
+        if (Physic::presetPatch(preset).value[Model] != kString) continue;
+        ++strings;
+        for (const int from : {24, 36, 48, 60}) {
+            for (const int to : {from + 48, from + 60}) {
+                if (to > 127) continue;
+                for (const bool up : {true, false}) {
+                    auto p = synth({}, preset);
+                    p->noteOnFrom(up ? to : from, 0.9f, up ? from : to, 0.5f);
+                    const std::vector<float> v = play(*p, 48000 * 2);
+                    float most = 0.f;
+                    bool finite = true;
+                    for (float s : v) finite = finite && std::isfinite(s), most = std::max(most, std::fabs(s));
+                    if (!finite || most >= 2.f) std::printf("  preset %d, %d to %d: %s %g\n", preset, up ? from : to, up ? to : from, finite ? "peak" : "NOT FINITE", most);
+                    CHECK(finite && most < 2.f);
+                }
+            }
+        }
+    }
+    CHECK(strings >= 10);
+    // The last guard, by the rule: a stiffness from four octaves down leaves the loop no room (its
+    // part under 0, its allpass past 1), and held, the part is 0.5 and the allpass stable.
+    const Tuning wild = tuningOf(hzOf(84), kRate, 0.0, kDispersionMost);
+    if (gPrint) std::printf("  a C1 stiffness at C6: part %.3f, eta %.3f\n", wild.part, wild.eta);
+    CHECK(wild.part < 0.0 && std::fabs(wild.eta) > 1.0);
+    const Tuning held = heldTuning(wild, hzOf(84), kRate);
+    CHECK(held.whole == wild.whole && held.part == 0.5 && held.eta > 0.0 && held.eta < 1.0);
+    for (const int stretch : {0, 25, 50, 100}) {
+        for (const int to : {64, 77, 90, 112, 127}) {
+            auto p = synth(plain(kString, {{Stretch, stretch}, {Decay, 60}}));
+            p->noteOnFrom(to, 0.9f, 24, 0.5f);
+            const std::vector<float> v = play(*p, 48000 * 2);
+            float most = 0.f;
+            bool finite = true;
+            for (float s : v) finite = finite && std::isfinite(s), most = std::max(most, std::fabs(s));
+            CHECK(finite && most < 2.f);
+            if (to <= 90) { // landed: tuned as a string struck at that key
+                const double off = centsOff(v, hzOf(to), 0.7);
+                if (gPrint) std::printf("  STRETCH %d, 24 to %d: %.2f cents off, peak %.3f\n", stretch, to, off, most);
+                CHECK(std::fabs(off) < 3.0);
+            }
+        }
+    }
+}
+
 // SELF: a lone glide from a loud ringing voice takes it over (no new strike); a 4-key chord naming
 // one `from`: all four strike; from a voice under -40 dB: a new strike; a taken-over note's level
 // follows its velocity.
@@ -1944,6 +1996,7 @@ int main(int argc, char** argv) {
         {"testPeakBound", testPeakBound},
         {"testRestrike", testRestrike},
         {"testGlideClicks", testGlideClicks},
+        {"testWideGlidesHold", testWideGlidesHold},
         {"testTakeOver", testTakeOver},
         {"testSteal", testSteal},
         {"testBlocks", testBlocks},

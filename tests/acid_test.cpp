@@ -381,6 +381,33 @@ static void testTail() {
     CHECK(largestJump(out) < 0.05f);
 }
 
+// allNotesOff twice inside the tail's 3 ms: the first tail rings out unchanged, not swapped mid-fade
+// for the second voice (audit #32), and the second voice fades out beside it in a slot of its own
+// rather than being cut dead (review 2026-11-23: a click). Both are gone by the 3 ms.
+static void testTailNotSwapped() {
+    std::unique_ptr<Acid> first = synth();
+    play(*first, {on(0, 48)}, 9600);
+    first->allNotesOff();
+    play(*first, {}, 20);
+    const std::vector<float> tail = play(*first, {}, 380);
+    std::unique_ptr<Acid> second = synth();
+    play(*second, {on(0, 48)}, 9600);
+    second->allNotesOff();
+    play(*second, {}, 10);
+    second->noteOn(52, 1.f);
+    const std::vector<float> sounding = play(*second, {}, 10);
+    second->allNotesOff();
+    const std::vector<float> both = play(*second, {}, 380);
+    std::vector<float> faded(both.size());
+    for (std::size_t i = 0; i < both.size(); ++i) faded[i] = both[i] - tail[i]; // the second voice alone
+    CHECK(peakOf(std::vector<float>(faded.begin(), faded.begin() + 8)) > 0.f); // it is heard, fading...
+    CHECK(peakOf(std::vector<float>(faded.begin() + 144, faded.end())) == 0.f && !second->tailAwake()); // ...and gone
+    // No jump from the voice sounding into its fade (it was cut: from its last sample to nothing).
+    std::vector<float> across(sounding.end() - 4, sounding.end());
+    across.insert(across.end(), both.begin(), both.begin() + 8);
+    CHECK(largestJump(across) < 0.05f);
+}
+
 // A line with everything in it: plain notes, ties (both orders), accents, a rest long enough to
 // sleep, macros turned, allNotesOff.
 static std::vector<Ev> busyLine() {
@@ -813,6 +840,7 @@ int main(int argc, char** argv) {
         {"testEnvelopes", testEnvelopes},
         {"testNewestWins", testNewestWins},
         {"testTail", testTail},
+        {"testTailNotSwapped", testTailNotSwapped},
         {"testTuneTick", testTuneTick},
         {"testLevelAndDrive", testLevelAndDrive},
         {"testBlocks", testBlocks},

@@ -137,7 +137,7 @@ scan() {
 # The two web pages and the manual are read by a player too. They keep SELECT in full, so scan()
 # leaves them out; a maker's or a model's name is looked for in them here, comments and all.
 makers() {
-    for f in "$1"/design_page.cpp "$1"/transfer.cpp "$1"/../README.md; do
+    for f in "$1"/design_page.cpp "$1"/transfer.cpp "$1"/../README.md "$1"/../docs/manual.md; do
         [ -f "$f" ] || continue
         grep -n -i -E 'roland|jx-?3p|pg-?200|juno|yamaha|dx-?7|tb-?303' "$f" | sed "s|^|$f:|"
     done

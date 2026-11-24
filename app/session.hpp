@@ -29,6 +29,9 @@ namespace apotheca {
 struct Project;
 // How many frames the song lasts once through, at this sample rate (bounce.cpp).
 long long songFrames(const Project& project, float sampleRate);
+// The song as a Standard MIDI file (Type 1): every scene as many times as it plays, one track per
+// track, drums as General MIDI on channel 10 (bounce.cpp). For the tests as well as the bounce.
+std::string midiFileBytes(const Project& song, const std::string& title);
 
 // WHERE A BOUNCE ENDS (bounce.cpp). After the song's last step the bounce
 // runs on for as long as there is sound: echoes, a hall, drums ringing out.
@@ -225,6 +228,7 @@ public:
     // worked out again.
     void useSampleFolder(const std::string& folder) { sampleFolder_ = folder; }
     std::vector<std::string> sampleNames() const;
+    unsigned sampleFiles() const { return sampleFiles_; } // how many times the card's sample lists changed (WiFi): open pickers read them again
     // Delete a recording's file from the samples folder. Lanes that were playing it go back to
     // their built-in drum (a sampler: to none). False if there is no such recording.
     std::vector<std::string> sampleFolders() const; // the folders in the samples folder, two levels, the empty ones too
@@ -232,13 +236,18 @@ public:
     bool deleteSample(const std::string& name);
     // What the handheld does to the samples folder itself (the list of recordings: carry, + NEW FOLDER,
     // hold B on an empty folder), and how it went.
-    enum class FileJob { Done, Same, TooLong, Taken, NotEmpty, Failed, NotSaved, Moving }; // NotSaved: done, but a song that names it could not be written (a full card). Moving: done, and the saved songs are following (following())
+    enum class FileJob { Done, Same, TooLong, Taken, NotEmpty, Failed, NotSaved, Moving, Copying, Busy }; // NotSaved: done, but a song that names it could not be written (a full card). Moving: done, and the saved songs are following (following()). Copying: a card that will not rename, so it is being written again in its new place, off the screen's thread: nothing has changed yet, and carryDone() then says how it went. Busy: another is being copied.
     // Move a recording to another folder (or out of every folder), under the name `to`: its file is
     // renamed (the long way where the card will not), the open song follows (recordingChanged: the
     // name only, the sound plays on), the open song is written, and every saved song and rev that
     // names it follows, a few a frame (followLater: Moving while they do). Nothing is written over (Taken, case not
     // counted); the folder it goes to must be there already; `to` must fit kSampleNameRoom (TooLong).
     FileJob moveSample(const std::string& from, const std::string& to);
+    // A carry being copied (Copying): true until Session::update has taken the copy's end. Then
+    // carryResult() is how the whole move went (Done, NotSaved, Moving or Failed), once, counted by carriesDone().
+    bool carryCopying() const { return carry_ != nullptr; }
+    FileJob carryResult() const { return carryResult_; }
+    unsigned carriesDone() const { return carriesDone_; }
     // A new, empty folder: "name", or "folder/name" inside one of the first level.
     FileJob makeSampleFolder(const std::string& name);
     // Only an EMPTY folder is deleted: NotEmpty if anything at all is in it (a file that is no recording too).
@@ -295,6 +304,7 @@ public:
     // runs on until the next hit on the lane.
     int laneSlices(int track, int lane) const;
     void setLaneOneSlice(int track, int lane, bool on);
+    void setSamplerChop(int track, bool on); // chopped or whole: 16 even slices from C1 up, or the one recording
     // Asked for from another screen (the kit's): the drum grid opens on this lane's slices.
     int wantSlices = -1; // a lane, or -1
     // Asked for from the SONG screen: the keyboard for the current track's name (it lives on the SET tab).
@@ -327,6 +337,7 @@ public:
         bool making = false;      // ...and before that its synth voice is made there (DRUM SYNTH: shaping is set too)
         float fittedTempo = 0.f;  // the tempo the one in the engine was made for
         int fittedSteps = 0;
+        int zones = 0;            // a sampler's multisample: how many recordings play (0: one, as always)
         unsigned version = 0;     // goes up whenever the lane's sound changes
     };
     const LaneSound& laneSound(int track, int lane) const { return sounds_[track][lane]; }
@@ -342,6 +353,11 @@ public:
     // and songs go on and come off (transfer.hpp). Off until turned on.
     bool toggleTransfer(unsigned seed);  // true if it is now on
     bool transferOn() const { return transfer_.running() || !pretendAddress_.empty(); }
+    // HOTSPOT on the SET page: our own network, with or without the WIFI PAGE. Turning it on starts
+    // the page too when it is off (the network exists for the page); turning it off stops the page
+    // again only when HOTSPOT started it, else the radio joins again. True if it is now as asked.
+    bool setHotspot(bool on, unsigned seed);
+    Transfer& transfer() { return transfer_; } // (tests put a WiFi change in by hand: noteChange)
     // WiFi on our own firmware (wifi.hpp): joining a network. Here only where the system gives the
     // program its `apotheca-wifi` (APOTHECA_WIFI); elsewhere nothing of it shows or runs.
     Wifi& wifi() { return wifi_; }
@@ -350,9 +366,13 @@ public:
     // The NETWORK row is up on the SET page (set by it each frame): `update` then asks for a scan
     // every 10 s as well as the status every second (wifi.hpp), which it asks for on every screen.
     bool wifiLooking = false;
-    std::string transferAddress() const { return pretendAddress_.empty() ? transfer_.address() : pretendAddress_; } // what to type into the browser
-    // The page's address by NAME ("apotheca.local:8080/4821": the name our firmware says, with the
-    // address's port and number), or "" where no name is said (the port; not joined; an older system).
+    std::string transferAddress() const { // what to type into the browser
+        if (!pretendAddress_.empty()) return pretendAddress_;
+        if (!addressAsked_ || now_ - addressAt_ >= 1000 || now_ < addressAt_) addressKept_ = transfer_.address(), addressAt_ = now_, addressAsked_ = true;
+        return addressKept_;
+    }
+    // The page's address by NAME ("apotheca.local/4821": the name our firmware says, with the
+    // address's port, unless it is 80, and number), or "" where no name is said (the port; not joined; an older system).
     std::string transferName() const;
     // For a still: the WIFI PAGE as if on at this address, and our firmware's WiFi saying this.
     void pretendWifi(const Wifi::Now& now, const std::string& address) { wifi_.pretend(now), pretendAddress_ = address; }
@@ -375,7 +395,7 @@ public:
     // ---- recording -------------------------------------------------------------------
     // Record from the input onto a drum lane, or onto a sampler track (the
     // lane is then ignored). The first call starts it waiting for sound; the
-    // next stops it. It also stops by itself at ten seconds. What was
+    // next stops it. It also stops by itself at twenty seconds. What was
     // recorded is saved as "rec 1", "rec 2"... in the sample folder.
     enum class Rec { Idle, NoInput, Waiting, Recording };
     void useAudioInput(AudioInput* input) { input_ = input; }
@@ -395,8 +415,8 @@ public:
     void useSongFolder(const std::string& folder, std::uint32_t seed);
     const std::string& songName() const { return songName_; }
     std::vector<std::string> songNames() const; // most recently saved first
-    void newSong();                             // saves the current one first
-    bool openSong(const std::string& name);     // likewise
+    bool newSong();                             // saves the current one first; false (and said) if it could not be saved: nothing changes
+    bool openSong(const std::string& name);     // likewise (false too if the file could not be read)
     bool saveNow();                             // only writes if something changed; false: it had to and could not
     // Give the open song a new two-word name (there is no keyboard to type
     // one). Its file and its revs follow. Returns the new name.
@@ -428,7 +448,7 @@ public:
     // And the colours: a THEME (ui.hpp's kThemeTable; 0 is the look as it was built, and what a
     // handheld with nothing kept gets). Only the number is held here: App::draw puts it to use,
     // so it takes effect between two frames.
-    static constexpr int kThemeCount = 6, kThemeAsBuilt = 0;
+    static constexpr int kThemeCount = 8, kThemeAsBuilt = 0;
     int theme() const { return theme_; }
     void setTheme(int theme);
     // The screen's BRIGHTNESS (a percent, kBrightLeast..100 in fives) and the STICK LIGHT (RingMode),
@@ -442,19 +462,21 @@ public:
     void setBrightness(int percent);
     int stickLight() const { return stickLight_; }
     int lightColour() const { return lightColour_; } // LIGHT COLOUR (lights.hpp: LightColour)
+    int ringLevel() const { return ringLevel_; }          // RING LEVEL: the ring's own brightness, percent
     // LIGHT COLOUR is TRACK on a ring that is here and lit: the SONG screen marks each head with its track's colour.
     bool trackColoursShown() const { return ringHere() && stickLight_ != kRingOff && lightColour_ == kLightTrack; }
     void setLightColour(int which);
     void setStickLight(int mode);
+    void setRingLevel(int percent);
     // What the ring shows now (ringPicture with the song's step and the theme's colours).
     RingFrame ringNow() const;
     void loadSettings();
 
     // ---- bouncing (bounce.cpp) ---------------------------------------------------------
-    // The song, or its tracks, written out as WAV files in the "bounces"
-    // folder. Worked out off to one side, not recorded as it plays, so it is
+    // The song, or its tracks, written out as WAV files (or the song as one MIDI file) in the
+    // "bounces" folder. Worked out off to one side, not recorded as it plays, so it is
     // whole whatever the handheld could keep up with.
-    enum class Bounce { Song, EachTrack, ThisTrack };
+    enum class Bounce { Song, EachTrack, ThisTrack, MidiFile };
     void useBounceFolder(const std::string& folder); // (and what a killed bounce left there is removed)
     bool startBounce(Bounce what); // false if one is under way, or there is nowhere to put it
     bool bouncing() const;
@@ -497,6 +519,10 @@ public:
     int undoSteps() const;
     int redoSteps() const { return static_cast<int>(redo_.size()); }
     void noteEdit(); // something in a pattern has just changed
+    // An edit's own step of undo, from outside (SongScreen::pasteCellHere): whatever was being
+    // edited just before ends here, and nothing after it joins the step (as pasteBar's inline).
+    void beginOwnUndoStep();
+    void endOwnUndoStep();
     void readUndoWhole(bool on) { readUndoWhole_ = on; } // the tests: every step of undo read back whole, as it was before (to hold the two the same)
 
     // ---- next scene ---------------------------------------------------------------------
@@ -603,10 +629,26 @@ public:
     };
     const std::vector<Kit>& kits();
     int kitOf(int track);                          // which kit of the list the track's kit is now, or -1 (its own)
-    bool loadKit(int track, int index);            // put on the track: every lane told to the engine. Not a step of undo
+    bool loadKit(int track, int index);            // put on the track: every lane told to the engine. One step of undo, the whole kit back (recordings with it)
     bool putKit(int track, const TrackData& kit);  // ...the kit fields of `kit` (copyKit's)
     std::string saveKit(int track);                // as the next free "KIT n": its name, or "" (no folder, or the card refused)
     bool deleteKit(int index);                     // an own kit's file, for good
+    // SAMPLER PRESETS (sampler_presets.cpp): a sampler track's sound kept as a file of its own, "NAME.sampler"
+    // in the preset folder. A preset is its recording, its settings, chopped or whole; and the track's whole
+    // sound (effects, sends, MODs), as a new synth preset's. There are no built-in ones: the list is the
+    // player's own, or empty.
+    static constexpr std::size_t kSamplerPresetNameMost = 24;
+    struct SamplerPreset {
+        std::string name, file, sample;
+        int settings[sampler::kSettings];
+        bool chop = false;
+        TrackSound sound; // the whole sound, when the file holds it
+    };
+    const std::vector<SamplerPreset>& samplerPresets();
+    int samplerPresetOf(int track);                             // which one the track's sound is now, or -1
+    bool loadSamplerPreset(int track, int index);               // put on the track (its settings take a step back; as a kit's, the recording stays)
+    bool saveSamplerPreset(int track, const std::string& name); // under this name (made a file's); false if no good or not written
+    bool deleteSamplerPreset(int index);                        // its file, for good
     // The sound-designer page's way in (see designer.hpp); the WiFi page serves it.
     Designer& designer() { return designer_; }
 
@@ -634,6 +676,10 @@ public:
     int takeMidiKey() { const int key = midiKey_; midiKey_ = -1; return key; }
     // The tempo, from anywhere. Held to what the engine can play.
     void setTempo(float bpm);
+    // One scene's own tempo (0: the song's). Like the song's tempo, no step of undo.
+    void setSceneTempo(int scene, float bpm);
+    // Steps in one scene's bars, 1..16. No step of undo either.
+    void setSceneMeter(int scene, int steps);
     // TAP TEMPO (tap_tempo.hpp): A tapped on a TEMPO row, `ms` the frame's clock. The second tap of a
     // run on sets the tempo; each from the second says what it did in the App's box (TAPPED: 120 BPM).
     void tapTempo(Uint32 ms);
@@ -666,6 +712,7 @@ public:
     void sendDrumPattern(int track, int scene);
     void sendDrumHit(int track, int scene, int bar, int lane, int step); // one hit of it, all of what it is: what a keyboard records
     void sendNotePattern(int track, int scene);
+    void sendTrackImage(int track); // every pattern of a track to the engine, in one piece (patterns and automation)
     // TRANSPOSE (easywins batch 3): every note and chord of a synth or sampler track's cell in a scene
     // (every bar of it, hidden ones too) `by` semitones, a chord's name with it (transposeChordName).
     // All or nothing: kTransposed, kNothingToMove (a drum track, an empty cell, no track), or
@@ -703,6 +750,37 @@ public:
     BarCopy copyBarHere();
     BarCopy pasteBarHere();
     static std::string barCopyWords(BarCopy answer, bool paste, int bar); // (bar from 0)
+    enum class SceneCopy { Done, Same, NothingCopied, NoScene };
+    struct SceneClip {
+        bool has = false;
+        int scene = 0; // where it came from
+        struct Track {
+            TrackKind kind = TrackKind::None;
+            int bars = 1;
+            DrumPattern drums[kMaxBars];
+            NotePattern notes[kMaxBars];
+            float automation[kAutoLanes][kAutoSteps];
+        };
+        Track tracks[kNumTracks];
+        int repeats = 1, steps = 0;
+        float tempo = 0.f; // the scene's own (0: the song's)
+        int meter = kSteps;
+    };
+    SceneCopy copyScene(int scene);
+    SceneCopy pasteScene(int scene);
+    // ...on a scene of the SONG screen, and what was done said (say()):
+    // SCENE 1 COPIED, PASTED ON SCENE 2, and why not.
+    SceneCopy copySceneHere(int scene);
+    SceneCopy pasteSceneHere(int scene);
+    static std::string sceneCopyWords(SceneCopy answer, bool paste, int scene); // (scene from 0)
+    enum class SceneClear { Done, AlreadyEmpty, NoScene };
+    SceneClear clearScene(int scene);
+    SceneClear clearSceneHere(int scene);
+    static std::string sceneClearWords(SceneClear answer, int scene); // (scene from 0)
+    int copiedScene() const { return sceneClip_->has ? sceneClip_->scene : -1; }
+    const SceneClip& sceneClip() const { return *sceneClip_; }
+    void setSceneClip(const SceneClip& clip) { *sceneClip_ = clip; } // (the App, putting it back after a panic begun with R1)
+    unsigned sceneCopies() const { return sceneCopies_; }           // how many copies have been made (the App: did one come in a panic?)
     const BarClip& barClip() const { return clip_; }
     void setBarClip(const BarClip& clip) { clip_ = clip; } // (the App, putting it back after a panic began with L1 + R1)
     unsigned barCopies() const { return barCopies_; }      // how many copies have been made (the App: did one come in a panic?)
@@ -750,6 +828,8 @@ private:
     int resyncs_ = 0;
     BarClip clip_;           // what copyBar holds (memory only)
     unsigned barCopies_ = 0;
+    std::unique_ptr<SceneClip> sceneClip_; // what copyScene holds (memory only; itself on the heap: a whole scene)
+    unsigned sceneCopies_ = 0;
     char saidText_[64] = "";
     unsigned saidCount_ = 0;
     TapTempo taps_;
@@ -761,6 +841,13 @@ private:
     std::string revPath(int rev) const;
     std::string freshName();
     std::string folder_, songName_ = "untitled", savedText_;
+    std::string lastSaid_;  // what last.txt says (rememberLast writes it only when the song open is another)
+    void rememberLast();
+    // The address the WiFi page is at, asked of the system at most once a second (it was asked two or
+    // three times a frame where it is shown: review 2026-11-23).
+    mutable std::string addressKept_;
+    mutable Uint32 addressAt_ = 0;
+    mutable bool addressAsked_ = false;
     // The song's text as it is now (songText(project), to the byte), made again a track at a time
     // where a track has changed since it was last asked. Valid until it is asked again.
     const std::string& textNow() const { return textNow_.text(project); }
@@ -779,6 +866,7 @@ private:
     int brightness_ = kBrightUsual;
     int stickLight_ = kRingOn;
     int lightColour_ = kLightTheme;
+    int ringLevel_ = kBrightUsual; // the ring's own brightness (70: as the screen until it is turned)
     struct BounceJob {
         std::unique_ptr<Project> song;
         Bounce what = Bounce::Song;
@@ -796,7 +884,6 @@ private:
     // (moved: a "next scene" lies between; see moveScenesHere). Only undo and redo call it, each just
     // after patternsNow(): readStep takes the text of each track now from what that made.
     void restorePatterns(const std::string& text, int movedFrom = 0, int movedBy = 0);
-    void sendTrackImage(int track);                  // every pattern of a track to the engine, in one piece
     std::unique_ptr<TrackImage> trackImage(int track) const; // ...made, not yet sent
     std::unique_ptr<SceneImage> sceneImage(int track, int scene) const; // one scene of a track
     unsigned imagesSent_ = 0;
@@ -817,7 +904,7 @@ private:
     unsigned sceneMoves_ = 0;
     unsigned movesSent_ = 0;
     std::size_t movesUnheard(unsigned heard) const;
-    std::uint32_t cellMark() const;                  // changes when the cell being worked on does
+    std::uint64_t cellMark() const;                  // changes when the cell being worked on does
     // A step of undo: the patterns as text. `nextScene` is -1, or the scene a "next scene" was
     // made from, when that is what lies between this text and the one it is swapped for: taking
     // it back or putting it forward moves the player and the playing as well as the patterns.
@@ -843,8 +930,8 @@ private:
     // macros, a sampler's settings) and GLIDE FROM, the master's effects and the buses' (their
     // LEVEL with them). Whatever changes them is seen here, as the cell is (cellMark): no screen
     // has to say so. restoreSounds puts them back from a step, through the engine's usual commands.
-    std::uint32_t soundMark() const;
-    std::uint32_t soundMark_ = 0;
+    std::uint64_t soundMark() const;
+    std::uint64_t soundMark_ = 0;
     void restoreSounds(const StepRead& was, const bool same[kNumTracks]);
     void restoreEffect(int track, int slot, const EffectData& then);
     void sendMod(int track, int mod); // the project's MOD told to the engine (OFF: one command)
@@ -853,17 +940,26 @@ private:
     std::string settled_;                            // the patterns when things were last still
     bool editing_ = false, restoring_ = false, undoReady_ = false;
     Uint32 editedAt_ = 0;
-    std::uint32_t cellMark_ = 0;
+    std::uint64_t cellMark_ = 0;
     void serveDesigner();
     void serveKit(const DesignRequest& r); // a KIT's requests (serveDesigner)
+    void serveFx(const DesignRequest& r);  // an EFFECTS request (any instrument: serveDesigner)
+    void serveMod(const DesignRequest& r); // a MOD's request (any instrument: serveDesigner)
     std::string designSpec(int track) const;  // what the page builds itself from (a synth's, a sampler's or a kit's)
     std::string kitSpec(int track) const;
     std::string samplerSpec(int track) const;
+    std::string designFxSpec(int track) const;   // ...and its EFFECTS (every instrument's page carries it)
+    std::string designModsSpec(int track) const; // ...and its MODs (the same)
+    std::string designFxState(int track) const;  // their values, for the state
+    std::string designModsState(int track) const;
     std::string designState() const;
     Designer designer_;
     std::string presetFolder_;
     std::vector<Kit> kits_;
     void readKits();
+    std::vector<SamplerPreset> samplerPresets_;
+    bool samplerPresetsRead_ = false; // (empty is usual: no built-ins)
+    void readSamplerPresets();
     bool designHeld_[128] = {}; // keys the page is holding down
     int designHeldTrack_ = 0;
     unsigned designLooks_ = 0;
@@ -871,6 +967,7 @@ private:
     TrackKind designSpecKind_ = TrackKind::None;
     int designSpecPresets_ = -1, designSpecTrack_ = -1;
     unsigned designSpecSound_ = 0;  // the sampler's recording's version (LaneSound::version) it was made from
+    unsigned designSpecFx_ = 0;     // the slots', buses' and master's effects it was made from (their kinds, hashed)
     std::string designSpecText_ = "{}";
     unsigned designSpecSerial_ = 0; // goes up whenever designSpecText_ changes: the page asks for it again
     // The recordings a sampler's page is offered: read from the card on this thread, when the page
@@ -903,12 +1000,27 @@ private:
     static float ui_stickSpeed();
     void keepSettings() const;
     Transfer transfer_;
+    bool hotspotOwnsTransfer_ = false; // HOTSPOT turned the page on: turning it off turns it off again
     std::string programFolder_;
     unsigned seenUpdates_ = 0;
     bool updateWaiting_ = false;
     bool updateReady_ = false; // accepted this run; the bar says so until the next start
     float updateMegabytes_ = 0.f;
-    unsigned seenReceived_ = 0;
+    unsigned seenChords_ = 0; // Transfer::chordsReceived() when the packs were last read
+    unsigned sampleFiles_ = 0;
+    // A carry the long way (a card that will not rename into another folder), on its own thread: the
+    // file written again in its new place and the old one taken away; Session::update does the rest
+    // (review 2026-11-23: a large recording held the screen for the whole copy, seconds on the card).
+    struct CarryJob {
+        std::string from, to, file, target;
+        std::atomic<bool> done{false};
+        bool ok = false;
+        std::thread thread;
+    };
+    std::unique_ptr<CarryJob> carry_;
+    FileJob carryResult_ = FileJob::Done;
+    unsigned carriesDone_ = 0;
+    void finishCarry(); // the copy has ended: the open song follows, as a rename does
     // Saved songs still to follow a rename (followLater): each batch of renames with the files it
     // goes through, in order.
     struct Follow {
@@ -930,6 +1042,7 @@ private:
     Recorder recorder_;
     Rec rec_ = Rec::Idle;
     int recTrack_ = 0, recLane_ = 0;
+    void dropRecording(); // a recording under way called off, its take thrown away
     std::string lastRecorded_;
     void loadTrackSample(int track);
     void install(int track, int lane, const std::vector<float>& samples);
@@ -956,6 +1069,16 @@ private:
     int lookups_ = 0;
     LaneSound sounds_[kNumTracks][kDrumLanes];
     std::unique_ptr<Job> job_;
+    // Jobs handed off by a song sent whole (sendSong): their sound is for lanes made again since, so it
+    // is never taken; each is joined once it is done (reapJobs, every frame) or as the Session ends.
+    // (sendSong waited for the job, seconds of a long FIT or PITCH on the handheld, only to throw it
+    // away: review 2026-11-23.)
+    std::vector<std::unique_ptr<Job>> leftJobs_;
+    void reapJobs(bool wait);
+public:
+    std::size_t jobsLeftRunning() const { return leftJobs_.size(); } // (for tests)
+    bool jobUnderWay() const { return job_ != nullptr; }              // (for tests)
+private:
     float steadyTempo_ = 0.f;  // the tempo, once it has stopped moving
     float seenTempo_ = 0.f;
     Uint32 tempoMovedAt_ = 0;

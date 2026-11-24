@@ -67,7 +67,8 @@ Apotheca runs as root on our firmware (inittab, no user), so no file needed anot
    bar's sixteen steps. Pick: as built. Other: OFF as the usual (battery), a colour of its own
    instead of the theme's.
 4. **The ring dims with BRIGHTNESS** (`ringLevelFor`: the same square, 255 at 100%). Pick: yes.
-   Other: a level of its own (a third row).
+   Other: a level of its own (a third row). **Reversed 2026-11-19: RING LEVEL, its own row, 70 until
+   turned (owner: a control for the ring's brightness).**
 5. **The colour is the theme's cursor colour (teal's job), the bar's first step in its brass**,
    each made as bright as it goes (`fullest`: PAPER's dark teal is a full teal on the ring). The
    LEDs not lit in BEAT and STEPS are `kRingDim` 40/256 of it. Pick: as built.

@@ -75,17 +75,20 @@ public:
     bool running() const { return listening_ >= 0; }
     int port() const { return port_; }
     const std::string& pin() const { return pin_; }
-    // "192.168.1.23:8080/4821": what to type into a browser. Without the
+    // "apotheca.local/4821" (port 80 asks itself; "192.168.1.23:8080/4821"
+    // where 80 would not bind): what to type into a browser. Without the
     // numbers before the colon if the device is on no network.
     std::string address() const;
     // Goes up each time a file is received, deleted or moved, so the screen can look again.
     unsigned received() const { return received_.load(); }
+    unsigned chordsReceived() const { return chordsReceived_.load(); } // of those, chord packs sent or deleted
     // What has happened to recordings since this was last asked, oldest first. Names are as a
     // song keeps them: no ".wav", and "kicks/808" in a folder. Sent: only `to`. Deleted: only
     // `from`. Renamed or moved: both. Safe to call from another thread than the server's; each
     // one is on the list before `received()` goes up for it.
     struct Change { std::string from, to; };
     std::vector<Change> takeChanges();
+    void noteChange(const std::string& fromFile, const std::string& toFile); // file names, with their ".wav". The server's thread; tests put one in by hand (it locks)
     // Held by the server while it writes or deletes a song file, and by the session while it
     // goes through the saved songs (Session::savedSongsFollow): neither undoes the other's work.
     std::mutex& songFiles() { return songFiles_; }
@@ -107,6 +110,7 @@ public:
     static std::string selfCommand(const std::string& args);
 
     static constexpr std::size_t kLargestFile = 30u * 1024u * 1024u;
+    static int requestMs; // 120000: a request that takes longer is closed; tests make it short
 
 private:
     void serve();
@@ -119,8 +123,15 @@ private:
     int port_ = 0;
     int listening_ = -1;
     std::atomic<bool> stopping_{false};
-    std::atomic<unsigned> received_{0};
-    void noteChange(const std::string& fromFile, const std::string& toFile); // file names, with their ".wav"
+    // What `stop` cuts short, so it never waits on a browser or a speed test (review 2026-11-23: a
+    // trickle of bytes, or a SPEED TEST under way, held the app thread in `stop` for minutes):
+    // the connection being answered (shut down under `servingMutex_`, so a number closed and given
+    // to another file is never touched) and the speed test's process group (killed).
+    std::mutex servingMutex_;
+    int serving_ = -1;               // under servingMutex_
+    std::atomic<int> benchGroup_{0}; // the speed test's process group, while it runs
+    bool stopped() const { return stopping_.load(); }
+    std::atomic<unsigned> received_{0}, chordsReceived_{0};
     std::mutex changesMutex_, songFiles_, openMutex_;
     std::string openSong_; // under openMutex_
     int wrong_ = 0;                // wrong numbers since the last lockout or quiet spell (the server's thread only)

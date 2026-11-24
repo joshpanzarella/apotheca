@@ -262,6 +262,9 @@ void DrumMachine::trigger(int lane, float velocity, float start, float part, con
         chokeOthers(lane); // (a hit all the same)
         return;
     }
+    // Nothing there to play: leave the lane's voices alone (before the wipe below).
+    if (from >= length) return; // at or past the end
+    if (how.reverse && (end < length ? end : length) - 1 < from) return; // an empty span
     if (old.position >= 0.0 && old.fadeStep == 0.f) old.fadeStep = chokeStep_;
     fresh = Voice();
     fresh.end = end;
@@ -271,8 +274,7 @@ void DrumMachine::trigger(int lane, float velocity, float start, float part, con
     for (int bus = 0; bus < 2; ++bus) fresh.thrown[bus] = fresh.thrownTo[bus] = (how.throwTo >> bus) & 1 ? 1.f : 0.f;
     if (how.reverse) {
         // From the last sample it would have played, back to the first.
-        const int last = (end < length ? end : length) - 1;
-        if (last < from) return; // nothing there to play (and it cuts nothing)
+        const int last = (end < length ? end : length) - 1; // (an empty span returned above)
         fresh.position = last;
         fresh.rate = -rate;
         fresh.stop = from;
@@ -293,6 +295,12 @@ void DrumMachine::letGo(int lane) {
     if (lane < 0 || lane >= kDrumLanes) return;
     for (Voice& v : voices_[lane])
         if (v.audition && v.position >= 0.0 && v.fadeStep == 0.f) v.fadeStep = chokeStep_;
+}
+
+void DrumMachine::chokeAll() {
+    for (int lane = 0; lane < kDrumLanes; ++lane)
+        for (Voice& v : voices_[lane])
+            if (v.position >= 0.0 && v.fadeStep == 0.f) v.fadeStep = chokeStep_;
 }
 
 // RUNS (speed plan, batch 2). For a stretch of samples nothing about a voice moves but its place:

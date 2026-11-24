@@ -2,7 +2,7 @@
 
 A pocket music workstation for the Anbernic RG40XXV (640x480, buttons and one
 stick, Linux aarch64, stock firmware). Part of the Shapetaker family. The
-manual is `README.md`; this file is the rules that bite when changing the code.
+manual is `docs/manual.md`; this file is the rules that bite when changing the code.
 
 ## How to write to me
 
@@ -40,7 +40,7 @@ New screens and gestures keep these; do not invent a variant.
 - **A** places, opens, picks. **Hold A + a direction** shapes or turns what is under the cursor.
 - **B** deletes, empties, goes back. **Hold B deletes for good** (with a bar that fills): never another button. Typing a name, B keeps it and leaves; Y deletes a letter.
 - **X** hears (on SONG it solos the track: owner, 2026-11-15). **Hold X** is "what it does": step effects on a drum hit, ratchet and glide on a note.
-- **Hold R1** drags: paint from an empty step, carry from a note, copy on SONG.
+- **Hold R1** drags: paint from an empty step, carry from a note, copy on SONG. R1 tapped on a scene's REPEATS box copies the whole scene; tapped on another row, it pastes.
 - **Hold L1 on the grids** (drum grid, slices, roll) is the bar key: **+ R1 copies the bar, + A pastes it**.
   So L1's own tap (the slices, the roll's zoom) acts on its LET GO, and only if nothing else was pressed meanwhile.
 - **Y** is the screen's special (chance, chord, mute, catch, roll).
@@ -216,7 +216,7 @@ effect in those two groups and fails one that does not.
 - **The JX-3P clone is JAX-EP wherever a player reads** (owner, 2026-11-14):
   "a virtual analog synth modeled after a popular DCO synth". **No maker's or
   model's name** (Roland, JX-3P, PG-200, Juno) in a text of `app/`, on the two
-  web pages or in README.md; `ctest -R words` fails one, with its own plants.
+  web pages, in README.md or in docs/manual.md; `ctest -R words` fails one, with its own plants.
   **It reads the engine's texts for those names too** (preset and folder names
   are there: `kBeside` in `tests/words_test.sh` lists `engine/`'s folders, the
   two copied-in synths under `third_party/` and `tools/`; `.c` and `.h` as
@@ -304,7 +304,7 @@ effect in those two groups and fails one that does not.
       LEVEL 4 or under is within 2 dB of how it sounded, higher LEVELs
       quieter and clean (LEVEL 6 about 4 dB, LEVEL 8 about 10 dB before its
       old clip). From 0.502 or earlier: brighter, and about 12 dB louder**
-      (said in README).
+      (said in the manual).
   - **Builds 0.485 to 0.493 shipped JAX-EP with one preset, "Start", as
     preset 1.** A song from them keeps its sound (all 34 settings are read
     after the preset) under String I's name (`save_test`
@@ -325,7 +325,7 @@ effect in those two groups and fails one that does not.
   one: **not to be remade**. An old `NAME.twin` preset is left on the card,
   unlisted. **Twin's code is out (batch 8b, 2026-11-15), and that reader is
   the one place the word lives**: `kOldTwinWord` and its comments, the tests
-  of the old song and the old preset file, README's note on old files. There
+  of the old song and the old preset file, the manual's note on old files. There
   is no `SynthKind::Twin` (the kinds are memory only: Phazed, Sampler, Jx3p,
   Fm6). `ctest -R words` fails a text of `app/` that says TWIN ANALOG or
   OVERSAMPLING, with its own plants, **or BEST QUALITY: a bounce is the song
@@ -478,6 +478,9 @@ effect in those two groups and fails one that does not.
   times (`setHeaviestFirst`, off: only the SPEED TEST's rows ask for it, speed
   plan batch 0); the mix always walks `active_`. `speed_test` holds both to
   the bit.
+- **A helper takes a track by ONE atomic that holds the chunk's count and the next place** (`claims_`:
+  count << 16 | place, 0 shut). Read apart, a helper that took a place past one chunk's end and then read
+  the next chunk's larger count rendered a track another thread was rendering (review 2026-11-23).
 - **The built-in drum kit is built once per sample rate** and shared
   (`DrumKit::builtIn`). It never changes after that.
 - **A track taken away while it sounds fades for 5 ms first** (`RemoveInstrument`,
@@ -490,6 +493,10 @@ effect in those two groups and fails one that does not.
   `caughtUp()` counts the held command. A test that takes a sounding track away
   and wants the next thing at once renders 5 ms first (`engine_test`
   `testATrackTakenAwayFades` holds it beside a second engine, sample for sample).
+- **Every cut of a chunk is made before anything is moved on by its length** (`render()`: the steps,
+  waiting notes and hits, the MOD tick, the fade of a track taken away). The fade's cut came after the
+  clocks had moved, and every step after it came up to 63 samples early (review 2026-11-23;
+  `engine_test` `testATrackTakenAwayKeepsTheClock`).
 - **A lane with nothing written in a scene goes back to the knob** (`Track::autoBase`, read in `fireStep`
   and by `settleAutomation` at Stop), not to the last value written. So a FILTER's CUTOFF automated in
   the last scene only opens up at the wrap when the knob is more open, which sounds like the filter
@@ -584,6 +591,9 @@ effect in those two groups and fails one that does not.
 - **What is sent to a bus is sound or it is silence**: not-a-number, infinity
   and anything beyond `kBusLoudest` are zeroed in `feedBuses`, since the old
   DELAY and REVERB cannot look after themselves and would hold it for good.
+- **What reaches the master's slots is sound or silence too** (`renderChunk`, the same test as
+  `feedBuses`), and `ceiling` gives silence for not-a-number: one such sample from any track stayed in an
+  old DELAY or REVERB on the master for good (review 2026-11-23; `testNotANumberNeverStays`).
 - **A tail always ends** (owner, 2026-11-12). `kLongestTailSeconds` (450) is
   the promise: from the last sound a bus is sent to the bus at rest, at every
   setting of every effect a bus can hold, at 40 BPM. `effects_test`
@@ -1142,6 +1152,12 @@ effect in those two groups and fails one that does not.
 - **Every screen's `update()` re-reads held buttons from `input` each frame**
   and drops its own "held" flags when they are not held. Trusting the release
   event left A "stuck down" after a screen change.
+- **The joysticks are kept open as they come and go** (`app/joysticks.hpp`; a gamepad that dropped
+  out was never read again). A gamepad gone or come back lets go of every button (`Input::letGoOfAll`,
+  each let-go handed on). **After every event main.cpp asks `Input::pending`** until it says no: a hat
+  sends one event for two changes (a diagonal let go, one way straight to another), and RIGHT stayed held.
+  A sound card gone (`SDL_AUDIODEVICEREMOVED`) is opened again a second apart. `controls_test`
+  (`testAGamepadComesBack`, SDL's make-believe joystick). **The sound card's return is not tested.**
 - **Undo is a text snapshot of the song** (`songText`), one step per burst
   of edits, 20 deep. Anything that changes a pattern outside the grids calls
   `noteEdit()`. **It puts back the patterns and, since 2026-11-14 (owner),
@@ -1166,6 +1182,13 @@ effect in those two groups and fails one that does not.
   with `sendSong()` and keep the steps: a delete takes its track out of every
   step's text (`dropTrackText`), and another instrument is passed by (its kind
   differs). The delete itself is still not undone.
+- **The undo marks (`cellMark`, `soundMark`) are 64 bits, mixed eight bytes at a time** (`markMix`):
+  only ever compared with one made the same way, in memory. A byte at a time, the idle frame was 0.048 ms
+  on the desk; now 0.014 (`bench --app`, 2026-11-23).
+- **last.txt is written only when the song open is another** (`Session::rememberLast`): it was written,
+  two fsyncs, with every autosave. A song or rev opened, a rename and a new song's first save write it.
+- **Moving an effect a slot swaps the lanes in the song and sends the track's image once**
+  (`moveEffectSlot`): a command a step filled the queue on a busy track, and the song was sent again.
 - **The song's text is made a track at a time** (`SongTextCache`,
   `Session::textNow()`): a track whose text would be as it was when its text
   was made is not written again. **It is compared by what the text reads**
@@ -1319,6 +1342,9 @@ effect in those two groups and fails one that does not.
   glide's length go through both (`glideKind`, `chordPlayChecked`).
   `nextscene_test` hands a scene over with them beside the same notes written
   by commands, and beside the bars the piano roll sends.
+- **`sceneIn` holds each note as `SetNote` holds one** (a pitch over 127, a step past the bar, a velocity
+  or length that is not a number: silent; length to 255, nudge to half a step, ratchet to `kMaxRatchet`).
+  A pitch over 127 wrote past `offIn` and `keysHeld` (review 2026-11-23; `testAnImageHoldsItsNotes`).
 - **What plays while a scene moves goes with it, and nothing of a chord is
   worked out from a scene's number** (the join of chord effects and the scene
   move, 2026-11-13). `chordSeed` takes the bar of the CELL, not the bar of the
@@ -1435,8 +1461,8 @@ effect in those two groups and fails one that does not.
   and a help-card key are written in full and drawn short (`keyWords`); any
   other text on the screen is written `SEL` ("also SEL + L1 / R1"); a button's
   name goes through `buttonLabel`, never `buttonName` (that is the word in
-  controls.txt, which stays SELECT). The web pages and README keep the full
-  word. `ctest -R words` (`tests/words_test.sh`) reads the sources and fails
+  controls.txt, which stays SELECT). The web pages, README and the manual keep
+  the full word. `ctest -R words` (`tests/words_test.sh`) reads the sources and fails
   on a string that would show it spelled out; it plants its own faults at the
   end and must catch each (add a plant with a new rule).
 - **The lettering's size is a setting, and the program holds TWO sets of
@@ -1483,16 +1509,21 @@ effect in those two groups and fails one that does not.
     state with words in it gets a `holds(rig, "what")` there.
   - A still at a size: `--text-size xl`.
 - **The colours are a THEME** (owner, 2026-11-13; SET page, THEME: BROWN,
-  BLUE, GREEN, BLACK, PAPER, GREY; `kThemeTable` in `ui.hpp`; kept as
-  `theme N` in settings.txt, the numbers appended, no line reads BROWN, which
-  is the look as built to the number). `ui::kBg` ... `ui::kStop` are
+  DRACULA, NORD, GRUVBOX, TOKYO, MONOKAI dark, SOLARIZED, GITHUB light: the
+  owner, 2026-11-23, "more like common terminal or IDE themes"; they replaced
+  BLUE, GREEN, BLACK, PAPER and GREY and took their numbers; `kThemeTable` in
+  `ui.hpp`, `kDarkThemes` the first six; kept as `theme N` in settings.txt, no
+  line reads BROWN, which is the look as built to the number). Each new one is
+  its namesake's colours moved in lightness, hues kept, until it met
+  `theme_test`'s rules and stood apart from the others (a script, not by hand:
+  the rules are below). `ui::kBg` ... `ui::kStop` are
   references into `ui::gTheme`, which `App::draw` (and main.cpp, before the
   controls setup) sets from `Session::theme()` each frame. A theme changes
   colours only, never a size or a place.
   - **A new colour goes through the ten names (or `faded()` of one): never
     numbers of its own.** Each name is a JOB (`ui.hpp` says which), kept in
     every theme; pick by job, not by hue.
-  - **A new mark is checked on a light theme** (`--theme paper`). A light
+  - **A new mark is checked on a light theme** (`--theme solarized`; the tests' light theme is `kThemeSolarized`, PAPER's before). A light
     theme keeps the order of the surfaces (bg the deepest, then panel,
     panel2) with its line darker than them; text on a chip filled with an
     accent or with text is written in `kBg`; a wash is `faded(kBg, ...)`.
@@ -1517,7 +1548,7 @@ effect in those two groups and fails one that does not.
     and the play line's glow over anything are in it** (2026-11-17: the stills play the demo, so the
     glow lands where the clock puts it, and over a ghost hit it failed now and then); a new
     translucent thing that moves with the clock is added the same way. A still in a theme:
-    `--theme paper`.
+    `--theme solarized`.
 - **The SET page is five groups under headings, and shows as many rows as fit** (owner, 2026-11-17:
   "enough rows now"; `SettingsScreen::Row`, `groupOf`, `groupName`): SONG (TEMPO, CHORD PACK, KEY,
   SCALE, TRACK NAME, BOUNCE), PLAYING (CLICK, COUNT IN, MUTES, USB KEYBOARD), LOOK (TEXT SIZE, THEME, PIANO
@@ -1574,8 +1605,16 @@ effect in those two groups and fails one that does not.
   read from the right** (a name may hold spaces); the hostname (`apotheca.local`, `apotheca-2.local`)
   is said beside the address, never instead (`Session::transferName`: the WIFI PAGE row in the medium or
   small of LARGE, the list of songs on a line of its own with one row fewer). A still pretends it all
-  (`Session::pretendWifi`): `setup-network`, `-held`, `-keys`, `-forgetting`, `-long`, `-songs`. **Not
-  run on a handheld: the system side is not built yet.**
+  (`Session::pretendWifi`): `setup-network`, `-held`, `-keys`, `-forgetting`, `-long`, `-songs`. **The
+  system side is built** (2026-11-18, branch `firmware`: `/usr/sbin/apotheca-wifi` on wpa_supplicant,
+  udhcpc and avahi; `qemu-test.py` joins made-up radios). **Not run on a handheld.**
+- **FOLLOW: the drum grid, its slices and the roll show each bar as the playhead comes into it**
+  (owner, 2026-11-18; `app/follow_bar.hpp`, one rule for both grids, `tests/follow_test.cpp`): only
+  while the song plays the scene on screen; never while a button is held or the stick pushed, nor
+  `kFollowRestMs` (1.5 s) after, so a bar looked at by hand stays until the playhead next enters a bar.
+  The cursor keeps its step.
+- **SCALE's OFF reads CHROMATIC** (owner, 2026-11-18: "no key" was not seen as there; `scaleName`):
+  the number in songs is unchanged.
 - **The one colour on the screen that is not the theme's: a track's ring colour on its SONG head**
   (owner, 2026-11-17: "a little color identifier to the tracks"; a deliberate exception to "a colour
   goes through the ten names"). Only while LIGHT COLOUR is TRACK on a ring that is here and lit
@@ -1628,6 +1667,9 @@ effect in those two groups and fails one that does not.
   and lights only what a note plays; the line over it ends there (`Playhead::to`). Not a MOD
   target: no sampler setting is. `engine_test` (`testTheSampler`, `testTheSamplersEndInAnyBlocks`),
   `sample_test` (`testTheSamplersEnd`).
+- **A recording is 20 s at most** (owner, 2026-11-18: it was 10): `kMaxSampleSeconds` for a file read
+  (a longer one is cut there and faded) and `Recorder::kMaxSeconds` for RECORD; `sample_test` holds both
+  (15 s kept whole). **Catch is not tied to it**: the engine remembers `kCatchFrames`, ten seconds.
 - **Sample names from `wavNames` have no `.wav` ending.** The file may end
   `.wav` or `.WAV`: whatever opens or names one tries both (`readRecording`,
   `recordingThere`, `deleteSample`).
@@ -2293,8 +2335,8 @@ effect in those two groups and fails one that does not.
   `tests/acid_test.cpp`). `SynthKind::Acid` appended. Nobody has heard it, not run on the handheld.
   **Every figure is SELF** (no source was opened). The app: next block.
   - **One voice, the newest key wins**; letting it go never goes back to a key still held. `allNotesOff`
-    (Play, Stop, panic: `stopNotes` is the default) hands the note to ONE tail slot (3 ms fade, counted
-    in samples) and the voice is fresh: Play from the top is the same line (`testPlayFromTheTop`).
+    (Play, Stop, panic: `stopNotes` is the default) hands the note to a tail slot (3 ms fade, counted
+    in samples; a second slot when the first still fades, so a voice is never cut dead: review 2026-11-23) and the voice is fresh: Play from the top is the same line (`testPlayFromTheTop`).
   - **ACCENT is velocity 0.95 or over** (`kAccentAt`), **SLIDE is the note's GLIDE**, through
     `noteOnFrom` as the engine already calls it; nothing new on a note. **ACCENT 0 (setting or macro)
     is the plain path to the bit** (`accented()` is false there: `testAccentZero`).
@@ -2561,6 +2603,12 @@ effect in those two groups and fails one that does not.
     `saveNow`, `followLater` (next rule). Nothing is written over, capitals not counted; the folder
     must be there, as itself (no link); the whole name must fit `kSampleNameRoom`. After it the
     list's `original_` and `on_` follow, so B's tap is still "as it was".
+  - **Where the card will not rename, the copy runs on a thread of its own** (`Session::CarryJob`,
+    review 2026-11-23: a large recording held the screen for the whole copy). `moveSample` answers
+    `Copying` and changes nothing yet; `Session::update` (`finishCarry`) takes the copy's end and does
+    what a rename does, `carryResult()` says how it went, and the list says MOVING TO until then and
+    follows it after (`SamplePicker::moved`). One copy at a time: another carry meanwhile is `Busy`.
+    The Session's end lets a copy finish and follows it. `picker_test` `testCarryingTheLongWay`.
   - **Typing a name: A types, Y deletes the last letter, B keeps what is typed and leaves, START
     keeps it too** (owner, 2026-11-15: "I find myself pressing B to back out of the track naming"; it
     was B delete, Y or START keep). With nothing typed B leaves and changes nothing (the track's name
@@ -2679,9 +2727,9 @@ effect in those two groups and fails one that does not.
   folder. Stills `kit-preset`, `-held`, `-own`. **Nobody has heard the kits.**
 - **The owner's five of 2026-11-18** (`easy_test looks`). SONG's column word is REPEATS (`SongScreen::
   kRepeatsWord`, low in the heads' row, 10 above the first box; `kRepeatW` 38, it was 34, so the word
-  fits at LARGE: the columns start 4 further right). **A lane's volume in its name's box is `kPanel2`
-  with a `kDim` edge where it ends** (`kLevelEdgeW`): panel on bg was 1.08 to 1 in BLACK; the fill is
-  1.22 and the edge 8.5 against the bg, 7.0 against the fill (every theme: 5.1 or more on bg). The
+  fits at LARGE: the columns start 4 further right). **A lane's volume in its name's box is `kPanel2`,
+  no edge where it ends** (tried 2026-11-18, confusing): panel on bg was 1.08 to 1 in BLACK; the fill
+  is 1.22. The
   name's word starts at `kNameTextX`, 5 clear of the feel mark (it was 1), in the grid and the slices.
 - **Solo is a tap of X on a track** (a cell or its head; owner, 2026-11-15: "I don't like the hold L1
   for solo since Y for mute is just a one tap"). It was a tap of L1, then for a day L1 HELD 400 ms
@@ -2770,6 +2818,15 @@ effect in those two groups and fails one that does not.
   at the end too) giving way to it (`hintsEnd`). MENU still opens the help.
   `ui_test` (`testTheBarSaysAnUpdateWaits`) and `transfer_test` hold it;
   stills `update-ready`, `update-ready-drums`, `update-accepted`.
+- **`Transfer::stop` never waits on a browser or a SPEED TEST** (review 2026-11-23: it joined the
+  server's thread for minutes). It shuts the connection being answered (`serving_`, under
+  `servingMutex_`), kills the speed test's process group (`benchGroup_`; started by `posix_spawn` in a
+  group of its own, read with `poll`), and the drain after an answer is a second and 64 KB at most. Its
+  sockets are close-on-exec. **A song sent is checked by its first line only** (`isSongText`): parsing it
+  there read the app's preset lists under the app thread's feet. `transfer_test` `testStopNeverWaits`.
+- **The chord packs are read again only when a pack is sent or deleted** (`Transfer::chordsReceived`),
+  not for every file. **The WiFi page's address is asked of the system at most once a second**
+  (`Session::transferAddress`), and at once after the server starts or stops (another PIN).
 - **A song sent under the open song's name is refused** (409, "that song is
   open on the handheld", case not counted: a card may not tell them apart).
   The Session tells the server the name (`Transfer::setOpenSong`, from

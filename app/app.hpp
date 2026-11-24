@@ -51,6 +51,7 @@ public:
     void readouts(struct Readouts& out) const;
     // Read the battery from another folder (the stills and the tests have no battery of their own).
     void useBatteryFolder(const std::string& folder) { batteryRoot_ = folder; batteryReadAt_ = 0; }
+    void useBatteryLog(const std::string& path) { batteryLog_ = path; batteryLoggedAt_ = 0; } // its history, for a power cut's post-mortem (empty: none kept)
     // Read the program's own time from another file than /proc/self/stat (the tests: a made-up one).
     void useCpuFile(const std::string& path, double ticksPerSecond = 100.0, int cores = 4) { cpu_.usePath(path); cpu_.pretend(ticksPerSecond, cores); }
     // The help card's line: "SOUND 43%  CPU 37%" (WORST is measured, not shown: owner, 2026-11-17), the parts known ("": none yet). SOUND is
@@ -137,8 +138,11 @@ private:
     // ...and the copied bar: L1 then R1 on the way to all four is a copy (hold L1, R1), which a panic puts back.
     Session::BarClip clipBeforeShoulders_;
     unsigned copiesBeforeShoulders_ = 0;
+    std::unique_ptr<Session::SceneClip> sceneClipBeforeShoulders_;
+    unsigned sceneCopiesBeforeShoulders_ = 0;
     unsigned saidSeen_ = 0; // Session::saidCount() when its line was last taken
     void takeSessionSaid(); // what the Session asked to be said (a bar copied or pasted) into this box
+    void logBattery(Uint32 nowMs); // a line of it, when one is due (useBatteryLog)
     NoteScreen notes_;
     KitScreen kit_;
     FxScreen fx_;
@@ -150,6 +154,10 @@ private:
     int battery_ = -1;         // percent, or -1 if the device has none to read
     bool charging_ = false;
     Uint32 batteryReadAt_ = 0;
+    std::string batteryLog_; // the history's file (empty: none kept)
+    Uint32 batteryLoggedAt_ = 0;
+    int batteryLoggedPercent_ = -1;
+    bool batteryLoggedCharging_ = false;
     char undoSaid_[64] = "";
     int resyncsSeen_ = 0;
     Uint32 undoSaidUntil_ = 0;

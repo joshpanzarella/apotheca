@@ -44,6 +44,8 @@ public:
 
 private:
     static constexpr int kDeepest = 32;
+    static constexpr std::size_t kMostNodes = 65536; // past this many values it is no chord pack (a file of small ones must not eat the RAM)
+    std::size_t nodes_ = 0;
     void space() {
         while (at_ < s_.size() && (s_[at_] == ' ' || s_[at_] == '\n' || s_[at_] == '\r' || s_[at_] == '\t')) ++at_;
     }
@@ -73,7 +75,7 @@ private:
         return false;
     }
     bool value(Json& out, int depth) {
-        if (depth > kDeepest) return false;
+        if (depth > kDeepest || ++nodes_ > kMostNodes) return false;
         space();
         if (at_ >= s_.size()) return false;
         const char c = s_[at_];

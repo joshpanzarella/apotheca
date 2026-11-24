@@ -11,6 +11,7 @@
 
 #include "controls.hpp"
 #include "input.hpp"
+#include "joysticks.hpp"
 
 using namespace apotheca;
 
@@ -112,6 +113,7 @@ std::vector<ButtonEvent> feed(Input& input, const std::vector<SDL_Event>& events
     for (const SDL_Event& e : events) {
         ButtonEvent press;
         if (input.handle(e, press)) out.push_back(press);
+        while (input.pending(press)) out.push_back(press); // as main.cpp asks after every event
     }
     return out;
 }
@@ -134,11 +136,26 @@ void testLearningAndUsingTheHandheld() {
     CHECK(is(feed(input, {joyButton(7, true), joyButton(8, true), joyButton(10, true), joyButton(9, true), joyButton(11, true)}),
              {{Button::L1, true}, {Button::R1, true}, {Button::Start, true}, {Button::Select, true}, {Button::Menu, true}}));
     feed(input, {joyButton(7, false), joyButton(8, false), joyButton(10, false), joyButton(9, false), joyButton(11, false)});
-    // The D-pad: a hat. Moving from one way straight to another lets go of the first.
+    // The D-pad: a hat. Moving from one way straight to another lets go of the first, then presses
+    // the second, from the one event (a hat sends no second event for it).
     CHECK(is(feed(input, {hat(SDL_HAT_UP)}), {{Button::Up, true}}));
-    CHECK(is(feed(input, {hat(SDL_HAT_RIGHT)}), {{Button::Up, false}}));
-    CHECK(is(feed(input, {hat(SDL_HAT_RIGHT)}), {{Button::Right, true}}));
+    CHECK(is(feed(input, {hat(SDL_HAT_RIGHT)}), {{Button::Up, false}, {Button::Right, true}}));
+    CHECK(feed(input, {hat(SDL_HAT_RIGHT)}).empty());
     CHECK(is(feed(input, {hat(SDL_HAT_CENTERED)}), {{Button::Right, false}}));
+    // A diagonal: both pressed, and both let go when it comes back to the middle (RIGHT stayed held).
+    CHECK(is(feed(input, {hat(SDL_HAT_RIGHTUP)}), {{Button::Up, true}, {Button::Right, true}}));
+    CHECK(is(feed(input, {hat(SDL_HAT_CENTERED)}), {{Button::Up, false}, {Button::Right, false}}) && !input.held(Button::Right));
+    CHECK(is(feed(input, {hat(SDL_HAT_LEFTDOWN), hat(SDL_HAT_RIGHTUP)}),
+             {{Button::Down, true}, {Button::Left, true}, {Button::Down, false}, {Button::Left, false}, {Button::Up, true}, {Button::Right, true}}));
+    feed(input, {hat(SDL_HAT_CENTERED)});
+    // Every button let go at once (a gamepad gone): each that was held is said, the stick at rest.
+    feed(input, {joyButton(3, true), hat(SDL_HAT_LEFT), axis(0, 30000)});
+    CHECK(input.held(Button::A) && input.held(Button::Left) && input.stickX() > 0.5f);
+    ButtonEvent ups[static_cast<int>(Button::Count)];
+    int many = 0;
+    input.letGoOfAll(ups, many);
+    CHECK(many == 2 && !input.anyHeld() && input.stickX() == 0.f);
+    CHECK(feed(input, {hat(SDL_HAT_CENTERED)}).empty()); // (the hat is at rest too: nothing to let go again)
     CHECK(is(feed(input, {hat(SDL_HAT_DOWN), hat(SDL_HAT_CENTERED), hat(SDL_HAT_LEFT), hat(SDL_HAT_CENTERED)}),
              {{Button::Down, true}, {Button::Down, false}, {Button::Left, true}, {Button::Left, false}}));
     // The triggers: pressed past half-way, let go below a quarter, so a half press cannot chatter.
@@ -350,11 +367,62 @@ void testTheSetupDoesNotTakeAWrongAnswer() {
 
 } // namespace
 
+// A gamepad that goes and comes back is read again (review 2026-11-23: opened once at the start, a
+// gamepad that dropped out was never read again). SDL's own make-believe joystick, attached and taken
+// away: each arrival opened once (SDL says ADDED again for one already open), each going closed.
+static std::vector<Joysticks::Change> pump(Joysticks& sticks) {
+    std::vector<Joysticks::Change> seen;
+    SDL_PumpEvents();
+    SDL_Event e;
+    while (SDL_PollEvent(&e)) {
+        const Joysticks::Change c = sticks.handle(e);
+        if (c != Joysticks::Change::None) seen.push_back(c);
+    }
+    return seen;
+}
+void testAGamepadComesBack() {
+#if SDL_VERSION_ATLEAST(2, 0, 14)
+    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    if (SDL_Init(SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS) != 0) {
+        std::printf("  (no joysticks here: %s)\n", SDL_GetError());
+        return;
+    }
+    for (const bool raw : {true, false}) {
+        Joysticks sticks;
+        sticks.raw = raw;
+        pump(sticks);
+        const int index = SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER, 6, 15, 1);
+        CHECK(index >= 0);
+        std::vector<Joysticks::Change> seen = pump(sticks);
+        CHECK(seen.size() == 1 && seen[0] == Joysticks::Change::Added);
+        CHECK(raw ? sticks.opened.size() == 1 : sticks.pad != nullptr);
+        // SDL saying ADDED again for one that is open opens nothing.
+        SDL_Event again = {};
+        again.type = SDL_JOYDEVICEADDED;
+        again.jdevice.which = index;
+        CHECK(sticks.handle(again) == Joysticks::Change::None && (raw ? sticks.opened.size() == 1 : true));
+        CHECK(SDL_JoystickDetachVirtual(index) == 0);
+        seen = pump(sticks);
+        CHECK(seen.size() == 1 && seen[0] == Joysticks::Change::Removed);
+        CHECK(sticks.opened.empty() && sticks.pad == nullptr);
+        // Back again: read again.
+        const int back = SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER, 6, 15, 1);
+        seen = pump(sticks);
+        CHECK(seen.size() == 1 && seen[0] == Joysticks::Change::Added && (raw ? sticks.opened.size() == 1 : sticks.pad != nullptr));
+        sticks.closeAll();
+        SDL_JoystickDetachVirtual(back);
+        pump(sticks);
+    }
+    SDL_QuitSubSystem(SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS);
+#endif
+}
+
 int main(int, char**) {
     testLearningAndUsingTheHandheld();
     testATriggerWhoseRestSdlKnows();
     testTriggersNobodyToldUsAbout();
     testTheSetupDoesNotTakeAWrongAnswer();
+    testAGamepadComesBack();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

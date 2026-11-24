@@ -113,7 +113,7 @@ struct Acid::State {
     bool dirty = true;
     Eff eff;
     Edge edge;
-    Voice voice, tail;
+    Voice voice, tail, tail2; // tail2: a second allNotesOff while the tail still fades (review 2026-11-23: the voice was cut dead)
     long tunings = 0, clipped = 0, strikes = 0, ties = 0;
     int tuneTick = kTuneTick;
     double stepSeconds = 0.0; // the song's step (noteStep): the tie's window...
@@ -280,6 +280,7 @@ void Acid::prepare(float sampleRate) {
     s.sampleRate = sampleRate;
     s.voice = Voice();
     s.tail = Voice();
+    s.tail2 = Voice();
     s.refresh();
 }
 
@@ -366,9 +367,12 @@ void Acid::noteOff(int note) {
 
 void Acid::allNotesOff() {
     State& s = *state_;
-    if (!s.voice.asleep) {
-        s.tail = s.voice;
-        s.tail.fadeLeft = s.eff.tailSamples;
+    // A tail still ringing keeps ringing (swapping it mid-fade clicks); the voice fades in the second
+    // slot beside it. Both busy (three stops inside 3 ms): the voice is let go as before.
+    Voice* to = !s.voice.asleep ? (s.tail.asleep ? &s.tail : (s.tail2.asleep ? &s.tail2 : nullptr)) : nullptr;
+    if (to) {
+        *to = s.voice;
+        to->fadeLeft = s.eff.tailSamples;
     }
     s.voice = Voice();
 }
@@ -386,6 +390,10 @@ void Acid::render(float* left, float* right, int frames) {
             y += s.tick(s.tail) * (static_cast<float>(s.tail.fadeLeft) / static_cast<float>(s.eff.tailSamples));
             if (--s.tail.fadeLeft <= 0) s.tail = Voice();
         }
+        if (!s.tail2.asleep) {
+            y += s.tick(s.tail2) * (static_cast<float>(s.tail2.fadeLeft) / static_cast<float>(s.eff.tailSamples));
+            if (--s.tail2.fadeLeft <= 0) s.tail2 = Voice();
+        }
         y = s.clip(y);
         left[i] = y;
         right[i] = y;
@@ -394,7 +402,7 @@ void Acid::render(float* left, float* right, int frames) {
 
 void Acid::setTuneTickForTests(int samples) { state_->tuneTick = samples < 1 ? 1 : samples; }
 bool Acid::awake() const { return !state_->voice.asleep; }
-bool Acid::tailAwake() const { return !state_->tail.asleep; }
+bool Acid::tailAwake() const { return !state_->tail.asleep || !state_->tail2.asleep; }
 long Acid::tunings() const { return state_->tunings; }
 long Acid::samplesClipped() const { return state_->clipped; }
 int Acid::key() const { return state_->voice.asleep ? -1 : state_->voice.key; }
@@ -418,7 +426,7 @@ float Acid::smallestState() const {
         const float a = std::fabs(x);
         if (a > 0.f && (least == 0.f || a < least)) least = a;
     };
-    for (const Voice* v : {&state_->voice, &state_->tail}) {
+    for (const Voice* v : {&state_->voice, &state_->tail, &state_->tail2}) {
         for (float x : v->f.s) look(x);
         for (float x : v->f.z) look(x);
         look(v->f.h), look(v->env), look(v->sweep), look(v->amp), look(v->sag);

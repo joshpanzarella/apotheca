@@ -294,7 +294,7 @@ void testTheSetPage() {
         // Not ours (the stock firmware): the page as it was, the two rows passed by.
         Rig rig;
         S& setup = rig.setup();
-        CHECK(!setup.here(S::kBrightness) && !setup.here(S::kLight) && setup.places() == 18);
+        CHECK(!setup.here(S::kBrightness) && !setup.here(S::kLight) && !setup.here(S::kRingLevel) && setup.places() == 18);
         setup.goTo(S::kVolume);
         rig.tap(DOWN);
         CHECK(setup.cursorRow() == S::kStick);
@@ -309,7 +309,7 @@ void testTheSetPage() {
     Rig rig;
     rig.session().useLights(sys.both());
     S& setup = rig.setup();
-    CHECK(setup.here(S::kBrightness) && setup.here(S::kLight) && setup.here(S::kLightColour) && setup.places() == 21);
+    CHECK(setup.here(S::kBrightness) && setup.here(S::kLight) && setup.here(S::kLightColour) && setup.here(S::kRingLevel) && setup.places() == 22);
     // After VOLUME, among the handheld's rows.
     setup.goTo(S::kVolume);
     rig.tap(DOWN);
@@ -343,6 +343,17 @@ void testTheSetPage() {
     CHECK(rig.session().lightColour() == kLightRainbow);
     rig.tap(LEFT, kLightColours + 2);
     CHECK(rig.session().lightColour() == kLightTheme);
+    // RING LEVEL: the ring's own brightness, in fives like BRIGHTNESS, 70 until it is turned.
+    rig.tap(DOWN);
+    CHECK(setup.cursorRow() == S::kRingLevel && rig.session().ringLevel() == kBrightUsual);
+    rig.tap(RIGHT);
+    CHECK(rig.session().ringLevel() == 75);
+    rig.tap(LEFT, 30);
+    CHECK(rig.session().ringLevel() == kBrightLeast);
+    rig.tap(RIGHT, 30);
+    CHECK(rig.session().ringLevel() == 100);
+    rig.tap(LEFT, 6);
+    CHECK(rig.session().ringLevel() == 70);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kStick);
     // Eighteen rows (CLICK and COUNT IN since easywins batch 2, LIGHT COLOUR): the page shows twelve, one place at a time.
@@ -352,7 +363,7 @@ void testTheSetPage() {
         CHECK(setup.placeOf(setup.cursorRow()) == place && setup.shown(setup.cursorRow()));
         CHECK(setup.firstShown() == 0 || !setup.fits(place, setup.firstShown() - 1)); // moved by as little as shows the cursor
     }
-    // The last row in view with HANDHELD's five and SETUP's three, and no room left empty under it.
+    // The last row in view with HANDHELD's six and SETUP's three, and no room left empty under it.
     CHECK(setup.cursorRow() == S::kControls && setup.shown(S::kVolume) && setup.shown(S::kLightColour) && !setup.fits(setup.places() - 1, setup.firstShown() - 1));
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kControls);
@@ -380,8 +391,16 @@ void testKept() {
         rig.session().useProgramFolder(folder);
         rig.session().loadSettings();
         CHECK(rig.session().brightness() == kBrightUsual && rig.session().stickLight() == kRingOn); // (nothing kept: as built)
+        CHECK(rig.session().ringLevel() == kBrightUsual);
         rig.session().setBrightness(43); // (in fives)
         CHECK(rig.session().brightness() == 40);
+        rig.session().setRingLevel(43); // (in fives, as BRIGHTNESS)
+        CHECK(rig.session().ringLevel() == 40);
+        rig.session().setRingLevel(-5);
+        CHECK(rig.session().ringLevel() == kBrightLeast);
+        rig.session().setRingLevel(105);
+        CHECK(rig.session().ringLevel() == 100);
+        rig.session().setRingLevel(40);
         rig.session().setStickLight(kRingBeat);
         rig.session().setStickLight(kRingModes + 3);
         CHECK(rig.session().stickLight() == kRingSteps);
@@ -391,28 +410,29 @@ void testKept() {
         rig.session().setBrightness(40);
         const std::string text = got(folder + "/settings.txt");
         CHECK(text.find("\nbrightness 40\n") != std::string::npos && text.find("\nlight 2\n") != std::string::npos);
+        CHECK(text.find("\nringlevel 40\n") != std::string::npos);
         CHECK(text.find("theme ") < text.find("brightness ") && text.find("brightness ") < text.find("light ")); // (appended)
     }
     {
         Rig rig;
         rig.session().useProgramFolder(folder);
         rig.session().loadSettings();
-        CHECK(rig.session().brightness() == 40 && rig.session().stickLight() == kRingBeat);
+        CHECK(rig.session().brightness() == 40 && rig.session().stickLight() == kRingBeat && rig.session().ringLevel() == 40);
     }
     // Numbers out of range are not taken.
-    put(folder + "/settings.txt", "brightness 5\nlight 4\n");
+    put(folder + "/settings.txt", "brightness 5\nlight 4\nringlevel 5\n");
     {
         Rig rig;
         rig.session().useProgramFolder(folder);
         rig.session().loadSettings();
-        CHECK(rig.session().brightness() == kBrightUsual && rig.session().stickLight() == kRingOn);
+        CHECK(rig.session().brightness() == kBrightUsual && rig.session().stickLight() == kRingOn && rig.session().ringLevel() == kBrightUsual);
     }
-    put(folder + "/settings.txt", "brightness 105\nlight -1\n");
+    put(folder + "/settings.txt", "brightness 105\nlight -1\nringlevel 105\n");
     {
         Rig rig;
         rig.session().useProgramFolder(folder);
         rig.session().loadSettings();
-        CHECK(rig.session().brightness() == kBrightUsual && rig.session().stickLight() == kRingOn);
+        CHECK(rig.session().brightness() == kBrightUsual && rig.session().stickLight() == kRingOn && rig.session().ringLevel() == kBrightUsual);
     }
     put(folder + "/settings.txt", "brightness 10\nlight 0\n");
     {
@@ -421,6 +441,20 @@ void testKept() {
         rig.session().loadSettings();
         CHECK(rig.session().brightness() == 10 && rig.session().stickLight() == kRingOff);
     }
+}
+
+// ---- RING LEVEL: the ring's own brightness ----------------------------------------------------------
+void testRingLevel() {
+    Rig rig;
+    Session& session = rig.session();
+    // As built, 70, as the screen: the ring's level byte follows it, not BRIGHTNESS.
+    CHECK(session.ringLevel() == kBrightUsual && session.ringNow().level == ringLevelFor(kBrightUsual));
+    session.setBrightness(100);
+    CHECK(session.ringNow().level == ringLevelFor(kBrightUsual));
+    session.setRingLevel(10);
+    CHECK(session.ringNow().level == ringLevelFor(10));
+    session.setRingLevel(100);
+    CHECK(session.ringNow().level == 255);
 }
 
 // ---- MENU + a volume key -----------------------------------------------------------------------------
@@ -478,11 +512,11 @@ void testTheRingFollowsTheSong() {
     Rig rig;
     rig.session().useLights(sys.both());
     rig.session().setStickLight(kRingSteps);
-    rig.session().setTheme(kThemePaper);
+    rig.session().setTheme(kThemeGruvbox);
     rig.frames(2);
-    // (LIGHT COLOUR at THEME: PAPER's ring colour is its amber, and beside amber a bar's first step is white.)
-    const Rgb teal = ringThemeColour(kThemePaper), brass = lightColourOf(kLightWhite), dim = dimmed(teal, kRingDim);
-    CHECK(teal == rgb(255, 130, 40) && ringFirstFor(teal) == brass);
+    // (LIGHT COLOUR at THEME: GRUVBOX's ring colour is its orange, and beside orange a bar's first step is white.)
+    const Rgb teal = ringThemeColour(kThemeGruvbox), brass = lightColourOf(kLightWhite), dim = dimmed(teal, kRingDim);
+    CHECK(teal == rgb(255, 110, 20) && ringFirstFor(teal) == brass);
     std::vector<unsigned char> last = sys.last();
     CHECK(last.size() == 51);
     for (int i = 0; i < kRingLeds; ++i) CHECK(last[static_cast<std::size_t>(2 + 3 * i)] == dim.r && last[static_cast<std::size_t>(3 + 3 * i)] == dim.g);
@@ -572,7 +606,7 @@ void testScenesAndColours() {
     const Rgb white = lightColourOf(kLightWhite), brassSet = lightColourOf(kLightBrass);
     for (int which : {kLightBrass, kLightOrange, kLightYellow}) CHECK(ringFirstFor(lightColourOf(which)) == white);
     for (int which : {kLightTeal, kLightPurple, kLightRed, kLightGreen, kLightBlue, kLightPink, kLightWhite}) CHECK(ringFirstFor(lightColourOf(which)) == brassSet);
-    CHECK(ringFirstFor(ringThemeColour(kThemeBrown)) == white && ringFirstFor(ringThemeColour(kThemeBlue)) == brassSet && ringFirstFor(ringThemeColour(kThemeBlack)) == brassSet);
+    CHECK(ringFirstFor(ringThemeColour(kThemeBrown)) == white && ringFirstFor(ringThemeColour(kThemeDracula)) == brassSet && ringFirstFor(ringThemeColour(kThemeMonokai)) == brassSet);
     // ON in RAINBOW: every LED its own hue; dim ones dimmed each by its own.
     ringColours(kLightRainbow, teal, 0, -1, c);
     RingPlace stopped;
@@ -674,7 +708,7 @@ void testTrackColours() {
             CHECK(n == inBar);
             return n;
         };
-        for (int theme : {static_cast<int>(kThemeBrown), static_cast<int>(kThemePaper)}) {
+        for (int theme : {static_cast<int>(kThemeBrown), static_cast<int>(kThemeSolarized)}) {
             session.setTheme(theme);
             session.setStickLight(kRingOn);
             session.setLightColour(kLightTrack);
@@ -726,7 +760,7 @@ int main(int argc, char** argv) {
     };
     const Test tests[] = {
         {"testTheRules", testTheRules}, {"testFromTheEnvironment", testFromTheEnvironment}, {"testTheFiles", testTheFiles},
-        {"testTheSetPage", testTheSetPage}, {"testKept", testKept}, {"testTheVolumeKeys", testTheVolumeKeys},
+        {"testTheSetPage", testTheSetPage}, {"testKept", testKept}, {"testRingLevel", testRingLevel}, {"testTheVolumeKeys", testTheVolumeKeys},
         {"testTheRingFollowsTheSong", testTheRingFollowsTheSong}, {"testScenesAndColours", testScenesAndColours}, {"testTrackColours", testTrackColours},
     };
     for (const Test& test : tests) {

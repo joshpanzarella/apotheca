@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -13,6 +14,8 @@
 #include "apotheca/slide.hpp"
 #include "apotheca/envelope.hpp"
 #include "apotheca/jx3p.hpp"
+#include "apotheca/morph_rule.hpp"
+#include "apotheca/phazed.hpp"
 #include "apotheca/sampler.hpp"
 #include "apotheca/rate_converter.hpp"
 
@@ -1342,6 +1345,30 @@ static void testARecordingOnALane() {
     CHECK(engine->setLaneSample(0, 5, twoHalves(400, 0.2f, 0.2f)));
 }
 
+static void testStopByHand() {
+    // A stop by hand (START: Stop with b = 1) fades sounding samples fast: a drum lane's long
+    // recording and a sampler's note go quiet within milliseconds. A stop on its own (a bounce,
+    // the song's end: b = 0) leaves them ringing, as before.
+    const auto afterStop = [](bool byHand) {
+        Engine engine;
+        CHECK(engine.setLaneSample(0, KICK, steadySample(2 * 48000, 0.5f)));
+        engine.send(step(KICK, 0, 1.f));
+        CHECK(engine.addSynthTrack(1, SynthKind::Sampler));
+        CHECK(engine.setTrackSample(1, steadySample(2 * 48000, 0.5f)));
+        engine.send(make(Command::Play));
+        engine.send(make(Command::NoteOn, 1, 60, 0, 0.8f));
+        CHECK(peakOf(renderFrames(engine, 2000)) > 0.1f); // both sounding
+        Command stop = make(Command::Stop);
+        if (byHand) stop.b = 1;
+        engine.send(stop);
+        return renderFrames(engine, 48000);
+    };
+    const std::vector<float> hand = afterStop(true);
+    CHECK(peakOf(std::vector<float>(hand.begin() + 2 * 2000, hand.end())) == 0.f); // faded in 3 ms, not played out
+    const std::vector<float> alone = afterStop(false);
+    CHECK(peakOf(alone) > 0.1f); // still ringing a second later
+}
+
 static void testWhereAHitStarts() {
     std::unique_ptr<Engine> engine(new Engine);
     CHECK(engine->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.4f)));
@@ -1714,6 +1741,94 @@ static void testStepEffectCut() {
 
 // A track taken away while it sounds fades over 5 ms (its instrument and its effects' tails), no
 // click; then it is gone. Beside a second engine where it stays, the sound is the same times the fade.
+// A track taken away while the song plays keeps the step clock where it was (review 2026-11-23: the
+// fade's end cut the chunk after the clock had been moved on by the whole chunk, so every step after
+// came up to 63 samples early). A drum hit on every step of track 0 and a synth sounding on track 1,
+// taken away mid-step: once its fade is over, the sound is the drums alone, to the sample, as an
+// engine that never had the synth plays them.
+// A sample that is not a number never reaches the sound card, and does not stay in the master's
+// effects (review 2026-11-23: one from any track stayed in an old REVERB on the master for good, and
+// the song was silent, or noise, until the effect was changed). A drum lane whose recording holds a
+// not-a-number is hit; then a plain drum: heard, and every sample out is a number.
+static void testNotANumberNeverStays() {
+    std::unique_ptr<Engine> e(new Engine);
+    e->setMasterEffect(0, makeEffect(EffectKind::Reverb, 48000.f, 120.f));
+    std::unique_ptr<SampleData> bad(new SampleData);
+    bad->data.assign(1000, 0.1f);
+    bad->data[10] = std::numeric_limits<float>::quiet_NaN();
+    CHECK(e->setLaneSample(0, 0, std::move(bad)));
+    CHECK(e->setLaneSample(0, 1, click()));
+    renderFrames(*e, 1000);
+    e->send(hitWith(0, 0, false, 0)); // lane 0: the not-a-number
+    std::vector<float> out = renderFrames(*e, 4800);
+    Command plain = hitWith(0, 0, false, 0);
+    plain.a = 1; // lane 1: the click
+    e->send(plain);
+    const std::vector<float> after = renderFrames(*e, 4800);
+    out.insert(out.end(), after.begin(), after.end());
+    bool numbers = true;
+    for (float v : out) numbers = numbers && std::isfinite(v);
+    CHECK(numbers);
+    float heard = 0.f;
+    for (float v : after) heard = std::max(heard, std::fabs(v));
+    if (!(heard > 0.01f)) std::printf("  after a not-a-number the click is heard at %g\n", heard);
+    CHECK(heard > 0.01f);
+}
+
+// A track image's notes are held as SetNote holds a note (review 2026-11-23: a pitch over 127 there
+// wrote past a track's `offIn` and `keysHeld`). Each bad note is silent; a good one beside them plays.
+static void testAnImageHoldsItsNotes() {
+    for (int good = 0; good <= 1; ++good) {
+        std::unique_ptr<Engine> e(new Engine);
+        CHECK(e->addSynthTrack(1, SynthKind::Phazed));
+        std::unique_ptr<TrackImage> image(new TrackImage);
+        const auto put = [&](int slot, int step, int pitch, float length, float velocity) {
+            TrackImage::Note& n = image->notes[0][slot];
+            n.step = static_cast<std::uint8_t>(step), n.pitch = static_cast<std::uint8_t>(pitch), n.length = length, n.velocity = velocity;
+        };
+        put(0, 0, 200, 4.f, 0.8f);                                       // a pitch no key has
+        put(1, 40, 60, 4.f, 0.8f);                                       // a step past the bar
+        put(2, 0, 60, 4.f, std::numeric_limits<float>::quiet_NaN());     // a velocity that is not a number
+        put(3, 0, 60, std::numeric_limits<float>::infinity(), 0.8f);     // a length without end
+        if (good) put(4, 0, 57, 4.f, 0.8f);
+        CHECK(e->setTrackImage(1, std::move(image)));
+        e->send(make(Command::Play, 0, 0, 1));
+        const std::vector<float> out = renderFrames(*e, 4 * kStep);
+        float most = 0.f;
+        bool numbers = true;
+        for (float v : out) numbers = numbers && std::isfinite(v), most = std::max(most, std::fabs(v));
+        CHECK(numbers);
+        if (good) CHECK(most > 0.01f);
+        else {
+            if (most != 0.f) std::printf("  bad notes in an image sounded: %g\n", most);
+            CHECK(most == 0.f);
+        }
+    }
+}
+
+static void testATrackTakenAwayKeepsTheClock() {
+    std::unique_ptr<Engine> a(new Engine), b(new Engine);
+    for (Engine* e : {a.get(), b.get()}) {
+        CHECK(e->setLaneSample(0, 0, click()));
+        for (int i = 0; i < 16; ++i) e->send(step(0, i, 1.f));
+    }
+    CHECK(a->addSynthTrack(1, SynthKind::Phazed));
+    a->send(make(Command::NoteOn, 1, 57, 0, 0.8f));
+    renderFrames(*a, 3000);
+    renderFrames(*b, 3000);
+    for (Engine* e : {a.get(), b.get()}) e->send(make(Command::Play));
+    std::vector<float> one = renderFrames(*a, 2 * kStep + 1000), two = renderFrames(*b, 2 * kStep + 1000);
+    CHECK(a->removeTrack(1)); // mid-step, the synth still sounding: it fades for 240 samples
+    const std::vector<float> gone = renderFrames(*a, 4 * kStep), alone = renderFrames(*b, 4 * kStep);
+    int off = 0;
+    for (std::size_t i = 2 * 300; i < gone.size(); ++i) off += std::fabs(gone[i] - alone[i]) > 1e-6f;
+    if (off) std::printf("  %d samples off after the fade\n", off);
+    CHECK(off == 0);
+    float hits = 0.f;
+    for (float v : alone) hits = std::max(hits, std::fabs(v));
+    CHECK(hits > 0.1f); // (the drums were playing)
+}
+
 static void testATrackTakenAwayFades() {
     for (int kind = 0; kind < 2; ++kind) {
         const int t = kind == 0 ? 1 : 0;
@@ -2159,7 +2274,9 @@ static void testANoteGlides() {
     s.start(57, 69, 0.1f, 48000.f);
     CHECK(s.take(0) == -12.f && s.take(2400) == -12.f && std::fabs(s.take(0) + 6.f) < 1e-3f);
     s.take(2400);
-    CHECK(s.take(100) == 0.f && s.take(100) == 0.f);
+    // (Landed, to a millionth of a semitone: where a multiply and an add are fused (ARM), 2400 steps of
+    // the rate fall half a millionth short, and the slide lands on the block after. Never heard.)
+    CHECK(std::fabs(s.take(100)) < 1e-6f && s.take(100) == 0.f);
     s.start(81, 69, 0.1f, 48000.f);
     s.take(1200);
     CHECK(std::fabs(s.take(0) - 9.f) < 1e-3f);
@@ -2320,6 +2437,31 @@ static void testPanic() {
     engine->send(make(Command::Panic, 0, 0));
     renderFrames(*engine, 4 * 48000);
     CHECK(!engine->silenced());
+}
+
+// The bar caught says how many steps it had (review 2026-11-23: CATCH fitted every bar to 16, so a
+// bar of 3/4 played a third slow): 16 in 4/4, 12 in a scene of 12 steps a bar, 16 for a bar's worth.
+static void testTheCatchSaysItsSteps() {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.4f)));
+    engine->send(step(0, 0, 1.f));
+    int steps = 0;
+    renderFrames(*engine, 5000);
+    engine->lastBar(&steps);
+    CHECK(steps == 16);
+    Command meter = make(Command::SetSceneMeter, 0, 12);
+    meter.scene = 0;
+    engine->send(meter);
+    engine->send(make(Command::Play, 0, 0, 1));
+    renderFrames(*engine, 12 * kStep + 5 * kStep);
+    const std::vector<float> bar = engine->lastBar(&steps);
+    CHECK(steps == 12 && bar.size() == 12u * kStep);
+    engine->send(make(Command::Stop));
+    renderFrames(*engine, 1000);
+    engine->send(trigger(0, 0.5f)); // played by hand: a bar's worth up to now, 16 steps of it
+    renderFrames(*engine, 3000);
+    engine->lastBar(&steps);
+    CHECK(steps == 16);
 }
 
 static void testCatchingTheLastBar() {
@@ -3324,6 +3466,33 @@ static void testTheSamplersEndInAnyBlocks() {
     }
 }
 
+// A sampler's glide moves a sample at a time (review 2026-11-23: worked out once a block, it moved in
+// steps, and the sound hung on how it was cut into blocks: a bounce was not live play). Up an octave
+// and down a fifth, in blocks of 1 to 333: the same to the bit.
+static void testTheSamplersGlideInAnyBlocks() {
+    std::vector<float> data(96000);
+    for (int i = 0; i < 96000; ++i) data[static_cast<std::size_t>(i)] = static_cast<float>(i) / 96000.f; // its value: where it is read
+    for (const int from : {48, 67}) {
+        std::vector<float> first;
+        for (int block : {1, 7, 64, 256, 333}) {
+            std::unique_ptr<Sampler> s(new Sampler);
+            s->prepare(48000.f);
+            s->setSample(data.data(), 96000);
+            s->setSetting(sampler::Attack, 0);
+            s->noteOnFrom(60, 1.f, from, 0.25f);
+            std::vector<float> out, left(static_cast<std::size_t>(block)), right(static_cast<std::size_t>(block));
+            for (int done = 0; done < 24000; done += block) {
+                s->render(left.data(), right.data(), block);
+                out.insert(out.end(), left.begin(), left.end());
+            }
+            out.resize(24000);
+            if (first.empty()) first = out;
+            if (out != first) std::printf("  a glide from %d in blocks of %d is not as in blocks of 1\n", from, block);
+            CHECK(out == first);
+        }
+    }
+}
+
 static void testTheSamplerTakesTheOldest() {
     Sampler s;
     s.prepare(48000.f);
@@ -3448,6 +3617,154 @@ static void testScenesHaveStoresWhenWritten() {
     CHECK(engine->trashHeld() == 0 && engine->trashLost() == 0 && Engine::blankStillBlank());
 }
 
+// trackHeard outside the tracks: false, not a read past the end (audit #4).
+static void testTrackHeardOutOfRange() {
+    Engine engine;
+    CHECK(!engine.trackHeard(-1));
+    CHECK(!engine.trackHeard(kNumTracks));
+    CHECK(engine.trackHeard(0)); // a real track: its own value (heard, to begin with)
+}
+
+// A second synth for a track that already has one goes nowhere: the old one is
+// kept, and the new one is binned (audit #47: it used to leak).
+static void testSecondSynthInstallIsDropped() {
+    Engine engine;
+    CHECK(engine.addSynthTrack(1, SynthKind::Phazed));
+    renderFrames(engine, 64);
+    const Instrument* first = engine.synthForTests(1);
+    CHECK(first != nullptr);
+    Command c = make(Command::InstallSynth, 1);
+    c.pointer = new Sampler;
+    engine.send(c);
+    renderFrames(engine, 64);
+    CHECK(engine.synthForTests(1) == first);
+    Command nowhere = make(Command::InstallSynth, kNumTracks);
+    nowhere.pointer = new Sampler;
+    engine.send(nowhere);
+    renderFrames(engine, 64); // no track either: binned, not leaked
+    engine.collectGarbage();
+}
+
+// A macro set to NaN is dropped: the knob stays where it was (audit #28).
+static void testNaNMacroIsDropped() {
+    Engine engine;
+    CHECK(engine.addSynthTrack(1, SynthKind::Phazed));
+    engine.send(make(Command::SetMacro, 1, 0, 0, 0.5f));
+    renderFrames(engine, 64);
+    CHECK(engine.laneCentre(1, 0) == 0.5f);
+    engine.send(make(Command::SetMacro, 1, 0, 0, std::nanf("")));
+    renderFrames(engine, 64);
+    CHECK(engine.laneCentre(1, 0) == 0.5f);
+}
+
+// An effect's setting set to NaN is dropped: the note goes on through the
+// filter as it was, finite and loud (audit #28).
+static void testNaNEffectParamIsDropped() {
+    Engine engine;
+    CHECK(engine.addSynthTrack(1, SynthKind::Fm6));
+    CHECK(engine.setEffect(1, 0, EffectKind::Filter));
+    engine.send(effectParam(1, 0, 0, 0.5f)); // cutoff: mid
+    engine.send(make(Command::NoteOn, 1, 45, 0, 0.8f));
+    renderFrames(engine, 4800);
+    engine.send(effectParam(1, 0, 0, std::nanf("")));
+    const std::vector<float> out = renderFrames(engine, 4800);
+    bool finite = true;
+    for (float s : out) finite = finite && std::isfinite(s);
+    CHECK(finite);
+    CHECK(peakOf(out) > 0.02f);
+}
+
+// A trigger starting at or past the sample's end plays nothing AND cuts
+// nothing: the lane's ringing voice is left alone (audit #26).
+static void testPastEndTriggerLeavesTheVoiceAlone() {
+    Engine engine;
+    CHECK(engine.setLaneSample(0, KICK, steadySample(4800, 0.5f)));
+    renderFrames(engine, 64);
+    engine.send(trigger(KICK));
+    const std::vector<float> before = renderFrames(engine, 100); // ringing
+    const float level = before[2 * 99];
+    CHECK(level > 0.1f);
+    Command past = trigger(KICK);
+    past.b = 10000; // start 1.0: at the end
+    engine.send(past);
+    const std::vector<float> out = renderFrames(engine, 200);
+    for (std::size_t i = 0; i < out.size(); i += 2) CHECK(std::fabs(out[i] - level) < 0.01f);
+}
+
+// MORPH's WIDTH reads at a key's strike, with TABLE A, TABLE B and UNISON
+// (audit #27: a switch mid-note would step the wave).
+static void testWidthReadsAtStrike() {
+    CHECK(morph::readAtStrike(morph::TableA));
+    CHECK(morph::readAtStrike(morph::TableB));
+    CHECK(morph::readAtStrike(morph::Unison));
+    CHECK(morph::readAtStrike(morph::Width));
+    CHECK(!morph::readAtStrike(morph::Level));
+}
+
+// Notes and hits played by hand wait out a track's fade, as sent commands do:
+// the kick sounds after the 5 ms, not at once, and is not lost (audit #29).
+static void testLiveWaitsForAFade() {
+    Engine engine;
+    CHECK(engine.addDrumTrack(1));
+    renderFrames(engine, 64);
+    engine.send(trigger(RIM, 0.01f)); // track 0: ringing, but barely
+    renderFrames(engine, 64);
+    CHECK(engine.removeTrack(0)); // sounding: fades first
+    Command kick = trigger(KICK, 1.f, 1);
+    CHECK(engine.sendLive(kick));
+    int onset = -1;
+    for (int b = 0; b < 10; ++b) {
+        if (peakOf(renderFrames(engine, 64)) > 0.3f) {
+            onset = b * 64;
+            break;
+        }
+    }
+    CHECK(onset >= 128);
+    CHECK(onset >= 0);
+}
+
+// A lane's waiting slots are three: the fourth ratchet chain in one block is
+// dropped, and counted (audit #31).
+static void testHitsLostCountsFullLanes() {
+    Engine engine;
+    CHECK(engine.hitsLost() == 0);
+    for (int k = 0; k < 4; ++k) {
+        Command c = trigger(KICK);
+        c.bar = 4; // a ratchet of four: three pieces wait
+        engine.send(c);
+    }
+    renderFrames(engine, 64); // too short for any piece to fire
+    CHECK(engine.hitsLost() == 1);
+}
+
+// prepare() with 0, a negative rate or NaN falls back to 48 kHz: the same
+// sound, to the sample, as preparing with it (audit #49).
+static void testBadPrepareFallsBack() {
+    const std::vector<float> wav(4800, 0.5f);
+    for (float bad : {0.f, -1.f, std::nanf("")}) {
+        Sampler weird, usual;
+        weird.prepare(bad);
+        usual.prepare(48000.f);
+        weird.setSample(wav.data(), static_cast<int>(wav.size()));
+        usual.setSample(wav.data(), static_cast<int>(wav.size()));
+        weird.noteOn(60, 0.8f);
+        usual.noteOn(60, 0.8f);
+        std::vector<float> wl(256), wr(256), ul(256), ur(256);
+        weird.render(wl.data(), wr.data(), 256);
+        usual.render(ul.data(), ur.data(), 256);
+        CHECK(wl == ul && wr == ur);
+        Phazed odd, even;
+        odd.prepare(bad);
+        even.prepare(48000.f);
+        odd.noteOn(60, 0.8f);
+        even.noteOn(60, 0.8f);
+        odd.render(wl.data(), wr.data(), 256);
+        even.render(ul.data(), ur.data(), 256);
+        CHECK(wl == ul && wr == ur);
+        for (float s : wl) CHECK(std::isfinite(s));
+    }
+}
+
 int main() {
     testScenesHaveStoresWhenWritten();
     testAPresetPutsTheMacrosRestBack();
@@ -3455,10 +3772,12 @@ int main() {
     testANoteNudgedOffItsStep();
     testTheSampler();
     testTheSamplersEndInAnyBlocks();
+    testTheSamplersGlideInAnyBlocks();
     testTheSamplerTakesTheOldest();
     testEffectsOneByOne();
     testEffectsInTheEngine();
     testCatchingTheLastBar();
+    testTheCatchSaysItsSteps();
     testPanic();
     testANoteEndsPartWayThroughAStep();
     testARecordingOnALane();
@@ -3470,6 +3789,9 @@ int main() {
     testStepEffectCut();
     testStepEffectRatchet();
     testATrackTakenAwayFades();
+    testATrackTakenAwayKeepsTheClock();
+    testNotANumberNeverStays();
+    testAnImageHoldsItsNotes();
     testStepEffectsTravel();
     testANoteRatchets();
     testRatchetsHoldUp();
@@ -3496,6 +3818,7 @@ int main() {
     testPatternLoopsAfterSixteenSteps();
     testStepVelocityAndClearing();
     testStopAndRestart();
+    testStopByHand();
     testTempo();
     testTrackLevel();
     testTrackMasterSlotsRunInSeries();
@@ -3507,6 +3830,15 @@ int main() {
     testOpeningASongDropsEveryOldInstrument();
     testTrashThatDoesNotFitWaits();
     testEveryLostCommandIsCounted();
+    testTrackHeardOutOfRange();
+    testSecondSynthInstallIsDropped();
+    testNaNMacroIsDropped();
+    testNaNEffectParamIsDropped();
+    testPastEndTriggerLeavesTheVoiceAlone();
+    testWidthReadsAtStrike();
+    testLiveWaitsForAFade();
+    testHitsLostCountsFullLanes();
+    testBadPrepareFallsBack();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

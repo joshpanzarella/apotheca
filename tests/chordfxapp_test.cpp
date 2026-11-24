@@ -807,14 +807,14 @@ void testScenes() {
         if (k < un) CHECK(heard[k].frame == 2 * kStep);
         else CHECK(heard[k].frame == kBar + 2 * kStep + static_cast<long>(k - un) * kTight && heard[k].pitch == keys[2 * un - 1 - k]);
     }
-    // A cell copied on the SONG screen (hold R1 and move) takes them too.
+    // A cell copied on the SONG screen (tap R1 to copy, tap R1 to paste) takes them too.
     rig.pattern(0).chords[0].play = chordPlayOf(kStrumHalf, kOrderRandom, 10, 25, 50);
     session.sendNotePattern(1, 0);
     session.view = View::Song;
     rig.app.song().moveCursorTo(0, 1);
-    rig.key(R1, true);
-    rig.tap(DOWN, 2);
-    rig.key(R1, false);
+    rig.tap(R1); // copy
+    rig.app.song().moveCursorTo(2, 1);
+    rig.tap(R1); // paste
     CHECK(rig.pattern(2).chords[0].velocity > 0.f && samePlay(rig.pattern(2).chords[0].play, chordPlayOf(kStrumHalf, kOrderRandom, 10, 25, 50)));
 }
 

@@ -10,6 +10,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include <fcntl.h>
@@ -221,9 +222,11 @@ void testAKeyboardPlaysTheTrack() {
     third.on(72);
     CHECK(until([&] { return input.poll(event); }) && until([&] { return input.poll(event); }));
     CHECK(peak(engine, 8000) > 0.02f);
-    // One pulled out while the other stays: the other still plays.
+    // One pulled out while the other stays: the key it held is let go (review 2026-11-23: only the last
+    // keyboard's going let keys go, so 60 sounded for good), and the other still plays.
     second.pullOut();
     CHECK(until([&] { return input.devices() == 1; }));
+    CHECK(until([&] { return input.poll(event); }) && is(event, MidiEvent::NoteOff, 60));
     third.off(72);
     third.on(48);
     CHECK(until([&] { return input.poll(event); }) && until([&] { return input.poll(event); }));
@@ -511,6 +514,279 @@ void testRecordingDrumsIntoABusyCell() {
 
 } // namespace
 
+// ---- reading a MIDI file back -----------------------------------------------------------
+// Just enough Standard MIDI to check what the bounce wrote: headers, tempo, track
+// names, and notes (running status allowed, as any file may use it).
+struct MidNote {
+    long start = 0, length = 0;
+    int pitch = 0, velocity = 0, channel = 0, track = 0;
+};
+struct MidFile {
+    int format = -1, tracks = 0, ppq = 0, tempo = 0;
+    std::vector<std::string> names;
+    std::vector<MidNote> notes;
+    std::vector<std::pair<long, int>> tempi; // (tick, microseconds per quarter) in file order
+    std::vector<std::tuple<long, int, int>> sigs; // (tick, numerator, denominator) in file order
+    bool ok = false;
+};
+MidFile readMidiFile(const std::string& bytes) {
+    MidFile out;
+    std::size_t at = 0;
+    const auto take = [&](std::size_t n, std::string& s) {
+        if (at + n > bytes.size()) return false;
+        s.assign(bytes, at, n);
+        at += n;
+        return true;
+    };
+    const auto u16 = [&] {
+        if (at + 2 > bytes.size()) return -1;
+        const int v = (static_cast<unsigned char>(bytes[at]) << 8) | static_cast<unsigned char>(bytes[at + 1]);
+        at += 2;
+        return v;
+    };
+    const auto u32 = [&] {
+        if (at + 4 > bytes.size()) return -1;
+        unsigned v = 0;
+        for (int i = 0; i < 4; ++i) v = (v << 8) | static_cast<unsigned char>(bytes[at++]);
+        return static_cast<int>(v);
+    };
+    const auto varlen = [&]() -> long {
+        long v = 0;
+        for (int i = 0; i < 4; ++i) {
+            if (at >= bytes.size()) return -1;
+            const unsigned char b = static_cast<unsigned char>(bytes[at++]);
+            v = (v << 7) | (b & 0x7f);
+            if (!(b & 0x80)) return v;
+        }
+        return -1;
+    };
+    std::string head;
+    if (!take(4, head) || head != "MThd" || u32() != 6) return out;
+    out.format = u16();
+    out.tracks = u16();
+    out.ppq = u16();
+    if (out.format < 0 || out.tracks < 0 || out.ppq < 0) return out;
+    for (int t = 0; t < out.tracks; ++t) {
+        std::string tag;
+        if (!take(4, tag) || tag != "MTrk") return out;
+        const int length = u32();
+        if (length < 0 || at + static_cast<std::size_t>(length) > bytes.size()) return out;
+        const std::size_t end = at + static_cast<std::size_t>(length);
+        long tick = 0;
+        int running = 0;
+        long pending[16][128];
+        for (int c = 0; c < 16; ++c)
+            for (int p = 0; p < 128; ++p) pending[c][p] = -1;
+        int pendingVel[16][128] = {};
+        while (at < end) {
+            const long delta = varlen();
+            if (delta < 0) return out;
+            tick += delta;
+            if (at >= end) return out;
+            int status = static_cast<unsigned char>(bytes[at]);
+            if (status < 0x80) {
+                if (!running) return out;
+                status = running;
+            } else {
+                ++at;
+            }
+            if (status == 0xff) {
+                if (at + 1 > end) return out;
+                const int type = static_cast<unsigned char>(bytes[at++]);
+                const long len = varlen();
+                if (len < 0 || at + static_cast<std::size_t>(len) > end) return out;
+                if (type == 0x51 && len == 3) {
+                    out.tempo = (static_cast<unsigned char>(bytes[at]) << 16) | (static_cast<unsigned char>(bytes[at + 1]) << 8) | static_cast<unsigned char>(bytes[at + 2]);
+                    out.tempi.push_back({tick, out.tempo});
+                } else if (type == 0x58 && len == 4) {
+                    int denPow = static_cast<unsigned char>(bytes[at + 1]);
+                    int den = 1;
+                    for (int i = 0; i < denPow; ++i) den *= 2;
+                    out.sigs.push_back({tick, static_cast<unsigned char>(bytes[at]), den});
+                } else if (type == 0x03) {
+                    if (static_cast<int>(out.names.size()) <= t) out.names.resize(t + 1);
+                    out.names[t].assign(bytes, at, static_cast<std::size_t>(len));
+                }
+                at += static_cast<std::size_t>(len);
+            } else if ((status & 0xf0) == 0x90 || (status & 0xf0) == 0x80) {
+                running = status;
+                if (at + 2 > end) return out;
+                const int pitch = static_cast<unsigned char>(bytes[at++]);
+                const int vel = static_cast<unsigned char>(bytes[at++]);
+                const int channel = status & 0x0f;
+                if (pitch < 0 || pitch > 127) return out;
+                if ((status & 0xf0) == 0x90 && vel > 0) {
+                    pending[channel][pitch] = tick;
+                    pendingVel[channel][pitch] = vel;
+                } else if (pending[channel][pitch] >= 0) {
+                    MidNote n;
+                    n.start = pending[channel][pitch];
+                    n.length = tick - n.start;
+                    n.pitch = pitch;
+                    n.velocity = pendingVel[channel][pitch];
+                    n.channel = channel;
+                    n.track = t;
+                    out.notes.push_back(n);
+                    pending[channel][pitch] = -1;
+                }
+            } else if ((status & 0xf0) == 0xc0 || (status & 0xf0) == 0xd0) {
+                running = status;
+                if (at + 1 > end) return out;
+                ++at;
+            } else if (status >= 0x80) {
+                running = status;
+                if (at + 2 > end) return out;
+                at += 2;
+            } else {
+                return out;
+            }
+        }
+        at = end;
+    }
+    out.ok = true;
+    return out;
+}
+
+void testMidiFileNotes() {
+    Project song;
+    song.tempo = 100.f;
+    song.tracks[0].kind = TrackKind::Phazed;
+    song.tracks[0].bars[0] = 1;
+    NoteEvent& n = song.tracks[0].notes[0][0].notes[0];
+    n.step = 4;
+    n.pitch = 60;
+    n.length = 2.f;
+    n.velocity = 0.8f;
+    song.repeats[0] = 2;
+    const MidFile mid = readMidiFile(midiFileBytes(song, "song"));
+    CHECK(mid.ok && mid.format == 1 && mid.ppq == 480 && mid.tempo == 600000);
+    CHECK(mid.tracks == 2 && mid.names.size() == 2 && mid.names[1] == "PHAZED");
+    CHECK(mid.notes.size() == 2); // scene 0 twice
+    if (mid.notes.size() == 2) {
+        CHECK(mid.notes[0].pitch == 60 && mid.notes[0].velocity == 102 && mid.notes[0].channel == 0);
+        CHECK(mid.notes[0].start == 4 * 120 && mid.notes[0].length == 240);
+        CHECK(mid.notes[1].start == (16 + 4) * 120 && mid.notes[1].length == 240);
+    }
+}
+
+void testMidiFileDrumsLoopMute() {
+    Project song;
+    song.tracks[0].kind = TrackKind::Drums;
+    song.tracks[0].bars[0] = 1;
+    song.tracks[1].kind = TrackKind::Phazed; // two bars, empty: scene 0 is two bars, the drums go round
+    song.tracks[1].bars[0] = 2;
+    song.tracks[0].drums[0][0].level[0][0] = 1.f; // the kick, on the first step
+    song.tracks[0].drums[0][0].level[5][4] = 0.5f;
+    song.tracks[0].drums[0][0].nudge[5][4] = 0.5f;
+    song.tracks[0].drums[0][0].fx[5][4].pitch = 2; // the tom, up two: 45 to 47
+    song.tracks[0].drums[0][0].level[1][8] = 1.f;
+    song.tracks[0].drums[0][0].fx[1][8].ratchet = 2; // the snare, twice
+    song.tracks[1].notes[0][0].notes[0].velocity = 0.8f;
+    song.tracks[1].notes[0][0].notes[0].pitch = 64;
+    song.tracks[1].muted = true; // left out, as from a song bounce
+    const MidFile mid = readMidiFile(midiFileBytes(song, "song"));
+    CHECK(mid.ok && mid.tracks == 2); // the conductor and the drums only
+    int kicks = 0, toms = 0, snares = 0;
+    for (const MidNote& m : mid.notes) {
+        CHECK(m.channel == 9);
+        if (m.pitch == 36) {
+            ++kicks;
+            CHECK(m.velocity == 127 && (m.start == 0 || m.start == 16 * 120)); // both rounds of the cell
+        } else if (m.pitch == 47) {
+            ++toms;
+            CHECK((m.start == 540 || m.start == 540 + 16 * 120) && m.velocity == 64); // both rounds
+        } else if (m.pitch == 38) {
+            ++snares;
+        } else {
+            CHECK(false); // nothing else: the muted track is out
+        }
+    }
+    CHECK(kicks == 2 && toms == 2 && snares == 4); // ...each twice: the cell goes round
+}
+
+void testMidiFileChords() {
+    Project song;
+    song.tracks[0].kind = TrackKind::Phazed;
+    ChordEvent& c = song.tracks[0].notes[0][0].chords[0];
+    c.step = 0;
+    c.length = 4.f;
+    c.root = 48;
+    c.count = 3;
+    c.intervals[0] = 0;
+    c.intervals[1] = 4;
+    c.intervals[2] = 7;
+    c.inversion = 1;
+    c.velocity = 1.f;
+    const MidFile mid = readMidiFile(midiFileBytes(song, "song"));
+    CHECK(mid.ok && mid.notes.size() == 3);
+    if (mid.notes.size() == 3) { // C major, first inversion: E G C
+        CHECK(mid.notes[0].pitch == 52 && mid.notes[1].pitch == 55 && mid.notes[2].pitch == 60);
+        for (const MidNote& m : mid.notes) CHECK(m.start == 0 && m.length == 480 && m.velocity == 127);
+    }
+}
+
+void testMidiFileSceneTempo() {
+    Project song;
+    song.tempo = 120.f;
+    song.tracks[0].kind = TrackKind::Phazed;
+    song.tracks[0].notes[0][0].notes[0].velocity = 0.8f;
+    song.tracks[0].notes[0][0].notes[0].pitch = 60;
+    song.tracks[0].notes[1][0].notes[0].velocity = 0.8f;
+    song.tracks[0].notes[1][0].notes[0].pitch = 64;
+    song.sceneTempo[1] = 150.f;
+    const MidFile mid = readMidiFile(midiFileBytes(song, "song"));
+    CHECK(mid.ok && mid.tempi.size() == 2);
+    if (mid.tempi.size() == 2) {
+        CHECK(mid.tempi[0].first == 0 && mid.tempi[0].second == 500000);
+        CHECK(mid.tempi[1].first == 16 * 120 && mid.tempi[1].second == 400000);
+    }
+}
+
+void testMidiFileMeter() {
+    Project song;
+    song.tracks[0].kind = TrackKind::Drums;
+    song.tracks[0].drums[0][0].level[0][0] = 1.f;
+    song.tracks[0].drums[1][0].level[0][0] = 1.f;
+    song.sceneMeter[0] = 12;
+    const MidFile mid = readMidiFile(midiFileBytes(song, "song"));
+    CHECK(mid.ok && mid.sigs.size() == 2);
+    if (mid.sigs.size() == 2) { // 3/4, then back to 4/4
+        CHECK(std::get<0>(mid.sigs[0]) == 0 && std::get<1>(mid.sigs[0]) == 3 && std::get<2>(mid.sigs[0]) == 4);
+        CHECK(std::get<0>(mid.sigs[1]) == 12 * 120 && std::get<1>(mid.sigs[1]) == 4 && std::get<2>(mid.sigs[1]) == 4);
+    }
+    CHECK(mid.notes.size() == 2); // the kick in each scene, on its first step
+    if (mid.notes.size() == 2) CHECK(mid.notes[1].start == 12 * 120);
+    // A two-bar cell in 3/4: its second bar starts 12 steps in, and a hit past the 12th step of a bar
+    // (never played) is not written (review 2026-11-23: bars were walked 16 steps long).
+    Project two;
+    two.tracks[0].kind = TrackKind::Drums;
+    two.tracks[0].bars[0] = 2;
+    two.sceneMeter[0] = 12;
+    two.tracks[0].drums[0][0].level[0][14] = 1.f; // step 15 of bar 1: past the meter
+    two.tracks[0].drums[0][1].level[1][0] = 1.f;  // bar 2's first step: the snare
+    const MidFile m2 = readMidiFile(midiFileBytes(two, "song"));
+    CHECK(m2.ok && m2.notes.size() == 1);
+    if (m2.notes.size() == 1) CHECK(m2.notes[0].pitch == 38 && m2.notes[0].start == 12 * 120);
+}
+
+void testMidiBounceJob() {
+    Rig rig;
+    Session& session = rig.app.session();
+    const std::string folder = tempFolder("bounces");
+    session.useBounceFolder(folder);
+    rig.project().tracks[0].kind = TrackKind::Drums;
+    rig.project().tracks[0].drums[0][0].level[0][0] = 0.9f;
+    CHECK(session.startBounce(Session::Bounce::MidiFile));
+    session.finishBounce();
+    CHECK(session.bounceFiles() == 1);
+    const std::string last = session.bounceLast();
+    CHECK(last.size() > 4 && last.compare(last.size() - 4, 4, ".mid") == 0);
+    std::string bytes;
+    CHECK(readTextFile(folder + "/" + last, bytes));
+    const MidFile mid = readMidiFile(bytes);
+    CHECK(mid.ok && mid.notes.size() == 1 && mid.notes[0].pitch == 36 && mid.notes[0].channel == 9);
+}
+
 int main() {
     testTheBytes();
     testOnlyNotesComeInLive();
@@ -520,6 +796,12 @@ int main() {
     testAKeyHeldThroughNextScene();
     testRecordingDrums();
     testRecordingDrumsIntoABusyCell();
+    testMidiFileNotes();
+    testMidiFileDrumsLoopMute();
+    testMidiFileChords();
+    testMidiFileSceneTempo();
+    testMidiFileMeter();
+    testMidiBounceJob();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

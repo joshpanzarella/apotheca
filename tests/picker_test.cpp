@@ -112,6 +112,13 @@ struct Rig {
         for (; app.session().following() && n < 1000; ++n) frames(1);
         return n;
     }
+    // Frames until a carry being copied (a card that will not rename) has ended, the copy's own time between.
+    void copied() {
+        for (int n = 0; n < 2000 && app.session().carryCopying(); ++n) {
+            usleep(1000);
+            frames(1);
+        }
+    }
     SamplePicker& list() { return app.kit().picker(); }
     Session& session() { return app.session(); }
     std::string lane(int n = 5) { return app.project().tracks[0].laneSample[n]; }
@@ -499,9 +506,16 @@ void testCarrying() {
     CHECK(list.said() == "NOT MOVED: ITS NAME WOULD BE TOO LONG THERE" && card.has(longName + ".wav") && !card.has(wide + "/" + longName + ".wav"));
     rig.tap(B);
 
-    // A card that will not rename from one folder to another: moved the long way, the same.
+    // A card that will not rename from one folder to another: moved the long way, the same, but copied off
+    // the screen's thread (review 2026-11-23: seconds for a large one). Until the copy ends nothing has
+    // changed for the song, and a second carry waits its turn (Busy).
     Transfer::renameBroken = true;
-    CHECK(session.moveSample("808", "kicks/808") == Job::Moving && card.has("kicks/808.wav") && !card.has("808.wav") && !card.has("kicks/808.wav.part"));
+    const unsigned carriesBefore = session.carriesDone();
+    CHECK(session.moveSample("808", "kicks/808") == Job::Copying && session.carryCopying());
+    CHECK(session.moveSample("void/rim", "rim") == Job::Busy || !session.carryCopying());
+    rig.copied();
+    CHECK(!session.carryCopying() && session.carriesDone() == carriesBefore + 1);
+    CHECK((session.carryResult() == Job::Moving || session.carryResult() == Job::Done) && card.has("kicks/808.wav") && !card.has("808.wav") && !card.has("kicks/808.wav.part"));
     Transfer::renameBroken = false;
     rig.settle();
     std::vector<float> read;
@@ -1306,6 +1320,119 @@ void testSpreadOverFrames() {
 
 } // namespace
 
+// A recording sent, deleted or moved over WiFi while the list is open: on the list (or off
+// it) at once, the cursor kept where it was. Nothing is read again while the card stands still.
+void testWifiChangesAppearAtOnce() {
+    using Kind = SamplePicker::Kind;
+    Card card;
+    card.folder("kicks");
+    card.wav("kicks/808", 2000);
+    Rig rig(card);
+    Session& session = rig.session();
+    SamplePicker& list = rig.list();
+    rig.tap(A); // the list, on lane 5's SOUND
+    rig.frames(1);
+    CHECK(list.isOpen());
+    CHECK(rig.goTo(Kind::Folder, "kicks"));
+    const int idle = list.rowsMade();
+    rig.frames(10);
+    CHECK(list.rowsMade() == idle); // still: nothing read again
+    // Sent: into the folder showing, and a whole new folder with one in it. The card as the
+    // page would leave it, the changes as the page would tell them (noteChange, as its thread does).
+    card.wav("kicks/909", 100);
+    card.folder("snares");
+    card.wav("snares/909", 3000);
+    session.transfer().noteChange("", "kicks/909.wav");
+    session.transfer().noteChange("", "snares/909.wav");
+    rig.frames(2);
+    CHECK(list.rowsMade() > idle);
+    CHECK(rig.on(Kind::Folder, "kicks", 2)); // the cursor kept, the count up
+    bool snares = false;
+    for (const SamplePicker::Row& row : list.rows())
+        if (row.kind == Kind::Folder && row.name == "snares" && row.count == 1) snares = true;
+    CHECK(snares);
+    // Deleted: off the list, the cursor kept.
+    CHECK(std::remove((card.samples + "/kicks/808.wav").c_str()) == 0);
+    session.transfer().noteChange("kicks/808.wav", "");
+    rig.frames(2);
+    CHECK(rig.on(Kind::Folder, "kicks", 1));
+    // Moved: there under its new name.
+    CHECK(std::rename((card.samples + "/kicks/909.wav").c_str(), (card.samples + "/kicks/707.wav").c_str()) == 0);
+    session.transfer().noteChange("kicks/909.wav", "kicks/707.wav");
+    rig.frames(2);
+    rig.tap(A); // into kicks
+    rig.frames(1);
+    bool moved = false, gone = true;
+    for (const SamplePicker::Row& row : list.rows()) {
+        if (row.kind == Kind::Recording && row.name == "kicks/707") moved = true;
+        if (row.kind == Kind::Recording && row.name == "kicks/909") gone = false;
+    }
+    CHECK(moved && gone);
+    // The row under the cursor deleted: the cursor where rows still are.
+    CHECK(std::remove((card.samples + "/kicks/707.wav").c_str()) == 0);
+    session.transfer().noteChange("kicks/707.wav", "");
+    rig.frames(2);
+    CHECK(list.count() == 1 && list.under() && list.under()->kind == Kind::NewFolder);
+    // A rescan in the middle of hold-B calls the delete off: the recording WiFi took is not
+    // replaced by whatever slid under the cursor, and letting go is no tap (audit #5).
+    card.wav("snares/606", 100);
+    session.transfer().noteChange("", "snares/606.wav");
+    rig.frames(2);
+    rig.tap(LEFT);
+    rig.frames(1);
+    CHECK(rig.goTo(Kind::Folder, "snares"));
+    rig.tap(A);
+    rig.frames(1);
+    for (int i = 0; i < 3 && !(list.under() && list.under()->kind == Kind::Recording && list.under()->name == "snares/606"); ++i) rig.tap(DOWN);
+    CHECK(list.under() && list.under()->name == "snares/606");
+    rig.key(B, true);
+    rig.frames(30);
+    CHECK(list.deletePart() > 0.3f);
+    CHECK(std::remove((card.samples + "/snares/606.wav").c_str()) == 0);
+    session.transfer().noteChange("snares/606.wav", "");
+    rig.frames(2); // rescan: the hold is called off (snares/909 slid under the cursor)
+    CHECK(list.deletePart() == 0.f && list.isOpen());
+    rig.frames(70); // held past the second all the same: nothing goes
+    CHECK(exists(card.samples + "/snares/909.wav") && list.isOpen());
+    rig.key(B, false);
+    CHECK(list.isOpen()); // swallowed, not B's tap (which closes)
+}
+
+// A carry where the card will not rename, through the list: copied off the screen's thread. Until the
+// copy ends the list shows it where it was and says MOVING TO; then the list, the lane and the saved
+// song follow, as a carry that renamed does (review 2026-11-23: the copy held the screen).
+void testCarryingTheLongWay() {
+    Card card;
+    card.folder("kicks");
+    card.wav("tom", 48000 * 4);
+    Rig rig(card);
+    Session& session = rig.session();
+    SamplePicker& list = rig.list();
+    session.setLaneSample(0, 5, "tom");
+    session.saveNow();
+    rig.frames(1);
+    rig.tap(A);
+    CHECK(list.isOpen() && rig.on(Kind::Recording, "tom"));
+    Transfer::renameBroken = true;
+    rig.key(R1, true);
+    rig.frames(25);
+    CHECK(list.carried() == "tom");
+    rig.tap(LEFT); // (out of UNSORTED, to the folders)
+    CHECK(rig.goTo(Kind::Folder, "kicks"));
+    rig.key(R1, false);
+    const bool waited = session.carryCopying();
+    CHECK(list.copying() || !waited);
+    if (waited) CHECK(list.said() == "MOVING TO KICKS..." && rig.lane() == "tom" && card.has("tom.wav"));
+    rig.copied();
+    rig.frames(1);
+    Transfer::renameBroken = false;
+    rig.settle();
+    rig.frames(1);
+    CHECK(!list.copying() && card.has("kicks/tom.wav") && !card.has("tom.wav") && rig.lane() == "kicks/tom");
+    CHECK(list.said() == "MOVED TO KICKS");
+    rig.tap(B);
+}
+
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--measure") {
         measure();
@@ -1313,6 +1440,7 @@ int main(int argc, char** argv) {
     }
     testMakingAFolder();
     testCarrying();
+    testCarryingTheLongWay();
     testTheListByItself();
     testDeletingAnEmptyFolder();
     testTheHintsFit();
@@ -1321,6 +1449,7 @@ int main(int argc, char** argv) {
     testAMoveThatCouldNotBeSaved();
     testSpreadOverFrames();
     testTheRest();
+    testWifiChangesAppearAtOnce();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

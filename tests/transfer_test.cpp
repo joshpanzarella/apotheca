@@ -5,6 +5,7 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -84,6 +85,12 @@ Answer raw(int port, const std::string& request) {
     if (blank != std::string::npos) answer.head = all.substr(at, blank - at);
     return answer;
 }
+// The port in an address the handheld says ("10.0.0.2:8080/1234"): none said is 80, which a desk may
+// let the program have (a browser asks it itself).
+int portOf(const std::string& address) {
+    const std::size_t colon = address.find(':'), slash = address.find('/');
+    return colon == std::string::npos || colon > slash ? 80 : std::atoi(address.c_str() + colon + 1);
+}
 Answer get(int port, const std::string& path) { return raw(port, "GET " + path + " HTTP/1.1\r\nHost: x\r\n\r\n"); }
 Answer put(int port, const std::string& path, const std::string& body) {
     return raw(port, "PUT " + path + " HTTP/1.1\r\nHost: x\r\nContent-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body);
@@ -154,6 +161,15 @@ void testTheServer() {
     CHECK(put(port, door + "/chords/sent.json", kPack).status == 200 && exists(chords + "/sent.json"));
     CHECK(put(port, door + "/songs/new%20one.song", "apotheca-song 1\ntrack drums\n").status == 200 && exists(songs + "/new one.song"));
     CHECK(transfer.received() == 3);
+    {
+        // A song sent is taken by its first line, and not parsed on the server's thread (review
+        // 2026-11-23): a `preset N` line read the app's preset lists there, which the app thread
+        // replaces when a preset is saved. Nothing of it was read (the reader counts what it reads).
+        const std::uint64_t read = bytesRead();
+        CHECK(put(port, door + "/songs/with%20a%20preset.song", "apotheca-song 1\ntrack fm6\npreset 3\n").status == 200);
+        CHECK(put(port, door + "/songs/not%20one.song", "apotheca-song\ntrack fm6\n").status == 400 && !exists(songs + "/not one.song"));
+        CHECK(bytesRead() == read);
+    }
     // A browser's query string on the end is ignored.
     CHECK(get(port, door + "/list?x=1").status == 200);
 
@@ -279,6 +295,71 @@ void testTheServer() {
     CHECK(!second.start(samples, songs, chords, transfer.port(), 1) && !second.running());
 }
 
+// Hungry and slow requests: a chord pack of small values past counting is refused (audit #1),
+// a file past reading whole is not fetched (audit #2), and a trickle holds the door only up to
+// the request's time (audit #6). The server answers after all of them.
+void testHungryAndSlowRequests() {
+    const std::string root = tempFolder("transferhungry");
+    const std::string samples = root + "/samples", songs = root + "/songs", chords = root + "/chords";
+    mkdir(songs.c_str(), 0755);
+    Transfer transfer;
+    CHECK(transfer.start(samples, songs, chords, 0, 777));
+    const int port = transfer.port();
+    const std::string door = "/" + transfer.pin();
+    // Twenty thousand tiny chords: refused, nothing written.
+    std::string many = "{\"name\":\"Many\",\"chords\":[";
+    for (int i = 0; i < 20000; ++i) many += std::string(i ? "," : "") + "{\"intervals\":[0],\"root\":{\"degree\":0}}";
+    many += "]}";
+    CHECK(put(port, door + "/chords/many.json", many).status == 400 && !exists(chords + "/many.json"));
+    // Five hundred: a big honest pack, taken.
+    std::string hundreds = "{\"name\":\"Hundreds\",\"chords\":[";
+    for (int i = 0; i < 500; ++i) hundreds += std::string(i ? "," : "") + "{\"intervals\":[0,4,7],\"root\":{\"degree\":0}}";
+    hundreds += "]}";
+    CHECK(put(port, door + "/chords/hundreds.json", hundreds).status == 200 && exists(chords + "/hundreds.json"));
+    // Sixty-five megabytes on the card: not fetched, and not read whole anywhere.
+    const std::string huge = songs + "/huge.song";
+    if (std::FILE* f = std::fopen(huge.c_str(), "wb")) {
+        std::fseek(f, 65 * 1024 * 1024 - 1, SEEK_SET);
+        std::fputc(0, f);
+        std::fclose(f);
+    }
+    CHECK(get(port, door + "/songs/huge.song").status == 413);
+    std::string tooBig;
+    CHECK(!readTextFile(huge, tooBig) && tooBig.empty());
+    const std::string full = songs + "/full.song"; // exactly the most: read whole
+    if (std::FILE* f = std::fopen(full.c_str(), "wb")) {
+        std::fseek(f, static_cast<long>(kLargestRead) - 1, SEEK_SET);
+        std::fputc(0, f);
+        std::fclose(f);
+    }
+    std::string all;
+    CHECK(readTextFile(full, all) && all.size() == kLargestRead);
+    // A trickle of header bytes: the door shuts at the request's time, with no answer (not at the
+    // five-second quiet timeout: about a second here, not six).
+    Transfer::requestMs = 400;
+    const auto trickledAt = std::chrono::steady_clock::now();
+    {
+        const int fd = socket(AF_INET, SOCK_STREAM, 0);
+        sockaddr_in where = {};
+        where.sin_family = AF_INET;
+        where.sin_port = htons(static_cast<uint16_t>(port));
+        inet_pton(AF_INET, "127.0.0.1", &where.sin_addr);
+        CHECK(connect(fd, reinterpret_cast<sockaddr*>(&where), sizeof where) == 0);
+        const std::string head = "GET " + door + "/list HTTP/1.1\r\nHost: x\r\n";
+        CHECK(send(fd, head.data(), head.size(), MSG_NOSIGNAL) == static_cast<ssize_t>(head.size()));
+        for (int i = 0; i < 10; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            send(fd, " ", 1, MSG_NOSIGNAL); // kept alive past the deadline (may fail: the door shuts)
+        }
+        char block[256];
+        CHECK(recv(fd, block, sizeof block, 0) == 0);
+        close(fd);
+    }
+    Transfer::requestMs = 120000;
+    CHECK(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - trickledAt).count() < 3000);
+    CHECK(get(port, door + "/list").status == 200);
+}
+
 // Deleting, renaming and moving from the page, and what the page is told about the card.
 void testDeletingAndMoving() {
     const std::string root = tempFolder("transfer");
@@ -287,6 +368,7 @@ void testDeletingAndMoving() {
     const std::string song = "apotheca-song 1\ntempo 97\n", wav = aWav(), other = aWav(0.2f);
     for (const char* name : {"quiet road.song", "quiet road.1.rev", "quiet road.12.rev", "quiet roadster.song", "quiet roadster.1.rev", "quiet road.x.rev", "loud roads.1.rev"}) writeTextFile(songs + "/" + name, song);
     writeTextFile(bounces + "/mix.wav", wav);
+    writeTextFile(bounces + "/mix.mid", wav);
     writeTextFile(root + "/secret.wav", wav); // outside every folder: never to be touched
     writeTextFile(out + "/x.wav", wav);
 
@@ -308,11 +390,12 @@ void testDeletingAndMoving() {
     CHECK(a.body.find(",\"folders\":[\"empty\",\"kicks\"],") != std::string::npos);
     const std::string size = std::to_string(wav.size());
     CHECK(a.body.find("\"sizes\":{\"samples\":[" + size + "," + std::to_string(other.size()) + "," + size + "," + size + "],\"songs\":[" + std::to_string(song.size()) + "," + std::to_string(song.size()) + "],\"chords\":[" +
-                      std::to_string(std::strlen(kPack)) + "],\"bounces\":[" + size + "]}") != std::string::npos);
-    CHECK(a.body.find(",\"samples\":[\"a.wav\",\"b.wav\",\"kicks/one.wav\",\"kicks/two.wav\"],\"songs\":[\"quiet road.song\",\"quiet roadster.song\"],\"chords\":[\"sent.json\"],\"bounces\":[\"mix.wav\"]}") != std::string::npos);
+                      std::to_string(std::strlen(kPack)) + "],\"bounces\":[" + size + "," + size + "]}") != std::string::npos);
+    CHECK(a.body.find(",\"samples\":[\"a.wav\",\"b.wav\",\"kicks/one.wav\",\"kicks/two.wav\"],\"songs\":[\"quiet road.song\",\"quiet roadster.song\"],\"chords\":[\"sent.json\"],\"bounces\":[\"mix.mid\",\"mix.wav\"]}") != std::string::npos);
     // A recording and a bounce are sent as sound, so a browser can play them; a song is not.
     CHECK(get(port, door + "/samples/a.wav").head.find("Content-Type: audio/wav") != std::string::npos);
     CHECK(get(port, door + "/bounces/mix.wav").head.find("Content-Type: audio/wav") != std::string::npos);
+    CHECK(get(port, door + "/bounces/mix.mid").head.find("Content-Type: application/octet-stream") != std::string::npos);
     CHECK(get(port, door + "/songs/quiet%20road.song").head.find("audio") == std::string::npos);
 
     // ---- deleting ----
@@ -418,6 +501,25 @@ void testDeletingAndMoving() {
     CHECK(exists(root + "/secret.wav") && exists(out + "/x.wav"));
 }
 
+// The address is asked of the system at most once a second, but a server started again (another PIN)
+// is said at once, on the same frame (review 2026-11-23).
+void testTheAddressIsKeptAndRenewed() {
+    const std::string root = tempFolder("transfer");
+    std::unique_ptr<Engine> engine(new Engine);
+    App app(*engine);
+    Session& session = app.session();
+    session.useSongFolder(root + "/songs", 3);
+    session.useSampleFolder(root + "/samples");
+    CHECK(session.toggleTransfer(5) && session.transferOn());
+    const std::string first = session.transferAddress();
+    CHECK(!first.empty() && session.transferAddress() == first);
+    CHECK(!session.toggleTransfer(5) && !session.transferOn()); // off
+    CHECK(session.toggleTransfer(77) && session.transferOn());  // on again: another PIN
+    const std::string again = session.transferAddress();
+    CHECK(again.substr(again.rfind('/')) != first.substr(first.rfind('/')));
+    session.toggleTransfer(5);
+}
+
 void testTurningItOnFromTheDevice() {
     const std::string root = tempFolder("transfer");
     std::unique_ptr<Engine> engine(new Engine);
@@ -452,8 +554,8 @@ void testTurningItOnFromTheDevice() {
     CHECK(session.transferOn() && app.song().listingSongs());
     const std::string address = session.transferAddress();
     const std::size_t colon = address.find(':'), slash = address.find('/');
-    CHECK(colon != std::string::npos && slash != std::string::npos);
-    const int port = std::atoi(address.c_str() + colon + 1);
+    CHECK(slash != std::string::npos);
+    const int port = colon == std::string::npos ? 80 : std::atoi(address.c_str() + colon + 1); // (none on port 80, where a desk lets it: a browser asks it itself)
     const std::string door = address.substr(slash);
     CHECK(get(port, door).status == 200);
     // A recording sent to it lands in the sample folder, where the kit screen looks.
@@ -488,7 +590,7 @@ void testTurningItOnFromTheDevice() {
         second.session().useSampleFolder(root + "/samples");
         CHECK(second.session().toggleTransfer(7));
         const std::string a = second.session().transferAddress();
-        lastPort = std::atoi(a.c_str() + a.find(':') + 1);
+        lastPort = portOf(a);
         lastDoor = a.substr(a.find('/'));
         CHECK(get(lastPort, lastDoor).status == 200);
     }
@@ -553,7 +655,7 @@ void testUpdatingOverWiFi() {
     // Before the program's folder is known, an update is refused.
     CHECK(session.toggleTransfer(5));
     std::string address = session.transferAddress();
-    int port = std::atoi(address.c_str() + address.find(':') + 1);
+    int port = portOf(address);
     std::string door = address.substr(address.find('/'));
     CHECK(put(port, door + "/update/apotheca", program).status == 400);
     session.toggleTransfer(5);
@@ -561,7 +663,7 @@ void testUpdatingOverWiFi() {
     CHECK(!exists(programs + "/apotheca.pending")); // one never answered last time does not linger
     CHECK(session.toggleTransfer(6));
     address = session.transferAddress();
-    port = std::atoi(address.c_str() + address.find(':') + 1);
+    port = portOf(address);
     door = address.substr(address.find('/'));
 
     // What is refused: no number, the wrong processor, not a program, too big, the wrong way of asking.
@@ -759,7 +861,7 @@ static void testTheOpenSongFollows() {
 
     CHECK(session.toggleTransfer(9));
     const std::string address = session.transferAddress();
-    const int port = std::atoi(address.c_str() + address.find(':') + 1);
+    const int port = portOf(address);
     const std::string door = address.substr(address.find('/'));
 
     // Moved into a folder under a new name: both lanes and the sampler track that used it use the
@@ -1150,7 +1252,7 @@ static void testFoundOnLoad() {
     // whatever folder, is taken if it is the only one. One of a name that has two is not.
     CHECK(session.toggleTransfer(9));
     const std::string address = session.transferAddress();
-    const int port = std::atoi(address.c_str() + address.find(':') + 1);
+    const int port = portOf(address);
     const std::string door = address.substr(address.find('/'));
     const unsigned playing = session.laneSound(0, 0).version;
     // One of another name arriving wakes nothing: a missing one is not looked for each time some file comes.
@@ -1235,7 +1337,7 @@ static void testSavedSongsFollow() {
 
     CHECK(session.toggleTransfer(9));
     const std::string address = session.transferAddress();
-    const int port = std::atoi(address.c_str() + address.find(':') + 1);
+    const int port = portOf(address);
     const std::string door = address.substr(address.find('/'));
     frames(1); // the autosave has had its turn: the next is two seconds off
     CHECK(post(port, door + "/samples/thud.wav", "kicks/big%20boom.wav").status == 200);
@@ -1367,7 +1469,7 @@ static void testTheOpenSongIsRefused() {
     session.useSampleFolder(root + "/samples2");
     CHECK(session.toggleTransfer(5));
     const std::string address = session.transferAddress();
-    const int p2 = std::atoi(address.c_str() + address.find(':') + 1);
+    const int p2 = portOf(address);
     const std::string d2 = address.substr(address.find('/'));
     const std::string first = session.songName();
     std::string url = first;
@@ -1444,11 +1546,111 @@ static void testTooManyWrongNumbers() {
     CHECK(Transfer::kWrongMost == 5);
 }
 
+// Turning the page off never waits on a browser or a speed test (review 2026-11-23: `stop` joined
+// the server's thread, which read on while a client sent a byte every few seconds, or until a
+// SPEED TEST of minutes ended; the app thread, and the screen, stood still all that while).
+static int dialLocal(int port) {
+    const int fd = socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in where = {};
+    where.sin_family = AF_INET;
+    where.sin_port = htons(static_cast<uint16_t>(port));
+    inet_pton(AF_INET, "127.0.0.1", &where.sin_addr);
+    if (connect(fd, reinterpret_cast<sockaddr*>(&where), sizeof where) != 0) {
+        close(fd);
+        return -1;
+    }
+    return fd;
+}
+static double secondsSince(std::chrono::steady_clock::time_point t) { return std::chrono::duration<double>(std::chrono::steady_clock::now() - t).count(); }
+
+static void testStopNeverWaits() {
+    const std::string root = tempFolder("transfer");
+    const std::string was = Transfer::benchCommand;
+    {
+        // A speed test under way: stopped at once, and its process (the shell's group) ended.
+        Transfer transfer;
+        CHECK(transfer.start(root + "/samples", root + "/songs", root + "/chords", 0, 77));
+        Transfer::benchCommand = "echo pid $$; sleep 60; echo never";
+        const int fd = dialLocal(transfer.port());
+        CHECK(fd >= 0);
+        const std::string ask = "GET /" + transfer.pin() + "/bench HTTP/1.1\r\n\r\n";
+        CHECK(send(fd, ask.data(), ask.size(), MSG_NOSIGNAL) == static_cast<ssize_t>(ask.size()));
+        std::string got;
+        char block[1024];
+        while (got.find("pid ") == std::string::npos || got.find('\n', got.find("pid ")) == std::string::npos) {
+            const ssize_t n = recv(fd, block, sizeof block, 0);
+            if (n <= 0) break;
+            got.append(block, static_cast<std::size_t>(n));
+        }
+        const std::size_t at = got.find("pid ");
+        const int pid = at == std::string::npos ? 0 : std::atoi(got.c_str() + at + 4);
+        CHECK(pid > 0);
+        const auto t0 = std::chrono::steady_clock::now();
+        transfer.stop();
+        const double took = secondsSince(t0);
+        if (took >= 1.5) std::printf("  stop during a speed test took %.2f s\n", took);
+        CHECK(took < 1.5);
+        CHECK(pid > 0 && kill(pid, 0) != 0); // gone, and reaped
+        close(fd);
+    }
+    {
+        // A client sending a byte every 300 ms and never finishing its request: stopped at once.
+        Transfer transfer;
+        CHECK(transfer.start(root + "/samples", root + "/songs", root + "/chords", 0, 78));
+        const int fd = dialLocal(transfer.port());
+        CHECK(fd >= 0);
+        std::atomic<bool> done{false};
+        std::thread trickle([&] {
+            for (int i = 0; i < 60 && !done.load(); ++i) {
+                if (send(fd, "G", 1, MSG_NOSIGNAL) != 1) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            }
+        });
+        std::this_thread::sleep_for(std::chrono::milliseconds(700));
+        const auto t0 = std::chrono::steady_clock::now();
+        transfer.stop();
+        const double took = secondsSince(t0);
+        if (took >= 1.5) std::printf("  stop with a trickling client took %.2f s\n", took);
+        CHECK(took < 1.5);
+        done.store(true);
+        trickle.join();
+        close(fd);
+    }
+    {
+        // A client that has its answer and keeps sending holds the door a second at most: the next
+        // browser is answered (it waited for good before).
+        Transfer transfer;
+        CHECK(transfer.start(root + "/samples", root + "/songs", root + "/chords", 0, 79));
+        const int fd = dialLocal(transfer.port());
+        CHECK(fd >= 0);
+        const std::string ask = "GET /" + transfer.pin() + "/ HTTP/1.1\r\n\r\n";
+        CHECK(send(fd, ask.data(), ask.size(), MSG_NOSIGNAL) == static_cast<ssize_t>(ask.size()));
+        std::atomic<bool> done{false};
+        std::thread chatter([&] {
+            for (int i = 0; i < 100 && !done.load(); ++i) {
+                if (send(fd, "x", 1, MSG_NOSIGNAL) != 1) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        });
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        const auto t0 = std::chrono::steady_clock::now();
+        const Answer next = get(transfer.port(), "/" + transfer.pin() + "/");
+        const double took = secondsSince(t0);
+        if (next.status != 200 || took >= 3.0) std::printf("  the next browser: %d after %.2f s\n", next.status, took);
+        CHECK(next.status == 200 && took < 3.0);
+        done.store(true);
+        chatter.join();
+        close(fd);
+    }
+    Transfer::benchCommand = was;
+}
+
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--say-hello") { std::printf("hello from transfer_test\n"); return 0; } // (testTheSpeedTest runs this program again)
     testTheOpenSongIsRefused();
     testTooManyWrongNumbers();
     testTheSpeedTest();
+    testStopNeverWaits();
     testTheServerWaitsForTheSongs();
     testRenamingInSongText();
     testFoundOnLoad();
@@ -1456,9 +1658,11 @@ int main(int argc, char** argv) {
     testTheOpenSongFollows();
     testMovingWhereRenameIsRefused();
     testNames();
+    testHungryAndSlowRequests();
     testTheServer();
     testDeletingAndMoving();
     testTurningItOnFromTheDevice();
+    testTheAddressIsKeptAndRenewed();
     testUpdatingOverWiFi();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);

@@ -37,7 +37,7 @@ static int failures = 0;
 
 namespace {
 
-const SDL_Keycode A = SDLK_x, B = SDLK_z, X = SDLK_s, L1 = SDLK_q, R1 = SDLK_w, L2 = SDLK_1, R2 = SDLK_2, UP = SDLK_UP, RIGHT = SDLK_RIGHT,
+const SDL_Keycode A = SDLK_x, B = SDLK_z, X = SDLK_s, L1 = SDLK_q, R1 = SDLK_w, L2 = SDLK_1, R2 = SDLK_2, UP = SDLK_UP, RIGHT = SDLK_RIGHT, LEFT = SDLK_LEFT, DOWN = SDLK_DOWN,
                   SELECT = SDLK_BACKSPACE;
 const int kStep = 6000; // 120 BPM at 48 kHz
 
@@ -199,6 +199,7 @@ void testDrums() {
     rig.frames(1);
     CHECK(rig.said() == "PASTED ON BAR 2");
     CHECK(sameDrums(rig.track(0).drums[0][1], rig.track(0).drums[0][0]));
+    CHECK(!rig.session().barClip().has); // spent: a paste clears the copy
     CHECK(drums.level(4, 2) == 0.f);
     // A's hold is not A's: the D-pad does not nudge or level anything while it is down.
     const float level = drums.level(0, 8);
@@ -220,7 +221,13 @@ void testDrums() {
     rig.redo();
     CHECK(sameDrums(rig.track(0).drums[0][1], rig.track(0).drums[0][0]) && rig.track(0).automation[0][20][kSteps + 3] == 0.7f);
     rig.settle();
-    // Pasted again on the same: nothing changes, no step of undo.
+    // Pasted again on the same: nothing changes, no step of undo (a fresh copy: the paste spent it).
+    rig.project().bar = 0;
+    rig.frames(1);
+    rig.withL1(R1);
+    CHECK(rig.said() == "BAR 1 COPIED");
+    rig.project().bar = 1;
+    rig.frames(1);
     const int stepsNow = rig.session().undoSteps();
     rig.withL1(A);
     CHECK(rig.said() == "BAR 2 IS THE SAME ALREADY");
@@ -241,6 +248,11 @@ void testDrums() {
     CHECK(rig.said() == "PASTED ON BAR 2" && rig.track(0).drums[0][1].start[5][10] == 0.25f);
     rig.session().setAutomation(0, 0, 20, kSteps + 9, 0.4f);
     rig.settle();
+    rig.project().bar = 0;
+    rig.frames(1);
+    rig.withL1(R1); // again: the paste spent it
+    rig.project().bar = 1;
+    rig.frames(1);
     rig.withL1(A);
     CHECK(rig.said() == "PASTED ON BAR 2" && rig.track(0).automation[0][20][kSteps + 9] < 0.f);
     rig.settle();
@@ -274,6 +286,9 @@ void testDrums() {
     }
 
     // A paste and an edit straight after are two steps, not one burst.
+    rig.project().bar = 0;
+    rig.frames(1);
+    rig.withL1(R1); // again: the paste spent it
     rig.project().bar = 1;
     rig.frames(1);
     drums.setStep(0, 0, 0.f);
@@ -289,6 +304,9 @@ void testDrums() {
     rig.settle();
 
     // An edit and a paste straight after it (no still moment between): two steps too.
+    rig.project().bar = 0;
+    rig.frames(1);
+    rig.withL1(R1); // again: the paste spent it
     rig.project().bar = 1;
     rig.frames(1);
     const int beforeBoth = rig.session().undoSteps();
@@ -315,11 +333,18 @@ void testDrums() {
     }
 
     // Another scene, another drum track: the hits; automation only on the same track.
+    rig.project().bar = 0;
+    rig.frames(1);
+    rig.withL1(R1); // again: the paste spent it
     rig.project().scene = 1;
     rig.project().bar = 0;
     rig.frames(1);
     rig.withL1(A);
     CHECK(sameDrums(rig.track(0).drums[1][0], rig.track(0).drums[0][0]) && rig.track(0).automation[1][20][3] == 0.7f);
+    rig.project().track = 0;
+    rig.project().scene = 0;
+    rig.frames(1);
+    rig.withL1(R1); // again: the paste spent it
     CHECK(rig.session().addTrack(TrackKind::Drums));
     rig.project().track = 1;
     rig.project().scene = 0;
@@ -328,6 +353,9 @@ void testDrums() {
     CHECK(rig.said() == "PASTED ON BAR 1");
     CHECK(sameDrums(rig.track(1).drums[0][0], rig.track(0).drums[0][0]) && rig.track(1).automation[0][20][3] < 0.f);
     // Onto a synth track: refused, nothing placed.
+    rig.project().track = 0;
+    rig.frames(1);
+    rig.withL1(R1); // again: the paste spent it (the refusal keeps it)
     CHECK(rig.session().addTrack(TrackKind::Phazed));
     rig.project().track = 2;
     rig.frames(1);
@@ -378,7 +406,7 @@ void testNotes() {
     NoteScreen& roll = rig.app.notes();
     const int zoom = rig.session().octavesShown();
 
-    // COPY on a note: R1 does not carry it. L1 let go does not zoom.
+    // COPY on a note: R1 takes hold, and letting go unmoved copies the bar. L1 let go does not zoom.
     roll.moveCursorTo(60, 0);
     CHECK(roll.noteHere() != nullptr);
     rig.key(L1, true);
@@ -386,12 +414,23 @@ void testNotes() {
     CHECK(roll.barKeyHeld());
     rig.key(R1, true);
     rig.frames(1);
-    CHECK(!roll.carrying() && rig.said() == "BAR 1 COPIED");
+    CHECK(roll.carrying());
     rig.key(R1, false);
+    CHECK(rig.said() == "BAR 1 COPIED");
     rig.key(L1, false);
     rig.frames(1);
     CHECK(rig.session().octavesShown() == zoom && !roll.barKeyHeld());
     CHECK(rig.session().barClip().has && !rig.session().barClip().drums);
+    // ...but moved first, it was a carry: nothing copies (a note the paste below does not compare).
+    const unsigned copiesBefore = rig.session().barCopies();
+    roll.moveCursorTo(67, 12);
+    rig.key(L1, true);
+    rig.key(R1, true);
+    rig.tap(RIGHT);
+    CHECK(roll.cursorPitch() == 79); // an octave, L1 held
+    rig.key(R1, false);
+    rig.key(L1, false);
+    CHECK(rig.session().barCopies() == copiesBefore);
 
     // PASTE on bar 2, on an empty place: A places no note of its own. The long note is held to the cell's end.
     rig.project().bar = 1;
@@ -424,6 +463,9 @@ void testNotes() {
     CHECK(rig.track(1).notes[0][1].notes[2].length == 4.f);
 
     // Another synth track, a cell of four bars: the long note keeps its length. No automation.
+    rig.project().bar = 0;
+    rig.frames(1);
+    rig.withL1(R1); // again: the paste spent it
     CHECK(rig.session().addTrack(TrackKind::Jx3p));
     rig.session().setCellBars(2, 0, 4);
     rig.project().track = 2;
@@ -432,18 +474,27 @@ void testNotes() {
     rig.withL1(A);
     CHECK(rig.track(2).notes[0][0].notes[2].length == 10.f && rig.track(2).automation[0][0][2] < 0.f);
     // A sampler takes notes too.
+    rig.project().track = 1;
+    rig.project().bar = 0;
+    rig.frames(1);
+    rig.withL1(R1); // again: the paste spent it
     CHECK(rig.session().addTrack(TrackKind::Sampler));
     rig.project().track = 3;
     rig.frames(1);
     rig.withL1(A);
     CHECK(rig.said() == "PASTED ON BAR 1" && rig.track(3).notes[0][0].notes[2].length == 16.f - 12.f);
     // A drum track does not.
+    rig.project().track = 1;
+    rig.project().bar = 0;
+    rig.frames(1);
+    rig.withL1(R1); // again: the paste spent it (the refusal keeps it)
     rig.project().track = 0;
     rig.frames(1);
     rig.withL1(A);
     CHECK(rig.said() == "NOTES GO ON A NOTE TRACK" && rig.track(0).drums[0][0].empty());
 
-    // L1 still zooms: tapped alone (on its let go), and held with UP (and then not tapped as well).
+    // L1 still zooms tapped alone (on its let go); held with a direction it steps bars: up / down
+    // the bar shown, round the ends, left / right the cell's count. The cursor stays put.
     rig.project().track = 1;
     rig.frames(1);
     rig.session().setOctavesShown(2);
@@ -454,8 +505,21 @@ void testNotes() {
     rig.frames(1);
     CHECK(rig.session().octavesShown() == 1);
     rig.session().setOctavesShown(2);
+    rig.session().setCellBars(1, 0, 1);
+    roll.moveCursorTo(72, 7);
+    rig.withL1(RIGHT);
+    CHECK(rig.session().octavesShown() == 2 && rig.track(1).bars[0] == 2 && roll.cursorStep() == 7); // bars, not zoomed
+    rig.withL1(LEFT);
+    CHECK(rig.track(1).bars[0] == 1);
+    rig.withL1(DOWN); // one bar: round to it
+    CHECK(rig.project().bar == 0 && roll.cursorStep() == 7);
+    rig.session().setCellBars(1, 0, 4);
+    rig.withL1(DOWN);
+    CHECK(rig.project().bar == 1 && roll.cursorStep() == 7);
     rig.withL1(UP);
-    CHECK(rig.session().octavesShown() == 1);
+    CHECK(rig.project().bar == 0);
+    rig.withL1(UP);
+    CHECK(rig.project().bar == 3); // round the ends
     // With X held on a note, L1 / R1 are its GLIDE FROM, never a copy.
     roll.moveCursorTo(64, 4);
     rig.project().bar = 0;
@@ -532,13 +596,20 @@ void testTheSlicesAndL1() {
     rig.tap(L1);
     CHECK(!drums.slicing());
 
-    // L1 held with something else pressed is no tap: RIGHT (the cursor moves, as ever) and then L1 let go.
-    rig.key(L1, true);
+    // L1 held with a direction steps bars, not the cursor or the slices: up / down the bar
+    // shown, left / right the cell's count.
+    rig.session().setCellBars(0, 0, 2);
+    drums.moveCursorTo(2, 3);
+    rig.project().bar = 0;
     rig.frames(1);
-    rig.tap(RIGHT);
-    rig.key(L1, false);
-    rig.frames(1);
-    CHECK(!drums.slicing());
+    rig.withL1(DOWN);
+    CHECK(rig.project().bar == 1 && drums.cursorLane() == 2 && drums.cursorStep() == 3 && !drums.slicing());
+    rig.withL1(UP);
+    CHECK(rig.project().bar == 0);
+    rig.withL1(RIGHT);
+    CHECK(rig.track(0).bars[0] == 4);
+    rig.withL1(LEFT);
+    CHECK(rig.track(0).bars[0] == 2);
 
     // X held on a hit: L1 and R1 are its REVERSE and CUT, not a copy.
     drums.moveCursorTo(2, 3);
@@ -667,7 +738,8 @@ void testTheWordsFit() {
             const std::string words = Session::barCopyWords(answer, paste, kMaxBars - 1);
             CHECK(!words.empty() && canvas.fonts->medium.width(words.c_str()) <= 248.f);
         }
-    // The bar with L1 held says what R1 and A do (on the roll, and UP / DOWN the zoom), and it fits.
+    // The bar with L1 held says what R1 and A do, and it fits; on the BARS stop it says the
+    // bar's own: left / right the bar, hold A more or fewer.
     Canvas scratch;
     const int top = ui::kScreenH - ui::kHintsH;
     const auto barIs = [&](const ui::Hint* list, int count) {
@@ -680,38 +752,231 @@ void testTheWordsFit() {
         canvas.clear();
         rig.app.draw(canvas.r, *canvas.fonts);
     };
-    const ui::Hint grid[] = {{"R1", "copy bar"}, {"A", "paste bar"}};
-    const ui::Hint roll[] = {{"UP / DOWN", "zoom"}, {"R1", "copy bar"}, {"A", "paste bar"}};
+    const ui::Hint held[] = {{"UP / DOWN", "change bar"}, {"LEFT / RIGHT", "bar count"}, {"R1", "copy bar"}, {"A", "paste bar"}};
+    const ui::Hint grid[] = {{"LEFT / RIGHT", "bar"}, {"HOLD A", "more / fewer"}, {"START", "play"}};
+    const ui::Hint roll[] = {{"LEFT / RIGHT", "bar"}, {"HOLD A", "more / fewer"}};
     drawn();
-    CHECK(!barIs(grid, 2));
+    CHECK(!barIs(held, 4));
     rig.key(L1, true);
     rig.frames(1);
     drawn();
-    CHECK(barIs(grid, 2) && ui::gHintsOver == 0);
+    CHECK(barIs(held, 4) && ui::gHintsOver == 0);
     rig.key(L1, false);
     rig.frames(1);
+    rig.app.drums().moveCursorTo(0, 0);
+    rig.tap(UP);
+    rig.tap(UP);
     drawn();
-    CHECK(!barIs(grid, 2));
+    CHECK(rig.app.drums().cursorOnBars() && barIs(grid, 3) && ui::gHintsOver == 0);
     CHECK(rig.session().addTrack(TrackKind::Phazed));
     rig.project().track = 1;
     rig.frames(1);
+    rig.app.notes().moveCursorTo(60, 0);
+    rig.tap(UP);
+    drawn();
+    CHECK(rig.app.notes().cursorOnBars() && barIs(roll, 2) && ui::gHintsOver == 0);
     rig.key(L1, true);
     rig.frames(1);
     drawn();
-    CHECK(barIs(roll, 3) && ui::gHintsOver == 0);
+    CHECK(barIs(roll, 2) && ui::gHintsOver == 0); // on BARS the bar's own hints stay, L1 held or not
     rig.key(L1, false);
     rig.frames(1);
     drawn();
-    CHECK(!barIs(roll, 3));
+    CHECK(barIs(roll, 2));
     // The line said is drawn in the App's box above the bar.
     rig.withL1(R1);
     drawn();
     CHECK(rig.said() == "BAR 1 COPIED");
     rig.frames(100); // (1.5 s: gone)
     CHECK(rig.said().empty());
+    // From the grid, UP advertises BARS exactly where up leads to it.
+    const ui::Hint tempo[] = {{"A", "tap"}, {"HOLD A", "tempo"}, {"START", "play"}, {"UP", "bars"}};
+    rig.project().track = 0;
+    rig.app.drums().moveCursorTo(0, 0);
+    rig.tap(UP);
+    drawn();
+    CHECK(rig.app.drums().cursorOnTempo() && barIs(tempo, 4) && ui::gHintsOver == 0);
+    rig.tap(DOWN);
+    drawn();
+    CHECK(!barIs(tempo, 4)); // back on the lanes: no UP bars
+    const ui::Hint cell[] = {{"A", "place"}, {"HOLD Y", "chord"}, {"HOLD R1", "paint"}, {"HOLD B", "delete"}, {"UP", "bars"}};
+    const ui::Hint cellDown[] = {{"A", "place"}, {"HOLD Y", "chord"}, {"HOLD R1", "paint"}, {"HOLD B", "delete"}, {"L1", "zoom"}};
+    rig.project().track = 1;
+    rig.app.notes().moveCursorTo(60, 0);
+    rig.project().bar = 0;
+    rig.frames(1);
+    drawn();
+    CHECK(barIs(cell, 5) && ui::gHintsOver == 0);
+    rig.tap(DOWN);
+    drawn();
+    CHECK(barIs(cellDown, 5));
+    // Two bars: up from the second bar's top step says where it goes, as down from an end does.
+    rig.session().setCellBars(1, 0, 2);
+    const ui::Hint prevBar[] = {{"A", "place"}, {"HOLD Y", "chord"}, {"HOLD R1", "paint"}, {"HOLD B", "delete"}, {"UP", "prev bar"}};
+    rig.app.notes().moveCursorTo(60, 0);
+    rig.project().bar = 1;
+    rig.frames(1);
+    drawn();
+    CHECK(barIs(prevBar, 5) && ui::gHintsOver == 0);
+    const ui::Hint nextBar[] = {{"A", "place"}, {"HOLD Y", "chord"}, {"HOLD R1", "paint"}, {"HOLD B", "delete"}, {"DOWN", "next bar"}};
+    rig.app.notes().moveCursorTo(60, 15);
+    rig.project().bar = 0;
+    rig.frames(1);
+    drawn();
+    CHECK(barIs(nextBar, 5) && ui::gHintsOver == 0);
+    // On a note at the very top step the way to BARS is still said, and fits.
+    rig.app.notes().moveCursorTo(60, 0);
+    rig.project().bar = 0;
+    rig.tap(A);
+    drawn();
+    const ui::Hint onNote[] = {{"A", "level / length"}, {"B", "delete"}, {"HOLD Y", "chord"}, {"HOLD R1", "move"}, {"HOLD X", "effects"}, {"UP", "bars"}};
+    CHECK(barIs(onNote, 6)); // all six show; the help yields, as on a crowded bar
 }
 
 } // namespace
+
+// BARS IN THE ROLL: up from the top step is the BARS stop: hold A with up / down steps the
+// cell's bars along 1, 2, 4, 8 (as the Song screen's hold A); left / right turn to the bar
+// before or after, round the ends. L1 is never held: no zoom.
+void testRollBarsLength() {
+    Rig rig;
+    CHECK(rig.session().addTrack(TrackKind::Phazed));
+    rig.settle();
+    rig.project().track = 1;
+    NoteScreen& roll = rig.app.notes();
+    CHECK(rig.track(1).bars[0] == 1);
+    const int zoom = rig.session().octavesShown();
+    roll.moveCursorTo(60, 0);
+    rig.tap(UP);
+    CHECK(roll.cursorOnBars());
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(rig.track(1).bars[0] == 2);
+    rig.tap(UP);
+    CHECK(rig.track(1).bars[0] == 4);
+    rig.tap(DOWN);
+    rig.tap(DOWN);
+    CHECK(rig.track(1).bars[0] == 1);
+    rig.tap(DOWN);
+    CHECK(rig.track(1).bars[0] == 1); // the ends stop
+    CHECK(roll.cursorOnBars() && roll.cursorPitch() == 60 && roll.cursorStep() == 0); // the cursor never moved
+    rig.key(A, false);
+    CHECK(rig.session().octavesShown() == zoom);
+    // ...but not while shaping a note on the grid: A held there keeps up / down for its length.
+    roll.moveCursorTo(60, 0);
+    rig.key(A, true); // a note placed, a step long
+    rig.tap(DOWN);
+    CHECK(rig.track(1).bars[0] == 1 && roll.noteHere() && roll.noteHere()->length == 2.f);
+    rig.key(A, false);
+    // Left / right turn the bar shown: round the ends, the cursor keeping its place.
+    rig.session().setCellBars(1, 0, 4);
+    rig.project().bar = 0;
+    roll.moveCursorTo(60, 3);
+    rig.tap(UP, 4);
+    CHECK(roll.cursorOnBars());
+    rig.tap(RIGHT);
+    CHECK(rig.project().bar == 1 && roll.cursorPitch() == 60 && roll.cursorStep() == 0);
+    rig.tap(RIGHT, 3);
+    CHECK(rig.project().bar == 0); // round the end
+    rig.tap(LEFT);
+    CHECK(rig.project().bar == 3); // ...and back round the start
+    CHECK(rig.session().octavesShown() == zoom);
+    // Down from BARS is back on the grid; up from BARS rounds to the bottom.
+    rig.tap(DOWN);
+    CHECK(!roll.cursorOnBars() && rig.project().bar == 3 && roll.cursorStep() == 0);
+    roll.moveCursorTo(60, 0);
+    rig.project().bar = 0;
+    rig.tap(UP);
+    CHECK(roll.cursorOnBars());
+    rig.tap(UP);
+    CHECK(!roll.cursorOnBars() && rig.project().bar == 3 && roll.cursorStep() == 15);
+    // Shortening under the bar shown puts the roll back on its first bar.
+    rig.session().setCellBars(1, 0, 1);
+    rig.frames(1);
+    CHECK(rig.project().bar == 0);
+}
+
+// BARS ON THE GRID: up from the tempo is the BARS stop: hold A with up / down steps the cell's
+// bars; left / right turn the bar shown before or after, round the ends. L1 is never held.
+void testDrumBarsLength() {
+    Rig rig;
+    PatternScreen& grid = rig.app.drums();
+    CHECK(rig.track(0).bars[0] == 1);
+    grid.moveCursorTo(0, 0);
+    rig.tap(UP);
+    CHECK(grid.cursorOnTempo());
+    rig.tap(UP);
+    CHECK(grid.cursorOnBars());
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(rig.track(0).bars[0] == 2);
+    rig.tap(DOWN);
+    CHECK(rig.track(0).bars[0] == 1);
+    rig.key(A, false);
+    CHECK(grid.cursorOnBars() && grid.cursorLane() == 0 && grid.cursorStep() == 0); // the cursor never moved
+    // Left / right turn the bar shown: round the ends, the cursor keeping its place.
+    rig.session().setCellBars(0, 0, 4);
+    rig.project().bar = 1;
+    rig.tap(LEFT);
+    CHECK(rig.project().bar == 0 && grid.cursorLane() == 0 && grid.cursorStep() == 0);
+    rig.tap(LEFT);
+    CHECK(rig.project().bar == 3); // round the start
+    rig.tap(RIGHT);
+    CHECK(rig.project().bar == 0); // ...and back round the end
+    // Down from BARS is back through the tempo to the lanes; up from BARS rounds to the bottom.
+    rig.tap(DOWN);
+    CHECK(!grid.cursorOnBars() && grid.cursorOnTempo());
+    rig.tap(DOWN);
+    CHECK(!grid.cursorOnTempo() && grid.cursorLane() == 0);
+    rig.tap(UP);
+    CHECK(grid.cursorOnTempo());
+    rig.tap(UP);
+    CHECK(grid.cursorOnBars());
+    rig.tap(UP);
+    CHECK(!grid.cursorOnBars() && !grid.cursorOnTempo() && grid.cursorLane() == kDrumLanes - 1);
+}
+
+// A bar copied, then tracks coming or going: the copy tracks its track, or goes with it.
+void testBarCopyTracksItsTrack() {
+    Rig rig;
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Drums));
+    const int lane = autoLaneOfEffect(0, 0);
+    session.setAutomation(1, 0, lane, 2, 0.5f);
+    rig.settle();
+    CHECK(session.copyBar(1, 0, 0) == Session::BarCopy::Done);
+    CHECK(session.removeTrack(0)); // track 1 moves to 0; the copy tracks it
+    CHECK(session.pasteBar(0, 1, 0) == Session::BarCopy::Done);
+    CHECK(rig.track(0).automation[1][lane][2] == 0.5f); // the lanes land: the same track
+    // ...and removing the source track clears the copy.
+    CHECK(session.copyBar(0, 0, 0) == Session::BarCopy::Done);
+    CHECK(session.addTrack(TrackKind::Drums));
+    CHECK(session.removeTrack(0));
+    CHECK(session.pasteBar(0, 0, 0) == Session::BarCopy::NothingCopied);
+    // Duplicating ahead of it shifts it down with its track (pasted back onto that track, its lanes land).
+    CHECK(session.addTrack(TrackKind::Drums));
+    session.setAutomation(1, 0, lane, 2, 0.5f);
+    CHECK(session.copyBar(1, 0, 0) == Session::BarCopy::Done);
+    CHECK(session.duplicateTrack(0) == 1);
+    CHECK(session.pasteBar(2, 1, 0) == Session::BarCopy::Done);
+    CHECK(rig.track(2).automation[1][lane][2] == 0.5f);
+}
+
+// A paste is its own step even with an unmarked change in flight: the drift keeps its own step.
+void testPasteSeparatesUnmarkedDrift() {
+    Rig rig;
+    Session& session = rig.session();
+    rig.track(0).drums[0][0].level[0][0] = 0.9f;
+    rig.settle();
+    CHECK(session.copyBar(0, 0, 0) == Session::BarCopy::Done);
+    rig.project().tracks[0].laneLevel[0] = 0.5f; // unmarked drift, as a direct edit would leave
+    CHECK(session.pasteBar(0, 1, 0) == Session::BarCopy::Done);
+    rig.settle();
+    rig.undo();
+    CHECK(rig.track(0).drums[1][0].level[0][0] == 0.f && rig.project().tracks[0].laneLevel[0] == 0.5f);
+    rig.undo();
+    CHECK(rig.project().tracks[0].laneLevel[0] != 0.5f);
+}
 
 int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
@@ -721,6 +986,8 @@ int main(int argc, char** argv) {
     };
     const Test tests[] = {
         {"testDrums", testDrums}, {"testNotes", testNotes}, {"testTheSlicesAndL1", testTheSlicesAndL1}, {"testTheEngineHearsIt", testTheEngineHearsIt}, {"testTheWordsFit", testTheWordsFit},
+        {"testRollBarsLength", testRollBarsLength}, {"testDrumBarsLength", testDrumBarsLength},
+        {"testBarCopyTracksItsTrack", testBarCopyTracksItsTrack}, {"testPasteSeparatesUnmarkedDrift", testPasteSeparatesUnmarkedDrift},
     };
     for (const Test& test : tests) {
         bool wanted = argc < 2;

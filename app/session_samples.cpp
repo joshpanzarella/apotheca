@@ -107,15 +107,23 @@ Session::FileJob Session::moveSample(const std::string& from, const std::string&
         if (have != from && lowered(have) == lowered(to)) return FileJob::Taken;
     const std::string file = sampleFolder_ + "/" + from + ending, target = sampleFolder_ + "/" + to + ending;
     if (lstat(target.c_str(), &info) == 0) return FileJob::Taken;
+    if (carry_) return FileJob::Busy; // one copy at a time
     // Some cards will not rename a file from one folder into another (the handheld's own refused):
-    // then it is written again where it goes, and the old one taken away once the new one is safely there.
+    // then it is written again where it goes, and the old one taken away once the new one is safely
+    // there, on a thread of its own (seconds for a large one); finishCarry does the rest. Until then
+    // nothing has changed: the old file is there, and the new one only appears whole (writeTextFile).
     if (Transfer::renameBroken || std::rename(file.c_str(), target.c_str()) != 0) { // (renameBroken: the tests' card that will not)
-        std::string contents;
-        const bool copied = readTextFile(file, contents) && writeTextFile(target, contents);
-        if (!copied || std::remove(file.c_str()) != 0) {
-            if (copied) std::remove(target.c_str()); // the old one would not go: do not leave two
-            return FileJob::Failed;
-        }
+        carry_.reset(new CarryJob);
+        CarryJob* job = carry_.get();
+        job->from = from, job->to = to, job->file = file, job->target = target;
+        job->thread = std::thread([job] {
+            std::string contents;
+            const bool copied = readTextFile(job->file, contents) && writeTextFile(job->target, contents);
+            job->ok = copied && std::remove(job->file.c_str()) == 0;
+            if (copied && !job->ok) std::remove(job->target.c_str()); // the old one would not go: do not leave two
+            job->done.store(true);
+        });
+        return FileJob::Copying;
     }
     recordingChanged(from, to);
     const bool saved = saveNow(); // the open song now, not at the next autosave: its revs will have the new name
@@ -123,6 +131,24 @@ Session::FileJob Session::moveSample(const std::string& from, const std::string&
     // The file HAS moved. A song that could not be written (a full card) still names the old place:
     // said, since opened later it is mended only if no other recording has that last name.
     return !saved ? FileJob::NotSaved : following() ? FileJob::Moving : FileJob::Done;
+}
+
+void Session::finishCarry() {
+    if (!carry_ || !carry_->done.load()) return;
+    if (carry_->thread.joinable()) carry_->thread.join();
+    const std::string from = carry_->from, to = carry_->to;
+    const bool ok = carry_->ok;
+    carry_.reset();
+    if (ok) {
+        recordingChanged(from, to);
+        const bool saved = saveNow();
+        followLater({{from, to}});
+        carryResult_ = !saved ? FileJob::NotSaved : following() ? FileJob::Moving : FileJob::Done;
+    } else {
+        carryResult_ = FileJob::Failed;
+    }
+    ++sampleFiles_; // open lists of recordings read the card again
+    ++carriesDone_;
 }
 
 Session::FileJob Session::makeSampleFolder(const std::string& name) {
@@ -398,13 +424,15 @@ bool Session::trimLaneSilence(int track, int lane) {
 std::string Session::transferName() const {
     if (!transferOn() || !wifi_.here()) return "";
     const WifiStatus status = wifi_.now().status;
-    if (status.state != WifiState::Joined || status.hostname.empty()) return "";
+    if ((status.state != WifiState::Joined && status.state != WifiState::Hotspot) || status.hostname.empty()) return "";
     const std::string address = transferAddress();
-    const std::size_t tail = address.find(':');
+    const std::size_t tail = address.find_first_of(":/"); // (no colon on port 80: from the number's slash)
     return status.hostname + (tail == std::string::npos ? "" : address.substr(tail));
 }
 
 bool Session::toggleTransfer(unsigned seed) {
+    hotspotOwnsTransfer_ = false; // a hand on the WIFI PAGE: HOTSPOT owns nothing now (setHotspot says when it does)
+    addressAsked_ = false;        // another port and PIN: the address is asked again at once
     if (transfer_.running()) {
         transfer_.stop();
         discardUpdate(); // an update nobody answered goes when WiFi is turned off
@@ -413,15 +441,34 @@ bool Session::toggleTransfer(unsigned seed) {
     }
     if (folder_.empty() || sampleFolder_.empty()) return false; // nowhere for files to go
     const std::string chords = chordFolder_.empty() ? folder_ + "/../chords" : chordFolder_;
-    // 8080 if it is free (easy to type), else whatever is.
+    // 80 if it binds (no port to type; needs root: our firmware), else 8080 if it is free, else whatever is.
     transfer_.setDesk(&designer_);
     transfer_.setBounceFolder(bounceFolder_);
     transfer_.setOpenSong(songName_); // (and again from update() whenever it changes)
     toldOpenSong_ = songName_;
-    const bool on = transfer_.start(sampleFolder_, folder_, chords, 8080, seed) || transfer_.start(sampleFolder_, folder_, chords, 0, seed);
+    const bool on = transfer_.start(sampleFolder_, folder_, chords, 80, seed) || transfer_.start(sampleFolder_, folder_, chords, 8080, seed) ||
+                    transfer_.start(sampleFolder_, folder_, chords, 0, seed);
     if (on) std::printf("files over wifi: http://%s\n", transfer_.address().c_str()); // in the log too, for whoever is setting it up
     if (on) wifi_.up(); // (our firmware: the radio on, and a saved network joined by itself)
     return on;
+}
+
+bool Session::setHotspot(bool on, unsigned seed) {
+    if (on) {
+        const bool was = transferOn();
+        if (!was && !toggleTransfer(seed)) return false; // nowhere for files to go: the radio stays off
+        if (!transfer_.running()) return false;          // (a still: the page is only pretended on)
+        if (!was) hotspotOwnsTransfer_ = true;
+        wifi_.hotspot();
+        return true;
+    }
+    if (hotspotOwnsTransfer_) {
+        if (transferOn()) toggleTransfer(seed); // the radio off with it: down stops the hotspot too
+    } else if (transferOn()) {
+        wifi_.down();
+        wifi_.up(); // back to joining (a saved network rejoins by itself)
+    }
+    return true;
 }
 
 // ---- updating Apotheca over WiFi ---------------------------------------------------------
@@ -491,6 +538,9 @@ void Session::finishRecording() {
 }
 
 // A sampler track's recording, read from its file and handed to the engine.
+// A multisample: where the files beside it spell notes in their names, they
+// play too, each round its own note (sampler.hpp); the song still names only
+// the one picked, and the set is found again whenever it is read.
 void Session::loadTrackSample(int track) {
     LaneSound& sound = sounds_[track][0];
     const unsigned version = sound.version + 1;
@@ -501,19 +551,84 @@ void Session::loadTrackSample(int track) {
         engine.setTrackSample(track, nullptr);
         return;
     }
-    std::unique_ptr<SampleData> data(new SampleData);
-    if (sampleFolder_.empty() || !readRecording(sampleFolder_, name, data->data) || data->data.empty()) {
+    std::vector<float> main;
+    if (sampleFolder_.empty() || !readRecording(sampleFolder_, name, main) || main.empty()) {
         sound.missing = true;
         engine.setTrackSample(track, nullptr);
         return;
     }
-    sound.seconds = static_cast<float>(data->data.size()) / kSampleRate;
+    sound.seconds = static_cast<float>(main.size()) / kSampleRate;
     sound.peaks.assign(kPeaks, 0.f);
-    for (std::size_t i = 0; i < data->data.size(); ++i) {
-        float& peak = sound.peaks[i * kPeaks / data->data.size()];
-        const float v = std::fabs(data->data[i]);
+    for (std::size_t i = 0; i < main.size(); ++i) {
+        float& peak = sound.peaks[i * kPeaks / main.size()];
+        const float v = std::fabs(main[i]);
         if (v > peak) peak = v;
     }
+    if (project.tracks[track].kind == TrackKind::Sampler) {
+        // The files beside it with a note in the name. The picked one plays
+        // at its spelled note, or at ROOT where it spells none.
+        const std::string folder = sampleFolderOf(name);
+        const int mainNote = sampleNote(name);
+        const int mainRoot = mainNote >= 0 ? mainNote : project.tracks[track].sampler[sampler::Root];
+        struct Candidate {
+            std::string name;
+            int note;
+        };
+        std::vector<Candidate> beside;
+        for (const std::string& have : sampleNames()) {
+            if (have == name || sampleFolderOf(have) != folder) continue;
+            const int note = sampleNote(have);
+            if (note >= 0 && note <= 127) beside.push_back({have, note});
+        }
+        if (!beside.empty()) {
+            // The nearest notes to the picked one (a lower one first where two
+            // are as near), the picked one always among them.
+            std::stable_sort(beside.begin(), beside.end(), [&](const Candidate& a, const Candidate& b) {
+                const int da = std::abs(a.note - mainRoot), db = std::abs(b.note - mainRoot);
+                return da != db ? da < db : a.note < b.note;
+            });
+            if (beside.size() > static_cast<std::size_t>(sampler::kMaxZones - 1)) beside.resize(sampler::kMaxZones - 1);
+            std::unique_ptr<sampler::SampleZoneSet> set(new sampler::SampleZoneSet);
+            set->zones.push_back(sampler::SampleZone());
+            set->zones.back().data = std::move(main);
+            set->zones.back().root = mainRoot;
+            for (const Candidate& c : beside) {
+                std::vector<float> data;
+                if (!readRecording(sampleFolder_, c.name, data) || data.empty()) continue; // gone or broken: skipped
+                set->zones.push_back(sampler::SampleZone());
+                set->zones.back().data = std::move(data);
+                set->zones.back().root = c.note;
+            }
+            if (set->zones.size() > 1) {
+                // By root, lowest first; one note twice keeps the picked one.
+                // Each plays up to the middle with its neighbours.
+                std::stable_sort(set->zones.begin(), set->zones.end(),
+                                 [](const sampler::SampleZone& a, const sampler::SampleZone& b) { return a.root < b.root; });
+                std::vector<sampler::SampleZone> kept;
+                for (sampler::SampleZone& z : set->zones) {
+                    if (!kept.empty() && kept.back().root == z.root) continue;
+                    kept.push_back(std::move(z));
+                }
+                set->zones = std::move(kept);
+                if (set->zones.size() > 1) {
+                    for (std::size_t i = 0; i < set->zones.size(); ++i) {
+                        sampler::SampleZone& z = set->zones[i];
+                        z.lo = i == 0 ? 0 : (set->zones[i - 1].root + z.root) / 2 + 1;
+                        z.hi = i + 1 == set->zones.size() ? 127 : (z.root + set->zones[i + 1].root) / 2;
+                    }
+                    sound.zones = static_cast<int>(set->zones.size());
+                    engine.setTrackZones(track, std::move(set));
+                    return;
+                }
+            }
+            // One zone after all (nothing readable beside it, or all one note):
+            // the picked one alone, below. (The survivor is always it: it went
+            // first, and one note twice keeps the first.)
+            main = std::move(set->zones.front().data);
+        }
+    }
+    std::unique_ptr<SampleData> data(new SampleData);
+    data->data = std::move(main);
     engine.setTrackSample(track, std::move(data));
 }
 
@@ -561,7 +676,8 @@ std::string Session::catchLastBar(int track, int lane) {
     if (sampleFolder_.empty() || track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return "";
     const bool sampler = holdsRecording(project.tracks[track].kind); // its one recording; the lane does not matter
     if (!sampler && project.tracks[track].kind != TrackKind::Drums) return "";
-    const std::vector<float> bar = engine.lastBar();
+    int barSteps = kSteps;
+    const std::vector<float> bar = engine.lastBar(&barSteps);
     float peak = 0.f;
     for (float v : bar) peak = std::fabs(v) > peak ? std::fabs(v) : peak;
     if (peak < 1e-4f) return ""; // nothing was playing
@@ -578,7 +694,7 @@ std::string Session::catchLastBar(int track, int lane) {
         setTrackSample(track, name);
     } else {
         setLaneSample(track, lane, name);
-        setLaneFit(track, lane, kSteps); // it is a bar long now, and stays one when the tempo moves
+        setLaneFit(track, lane, barSteps); // it is the bar's steps long (12 in 3/4: review 2026-11-23, it was always 16), and stays so when the tempo moves
     }
     return name;
 }
@@ -602,6 +718,16 @@ void Session::setLaneOneSlice(int track, int lane, bool on) {
     if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums) return;
     project.tracks[track].laneOneSlice[lane] = on;
     sendLanePart(track, lane);
+}
+
+void Session::setSamplerChop(int track, bool on) {
+    if (track < 0 || track >= kNumTracks || project.tracks[track].kind != TrackKind::Sampler) return;
+    project.tracks[track].samplerChop = on;
+    Command c;
+    c.type = Command::SetTrackChop;
+    c.track = track;
+    c.a = on ? 1 : 0;
+    engine.send(c);
 }
 
 void Session::setLaneFit(int track, int lane, int steps) {

@@ -70,6 +70,10 @@ void KitScreen::hearFromList(SamplePicker::Hear how) {
 // The built-in drum in the middle: UP the recordings by name, DOWN the twelve synth models (KICK
 // first, each at its usual knobs). So each is a press away, and the recordings are where they were.
 void KitScreen::stepSound(int by) {
+    if (session_.sampleFiles() != namesSeen_) { // the card changed mid-hold (WiFi): step through what is there now
+        namesSeen_ = session_.sampleFiles();
+        names_ = session_.sampleNames();
+    }
     const int models = drumsynth::kModels - 1, count = static_cast<int>(names_.size());
     const drumsynth::Voice& voice = trk().laneSynth[lane_];
     int now = voice.on() ? -voice.model : 0; // -1 KICK ... -12 NOISE, 0 the drum, 1.. the recordings
@@ -110,12 +114,15 @@ void KitScreen::openPicker() {
     jobs.makeFolder = [this](const std::string& name) { return session_.makeSampleFolder(name); };
     jobs.removeFolder = [this](const std::string& name) { return session_.deleteSampleFolder(name); };
     jobs.following = [this] { return session_.following(); };
+    jobs.copying = [this] { return session_.carryCopying(); };
+    jobs.copied = [this] { return session_.carryResult(); };
     jobs.followFailures = [this] { return session_.followFailures(); };
     jobs.playhead = [this] { return &head_; };
     char title[48];
     std::snprintf(title, sizeof title, "LANE %d: PICK ITS SOUND", lane + 1);
     jobs.used = [this, track, lane](const std::string& name) { return session_.sampleUses(name) - (name == project_.tracks[track].laneSample[lane] ? 1 : 0); };
     picker_.open(session_.sampleNames(), session_.sampleFolders(), trk().laneSample[lane_], title, "THE BUILT-IN DRUM", jobs);
+    sampleFilesSeen_ = session_.sampleFiles();
 }
 
 // The kit after or before in the list, put on at once. From a kit of the player's own making (in no
@@ -226,7 +233,7 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         holding_ = event.down;
         saved_ = 0.f;
-        if (event.down) names_ = session_.sampleNames(), stepped_ = false;
+        if (event.down) names_ = session_.sampleNames(), namesSeen_ = session_.sampleFiles(), stepped_ = false;
         return;
     }
     if (!event.down) {
@@ -271,6 +278,10 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
 void KitScreen::update(const Input& input, Uint32 nowMs) {
     // A button let go while another screen was showing (a song opened, a tab turned) never told this
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
+    if (picker_.isOpen() && session_.sampleFiles() != sampleFilesSeen_) { // the card's lists changed (WiFi): read them again, the cursor kept
+        sampleFilesSeen_ = session_.sampleFiles();
+        picker_.rescan(session_.sampleNames(), session_.sampleFolders());
+    }
     if (!input.held(Button::A)) holding_ = false;
     if (!input.held(Button::B) || !onKit_ || input.held(Button::A)) kitDeleting_ = false;
     // B kept held on a kit of the player's own: its file is deleted when the bar is full.
@@ -315,7 +326,7 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
         wasRecording_ = true;
         saidUntil_ = nowMs + 3000;
     } else if (wasRecording_) {
-        wasRecording_ = false; // it has just stopped, by R1 or at ten seconds
+        wasRecording_ = false; // it has just stopped, by R1 or at kMaxSeconds (20 s)
         if (!session_.lastRecorded().empty()) {
             said_ = "RECORDED AS \"" + session_.lastRecorded() + "\"";
             for (char& c : said_) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
@@ -995,8 +1006,11 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (!holding_) {
         hint("Y", "catch");
         hint("R1", "record");
-        if (trk().laneSample[lane_][0]) hint("L1", "slices");
-        hint("START", project_.playing ? "stop" : "play");
+        // A recording on the lane has all six it can hold: START yields to the slices (it is on
+        // every other bar, and the top bar shows playing).
+        const bool slices = trk().laneSample[lane_][0] != 0;
+        if (slices) hint("L1", "slices");
+        if (!slices) hint("START", project_.playing ? "stop" : "play");
     }
     hints(r, fonts, list, count);
     picker_.draw(r, fonts); // over everything, when it is open

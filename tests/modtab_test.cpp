@@ -459,11 +459,12 @@ void testTheDiceAndUndo() {
     CHECK(differ && rolled.kind == kModStepper && rolled.length == before.length && rolled.depth == before.depth);
     rig.undo();
     CHECK(std::memcmp(&rig.mod(t, 1), &before, sizeof before) == 0); // the dice are a step of undo
-    // On a MOD's line the dice are the knob's: an LFO's shape and rate, DEPTH kept.
+    // On a MOD's line the dice are the knob's: an LFO's shape, rate and depth.
     rig.session().setMod(t, 0, lfo(kModFirstMacro, -0.3f));
     rig.tab().goTo(0, 0);
     rig.tap(Y);
-    CHECK(rig.mod(t, 0).depth == -0.3f && (rig.mod(t, 0).shape != kModSine || rig.mod(t, 0).rate != kModRateBar));
+    CHECK((rig.mod(t, 0).shape != kModSine || rig.mod(t, 0).rate != kModRateBar || rig.mod(t, 0).depth != -0.3f));
+    CHECK(std::fabs(rig.mod(t, 0).depth) >= 0.2f && std::fabs(rig.mod(t, 0).depth) <= 1.f);
     // The STEPS of an LFO: its row rolled, the LFO still an LFO.
     rig.tab().goTo(1, 0);
     rig.tap(Y);

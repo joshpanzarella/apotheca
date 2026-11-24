@@ -33,6 +33,13 @@ public:
     // Feed every SDL event through here. Returns true and fills `out` when
     // the event was a handheld button going down or up.
     bool handle(const SDL_Event& event, ButtonEvent& out);
+    // One event reports one button; a hat that moved two at once (a diagonal let go, or one way
+    // straight to another) has the rest waiting here. Asked after every event until false (review
+    // 2026-11-23: RIGHT stayed held after UP + RIGHT to the middle, and UP to RIGHT lost the RIGHT).
+    bool pending(ButtonEvent& out);
+    // Every button let go, the stick at rest: for a gamepad gone or come back, whose let-gos were
+    // never sent. Each button that was held is in `out`, to hand on as any let-go.
+    void letGoOfAll(ButtonEvent* out, int& count);
 
     // Use controls learned from this device (controls.hpp) in place of
     // SDL's own idea of a gamepad. The keyboard stand-ins still work.

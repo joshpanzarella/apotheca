@@ -640,7 +640,19 @@ void Physic::State::tuneOne(Voice& v, StringLoop& str, double& dispersion, doubl
         dispersion = dispersionOf(stiffnessOf(v.stretch), f0, sampleRate);
         str.disp = static_cast<float>(dispersion);
     }
-    str.retune(tuningOf(f0, sampleRate, str.pole, str.disp));
+    Tuning t = tuningOf(f0, sampleRate, str.pole, str.disp);
+    // A glide keeps the stiffness of where it began. Climbing three octaves or so, that stiffness
+    // waits longer than the whole loop at the new pitch: the tuning's part went under nothing and
+    // its allpass blew up (every STRING preset, review 2026-11-23). Then the stiffness is worked out
+    // for the pitch now, as a landing does; and should even that leave no room, the part is held
+    // where its allpass stays stable. A loop with room is tuned as it always was, to the bit.
+    if (t.part < 0.5 && !stiff && str.disp != 0.f) {
+        dispersion = dispersionOf(stiffnessOf(v.stretch), f0, sampleRate);
+        str.disp = static_cast<float>(dispersion);
+        t = tuningOf(f0, sampleRate, str.pole, str.disp);
+    }
+    if (t.part < 0.5) t = heldTuning(t, f0, sampleRate);
+    str.retune(t);
 }
 
 // MOTOR on the tick: the level at the tick's start and end (a sample at a time between). Its turn

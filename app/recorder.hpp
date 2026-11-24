@@ -4,7 +4,7 @@
 //
 //   - it waits for sound, so there is no silence on the front (and keeps the
 //     20 ms before the sound began, so the very start is not clipped off)
-//   - it stops by itself at ten seconds
+//   - it stops by itself at kMaxSeconds (twenty seconds)
 //   - silence on the end is trimmed, and the end faded so it does not click
 //   - a quiet recording is brought up to a healthy level
 //
@@ -26,7 +26,7 @@ public:
     float seconds() const { return static_cast<float>(taken_.size()) / rate_; }
     float level() const { return level_; }           // how loud the input is just now, 0..1
 
-    static constexpr float kMaxSeconds = 10.f;
+    static constexpr float kMaxSeconds = 20.f; // a recording made on the handheld (owner, 2026-11-18: it was 10)
     static constexpr float kStartLevel = 0.02f;      // louder than this is "sound"
 
 private:

@@ -90,12 +90,8 @@ void SamplePicker::show(int depth, const std::string& folder) {
             if (rowKey(rows_[i]) == was->second) cursor_ = static_cast<int>(i);
 }
 
-void SamplePicker::open(std::vector<std::string> names, std::vector<std::string> folders, const std::string& current, const char* title, const char* first, Jobs jobs) {
+void SamplePicker::setLists(std::vector<std::string> names, std::vector<std::string> folders) {
     all_ = std::move(names);
-    original_ = on_ = current;
-    title_ = title;
-    first_ = first;
-    jobs_ = std::move(jobs);
     // Every folder there is: those on the card, and those the names speak of (and the folders those are in).
     dirs_ = std::move(folders);
     for (const std::string& name : all_)
@@ -105,6 +101,28 @@ void SamplePicker::open(std::vector<std::string> names, std::vector<std::string>
     std::sort(dirs_.begin(), dirs_.end());
     dirs_.erase(std::unique(dirs_.begin(), dirs_.end()), dirs_.end());
     index();
+}
+
+void SamplePicker::rescan(std::vector<std::string> names, std::vector<std::string> folders) {
+    // A hold filling, or a recording carried, is called off: the rows have moved under it, and it
+    // would finish on whatever is under the cursor now. Letting go is swallowed, not a tap or a page.
+    deleting_ = refusing_ = false;
+    deleteTimed_ = false;
+    deletePart_ = 0.f;
+    bDown_ = false;
+    r1Down_ = false;
+    r1Timed_ = false;
+    carried_.clear();
+    setLists(std::move(names), std::move(folders));
+    refresh();
+}
+
+void SamplePicker::open(std::vector<std::string> names, std::vector<std::string> folders, const std::string& current, const char* title, const char* first, Jobs jobs) {
+    setLists(std::move(names), std::move(folders));
+    original_ = on_ = current;
+    title_ = title;
+    first_ = first;
+    jobs_ = std::move(jobs);
     last_.clear();
     // Open in the folder the recording that is on is in, with the cursor on it.
     show(0, "");
@@ -226,8 +244,20 @@ void SamplePicker::drop(bool playing) {
     const std::string from = carried_, folder = carryTo();
     const std::string to = folder.empty() ? sampleLabel(from) : folder + "/" + sampleLabel(from);
     carried_.clear();
-    const Session::FileJob did = jobs_.move ? jobs_.move(from, to) : Session::FileJob::Failed;
     const int failuresBefore = jobs_.followFailures ? jobs_.followFailures() : 0;
+    const Session::FileJob did = jobs_.move ? jobs_.move(from, to) : Session::FileJob::Failed;
+    if (did == Session::FileJob::Copying) { // the long way: said until the copy ends, then as any move (update)
+        copying_ = true;
+        copyFrom_ = from, copyTo_ = to, copyFolder_ = folder, copyFailuresBefore_ = failuresBefore;
+        say("MOVING TO " + destName(folder) + "...");
+    } else {
+        moved(from, to, folder, did, failuresBefore);
+    }
+    arrive(playing, true); // what the cursor is on now goes on, as arriving on any row does
+}
+
+// How a move went (at once, or when its copy has ended): the list follows a move that happened.
+void SamplePicker::moved(const std::string& from, const std::string& to, const std::string& folder, Session::FileJob did, int failuresBefore) {
     if (did == Session::FileJob::Done || did == Session::FileJob::NotSaved || did == Session::FileJob::Moving) { // (not saved: it HAS moved)
         std::replace(all_.begin(), all_.end(), from, to);
         std::sort(all_.begin(), all_.end());
@@ -251,10 +281,11 @@ void SamplePicker::drop(bool playing) {
         say("NOT MOVED: ONE OF THAT NAME IS THERE");
     } else if (did == Session::FileJob::Same) {
         say("LEFT WHERE IT WAS"); // (R1 held too long for a page, or let go in its own folder: said, so it is not a mystery)
+    } else if (did == Session::FileJob::Busy) {
+        say("NOT MOVED: ANOTHER IS STILL MOVING");
     } else {
         say("COULD NOT MOVE IT");
     }
-    arrive(playing, true); // what the cursor is on now goes on, as arriving on any row does
 }
 
 void SamplePicker::moveKey(Button direction) {
@@ -275,6 +306,8 @@ void SamplePicker::keepFolder() {
     for (char& c : name) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c);
     if (name.empty()) {
         typing_ = false;
+        saved_ = 0.f;
+        stickWas_ = false; // the keys' stick is not the rows': the next push starts over
         return;
     }
     const std::string whole = typingIn_.empty() ? name : typingIn_ + "/" + name;
@@ -284,6 +317,8 @@ void SamplePicker::keepFolder() {
         std::sort(dirs_.begin(), dirs_.end());
         index();
         typing_ = false;
+        saved_ = 0.f;
+        stickWas_ = false;
         refresh(rowKey({Kind::Folder, whole, 0}));
         say("MADE " + upper(name));
     } else {
@@ -422,6 +457,14 @@ void SamplePicker::update(const Input& input, Uint32 nowMs, bool playing) {
     if (dt > 0.05f) dt = 0.05f;
     dt *= ui::gStickSpeed;
     lastMs_ = nowMs;
+    if (copying_) { // a move being copied: said until it ends, then the list follows it
+        if (jobs_.copying && jobs_.copying()) {
+            saidUntil_ = nowMs + kSaidMs;
+        } else {
+            copying_ = false;
+            moved(copyFrom_, copyTo_, copyFolder_, jobs_.copied ? jobs_.copied() : Session::FileJob::Failed, copyFailuresBefore_);
+        }
+    }
     if (!open_) return;
     if (moving_) {
         if (jobs_.following && jobs_.following()) {

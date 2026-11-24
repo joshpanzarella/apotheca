@@ -75,6 +75,98 @@ bool changeEffectType(Session& session, int track, int slot, EffectKind to) {
     return true;
 }
 
+bool moveEffectSlot(Session& session, int track, int slot, int by) {
+    if (by == 0 || track < 0 || track >= session.project.trackCount() || slot < 0 || slot >= kTrackSlots) return false;
+    const int to = slot + (by > 0 ? 1 : -1);
+    if (to < 0 || to >= kTrackSlots) return false; // the ends stop
+    const int a = slot, b = to;
+    const TrackData& t = session.project.tracks[track];
+    const EffectData dataA = t.effects[a], dataB = t.effects[b];
+    // Each slot's automation, headed for the other's lanes.
+    struct Wrote { int scene, lane, step; float value; };
+    std::vector<Wrote> intoA, intoB;
+    for (int scene = 0; scene < kMaxScenes; ++scene) {
+        if (!t.automation.has(scene)) continue;
+        for (int p = 0; p < kEffectParams; ++p)
+            for (int step = 0; step < kAutoSteps; ++step) {
+                const float va = t.automation[scene][autoLaneOfEffect(a, p)][step];
+                const float vb = t.automation[scene][autoLaneOfEffect(b, p)][step];
+                if (va >= 0.f) intoB.push_back({scene, autoLaneOfEffect(b, p), step, va});
+                if (vb >= 0.f) intoA.push_back({scene, autoLaneOfEffect(a, p), step, vb});
+            }
+    }
+    // Each slot's remembered types, headed the same way.
+    struct Known { bool has = false; EffectData data; };
+    Known memA[kEffectKinds], memB[kEffectKinds];
+    for (int k = 0; k < kEffectKinds; ++k) {
+        float pa[kEffectParams], pb[kEffectParams];
+        memA[k].has = session.rememberedType(track, a, static_cast<EffectKind>(k), pa);
+        memB[k].has = session.rememberedType(track, b, static_cast<EffectKind>(k), pb);
+        memA[k].data.kind = k;
+        memB[k].data.kind = k;
+        for (int i = 0; i < kEffectParams; ++i) {
+            if (memA[k].has) memA[k].data.param[i] = pa[i];
+            if (memB[k].has) memB[k].data.param[i] = pb[i];
+        }
+    }
+    // The engine first: fresh DSP for both slots (a reorder re-patches; tails do not survive it).
+    // If either refuses, everything is as it was.
+    if (!session.engine.setEffect(track, a, static_cast<EffectKind>(dataB.kind)) ||
+        !session.engine.setEffect(track, b, static_cast<EffectKind>(dataA.kind))) {
+        session.engine.setEffect(track, a, static_cast<EffectKind>(dataA.kind));
+        session.engine.setEffect(track, b, static_cast<EffectKind>(dataB.kind));
+        return false;
+    }
+    const bool writing = session.writing();
+    session.setWriting(false); // none of this is the player moving a knob
+    TrackData& now = session.project.tracks[track];
+    now.effects[a] = dataB;
+    now.effects[b] = dataA;
+    // The two slots' lanes swapped in the song, and the track's patterns sent once, whole (review
+    // 2026-11-23: a command for every step written, up to 64 scenes of eight lanes, filled the
+    // engine's queue on a busy track, and the whole song was sent again).
+    bool movedAny = false;
+    for (int scene = 0; scene < kMaxScenes; ++scene) {
+        if (!now.automation.has(scene)) continue; // (nothing written there: no piece made for it)
+        for (int p = 0; p < kEffectParams; ++p)
+            for (const int l : {autoLaneOfEffect(a, p), autoLaneOfEffect(b, p)})
+                for (float& v : now.automation[scene][l]) movedAny = movedAny || v >= 0.f, v = kAutoNone;
+    }
+    for (const std::vector<Wrote>* into : {&intoA, &intoB})
+        for (const Wrote& w : *into) now.automation[w.scene][w.lane][w.step] = w.value;
+    if (movedAny) {
+        session.noteEdit();
+        session.sendTrackImage(track);
+    }
+    for (int m = 0; m < kModsPerTrack; ++m) {
+        ModSettings mod = session.modData(track, m);
+        const int at = modTargetSlot(mod.target);
+        if (at != a && at != b) continue;
+        mod.target = kModFirstEffect + (at == a ? b : a) * 4 + modTargetSetting(mod.target);
+        session.setMod(track, m, mod);
+    }
+    session.forgetTypes(track, a);
+    session.forgetTypes(track, b);
+    for (int k = 0; k < kEffectKinds; ++k) {
+        if (memA[k].has) session.rememberType(track, b, memA[k].data);
+        if (memB[k].has) session.rememberType(track, a, memB[k].data);
+    }
+    for (int q = 0; q < 2; ++q) { // the swapped settings to the fresh DSP, outright
+        const int at = q == 0 ? a : b;
+        for (int s = 0; s < kEffectParams; ++s) {
+            Command c;
+            c.type = Command::SetEffectParam;
+            c.track = track;
+            c.a = at;
+            c.b = s;
+            c.value = now.effects[at].param[s];
+            session.engine.send(c);
+        }
+    }
+    session.setWriting(writing);
+    return true;
+}
+
 bool switchEffectType(Session& session, int track, int slot, EffectKind to) {
     if (slot < 0 || slot >= slotsOf(track)) return false;
     const EffectData was = session.effectData(track, slot);
@@ -335,6 +427,13 @@ void FxScreen::emptySend(int bus) {
 // A direction. Without A: the cursor. With A held: change the thing under it by one notch.
 void FxScreen::press(Button b) {
     const bool upDown = b == Button::Up || b == Button::Down;
+    if (yHeld_ && !holding_ && column_ == 0 && row_ < kTrackSlots && upDown && tryRow_ < 0 && !deleting_) {
+        // Y held on one of the track's own lines: up / down moves it there, settings, automation
+        // and MODs with it. The cursor goes with it; the ends stop.
+        const int by = b == Button::Up ? -1 : 1;
+        if (moveEffectSlot(session_, project_.track, row_, by)) goTo(row_ + by, 0);
+        return;
+    }
     if (!holding_) {
         if (column_ == 0) {
             // In the list: up and down through its lines; right into the line's settings, where it was last.
@@ -352,7 +451,7 @@ void FxScreen::press(Button b) {
         return;
     }
     if (column_ == 0) {
-        if (sends(row_)) return; // the sends are turned one at a time, on the right
+        if (sends(row_)) return; // the sends are turned one at a time, on the right: the D-pad is dead here, and the bar says so
         const EffectKind kind = static_cast<EffectKind>(data(row_).kind);
         const int bus = busOf(row_);
         if (tryRow_ != row_) startTrying();
@@ -445,6 +544,10 @@ void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (modKnob_.held() && modKnob_.onButton(event, lastMs_)) return;
+    if (b == Button::Y) {
+        yHeld_ = event.down; // (with X held the MOD has it: above)
+        return;
+    }
     if (b == Button::A) {
         if (!event.down && tryRow_ >= 0) letGo(); // what is tried goes in (or, on the one it started on, it is as it was)
         holding_ = event.down;
@@ -529,6 +632,7 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
     // A button let go while another screen was showing (a song opened, a tab turned) never told this
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
     if (!input.held(Button::A)) holding_ = false;
+    if (!input.held(Button::Y)) yHeld_ = false;
     // The RIGHT (D-pad or stick) that came in from the list is let go: RIGHT switches the TYPE from now.
     // Trying an effect with A held: A let go unseen, or the track changed under it: nothing goes in.
     if (tryRow_ >= 0 && (!holding_ || trackOf(tryRow_) != tryTrack_ || row_ != tryRow_)) callOff(), holding_ = false;
@@ -918,14 +1022,22 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             hint("UP / DOWN", "effect");
             if (effectTypes(kind) > 1) hint("LEFT / RIGHT", "type");
             hint("B", "as it was");
+        } else {
+            hint("LET GO", "then RIGHT");
         }
+    } else if (yHeld_ && column_ == 0 && row_ < kTrackSlots) {
+        hint("UP / DOWN", "move it");
     } else if (column_ == 0) {
         if (settings(row_) > 0) hint("RIGHT", onSends ? "sends" : "settings");
         if (!onSends) hint("HOLD A", "effects");
         if (onSends) hint("B", "send nothing");
         else if (kind != EffectKind::None) hint("HOLD B", "delete");
+        // A filled track line has all five it can hold: START yields to the move (it is on
+        // every other line, and the top bar shows playing).
+        const bool move = !onSends && row_ < kTrackSlots && kind != EffectKind::None;
+        if (move) hint("HOLD Y", "move");
         hint("L1 / R1", "track");
-        hint("START", project_.playing ? "stop" : "play");
+        if (!move) hint("START", project_.playing ? "stop" : "play");
     } else {
         hint("LEFT", "list");
         hint("HOLD A", !onSends && effectTypes(kind) > 1 ? "turn, type" : "turn"); // (with A held the bar says which way)

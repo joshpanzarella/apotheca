@@ -293,6 +293,18 @@ void testTheKitPage() {
         rig.key(A, false);
         rig.frames(1);
     }
+    // With a recording on the lane the L1 slices hint joins: still fits (START yields to it).
+    rig.session().setLaneSample(0, kOpenHatLane, "break");
+    for (int column = 0; column < KitScreen::kColumns; ++column) {
+        kit.goTo(kOpenHatLane, column);
+        rig.draw();
+        CHECK(ui::gHintsOver == 0.f);
+        rig.key(A, true);
+        rig.draw();
+        CHECK(ui::gHintsOver == 0.f);
+        rig.key(A, false);
+        rig.frames(1);
+    }
 }
 
 // ---- the mark on the grid -----------------------------------------------------------------------------
@@ -307,7 +319,7 @@ void testTheMark() {
     session.setLaneChoke(0, 7, 2);
     session.setLaneFeel(0, 5, 100, 100); // (beside the feel's mark)
     rig.app.drums().moveCursorTo(5, -1); // (the cursor's outline on one of them)
-    for (int theme : {kThemeBrown, kThemePaper}) {
+    for (int theme : {kThemeBrown, kThemeSolarized}) {
         session.setTheme(theme);
         rig.draw();
         for (int lane = 0; lane < kDrumLanes; ++lane) CHECK(rig.gridPieces(lane) == rig.kit().laneChoke[lane]);

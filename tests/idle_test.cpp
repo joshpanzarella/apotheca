@@ -626,11 +626,12 @@ void theSession(Rig& rig, const std::string& samples) {
     rig.press(A);
     rig.run(1500);
     {
+        // (No port said is 80, which a desk run as root, or a Mac, gives the program: a browser asks it itself.)
         const std::string address = s.transferAddress();
-        const std::size_t colon = address.rfind(':');
-        const int port = std::atoi(address.c_str() + colon + 1);
-        const std::size_t slash = address.find('/', colon);
-        CHECK(put(port, address.substr(slash) + "/update/apotheca", aProgram()) == 200);
+        const std::size_t slash = address.find('/'), colon = address.find(':');
+        const int port = colon == std::string::npos || colon > slash ? 80 : std::atoi(address.c_str() + colon + 1);
+        CHECK(slash != std::string::npos);
+        if (slash != std::string::npos) CHECK(put(port, address.substr(slash) + "/update/apotheca", aProgram()) == 200);
     }
     rig.run(1500); // the notice comes up by itself
     CHECK(s.updateWaiting());

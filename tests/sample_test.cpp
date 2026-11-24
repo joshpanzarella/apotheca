@@ -177,11 +177,15 @@ void testReadingWavFiles() {
         CHECK(std::abs(crossings - 440) <= 2); // 440 Hz for half a second
         CHECK(peak > 0.48f && peak < 0.52f);
     }
-    // Ten seconds is the most: a longer file is cut there, and faded so it does not click.
-    CHECK(parseWav(makeWav(1, 8, 1, 8000, 8000 * 12, [](int, int) { return 0.5f; }), out));
-    CHECK(out.size() == 480000 && std::fabs(out[470000] - 0.5f) < 0.01f && std::fabs(out.back()) < 0.01f);
-    CHECK(parseWav(makeWav(1, 8, 1, 8000, 8000 * 9, [](int, int) { return 0.5f; }), out));
-    CHECK(out.size() == 432000 && std::fabs(out.back() - 0.5f) < 0.01f); // under ten: left alone
+    // Twenty seconds is the most (kMaxSampleSeconds; owner, 2026-11-18: it was ten): a longer file is
+    // cut there, and faded so it does not click.
+    CHECK(parseWav(makeWav(1, 8, 1, 8000, 8000 * 24, [](int, int) { return 0.5f; }), out));
+    CHECK(out.size() == 960000 && std::fabs(out[950000] - 0.5f) < 0.01f && std::fabs(out.back()) < 0.01f);
+    CHECK(parseWav(makeWav(1, 8, 1, 8000, 8000 * 19, [](int, int) { return 0.5f; }), out));
+    CHECK(out.size() == 912000 && std::fabs(out.back() - 0.5f) < 0.01f); // under twenty: left alone
+    // Fifteen seconds, longer than the old limit, is kept whole.
+    CHECK(parseWav(makeWav(1, 8, 1, 8000, 8000 * 15, [](int, int) { return 0.5f; }), out));
+    CHECK(out.size() == 720000 && std::fabs(out.back() - 0.5f) < 0.01f);
 
     // A file cut short plays what there is of it.
     std::string cutShort = makeWav(1, 16, 1, 48000, 1000, ramp);
@@ -1178,9 +1182,13 @@ void testTheSamplerTrack() {
     rig.tap(LEFT, 2);
     CHECK(screen.cursor() == 6);
     rig.tap(DOWN);
-    CHECK(screen.cursor() == 6);
+    CHECK(screen.cursor() == SamplerScreen::kPresetStop); // PRESET is below the second row
+    rig.tap(DOWN);
+    CHECK(screen.cursor() == SamplerScreen::kPresetStop); // (past it: stops)
     rig.tap(UP);
-    CHECK(screen.cursor() == 2);
+    CHECK(screen.cursor() == 7);
+    rig.tap(UP);
+    CHECK(screen.cursor() == 3);
     rig.tap(UP);
     CHECK(screen.cursor() == 0);
     rig.tap(DOWN);
@@ -1360,15 +1368,15 @@ void testTheRecorder() {
     r.arm();
     r.feed(quiet.data(), 48000);
     CHECK(r.finish().empty());
-    // Ten seconds is the most.
+    // Twenty seconds is the most (Recorder::kMaxSeconds).
     r.arm();
     const std::vector<float> loud = tone(1.f, 0.95f);
-    for (int i = 0; i < 9; ++i) r.feed(loud.data(), 48000);
+    for (int i = 0; i < 19; ++i) r.feed(loud.data(), 48000);
     CHECK(!r.full());
     for (int i = 0; i < 3; ++i) r.feed(loud.data(), 48000);
-    CHECK(r.full() && std::fabs(r.seconds() - 10.f) < 0.001f);
+    CHECK(r.full() && std::fabs(r.seconds() - 20.f) < 0.001f);
     take = r.finish();
-    CHECK(take.size() == 480000);
+    CHECK(take.size() == 960000);
     peak = 0.f;
     for (float v : take) peak = std::fabs(v) > peak ? std::fabs(v) : peak;
     CHECK(std::fabs(peak - 0.95f) < 0.01f); // already loud: left as it is
@@ -1430,6 +1438,43 @@ void testRecordingOntoACloud() {
     CHECK(session.trackSound(1).missing && session.findMissing("rec 1") == 1 && std::string(track.sample) == "recorded/rec 1" && !session.trackSound(1).missing);
 }
 
+// A recording under way goes onto the track it began on, wherever that track goes, and is called off
+// when its track goes, changes instrument, or another song comes (review 2026-11-23: it landed on
+// whichever track then had the number, or in the other song).
+void testARecordingFollowsItsTrack() {
+    const std::string folder = tempFolder("samples-follow");
+    Rig rig(folder);
+    Session& session = rig.session();
+    FakeInput input;
+    session.useAudioInput(&input);
+    CHECK(session.addTrack(TrackKind::Drums) && session.addTrack(TrackKind::Drums)); // tracks 2 and 3 (1 is the song's own)
+    // Waiting on track 3, lane 2; track 1 deleted: it is track 2 now, and the take lands there.
+    CHECK(session.toggleRecording(2, 1) == Session::Rec::Waiting);
+    CHECK(session.removeTrack(0));
+    input.add(tone(0.5f, 0.25f));
+    rig.frames(5);
+    CHECK(session.recording() == Session::Rec::Recording);
+    session.toggleRecording(1, 1);
+    rig.frames(2);
+    CHECK(std::string(rig.project().tracks[1].laneSample[1]) == "recorded/rec 1" && std::string(rig.project().tracks[0].laneSample[1]) != "recorded/rec 1");
+    // Waiting on track 2; a copy of track 1 put after it: track 2 is track 3 now.
+    CHECK(session.toggleRecording(1, 2) == Session::Rec::Waiting);
+    CHECK(session.duplicateTrack(0) == 1);
+    input.add(tone(0.5f, 0.25f));
+    rig.frames(5);
+    session.toggleRecording(2, 2);
+    rig.frames(2);
+    CHECK(std::string(rig.project().tracks[2].laneSample[2]) == "recorded/rec 2" && std::string(rig.project().tracks[1].laneSample[2]) != "recorded/rec 2");
+    // Waiting on a track that is deleted: called off, nothing kept, nothing put anywhere.
+    CHECK(session.toggleRecording(2, 3) == Session::Rec::Waiting);
+    CHECK(session.removeTrack(2));
+    CHECK(session.recording() == Session::Rec::Idle && !input.open);
+    // Waiting when another song comes: called off.
+    CHECK(session.toggleRecording(0, 4) == Session::Rec::Waiting);
+    CHECK(session.newSong());
+    CHECK(session.recording() == Session::Rec::Idle && !input.open);
+}
+
 void testRecordingOntoALane() {
     const std::string folder = tempFolder("samples");
     Rig rig(folder);
@@ -1483,16 +1528,16 @@ void testRecordingOntoALane() {
     rig.frames(1);
     CHECK(kit.said().find("NOTHING RECORDED") != std::string::npos);
 
-    // Ten seconds: it stops by itself, as "rec 2", on the lane the cursor was on when it began.
+    // Twenty seconds: it stops by itself, as "rec 2", on the lane the cursor was on when it began.
     kit.goTo(5, KitScreen::kSound);
     rig.tap(R1);
     rig.frames(1);
     kit.goTo(6, KitScreen::kSound);
-    for (int i = 0; i < 11; ++i) input.add(tone(1.f, 0.5f));
-    for (int i = 0; i < 400 && session.recording() != Session::Rec::Idle; ++i) rig.frames(1);
+    for (int i = 0; i < 21; ++i) input.add(tone(1.f, 0.5f));
+    for (int i = 0; i < 800 && session.recording() != Session::Rec::Idle; ++i) rig.frames(1);
     CHECK(session.recording() == Session::Rec::Idle && !input.open && session.lastRecorded() == "recorded/rec 2");
     CHECK(std::strcmp(track.laneSample[5], "recorded/rec 2") == 0 && track.laneSample[6][0] == 0);
-    CHECK(readWav(folder + "/recorded/rec 2.wav", file) && file.size() == 480000);
+    CHECK(readWav(folder + "/recorded/rec 2.wav", file) && file.size() == 960000);
     rig.frames(1);
     CHECK(kit.said().find("REC 2") != std::string::npos);
     // Not while A is held.
@@ -2106,6 +2151,17 @@ void testOneSliceIsKeptInTheSong() {
     CHECK(parseSong(odd, *other) && other->tracks[0].laneOneSlice[4] && !other->tracks[0].laneOneSlice[2] && !other->tracks[0].laneOneSlice[0]);
     CHECK(other->tracks[0].preset == 0); // lane 9 did not land on whatever comes after the lanes
 
+    // FIT with no recording on the lane is kept on a lanefit line (a recording's is on its sample line).
+    rig.session().setLaneFit(0, 1, 8);
+    const std::string fitted = songText(rig.project());
+    CHECK(fitted.find("\nlanefit 2 8\n") != std::string::npos);
+    std::unique_ptr<Project> fit(new Project);
+    CHECK(parseSong(fitted, *fit) && songText(*fit) == fitted);
+    CHECK(fit->tracks[0].laneFit[1] == 8);
+    rig.session().setLaneSample(0, 1, "break");
+    const std::string sampled = songText(rig.project());
+    CHECK(sampled.find("lanefit") == std::string::npos && sampled.find("sample 2 8 break\n") != std::string::npos);
+
     // Opened afresh, the lane's hits play one slice: the setting reached the engine with the song.
     Rig opened(folder);
     opened.project() = *back;
@@ -2599,6 +2655,284 @@ void testARecordingEndingInCapitals() {
     rig.tap(SDLK_RETURN);
 }
 
+// A multisample file's note from its name: the last note spelled in the name by
+// itself, C4 as 60. Sharps and flats, any case; folders and take numbers unread.
+void testNoteNames() {
+    CHECK(sampleNote("C2") == 36 && sampleNote("c2") == 36);
+    CHECK(sampleNote("C#3") == 49 && sampleNote("Db3") == 49 && sampleNote("db3") == 49);
+    CHECK(sampleNote("A0") == 21 && sampleNote("Bb1") == 34 && sampleNote("Cb3") == 47);
+    CHECK(sampleNote("C-1") == 0 && sampleNote("G9") == 127 && sampleNote("A-1") == 9);
+    CHECK(sampleNote("Piano/C2") == 36 && sampleNote("Piano C3") == 48 && sampleNote("C3 Piano") == 48);
+    CHECK(sampleNote("C4 take 2") == 60 && sampleNote("C4 C5") == 72); // the last one spelled
+    CHECK(sampleNote("take2") < 0 && sampleNote("EBONY") < 0 && sampleNote("808") < 0 && sampleNote("60") < 0);
+    CHECK(sampleNote("") < 0 && sampleNote("C") < 0 && sampleNote("H2") < 0); // (no German H)
+    CHECK(sampleNote("C10") < 0 && sampleNote("C-2") < 0);                   // past the keys
+    CHECK(sampleNote("C Major/Piano") < 0);                                 // folders unread
+}
+
+// A tone at one pitch, for telling a multisample's zones apart by ear.
+std::vector<float> toneAt(float freq, float seconds, float level) {
+    std::vector<float> out(static_cast<std::size_t>(seconds * 48000.f));
+    for (std::size_t i = 0; i < out.size(); ++i) out[i] = level * std::sin(0.5f + 6.2831853f * freq * static_cast<float>(i) / 48000.f);
+    return out;
+}
+
+void testMultisampleZones() {
+    const std::string folder = tempFolder("samples");
+    writeWav(folder + "/Piano C2.wav", toneAt(100.f, 2.f, 0.5f), 48000);
+    writeWav(folder + "/Piano C3.wav", toneAt(200.f, 2.f, 0.5f), 48000);
+    writeWav(folder + "/Piano C4.wav", toneAt(400.f, 2.f, 0.5f), 48000);
+    writeWav(folder + "/Piano pad.wav", toneAt(300.f, 2.f, 0.5f), 48000);
+    mkdir((folder + "/plain").c_str(), 0755);
+    writeWav(folder + "/plain/lonely.wav", toneAt(150.f, 2.f, 0.5f), 48000);
+    Rig rig(folder);
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Sampler));
+    rig.project().track = 1;
+    const auto pitchOf = [&](int note) {
+        rig.render(100000); // anything before dies away
+        Command c;
+        c.type = Command::NoteOn;
+        c.track = 1;
+        c.a = note;
+        c.value = 0.8f;
+        rig.engine->send(c);
+        const std::vector<float> out = rig.render(24000); // half a second
+        c.type = Command::NoteOff;
+        rig.engine->send(c);
+        rig.render(48000);
+        int crossings = 0;
+        for (std::size_t i = 2 * 960 + 2; i < out.size(); i += 2) crossings += (out[i - 2] < 0.f) != (out[i] < 0.f);
+        return crossings / 2.0 / ((24000 - 960) / 48000.0); // hertz, near enough
+    };
+
+    // Three files with notes in the name: three zones, each at its own pitch.
+    session.setTrackSample(1, "Piano C3");
+    CHECK(session.trackSound(1).zones == 3);
+    CHECK(std::fabs(pitchOf(36) - 100.0) < 5.0); // the C2 file, untransposed
+    CHECK(std::fabs(pitchOf(48) - 200.0) < 5.0); // the C3 file
+    CHECK(std::fabs(pitchOf(60) - 400.0) < 5.0); // the C4 file
+    CHECK(std::fabs(pitchOf(42) - 100.0 * 1.41421356) < 5.0); // up to the middle: still the C2 file
+    CHECK(std::fabs(pitchOf(43) - 200.0 / 1.33483985) < 5.0); // past it: the C3 file
+    CHECK(std::fabs(pitchOf(72) - 800.0) < 8.0);              // the top zone plays to the top key
+    CHECK(std::fabs(pitchOf(0) - 100.0 / 8.0) < 3.0);         // ...and the bottom one to the bottom
+    // ROOT moves the whole set as it moves one recording (72: an octave down).
+    session.setSamplerSetting(1, sampler::Root, 72);
+    CHECK(std::fabs(pitchOf(48) - 100.0) < 5.0);
+    session.setSamplerSetting(1, sampler::Root, 60);
+    // The song still names only the one picked; sending the song finds the set again.
+    CHECK(std::strcmp(rig.project().tracks[1].sample, "Piano C3") == 0);
+    session.sendSong();
+    CHECK(session.trackSound(1).zones == 3 && std::fabs(pitchOf(36) - 100.0) < 5.0);
+
+    // The picked one with no note in its name plays at ROOT; one note twice keeps it.
+    session.setTrackSample(1, "Piano pad");
+    CHECK(session.trackSound(1).zones == 3); // the pad, C2, C3 (its C4 names the pad's own key)
+    CHECK(std::fabs(pitchOf(72) - 600.0) < 8.0);
+    // A file with no noted files beside it is one recording, as always.
+    session.setTrackSample(1, "plain/lonely");
+    CHECK(session.trackSound(1).zones == 0 && std::fabs(pitchOf(60) - 150.0) < 5.0);
+    // Clearing the recording clears the zones too.
+    session.setTrackSample(1, "Piano C3");
+    CHECK(session.trackSound(1).zones == 3);
+    session.setTrackSample(1, "");
+    CHECK(session.trackSound(1).zones == 0);
+    CHECK(pitchOf(60) == 0.0); // silence: no crossings at all
+}
+
+void testMultisampleCap() {
+    const std::string folder = tempFolder("samples");
+    static const char* semitone[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    for (int midi = 12; midi < 42; ++midi) { // thirty files, C0 to F2
+        char name[32];
+        std::snprintf(name, sizeof name, "S %s%d", semitone[midi % 12], midi / 12 - 1);
+        writeWav(folder + "/" + name + ".wav", toneAt(midi == 28 ? 333.f : 100.f, 0.5f, 0.5f), 48000);
+    }
+    Rig rig(folder);
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Sampler));
+    session.setTrackSample(1, "S E1");
+    CHECK(session.trackSound(1).zones == sampler::kMaxZones); // twenty-four, not thirty
+    // The picked one is always among them: its own pitch at its own key.
+    rig.render(100000);
+    Command c;
+    c.type = Command::NoteOn;
+    c.track = 1;
+    c.a = 28;
+    c.value = 0.8f;
+    rig.engine->send(c);
+    const std::vector<float> out = rig.render(24000);
+    int crossings = 0;
+    for (std::size_t i = 2 * 960 + 2; i < out.size(); i += 2) crossings += (out[i - 2] < 0.f) != (out[i] < 0.f);
+    CHECK(std::fabs(crossings / 2.0 / ((24000 - 960) / 48000.0) - 333.0) < 5.0);
+}
+
+void testSamplerChop() {
+    const std::string folder = tempFolder("samples");
+    std::vector<float> sixteen; // sixteen tones laid end to end, a fifth of a second each
+    for (int i = 0; i < 16; ++i) {
+        const std::vector<float> part = toneAt(100.f + i * 25.f, 0.2f, 0.5f);
+        sixteen.insert(sixteen.end(), part.begin(), part.end());
+    }
+    writeWav(folder + "/break.wav", sixteen, 48000);
+    mkdir((folder + "/set").c_str(), 0755);
+    writeWav(folder + "/set/P C3.wav", toneAt(200.f, 1.f, 0.5f), 48000);
+    writeWav(folder + "/set/P C4.wav", toneAt(400.f, 1.f, 0.5f), 48000);
+    Rig rig(folder);
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Sampler));
+    session.setTrackSample(1, "break");
+    session.setSamplerChop(1, true);
+    CHECK(session.trackSound(1).zones == 0);
+    const auto slicePitch = [&](int note) {
+        rig.render(100000);
+        Command c;
+        c.type = Command::NoteOn;
+        c.track = 1;
+        c.a = note;
+        c.value = 0.8f;
+        rig.engine->send(c);
+        const std::vector<float> out = rig.render(24000);
+        c.type = Command::NoteOff;
+        rig.engine->send(c);
+        rig.render(48000);
+        int crossings = 0;
+        for (std::size_t i = 2 * 960 + 2; i < 2 * 960 + 2 * 7680; i += 2) crossings += (out[i - 2] < 0.f) != (out[i] < 0.f);
+        return crossings / 2.0 / (7680 / 48000.0); // hertz, near enough
+    };
+    // Each key its slice's own tone: C1 the first, up chromatically.
+    CHECK(std::fabs(slicePitch(24) - 100.0) < 8.0);
+    CHECK(std::fabs(slicePitch(25) - 125.0) < 8.0);
+    CHECK(std::fabs(slicePitch(31) - 275.0) < 8.0);
+    CHECK(std::fabs(slicePitch(39) - 475.0) < 8.0);
+    const auto peakFrom = [&](const std::vector<float>& v, std::size_t from) {
+        float peak = 0.f;
+        for (std::size_t i = from; i < v.size(); ++i) peak = std::fabs(v[i]) > peak ? std::fabs(v[i]) : peak;
+        return peak;
+    };
+    // Off the slices: silent.
+    for (int note : {23, 40, 60}) {
+        rig.render(100000);
+        Command c;
+        c.type = Command::NoteOn;
+        c.track = 1;
+        c.a = note;
+        c.value = 0.8f;
+        rig.engine->send(c);
+        CHECK(peakFrom(rig.render(24000), 0) < 0.001f);
+        c.type = Command::NoteOff;
+        rig.engine->send(c);
+    }
+    // START trims within the slice (half of it: still its tone, not the file's middle).
+    session.setSamplerSetting(1, sampler::Start, 50);
+    {
+        rig.render(100000);
+        Command c;
+        c.type = Command::NoteOn;
+        c.track = 1;
+        c.a = 24;
+        c.value = 0.8f;
+        rig.engine->send(c);
+        const std::vector<float> out = rig.render(24000);
+        c.type = Command::NoteOff;
+        rig.engine->send(c);
+        rig.render(48000);
+        int crossings = 0; // inside its 0.08 sounding seconds (it starts halfway through the slice)
+        for (std::size_t i = 2 * 960 + 2; i < 2 * 960 + 2 * 3840; i += 2) crossings += (out[i - 2] < 0.f) != (out[i] < 0.f);
+        CHECK(std::fabs(crossings / 2.0 / (3840 / 48000.0) - 100.0) < 8.0);
+    }
+    session.setSamplerSetting(1, sampler::Start, 0);
+    // A note ends where its slice ends.
+    rig.render(100000);
+    {
+        Command c;
+        c.type = Command::NoteOn;
+        c.track = 1;
+        c.a = 24;
+        c.value = 0.8f;
+        rig.engine->send(c);
+        const std::vector<float> out = rig.render(24000);
+        CHECK(peakFrom(out, 2 * 12000) < 0.01f); // past its fifth of a second: nothing
+        c.type = Command::NoteOff;
+        rig.engine->send(c);
+    }
+    // With a multisample, the zones win: C3 plays its file, not a slice (slice 24 would be silent).
+    session.setTrackSample(1, "set/P C3");
+    CHECK(session.trackSound(1).zones == 2);
+    rig.render(100000);
+    {
+        Command c;
+        c.type = Command::NoteOn;
+        c.track = 1;
+        c.a = 48;
+        c.value = 0.8f;
+        rig.engine->send(c);
+        const std::vector<float> out = rig.render(24000);
+        c.type = Command::NoteOff;
+        rig.engine->send(c);
+        rig.render(48000);
+        int crossings = 0;
+        for (std::size_t i = 2 * 960 + 2; i < out.size(); i += 2) crossings += (out[i - 2] < 0.f) != (out[i] < 0.f);
+        CHECK(std::fabs(crossings / 2.0 / ((24000 - 960) / 48000.0) - 200.0) < 5.0);
+    }
+    // L1 on the screen turns the chop on and off, and the bar still fits.
+    const SDL_Keycode L1 = SDLK_q;
+    session.view = View::Device;
+    rig.project().track = 1;
+    session.setTrackSample(1, "break");
+    session.setSamplerChop(1, false); // a clean slate for the toggle below
+    rig.tap(L1);
+    CHECK(rig.project().tracks[1].samplerChop);
+    CHECK(std::fabs(slicePitch(24) - 100.0) < 8.0);
+    rig.tap(L1);
+    CHECK(!rig.project().tracks[1].samplerChop);
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (canvas.ok) {
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(ui::gHintsOver == 0.f); // on SOUND, with the chop hint
+        rig.tap(DOWN); // ...and on a setting
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(ui::gHintsOver == 0.f);
+        // ...and on PRESET, with and without an own preset, stopped and playing.
+        session.usePresetFolder(tempFolder("presetfit"));
+        rig.app.sampler().goTo(SamplerScreen::kPresetStop);
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(ui::gHintsOver == 0.f);
+        CHECK(session.saveSamplerPreset(1, "FIT"));
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(ui::gHintsOver == 0.f);
+        session.togglePlay(false);
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(ui::gHintsOver == 0.f);
+        session.togglePlay(false);
+    }
+}
+
+void testSamplerChopFile() {
+    Project song;
+    song.tracks[0].kind = TrackKind::Sampler;
+    song.tracks[0].samplerChop = true;
+    const std::string text = songText(song);
+    CHECK(text.find("\nchop\n") != std::string::npos);
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back) && back->tracks[0].samplerChop);
+    Project plain;
+    plain.tracks[0].kind = TrackKind::Sampler;
+    std::unique_ptr<Project> older(new Project);
+    CHECK(parseSong(songText(plain), *older) && !older->tracks[0].samplerChop);
+}
+
 int main(int, char**) {
     testThePlayhead();
     testTheSamplePicker();
@@ -2623,7 +2957,13 @@ int main(int, char**) {
     testTheSamplersEnd();
     testTheRecorder();
     testRecordingOntoALane();
+    testARecordingFollowsItsTrack();
     testRecordingOntoACloud();
+    testNoteNames();
+    testMultisampleZones();
+    testMultisampleCap();
+    testSamplerChop();
+    testSamplerChopFile();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

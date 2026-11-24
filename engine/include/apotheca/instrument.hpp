@@ -8,6 +8,10 @@
 
 namespace apotheca {
 
+namespace sampler {
+struct SampleZoneSet;
+}
+
 class Instrument {
 public:
     virtual ~Instrument() = default;
@@ -43,9 +47,17 @@ public:
     // after they are let go keeps ringing, so a bounce, which sends Stop when the song's last sample
     // has played and then records the tail, keeps it. By default allNotesOff, as it always was.
     virtual void stopNotes() { allNotesOff(); }
+    // A stop by hand (not a bounce, not the song's end): voices playing recordings fade out fast,
+    // so nothing plays on. Default: none (synths let go by stopNotes instead).
+    virtual void chokeAll() {}
     // For an instrument that plays a recording: here it is (or nullptr for
     // none). The samples stay alive until replaced. Realtime safe.
     virtual void setSample(const float* data, int length) { (void)data; (void)length; }
+    // For one that plays a multisample (the sampler): its zones, by root
+    // (or nullptr for none). The set stays alive until replaced. Realtime safe.
+    virtual void setZones(const sampler::SampleZoneSet* zones) { (void)zones; }
+    // For the sampler chopped: 16 even slices from C1 up, each at its own pitch. Realtime safe.
+    virtual void setChopped(bool chopped) { (void)chopped; }
     // For an instrument that plays grains (CLOUD): where each sounding grain reads now, as a share
     // of its recording (0..1), at most `most` of them, after the last render; how many. -1: it
     // plays no grains. Called on the thread that renders it, after render. MORPH gives its keys'

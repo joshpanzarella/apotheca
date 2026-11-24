@@ -260,8 +260,9 @@ const float* Phazed::czTableForTests() const { return state_->synth.rs.coef[RS_A
 const float* Phazed::converterTableForTests() const { return state_->converter.table(); }
 
 void Phazed::prepare(float sampleRate) {
-    state_->engineRate = sampleRate;
-    if (sampleRate != kSynthRate) state_->converter.prepare(kSynthRate, sampleRate);
+    const float rate = sampleRate > 0.f ? sampleRate : 48000.f; // (0, negative or NaN: the usual)
+    state_->engineRate = rate;
+    if (rate != kSynthRate) state_->converter.prepare(kSynthRate, rate);
 }
 
 int Phazed::presetCount() { return cz_preset_count; }

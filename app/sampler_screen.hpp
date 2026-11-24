@@ -7,6 +7,11 @@
 //              heard as it changes. B: none.
 //   a setting  hold A + stick up / down turns it; the D-pad moves it by one.
 //              B: its usual value.
+//   PRESET     the sound kept as a preset of its own, or "-". Hold A + up /
+//              down: the preset after / before (ends stop). R1 saves it: the
+//              keys come up to name it (A types, Y deletes, B leaves without
+//              saving, START saves). Hold B a second on one of your own:
+//              deletes its file (the track keeps its sound).
 //                PITCH    semitones up or down: up is higher. (Kept in the song
 //                         as the old "root key": middle C less the pitch.)
 //                TUNE     cents
@@ -18,6 +23,9 @@
 //                LOOP     go round from START to END while the key is held
 //                LEVEL
 //   Y          CATCH: the last bar the song played becomes this track's recording
+//   L1         CHOP: the recording in 16 even slices from C1 up, each at its own pitch
+//              (PITCH moves every slice together). START, END and LOOP work within a
+//              slice. Not with a multisample: its zones win.
 //   R1         RECORD from a USB microphone or interface: once to start (it
 //              waits for sound), again to stop. Ten seconds at most.
 //   X          hear it, at middle C (its own pitch, until ROOT or TUNE is moved),
@@ -57,18 +65,26 @@ public:
     }
 
     // Where things are, for the tests too: the recording's box at the top (its picture is as tall as
-    // the box allows), then two rows of settings, down to the LIVE OUTPUT strip (ui::kAboveScope).
+    // the box allows), then two rows of settings, then PRESET, down to the LIVE OUTPUT strip (ui::kAboveScope).
     static constexpr int kSoundY = 36, kSoundH = 136, kWaveY = kSoundY + 48, kWaveH = kSoundH - 56;
     static constexpr int kSettingY = kSoundY + kSoundH + 10, kSettingGap = 6;
-    static constexpr int kSettingH = (ui::kAboveScope - kSettingY - kSettingGap) / 2;
+    static constexpr int kPresetH = 34;
+    static constexpr int kSettingH = (ui::kAboveScope - kSettingY - kSettingGap - kPresetH - kSettingGap) / 2;
+    static constexpr int kPresetY = kSettingY + 2 * (kSettingH + kSettingGap);
+    static constexpr int kPresetStop = sampler::kSettings + 1; // below the settings
 
     // For tests and stills. Stop 0 is SOUND; 1.. are the settings in the order the page shows them
-    // (settingAt: PITCH, TUNE, START, END, then ATTACK, RELEASE, LOOP, LEVEL).
+    // (settingAt: PITCH, TUNE, START, END, then ATTACK, RELEASE, LOOP, LEVEL); kPresetStop is PRESET.
     static int settingAt(int place);                 // the setting's id at this place (0..7), -1 past them
     static float endPart(const TrackData& t) { return static_cast<float>(sampler::playedEnd(t.sampler[sampler::Start], t.sampler[sampler::End])) / 100.f; } // 0..1 (past 1: START at 100)
     static int endMarkX(float end, int w) { return ui::waveEndMarkX(end, w); } // END's mark, inside the picture
-    void goTo(int stop) { stop_ = stop < 0 ? 0 : (stop > sampler::kSettings ? sampler::kSettings : stop); }
+    void goTo(int stop) { stop_ = stop < 0 ? 0 : (stop > kPresetStop ? kPresetStop : stop); }
     int cursor() const { return stop_; }
+    bool typing() const { return typing_; }
+    const std::string& typed() const { return typed_; }
+    int keyAt() const { return key_; }
+    float presetDeletePart() const { return presetDeletePart_; }
+    static constexpr int kTypeColumns = 10, kPresetNameLength = 24; // the grid, and a name's most (the synth's too)
     const ui::Playhead& playhead() const { return head_; }
     int timesHeard() const { return timesHeard_; } // how often it has been played from this screen (for tests)
     const std::string& said() const { return said_; }
@@ -80,6 +96,7 @@ private:
     const TrackData& trk() const { return project_.current(); }
     void press(Button direction);
     void stepSound(int by);
+    void stepPreset(int by);      // the presets after / before: ends stop (none: nothing)
     void hear(bool held = false); // held: X is down, and it sounds until X is let go
     void hearFromList(SamplePicker::Hear how); // the list of recordings' preview (SamplePicker::Hear)
     void setSetting(int id, int value); // kept, and heard
@@ -91,7 +108,9 @@ private:
     bool stepped_ = false; // A was used to change something: letting go is not a tap
     SamplePicker picker_;
     void openPicker();
+    unsigned sampleFilesSeen_ = 0; // sampleFiles() the picker's lists were read at: behind, it reads them again
     std::vector<std::string> names_;
+    unsigned namesSeen_ = 0; // sampleFiles() names_ was read at: behind, the next step reads it again
     std::string said_;
     Uint32 saidUntil_ = 0;
     bool wasRecording_ = false;
@@ -104,6 +123,18 @@ private:
     bool headHeld_ = false; // head_ runs for as long as X holds the sound
     float release_ = 0.f;   // seconds the held sound's RELEASE runs once X is let go
     int timesHeard_ = 0;
+    // Naming a preset to save (R1 on PRESET): the keys, as a track's name is typed.
+    void typeButton(Button b);
+    void moveTypeKey(Button direction);
+    void drawTyping(SDL_Renderer* r, const Fonts& fonts) const;
+    bool typing_ = false;
+    std::string typed_;
+    int key_ = 0; // which character of the grid the cursor is on
+    // Deleting one's own preset: B held a second on it (as a kit's).
+    static constexpr Uint32 kPresetDeleteMs = 1000;
+    bool presetDeleting_ = false, presetDeleteTimed_ = false;
+    Uint32 presetDeleteSince_ = 0;
+    float presetDeletePart_ = 0.f;
 };
 
 } // namespace apotheca

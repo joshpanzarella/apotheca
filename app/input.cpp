@@ -131,6 +131,33 @@ bool Input::handleMapped(const SDL_Event& e, ButtonEvent& out) {
     return false;
 }
 
+bool Input::pending(ButtonEvent& out) {
+    if (!map_) return false;
+    const ControlMap& m = *map_;
+    const int count = static_cast<int>(Button::Count);
+    for (int pass = 0; pass < 2; ++pass) // let go first, then press, as one event does
+        for (int i = 0; i < count; ++i) {
+            const RawControl& c = m.button[i];
+            if (c.kind != RawControl::JoyHat || c.index < 0 || c.index >= 8) continue;
+            const bool want = (hat_[c.index] & c.value) != 0;
+            if (want == (pass == 1) && held(static_cast<Button>(i)) != want && set(static_cast<Button>(i), want, out)) return true;
+        }
+    return false;
+}
+
+void Input::letGoOfAll(ButtonEvent* out, int& count) {
+    count = 0;
+    for (int i = 0; i < static_cast<int>(Button::Count); ++i)
+        if (held_[i]) {
+            held_[i] = false;
+            out[count].button = static_cast<Button>(i);
+            out[count].down = false;
+            ++count;
+        }
+    for (int& h : hat_) h = 0;
+    for (float& a : axes_) a = 0.f;
+}
+
 bool Input::handle(const SDL_Event& event, ButtonEvent& out) {
     if (map_) {
         if (handleMapped(event, out)) return true;

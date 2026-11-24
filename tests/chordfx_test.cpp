@@ -1641,7 +1641,7 @@ static void testAnArpeggioEndsWithItsChord() {
         for (const Told& t : rig.log) n += t.on && t.pitch >= 60 && t.frame > frame;
         return n;
     };
-    for (int how = 0; how < 5; ++how) {
+    for (int how = 0; how < 7; ++how) {
         Rig rig;
         rig.chord(1, 0, keys, 12.f, playOf(kStrumQuarter));
         rig.play();
@@ -1656,12 +1656,18 @@ static void testAnArpeggioEndsWithItsChord() {
         } else if (how == 3) { // a loose note written into the bar: the chord's keys are in other slots now
             rig.note(1, 9, 30, 1.f);
             rig.chord(2, 0, keys, 12.f, playOf(kStrumQuarter));
-        } else { // HUMAN LEVEL turned on it: still the arpeggio it was
+        } else if (how == 4) { // HUMAN LEVEL turned on it: still the arpeggio it was
             rig.chord(1, 0, keys, 12.f, playOf(kStrumQuarter, 0, 0, 25));
+        } else if (how == 5) { // the cell emptied (SONG's B, a scene cleared): ClearCell, no SetNote
+            rig.send(make(Command::ClearCell, 1));
+        } else { // the track's every pattern sent whole without it (a cell pasted over, a resync)
+            std::unique_ptr<TrackImage> bare(new TrackImage);
+            for (int& b : bare->bars) b = 1;
+            CHECK(rig.engine->setTrackImage(1, std::move(bare)));
         }
         rig.run(4 * kStep - 100 - 1);
         const int more = begunAfter(rig, 2 * kStep + 100);
-        if (how <= 2) CHECK(more == 0);
+        if (how <= 2 || how >= 5) CHECK(more == 0); // (5 and 6: review 2026-11-23, it played its chord on)
         else CHECK(more == 15); // a quarter of a step apart, up to the sixth step
         rig.run(6 * kStep + 1);
         if (how == 2) CHECK(begunAfter(rig, 6 * kStep - 1) == 16); // where it was carried to, it plays whole
@@ -1669,7 +1675,7 @@ static void testAnArpeggioEndsWithItsChord() {
         // The next time round is as it is written.
         rig.run(4 * kStep + 100);
         const int round = begunAfter(rig, kBar - 1);
-        CHECK(round == (how == 0 ? 0 : how == 1 ? 3 : how == 2 ? 0 : 1));
+        CHECK(round == (how == 0 || how >= 5 ? 0 : how == 1 ? 3 : how == 2 ? 0 : 1));
     }
     // One that has not begun yet (asked a step ahead) goes too.
     {

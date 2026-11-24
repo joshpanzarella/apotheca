@@ -8,7 +8,9 @@
 // kind of track it is: "synth", "sampler" (its settings, and a picture of
 // its recording with START and END on it to drag: `wave()` below) or "kit"
 // (eight lanes, each a card with its sound, its picture by `wave()`, its
-// settings and EDIT).
+// settings and EDIT). Every page ends with EFFECTS (the track's slots, its
+// sends, the buses, the master's slots, the mixer's LEVEL and PAN) and MODS
+// (the two MODs with their rows of steps): `buildFx()` and `buildMods()`.
 
 namespace apotheca {
 
@@ -46,6 +48,10 @@ input[type=range]{width:100%;accent-color:var(--teal);margin:2px 0}
 #board div{position:absolute;top:0;border:1px solid var(--bg)}
 #board .w{background:var(--text);height:64px} #board .b{background:#000;height:38px;z-index:1;border-color:var(--line)}
 #board .on{background:var(--teal)!important}
+.steps{display:grid;grid-template-columns:repeat(8,1fr);gap:6px 12px;margin-top:4px}
+.steps .ctl label{font-size:10px}
+.fxkind{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.fxkind select{flex:1;min-width:0}
 #said{font-size:12px;min-height:18px} .ok{color:var(--teal)} .no{color:#d98a6a}
 #nothing{padding:40px 0;color:var(--dim);font-size:16px}
 .wavetop{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin-bottom:10px}
@@ -308,14 +314,14 @@ function tableWave(o) {
 function drawWaves() { for (const w of waves) w.draw(); }
 window.addEventListener('resize', drawWaves);
 function build() {
-  const all = $('all'); all.textContent = ''; controls = {}; macroControls = []; envs = []; waves = [];
+  const all = $('all'); all.textContent = ''; controls = {}; macroControls = []; envs = []; waves = []; fxControls = {}; fxKinds = {}; modCards = [];
   const none = !spec || !spec.name, sampler = !none && spec.page === 'sampler', kit = !none && spec.page === 'kit';
   $('nothing').hidden = !none; $('keys').hidden = none || kit; $('roll').hidden = none || !spec.roll;
   document.body.classList.toggle('kit', kit);
   // A sampler keeps no presets (its sound is its recording), nor does a kit.
   for (const id of ['presetbox', 'name', 'save']) $(id).hidden = none || sampler || kit;
   if (none) return;
-  if (kit) return buildKit(all);
+  if (kit) { buildKit(all); buildFx(all); buildMods(all); return; }
   if (sampler || spec.waves) for (const w of spec.waves) all.append(recordingSection(w)); // (a CLOUD's too)
   if (spec.tables) { // MORPH: A's and B's tables, side by side
     const s = el('section'), row = el('div', 'tables'); s.append(el('h2', '', 'TABLES'));
@@ -360,6 +366,7 @@ function build() {
     }
     all.append(s);
   }
+  buildFx(all); buildMods(all);
   drawWaves();
 }
 // A sampler's recording: which one (the names on the card, in their folders), its picture, and a
@@ -516,6 +523,194 @@ function hear(lane, on) {
   const b = $('play' + lane); if (b) b.classList.toggle('on', on);
 }
 
+// ---- EFFECTS and MODs: every instrument's page ends with them ----
+// spec.fx: slots[3], buses[2], master[2] ({name, kinds:[{id,name}], params:[{name,choices,texts?}]}),
+// sends[2] ({name}), mix{dbmin,dbmax,pan}. state.fxkinds[7] (the slots, the buses', the master's),
+// state.fx[30] in designer.hpp's fxset ids, state.fxreadings[30] what each reads, state.mix[db,pan].
+// spec.mods: targets[{id,name}], rates[], shapes[], phases[].
+// state.mods[2]: {kind,target,depth,rate,shape,phase,length,slew,chance,speed,steps[16]}.
+const kFxSends = 12, kFxBus = 14, kFxMaster = 22, kFxMixDb = 30, kFxMixPan = 31;
+const kMod = {kind: 0, target: 1, depth: 2, rate: 3, shape: 4, phase: 6, length: 7, slew: 8, chance: 9, speed: 10, fields: 11};
+let fxControls = {}, fxKinds = {}, modCards = [];
+// An effect's setting that is an amount (a slider 0..1000) or a choice (a dropdown of its readings).
+function fxControl(fxid, name, param) {
+  const box = el('div', 'ctl'), lab = el('label'), val = el('b');
+  lab.append(el('span', '', name), val); box.append(lab);
+  let input, now = 0;
+  const read = () => state && state.fxreadings ? state.fxreadings[fxid] : '';
+  if (param && param.choices > 0) {
+    input = el('select');
+    param.texts.forEach((t, i) => { const o = el('option', '', t); o.value = i; input.append(o); });
+    input.addEventListener('change', () => {
+      const i = +input.value; now = (i + 0.5) / param.choices;
+      fxTell(fxid, now); val.textContent = ''; input.blur();
+    });
+  } else {
+    input = el('input'); input.type = 'range'; input.min = 0; input.max = 1000; input.step = 1;
+    input.addEventListener('input', () => { now = input.value / 1000; fxTell(fxid, now); });
+  }
+  const show = () => { val.textContent = input.tagName === 'SELECT' ? '' : read(); };
+  const put = v => {
+    if (input.tagName === 'SELECT') input.value = Math.min(param.choices - 1, Math.floor(v * param.choices));
+    else input.value = Math.round(v * 1000);
+    now = v; show();
+  };
+  box.append(input);
+  fxControls[fxid] = {input, show, put};
+  return box;
+}
+function fxTell(fxid, v) {
+  touched['fx' + fxid] = Date.now();
+  if (state && state.fx) state.fx[fxid] = v;
+  tell('fx' + fxid, 'fxset ' + fxid + ' ' + v);
+}
+// One slot: which effect it holds, and the settings of that one. A slot given another effect is a
+// new spec, so the page is built again (as a preset picked: the boxes let go, and look soon).
+function fxSlot(name, base, slotNo, kinds, params) {
+  const card = el('section', 'lane'), row = el('div', 'fxkind'), pick = el('select');
+  card.append(el('h3', '', name));
+  for (const k of kinds) { const o = el('option', '', k.name); o.value = k.id; pick.append(o); }
+  pick.addEventListener('change', () => { tell('fxtype' + slotNo, 'fxtype ' + slotNo + ' ' + pick.value); touched = {}; pick.blur(); setTimeout(look, 250); });
+  row.append(pick); card.append(row);
+  fxKinds[slotNo] = pick;
+  const g = el('div', 'grid');
+  params.forEach((p, i) => g.append(fxControl(base + i, p.name, p)));
+  card.append(g);
+  return card;
+}
+function buildFx(all) {
+  const fx = spec.fx; if (!fx) return;
+  const s = el('section'); s.append(el('h2', '', 'EFFECTS'));
+  const cards = el('div', 'lanes');
+  fx.slots.forEach((slot, i) => cards.append(fxSlot(slot.name, i * 4, i, slot.kinds, slot.params)));
+  fx.buses.forEach((bus, b) => cards.append(fxSlot(bus.name, kFxBus + b * 4, 3 + b, bus.kinds, bus.params)));
+  fx.master.forEach((slot, i) => cards.append(fxSlot(slot.name, kFxMaster + i * 4, 5 + i, slot.kinds, slot.params)));
+  s.append(cards);
+  const g = el('div', 'grid');
+  fx.sends.forEach((send, b) => g.append(fxControl(kFxSends + b, send.name + ' SEND', null)));
+  const mix = fx.mix, db = el('div', 'ctl'), pan = el('div', 'ctl');
+  db.append(mixRow('LEVEL', mix.dbmin, mix.dbmax, v => (v > 0 ? '+' : '') + v + ' dB', kFxMixDb));
+  pan.append(mixRow('PAN', -mix.pan, mix.pan, v => v === 0 ? 'CENTER' : v < 0 ? (-v) + ' L' : v + ' R', kFxMixPan));
+  g.append(db, pan);
+  s.append(g); all.append(s);
+}
+// The mixer's LEVEL and PAN: whole numbers over their range.
+function mixRow(name, lo, hi, text, fxid) {
+  const frag = document.createDocumentFragment(), lab = el('label'), val = el('b'), input = el('input');
+  lab.append(el('span', '', name), val); frag.append(lab);
+  input.type = 'range'; input.min = lo; input.max = hi; input.step = 1;
+  let now = 0;
+  const show = () => { val.textContent = text(now); };
+  const put = v => { input.value = v; now = v; show(); };
+  input.addEventListener('input', () => { now = +input.value; touched['fx' + fxid] = Date.now(); show(); tell('fx' + fxid, 'fxset ' + fxid + ' ' + now); });
+  frag.append(input);
+  fxControls[fxid] = {input, show, put, mix: fxid === kFxMixDb ? 0 : 1};
+  return frag;
+}
+// One MOD: KIND, TARGET, DEPTH always; an LFO's SHAPE, RATE and PHASE (RATE's FREE: SPEED instead of
+// PHASE), a STEPPER's RATE (in time alone), LENGTH, SLEW, CHANCE and its row of 16 steps. Aiming an
+// OFF MOD at something wakes it as an LFO (ModKnob::fresh), so KIND picked first is picked again.
+function modCard(m) {
+  const card = el('section', 'lane'); card.append(el('h3', '', 'MOD ' + (m + 1)));
+  const box = {lfo: [], stepper: [], free: []};
+  const sel = (name, options, field) => {
+    const row = el('div', 'fxkind'), lab = el('span', 'dim', name), pick = el('select');
+    for (const o of options) { const e = el('option', '', o.text); e.value = o.value; pick.append(e); }
+    pick.addEventListener('change', () => { modTell(m, field, +pick.value); pick.blur(); });
+    row.append(lab, pick); card.append(row);
+    return pick;
+  };
+  box.kind = sel('KIND', [{text: 'OFF', value: 0}, {text: 'LFO', value: 1}, {text: 'STEPPER', value: 2}], kMod.kind);
+  box.target = sel('TARGET', spec.mods.targets.map(t => ({text: t.name, value: t.id})), kMod.target);
+  box.depth = modSlider(card, 'DEPTH', -100, 100, v => (v > 0 ? '+' : '') + Math.round(v) + '%', v => modTell(m, kMod.depth, v / 100), v => v * 100);
+  box.rate = sel('RATE', [], kMod.rate);
+  box.shape = sel('SHAPE', spec.mods.shapes.map((t, i) => ({text: t, value: i})), kMod.shape);
+  box.phase = sel('PHASE', spec.mods.phases.map((t, i) => ({text: t, value: i})), kMod.phase);
+  box.lfo.push(box.shape.parentElement, box.phase.parentElement);
+  box.length = modSlider(card, 'LENGTH', 1, 16, v => String(Math.round(v)), v => modTell(m, kMod.length, Math.round(v)), v => v);
+  box.slew = modSlider(card, 'SLEW', 0, 100, v => Math.round(v) + '%', v => modTell(m, kMod.slew, v / 100), v => v * 100);
+  box.chance = modSlider(card, 'CHANCE', 0, 100, v => Math.round(v) + '%', v => modTell(m, kMod.chance, v / 100), v => v * 100);
+  box.stepper.push(box.length.box, box.slew.box, box.chance.box);
+  box.speed = modSlider(card, 'SPEED', 2, 2000, v => (v / 100).toFixed(2) + ' HZ', v => modTell(m, kMod.speed, v / 100), v => v * 100);
+  box.free.push(box.speed.box);
+  const sh = el('h3', '', 'STEPS'); card.append(sh);
+  const steps = el('div', 'steps');
+  box.steps = [];
+  for (let s = 0; s < 16; ++s) {
+    const c = modSlider(null, 'S' + (s + 1), -100, 100, v => (v > 0 ? '+' : '') + Math.round(v), v => modTell(m, kMod.fields + s, v / 100), v => v * 100);
+    steps.append(c.box); box.steps.push(c);
+  }
+  card.append(steps);
+  box.stepper.push(sh, steps);
+  box.m = m; box.lastKind = -1;
+  modCards.push(box);
+  return card;
+}
+// A MOD's slider: over lo..hi, told as told(v), read back as back(stored).
+function modSlider(card, name, lo, hi, text, told, back) {
+  const box = el('div', 'ctl'), lab = el('label'), val = el('b'), input = el('input');
+  lab.append(el('span', '', name), val); box.append(lab);
+  input.type = 'range'; input.min = lo; input.max = hi; input.step = 1;
+  let now = 0;
+  const show = () => { val.textContent = text(now); };
+  const put = v => { input.value = Math.round(v); now = v; show(); };
+  input.addEventListener('input', () => { now = +input.value; show(); told(now); });
+  box.append(input);
+  if (card) card.append(box);
+  return {box, input, show, put, back};
+}
+function modTell(m, f, v) {
+  touched['mod' + m + '_' + f] = Date.now();
+  const mod = state && state.mods ? state.mods[m] : null;
+  if (mod) {
+    if (f === kMod.kind) mod.kind = v; else if (f === kMod.target) mod.target = v; else if (f === kMod.depth) mod.depth = v;
+    else if (f === kMod.rate) mod.rate = v; else if (f === kMod.shape) mod.shape = v; else if (f === kMod.phase) mod.phase = v;
+    else if (f === kMod.length) mod.length = v; else if (f === kMod.slew) mod.slew = v; else if (f === kMod.chance) mod.chance = v;
+    else if (f === kMod.speed) mod.speed = v; else mod.steps[f - kMod.fields] = v;
+  }
+  tell('mod' + m + '_' + f, 'modset ' + m + ' ' + f + ' ' + v);
+}
+function buildMods(all) {
+  if (!spec.mods) return;
+  const s = el('section'); s.append(el('h2', '', 'MODS'));
+  const cards = el('div', 'lanes');
+  for (let m = 0; m < 2; ++m) cards.append(modCard(m));
+  s.append(cards); all.append(s);
+}
+// Put the handheld's EFFECTS and MODs on the page, except a control being moved right now.
+function fillFxMods() {
+  if (!state || !state.fx || !state.mods || !spec || !spec.mods || !spec.fx) return;
+  const now = Date.now();
+  for (const id in fxControls) {
+    const c = fxControls[id];
+    const v = c.mix !== undefined ? state.mix[c.mix] : state.fx[id];
+    if (now - (touched['fx' + id] || 0) > 1500 && document.activeElement !== c.input) c.put(v); else c.show();
+  }
+  for (const s in fxKinds) { const i = fxKinds[s]; if (document.activeElement !== i) i.value = state.fxkinds[s]; }
+  const freeRate = spec.mods.rates.length - 1;
+  modCards.forEach(box => {
+    const m = box.m, mod = state.mods[m];
+    if (document.activeElement !== box.kind) box.kind.value = mod.kind;
+    if (document.activeElement !== box.target) box.target.value = mod.target;
+    if (box.lastKind !== mod.kind) { // an LFO's RATEs are every one, a STEPPER's in time alone
+      box.lastKind = mod.kind;
+      box.rate.textContent = '';
+      spec.mods.rates.forEach((t, i) => { if (mod.kind !== 2 || i < freeRate) { const o = el('option', '', t); o.value = i; box.rate.append(o); } });
+    }
+    if (document.activeElement !== box.rate) box.rate.value = mod.rate;
+    if (document.activeElement !== box.shape) box.shape.value = mod.shape;
+    if (document.activeElement !== box.phase) box.phase.value = mod.phase;
+    const lfo = mod.kind === 1, stepper = mod.kind === 2, free = lfo && mod.rate === freeRate;
+    for (const b of box.lfo) b.hidden = !lfo || (b === box.phase.parentElement && free);
+    for (const b of box.stepper) b.hidden = !stepper;
+    for (const b of box.free) b.hidden = !free;
+    const put = (c, key, v) => { if (now - (touched['mod' + m + '_' + key] || 0) > 1500 && document.activeElement !== c.input) c.put(c.back(v)); else c.show(); };
+    put(box.depth, kMod.depth, mod.depth); put(box.length, kMod.length, mod.length); put(box.slew, kMod.slew, mod.slew);
+    put(box.chance, kMod.chance, mod.chance); put(box.speed, kMod.speed, mod.speed);
+    box.steps.forEach((c, s) => put(c, kMod.fields + s, mod.steps[s]));
+  });
+}
+
 // An envelope as a line: each step moves to its level, quicker for a higher rate.
 function drawEnvs() {
   if (!state || !state.values) return;
@@ -553,6 +748,7 @@ function fill() {
     if (w.synth && s && s.synth) { w.peaks = s.synth.peaks; w.seconds = s.synth.seconds; w.least = s.synth.least; }
     const v = $('voice' + w.lane); if (v && s && s.synth && document.activeElement !== v) v.value = s.synth.voice;
   }
+  fillFxMods();
   drawEnvs(); drawWaves();
 }
 async function look() {

@@ -169,11 +169,14 @@ struct Command {
                         //   d = a COUNT IN of that many steps first (easywins batch 2; 0: none): a click on each
                         //   beat of it, nothing of the song, and the song's step 1 on the sample after its last.
                         //   A Stop or a Panic meanwhile calls it off (and the Play is counted as taken)
-        Stop,           // stop; drums ring out, synth notes are let go
+        Stop,           // stop; b = 1: by hand (START): sounding samples fade out fast (drums, sampler).
+                        //   Otherwise drums ring out, synth notes are let go (a bounce, the song's end).
         Panic,          // silence, now. a = 1: the output fades to nothing in 5 ms and stays shut;
                         //   playing stops, every drum is cut and every note let go. a = 0: it may
                         //   open again, once what is left has died away (or the next thing is played).
         SetTempo,       // value = beats per minute
+        SetSceneTempo,  // scene, value = its own tempo (0: the song's)
+        SetSceneMeter,  // scene, a = steps in its bars (1..16)
         SetVolume,      // the last thing before the output: value = linear gain, 0..1. Catch hears the sound before it.
         SetTrackLevel,  // track (or kMasterTrack), value = linear gain. It glides over kSendGlideSeconds, so it does not
                         //   click. A track's usual is kUsualTrackLevel; the master's is 1, after its slots, before the ceiling.
@@ -209,6 +212,8 @@ struct Command {
         SetLaneSample,  // internal: sent by setLaneSample()
         InstallEffect,  // internal: sent by setEffect()
         SetTrackSample, // internal: sent by setTrackSample()
+        SetTrackZones,  // internal: sent by setTrackZones()
+        SetTrackChop,   // a = a sampler chopped (1) or whole (0)
         SetLanePart,    // how much of its sound each hit on a drum lane plays: track, a = lane,
                         //   value = 0..1 of its length (0: all of it). A slice of a longer recording.
         SetStepFx,      // a hit's step effects (StepFx, drums.hpp): track, scene, bar, a = lane, b = step,
@@ -411,6 +416,7 @@ public:
     // Give a synth track's instrument a recording to play (the sampler), or
     // nullptr to take it away. False if the track has no synth, or the queue is full (counted).
     bool setTrackSample(int track, std::unique_ptr<SampleData> sample);
+    bool setTrackZones(int track, std::unique_ptr<sampler::SampleZoneSet> zones);
     // Free what the audio thread has handed back (removed synths, used
     // images). Call now and then from the control thread.
     void collectGarbage();
@@ -436,6 +442,8 @@ public:
     // to wait (trashLost; never seen, it would take thousands in one frame).
     int trashHeld() const { return heldNow_.load(std::memory_order_relaxed); }
     unsigned trashLost() const { return trashLost_.load(std::memory_order_relaxed); }
+    unsigned notesLost() const { return notesLost_.load(std::memory_order_relaxed); } // waiting notes dropped: the pool was full
+    unsigned hitsLost() const { return hitsLost_.load(std::memory_order_relaxed); } // waiting hits dropped: the lane's slots were full
     bool caughtUp() const { return commands_.empty() && !holding_.load(std::memory_order_acquire); }
     // A track taken away while it sounds fades over this long first (no click). Commands sent
     // after the taking away wait for the fade: they are applied in the order sent.
@@ -488,7 +496,7 @@ public:
     // QUEUED MUTES: the number of the last SetTrackHeard asking (its c) once no track's gate waits for a
     // bar line any more: landed, called off, or never made to wait. Any thread, no lock.
     int heardDone() const { return heardDone_.load(std::memory_order_relaxed); }
-    bool trackHeard(int track) const { return tracks_[track].heard; } // (for the tests: the audio thread's own)
+    bool trackHeard(int track) const { return track >= 0 && track < kNumTracks ? tracks_[track].heard : false; } // (for the tests: the audio thread's own)
     bool clickOn() const { return clickOn_; } // what SetClick last said (for the tests: the audio thread's own)
     bool songStopsAtEnd() const { return songStop_; } // what SetSongEnd last said (for the tests: the audio thread's own)
     int playRepeat() const { return playRepeat_.load(std::memory_order_relaxed); } // 0-based pass through the scene
@@ -505,7 +513,9 @@ public:
     // stopped. If there is no such bar (the song is in its first bar, or
     // something has been played by hand since it stopped, or there was a
     // panic) it is the last bar's worth of sound up to now. From the control thread; allocates.
-    std::vector<float> lastBar() const;
+    // `steps`, if given: how many steps that bar had (12 in a scene of 3/4, fewer in a scene's short
+    // last bar; 16 for the bar's worth up to now), so what is caught can be fitted to them.
+    std::vector<float> lastBar(int* steps = nullptr) const;
 
     // True from a Panic until the output has opened again.
     bool silenced() const { return silenced_.load(std::memory_order_relaxed); }
@@ -673,6 +683,7 @@ private:
         DrumMachine drums;
         SampleData* laneSamples[kDrumLanes] = {}; // owned; freed by the control thread
         SampleData* trackSample = nullptr;        // likewise: a sampler's recording
+        sampler::SampleZoneSet* trackZones = nullptr; // ...or its multisample's zones: one or the other
         std::unique_ptr<Instrument> synth; // set on a synth track
         // The patterns are large (every bar of every scene), so they live
         // on the heap: an Engine can then sit on the stack.
@@ -911,7 +922,12 @@ private:
     int taken_[kNumTracks] = {};      // active_ in the order the helpers take them (heaviestFirst_: by tookNs_)
     bool heaviestFirst_ = false;
     long tookNs_[kNumTracks] = {};    // heaviestFirst_: how long each track took last chunk (written by whoever did it)
-    std::atomic<int> activeCount_{0}, nextActive_{kNumTracks}, finished_{0};
+    // The list of tracks being shared out: the count in the high half, the next place to take in the
+    // low half, ONE atomic, so a place taken is always held to its own chunk's count. (Apart, a helper
+    // that took a place past the end of one chunk and read the count of the next, larger one rendered
+    // a track another thread was rendering too: review 2026-11-23.) 0: shut.
+    std::atomic<std::uint32_t> claims_{0};
+    std::atomic<int> finished_{0};
     std::vector<std::thread> workers_;
     std::mutex wakeMutex_;
     std::condition_variable wake_;
@@ -955,7 +971,7 @@ private:
     bool playsOnce() const { return once_ || (songStop_ && !loopScene_); }
     // The step after the song's last: a song that stops at its end stops here (render()).
     bool songEndsNow() const;
-    void stopPlaying(); // Command::Stop, and a song stopping at its end
+    void stopPlaying(bool byHand); // Command::Stop (by hand from START, else tails ring), and a song stopping at its end
     void startPlaying(const Command& c); // Command::Play, at once or at the end of its COUNT IN
     // The METRONOME and the COUNT IN (easywins batch 2). The click is a table worked out once in
     // prepare(), read a sample at a time from where it began, so it is the same in any blocks.
@@ -984,7 +1000,11 @@ private:
     // asked from the one it was is dropped, and asked again from the one it is.
     void askAgain(bool endChanged = false); // endChanged: AT END was switched (asked again only on the song's last step, the same bar or not)
     long stepsFired_ = 0;   // steps begun since Play: the clock a note's start is told to its track's GlideTrail by
-    float tempo_ = 120.f;
+    float tempo_ = 120.f;   // the tempo playing now: the scene's, or the song's where it has none of its own
+    float songTempo_ = 120.f;
+    float sceneTempo_[kMaxScenes] = {}; // ...a scene's own (0: the song's)
+    float sceneTempoNow(int scene) const { return scene >= 0 && scene < kMaxScenes && sceneTempo_[scene] > 0.f ? sceneTempo_[scene] : songTempo_; }
+    void useTempo(float bpm); // play at this tempo from here (the step keeps its place, as SetTempo always did)
     double samplesPerStep_ = 6000.0;
     double untilStep_ = 0.0; // samples left before the next step fires
     int nextStep_ = 0;
@@ -994,6 +1014,11 @@ private:
     int sceneCount_ = 1;
     int repeats_[kMaxScenes];
     int steps_[kMaxScenes]; // how many steps each scene lasts, if it has been cut short (0: every step of its longest cell)
+    int meter_[kMaxScenes]; // ...and in each of its bars (a bar of 12 is 3/4)
+    int meterOf(int scene) const {
+        const int m = scene >= 0 && scene < kMaxScenes ? meter_[scene] : kSteps;
+        return m < 1 ? kSteps : (m > kSteps ? kSteps : m);
+    }
     std::atomic<int> playStep_{-1};
     std::atomic<unsigned> playScene_{0}; // the scene playing + 1 in its low byte, movesHeard_ above it: one read gives both
     unsigned movesHeard_ = 0;            // Command::ScenesMoved taken so far (the audio thread's)
@@ -1019,7 +1044,9 @@ private:
     std::atomic<std::uint64_t> caughtCount_{0};    // frames ever written to it
     std::atomic<std::uint64_t> barEndedAt_{0};     // caughtCount_ when the last whole bar ended
     std::atomic<int> barFrames_{0};                // how long that bar was; 0: none yet
+    std::atomic<int> barSteps_{kSteps};            // ...and how many steps it had (stored before barFrames_)
     std::uint64_t barBeganAt_ = 0;
+    long long barBeganStep_ = 0;                   // stepsFired_ when the bar playing began
     std::atomic<int> barFramesNow_{96000};         // a bar at the present tempo
 
     std::uint32_t dice_ = 0x2545F491u; // for chance; runs on, so no two bars need match
@@ -1036,7 +1063,7 @@ private:
     // once a frame (collectGarbage). One song opened throws away at most about
     // 150 (12 tracks: a synth and its recording, or eight lane recordings; 12
     // track images; 40 effects fading out), so this holds several of those.
-    struct Trash { bool isImage = false; void* pointer = nullptr; bool isSample = false; bool isEffect = false; bool isMove = false; bool isStore = false; }; // isImage: a SceneSet
+    struct Trash { bool isImage = false; void* pointer = nullptr; bool isSample = false; bool isZones = false; bool isEffect = false; bool isMove = false; bool isStore = false; }; // isImage: a SceneSet
     SpscQueue<Trash, 1024> trash_;
     static void destroy(const Trash& trash);
     // What found the trash full waits here (the audio thread's alone) and is
@@ -1048,6 +1075,8 @@ private:
     int heldCount_ = 0;
     std::atomic<int> heldNow_{0};
     std::atomic<unsigned> trashLost_{0};
+    std::atomic<unsigned> notesLost_{0};
+    std::atomic<unsigned> hitsLost_{0};
     void bin(const Trash& trash); // the audio thread only, with no helper at work
     void binHeld();               // the same
 };

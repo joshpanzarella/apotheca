@@ -724,7 +724,7 @@ void testTheRow() {
     S& setup = rig.app.settings();
     // Among the handheld's rows, after STICK SPEED; thirteen rows now, THEME after it (tests/theme_test.cpp).
     // (Under LOOK since the page's headings: after USB KEYBOARD, the last of PLAYING.)
-    CHECK(S::kRows == 22 && S::kTextSize == S::kMidi + 1 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::groupOf(S::kTextSize) == S::kLook);
+    CHECK(S::kRows == 24 && S::kTextSize == S::kMidi + 1 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::groupOf(S::kTextSize) == S::kLook);
     setup.goTo(S::kMidi);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kTextSize && session.textSize() == kTextLarge);
@@ -859,9 +859,14 @@ void testTheNetworkRow() {
     rig.tap(X);
     for (int i = 0; i < 63; ++i) rig.tap(A);
     rig.tap(Y, 60);
-    rig.tap(B); // 8 AT LEAST
     CHECK(holds(rig, "the password's keys, too short") >= 0); // (the keys are a tight grid: drawn at LARGE at every size)
-    for (int i = 0; i < 63; ++i) rig.tap(A);
+    rig.tap(B); // too short to join: leaves, keeping the draft
+    CHECK(!setup.typing());
+    rig.key(A, true), rig.frames(1); // back: the draft is still there
+    rig.tap(DOWN);
+    rig.key(A, false), rig.frames(1);
+    CHECK(setup.typingPassword() && static_cast<int>(setup.typed().size()) == 3);
+    for (int i = 0; i < 60; ++i) rig.tap(A);
     CHECK(static_cast<int>(setup.typed().size()) == 63);
     CHECK(holds(rig, "the password's keys, full") >= 0); // (the keys are a tight grid: drawn at LARGE at every size)
     rig.tap(Y, 63);
@@ -1161,7 +1166,7 @@ void testTheOtherScreens() {
         // Another instrument for track 1: under the list, what goes with the old one.
         few.app.song().moveCursorTo(0, 0);
         few.tap(UP);
-        few.tap(R1);
+        few.tap(A);
         few.tap(DOWN);
         few.frames(1);
         holds(few, "SONG, another instrument for a track");
@@ -1970,6 +1975,14 @@ void testTheFxScreen() {
                 ++states;
                 if (held) rig.key(A, false), rig.frames(2);
             }
+    // Hold A on the SENDS line: the D-pad is dead there, and the bar says where the sends turn (audit #13).
+    fx.goTo(FxScreen::kSendsRow, 0);
+    rig.key(A, true);
+    rig.frames(1);
+    holds(rig, "FX, SENDS line, A held");
+    CHECK(drew("then RIGHT")); // the key's chip is drawn with it, a word at a time
+    rig.key(A, false);
+    rig.frames(1);
     // Every effect in a slot of the track and (a delay or a reverb) on its bus: each setting at
     // nine places along its range, the cursor on it. The list of effects open on each.
     for (int k = 1; k < kEffectKinds; ++k) {

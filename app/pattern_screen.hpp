@@ -54,13 +54,17 @@
 // recording; a tap for a moment).
 // START plays and stops.
 //
-// A cell can be 1, 2, 4 or 8 bars long (set on the Song screen). The grid
-// shows one bar; running the cursor off the right of step 16 goes on to the
-// next bar, and the top bar says which (BAR 2 OF 4).
+// A cell can be 1, 2, 4 or 8 bars long (set on the Song screen, or the BARS stop here).
+// The grid shows one bar; running the cursor off the right of step 16 goes on to the next
+// bar, and the top bar says which (BAR 2 OF 4).
 //
 // The cursor can also sit on a lane's name (A plays the drum, hold A + stick
-// is that drum's volume) and on the tempo (up from the top lane; hold A +
-// stick). With A or Y held, the D-pad nudges the same values in exact steps.
+// is that drum's volume), on the tempo (up from the top lane; hold A + stick),
+// and on BARS (up from the tempo; left / right the bar before or after, round the ends,
+// hold A + up / down the cell's count, more or fewer). With A or Y held, the D-pad
+// nudges the same values in exact steps.
+//
+// Hold L1, R1 copies the bar shown and A pastes over it (as the piano roll's).
 //
 // STEP EFFECTS: what one hit does besides play. Hold X on a hit (X by itself
 // still just hears it) and the stick or D-pad sets them, a click at a time,
@@ -108,12 +112,14 @@
 // Slices that follow each other in order play as one unbroken sound; only a
 // slice out of order is heard as a cut (drums.hpp).
 //
-// COPY A BAR, here and in the slice view: hold L1 and
+// Hold L1, here and in the slice view:
 //
 //   R1                  copy the bar on screen, every lane and every hit with all it is
-//   A                   paste it over the bar on screen (another bar, cell, scene or drum track)
-//
-// One step of undo. On the same track its automation goes with it.
+//   A                   paste it over the bar on screen (another bar, cell, scene or drum track).
+//                       One step of undo; on the same track its automation goes with it
+//   left / right        the bar before or after, round the ends
+//   up / down           BARS: the cell's, more or fewer (1, 2, 4 or 8, as the
+//                       Song screen's hold A). One step of undo
 
 #include "redraw.hpp"
 #include "follow_bar.hpp"
@@ -164,6 +170,7 @@ public:
     int cursorLane() const { return lane_; }
     int cursorStep() const { return step_; }
     bool cursorOnTempo() const { return onTempo_; }
+    bool cursorOnBars() const { return onBars_; }
     float tempo() const { return project_.tempo; }
     bool painting() const { return paint_ != Paint::None; }
     bool paintingRandom() const { return paint_ == Paint::Random; }
@@ -189,6 +196,7 @@ public:
     // COPY A BAR: hold L1, then R1 copies the bar shown (every lane), A pastes over it (Session::copyBar).
     // L1's own job, the slices, is then done on its LET GO, and only if nothing else was pressed while it was held.
     bool barKeyHeld() const { return l1First_; } // L1 is held, pressed first: R1 copies, A pastes
+    void stepBars(int by); // the cell's bars: 1, 2, 4 or 8, one step along that row
     void shouldersPressed() { l1Used_ = true; } // (the App: another shoulder went down with L1 held, a panic on its way)
     bool fromDice(int lane, int step) const { return pat().fromDice[lane][step]; }
 
@@ -200,7 +208,7 @@ private:
     enum class Turning { Nothing, Level, Nudge, Chance, Start }; // which value the stick has hold of, for drawing
     enum class Paint { None, OneLevel, Random };
 
-    bool onStep() const { return !onTempo_ && step_ != kLaneName; }
+    bool onStep() const { return !onTempo_ && !onBars_ && step_ != kLaneName; }
     bool hitHere() const { return onStep() && pat().level[lane_][step_] > 0.f; }
     // The pattern being shown: the project's current track and scene.
     DrumPattern& pat() { return project_.current().drums[project_.scene][project_.bar]; }
@@ -222,7 +230,8 @@ private:
     void evenLane(int hits, int turn);
     int laneHits() const;
     float randomLevel();
-    void turnUpDown(float amount);   // with A: level, drum volume or tempo
+    void turnUpDown(float amount);   // with A: level, drum volume, tempo or bars
+    void moveBar(int by);              // the bar before or after, round the ends
     void turnSideways(float amount); // with A: nudge
     void turnChance(float amount);   // with Y
     void nudgeExact(Button direction, bool withY);
@@ -251,6 +260,8 @@ private:
     int step_ = 0;
     bool onTempo_ = false;
     float tempoExact_; // the stick moves this; the project's tempo is it, rounded
+    bool onBars_ = false; // BARS, above the tempo: the bar shown, and the cell's count
+    float barsSaved_ = 0.f; // the stick's push toward the next bar more or fewer
 
     bool shaping_ = false;  // A is held
     bool dicing_ = false;   // Y is held

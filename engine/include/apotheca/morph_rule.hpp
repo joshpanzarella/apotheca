@@ -129,7 +129,7 @@ inline int settingHeld(int id, int value) {
 }
 // The settings read at a key's strike, never while it sounds (a switch would step the wave, or
 // give a key streams it did not take from the pool).
-inline bool readAtStrike(int id) { return id == TableA || id == TableB || id == Unison; }
+inline bool readAtStrike(int id) { return id == TableA || id == TableB || id == Unison || id == Width; }
 
 // ---- macros --------------------------------------------------------------------------------
 // Lane by lane (the plan's section 5). No macro is a choice: each takes a MOD.

@@ -81,6 +81,7 @@
 #include "bench_run.hpp"
 #include "controls.hpp"
 #include "input.hpp"
+#include "joysticks.hpp"
 #include "realtime.hpp"
 #include "song_file.hpp"
 #include "text.hpp"
@@ -278,8 +279,8 @@ int main(int argc, char** argv) {
     const char* samples = nullptr;
     int textSize = -1;           // --text-size small | medium | large | xl: a still at that TEXT SIZE
     const char* texts = nullptr; // --texts FILE: what the last frame drew, at each text size in turn (for textsize_test)
-    const char* themes = nullptr; // --themes PREFIX: the last frame drawn in every theme, PREFIX0.bmp to PREFIX5.bmp (for theme_test)
-    int theme = -1;              // --theme NAME: a still in that THEME (brown, blue, green, black, paper, grey)
+    const char* themes = nullptr; // --themes PREFIX: the last frame drawn in every theme, PREFIX0.bmp to PREFIX7.bmp (for theme_test)
+    int theme = -1;              // --theme NAME: a still in that THEME (brown, dracula, nord, gruvbox, tokyo, monokai, solarized, github)
     int stillMs = 1000;          // --still-ms N: how long a still (or the smoke run) goes before its picture is taken
     for (int i = 1; i < argc; ++i)
         if (std::strcmp(argv[i], "--bench") == 0) return runBench(); // the timings and nothing else: no window, no sound
@@ -310,7 +311,7 @@ int main(int argc, char** argv) {
             for (int t = 0; t < kThemes; ++t)
                 if (strcasecmp(argv[i], kThemeTable[t].name) == 0) theme = t;
             if (theme < 0) {
-                std::fprintf(stderr, "--theme is one of brown, blue, green, black, paper, grey\n");
+                std::fprintf(stderr, "--theme is one of brown, dracula, nord, gruvbox, tokyo, monokai, solarized, github\n");
                 return 1;
             }
         }
@@ -370,7 +371,8 @@ int main(int argc, char** argv) {
     // the reason behind.
     static ControlLearner learner;
     const int joysticks = SDL_NumJoysticks();
-    std::vector<SDL_Joystick*> opened;
+    Joysticks sticks; // (kept open as they come and go: joysticks.hpp)
+    std::vector<SDL_Joystick*>& opened = sticks.opened;
     for (int i = 0; i < joysticks; ++i) {
         SDL_Joystick* stick = SDL_JoystickOpen(i);
         std::printf("joystick %d: \"%s\", %d buttons, %d axes, %d hats, %s\n", i + 1, SDL_JoystickNameForIndex(i) ? SDL_JoystickNameForIndex(i) : "?",
@@ -401,7 +403,8 @@ int main(int argc, char** argv) {
     std::string savedControls;
     const bool mapped = !smoke && !shot && !learn && readTextFile(controlsFile, savedControls) && controlMap.parse(savedControls);
     bool learning = !mapped && !smoke && (!shot || learn) && (joysticks > 0 || learn || handheld);
-    SDL_GameController* pad = nullptr;
+    SDL_GameController*& pad = sticks.pad;
+    sticks.raw = mapped || learning;
     if (!mapped && !learning) {
         for (SDL_Joystick* stick : opened) SDL_JoystickClose(stick);
         opened.clear();
@@ -505,6 +508,12 @@ int main(int argc, char** argv) {
         // Recordings for drum lanes: WAV files in a "samples" folder beside the program.
         const std::string folder = samples ? samples : beside.substr(0, beside.size() - 6) + "samples";
         if (!samples && !smoke && !shot) mkdir(folder.c_str(), 0755); // so there is somewhere to copy them to
+        // The battery's history, for a power cut's post-mortem: nothing kept where there is no battery.
+        if (!smoke && !shot) {
+            const std::string logs = beside.substr(0, beside.size() - 6) + "logs";
+            mkdir(logs.c_str(), 0755);
+            app.useBatteryLog(logs + "/battery.log");
+        }
         // Sounds made on the sound-designer page: a "presets" folder beside the program.
         if (!smoke && !shot) app.session().useBounceFolder(beside.substr(0, beside.size() - 6) + "bounces");
         if (!smoke && !shot) app.session().usePresetFolder(beside.substr(0, beside.size() - 6) + "presets");
@@ -830,6 +839,19 @@ int main(int argc, char** argv) {
             app.sampler().goTo(0);
             tapKey(SDLK_x);
         }
+    } else if (std::strcmp(view, "bars-stop-roll") == 0) { // the roll with the cursor on BARS
+        app.project().track = 1;
+        app.session().view = View::Pattern;
+        app.session().setCellBars(1, 0, 2);
+        app.notes().moveCursorTo(60, 0);
+        app.project().bar = 0;
+        tapKey(SDLK_UP);
+    } else if (std::strcmp(view, "bars-stop-grid") == 0) { // the drums with the cursor on BARS
+        app.project().track = 0;
+        app.session().view = View::Pattern;
+        app.session().setCellBars(0, 0, 2);
+        app.drums().moveCursorTo(0, 0);
+        tapKey(SDLK_UP, 2); // lane, tempo, BARS
     } else if (std::strncmp(view, "bars", 4) == 0) {
         // Scene 1 with cells of different lengths: the pads four bars (a
         // chord a bar, the last held over two), the bass two, the drums one.
@@ -1715,6 +1737,7 @@ int main(int argc, char** argv) {
     const auto learnAgain = [&](const char* why) {
         std::printf("controls: setting up again (%s)\n", why);
         if (pad) SDL_GameControllerClose(pad), pad = nullptr;
+        sticks.raw = true;
         if (opened.empty())
             for (int i = 0; i < SDL_NumJoysticks(); ++i)
                 if (SDL_Joystick* stick = SDL_JoystickOpen(i)) opened.push_back(stick);
@@ -1734,6 +1757,7 @@ int main(int argc, char** argv) {
     int drawnTheme = -1;
     const char* offWhy = nullptr; // set: the program ends to turn the handheld off ("quit", "idle")
     powerOff.busy(SDL_GetTicks());
+    Uint32 audioTriedAt = 0; // the sound card gone: when it was last tried again
     while (running) {
         SDL_Event event;
         bool stirred = false; // a button, or anything of the window, this pass (a stick's motion counts by where it is)
@@ -1758,11 +1782,43 @@ int main(int argc, char** argv) {
                 continue;
             }
 
+            // The sound card gone (its driver let go of it): opened again, a second apart, below.
+            if (event.type == SDL_AUDIODEVICEREMOVED && !event.adevice.iscapture && event.adevice.which == device) {
+                std::fprintf(stderr, "the sound card went away: opening it again\n");
+                SDL_CloseAudioDevice(device);
+                device = 0;
+                audioTriedAt = 0;
+                continue;
+            }
+            // A gamepad gone or come back: anything held is let go (its let-go would never come),
+            // and one that comes back is read again.
+            const Joysticks::Change change = sticks.handle(event);
+            if (change != Joysticks::Change::None) {
+                std::printf("a gamepad %s\n", change == Joysticks::Change::Added ? "came back" : "went away");
+                if (learning) continue; // (the setup reads them raw itself)
+                ButtonEvent ups[static_cast<int>(Button::Count)];
+                int many = 0;
+                input.letGoOfAll(ups, many);
+                for (int i = 0; i < many; ++i) app.onButton(ups[i], input);
+                continue;
+            }
+
             ButtonEvent press;
             if (!input.handle(event, press)) continue;
             stirred = true;
-            if (input.held(Button::Select) && input.held(Button::Start)) running = false, offWhy = "quit";
-            else app.onButton(press, input);
+            do { // (and whatever else the one event moved: a hat's diagonal)
+                if (input.held(Button::Select) && input.held(Button::Start)) running = false, offWhy = "quit";
+                else app.onButton(press, input);
+            } while (running && input.pending(press));
+        }
+        if (!device && SDL_GetTicks() - audioTriedAt >= 1000) {
+            audioTriedAt = SDL_GetTicks();
+            SDL_AudioSpec again = {};
+            device = SDL_OpenAudioDevice(nullptr, 0, &want, &again, 0); // (as at the start: SDL converts, so the rate is the same)
+            if (device) {
+                SDL_PauseAudioDevice(device, 0);
+                std::printf("the sound card is back\n");
+            }
         }
         if (learning) {
             learner.update(SDL_GetTicks());
@@ -1878,9 +1934,8 @@ int main(int argc, char** argv) {
         if (powerOff.writeMark(offWhy)) std::printf("turning the handheld off (%s)\n", offWhy);
         else std::fprintf(stderr, "could not write %s: the handheld will start Apotheca again\n", powerOff.mark.c_str());
     }
-    SDL_CloseAudioDevice(device);
-    if (pad) SDL_GameControllerClose(pad);
-    for (SDL_Joystick* stick : opened) SDL_JoystickClose(stick);
+    if (device) SDL_CloseAudioDevice(device);
+    sticks.closeAll();
     // The letters go before the renderer that made them: it takes its textures with it, and a
     // font that then let its own go would be letting it go twice (stills ended in a fault that way).
     fonts.unload();

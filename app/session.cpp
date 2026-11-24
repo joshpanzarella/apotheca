@@ -37,8 +37,8 @@ void Session::togglePlay(bool song) {
     Command c;
     c.type = project.playing ? Command::Play : Command::Stop;
     c.a = project.scene;
-    c.b = song ? 0 : 1;
-    if (c.type == Command::Play && countsIn()) c.d = kSteps; // COUNT IN: a bar of clicks first
+    c.b = project.playing ? (song ? 0 : 1) : 1; // a stop by hand (not a bounce, not the song's end): its samples fade out fast
+    if (c.type == Command::Play && countsIn()) c.d = project.meterOf(project.scene); // COUNT IN: a bar of clicks first
     syncClick(); // (CLICK at RECORDING: on before the Play, so its first beat clicks)
     if (engine.send(c) && c.type == Command::Play) ++playsSent_;
     project.playLoop = !song;
@@ -95,13 +95,36 @@ void Session::syncSong() {
     if (engine.send(c)) sentSceneCount_ = count; // lost to a full queue: not sent, so the song sent again sends it
 }
 
+// A recording under way goes onto the track it began on (recTrack_): it follows that track when tracks
+// move, and is called off when its track goes, changes instrument, or another song comes (review
+// 2026-11-23: it landed on whichever track took the number, or in the other song).
+void Session::dropRecording() {
+    if (rec_ != Rec::Waiting && rec_ != Rec::Recording) return;
+    if (input_) input_->stop();
+    recorder_.finish(); // (thrown away)
+    rec_ = Rec::Idle;
+    lastRecorded_.clear();
+}
+
 bool Session::removeTrack(int track) {
     const int count = project.trackCount();
     if (track < 0 || track >= count || count <= 1) return false;
+    if (rec_ == Rec::Waiting || rec_ == Rec::Recording) {
+        if (recTrack_ == track) dropRecording();
+        else if (recTrack_ > track) --recTrack_;
+    }
     for (int t = track; t + 1 < kNumTracks; ++t) project.tracks[t] = project.tracks[t + 1];
     for (int t = track; t < kNumTracks; ++t) { // the types each slot remembers move with their tracks, and what a preset found
         for (int s = 0; s < kTrackSlots; ++s) typeMemory_[t * kTrackSlots + s] = t + 1 < kNumTracks ? typeMemory_[(t + 1) * kTrackSlots + s] : TypeMemory();
         presetSounds_[t] = t + 1 < kNumTracks ? presetSounds_[t + 1] : PresetSoundMemory();
+    }
+    if (clip_.has) { // the bar copy tracks its track, or goes with it
+        if (clip_.track == track) clip_.has = false;
+        else if (clip_.track > track) --clip_.track;
+    }
+    if (sceneClip_->has) { // the scene copy's tracks move up with the song's
+        for (int t = track; t + 1 < kNumTracks; ++t) sceneClip_->tracks[t] = sceneClip_->tracks[t + 1];
+        sceneClip_->tracks[kNumTracks - 1] = SceneClip::Track();
     }
     {
         std::unique_ptr<TrackData> blank(new TrackData); // large: not on the stack
@@ -127,6 +150,7 @@ bool Session::removeTrack(int track) {
 int Session::duplicateTrack(int track) {
     const int count = project.trackCount();
     if (track < 0 || track >= count || count >= kNumTracks) return -1;
+    if ((rec_ == Rec::Waiting || rec_ == Rec::Recording) && recTrack_ > track) ++recTrack_;
     for (int t = count; t > track + 1; --t) { // the tracks after it, a place down (from the end)
         project.tracks[t] = project.tracks[t - 1];
         for (int s = 0; s < kTrackSlots; ++s) typeMemory_[t * kTrackSlots + s] = typeMemory_[(t - 1) * kTrackSlots + s];
@@ -136,6 +160,11 @@ int Session::duplicateTrack(int track) {
     project.tracks[track + 1].solo = false; // (two soloed tracks where there was one: the copy is heard with the rest)
     for (int s = 0; s < kTrackSlots; ++s) typeMemory_[(track + 1) * kTrackSlots + s] = typeMemory_[track * kTrackSlots + s];
     presetSounds_[track + 1] = presetSounds_[track];
+    if (clip_.has && clip_.track > track) ++clip_.track; // the bar copy tracks its track
+    if (sceneClip_->has) { // the scene copy's tracks move down with the song's (the copy, like its track, is its source's)
+        for (int t = kNumTracks - 1; t > track + 1; --t) sceneClip_->tracks[t] = sceneClip_->tracks[t - 1];
+        sceneClip_->tracks[track + 1] = sceneClip_->tracks[track];
+    }
     if (project.track > track) ++project.track;
     sendSong(); // every track told to the engine afresh, in its new place
     for (UndoStep& step : undo_) doubleTrackText(step.text, track);
@@ -175,6 +204,7 @@ bool Session::addTrack(TrackKind kind) {
 
 bool Session::setTrackKind(int track, TrackKind kind) {
     if (track < 0 || track >= project.trackCount() || kind == TrackKind::None || project.tracks[track].kind == kind) return false;
+    if (recTrack_ == track) dropRecording(); // (its take was for the instrument that is going)
     TrackData& t = project.tracks[track];
     forgetTrackTypes(track); // (its effects stay; what they were switched from is forgotten)
     presetSounds_[track] = PresetSoundMemory();
@@ -367,10 +397,16 @@ void Session::update(Uint32 nowMs) {
         const std::size_t done = moves_.size() - movesUnheard(heard); // the moves the engine has heard are done with
         if (done > 0) moves_.erase(moves_.begin(), moves_.begin() + static_cast<std::ptrdiff_t>(done));
     }
-    project.playScene = playScene();
-    project.playStep = engine.playStep();
-    project.playRepeat = engine.playRepeat();
-    project.playBar = engine.playBar();
+    // One consistent snapshot of where playing is, for every screen to draw from: the audio thread
+    // stores step/scene/repeat/bar separately as it advances, so read the step around the rest and
+    // try again while it moved under us (steps are milliseconds apart; this is nanoseconds).
+    for (;;) {
+        const int step = engine.playStep();
+        project.playScene = playScene();
+        project.playRepeat = engine.playRepeat();
+        project.playBar = engine.playBar();
+        if (engine.playStep() == step) { project.playStep = step; break; }
+    }
     // AT END STOP: the engine has stopped the playing it was last sent, by itself, at the song's end.
     if (project.playing && playsSent_ != 0 && engine.songEnded() == playsSent_) project.playing = false;
     syncClick();
@@ -402,11 +438,11 @@ void Session::update(Uint32 nowMs) {
         cellMark_ = cellMark();
         soundMark_ = soundMark();
     }
-    if (const std::uint32_t mark = cellMark(); mark != cellMark_) {
+    if (const std::uint64_t mark = cellMark(); mark != cellMark_) {
         cellMark_ = mark;
         noteEdit();
     }
-    if (const std::uint32_t mark = soundMark(); mark != soundMark_) {
+    if (const std::uint64_t mark = soundMark(); mark != soundMark_) {
         soundMark_ = mark;
         noteEdit();
     }
@@ -427,14 +463,20 @@ void Session::update(Uint32 nowMs) {
         updateWaiting_ = stat((programFolder_ + "/apotheca.pending").c_str(), &info) == 0;
         updateMegabytes_ = updateWaiting_ ? static_cast<float>(info.st_size) / (1024.f * 1024.f) : 0.f;
     }
-    // A chord pack that has just arrived over WiFi is there to pick from at once.
-    if (transfer_.received() != seenReceived_) {
-        seenReceived_ = transfer_.received();
+    // A chord pack that has just arrived over WiFi is there to pick from at once. (Only for a pack: every
+    // pack was read again for any file sent, a recording too, until review 2026-11-23.)
+    if (transfer_.chordsReceived() != seenChords_) {
+        seenChords_ = transfer_.chordsReceived();
         if (!chordFolder_.empty()) packs = loadChordPacks(chordFolder_);
-        // And a recording renamed, moved, deleted or sent from the page: the open song follows.
-        // The songs that are shut follow a rename or a move too, on this thread: the one that autosaves.
+    }
+    // And a recording renamed, moved, deleted or sent from the page: the open song follows.
+    // The songs that are shut follow a rename or a move too, on this thread: the one that autosaves.
+    // Open lists of recordings read the card again (sampleFiles_).
+    const std::vector<Transfer::Change> changes = transfer_.takeChanges();
+    if (!changes.empty()) {
+        ++sampleFiles_;
         std::vector<std::pair<std::string, std::string>> renames;
-        for (const Transfer::Change& change : transfer_.takeChanges()) {
+        for (const Transfer::Change& change : changes) {
             recordingChanged(change.from, change.to);
             renames.push_back({change.from, change.to}); // one sent or deleted has no name on one side, and is passed over there
         }
@@ -453,7 +495,7 @@ void Session::update(Uint32 nowMs) {
         float block[2048];
         for (int got = input_->read(block, 2048); got > 0; got = input_->read(block, 2048)) recorder_.feed(block, got);
         if (recorder_.state() == Recorder::Recording) rec_ = Rec::Recording;
-        if (recorder_.full()) finishRecording(); // ten seconds
+        if (recorder_.full()) finishRecording(); // twenty seconds
     }
 
     // Fitted recordings follow the tempo, once it has stopped moving for a
@@ -464,6 +506,8 @@ void Session::update(Uint32 nowMs) {
     }
     if (nowMs - tempoMovedAt_ >= kTempoSettleMs) steadyTempo_ = seenTempo_;
     collectJob(false);
+    reapJobs(false);
+    finishCarry();
     if (!job_ && steadyTempo_ > 0.f) {
         for (int track = 0; track < kNumTracks && !job_; ++track)
             for (int lane = 0; lane < kDrumLanes && !job_; ++lane)
@@ -490,7 +534,7 @@ void Session::setSceneSteps(int scene, int steps) {
     if (scene < 0 || scene >= kMaxScenes) return;
     // Any number from one step to every step of its longest cell; "all of them" is kept as 0,
     // so the scene grows again if a cell in it is made longer.
-    const int whole = project.sceneBars(scene) * kSteps;
+    const int whole = project.sceneBars(scene) * project.meterOf(scene);
     steps = steps < 1 ? 1 : (steps >= whole ? 0 : steps);
     if (project.steps[scene] == steps) return;
     project.steps[scene] = steps;
@@ -507,6 +551,7 @@ void Session::setCellBars(int track, int scene, int bars) {
     bars = bars < 2 ? 1 : (bars < 4 ? 2 : (bars < 8 ? 4 : 8));
     TrackData& t = project.tracks[track];
     const int was = t.bars[scene] < 1 ? 1 : t.bars[scene];
+    if (bars == was) return;
     t.bars[scene] = bars;
     // Made longer: the new bars are filled with what the cell already plays, round and round, so a
     // one-bar loop made two bars long is the loop twice, ready to be changed in its second half.
@@ -592,21 +637,15 @@ Session::BarCopy Session::pasteBar(int track, int scene, int bar) {
     if (same) return BarCopy::Same; // nothing to do, and no step of undo
 
     // A step of undo of its own, as NEXT SCENE's: whatever was being edited just before ends here.
-    if (undoReady_ && cellMark() != cellMark_) noteEdit();
-    if (editing_ || !undoReady_) settled_ = patternsNow();
-    editing_ = false;
-    noteEdit();
+    beginOwnUndoStep();
     if (clip_.drums) t.drums[scene][bar] = clip_.drumBar;
     else t.notes[scene][bar] = notes;
     if (lanes)
         for (int lane = 0; lane < kAutoLanes; ++lane)
             for (int step = 0; step < kSteps; ++step) t.automation[scene][lane][bar * kSteps + step] = clip_.automation[lane][step];
     sendTrackImage(track); // every bar of it, in one piece (as setCellBars)
-    if (undoReady_) {
-        settled_ = patternsNow(); // ...and nothing after it joins its step
-        editing_ = false;
-        cellMark_ = cellMark();
-    }
+    endOwnUndoStep();
+    clip_.has = false; // spent: a paste clears the copy (a Same, or a refusal, keeps it)
     return BarCopy::Done;
 }
 
@@ -631,6 +670,172 @@ std::string Session::barCopyWords(BarCopy answer, bool paste, int bar) {
     case BarCopy::DrumsOnDrums: return "DRUMS GO ON A DRUM TRACK";
     case BarCopy::NotesOnNotes: return "NOTES GO ON A NOTE TRACK";
     case BarCopy::NoTrack: return "NO BAR HERE";
+    }
+    return text;
+}
+
+Session::SceneCopy Session::copyScene(int scene) {
+    if (scene < 0 || scene >= kMaxScenes) return SceneCopy::NoScene;
+    sceneClip_->has = true;
+    sceneClip_->scene = scene;
+    for (int t = 0; t < kNumTracks; ++t) {
+        const TrackData& from = project.tracks[t];
+        SceneClip::Track& to = sceneClip_->tracks[t];
+        to.kind = from.kind;
+        to.bars = from.bars[scene];
+        std::memcpy(to.drums, from.drums[scene], sizeof to.drums);
+        std::memcpy(to.notes, from.notes[scene], sizeof to.notes);
+        std::memcpy(to.automation, from.automation[scene], sizeof to.automation);
+    }
+    sceneClip_->repeats = project.repeats[scene];
+    sceneClip_->steps = project.steps[scene];
+    sceneClip_->tempo = project.sceneTempo[scene];
+    sceneClip_->meter = project.meterOf(scene);
+    ++sceneCopies_;
+    return SceneCopy::Done;
+}
+
+Session::SceneCopy Session::pasteScene(int scene) {
+    if (scene < 0 || scene >= kMaxScenes) return SceneCopy::NoScene;
+    if (!sceneClip_->has) return SceneCopy::NothingCopied;
+    // Only what would be pasted counts: a track whose instrument changed since to another kind is skipped below.
+    bool same = project.repeats[scene] == sceneClip_->repeats && project.steps[scene] == sceneClip_->steps && project.sceneTempo[scene] == sceneClip_->tempo && project.meterOf(scene) == sceneClip_->meter;
+    for (int t = 0; t < kNumTracks && same; ++t) {
+        const TrackData& target = project.tracks[t];
+        const SceneClip::Track& clip = sceneClip_->tracks[t];
+        if (!pasteKindsFit(clip.kind, target.kind)) continue;
+        same = target.bars[scene] == clip.bars && std::memcmp(&target.drums[scene], clip.drums, sizeof clip.drums) == 0 &&
+               std::memcmp(&target.notes[scene], clip.notes, sizeof clip.notes) == 0 &&
+               std::memcmp(&target.automation[scene], clip.automation, sizeof clip.automation) == 0;
+    }
+    if (same) return SceneCopy::Same; // nothing to do, and no step of undo
+
+    // A step of undo of its own, as pasteBar's: whatever was being edited just before ends here.
+    beginOwnUndoStep();
+    for (int t = 0; t < kNumTracks; ++t) {
+        TrackData& target = project.tracks[t];
+        const SceneClip::Track& clip = sceneClip_->tracks[t];
+        if (!pasteKindsFit(clip.kind, target.kind)) continue; // another kind now: a drum bar cannot go on a synth
+        target.bars[scene] = clip.bars;
+        std::memcpy(target.drums[scene], clip.drums, sizeof clip.drums);
+        std::memcpy(target.notes[scene], clip.notes, sizeof clip.notes);
+        if (target.kind == TrackKind::Drums) sendDrumPattern(t, scene);
+        else if (isSynth(target.kind)) sendNotePattern(t, scene);
+        clearAutomation(t, scene, -1);
+        for (int lane = 0; lane < kAutoLanes; ++lane)
+            for (int step = 0; step < kAutoSteps; ++step)
+                if (clip.automation[lane][step] >= 0.f) setAutomation(t, scene, lane, step, clip.automation[lane][step]);
+    }
+    project.repeats[scene] = sceneClip_->repeats;
+    project.steps[scene] = sceneClip_->steps;
+    project.sceneTempo[scene] = sceneClip_->tempo;
+    project.sceneMeter[scene] = sceneClip_->meter;
+    Command c;
+    c.type = Command::SetSceneRepeats;
+    c.scene = scene;
+    c.a = sceneClip_->repeats;
+    engine.send(c);
+    c.type = Command::SetSceneSteps;
+    c.a = sceneClip_->steps;
+    engine.send(c);
+    c.type = Command::SetSceneTempo;
+    c.value = sceneClip_->tempo;
+    engine.send(c);
+    c.type = Command::SetSceneMeter;
+    c.a = sceneClip_->meter;
+    engine.send(c);
+    if (scene == project.scene) project.bar = 0;
+    endOwnUndoStep();
+    sceneClip_->has = false; // spent: a paste clears the copy (a Same, or a refusal, keeps it)
+    return SceneCopy::Done;
+}
+
+Session::SceneCopy Session::copySceneHere(int scene) {
+    const SceneCopy answer = copyScene(scene);
+    say(sceneCopyWords(answer, false, scene).c_str());
+    return answer;
+}
+
+Session::SceneCopy Session::pasteSceneHere(int scene) {
+    const SceneCopy answer = pasteScene(scene);
+    say(sceneCopyWords(answer, true, scene).c_str());
+    return answer;
+}
+
+std::string Session::sceneCopyWords(SceneCopy answer, bool paste, int scene) {
+    char text[64];
+    switch (answer) {
+    case SceneCopy::Done: std::snprintf(text, sizeof text, paste ? "PASTED ON SCENE %d" : "SCENE %d COPIED", scene + 1); break;
+    case SceneCopy::Same: std::snprintf(text, sizeof text, "SCENE %d IS THE SAME", scene + 1); break;
+    case SceneCopy::NothingCopied: return "NOTHING COPIED YET";
+    case SceneCopy::NoScene: return "NO SCENE HERE";
+    }
+    return text;
+}
+
+Session::SceneClear Session::clearScene(int scene) {
+    if (scene < 0 || scene >= kMaxScenes) return SceneClear::NoScene;
+    bool empty = project.repeats[scene] == 1 && project.steps[scene] == 0 && project.sceneTempo[scene] <= 0.f && project.meterOf(scene) == kSteps;
+    for (int t = 0; t < kNumTracks && empty; ++t)
+        empty = project.tracks[t].bars[scene] == 1 && !project.tracks[t].holdsPieces(scene);
+    if (empty) return SceneClear::AlreadyEmpty; // nothing to do, and no step of undo
+
+    // A step of undo of its own, as pasteScene's.
+    beginOwnUndoStep();
+    for (int t = 0; t < kNumTracks; ++t) {
+        TrackData& target = project.tracks[t];
+        if (target.bars[scene] == 1 && !target.holdsPieces(scene)) continue;
+        target.bars[scene] = 1;
+        // Blank, not dropped: undo restores into the pieces (a dropped one stays dropped).
+        if (target.drums.has(scene))
+            for (int bar = 0; bar < kMaxBars; ++bar) target.drums[scene][bar] = DrumPattern();
+        if (target.notes.has(scene))
+            for (int bar = 0; bar < kMaxBars; ++bar) target.notes[scene][bar] = NotePattern();
+        clearAutomation(t, scene, -1);
+        Command c; // what sendDrumPattern/sendNotePattern send for a blank cell (which read back pieces into being)
+        c.track = t;
+        c.scene = scene;
+        c.type = Command::ClearCell;
+        engine.send(c);
+        c.type = Command::SetCellBars;
+        c.a = 1;
+        engine.send(c);
+    }
+    project.repeats[scene] = 1;
+    project.steps[scene] = 0;
+    project.sceneTempo[scene] = 0.f;
+    project.sceneMeter[scene] = kSteps;
+    Command r;
+    r.type = Command::SetSceneRepeats;
+    r.scene = scene;
+    r.a = 1;
+    engine.send(r);
+    r.type = Command::SetSceneSteps;
+    r.a = 0;
+    engine.send(r);
+    r.type = Command::SetSceneTempo;
+    r.value = 0.f;
+    engine.send(r);
+    r.type = Command::SetSceneMeter;
+    r.a = kSteps;
+    engine.send(r);
+    if (scene == project.scene) project.bar = 0;
+    endOwnUndoStep();
+    return SceneClear::Done;
+}
+
+Session::SceneClear Session::clearSceneHere(int scene) {
+    const SceneClear answer = clearScene(scene);
+    say(sceneClearWords(answer, scene).c_str());
+    return answer;
+}
+
+std::string Session::sceneClearWords(SceneClear answer, int scene) {
+    char text[64];
+    switch (answer) {
+    case SceneClear::Done: std::snprintf(text, sizeof text, "SCENE %d EMPTIED", scene + 1); break;
+    case SceneClear::AlreadyEmpty: std::snprintf(text, sizeof text, "SCENE %d IS EMPTY", scene + 1); break;
+    case SceneClear::NoScene: return "NO SCENE HERE";
     }
     return text;
 }
@@ -860,18 +1065,18 @@ bool Session::hasAutomation(int track, int scene, int lane) const {
 }
 
 float Session::automated(int track, int lane, float resting) const {
-    const int scene = playScene(), step = engine.playStep();
+    const int scene = project.playScene, step = project.playStep;
     if (!project.playing || scene < 0 || step < 0 || track < 0 || track >= kNumTracks || lane < 0 || lane >= kAutoLanes) return resting;
     const TrackData& t = project.tracks[track];
-    const float written = t.automation[scene][lane][(engine.playBar() % t.bars[scene]) * kSteps + step];
+    const float written = t.automation[scene][lane][(project.playBar % t.bars[scene]) * kSteps + step];
     return written >= 0.f ? written : resting;
 }
 
 // A knob was moved. With WRITE on and the song playing, that is written into the pattern where the song is.
 void Session::recordAutomation(int track, int lane, float value) {
-    const int scene = playScene(), step = engine.playStep();
+    const int scene = project.playScene, step = project.playStep;
     if (!project.writing || !project.playing || scene < 0 || step < 0) return;
-    setAutomation(track, scene, lane, (engine.playBar() % project.tracks[track].bars[scene]) * kSteps + step, value);
+    setAutomation(track, scene, lane, (project.playBar % project.tracks[track].bars[scene]) * kSteps + step, value);
 }
 
 // ---- undo -----------------------------------------------------------------------------------
@@ -880,13 +1085,26 @@ void Session::recordAutomation(int track, int lane, float value) {
 // the patterns are taken back out of it.)
 std::string Session::patternsNow() const { return textNow(); }
 
-std::uint32_t Session::cellMark() const {
+namespace {
+// Bytes mixed into an undo mark, eight at a time (a byte at a time, the two marks cost about 0.1 ms of
+// every frame on the desk over some 50 KB, a dozen times that on the handheld: review 2026-11-23).
+// Only ever compared with a mark made the same way, in memory: never kept anywhere.
+void markMix(std::uint64_t& h, const void* data, std::size_t size) {
+    const unsigned char* p = static_cast<const unsigned char*>(data);
+    for (; size >= 8; p += 8, size -= 8) {
+        std::uint64_t w;
+        std::memcpy(&w, p, 8);
+        h = (h ^ w) * 0x9e3779b97f4a7c15ull;
+        h ^= h >> 31;
+    }
+    for (; size > 0; ++p, --size) h = (h ^ *p) * 0x100000001b3ull;
+}
+} // namespace
+
+std::uint64_t Session::cellMark() const {
     const TrackData& t = project.current();
-    std::uint32_t h = 2166136261u + static_cast<std::uint32_t>(project.track * 131 + project.scene);
-    const auto mix = [&](const void* data, std::size_t size) {
-        const unsigned char* bytes = static_cast<const unsigned char*>(data);
-        for (std::size_t i = 0; i < size; ++i) h = (h ^ bytes[i]) * 16777619u;
-    };
+    std::uint64_t h = 0xcbf29ce484222325ull + static_cast<std::uint64_t>(project.track * 131 + project.scene);
+    const auto mix = [&](const void* data, std::size_t size) { markMix(h, data, size); };
     if (t.kind == TrackKind::Drums) {
         for (int bar = 0; bar < kMaxBars; ++bar) {
             const DrumPattern& p = t.drums[project.scene][bar];
@@ -895,6 +1113,8 @@ std::uint32_t Session::cellMark() const {
             mix(p.chance, sizeof p.chance);
             mix(p.start, sizeof p.start);
             mix(p.fx, sizeof p.fx);
+            mix(p.fromDice, sizeof p.fromDice);
+            mix(p.diceSeed, sizeof p.diceSeed);
         }
     } else if (isSynth(t.kind)) {
         for (int bar = 0; bar < kMaxBars; ++bar) {
@@ -905,31 +1125,28 @@ std::uint32_t Session::cellMark() const {
                 if (c.velocity > 0.f) mix(&c, sizeof c);
         }
     }
+    if (t.kind == TrackKind::Drums || isSynth(t.kind)) mix(t.automation[project.scene], sizeof t.automation[project.scene]);
     return h;
 }
 
 // Everything undo covers besides the patterns (see soundMark_ in session.hpp), as one number.
-std::uint32_t Session::soundMark() const {
-    std::uint32_t h = 2166136261u;
-    const auto mix = [&](const void* data, std::size_t size) {
-        const unsigned char* bytes = static_cast<const unsigned char*>(data);
-        for (std::size_t i = 0; i < size; ++i) h = (h ^ bytes[i]) * 16777619u;
-    };
+std::uint64_t Session::soundMark() const {
+    std::uint64_t h = 0xcbf29ce484222325ull;
+    const auto mix = [&](const void* data, std::size_t size) { markMix(h, data, size); };
     for (int t = 0; t < kNumTracks; ++t) {
         const TrackData& track = project.tracks[t];
         if (track.kind == TrackKind::None) continue;
-        mix(&t, sizeof t);
         mix(track.effects, sizeof track.effects);
         mix(track.send, sizeof track.send);
         mix(&track.glideFrom, sizeof track.glideFrom);
         mix(track.mods, sizeof track.mods);
-        if (track.kind == TrackKind::Drums) mix(track.laneFeel, sizeof track.laneFeel), mix(track.laneSwing, sizeof track.laneSwing), mix(track.laneChoke, sizeof track.laneChoke), mix(track.laneEdit, sizeof track.laneEdit), mix(track.laneSynth, sizeof track.laneSynth);
+        if (track.kind == TrackKind::Drums) mix(track.laneFeel, sizeof track.laneFeel), mix(track.laneSwing, sizeof track.laneSwing), mix(track.laneChoke, sizeof track.laneChoke), mix(track.laneEdit, sizeof track.laneEdit), mix(track.laneSynth, sizeof track.laneSynth), mix(track.laneLevel, sizeof track.laneLevel), mix(track.laneFit, sizeof track.laneFit), mix(track.laneOneSlice, sizeof track.laneOneSlice);
         if (const SynthSpec* spec = specFor(track.kind)) {
             mix(&track.preset, sizeof track.preset);
             mix(spec->values(const_cast<TrackData&>(track)), sizeof(int) * static_cast<std::size_t>(settingCount(track.kind)));
             mix(track.macro, sizeof track.macro);
         }
-        if (track.kind == TrackKind::Sampler) mix(track.sampler, sizeof track.sampler);
+        if (track.kind == TrackKind::Sampler) mix(track.sampler, sizeof track.sampler), mix(&track.samplerChop, sizeof track.samplerChop);
     }
     mix(project.masterEffects, sizeof project.masterEffects);
     mix(project.busEffects, sizeof project.busEffects);
@@ -1041,8 +1258,13 @@ void Session::restoreSounds(const StepRead& was, const bool same[kNumTracks]) {
             for (int lane = 0; lane < kDrumLanes; ++lane)
                 if (now.laneChoke[lane] != then.laneChoke[lane]) setLaneChoke(t, lane, then.laneChoke[lane]);
         if (now.kind == TrackKind::Drums)
-            for (int lane = 0; lane < kDrumLanes; ++lane)
+            for (int lane = 0; lane < kDrumLanes; ++lane) {
+                if (std::strcmp(now.laneSample[lane], then.laneSample[lane]) != 0) setLaneSample(t, lane, then.laneSample[lane]);
                 if (now.laneEdit[lane] != then.laneEdit[lane]) setLaneEdit(t, lane, then.laneEdit[lane]);
+                if (!sameAsText(now.laneLevel[lane], then.laneLevel[lane])) setLaneLevel(t, lane, then.laneLevel[lane]);
+                if (now.laneFit[lane] != then.laneFit[lane]) setLaneFit(t, lane, then.laneFit[lane]);
+                if (now.laneOneSlice[lane] != then.laneOneSlice[lane]) setLaneOneSlice(t, lane, then.laneOneSlice[lane]);
+            }
         if (now.kind == TrackKind::Drums)
             for (int lane = 0; lane < kDrumLanes; ++lane)
                 if (now.laneSynth[lane] != then.laneSynth[lane]) {
@@ -1069,9 +1291,11 @@ void Session::restoreSounds(const StepRead& was, const bool same[kNumTracks]) {
                 sendSynthPatch(t); // every setting and macro: the engine's sound is the step's, whatever preset it was on
             }
         }
-        if (now.kind == TrackKind::Sampler)
+        if (now.kind == TrackKind::Sampler) {
             for (int id = 0; id < sampler::kSettings; ++id)
                 if (now.sampler[id] != then.sampler[id]) setSamplerSetting(t, id, then.sampler[id]);
+            if (now.samplerChop != then.samplerChop) setSamplerChop(t, then.samplerChop);
+        }
     }
     for (int slot = 0; slot < kMasterSlots; ++slot)
         if (!effectSameAsText(project.masterEffects[slot], was.head.masterEffects[slot])) restoreEffect(kMasterTrack, slot, was.head.masterEffects[slot]);
@@ -1090,6 +1314,22 @@ void Session::noteEdit() {
         redo_.clear(); // a new change: there is no "forward" any more
     }
     editedAt_ = now_;
+}
+
+void Session::beginOwnUndoStep() {
+    if (undoReady_ && (cellMark() != cellMark_ || soundMark() != soundMark_)) noteEdit();
+    if (editing_ || !undoReady_) settled_ = patternsNow();
+    editing_ = false;
+    noteEdit();
+}
+
+void Session::endOwnUndoStep() {
+    if (undoReady_) {
+        settled_ = patternsNow(); // ...and nothing after it joins its step
+        editing_ = false;
+        cellMark_ = cellMark();
+        soundMark_ = soundMark();
+    }
 }
 
 // ---- next scene -----------------------------------------------------------------------------
@@ -1124,6 +1364,8 @@ void Session::moveScenesHere(int from, int by, const StepRead* last) {
         }
         project.repeats[to] = project.repeats[scene];
         project.steps[to] = project.steps[scene];
+        project.sceneTempo[to] = project.sceneTempo[scene];
+        project.sceneMeter[to] = project.sceneMeter[scene];
     };
     if (by > 0) {
         // Everything a scene holds, moved down one from the end (the last falls off); then `from` is
@@ -1151,6 +1393,8 @@ void Session::moveScenesHere(int from, int by, const StepRead* last) {
     }
     project.repeats[end] = last ? last->head.repeats[end] : 1;
     project.steps[end] = last ? last->head.steps[end] : 0;
+    project.sceneTempo[end] = last ? last->head.sceneTempo[end] : 0.f;
+    project.sceneMeter[end] = last ? last->head.sceneMeter[end] : kSteps;
 }
 
 // ...and the engine, told in one command (Engine::moveScenes): which scene is which, the one
@@ -1163,6 +1407,15 @@ void Session::tellScenesMoved(int from, int by) {
     for (int t = 0; t < project.trackCount(); ++t) scenes[t] = sceneImage(t, made);
     const int count = project.sceneCount();
     if (!engine.moveScenes(from, by, scenes, count, project.repeats[made], project.steps[made])) return; // lost: update() sees it and sends the whole song again
+    Command madeTempo;
+    madeTempo.type = Command::SetSceneTempo; // the made scene's own (the move command has no field to spare)
+    madeTempo.scene = made;
+    madeTempo.value = project.sceneTempo[made];
+    engine.send(madeTempo);
+    madeTempo.type = Command::SetSceneMeter;
+    madeTempo.value = 0.f;
+    madeTempo.a = project.meterOf(made);
+    engine.send(madeTempo);
     sentSceneCount_ = count;
     ++movesSent_;
     moves_.push_back({from, by});
@@ -1199,6 +1452,7 @@ int Session::nextScene() {
 
     settled_ = patternsNow();
     cellMark_ = cellMark();
+    soundMark_ = soundMark();
     return to;
 }
 
@@ -1354,6 +1608,20 @@ void Session::restorePatterns(const std::string& text, int movedFrom, int movedB
         project.steps[scene] = was.head.steps[scene];
         c.scene = scene;
         c.a = project.steps[scene];
+        engine.send(c);
+    }
+    c.type = Command::SetSceneTempo;
+    for (int scene = 0; scene < kMaxScenes && !asItWas; ++scene) {
+        project.sceneTempo[scene] = was.head.sceneTempo[scene];
+        c.scene = scene;
+        c.value = project.sceneTempo[scene];
+        engine.send(c);
+    }
+    c.type = Command::SetSceneMeter;
+    for (int scene = 0; scene < kMaxScenes && !asItWas; ++scene) {
+        project.sceneMeter[scene] = was.head.sceneMeter[scene];
+        c.scene = scene;
+        c.a = project.sceneMeter[scene];
         engine.send(c);
     }
     restoreSounds(was, same); // effects, sends, sounds, GLIDE FROM, the master and the buses
@@ -1761,6 +2029,12 @@ Session::~Session() {
     cancelBounce();
     if (input_ && rec_ != Rec::Idle && rec_ != Rec::NoInput) input_->stop();
     if (job_ && job_->thread.joinable()) job_->thread.join();
+    reapJobs(true);
+    if (carry_ && carry_->thread.joinable()) {
+        carry_->thread.join(); // a copy under way is let finish (the file is whole, or not there)...
+        carry_->done.store(true);
+        finishCarry(); // ...and the open song and the saved ones follow it (what is owed is written first)
+    }
 }
 
 
@@ -1844,7 +2118,7 @@ std::unique_ptr<TrackImage> Session::trackImage(int t) const {
 }
 
 // A new handheld's engine is a new song but for the two buses, which hold nothing until they are told.
-Session::Session(Engine& engine, Project& project) : engine(engine), project(project), packs(loadChordPacks("")) {
+Session::Session(Engine& engine, Project& project) : engine(engine), project(project), packs(loadChordPacks("")), sceneClip_(new SceneClip) {
     for (int bus = 0; bus < kBuses; ++bus) sendEffects(busTrack(bus));
 }
 
@@ -1867,6 +2141,7 @@ void Session::sendEffects(int track) {
 }
 
 void Session::applyProject() {
+    dropRecording(); // another song: a take under way was for the one that went
     sendSong();
     // Another song: nothing of the last one to go back to.
     for (TypeMemory& m : typeMemory_) m = TypeMemory();
@@ -1877,8 +2152,22 @@ void Session::applyProject() {
     undoReady_ = false;
 }
 
+void Session::reapJobs(bool wait) {
+    for (auto it = leftJobs_.begin(); it != leftJobs_.end();) {
+        if (!wait && !(*it)->done.load()) {
+            ++it;
+            continue;
+        }
+        if ((*it)->thread.joinable()) (*it)->thread.join();
+        it = leftJobs_.erase(it);
+    }
+}
+
 void Session::sendSong() {
-    collectJob(true); // nothing half-made carries over
+    // Nothing half-made carries over: every lane is made again below (a new version), so a job under
+    // way is for nothing. Done: collected (and not taken). Running: handed off, never waited for.
+    if (job_ && !job_->done.load()) leftJobs_.push_back(std::move(job_));
+    collectJob(true);
     Command c;
     c.type = Command::Stop;
     engine.send(c);
@@ -1910,6 +2199,9 @@ void Session::sendSong() {
                 c.b = track.sampler[id];
                 engine.send(c);
             }
+            c.type = Command::SetTrackChop;
+            c.a = track.samplerChop ? 1 : 0;
+            engine.send(c);
         }
         if (holdsRecording(track.kind)) loadTrackSample(t); // (CLOUD's too: none, and it plays its TONE)
 
@@ -2006,6 +2298,12 @@ void Session::sendSong() {
         engine.send(c);
         c.type = Command::SetSceneSteps;
         c.a = project.steps[scene];
+        engine.send(c);
+        c.type = Command::SetSceneTempo;
+        c.value = project.sceneTempo[scene];
+        engine.send(c);
+        c.type = Command::SetSceneMeter;
+        c.a = project.sceneMeter[scene];
         engine.send(c);
     }
     c = Command();
