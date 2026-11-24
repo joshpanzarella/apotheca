@@ -66,7 +66,9 @@ mkdir -p "$pack/apotheca"
 version="0.$(( $(git -C "$here" rev-list --count HEAD 2>/dev/null || echo 0) + 1 ))"
 built=$(date +%Y-%m-%d)
 echo "building $version..."
-flags="--target=aarch64-linux-gnu --sysroot=$sysroot -O2 -mcpu=cortex-a53"
+# -O3, as the desk builds: the same sound to the bit (no fast maths), and PLATE and HALL 17 to 20% cheaper measured
+# on the desk (2026-11-24; the handheld's SPEED TEST is the judge).
+flags="--target=aarch64-linux-gnu --sysroot=$sysroot -O3 -mcpu=cortex-a53"
 # Phazed's engine is C.
 objects=""
 mkdir -p "$out/obj"
