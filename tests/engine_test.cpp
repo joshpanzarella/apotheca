@@ -2593,12 +2593,13 @@ static void testEffectsOneByOne() {
             CHECK(through(*wear, in) == in);
             continue;
         }
-        if (kind == EffectKind::Eq) {
-            // No MIX either: every band at 0 dB (its usual) is the sound untouched, to the bit; LOW up is not (testEq has the rest).
+        if (kind == EffectKind::Eq || kind == EffectKind::Band) {
+            // No MIX either: every band at 0 dB (its usual) is the sound untouched, to the bit; LOW (BAND's FREQ: its
+            // GAIN) up is not (testEq and testBand have the rest).
             std::unique_ptr<Effect> eq = makeEffect(kind, 48000.f, 120.f);
             const std::vector<float> in = sine(330.f, 48000);
             CHECK(through(*eq, in) == in);
-            eq->setParam(0, 1.f);
+            eq->setParam(kind == EffectKind::Band ? 1 : 0, 1.f);
             CHECK(through(*eq, in) != in);
             continue;
         }

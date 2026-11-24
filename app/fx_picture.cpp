@@ -188,6 +188,23 @@ void filterPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
         markT = std::log(hz / 20.f) / std::log(1000.f);
         break;
     }
+    case EffectKind::Band: {
+        // band.cpp's shapes as the textbook curves they are (H(s) = (b2 s^2 + b1 s + b0) / (a2 s^2 + a1 s + a0)).
+        const float f0 = freqAt(s("FREQ", 0.5663f)), db = (2.f * s("GAIN", 0.5f) - 1.f) * 12.f;
+        const float q = 0.3f * std::pow(100.f, s("Q", 0.3495f)), a = std::pow(10.f, db / 40.f), r = std::sqrt(a);
+        const int shape = s.choice("SHAPE");
+        float b2 = 1.f, b1 = a / q, b0 = 1.f, a2 = 1.f, a1 = 1.f / (a * q), a0 = 1.f; // BELL
+        if (shape == 1) b1 = 0.f, a1 = 1.f / q;                                         // NOTCH
+        else if (shape == 2) b2 = a, b1 = a * r / q, b0 = a * a, a2 = a, a1 = r / q, a0 = 1.f; // LOW SHELF
+        else if (shape == 3) b2 = a * a, b1 = a * r / q, b0 = a, a2 = 1.f, a1 = r / q, a0 = a; // HIGH SHELF
+        fn = [=](float t) {
+            const float w = freqAt(t) / f0, w2 = w * w;
+            const float top = (b0 - b2 * w2) * (b0 - b2 * w2) + (b1 * w) * (b1 * w), under = (a0 - a2 * w2) * (a0 - a2 * w2) + (a1 * w) * (a1 * w);
+            return dbToV(10.f * std::log10(std::fmax(top, 1e-12f) / std::fmax(under, 1e-12f)));
+        };
+        markT = s("FREQ", 0.5663f);
+        break;
+    }
     case EffectKind::Comb: {
         const float f0 = 40.f * std::pow(50.f, s("PITCH", 0.5f)), g = 0.95f * s("FEEDBACK", 0.5f);
         fn = [=](float t) {

@@ -110,6 +110,7 @@ extern const EffectInfo kBloomInfo;   // bloom.cpp
 extern const EffectInfo kShimmerInfo; // shimmer.cpp
 extern const EffectInfo kWahInfo;     // wah.cpp
 extern const EffectInfo kPitchInfo;   // pitch.cpp
+extern const EffectInfo kBandInfo;    // band.cpp
 
 // For the tests (tests/effects_test.cpp); nothing in the program uses these.
 // SATURATE with its 2x stage left out, not prepared: to measure what the stage buys.

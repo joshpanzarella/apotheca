@@ -487,6 +487,17 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
             if (dash != std::string::npos) column = std::atoi(word.c_str() + dash + 1), word.resize(dash);
             s.setEffect(0, 1, effectFromWord(word.c_str()));
             fx.goTo(1, column);
+        } else if (std::strncmp(view, "fx-band-", 8) == 0) {
+            // BAND set to do something: fx-band-notch (a NOTCH at 3 kHz, Q 8), fx-band-bell (+9 DB at 200 HZ, Q 0.7),
+            // fx-band-shelf (a HIGH SHELF -6 DB from 5 KHZ); the cursor on FREQ.
+            s.setEffect(0, 1, EffectKind::Band);
+            const bool notch = std::strcmp(view + 8, "notch") == 0, shelf = std::strcmp(view + 8, "shelf") == 0;
+            const float freq = notch ? 3000.f : (shelf ? 5000.f : 200.f), q = notch ? 8.f : 0.7f, db = notch ? 0.f : (shelf ? -6.f : 9.f);
+            s.setEffectParam(0, 1, 0, std::log(freq / 20.f) / std::log(1000.f));
+            s.setEffectParam(0, 1, 1, (db / 12.f + 1.f) / 2.f);
+            s.setEffectParam(0, 1, 2, std::log(q / 0.3f) / std::log(100.f));
+            s.setEffectParam(0, 1, 3, notch ? 0.375f : (shelf ? 0.875f : 0.125f));
+            fx.goTo(1, 1);
         } else if (std::strcmp(view, "fx-trying") == 0) {
             // A held on the TAPE's line (its FEEDBACK automated) and up two: MOD tried, the TAPE kept aside.
             s.setAutomation(0, 0, autoLaneOfEffect(0, 1), 0, 0.3f);

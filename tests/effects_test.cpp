@@ -463,7 +463,7 @@ static void testTheTable() {
     CHECK(effectChoices(EffectKind::Filter, -1) == 0 && effectChoices(EffectKind::Filter, 4) == 0 && effectChoices(EffectKind::None, 0) == 0);
     CHECK(effectChoices(static_cast<EffectKind>(77), 0) == 0);
     // The list as it is today, in its seven families (FILTER, DRIVE, CRUSH, MOD, DELAY, REVERB, LEVEL), the types of a family side by side.
-    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Comb, EffectKind::Vowel, EffectKind::Eq, EffectKind::Wah, EffectKind::Drive, EffectKind::Saturate, EffectKind::Fold, EffectKind::Fuzz, EffectKind::Crush, EffectKind::Ring, EffectKind::Wear, EffectKind::Chorus, EffectKind::Flanger, EffectKind::Ensemble, EffectKind::Phaser, EffectKind::Tremolo, EffectKind::Pitch, EffectKind::Delay, EffectKind::Tape, EffectKind::Ping, EffectKind::Dub, EffectKind::Reverse, EffectKind::Stutter, EffectKind::Reverb, EffectKind::Hall, EffectKind::Spring, EffectKind::Plate, EffectKind::Bloom, EffectKind::Shimmer, EffectKind::Comp, EffectKind::Duck, EffectKind::Limiter, EffectKind::Snap};
+    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Comb, EffectKind::Vowel, EffectKind::Eq, EffectKind::Band, EffectKind::Wah, EffectKind::Drive, EffectKind::Saturate, EffectKind::Fold, EffectKind::Fuzz, EffectKind::Crush, EffectKind::Ring, EffectKind::Wear, EffectKind::Chorus, EffectKind::Flanger, EffectKind::Ensemble, EffectKind::Phaser, EffectKind::Tremolo, EffectKind::Pitch, EffectKind::Delay, EffectKind::Tape, EffectKind::Ping, EffectKind::Dub, EffectKind::Reverse, EffectKind::Stutter, EffectKind::Reverb, EffectKind::Hall, EffectKind::Spring, EffectKind::Plate, EffectKind::Bloom, EffectKind::Shimmer, EffectKind::Comp, EffectKind::Duck, EffectKind::Limiter, EffectKind::Snap};
     CHECK(effectListSize() == static_cast<int>(sizeof list / sizeof list[0]));
     for (int i = 0; i < effectListSize(); ++i) CHECK(effectAt(i) == list[i]);
     // ...and the families in EffectFamily's order, so a family is never in two pieces (the list a player picks from has each once).
@@ -727,8 +727,9 @@ static void testEveryEffect() {
             CHECK(sumWith(-1, 0.9f, true) == untouched && sumWith(kEffectParams, 0.9f, true) == untouched && sumWith(kEffectParams + 1, 0.9f, true) == untouched);
             for (int p = 0; p < info.params; ++p) {
                 CHECK(sumWith(p, 7.f, true) == sumWith(p, 1.f, true) && sumWith(p, -7.f, true) == sumWith(p, 0.f, true) && sumWith(p, std::nanf(""), true) == sumWith(p, 0.f, true));
-                // And the setting does do something. (EQ's MID FREQ moves a bell that is flat at its usual 0 dB: testEq.)
-                if (!(kind == EffectKind::Eq && p == 2)) CHECK(sumWith(p, 0.f, true) != sumWith(p, 1.f, true));
+                // And the setting does do something. (EQ's MID FREQ moves a bell that is flat at its usual 0 dB: testEq.
+                // BAND at its usual 0 dB is flat whatever FREQ, Q and SHAPE, a BELL or a shelf: testBand moves each.)
+                if (!(kind == EffectKind::Eq && p == 2) && !(kind == EffectKind::Band && p != 1)) CHECK(sumWith(p, 0.f, true) != sumWith(p, 1.f, true));
             }
         }
         // Repeats: twice from fresh, the same to the last bit.
@@ -833,6 +834,7 @@ static void testEveryEffect() {
             {1.16, 1.30, 1.10, 1.12, 1.13},   // SHIMMER
             {0.54, 0.54, 1.00, 1.00, 0.54},   // WAH (a low-pass: the sine comes out gentler)
             {1.47, 1.53, 1.50, 1.97, 1.50},   // PITCH (an octave up beside the sine: steeper held still too)
+            {1.00, 1.00, 1.00, 1.00, 1.00},   // BAND (as it comes, 0 dB: nothing to the sine)
         };
         for (int p = 0; p < info.params; ++p) {
             double steady = 0.0;
@@ -4483,9 +4485,9 @@ static void testSendsOnAnyHelperCount() {
 static void testFamiliesAndTypes() {
     const EffectKind N = EffectKind::None, D = EffectKind::Delay, T = EffectKind::Tape, R = EffectKind::Reverb, H = EffectKind::Hall;
     // Nothing moved underneath: the numbers and the song-file words of every effect, as they shipped.
-    static const char* const words[kEffectKinds] = {"", "filter", "drive", "delay", "reverb", "crush", "tape", "hall", "chorus", "comp", "saturate", "duck", "ping", "spring", "plate", "comb", "vowel", "eq", "fold", "fuzz", "ring", "wear", "limiter", "snap", "flanger", "ensemble", "phaser", "tremolo", "dub", "reverse", "stutter", "bloom", "shimmer", "wah", "pitch"};
-    static const char* const names[kEffectKinds] = {"NONE", "FILTER", "DRIVE", "DELAY", "REVERB", "CRUSH", "TAPE", "HALL", "CHORUS", "COMP", "SATURATE", "DUCK", "PING", "SPRING", "PLATE", "COMB", "VOWEL", "EQ", "FOLD", "FUZZ", "RING", "WEAR", "LIMITER", "SNAP", "FLANGER", "ENSEMBLE", "PHASER", "TREMOLO", "DUB", "REVERSE", "STUTTER", "BLOOM", "SHIMMER", "WAH", "PITCH"};
-    CHECK(kEffectKinds == 35);
+    static const char* const words[kEffectKinds] = {"", "filter", "drive", "delay", "reverb", "crush", "tape", "hall", "chorus", "comp", "saturate", "duck", "ping", "spring", "plate", "comb", "vowel", "eq", "fold", "fuzz", "ring", "wear", "limiter", "snap", "flanger", "ensemble", "phaser", "tremolo", "dub", "reverse", "stutter", "bloom", "shimmer", "wah", "pitch", "band"};
+    static const char* const names[kEffectKinds] = {"NONE", "FILTER", "DRIVE", "DELAY", "REVERB", "CRUSH", "TAPE", "HALL", "CHORUS", "COMP", "SATURATE", "DUCK", "PING", "SPRING", "PLATE", "COMB", "VOWEL", "EQ", "FOLD", "FUZZ", "RING", "WEAR", "LIMITER", "SNAP", "FLANGER", "ENSEMBLE", "PHASER", "TREMOLO", "DUB", "REVERSE", "STUTTER", "BLOOM", "SHIMMER", "WAH", "PITCH", "BAND"};
+    CHECK(kEffectKinds == 36);
     for (int k = 0; k < kEffectKinds; ++k) {
         const EffectKind kind = static_cast<EffectKind>(k);
         CHECK(std::string(effectInfo(kind).word) == words[k] && std::string(effectInfo(kind).name) == names[k]);
@@ -4494,11 +4496,12 @@ static void testFamiliesAndTypes() {
     // Every old kind in its family, as its type, in the families' order.
     struct Row { EffectKind kind; const char* family; const char* type; const char* shown; int types, index; EffectFamily id; };
     static const Row rows[] = {
-        {EffectKind::Filter, "FILTER", "FILTER", "", 5, 0, EffectFamily::Filter},
-        {EffectKind::Comb, "FILTER", "COMB", "COMB", 5, 1, EffectFamily::Filter},
-        {EffectKind::Vowel, "FILTER", "VOWEL", "VOWEL", 5, 2, EffectFamily::Filter},
-        {EffectKind::Eq, "FILTER", "EQ", "EQ", 5, 3, EffectFamily::Filter},
-        {EffectKind::Wah, "FILTER", "WAH", "WAH", 5, 4, EffectFamily::Filter},
+        {EffectKind::Filter, "FILTER", "FILTER", "", 6, 0, EffectFamily::Filter},
+        {EffectKind::Comb, "FILTER", "COMB", "COMB", 6, 1, EffectFamily::Filter},
+        {EffectKind::Vowel, "FILTER", "VOWEL", "VOWEL", 6, 2, EffectFamily::Filter},
+        {EffectKind::Eq, "FILTER", "EQ", "EQ", 6, 3, EffectFamily::Filter},
+        {EffectKind::Band, "FILTER", "BAND", "BAND", 6, 4, EffectFamily::Filter},
+        {EffectKind::Wah, "FILTER", "WAH", "WAH", 6, 5, EffectFamily::Filter},
         {EffectKind::Drive, "DRIVE", "DRIVE", "", 4, 0, EffectFamily::Drive},
         {EffectKind::Saturate, "DRIVE", "SATURATE", "SATURATE", 4, 1, EffectFamily::Drive},
         {EffectKind::Fold, "DRIVE", "FOLD", "FOLD", 4, 2, EffectFamily::Drive},
@@ -4759,9 +4762,10 @@ static void testTypeChangeCarriesSettings() {
     // its LENGTH is a slice, not an echo's time. REVERB's six since batch c3: thirty pairs, eighteen of them new;
     // BLOOM and SHIMMER share DECAY, TONE and MIX with HALL, SPRING, PLATE and each other, MIX alone with ROOM (46).
     // WAH (2026-11-24): FILTER's five, eight pairs new; it shares RESONANCE and MIX with FILTER and VOWEL, MIX with
-    // COMB (10). PITCH: MOD's six, ten pairs new; MIX with CHORUS, FLANGER, ENSEMBLE and PHASER (8).
+    // COMB (10). PITCH: MOD's six, ten pairs new; MIX with CHORUS, FLANGER, ENSEMBLE and PHASER (8). BAND: FILTER's
+    // six, ten pairs new; it shares no setting's name (FREQ, GAIN, Q, SHAPE), so it starts as it comes.
     SAY("carry    %d pairs, %d settings carried, %d the same, %d to the nearest\n", pairs, carried, same, nearest);
-    CHECK(pairs == 140 && carried == 258 && same > 250 && nearest >= 2);
+    CHECK(pairs == 150 && carried == 258 && same > 250 && nearest >= 2);
     // FILTER and VOWEL read RESONANCE alike (a percentage): it goes over untouched, both ways, as MIX does; EQ shares nothing.
     for (float v : {0.f, 0.2f, 0.37f, 1.f}) {
         CHECK(effectCarryFrom(EffectKind::Filter, EffectKind::Vowel, 2) == 1 && effectCarryValue(EffectKind::Filter, 1, EffectKind::Vowel, 2, v) == v);
@@ -8250,6 +8254,105 @@ static void testWah() {
     CHECK(throughOne(wah, none, in) == in);
 }
 
+// BAND (owner, 2026-11-24: "set a band, move it freely and change the Q ... notch out a certain frequency"): one EQ
+// band set anywhere, a TYPE of FILTER. Each shape does what it says at the frequency asked, as wide as Q says; at 0 dB
+// a BELL or a shelf is the sound untouched to the bit; a NOTCH takes its frequency out; a change of SHAPE fades.
+static void testBand() {
+    const EffectKind band = EffectKind::Band;
+    const EffectInfo& info = effectInfo(band);
+    CHECK(static_cast<int>(band) == 35 && std::string(info.word) == "band" && effectFromWord("band") == band);
+    CHECK(info.family == EffectFamily::Filter && effectBus(band) == -1 && std::string(effectTypeName(band)) == "BAND");
+    CHECK(effectChoices(band, 3) == 4 && effectChoices(band, 0) == 0 && effectChoices(band, 1) == 0 && effectChoices(band, 2) == 0);
+    CHECK(reads(band, 0, 0.f) == "20 HZ" && reads(band, 0, 1.f) == "20.0 KHZ" && reads(band, 0, info.defaults[0]) == "1.0 KHZ" && reads(band, 0, 0.3f) == "159 HZ");
+    CHECK(reads(band, 1, 0.f) == "-12 DB" && reads(band, 1, 0.5f) == "0 DB" && reads(band, 1, 1.f) == "+12 DB" && reads(band, 1, 0.55f) == "+1.2 DB");
+    const float notchAll[4] = {0.5f, 0.8f, 0.5f, 0.375f}, bellAll[4] = {0.5f, 0.8f, 0.5f, 0.125f};
+    CHECK(reads(band, 2, 0.f) == "Q 0.3" && reads(band, 2, 1.f) == "Q 30" && reads(band, 2, info.defaults[2]) == "Q 1.5");
+    const float shelfAll[4] = {0.5f, 0.8f, 1.f, 0.625f};
+    CHECK(reads(band, 2, 1.f, shelfAll) == "Q 2.0" && reads(band, 2, 0.f, shelfAll) == "Q 0.3" && reads(band, 2, 1.f, bellAll) == "Q 30"); // a shelf's is held at 2
+    CHECK(reads(band, 3, 0.125f) == "BELL" && reads(band, 3, 0.375f) == "NOTCH" && reads(band, 3, 0.625f) == "LOW SHELF" && reads(band, 3, 0.875f) == "HIGH SHELF");
+    CHECK(reads(band, 3, info.defaults[3]) == "BELL" && reads(band, 1, info.defaults[1]) == "0 DB");
+    CHECK(reads(band, 1, 0.8f, notchAll) == "-" && reads(band, 1, 0.8f, bellAll) == "+7.2 DB"); // a NOTCH has no gain
+    const auto settings = [](double hz, double db, double q, int shape, float* s) {
+        s[0] = static_cast<float>(std::log(hz / 20.0) / std::log(1000.0));
+        s[1] = static_cast<float>((db / 12.0 + 1.0) / 2.0);
+        s[2] = static_cast<float>(std::log(q / 0.3) / std::log(100.0));
+        s[3] = (static_cast<float>(shape) + 0.5f) / 4.f;
+    };
+    // What a sine at `hz` comes out as, in dB, the second half second.
+    const auto gainAt = [&](double setHz, double db, double q, int shape, double hz) {
+        float s[4];
+        settings(setHz, db, q, shape, s);
+        const std::vector<float> in = sineOf(hz, 0.25, 48000);
+        const std::vector<float> out = throughOne(band, s, in);
+        return dB(rmsOf(out, 24000) / rmsOf(in, 24000));
+    };
+    // At 0 dB, untouched to the bit: as it comes, and a BELL or a shelf anywhere at 0 dB.
+    std::vector<float> mixed = sineOf(300.0, 0.3, 9600);
+    const std::vector<float> high = sineOf(7000.0, 0.2, 9600);
+    for (std::size_t i = 0; i < mixed.size(); ++i) mixed[i] += high[i];
+    CHECK(throughOne(band, info.defaults, mixed) == mixed);
+    for (int shape : {0, 2, 3}) {
+        float s[4];
+        settings(250.0, 0.0, 8.0, shape, s);
+        CHECK(throughOne(band, s, mixed) == mixed);
+    }
+    // BELL: +12 dB at its frequency, next to nothing three octaves off; a cut as deep.
+    const double up = gainAt(1000.0, 12.0, 1.5, 0, 1000.0), down = gainAt(1000.0, -12.0, 1.5, 0, 1000.0);
+    SAY("band     BELL at 1 kHz: +12 DB gives %+.2f dB, -12 DB gives %+.2f dB\n", up, down);
+    CHECK(std::fabs(up - 12.0) < 0.3 && std::fabs(down + 12.0) < 0.3);
+    CHECK(std::fabs(gainAt(1000.0, 12.0, 1.5, 0, 125.0)) < 0.6 && std::fabs(gainAt(1000.0, 12.0, 1.5, 0, 8000.0)) < 0.6);
+    // Anywhere: at 50 Hz and at 15 kHz too.
+    CHECK(std::fabs(gainAt(50.0, 12.0, 1.5, 0, 50.0) - 12.0) < 0.4 && std::fabs(gainAt(15000.0, 12.0, 1.5, 0, 15000.0) - 12.0) < 0.4);
+    // Q: an octave above, a wide band (Q 0.5) still lifts it; a narrow one (Q 8) next to nothing.
+    const double wide = gainAt(1000.0, 12.0, 0.5, 0, 2000.0), narrow = gainAt(1000.0, 12.0, 8.0, 0, 2000.0);
+    SAY("band     an octave off a +12 DB BELL: Q 0.5 %+.2f dB, Q 8 %+.2f dB\n", wide, narrow);
+    CHECK(wide > 7.0 && narrow < 1.0);
+    // NOTCH: its frequency taken out, an octave either side as it was.
+    const double hole = gainAt(1000.0, 0.0, 8.0, 1, 1000.0);
+    SAY("band     NOTCH at 1 kHz, Q 8: %+.1f dB there, %+.2f / %+.2f dB an octave either side\n", hole, gainAt(1000.0, 0.0, 8.0, 1, 500.0), gainAt(1000.0, 0.0, 8.0, 1, 2000.0));
+    CHECK(hole < -40.0 && std::fabs(gainAt(1000.0, 0.0, 8.0, 1, 500.0)) < 0.3 && std::fabs(gainAt(1000.0, 0.0, 8.0, 1, 2000.0)) < 0.3);
+    CHECK(gainAt(1000.0, 12.0, 8.0, 1, 1000.0) < -40.0); // (GAIN does nothing to it)
+    // Shelves: everything under (LOW) or over (HIGH) the frequency alike, the other side left be.
+    CHECK(std::fabs(gainAt(500.0, 12.0, 0.7, 2, 50.0) - 12.0) < 0.5 && std::fabs(gainAt(500.0, 12.0, 0.7, 2, 8000.0)) < 0.5);
+    CHECK(std::fabs(gainAt(2000.0, -12.0, 0.7, 3, 15000.0) + 12.0) < 0.5 && std::fabs(gainAt(2000.0, -12.0, 0.7, 3, 100.0)) < 0.5);
+    // ...and halfway there at FREQ itself: FREQ is the shelf's middle.
+    const double lowMiddle = gainAt(500.0, 12.0, 0.7, 2, 500.0), highMiddle = gainAt(2000.0, -12.0, 0.7, 3, 2000.0);
+    SAY("band     shelves at FREQ: LOW +12 DB gives %+.2f dB, HIGH -12 DB gives %+.2f dB\n", lowMiddle, highMiddle);
+    CHECK(std::fabs(lowMiddle - 6.0) < 0.3 && std::fabs(highMiddle + 6.0) < 0.3);
+    // A cut is the lift turned upside down (the band's width goes with its gain): +12 and -12 dB add to nothing an
+    // octave off, and at a third of an octave.
+    for (double off : {2000.0, 1260.0}) CHECK(std::fabs(gainAt(1000.0, 12.0, 1.5, 0, off) + gainAt(1000.0, -12.0, 1.5, 0, off)) < 0.05);
+    // A shelf's Q stops at 2: asked for 30 or 20, it is the same shelf to the bit (a BELL's is not).
+    {
+        float at30[4], at20[4];
+        settings(500.0, 12.0, 30.0, 2, at30);
+        settings(500.0, 12.0, 20.0, 2, at20);
+        CHECK(throughOne(band, at30, mixed) == throughOne(band, at20, mixed) && throughOne(band, at20, mixed) != mixed);
+        at30[3] = at20[3] = 0.125f;
+        CHECK(throughOne(band, at30, mixed) != throughOne(band, at20, mixed));
+    }
+    // A change of SHAPE fades over 10 ms: a 1 kHz sine through a BELL at 0 dB, turned to a NOTCH there, is still
+    // mostly there 2 ms on (a fifth of the way: with no fade it is a ninth of the sine by then) and all but gone 40 ms
+    // on (the notch's own ring included).
+    {
+        std::unique_ptr<Effect> fx = makeEffect(band, 48000.f, 120.f);
+        float s[4];
+        settings(1000.0, 0.0, 4.0, 0, s);
+        for (int i = 0; i < 4; ++i) fx->setParam(i, s[i]);
+        std::vector<float> left = sineOf(1000.0, 0.5, 9600), right = left;
+        fx->process(left.data(), right.data(), 4800);
+        fx->setParam(3, 0.375f);
+        fx->process(left.data() + 4800, right.data() + 4800, 4800);
+        const auto peakFrom = [&](int at) {
+            float most = 0.f;
+            for (int i = at; i < at + 48; ++i) most = std::fmax(most, std::fabs(left[static_cast<std::size_t>(i)]));
+            return most;
+        };
+        SAY("band     BELL to NOTCH: peak %.3f 2 ms on, %.4f 40 ms on\n", static_cast<double>(peakFrom(4800 + 96)), static_cast<double>(peakFrom(4800 + 1920)));
+        CHECK(peakFrom(4800 + 96) > 0.3f && peakFrom(4800 + 1920) < 0.02f);
+    }
+}
+
 // PITCH (2026-11-24): a pitch shifter, a TYPE of MOD. MIX full: a 440 Hz tone comes out an octave up (880), an octave
 // down (220), a fifth up (659), as near as the pitch can be read; PITCH is a choice of 25 (-12..+12) read in
 // semitones; MIX 0 is the sound untouched to the sample.
@@ -11472,6 +11575,7 @@ int main(int argc, char** argv) {
         {"testBloom", testBloom},
         {"testShimmer", testShimmer},
         {"testWah", testWah},
+        {"testBand", testBand},
         {"testPitch", testPitch},
     };
     // `effects_test --part 1` and `--part 2`: ctest runs it as two tests, each about half the time,

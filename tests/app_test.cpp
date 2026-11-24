@@ -4804,6 +4804,42 @@ void testTheFxPictureFollowsTheSettings() {
         CHECK(open > shut * 3 / 2);
         if (open <= shut * 3 / 2) std::printf("    WAH: %d pixels under its curve shut, %d open\n", shut, open);
     }
+    // BAND draws its shape where FREQ puts it (2026-11-24): a BELL +12 dB peaks 12 dB over the 0 dB line at FREQ and is
+    // on it far off; a NOTCH dips to the floor there; a LOW SHELF +12 dB is 12 dB up far under FREQ, on the line far over.
+    {
+        const int px = F::kPaneX + 12, pw = F::kPaneW - 24, py = F::kPicY + 12, ph = F::kPicH - 24;
+        const auto yOfDb = [&](float db) { return py + ph - 1 - static_cast<int>(std::round((db + 30.f) / 48.f * static_cast<float>(ph - 1))); };
+        const auto topAt = [&](float t) { // the curve's highest pixel in the column t of the way along (FREQ's brass mark sits on it)
+            const int x = px + static_cast<int>(std::round(t * static_cast<float>(pw - 1)));
+            for (int y = py; y < py + ph; ++y)
+                for (int dx = 0; dx < 2; ++dx)
+                    if (canvas.is(x + dx, y, ui::kText) || canvas.is(x + dx, y, ui::kBrass)) return y;
+            return py + ph;
+        };
+        const auto bottomAt = [&](float t) { // ...and its lowest: a dip is drawn as a line down to it
+            const int x = px + static_cast<int>(std::round(t * static_cast<float>(pw - 1)));
+            for (int y = py + ph - 1; y >= py; --y)
+                for (int dx = 0; dx < 2; ++dx)
+                    if (canvas.is(x + dx, y, ui::kText) || canvas.is(x + dx, y, ui::kBrass)) return y;
+            return py;
+        };
+        const auto drawn = [&](float db, int shape) {
+            const float shown[kEffectParams] = {0.5f, (db / 12.f + 1.f) / 2.f, 0.6f, (static_cast<float>(shape) + 0.5f) / 4.f};
+            picture(EffectKind::Band, shown, 0.f);
+        };
+        drawn(12.f, 0);
+        const int bellPeak = topAt(0.5f), bellFar = topAt(0.05f);
+        drawn(0.f, 1);
+        const int notchHole = bottomAt(0.5f), notchFar = topAt(0.95f);
+        drawn(12.f, 2);
+        const int shelfLow = topAt(0.05f), shelfHigh = topAt(0.95f);
+        const bool ok = std::abs(bellPeak - yOfDb(12.f)) <= 3 && std::abs(bellFar - yOfDb(0.f)) <= 2 && notchHole >= yOfDb(-25.f) &&
+                        std::abs(notchFar - yOfDb(0.f)) <= 2 && std::abs(shelfLow - yOfDb(12.f)) <= 2 && std::abs(shelfHigh - yOfDb(0.f)) <= 2;
+        CHECK(ok);
+        if (!ok)
+            std::printf("    BAND's picture: bell %d (want %d), far %d; notch %d (under %d), far %d; shelf %d / %d (0 dB at %d)\n", bellPeak, yOfDb(12.f), bellFar,
+                        notchHole, yOfDb(-25.f), notchFar, shelfLow, shelfHigh, yOfDb(0.f));
+    }
     // PITCH draws the shifted sound at its own speed (2026-11-24): along the middle of the waves, an octave up
     // crosses it twice as often as no shift, an octave down half as often. Under them the heads' fades: at no shift
     // they stand still, one at full (its line along the top of the strip); an octave up they turn twice as often as
@@ -6322,8 +6358,9 @@ void testFxTextsFit() {
         float types = fonts.small.width("TYPE") + 12.f;
         std::vector<std::string> typeNames;
         for (int t = 0; t < effectTypes(kind); ++t) types += fonts.small.width(effectTypeName(effectTypeAt(kind, t))) + 20.f, typeNames.push_back(effectTypeName(effectTypeAt(kind, t)));
-        // (MOD's five and DELAY's and REVERB's six do not all fit: its row shows as many as fit at LARGE, "..." for the rest; textsize_test has it.)
-        const bool crowded = effectInfo(kind).family == EffectFamily::Mod || effectInfo(kind).family == EffectFamily::Delay || effectInfo(kind).family == EffectFamily::Reverb;
+        // (MOD's, DELAY's, REVERB's and, since BAND, FILTER's six do not all fit: its row shows as many as fit at LARGE, "..." for the rest; textsize_test has it.)
+        const bool crowded = effectInfo(kind).family == EffectFamily::Mod || effectInfo(kind).family == EffectFamily::Delay || effectInfo(kind).family == EffectFamily::Reverb ||
+                             effectInfo(kind).family == EffectFamily::Filter;
         if (!crowded) CHECK(types + ui::keyWidth(fonts, "LEFT / RIGHT") <= headRoom);
         {
             int from = -1, to = -1; // today's types are all in view, but MOD's, DELAY's and REVERB's
