@@ -512,7 +512,9 @@ void testCarrying() {
     Transfer::renameBroken = true;
     const unsigned carriesBefore = session.carriesDone();
     CHECK(session.moveSample("808", "kicks/808") == Job::Copying && session.carryCopying());
-    CHECK(session.moveSample("void/rim", "rim") == Job::Busy || !session.carryCopying());
+    // Asked while the copy is under way, any move is told Busy (even one that would fail): the copy
+    // stays under way until the next frame finishes it, whatever its thread has done meanwhile.
+    CHECK(session.moveSample("void/rim", "rim") == Job::Busy && session.moveSample("drums/snares/rim", "rim") == Job::Busy && session.carryCopying());
     rig.copied();
     CHECK(!session.carryCopying() && session.carriesDone() == carriesBefore + 1);
     CHECK((session.carryResult() == Job::Moving || session.carryResult() == Job::Done) && card.has("kicks/808.wav") && !card.has("808.wav") && !card.has("kicks/808.wav.part"));

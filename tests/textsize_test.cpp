@@ -1189,10 +1189,18 @@ void testTheOtherScreens() {
         CHECK(few.session().transferOn());
         holds(few, "the list of songs, the WiFi page on");
         CHECK(drew("FILES OVER WIFI: ON"));
-        // The address under it is wider than the panel at LARGE (as on main): at XL it is held at LARGE.
+        // The address under it, with a port in it (":8080", where the desk would not give port 80), is wider
+        // than the panel at XL: it is held at LARGE. Without one (port 80: our firmware, or a desk that runs
+        // the tests as root) it fits, and is drawn at XL. Which one a run gets is the desk's (a parallel test
+        // may hold either port), so the check follows what was drawn; holds() still finds any that spills.
         bool address = false;
         for (const textfit::Text& t : lastXl.texts)
-            if (t.words.compare(0, 17, "OPEN IN A BROWSER") == 0 || t.words.compare(0, 16, "NOT ON A NETWORK") == 0) address = t.cap == 12.f;
+            if (t.words.compare(0, 17, "OPEN IN A BROWSER") == 0 || t.words.compare(0, 16, "NOT ON A NETWORK") == 0) {
+                const std::size_t slash = t.words.rfind('/');
+                const bool port = slash != std::string::npos && t.words.rfind(':', slash) != std::string::npos &&
+                                  t.words.rfind(':', slash) > t.words.find(':');
+                address = t.cap == (port || t.words.compare(0, 16, "NOT ON A NETWORK") == 0 ? 12.f : 13.f);
+            }
         CHECK(address);
         few.tap(L1);
         CHECK(!few.session().transferOn());

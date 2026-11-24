@@ -490,7 +490,10 @@ std::string Session::designFxSpec(int track) const {
         return list + "]";
     };
     const auto slotText = [&](const char* name, int bus, EffectKind kind) {
-        std::string out = "{\"name\":" + jsonText(name) + ",\"kinds\":" + kindsText(bus) + ",\"params\":[";
+        // The name first, on a line of its own: it may be `text` itself, which kindsText writes into, and
+        // the order of a + b + c is the compiler's (GCC took kindsText first: SLOT 1 came out a family name).
+        std::string out = "{\"name\":" + jsonText(name);
+        out += ",\"kinds\":" + kindsText(bus) + ",\"params\":[";
         const EffectInfo& info = effectInfo(kind);
         for (int i = 0; i < info.params; ++i) {
             std::snprintf(text, sizeof text, "%s{\"name\":", i ? "," : "");

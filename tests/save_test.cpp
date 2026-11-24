@@ -1459,6 +1459,10 @@ static void testALineReadsAsAStreamReadsIt() {
                 in >> a;
                 mine >> b;
                 same = (a == b || (a != a && b != b)) && std::signbit(a) == std::signbit(b);
+                // The one way they part on purpose (audit #9, testPastDoubleEndNumbersAreHeld): past the
+                // doubles' end the stream fails with the largest double, and LineIn gives the same number
+                // without failing, so the line goes on. From there the stream reads nothing more.
+                if (same && !in && mine && std::fabs(a) == std::numeric_limits<double>::max()) break;
             } else if (what < 8) {
                 std::string a = "was", b = "was";
                 in >> a;
@@ -1498,7 +1502,8 @@ static void testALineReadsAsAStreamReadsIt() {
         double a = 7, b = 7;
         in >> a;
         mine >> b;
-        if (std::memcmp(&a, &b, sizeof a) != 0 || static_cast<bool>(in) != static_cast<bool>(mine)) {
+        const bool heldPastTheEnd = !in && mine && std::fabs(a) == std::numeric_limits<double>::max() && a == b; // (audit #9, as above)
+        if (!heldPastTheEnd && (std::memcmp(&a, &b, sizeof a) != 0 || static_cast<bool>(in) != static_cast<bool>(mine))) {
             if (++wrong <= 10) std::printf("  \"%s\": %a, the stream %a\n", text, b, a);
         }
     }

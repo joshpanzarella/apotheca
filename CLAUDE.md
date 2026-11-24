@@ -1226,6 +1226,10 @@ effect in those two groups and fails one that does not.
   reads in place** (`Project` is a `ProjectHead` and the tracks; a track is
   made blank, `makeBlank`), so it is never handed a second Project. A new format in the song file goes through `put`'s three, or
   snprintf; a new way to read goes through `LineIn`'s operations.
+  **One difference is on purpose** (audit #9, 2026-11-21): past the doubles' end (`1e999`) the stream
+  fails, `LineIn` gives the same largest double WITHOUT failing, so the line reads on and the value is
+  held to its limit (`testPastDoubleEndNumbersAreHeld`). `testALineReadsAsAStreamReadsIt` allows that
+  and nothing else.
 - **Scenes are numbered by their place, so a scene put in moves the ones
   after it** (NEXT SCENE, SELECT + Y: `Session::nextScene`). Whatever holds a
   scene's number must follow: the engine's playing, its patterns and an
@@ -2918,6 +2922,13 @@ effect in those two groups and fails one that does not.
   before it saves.
 
 ### Tests
+- **The order of `a + f() + g()` is the compiler's.** GCC (our firmware's app, this desk) and clang
+  (the port, the Mac) take the parts in other orders. A shared buffer passed in and also written by
+  another call in the same expression is a bug on one of them: the designer page's `slotText` lost its
+  "SLOT 1" name on GCC only (fixed 2026-11-24). Take such a value into a string on its own line first.
+- **A test must not hang on the desk's ports, or on what a parallel test holds.** The WiFi page takes
+  port 80 where it can (root, our firmware) and 8080 otherwise; a check of its address follows the form
+  drawn (`textsize`). Run `ctest -j` and read the WHOLE failure list (`tail` cut it off once).
 - **Mutation testing is the standard.** After a test passes, break the code it
   covers and see it fail. A surviving mutant usually means the fixture cannot
   reach the branch.
