@@ -95,9 +95,24 @@ void Session::syncSong() {
     if (engine.send(c)) sentSceneCount_ = count; // lost to a full queue: not sent, so the song sent again sends it
 }
 
+// A recording under way goes onto the track it began on (recTrack_): it follows that track when tracks
+// move, and is called off when its track goes, changes instrument, or another song comes (review
+// 2026-11-23: it landed on whichever track took the number, or in the other song).
+void Session::dropRecording() {
+    if (rec_ != Rec::Waiting && rec_ != Rec::Recording) return;
+    if (input_) input_->stop();
+    recorder_.finish(); // (thrown away)
+    rec_ = Rec::Idle;
+    lastRecorded_.clear();
+}
+
 bool Session::removeTrack(int track) {
     const int count = project.trackCount();
     if (track < 0 || track >= count || count <= 1) return false;
+    if (rec_ == Rec::Waiting || rec_ == Rec::Recording) {
+        if (recTrack_ == track) dropRecording();
+        else if (recTrack_ > track) --recTrack_;
+    }
     for (int t = track; t + 1 < kNumTracks; ++t) project.tracks[t] = project.tracks[t + 1];
     for (int t = track; t < kNumTracks; ++t) { // the types each slot remembers move with their tracks, and what a preset found
         for (int s = 0; s < kTrackSlots; ++s) typeMemory_[t * kTrackSlots + s] = t + 1 < kNumTracks ? typeMemory_[(t + 1) * kTrackSlots + s] : TypeMemory();
@@ -135,6 +150,7 @@ bool Session::removeTrack(int track) {
 int Session::duplicateTrack(int track) {
     const int count = project.trackCount();
     if (track < 0 || track >= count || count >= kNumTracks) return -1;
+    if ((rec_ == Rec::Waiting || rec_ == Rec::Recording) && recTrack_ > track) ++recTrack_;
     for (int t = count; t > track + 1; --t) { // the tracks after it, a place down (from the end)
         project.tracks[t] = project.tracks[t - 1];
         for (int s = 0; s < kTrackSlots; ++s) typeMemory_[t * kTrackSlots + s] = typeMemory_[(t - 1) * kTrackSlots + s];
@@ -188,6 +204,7 @@ bool Session::addTrack(TrackKind kind) {
 
 bool Session::setTrackKind(int track, TrackKind kind) {
     if (track < 0 || track >= project.trackCount() || kind == TrackKind::None || project.tracks[track].kind == kind) return false;
+    if (recTrack_ == track) dropRecording(); // (its take was for the instrument that is going)
     TrackData& t = project.tracks[track];
     forgetTrackTypes(track); // (its effects stay; what they were switched from is forgotten)
     presetSounds_[track] = PresetSoundMemory();
@@ -2124,6 +2141,7 @@ void Session::sendEffects(int track) {
 }
 
 void Session::applyProject() {
+    dropRecording(); // another song: a take under way was for the one that went
     sendSong();
     // Another song: nothing of the last one to go back to.
     for (TypeMemory& m : typeMemory_) m = TypeMemory();

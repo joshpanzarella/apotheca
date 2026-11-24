@@ -1042,6 +1042,7 @@ private:
     Recorder recorder_;
     Rec rec_ = Rec::Idle;
     int recTrack_ = 0, recLane_ = 0;
+    void dropRecording(); // a recording under way called off, its take thrown away
     std::string lastRecorded_;
     void loadTrackSample(int track);
     void install(int track, int lane, const std::vector<float>& samples);

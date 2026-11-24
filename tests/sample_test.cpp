@@ -1434,6 +1434,43 @@ void testRecordingOntoACloud() {
     CHECK(session.trackSound(1).missing && session.findMissing("rec 1") == 1 && std::string(track.sample) == "recorded/rec 1" && !session.trackSound(1).missing);
 }
 
+// A recording under way goes onto the track it began on, wherever that track goes, and is called off
+// when its track goes, changes instrument, or another song comes (review 2026-11-23: it landed on
+// whichever track then had the number, or in the other song).
+void testARecordingFollowsItsTrack() {
+    const std::string folder = tempFolder("samples-follow");
+    Rig rig(folder);
+    Session& session = rig.session();
+    FakeInput input;
+    session.useAudioInput(&input);
+    CHECK(session.addTrack(TrackKind::Drums) && session.addTrack(TrackKind::Drums)); // tracks 2 and 3 (1 is the song's own)
+    // Waiting on track 3, lane 2; track 1 deleted: it is track 2 now, and the take lands there.
+    CHECK(session.toggleRecording(2, 1) == Session::Rec::Waiting);
+    CHECK(session.removeTrack(0));
+    input.add(tone(0.5f, 0.25f));
+    rig.frames(5);
+    CHECK(session.recording() == Session::Rec::Recording);
+    session.toggleRecording(1, 1);
+    rig.frames(2);
+    CHECK(std::string(rig.project().tracks[1].laneSample[1]) == "recorded/rec 1" && std::string(rig.project().tracks[0].laneSample[1]) != "recorded/rec 1");
+    // Waiting on track 2; a copy of track 1 put after it: track 2 is track 3 now.
+    CHECK(session.toggleRecording(1, 2) == Session::Rec::Waiting);
+    CHECK(session.duplicateTrack(0) == 1);
+    input.add(tone(0.5f, 0.25f));
+    rig.frames(5);
+    session.toggleRecording(2, 2);
+    rig.frames(2);
+    CHECK(std::string(rig.project().tracks[2].laneSample[2]) == "recorded/rec 2" && std::string(rig.project().tracks[1].laneSample[2]) != "recorded/rec 2");
+    // Waiting on a track that is deleted: called off, nothing kept, nothing put anywhere.
+    CHECK(session.toggleRecording(2, 3) == Session::Rec::Waiting);
+    CHECK(session.removeTrack(2));
+    CHECK(session.recording() == Session::Rec::Idle && !input.open);
+    // Waiting when another song comes: called off.
+    CHECK(session.toggleRecording(0, 4) == Session::Rec::Waiting);
+    CHECK(session.newSong());
+    CHECK(session.recording() == Session::Rec::Idle && !input.open);
+}
+
 void testRecordingOntoALane() {
     const std::string folder = tempFolder("samples");
     Rig rig(folder);
@@ -2916,6 +2953,7 @@ int main(int, char**) {
     testTheSamplersEnd();
     testTheRecorder();
     testRecordingOntoALane();
+    testARecordingFollowsItsTrack();
     testRecordingOntoACloud();
     testNoteNames();
     testMultisampleZones();
