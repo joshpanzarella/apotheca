@@ -2332,8 +2332,8 @@ effect in those two groups and fails one that does not.
   `tests/acid_test.cpp`). `SynthKind::Acid` appended. Nobody has heard it, not run on the handheld.
   **Every figure is SELF** (no source was opened). The app: next block.
   - **One voice, the newest key wins**; letting it go never goes back to a key still held. `allNotesOff`
-    (Play, Stop, panic: `stopNotes` is the default) hands the note to ONE tail slot (3 ms fade, counted
-    in samples) and the voice is fresh: Play from the top is the same line (`testPlayFromTheTop`).
+    (Play, Stop, panic: `stopNotes` is the default) hands the note to a tail slot (3 ms fade, counted
+    in samples; a second slot when the first still fades, so a voice is never cut dead: review 2026-11-23) and the voice is fresh: Play from the top is the same line (`testPlayFromTheTop`).
   - **ACCENT is velocity 0.95 or over** (`kAccentAt`), **SLIDE is the note's GLIDE**, through
     `noteOnFrom` as the engine already calls it; nothing new on a note. **ACCENT 0 (setting or macro)
     is the plain path to the bit** (`accented()` is false there: `testAccentZero`).
