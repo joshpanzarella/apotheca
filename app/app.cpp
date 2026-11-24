@@ -25,7 +25,7 @@ constexpr long kBatteryLogTrimOver = 256 * 1024; // bytes over: cut back to the 
 }
 
 App::App(Engine& engine)
-    : project_(new Project), session_(engine, *project_), song_(session_), drums_(session_), notes_(session_), kit_(session_), fx_(session_), mods_(session_), sampler_(session_), settings_(session_), sceneClipBeforeShoulders_(new Session::SceneClip),
+    : project_(new Project), session_(engine, *project_), song_(session_), drums_(session_), sceneClipBeforeShoulders_(new Session::SceneClip), notes_(session_), kit_(session_), fx_(session_), mods_(session_), sampler_(session_), settings_(session_),
       phazed_(session_, phazedSpec()), jaxep_(session_, jx3pSpec()), fm6_(session_, fm6Spec()), physic_(session_, physicSpec()), acid_(session_, acidSpec()), cloud_(session_, cloudSpec()), morph_(session_, morphSpec()) {}
 
 // The one screen that is up: by the tab, and for PATTERN and DEVICE by the

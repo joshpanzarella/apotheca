@@ -164,7 +164,7 @@ float bell(float f, float centre, float octaves) {
 void filterPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
     grid(r, p, dbToV(0.f));
     const float mix = s("MIX", 1.f);
-    const auto wet = [&](float gain, float t) { // the mix of the effect's gain with the plain sound, as dB
+    const auto wet = [&](float gain) { // the mix of the effect's gain with the plain sound, as dB
         const float g = mix * gain + (1.f - mix);
         return dbToV(20.f * std::log10(g < 1e-4f ? 1e-4f : g));
     };
@@ -175,7 +175,7 @@ void filterPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
         const float f0 = 40.f * std::pow(50.f, s("PITCH", 0.5f)), g = 0.95f * s("FEEDBACK", 0.5f);
         fn = [=](float t) {
             const float f = freqAt(t), c = std::cos(2.f * kPi * f / f0);
-            return wet(1.f / std::sqrt(1.f + g * g - 2.f * g * c) * (1.f - g * 0.5f), t);
+            return wet(1.f / std::sqrt(1.f + g * g - 2.f * g * c) * (1.f - g * 0.5f));
         };
         markT = std::log(f0 / 20.f) / std::log(1000.f);
         break;
@@ -189,7 +189,7 @@ void filterPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
         const float width = 0.9f - 0.65f * s("RESONANCE", 0.5f);
         fn = [=](float t) {
             const float f = freqAt(t);
-            return wet(0.08f + 2.2f * bell(f, f1, width) + 1.6f * bell(f, f2, width), t);
+            return wet(0.08f + 2.2f * bell(f, f1, width) + 1.6f * bell(f, f2, width));
         };
         markT = std::log(f1 / 20.f) / std::log(1000.f);
         break;
@@ -219,7 +219,7 @@ void filterPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
             if (type == 1) g = lp * lp * (q > 1.f ? 1.f / q : 1.f);
             else if (type == 2) g = (x / q) * lp;
             else if (high) g = x * x * lp;
-            return wet(g, t);
+            return wet(g);
         };
         markT = place;
         break;

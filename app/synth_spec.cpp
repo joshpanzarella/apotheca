@@ -620,7 +620,6 @@ void secondsText(double s, char* out, std::size_t n) { // "2.4 MS", "120 MS", "1
     else if (s < 0.9995) std::snprintf(out, n, "%.0f MS", s * 1000.0);
     else std::snprintf(out, n, "%.1f S", s);
 }
-const char* const kNoteNames[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 void settingText(int id, int value, char* out, int size) {
     const std::size_t n = static_cast<std::size_t>(size);
     switch (id) {

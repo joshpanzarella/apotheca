@@ -273,6 +273,8 @@ if(APOTHECA_BUILD_APP)
     # The demo render is run and read (nothing else in ctest runs tools/render_demo.cpp).
     add_test(NAME demo COMMAND render_demo ${CMAKE_BINARY_DIR}/demo_test.wav)
     set_tests_properties(demo PROPERTIES PASS_REGULAR_EXPRESSION "bass: Phazed, [^\n]+\nchords: JAX-EP, String I\n20\\.7 seconds, peak 0\\.[5-9]")
-    set_tests_properties(launcher words demo PROPERTIES TIMEOUT 120)
+    # The handheld build and CMake build the same sources (MORPH's tables once did not link on the handheld).
+    add_test(NAME build_sources COMMAND sh ${CMAKE_SOURCE_DIR}/tests/build_sources_test.sh ${CMAKE_SOURCE_DIR})
+    set_tests_properties(launcher words demo build_sources PROPERTIES TIMEOUT 120)
   endif()
 endif()

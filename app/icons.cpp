@@ -65,17 +65,6 @@ const Icon& icon(const char* id) {
     return kIcons[0];
 }
 
-bool has(const char* name, const char* word) {
-    // A whole word of the name: "RATE" in "LFO RATE", not in "SEPARATE".
-    const std::size_t n = std::strlen(word);
-    for (const char* at = std::strstr(name, word); at; at = std::strstr(at + 1, word)) {
-        const bool start = at == name || at[-1] == ' ' || at[-1] == '>';
-        const bool end = at[n] == 0 || at[n] == ' ';
-        if (start && end) return true;
-    }
-    return false;
-}
-
 // The rules, first that takes the name wins: a name of one word is its word; a name of more is read by its LAST
 // word first ("LFO DEPTH" is a depth, "AMP DECAY" a decay), then its others.
 struct Rule {

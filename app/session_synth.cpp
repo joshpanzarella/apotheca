@@ -743,6 +743,7 @@ void Session::serveDesigner() {
         case DesignRequest::Roll: rollSynth(project.track, now_ * 2654435761u + static_cast<unsigned>(r.a)); break;
         case DesignRequest::LaneSample: case DesignRequest::Hear: case DesignRequest::Normalize: case DesignRequest::Trim:
         case DesignRequest::LaneSynth: case DesignRequest::LaneVoice: break; // (a kit's: above)
+        case DesignRequest::FxSet: case DesignRequest::FxType: case DesignRequest::ModSet: break; // (every instrument's: above)
         case DesignRequest::Note: {
             if (designHeldTrack_ != project.track) letGo(); // another track now: the old keys come up first
             designHeldTrack_ = project.track;
