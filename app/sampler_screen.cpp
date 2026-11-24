@@ -166,6 +166,8 @@ void SamplerScreen::openPicker() {
     jobs.makeFolder = [this](const std::string& name) { return session_.makeSampleFolder(name); };
     jobs.removeFolder = [this](const std::string& name) { return session_.deleteSampleFolder(name); };
     jobs.following = [this] { return session_.following(); };
+    jobs.copying = [this] { return session_.carryCopying(); };
+    jobs.copied = [this] { return session_.carryResult(); };
     jobs.followFailures = [this] { return session_.followFailures(); };
     jobs.used = [this, track](const std::string& name) { return session_.sampleUses(name) - (name == project_.tracks[track].sample ? 1 : 0); };
     picker_.open(session_.sampleNames(), session_.sampleFolders(), trk().sample, "THE SAMPLER: PICK ITS RECORDING", "NO RECORDING", jobs);

@@ -236,13 +236,18 @@ public:
     bool deleteSample(const std::string& name);
     // What the handheld does to the samples folder itself (the list of recordings: carry, + NEW FOLDER,
     // hold B on an empty folder), and how it went.
-    enum class FileJob { Done, Same, TooLong, Taken, NotEmpty, Failed, NotSaved, Moving }; // NotSaved: done, but a song that names it could not be written (a full card). Moving: done, and the saved songs are following (following())
+    enum class FileJob { Done, Same, TooLong, Taken, NotEmpty, Failed, NotSaved, Moving, Copying, Busy }; // NotSaved: done, but a song that names it could not be written (a full card). Moving: done, and the saved songs are following (following()). Copying: a card that will not rename, so it is being written again in its new place, off the screen's thread: nothing has changed yet, and carryDone() then says how it went. Busy: another is being copied.
     // Move a recording to another folder (or out of every folder), under the name `to`: its file is
     // renamed (the long way where the card will not), the open song follows (recordingChanged: the
     // name only, the sound plays on), the open song is written, and every saved song and rev that
     // names it follows, a few a frame (followLater: Moving while they do). Nothing is written over (Taken, case not
     // counted); the folder it goes to must be there already; `to` must fit kSampleNameRoom (TooLong).
     FileJob moveSample(const std::string& from, const std::string& to);
+    // A carry being copied (Copying): true until Session::update has taken the copy's end. Then
+    // carryResult() is how the whole move went (Done, NotSaved, Moving or Failed), once, counted by carriesDone().
+    bool carryCopying() const { return carry_ != nullptr; }
+    FileJob carryResult() const { return carryResult_; }
+    unsigned carriesDone() const { return carriesDone_; }
     // A new, empty folder: "name", or "folder/name" inside one of the first level.
     FileJob makeSampleFolder(const std::string& name);
     // Only an EMPTY folder is deleted: NotEmpty if anything at all is in it (a file that is no recording too).
@@ -1003,6 +1008,19 @@ private:
     float updateMegabytes_ = 0.f;
     unsigned seenChords_ = 0; // Transfer::chordsReceived() when the packs were last read
     unsigned sampleFiles_ = 0;
+    // A carry the long way (a card that will not rename into another folder), on its own thread: the
+    // file written again in its new place and the old one taken away; Session::update does the rest
+    // (review 2026-11-23: a large recording held the screen for the whole copy, seconds on the card).
+    struct CarryJob {
+        std::string from, to, file, target;
+        std::atomic<bool> done{false};
+        bool ok = false;
+        std::thread thread;
+    };
+    std::unique_ptr<CarryJob> carry_;
+    FileJob carryResult_ = FileJob::Done;
+    unsigned carriesDone_ = 0;
+    void finishCarry(); // the copy has ended: the open song follows, as a rename does
     // Saved songs still to follow a rename (followLater): each batch of renames with the files it
     // goes through, in order.
     struct Follow {

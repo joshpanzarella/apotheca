@@ -2600,6 +2600,12 @@ effect in those two groups and fails one that does not.
     `saveNow`, `followLater` (next rule). Nothing is written over, capitals not counted; the folder
     must be there, as itself (no link); the whole name must fit `kSampleNameRoom`. After it the
     list's `original_` and `on_` follow, so B's tap is still "as it was".
+  - **Where the card will not rename, the copy runs on a thread of its own** (`Session::CarryJob`,
+    review 2026-11-23: a large recording held the screen for the whole copy). `moveSample` answers
+    `Copying` and changes nothing yet; `Session::update` (`finishCarry`) takes the copy's end and does
+    what a rename does, `carryResult()` says how it went, and the list says MOVING TO until then and
+    follows it after (`SamplePicker::moved`). One copy at a time: another carry meanwhile is `Busy`.
+    The Session's end lets a copy finish and follows it. `picker_test` `testCarryingTheLongWay`.
   - **Typing a name: A types, Y deletes the last letter, B keeps what is typed and leaves, START
     keeps it too** (owner, 2026-11-15: "I find myself pressing B to back out of the track naming"; it
     was B delete, Y or START keep). With nothing typed B leaves and changes nothing (the track's name

@@ -244,8 +244,20 @@ void SamplePicker::drop(bool playing) {
     const std::string from = carried_, folder = carryTo();
     const std::string to = folder.empty() ? sampleLabel(from) : folder + "/" + sampleLabel(from);
     carried_.clear();
-    const Session::FileJob did = jobs_.move ? jobs_.move(from, to) : Session::FileJob::Failed;
     const int failuresBefore = jobs_.followFailures ? jobs_.followFailures() : 0;
+    const Session::FileJob did = jobs_.move ? jobs_.move(from, to) : Session::FileJob::Failed;
+    if (did == Session::FileJob::Copying) { // the long way: said until the copy ends, then as any move (update)
+        copying_ = true;
+        copyFrom_ = from, copyTo_ = to, copyFolder_ = folder, copyFailuresBefore_ = failuresBefore;
+        say("MOVING TO " + destName(folder) + "...");
+    } else {
+        moved(from, to, folder, did, failuresBefore);
+    }
+    arrive(playing, true); // what the cursor is on now goes on, as arriving on any row does
+}
+
+// How a move went (at once, or when its copy has ended): the list follows a move that happened.
+void SamplePicker::moved(const std::string& from, const std::string& to, const std::string& folder, Session::FileJob did, int failuresBefore) {
     if (did == Session::FileJob::Done || did == Session::FileJob::NotSaved || did == Session::FileJob::Moving) { // (not saved: it HAS moved)
         std::replace(all_.begin(), all_.end(), from, to);
         std::sort(all_.begin(), all_.end());
@@ -269,10 +281,11 @@ void SamplePicker::drop(bool playing) {
         say("NOT MOVED: ONE OF THAT NAME IS THERE");
     } else if (did == Session::FileJob::Same) {
         say("LEFT WHERE IT WAS"); // (R1 held too long for a page, or let go in its own folder: said, so it is not a mystery)
+    } else if (did == Session::FileJob::Busy) {
+        say("NOT MOVED: ANOTHER IS STILL MOVING");
     } else {
         say("COULD NOT MOVE IT");
     }
-    arrive(playing, true); // what the cursor is on now goes on, as arriving on any row does
 }
 
 void SamplePicker::moveKey(Button direction) {
@@ -444,6 +457,14 @@ void SamplePicker::update(const Input& input, Uint32 nowMs, bool playing) {
     if (dt > 0.05f) dt = 0.05f;
     dt *= ui::gStickSpeed;
     lastMs_ = nowMs;
+    if (copying_) { // a move being copied: said until it ends, then the list follows it
+        if (jobs_.copying && jobs_.copying()) {
+            saidUntil_ = nowMs + kSaidMs;
+        } else {
+            copying_ = false;
+            moved(copyFrom_, copyTo_, copyFolder_, jobs_.copied ? jobs_.copied() : Session::FileJob::Failed, copyFailuresBefore_);
+        }
+    }
     if (!open_) return;
     if (moving_) {
         if (jobs_.following && jobs_.following()) {

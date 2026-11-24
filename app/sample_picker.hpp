@@ -93,6 +93,8 @@ public:
         std::function<Session::FileJob(const std::string&)> removeFolder; // delete this folder, if it is empty
         std::function<bool()> following;                   // saved songs are still following a move (Session::following); may be empty
         std::function<int()> followFailures;               // Session::followFailures; may be empty
+        std::function<bool()> copying;                     // a carry is being copied (Session::carryCopying); may be empty
+        std::function<Session::FileJob()> copied;          // how the copy's whole move went, once it is not copying (Session::carryResult)
     };
     // A row of a column.
     enum class Kind { First, Folder, Recording, NewFolder };
@@ -140,6 +142,7 @@ public:
     const std::string& typed() const { return typed_; }
     const std::string& said() const { return said_; }               // what the top line says just now ("": the title)
     bool moving() const { return moving_; }                         // a move's saved songs are following: the top line says MOVING TO
+    bool copying() const { return copying_; }                       // a move is being copied (a card that will not rename): MOVING TO too
     // The rows of a place, as a column lists them.
     std::vector<Row> rowsAt(int depth, const std::string& folder) const;
     int rowsMade() const { return rowsMade_; }                 // how many times a column's rows were worked out (draw() does not, frame after frame)
@@ -164,6 +167,7 @@ private:
     int step(Button b) const;
     void refresh(const std::string& onto = "");  // the rows again, after the card changed; the cursor on its row (or the row of this key)
     void drop(bool playing);                 // R1 let go while carrying
+    void moved(const std::string& from, const std::string& to, const std::string& folder, Session::FileJob did, int failuresBefore); // a move's end
     void typeButton(Button b);
     void moveKey(Button direction);
     void keepFolder();
@@ -215,6 +219,11 @@ private:
     std::string movingTo_;           // a move whose saved songs are still following: said MOVING until they are
     int failuresBefore_ = 0;         // Session::followFailures when it began
     bool moving_ = false;
+    // A move being copied: nothing has changed on the card yet, so the list shows it where it was until
+    // the copy ends (update), then as any move (moved).
+    bool copying_ = false;
+    std::string copyFrom_, copyTo_, copyFolder_;
+    int copyFailuresBefore_ = 0;
 };
 
 } // namespace apotheca

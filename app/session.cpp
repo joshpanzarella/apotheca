@@ -490,6 +490,7 @@ void Session::update(Uint32 nowMs) {
     if (nowMs - tempoMovedAt_ >= kTempoSettleMs) steadyTempo_ = seenTempo_;
     collectJob(false);
     reapJobs(false);
+    finishCarry();
     if (!job_ && steadyTempo_ > 0.f) {
         for (int track = 0; track < kNumTracks && !job_; ++track)
             for (int lane = 0; lane < kDrumLanes && !job_; ++lane)
@@ -2012,6 +2013,11 @@ Session::~Session() {
     if (input_ && rec_ != Rec::Idle && rec_ != Rec::NoInput) input_->stop();
     if (job_ && job_->thread.joinable()) job_->thread.join();
     reapJobs(true);
+    if (carry_ && carry_->thread.joinable()) {
+        carry_->thread.join(); // a copy under way is let finish (the file is whole, or not there)...
+        carry_->done.store(true);
+        finishCarry(); // ...and the open song and the saved ones follow it (what is owed is written first)
+    }
 }
 
 

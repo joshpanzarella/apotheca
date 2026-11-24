@@ -114,6 +114,8 @@ void KitScreen::openPicker() {
     jobs.makeFolder = [this](const std::string& name) { return session_.makeSampleFolder(name); };
     jobs.removeFolder = [this](const std::string& name) { return session_.deleteSampleFolder(name); };
     jobs.following = [this] { return session_.following(); };
+    jobs.copying = [this] { return session_.carryCopying(); };
+    jobs.copied = [this] { return session_.carryResult(); };
     jobs.followFailures = [this] { return session_.followFailures(); };
     jobs.playhead = [this] { return &head_; };
     char title[48];

@@ -107,15 +107,23 @@ Session::FileJob Session::moveSample(const std::string& from, const std::string&
         if (have != from && lowered(have) == lowered(to)) return FileJob::Taken;
     const std::string file = sampleFolder_ + "/" + from + ending, target = sampleFolder_ + "/" + to + ending;
     if (lstat(target.c_str(), &info) == 0) return FileJob::Taken;
+    if (carry_) return FileJob::Busy; // one copy at a time
     // Some cards will not rename a file from one folder into another (the handheld's own refused):
-    // then it is written again where it goes, and the old one taken away once the new one is safely there.
+    // then it is written again where it goes, and the old one taken away once the new one is safely
+    // there, on a thread of its own (seconds for a large one); finishCarry does the rest. Until then
+    // nothing has changed: the old file is there, and the new one only appears whole (writeTextFile).
     if (Transfer::renameBroken || std::rename(file.c_str(), target.c_str()) != 0) { // (renameBroken: the tests' card that will not)
-        std::string contents;
-        const bool copied = readTextFile(file, contents) && writeTextFile(target, contents);
-        if (!copied || std::remove(file.c_str()) != 0) {
-            if (copied) std::remove(target.c_str()); // the old one would not go: do not leave two
-            return FileJob::Failed;
-        }
+        carry_.reset(new CarryJob);
+        CarryJob* job = carry_.get();
+        job->from = from, job->to = to, job->file = file, job->target = target;
+        job->thread = std::thread([job] {
+            std::string contents;
+            const bool copied = readTextFile(job->file, contents) && writeTextFile(job->target, contents);
+            job->ok = copied && std::remove(job->file.c_str()) == 0;
+            if (copied && !job->ok) std::remove(job->target.c_str()); // the old one would not go: do not leave two
+            job->done.store(true);
+        });
+        return FileJob::Copying;
     }
     recordingChanged(from, to);
     const bool saved = saveNow(); // the open song now, not at the next autosave: its revs will have the new name
@@ -123,6 +131,24 @@ Session::FileJob Session::moveSample(const std::string& from, const std::string&
     // The file HAS moved. A song that could not be written (a full card) still names the old place:
     // said, since opened later it is mended only if no other recording has that last name.
     return !saved ? FileJob::NotSaved : following() ? FileJob::Moving : FileJob::Done;
+}
+
+void Session::finishCarry() {
+    if (!carry_ || !carry_->done.load()) return;
+    if (carry_->thread.joinable()) carry_->thread.join();
+    const std::string from = carry_->from, to = carry_->to;
+    const bool ok = carry_->ok;
+    carry_.reset();
+    if (ok) {
+        recordingChanged(from, to);
+        const bool saved = saveNow();
+        followLater({{from, to}});
+        carryResult_ = !saved ? FileJob::NotSaved : following() ? FileJob::Moving : FileJob::Done;
+    } else {
+        carryResult_ = FileJob::Failed;
+    }
+    ++sampleFiles_; // open lists of recordings read the card again
+    ++carriesDone_;
 }
 
 Session::FileJob Session::makeSampleFolder(const std::string& name) {
