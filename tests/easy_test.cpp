@@ -1509,6 +1509,22 @@ void testTheWaitingGate() {
         }
     }
     {
+        // A panic lands a mute waiting for the next bar, as Stop does (review 2026-11-23: it stayed
+        // waiting, the head hollow and the gate as it was, until the next Play).
+        std::unique_ptr<Engine> e(new Engine);
+        busyDrums(*e);
+        play(*e);
+        render(*e, 100, 100);
+        heardTo(*e, 0, false, true, 9);
+        render(*e, 100, 100);
+        CHECK(e->trackHeard(0) && e->heardDone() != 9);
+        Command panic = make(Command::Panic);
+        panic.a = 1;
+        e->send(panic);
+        render(*e, 64, 64);
+        CHECK(!e->trackHeard(0) && e->heardDone() == 9);
+    }
+    {
         // Stopped: at once, whatever is asked. Told what it is already: nothing waits.
         std::unique_ptr<Engine> e(new Engine);
         busyDrums(*e);

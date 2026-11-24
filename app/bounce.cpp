@@ -103,10 +103,12 @@ void addMidiNote(std::vector<MidiNote>& out, long songStep, float length, float 
 // longer scene, bar by bar, as it plays (slotOf, engine.cpp).
 void gatherMidiScene(const Project& song, int track, int scene, std::vector<MidiNote>& out) {
     const TrackData& t = song.tracks[track];
-    const int steps = song.sceneSteps(scene);
+    const int steps = song.sceneSteps(scene), meter = song.meterOf(scene);
     const int bars = t.bars[scene] < 1 ? 1 : (t.bars[scene] > kMaxBars ? kMaxBars : t.bars[scene]);
+    // A bar is the scene's METER of steps, as the engine plays it (a bar of 12 is 3/4): its steps past
+    // the meter are never played (review 2026-11-23: they were written, and the bars after slid).
     for (int i = 0; i < steps; ++i) {
-        const int cellBar = (i / kSteps) % bars, st = i % kSteps;
+        const int cellBar = (i / meter) % bars, st = i % meter;
         if (t.kind == TrackKind::Drums) {
             const DrumPattern& bar = t.drums[scene][cellBar];
             for (int lane = 0; lane < kDrumLanes; ++lane) {

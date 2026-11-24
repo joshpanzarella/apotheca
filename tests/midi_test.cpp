@@ -754,6 +754,17 @@ void testMidiFileMeter() {
     }
     CHECK(mid.notes.size() == 2); // the kick in each scene, on its first step
     if (mid.notes.size() == 2) CHECK(mid.notes[1].start == 12 * 120);
+    // A two-bar cell in 3/4: its second bar starts 12 steps in, and a hit past the 12th step of a bar
+    // (never played) is not written (review 2026-11-23: bars were walked 16 steps long).
+    Project two;
+    two.tracks[0].kind = TrackKind::Drums;
+    two.tracks[0].bars[0] = 2;
+    two.sceneMeter[0] = 12;
+    two.tracks[0].drums[0][0].level[0][14] = 1.f; // step 15 of bar 1: past the meter
+    two.tracks[0].drums[0][1].level[1][0] = 1.f;  // bar 2's first step: the snare
+    const MidFile m2 = readMidiFile(midiFileBytes(two, "song"));
+    CHECK(m2.ok && m2.notes.size() == 1);
+    if (m2.notes.size() == 1) CHECK(m2.notes[0].pitch == 38 && m2.notes[0].start == 12 * 120);
 }
 
 void testMidiBounceJob() {

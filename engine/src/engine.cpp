@@ -1423,9 +1423,10 @@ void Engine::apply(const Command& c) {
         countSteps_ = 0; // (a COUNT IN too)
         countShown_.store(0, std::memory_order_relaxed);
         clickAt_ = -1;
+        landHeard(); // as Stop: a mute waiting for a bar line that will not come lands now (review 2026-11-23)
         clearPending();
         letGoOfNotes();
-        for (Track& track : tracks_) stillMods(track); // as Stop: no MOD runs
+        for (Track& track : tracks_) stillMods(track); // as Stop: no MOD runs (automation is not put back: mod_test holds that)
         heardTrack_ = -1;
         heardMask_ = 0;
         playStep_.store(-1, std::memory_order_relaxed);
