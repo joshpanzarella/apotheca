@@ -26,9 +26,13 @@ APOTHECA_DEPENDENCIES = sdl2
 # The version shown on screen is 0.N, N the commits plus one. git is read
 # here, in the repository: the copy being built has no history.
 APOTHECA_CHANGES := $(shell git -C $(BR2_EXTERNAL_APOTHECA_PATH) rev-list --count HEAD 2>/dev/null || echo 0)
+# -O3, as the desk and the port build (Buildroot's flags say -O2; the build type's come after them): the same sound
+# to the bit, PLATE and HALL 17 to 20% cheaper on the desk.
 APOTHECA_CONF_OPTS = \
 	-DAPOTHECA_BUILD_TESTS=OFF \
-	-DAPOTHECA_CHANGES=$(APOTHECA_CHANGES)
+	-DAPOTHECA_CHANGES=$(APOTHECA_CHANGES) \
+	-DCMAKE_CXX_FLAGS_RELEASE="-O3 -DNDEBUG" \
+	-DCMAKE_C_FLAGS_RELEASE="-O3 -DNDEBUG"
 
 APOTHECA_LIB = $(TARGET_DIR)/usr/lib/apotheca
 
