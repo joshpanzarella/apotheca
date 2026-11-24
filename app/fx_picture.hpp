@@ -37,6 +37,9 @@ constexpr float kDialFrom = 135.f, kDialSweep = 270.f;
 SDL_Point dialPoint(int cx, int cy, float radius, float part);
 // A dial: an amount as a lit arc of a ring `ring` thick and `radius` out; a choice (choices > 0) as a dot a choice,
 // the one it is lit; the pointer in both. `mark`: a MOD's brass tick where the setting is given now (NaN: none).
-void drawDial(SDL_Renderer* r, int cx, int cy, int radius, int ring, float part, int choices, int which, SDL_Color lit, float mark);
+// `fromMiddle`: lit from the top (the middle, where a macro leaves the preset as it is) to `part`, either way, with a
+// dim detent mark over the top.
+void drawDial(SDL_Renderer* r, int cx, int cy, int radius, int ring, float part, int choices, int which, SDL_Color lit, float mark,
+              bool fromMiddle = false);
 
 } // namespace apotheca

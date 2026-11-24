@@ -73,6 +73,7 @@ public:
     static constexpr int kPresetY = 36, kPresetH = 60;
     static constexpr int kMacroY = kPresetY + kPresetH + 10, kMacroW = 153, kMacroPitchX = 157, kMacroGap = 6;
     static constexpr int kAdvancedH = 56;
+    static constexpr int kMainScopeX = 8 + kMacroW + 6, kMainScopeW = 632 - kMainScopeX; // MAIN's LIVE OUTPUT, right of ADVANCED
     static constexpr int kMacroH = (ui::kAboveScope - 10 - kAdvancedH - kMacroGap - kMacroY) / 2;
     static constexpr int kAdvancedY = kMacroY + 2 * kMacroH + kMacroGap + 10;
     // An advanced page that is not an envelope: rows of four settings, spread down to the strip

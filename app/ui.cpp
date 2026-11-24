@@ -1,4 +1,6 @@
 #include "ui.hpp"
+
+#include "fx_picture.hpp"
 #include "instruments.hpp"
 
 #include <cctype>
@@ -85,32 +87,38 @@ const Picture* pictureFor(const char* name) {
 } // namespace
 
 void macroBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, const char* name, const char* value,
-              float part, bool cursor, bool held) {
+              float part, bool cursor, bool held, float mark) {
     const Picture* picture = pictureFor(name);
     const SDL_Color family = !picture ? kDim : picture->family == 0 ? kTeal : picture->family == 1 ? kPurple : kText;
     const bool turned = std::fabs(part - 0.5f) > 0.005f; // away from "as the preset has it"
     const SDL_Color accent = held ? kBrass : kTeal;
+    const bool tall = h >= kMacroDialTallH;
+    const MacroDial dial = macroDialIn(x, y, w, h);
     box(r, x, y, w, h, turned ? kPanel2 : kPanel, kLine);
     // (A name or a value too wide for the box at XL is held at LARGE: Fonts::within. The picture has the name's last 27 pixels.)
-    fonts.within(&Fonts::small, name, picture ? w - 14.f - 27.f : w - 14.f).draw(r, x + 7.f, y + 7.f, name, turned || cursor ? kText : kDim);
-    fonts.within(&Fonts::large, value, w - 14.f).draw(r, x + 7.f, y + 7.f + fonts.small.capHeight() + 8.f + boxValueDrop(h), value, cursor ? accent : (turned ? kText : kDim));
+    const float textX = tall ? x + 7.f : static_cast<float>(dial.cx + dial.radius + 12);
+    const float room = x + w - 7.f - textX;
+    // (A short box keeps its picture on the value's row, where a value is short: the name has the row to itself.)
+    fonts.within(&Fonts::small, name, picture && tall ? room - 27.f : room).draw(r, textX, y + 7.f, name, turned || cursor ? kText : kDim);
+    const SDL_Color valueColour = cursor ? accent : (turned ? kText : kDim);
+    if (tall) {
+        const Font& font = fonts.within(&Fonts::large, value, w - 14.f);
+        font.drawCentered(r, static_cast<float>(dial.cx), static_cast<float>(y + h - 12) - font.capHeight(), value, valueColour);
+    } else {
+        const Font& font = fonts.fit(value, picture ? room - 29.f : room);
+        font.draw(r, textX, static_cast<float>(y + h - 9) - font.capHeight(), value, valueColour);
+    }
     if (picture) {
         const SDL_Color c = turned || cursor ? family : faded(family, 110);
         SDL_SetRenderDrawColor(r, c.r, c.g, c.b, c.a);
-        const int px = x + w - 27, py = y + 7;
+        const int px = x + w - 27, py = tall ? y + 7 : y + h - 21;
         for (const Stroke& s : picture->strokes)
             for (int i = 0; i + 1 < s.n; ++i)
                 for (int thick = 0; thick < 2; ++thick) // two passes: one pixel is too faint at this size
                     SDL_RenderDrawLine(r, px + s.p[2 * i], py + s.p[2 * i + 1] + thick, px + s.p[2 * i + 2], py + s.p[2 * i + 3] + thick);
     }
-    // The bar grows from the middle, in the macro's own colour.
-    const int bx = x + kMacroBarInset, bw = w - 2 * kMacroBarInset, by = y + h - kMacroBarFromFoot;
-    fill(r, bx, by, bw, kMacroBarH, kLine);
-    if (part > 1.f) part = 1.f;
-    if (part < 0.f) part = 0.f;
-    const int mid = bx + bw / 2, to = bx + static_cast<int>(std::round(bw * part));
-    fill(r, to < mid ? to : mid, by, to < mid ? mid - to : to - mid, kMacroBarH, cursor ? accent : family);
-    fill(r, mid, by - 2, 1, 9, kDim);
+    // The dial, lit from the middle in the macro's own colour (the cursor's when it has the cursor).
+    drawDial(r, dial.cx, dial.cy, dial.radius, dial.ring, part, 0, 0, cursor ? accent : (picture ? family : kText), mark, true);
     if (cursor) outline(r, x - 1, y - 1, w + 2, h + 2, accent, 2);
 }
 
@@ -469,6 +477,15 @@ void valueBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, c
     if (cursor) outline(r, x - 1, y - 1, w + 2, h + 2, accent, 2);
 }
 
+void displayBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, const char* name, const char* value, bool cursor, bool held) {
+    box(r, x, y, w, h, kBg, kLine);
+    for (int yy = y + 3; yy < y + h - 2; yy += 3) fill(r, x + 2, yy, w - 4, 1, kPanel); // the scan lines
+    const SDL_Color accent = held ? kBrass : kTeal;
+    fonts.within(&Fonts::small, name, w - 14.f).draw(r, x + 7.f, y + 7.f, name, kDim);
+    fonts.within(&Fonts::large, value, w - 14.f).draw(r, x + 7.f, y + 7.f + fonts.small.capHeight() + 8.f + boxValueDrop(h), value, cursor ? accent : kText);
+    if (cursor) outline(r, x - 1, y - 1, w + 2, h + 2, accent, 2);
+}
+
 void scopeStrip(SDL_Renderer* r, const Fonts& fonts, const Engine& engine) {
     const int y = kScopeY, h = kScopeH;
     box(r, kScopeX, y, kScopeW, h, kPanel, kLine);
@@ -491,6 +508,34 @@ void scopeStrip(SDL_Renderer* r, const Fonts& fonts, const Engine& engine) {
         lastX = px;
         lastY = py;
     }
+}
+
+void scopeBox(SDL_Renderer* r, const Fonts& fonts, const Engine& engine, int x, int y, int w, int h) {
+    box(r, x, y, w, h, kBg, kLine);
+    // The graticule: eight columns, four rows, the middle line stronger.
+    for (int k = 1; k < 8; ++k) fill(r, x + w * k / 8, y + 2, 1, h - 4, kPanel);
+    for (int k = 1; k < 4; ++k) fill(r, x + 2, y + h * k / 4, w - 4, 1, k == 2 ? kLine : kPanel);
+    const char* label = "LIVE OUTPUT";
+    fonts.fixed().small.draw(r, x + 8.f, y + 7.f, label, kDim);
+    float samples[kScopeSamples];
+    engine.readScope(samples, kScopeSamples);
+    SDL_SetRenderDrawColor(r, kTeal.r, kTeal.g, kTeal.b, 255);
+    int lastX = x + 2, lastY = y + h / 2;
+    for (int i = 0; i < kScopeSamples; ++i) {
+        const int px = x + 2 + (w - 5) * i / (kScopeSamples - 1);
+        const int py = scopeBoxLineY(samples[i], y, h);
+        if (i > 0) {
+            SDL_RenderDrawLine(r, lastX, lastY, px, py);
+            SDL_RenderDrawLine(r, lastX, lastY + 1, px, py + 1); // two pixels: a screen this size wants a heavier line
+        }
+        lastX = px;
+        lastY = py;
+    }
+}
+
+int scopeBoxLineY(float sample, int y, int h) {
+    const float half = (h - 2 * kScopeBoxInset) / 2.f;
+    return y + h / 2 - static_cast<int>(std::round(scopeBent(sample) * half));
 }
 
 // The line's height is the sample's size bent (to the power kScopeBend), not to scale: to scale, the
