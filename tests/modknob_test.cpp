@@ -1172,6 +1172,24 @@ bool markAt(const Rig& rig, int x, int y, int w, int h, float at) {
     return !rig.canvas.is(mx, y - kModMarkOver - 1, ui::kBrass) && !rig.canvas.is(mx, y + h + kModMarkOver, ui::kBrass);
 }
 bool noMark(const Rig& rig, int x, int y, int w) { return brassIn(rig, x, x + w, y - kModMarkOver).first < 0; }
+// On the FX screen a setting is a dial (design B, 2026-11-24): the mark is a brass tick across its ring, standing out past it.
+bool dialMarkAt(const Rig& rig, int p, float at) {
+    const int cx = FxScreen::dialCX(p), cy = FxScreen::kDialCY;
+    for (float k = FxScreen::kDialR - FxScreen::kDialRing - 2.f; k <= FxScreen::kDialR + 2.f; k += 1.f) {
+        const SDL_Point pt = dialPoint(cx, cy, k, at);
+        if (!rig.canvas.is(pt.x, pt.y, ui::kBrass)) return false;
+    }
+    // ...and not a hair round from there.
+    const SDL_Point off = dialPoint(cx, cy, FxScreen::kDialR - FxScreen::kDialRing / 2.f, at + 0.06f > 1.f ? at - 0.06f : at + 0.06f);
+    return !rig.canvas.is(off.x, off.y, ui::kBrass);
+}
+bool noDialMark(const Rig& rig, int p) {
+    const int cx = FxScreen::dialCX(p), cy = FxScreen::kDialCY, r = FxScreen::kDialR + 4;
+    for (int py = cy - r; py <= cy + r; ++py)
+        for (int px = cx - r; px <= cx + r; ++px)
+            if (rig.canvas.is(px, py, ui::kBrass)) return false;
+    return true;
+}
 
 void testTheBrassMark() {
     Rig rig;
@@ -1249,13 +1267,12 @@ void testTheBrassMark() {
     rig.session().setSend(d, 0, 0.3f); // (the mark stands about where the send is, not about nothing)
     rig.fx(d, 0, 2);
     rig.draw();
-    const auto setBar = [](int p) { return FxScreen::kSetY + p * (FxScreen::kSetH + FxScreen::kSetGap) + FxScreen::kSetH / 2 - FxScreen::kBarH / 2; };
-    for (int p = 0; p < 4; ++p) CHECK(noMark(rig, FxScreen::kBarX, setBar(p), FxScreen::kBarW)); // stopped
+    for (int p = 0; p < 4; ++p) CHECK(noDialMark(rig, p)); // stopped
     rig.tap(SDLK_RETURN);
     rig.draw();
     const float fbAt = rig.session().project.tracks[d].effects[0].param[1] - 0.25f;
-    CHECK(markAt(rig, FxScreen::kBarX, setBar(1), FxScreen::kBarW, FxScreen::kBarH, fbAt));
-    CHECK(noMark(rig, FxScreen::kBarX, setBar(0), FxScreen::kBarW) && noMark(rig, FxScreen::kBarX, setBar(2), FxScreen::kBarW) && noMark(rig, FxScreen::kBarX, setBar(3), FxScreen::kBarW));
+    CHECK(dialMarkAt(rig, 1, fbAt));
+    CHECK(noDialMark(rig, 0) && noDialMark(rig, 2) && noDialMark(rig, 3));
     rig.app.fx().goTo(FxScreen::kSendsRow, 1);
     rig.draw();
     const float echoAt = rig.session().project.tracks[d].send[0] + 0.5f;

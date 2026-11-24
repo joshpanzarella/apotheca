@@ -1,5 +1,7 @@
 #include "fx_screen.hpp"
 
+#include "fx_picture.hpp"
+
 #include "mods.hpp"
 
 #include <cmath>
@@ -914,7 +916,7 @@ void FxScreen::drawSlot(SDL_Renderer* r, const Fonts& fonts) const {
         return;
     }
     if (empty) {
-        box(r, kPaneX, kSetY, kPaneW, kSetH * 2 + kSetGap, kPanel, kLine);
+        box(r, kPaneX, kSetY, kPaneW, kPageBottom - kSetY, kPanel, kLine);
         fonts.small.draw(r, kPaneX + 12.f, kSetY + 24.f, "Nothing here.", kText);
         fonts.small.draw(r, kPaneX + 12.f, kSetY + 48.f, bus >= 0 ? "Hold A to see what this bus can hold." : "Hold A to see the effects and pick one.", kDim);
         return;
@@ -922,31 +924,36 @@ void FxScreen::drawSlot(SDL_Renderer* r, const Fonts& fonts) const {
     // While the song plays an automated setting shows where the pattern has it.
     float shown[kEffectParams];
     for (int i = 0; i < kEffectParams; ++i) shown[i] = track >= 0 ? session_.automated(track, autoLaneOfEffect(slot, i), d.param[i]) : d.param[i];
-    for (int p = 0; p < info.params; ++p) {
-        const int y = kSetY + p * (kSetH + kSetGap), barY = y + kSetH / 2 - kBarH / 2, choices = effectChoices(kind, p);
+    // What it does, drawn from those settings.
+    drawEffectPicture(r, kPaneX, kPicY, kPaneW, kPicH, kind, shown, effectMeterParam(kind) >= 0 ? meterOf(row_) : 0.f);
+    for (int p = 0; p < kEffectParams; ++p) {
+        const int x = dialX(p), cx = dialCX(p);
+        if (p >= info.params) {
+            box(r, x, kDialY, kDialW, kDialH, kBg, kPanel2); // no setting there: an empty place, so the dials stand where they always do
+            continue;
+        }
+        const int choices = effectChoices(kind, p);
         const bool cursor = column_ == p + 1;
-        box(r, kPaneX, y, kPaneW, kSetH, kPanel, kLine);
-        // On a bus the MIX is how loud the bus comes back: it reads LEVEL.
-        fonts.small.draw(r, kPaneX + 12.f, y + 10.f, bus >= 0 && p == effectMixParam(kind) ? "LEVEL" : info.paramNames[p], kDim);
+        const bool automated = track >= 0 && session_.hasAutomation(track, project_.scene, autoLaneOfEffect(slot, p));
+        box(r, x, kDialY, kDialW, kDialH, kPanel, kLine);
+        // On a bus the MIX is how loud the bus comes back: it reads LEVEL. Purple: it moves with the pattern.
+        const char* named = bus >= 0 && p == effectMixParam(kind) ? "LEVEL" : info.paramNames[p];
+        fonts.small.drawCentered(r, static_cast<float>(cx), static_cast<float>(kDialNameY), named, automated ? kPurple : (cursor ? kText : kDim));
+        // A MOD on it runs: the brass tick where the setting is given this moment (batch 6). Not on a bus's or the
+        // master's (no MOD there). (A choice takes no MOD, and an effect is tried only with the list of effects
+        // open, where no setting is drawn: modMarkAt finds nothing for either.)
+        const float mark = track >= 0 ? modMarkAt(session_, track, autoLaneOfEffect(slot, p), shown[p]) : std::nanf("");
+        drawDial(r, cx, kDialCY, kDialR, kDialRing, shown[p], choices, whichChoice(shown[p], choices), cursor ? accent : kText, mark);
         effectParamText(kind, p, shown[p], text, sizeof text, shown);
-        fonts.fit(text, static_cast<float>(kValueRoom)).draw(r, static_cast<float>(kValueX), y + 30.f, text, cursor ? accent : kText);
-        wideBar(r, kBarX, barY, kBarW, kBarH, shown[p], choices, whichChoice(shown[p], choices), cursor ? accent : kDim);
-        // A MOD on it runs: the thin brass mark where the setting is given this moment (batch 6). Not on a
-        // bus's or the master's (no MOD there). (A choice takes no MOD, and an effect is tried only with
-        // the list of effects open, where no setting is drawn: modMarkAt finds nothing for either.)
-        if (track >= 0) drawModMark(r, kBarX, barY, kBarW, kBarH, modMarkAt(session_, track, autoLaneOfEffect(slot, p), shown[p]));
-        if (track >= 0 && session_.hasAutomation(track, project_.scene, autoLaneOfEffect(slot, p))) {
-            // It moves with the pattern in this scene: the purple line, and the words above the bar.
-            fill(r, kPaneX + 1, y + kSetH - 3, kPaneW - 2, 2, kPurple);
-            fonts.small.drawRight(r, static_cast<float>(kBarX + kBarW), y + 10.f, "moves with the pattern", kPurple);
-        }
+        fonts.fit(text, static_cast<float>(kValueRoom)).drawCentered(r, static_cast<float>(cx), static_cast<float>(kDialValueY), text, cursor ? accent : kText);
         if (p == effectMeterParam(kind)) {
-            // What the effect is doing to the sound just now (COMP: how far it is turning it
-            // down): a strip under the bar, growing from the right as a meter of this kind does.
-            const int px = meterPixels(meterOf(row_), kBarW);
-            if (px > 0) fill(r, kBarX + kBarW - px, barY + kBarH + 5, px, 4, kBrass);
+            // What the effect is doing to the sound just now (COMP: how far it is turning it down): a strip growing
+            // from the right, as a meter of this kind does; the picture has it as cells.
+            const int px = meterPixels(meterOf(row_), kMeterW);
+            if (px > 0) fill(r, x + kMeterX + kMeterW - px, kMeterY, px, kMeterH, kBrass);
         }
-        if (cursor) outline(r, kPaneX - 1, y - 1, kPaneW + 2, kSetH + 2, accent, 2);
+        if (automated) fill(r, x + 6, kAutoY, kDialW - 12, 2, kPurple);
+        if (cursor) outline(r, x - 1, kDialY - 1, kDialW + 2, kDialH + 2, accent, 2);
     }
 }
 

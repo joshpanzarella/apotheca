@@ -4657,6 +4657,65 @@ void testSendsThroughTheSession() {
 
 static bool inked(const Canvas& canvas, Canvas& scratch, int size, float x, float y, const char* text, SDL_Color colour);
 
+// The FX screen's picture (design B, 2026-11-24): every effect draws one, inside its box, in the theme's colours, and it
+// follows the settings: for each effect at least one of its settings moved from its usual changes the picture.
+void testTheFxPictureFollowsTheSettings() {
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    typedef FxScreen F;
+    const auto picture = [&](EffectKind kind, const float* shown, float dB) {
+        canvas.clear();
+        drawEffectPicture(canvas.r, F::kPaneX, F::kPicY, F::kPaneW, F::kPicH, kind, shown, dB);
+        return canvas.part(F::kPaneX, F::kPicY, F::kPaneW, F::kPicH);
+    };
+    for (int k = 1; k < kEffectKinds; ++k) {
+        const EffectKind kind = static_cast<EffectKind>(k);
+        const EffectInfo& info = effectInfo(kind);
+        float usual[kEffectParams] = {0.f, 0.f, 0.f, 0.f};
+        for (int p = 0; p < info.params; ++p) usual[p] = effectDefault(kind, p, false);
+        const std::vector<Uint32> plain = picture(kind, usual, 0.f);
+        // Something is drawn inside the box (more than its edge), and nothing outside it.
+        int inked = 0;
+        for (int y = F::kPicY + 2; y < F::kPicY + F::kPicH - 2; ++y)
+            for (int x = F::kPaneX + 2; x < F::kPaneX + F::kPaneW - 2; ++x) inked += canvas.is(x, y, ui::kPanel) ? 0 : 1;
+        CHECK(inked > 200);
+        if (inked <= 200) std::printf("    %s draws %d pixels\n", info.name, inked);
+        bool outside = false;
+        for (int x = F::kPaneX; x < F::kPaneX + F::kPaneW; x += 2) outside = outside || !canvas.is(x, F::kPicY - 1, ui::kBg) || !canvas.is(x, F::kPicY + F::kPicH, ui::kBg);
+        CHECK(!outside);
+        // Only the theme's colours.
+        bool theme = true;
+        for (int y = F::kPicY; y < F::kPicY + F::kPicH; ++y)
+            for (int x = F::kPaneX; x < F::kPaneX + F::kPaneW; ++x) {
+                bool known = false;
+                for (const SDL_Color* c : {&ui::kPanel, &ui::kPanel2, &ui::kLine, &ui::kText, &ui::kDim, &ui::kTeal, &ui::kBrass, &ui::kBg}) known = known || canvas.is(x, y, *c);
+                theme = theme && known;
+            }
+        CHECK(theme);
+        int moved = 0;
+        for (int p = 0; p < info.params; ++p) {
+            float other[kEffectParams];
+            for (int i = 0; i < kEffectParams; ++i) other[i] = usual[i];
+            other[p] = usual[p] < 0.5f ? 0.95f : 0.05f;
+            moved += picture(kind, other, 0.f) != plain ? 1 : 0;
+        }
+        CHECK(moved >= (info.params > 1 ? 2 : 1));
+        if (moved < 2) std::printf("    %s: %d of its %d settings move its picture\n", info.name, moved, info.params);
+        // An effect with a meter shows it: more brass as it works harder.
+        if (effectMeterParam(kind) >= 0) {
+            const auto brass = [&](float dB) {
+                picture(kind, usual, dB);
+                int n = 0;
+                for (int y = F::kPicY; y < F::kPicY + F::kPicH; ++y)
+                    for (int x = F::kPaneX; x < F::kPaneX + F::kPaneW; ++x) n += canvas.is(x, y, ui::kBrass) ? 1 : 0;
+                return n;
+            };
+            CHECK(brass(12.f) > brass(2.f) && brass(24.f) > brass(12.f));
+        }
+    }
+}
+
 // COMP's meter on the FX screen: the row asks the engine for its own slot, and the strip's length.
 void testTheFxScreenShowsCompAtWork() {
     CHECK(effectMeterParam(EffectKind::Comp) == 0 && std::string(effectInfo(EffectKind::Comp).paramNames[0]) == "THRESHOLD");
@@ -4719,11 +4778,12 @@ void testTheFxScreenShowsCompAtWork() {
             char words[32];
             FxScreen::meterWords(EffectKind::Comp, dB, words, sizeof words);
             bool ok = words[0] != 0 && inked(canvas, scratch, 0, F::kPaneX + F::kPaneW - 12.f - fonts.small.width(words), F::kPaneY + 36.f, words, ui::kBrass);
-            const int px = FxScreen::meterPixels(dB, F::kBarW), y = F::kSetY + F::kSetH / 2 - F::kBarH / 2 + F::kBarH + 5;
-            ok = ok && px > 0 && canvas.run(F::kBarX + F::kBarW - px, y, ui::kBrass) == px && !canvas.is(F::kBarX + F::kBarW - px - 1, y, ui::kBrass);
-            ok = ok && canvas.is(F::kBarX + F::kBarW - 1, y + 3, ui::kBrass) && !canvas.is(F::kBarX + F::kBarW - 1, y + 4, ui::kBrass) && !canvas.is(F::kBarX + F::kBarW - 1, y - 1, ui::kBrass);
-            // No strip on the rows under it.
-            for (int p = 1; p < 4; ++p) ok = ok && !canvas.is(F::kBarX + F::kBarW - 1, y + p * (F::kSetH + F::kSetGap), ui::kBrass);
+            // The strip in THRESHOLD's dial (the first), from the right, kMeterH high.
+            const int px = FxScreen::meterPixels(dB, F::kMeterW), y = F::kMeterY, right = F::dialX(0) + F::kMeterX + F::kMeterW;
+            ok = ok && px > 0 && canvas.run(right - px, y, ui::kBrass) == px && !canvas.is(right - px - 1, y, ui::kBrass);
+            ok = ok && canvas.is(right - 1, y + F::kMeterH - 1, ui::kBrass) && !canvas.is(right - 1, y + F::kMeterH, ui::kBrass) && !canvas.is(right - 1, y - 1, ui::kBrass);
+            // No strip in the dials beside it.
+            for (int p = 1; p < 4; ++p) ok = ok && !canvas.is(F::dialX(p) + F::kMeterX + F::kMeterW - 1, y, ui::kBrass);
             // The mark on the line: its own track, lit from the top as far as the meter says.
             const int mh = F::kLineH - 14, lit = FxScreen::meterPixels(dB, mh), top = F::lineY(row) + 7;
             int brass = 0;
@@ -4742,7 +4802,7 @@ void testTheFxScreenShowsCompAtWork() {
             };
             const int mine = FxScreen::meterPixels(fx.meterOf(0), F::kLineH - 14), masters = FxScreen::meterPixels(fx.meterOf(FxScreen::kMasterRow + 1), F::kLineH - 14);
             CHECK(mine != masters && markLit(0) == mine && markLit(FxScreen::kMasterRow + 1) == masters);
-            CHECK(FxScreen::meterPixels(fx.meterOf(0), F::kBarW) != FxScreen::meterPixels(fx.meterOf(FxScreen::kMasterRow + 1), F::kBarW));
+            CHECK(FxScreen::meterPixels(fx.meterOf(0), F::kMeterW) != FxScreen::meterPixels(fx.meterOf(FxScreen::kMasterRow + 1), F::kMeterW));
             // A line whose effect has no meter has no such mark, and the heading says nothing.
             for (int row : {FxScreen::kBusRow, FxScreen::kBusRow + 1})
                 for (int py = F::lineY(row) + 7; py < F::lineY(row) + F::kLineH - 7; ++py) CHECK(canvas.is(F::kMarkX - 7, py, ui::kPanel));
@@ -5523,7 +5583,7 @@ void testTheFxScreenAsDrawn() {
     CHECK(inked(canvas, scratch, 0, F::kListX + F::kListW - 1.f - fonts.small.width("EVERYTHING"), F::lineY(6) - 16.f, "EVERYTHING", kDim));
     // THE PAGE GOES DOWN TO THE HINTS BAR (owner, 2026-11-13: it stopped 40 short): the list's last line ends at the
     // page's foot, 7 above the bar, as the page's top is 7 under the top bar. The same layout, taller.
-    CHECK(F::kPageBottom == kScreenH - kHintsH - 7 && F::kPageBottom == 449 && F::kLineH == 41 && F::kSetH == 74 && F::kSendH == 193 && F::kPickLineH == 38 && F::kHeadH == 93);
+    CHECK(F::kPageBottom == kScreenH - kHintsH - 7 && F::kPageBottom == 449 && F::kLineH == 41 && F::kDialH == 168 && F::kPicH == 140 && F::kSendH == 193 && F::kPickLineH == 38 && F::kHeadH == 93);
     CHECK(canvas.is(F::kListX + 50, F::kPageBottom - 1, kLine) && canvas.is(F::kListX + 50, F::kPageBottom, kBg) && canvas.is(F::kListX + 50, F::lineY(7), kLine));
     CHECK(canvas.is(F::kListX + 50, F::kPageBottom - 2, kPanel)); // (inside the box: the check can tell)
     for (int y = F::kPageBottom; y < kScreenH - kHintsH; ++y) CHECK(canvas.is(F::kListX + 50, y, kBg) && canvas.is(F::kPaneX + 50, y, kBg)); // nothing between the page and the bar
@@ -5615,7 +5675,7 @@ void testTheFxScreenAsDrawn() {
     draw();
     // A let go: the list shuts and the settings are back; the plate is cream.
     CHECK(!pickName(5, "DELAY", kBrass) && !pickName(5, "DELAY", kText) && heading("DELAY", kText) && canvas.is(static_cast<int>(tapeX) - 5, static_cast<int>(typeY) - 4, kText));
-    CHECK(inked(canvas, scratch, 0, F::kPaneX + 12.f, F::kSetY + 10.f, "TIME", kDim));
+    CHECK(inked(canvas, scratch, 0, F::dialCX(0) - fonts.small.width("TIME") / 2.f, static_cast<float>(F::kDialNameY), "TIME", kDim));
 
     // A BUS holds one family: its list is two lines, EMPTY and REVERB, and nothing under them.
     fx.goTo(F::kBusRow + 1, 0);
@@ -5630,75 +5690,70 @@ void testTheFxScreenAsDrawn() {
     rig.key(A, false);
     rig.frames(1);
 
-    // THE SETTINGS, large. On TAPE's FEEDBACK: its label, its reading, a bar as long as the setting.
+    // THE SETTINGS, as dials under the picture (owner, 2026-11-24, design B). On TAPE's FEEDBACK: its name, its
+    // reading, a ring lit as far round as the setting.
     fx.goTo(0, 2);
     draw();
-    const auto setY = [&](int p) { return F::kSetY + p * (F::kSetH + F::kSetGap); };
-    const auto barY = [&](int p) { return setY(p) + F::kSetH / 2 - F::kBarH / 2; };
+    const auto ring = [&](int p, float part, SDL_Color c) { const SDL_Point at = F::dialAt(p, part); return canvas.is(at.x, at.y, c); };
+    const auto named = [&](int p, const char* name, SDL_Color c) { return inked(canvas, scratch, 0, F::dialCX(p) - fonts.small.width(name) / 2.f, static_cast<float>(F::kDialNameY), name, c); };
+    const auto valued = [&](int p, const char* value, SDL_Color c) {
+        const Font& font = fonts.fit(value, static_cast<float>(F::kValueRoom));
+        const int size = &font == &fonts.large ? 2 : (&font == &fonts.medium ? 1 : 0);
+        return inked(canvas, scratch, size, F::dialCX(p) - font.width(value) / 2.f, static_cast<float>(F::kDialValueY), value, c);
+    };
     const char* labels[4] = {"TIME", "FEEDBACK", "AGE", "MIX"};
     const char* values[4] = {"1/8 DOT", "48%", "35%", "35%"};
     for (int p = 0; p < 4; ++p) {
-        CHECK(inked(canvas, scratch, 0, F::kPaneX + 12.f, setY(p) + 10.f, labels[p], kDim));
-        CHECK(inked(canvas, scratch, 2, static_cast<float>(F::kValueX), setY(p) + 30.f, values[p], p == 1 ? kTeal : kText));
-        CHECK(canvas.is(F::kPaneX - 1, setY(p) + 20, kTeal) == (p == 1)); // the cursor's box
-        CHECK(setY(p) + F::kSetH <= F::kPageBottom);
+        CHECK(named(p, labels[p], p == 1 ? kText : kDim));
+        CHECK(valued(p, values[p], p == 1 ? kTeal : kText));
+        CHECK(canvas.is(F::dialX(p) - 1, F::kDialY + 20, kTeal) == (p == 1)); // the cursor's box
     }
-    CHECK(canvas.run(F::kBarX, barY(1) + 2, kTeal) == static_cast<int>(std::round(F::kBarW * 0.4f)) && canvas.run(F::kBarX + static_cast<int>(std::round(F::kBarW * 0.4f)), barY(1) + 2, kLine) == F::kBarW - static_cast<int>(std::round(F::kBarW * 0.4f)));
-    CHECK(canvas.run(F::kBarX, barY(2) + 2, kDim) == static_cast<int>(std::round(F::kBarW * 0.35f)));
-    CHECK(setY(3) + F::kSetH == F::kPageBottom && canvas.is(F::kPaneX + 50, F::kPageBottom - 1, kLine) && canvas.is(F::kPaneX + 50, F::kPageBottom, kBg)); // the fourth to the page's foot
-    CHECK(canvas.run(F::kBarX, barY(1) - 1, kTeal) == 0 && canvas.run(F::kBarX, barY(1) + F::kBarH, kTeal) == 0 && canvas.run(F::kBarX, barY(1) + F::kBarH - 1, kTeal) > 0); // ten high
-    // TIME is a CHOICE: no bar to be somewhere along, but one piece for each of its eight, the fifth lit.
-    {
-        int pieces = 0, lit = -1;
-        for (int x = F::kBarX; x < F::kBarX + F::kBarW;) {
-            const int dim = canvas.run(x, barY(0) + 2, kLine), on = canvas.run(x, barY(0) + 2, kDim);
-            if (dim + on == 0) { ++x; continue; }
-            if (on) lit = pieces;
-            ++pieces;
-            x += dim + on;
-            CHECK(dim + on >= 12 && canvas.is(x, barY(0) + 2, kPanel)); // a gap after each, the last one's at the bar's end
-        }
-        CHECK(pieces == 8 && lit == 4);
-        CHECK(canvas.is(F::kBarX, barY(0) + 2, kLine) && canvas.is(F::kBarX + F::kBarW - 1, barY(0) + 2, kLine) && canvas.is(F::kBarX + F::kBarW, barY(0) + 2, kPanel));
-    }
-    // The cursor on the choice lights its piece teal; turned to the last, the last is lit.
+    CHECK(ring(1, 0.36f, kTeal) && ring(1, 0.44f, kLine) && ring(1, 0.f, kTeal) && ring(1, 1.f, kLine));
+    CHECK(ring(2, 0.30f, kText) && ring(2, 0.40f, kLine));
+    CHECK(F::kDialY + F::kDialH == F::kPageBottom && canvas.is(F::kPaneX + 50, F::kPageBottom - 1, kLine) && canvas.is(F::kPaneX + 50, F::kPageBottom, kBg)); // to the page's foot
+    // The ring's foot is open: nothing lit or unlit straight under the centre.
+    CHECK(!canvas.is(F::dialCX(1), F::kDialCY + F::kDialR - 3, kTeal) && !canvas.is(F::dialCX(1), F::kDialCY + F::kDialR - 3, kLine));
+    // TIME is a CHOICE: no ring to be somewhere along, but a dot for each of its eight, the fifth lit.
+    for (int c = 0; c < 8; ++c) CHECK(ring(0, c / 7.f, c == 4 ? kText : kLine));
+    // The cursor on the choice lights its dot teal; turned to the last, the last is lit.
     fx.goTo(0, 1);
     session.setEffectParam(0, 0, 0, 0.99f);
     draw();
-    CHECK(canvas.is(F::kBarX + F::kBarW - 2, barY(0) + 2, kTeal) && canvas.is(F::kBarX + 2, barY(0) + 2, kLine) && canvas.run(F::kBarX + F::kBarW - 2, barY(0) + 2, kTeal) == 2);
+    CHECK(ring(0, 1.f, kTeal) && ring(0, 0.f, kLine));
     session.setEffectParam(0, 0, 0, 0.f);
     draw();
-    CHECK(canvas.is(F::kBarX, barY(0) + 2, kTeal) && canvas.is(F::kBarX + F::kBarW - 2, barY(0) + 2, kLine));
+    CHECK(ring(0, 0.f, kTeal) && ring(0, 1.f, kLine));
     // With A held the cursor and what it turns are brass.
     rig.key(A, true);
     draw();
-    CHECK(canvas.is(F::kBarX, barY(0) + 2, kBrass) && canvas.is(F::kPaneX - 1, setY(0) + 20, kBrass) && !pickName(1, "FILTER", kText));
+    CHECK(ring(0, 0.f, kBrass) && canvas.is(F::dialX(0) - 1, F::kDialY + 20, kBrass) && !pickName(1, "FILTER", kText));
     rig.key(A, false);
     rig.frames(1);
     // On a bus the MIX reads LEVEL; on a track it reads MIX.
     fx.goTo(F::kBusRow, 4);
     draw();
-    CHECK(inked(canvas, scratch, 0, F::kPaneX + 12.f, setY(3) + 10.f, "LEVEL", kDim) && !inked(canvas, scratch, 0, F::kPaneX + 12.f, setY(3) + 10.f, "MIX", kDim));
-    CHECK(inked(canvas, scratch, 2, static_cast<float>(F::kValueX), setY(3) + 30.f, "100%", kTeal) && canvas.run(F::kBarX, barY(3) + 2, kTeal) == F::kBarW);
-    // The room reverb has three settings: there is no fourth row.
+    CHECK(named(3, "LEVEL", kText) && !named(3, "MIX", kText));
+    CHECK(valued(3, "100%", kTeal) && ring(3, 1.f, kTeal));
+    // The room reverb has three settings: the fourth place is empty.
     session.setEffect(kSpaceBus, 0, EffectKind::Reverb);
     fx.goTo(F::kBusRow + 1, 3);
     draw();
-    CHECK(inked(canvas, scratch, 0, F::kPaneX + 12.f, setY(2) + 10.f, "LEVEL", kDim) && canvas.is(F::kPaneX + 40, setY(3) + 30, kBg));
+    CHECK(named(2, "LEVEL", kText) && canvas.is(F::dialCX(3), F::kDialCY, kBg) && canvas.is(F::dialX(3), F::kDialY + 20, kPanel2));
 
-    // WHAT MOVES WITH THE PATTERN is marked in purple: on its row, with the words, and on its line of the list.
+    // WHAT MOVES WITH THE PATTERN is marked in purple: in its dial, its name and a line at the foot, and on its line of the list.
     fx.goTo(0, 2);
     draw();
-    CHECK(!canvas.is(F::kPaneX + 50, setY(1) + F::kSetH - 3, kPurple) && !canvas.is(F::kListX + 50, F::lineY(0) + F::kLineH - 3, kPurple));
+    const auto autoLine = [&](int p) { return canvas.is(F::dialCX(p), F::kAutoY, kPurple); };
+    CHECK(!autoLine(1) && !canvas.is(F::kListX + 50, F::lineY(0) + F::kLineH - 3, kPurple));
     session.setAutomation(0, 0, autoLaneOfEffect(0, 1), 5, 0.3f);
     draw();
-    CHECK(canvas.is(F::kPaneX + 50, setY(1) + F::kSetH - 3, kPurple) && !canvas.is(F::kPaneX + 50, setY(0) + F::kSetH - 3, kPurple) && !canvas.is(F::kPaneX + 50, setY(2) + F::kSetH - 3, kPurple));
-    CHECK(inked(canvas, scratch, 0, F::kBarX + F::kBarW - fonts.small.width("moves with the pattern"), setY(1) + 10.f, "moves with the pattern", kPurple));
+    CHECK(autoLine(1) && !autoLine(0) && !autoLine(2));
+    CHECK(named(1, "FEEDBACK", kPurple) && named(2, "AGE", kDim));
     CHECK(canvas.is(F::kListX + 50, F::lineY(0) + F::kLineH - 3, kPurple) && !canvas.is(F::kListX + 50, F::lineY(2) + F::kLineH - 3, kPurple) && !canvas.is(F::kListX + 50, F::lineY(3) + F::kLineH - 3, kPurple));
     // ...in the scene being worked on, not another.
     rig.project().scene = 1;
     draw();
-    CHECK(!canvas.is(F::kPaneX + 50, setY(1) + F::kSetH - 3, kPurple) && !canvas.is(F::kListX + 50, F::lineY(0) + F::kLineH - 3, kPurple));
+    CHECK(!autoLine(1) && !canvas.is(F::kListX + 50, F::lineY(0) + F::kLineH - 3, kPurple));
     rig.project().scene = 0;
     // ...and not under a line trying another effect: that one's lanes are not what it has.
     fx.goTo(0, 0);
@@ -6117,8 +6172,7 @@ void testFxTextsFit() {
     CHECK(fonts.small.width(text) <= headRoom);
     CHECK(fonts.small.width("SPACE BUS: WHAT THE TRACKS SEND TO SPACE") <= headRoom && fonts.small.width("MASTER (EVERYTHING), EFFECT 2") <= headRoom);
     CHECK(fonts.small.width("Hold A to see what this bus can hold.") <= headRoom && fonts.small.width("Hold A to see the effects and pick one.") <= headRoom);
-    CHECK(F::kValueRoom > 100 && F::kValueX + F::kValueRoom < F::kBarX && F::kBarX + F::kBarW <= F::kPaneX + F::kPaneW - 12);
-    CHECK(fonts.small.width("moves with the pattern") <= F::kBarW);
+    CHECK(F::kValueRoom > 80 && F::kValueRoom <= F::kDialW - 8 && F::dialX(3) + F::kDialW <= F::kPaneX + F::kPaneW);
 
     int values = 0, smaller = 0;
     for (int k = 1; k < kEffectKinds; ++k) {
@@ -6185,22 +6239,23 @@ void testFxTextsFit() {
                         CHECK(font.width(text) <= F::kValueRoom);
                         if (font.width(text) > F::kValueRoom) std::printf("    %s %s reads %s: %.0f wide in a room of %d\n", info.name, info.paramNames[p], text, static_cast<double>(font.width(text)), F::kValueRoom);
                         smaller += &font != &fonts.large ? 1 : 0;
-                        // ...and on the screen: nothing of it in the gutter before the bar, nothing past the pane, nothing over the hints.
+                        // ...and on the screen: nothing of it out of its dial's box, nothing past the pane, nothing over the hints.
                         fx.goTo(row, p + 1);
                         canvas.clear();
                         fx.draw(canvas.r, fonts);
-                        const int y = F::kSetY + p * (F::kSetH + F::kSetGap);
+                        const int left = F::dialX(p) + 2, right = F::dialX(p) + F::kDialW - 2;
                         bool clean = true;
-                        for (int py = y + 24; py < y + F::kSetH - 4 && clean; ++py)
-                            for (int px = F::kValueX + F::kValueRoom; px < F::kBarX; ++px) clean = clean && canvas.is(px, py, kPanel);
+                        for (int py = F::kDialValueY - 4; py < F::kMeterY - 2 && clean; ++py) {
+                            clean = clean && canvas.is(left, py, kPanel) && canvas.is(right - 1, py, kPanel);
+                        }
                         for (int py = kTopBarH + 2; py < kScreenH - kHintsH - 1 && clean; py += 2)
                             for (int px = F::kPaneX + F::kPaneW + 1; px < kScreenW; ++px) clean = clean && canvas.is(px, py, kBg);
                         CHECK(clean);
                         if (!clean) std::printf("    %s %s at %.3f (%s) is drawn out of its room\n", info.name, info.paramNames[p], static_cast<double>(v), text);
                         // The value is there, in the cursor's colour.
                         int ink = 0;
-                        for (int py = y + 26; py < y + F::kSetH - 6; ++py)
-                            for (int px = F::kValueX; px < F::kValueX + F::kValueRoom; ++px) ink += canvas.is(px, py, kTeal) ? 1 : 0;
+                        for (int py = F::kDialValueY; py < F::kMeterY - 2; ++py)
+                            for (int px = left; px < right; ++px) ink += canvas.is(px, py, kTeal) ? 1 : 0;
                         CHECK(ink > 6);
                     }
                     session.setEffectParam(track, 0, p, effectDefault(kind, p, onBus != 0));
@@ -6272,7 +6327,7 @@ void testTheFxScreenHoldsUp() {
         canvas.clear();
         fx.draw(canvas.r, fonts);
     };
-    const auto barY = [](int p) { return F::kSetY + p * (F::kSetH + F::kSetGap) + F::kSetH / 2 - F::kBarH / 2; };
+    const auto ring = [&](int p, float part, SDL_Color c) { const SDL_Point at = F::dialAt(p, part); return canvas.is(at.x, at.y, c); };
 
     // The SENDS line is not a slot: A held on it picks nothing, in any direction (not into the track's first slot either).
     fx.goTo(F::kSendsRow, 0);
@@ -6308,21 +6363,20 @@ void testTheFxScreenHoldsUp() {
     fx.goTo(0, 1);
     draw();
     CHECK(project.tracks[0].effects[0].param[2] == 1.f && effectChoices(EffectKind::Filter, 2) == 5);
-    CHECK(canvas.is(F::kBarX + F::kBarW - 2, barY(2) + 2, kDim) && canvas.is(F::kBarX + 2, barY(2) + 2, kLine));
+    CHECK(ring(2, 1.f, kText) && ring(2, 0.f, kLine));
 
     // While the song plays, an automated setting is drawn where the pattern has it, not where the knob is.
     session.setEffectParam(0, 0, 0, 0.25f);
     for (int step = 0; step < kAutoSteps; ++step) session.setAutomation(0, 0, autoLaneOfEffect(0, 0), step, 0.75f);
     draw();
-    const int knob = static_cast<int>(std::round(F::kBarW * 0.25f)), pattern = static_cast<int>(std::round(F::kBarW * 0.75f));
     fx.goTo(0, 2);
     draw();
-    CHECK(canvas.run(F::kBarX, barY(0) + 2, kDim) == knob); // stopped: the knob
+    CHECK(ring(0, 0.22f, kText) && ring(0, 0.28f, kLine)); // stopped: the knob
     rig.tap(START);
     rig.render(kStep + kStep / 2);
     rig.frames(1);
     draw();
-    CHECK(project.playing && canvas.run(F::kBarX, barY(0) + 2, kDim) == pattern);
+    CHECK(project.playing && ring(0, 0.72f, kText) && ring(0, 0.78f, kLine));
     rig.tap(START);
     rig.render(2000);
     rig.frames(1);
@@ -11515,6 +11569,8 @@ int main(int argc, char** argv) {
         testTheFxScreenSecondReview();
         testSongFilesAreAsTheyWere();
         testTheFxScreenShowsCompAtWork();
+    testTheFxPictureFollowsTheSettings();
+        testTheFxPictureFollowsTheSettings();
         if (failures == 0) std::printf("app tests passed (FX only)\n");
         return failures == 0 ? 0 : 1;
     }
