@@ -92,6 +92,9 @@ std::string lowered(std::string text) {
 }
 
 Session::FileJob Session::moveSample(const std::string& from, const std::string& to) {
+    // One copy at a time, and a move asked meanwhile is told so before anything else: it is not looked at
+    // (the copy under way stays under way until finishCarry, on this thread, so the answer is certain).
+    if (carry_) return FileJob::Busy;
     if (sampleFolder_.empty() || !sampleNameOk(from)) return FileJob::Failed;
     if (from == to) return FileJob::Same;
     if (to.size() >= static_cast<std::size_t>(kSampleNameRoom)) return FileJob::TooLong;
@@ -107,7 +110,6 @@ Session::FileJob Session::moveSample(const std::string& from, const std::string&
         if (have != from && lowered(have) == lowered(to)) return FileJob::Taken;
     const std::string file = sampleFolder_ + "/" + from + ending, target = sampleFolder_ + "/" + to + ending;
     if (lstat(target.c_str(), &info) == 0) return FileJob::Taken;
-    if (carry_) return FileJob::Busy; // one copy at a time
     // Some cards will not rename a file from one folder into another (the handheld's own refused):
     // then it is written again where it goes, and the old one taken away once the new one is safely
     // there, on a thread of its own (seconds for a large one); finishCarry does the rest. Until then
