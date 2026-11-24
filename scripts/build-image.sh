@@ -115,6 +115,14 @@ if [ $# -gt 0 ]; then
     exit 0
 fi
 
+# The start-up picture is built into the kernel, and Buildroot does not see it change (2026-11-24: an image went out
+# with the old one): where the kernel's copy differs from ours, the kernel is made again (external.mk copies it in).
+klogo=$(ls "$out"/build/linux-[0-9]*/drivers/video/logo/logo_apotheca_clut224.ppm 2>/dev/null | head -n 1)
+if [ -n "$klogo" ] && ! cmp -s "$klogo" "$external/board/rg40xxv/logo/logo_apotheca_clut224.ppm"; then
+    echo "the start-up picture changed: the kernel again"
+    make -C "$br" O="$out" linux-rebuild
+fi
+
 make -C "$br" O="$out" -j"$(nproc)"
 
 # A kernel module built outside the kernel must be made again whenever the
