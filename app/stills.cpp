@@ -56,7 +56,7 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
     const bool demo = options.demo, smoke = options.smoke, holdA = options.holdA, holdY = options.holdY;
     const bool onName = options.onName, onTempo = options.onTempo, dice = options.dice, noMenu = options.noMenu;
     const int paint = options.paint;
-    (void)songs, (void)shot, (void)noMenu, (void)demo;
+    (void)songs, (void)shot, (void)noMenu, (void)demo, (void)samples;
     if (std::strcmp(view, "song") == 0) {
         app.session().view = View::Song;
     } else if (std::strcmp(view, "deleting") == 0) {

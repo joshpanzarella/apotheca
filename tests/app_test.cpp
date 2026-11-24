@@ -919,7 +919,6 @@ void testCellsOfSeveralBars() {
 }
 
 // The strip counts steps as the grid numbers do (bar * meter + step), and on BARS it shows the bar.
-static bool inked(const Canvas& canvas, Canvas& scratch, int size, float x, float y, const char* text, SDL_Color colour);
 void testStripCountsWithTheGrid() {
     Canvas canvas, scratch;
     CHECK(canvas.ok && scratch.ok);
@@ -4656,7 +4655,6 @@ void testSendsThroughTheSession() {
     }
 }
 
-static bool inked(const Canvas& canvas, Canvas& scratch, int size, float x, float y, const char* text, SDL_Color colour);
 
 // EVERY SETTING HAS AN ICON (owner, 2026-11-24): every synth's macros and its pages' settings, and every effect's
 // settings (and LEVEL, a bus's MIX), take a drawing by the rules in icons.cpp. A new name no rule takes fails here.
@@ -5564,21 +5562,6 @@ void testTheFxScreensList() {
 // Is `text` drawn at (x, y) in `colour`? It is drawn there on a second screen, and wherever that
 // has a pixel of the full colour (the body of a letter, not its soft edge) the screen looked at
 // must have it too.
-bool inked(const Canvas& canvas, Canvas& scratch, int size, float x, float y, const char* text, SDL_Color colour) {
-    const Font& font = size == 0 ? scratch.fonts->small : (size == 1 ? scratch.fonts->medium : scratch.fonts->large);
-    const int x0 = std::max(0, static_cast<int>(x) - 2), x1 = std::min(ui::kScreenW, static_cast<int>(x + font.width(text)) + 3);
-    const int y0 = std::max(0, static_cast<int>(y) - 4), y1 = std::min(ui::kScreenH, static_cast<int>(y) + 30);
-    ui::fill(scratch.r, x0, y0, x1 - x0, y1 - y0, SDL_Color{255, 0, 255, 255}); // a ground no lettering is drawn in
-    font.draw(scratch.r, x, y, text, colour);
-    int body = 0;
-    for (int py = y0; py < y1; ++py)
-        for (int px = x0; px < x1; ++px) {
-            if (!scratch.is(px, py, colour)) continue;
-            ++body;
-            if (!canvas.is(px, py, colour)) return false;
-        }
-    return body >= 6;
-}
 
 void testTheFxScreenAsDrawn() {
     Canvas canvas, scratch;

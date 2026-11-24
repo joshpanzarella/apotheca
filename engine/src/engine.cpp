@@ -1142,6 +1142,13 @@ void Engine::apply(const Command& c) {
         (c.type == Command::Play || c.type == Command::Trigger || c.type == Command::NoteOn)) {
         gate_ = Gate::Opening;
     }
+    if (applyDrums(c) || applySound(c) || applySong(c)) return;
+    applyMix(c);
+}
+
+// The commands of one area (apply() above asks each in turn: false, not one of its own). Word for word as they were in
+// apply()'s one switch (2026-11-24, the quality review: it was 592 lines). This one: a drum track's hits, steps, lanes and its kit.
+bool Engine::applyDrums(const Command& c) {
     switch (c.type) {
     case Command::Trigger:
         if (validTrack(c.track) && tracks_[c.track].hasDrums && c.a >= 0 && c.a < kDrumLanes) {
@@ -1175,63 +1182,6 @@ void Engine::apply(const Command& c) {
             writable(c)->drums[c.bar].start[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
         }
         break;
-    case Command::InstallEffect: {
-        Trash trash;
-        trash.isEffect = true;
-        SlotFade* fade = nullptr;
-        std::unique_ptr<Effect>* found = effectPlace(c.track, c.a, &fade);
-        if (!found) {
-            trash.pointer = c.pointer; // nowhere to put it
-            bin(trash);
-            break;
-        }
-        std::unique_ptr<Effect>& place = *found;
-        if (validTrack(c.track)) {
-            // Another effect in the slot: where its knobs rest is not known until it says, and what a
-            // MOD added to the one before is not carried over (the next tick works it out again).
-            for (int i = 0; i < 4; ++i) {
-                const int lane = autoLaneOfEffect(c.a, i);
-                tracks_[c.track].autoBase[lane] = tracks_[c.track].autoNow[lane] = kAutoNone;
-                tracks_[c.track].autoGliding[lane] = false;
-                tracks_[c.track].modOffset[lane] = 0.f;
-            }
-            tracks_[c.track].slotChoices[c.a] = static_cast<std::uint8_t>(c.c & 15);
-        }
-        swapEffect(place, *fade, static_cast<Effect*>(c.pointer));
-        // On a bus at rest there is no sound to fade: the new one is simply there, and the old one goes.
-        if (busOfTrack(c.track) >= 0 && !busAwake_[busOfTrack(c.track)].load(std::memory_order_relaxed)) fade->left = 0;
-        if (busOfTrack(c.track) >= 0) {
-            busMix_[busOfTrack(c.track)] = place ? c.b : -1;
-            // As the effect starts: LEVEL at full, until it is said. That is where the
-            // level is GOING: while the one leaving fades out it stays where it was
-            // (runBuses), or a bus turned down would be turned up under its old tail.
-            busLevel_[busOfTrack(c.track)] = 1.f;
-        }
-        if (place) place->setTempo(tempo_);
-        break;
-    }
-    case Command::SetTrackSample: {
-        SampleData* incoming = static_cast<SampleData*>(c.pointer);
-        Trash trash;
-        trash.isSample = true;
-        if (validTrack(c.track) && tracks_[c.track].synth) {
-            Track& track = tracks_[c.track];
-            trash.pointer = track.trackSample;
-            track.trackSample = incoming;
-            if (track.trackZones) { // one recording or zones: the zones go with the swap
-                Trash zones;
-                zones.isZones = true;
-                zones.pointer = track.trackZones;
-                track.trackZones = nullptr;
-                bin(zones);
-            }
-            track.synth->setSample(incoming ? incoming->data.data() : nullptr, incoming ? static_cast<int>(incoming->data.size()) : 0);
-        } else {
-            trash.pointer = incoming;
-        }
-        bin(trash);
-        break;
-    }
     case Command::SetTrackChop:
         if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->setChopped(c.a != 0);
         break;
@@ -1287,6 +1237,56 @@ void Engine::apply(const Command& c) {
             writable(c)->drums[c.bar].chance[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
         }
         break;
+    case Command::SetLaneFeel:
+        if (validTrack(c.track) && c.a >= 0 && c.a < kDrumLanes) tracks_[c.track].feel[c.a] = laneFeelOf(c.b, c.c);
+        break;
+    case Command::SetLaneLevel:
+        if (validTrack(c.track)) tracks_[c.track].drums.setLaneLevel(c.a, c.value);
+        break;
+    case Command::SetLanePart:
+        if (validTrack(c.track)) tracks_[c.track].drums.setLanePart(c.a, c.value);
+        break;
+    case Command::SetLaneChoke:
+        if (validTrack(c.track)) tracks_[c.track].drums.setLaneChoke(c.a, c.b);
+        break;
+    case Command::SetLaneSwing:
+        if (validTrack(c.track) && c.a >= 0 && c.a < kDrumLanes) tracks_[c.track].swing[c.a] = laneSwingOf(c.b);
+        break;
+    case Command::InstallDrums:
+        if (validTrack(c.track) && !tracks_[c.track].hasInstrument()) tracks_[c.track].hasDrums = true;
+        break;
+    default:
+        return false;
+    }
+    return true;
+}
+
+// The commands of one area (apply() above asks each in turn: false, not one of its own). Word for word as they were in
+// apply()'s one switch (2026-11-24, the quality review: it was 592 lines). This one: notes, keys and a synth's sound (presets, macros, settings), a synth or a sampler put in.
+bool Engine::applySound(const Command& c) {
+    switch (c.type) {
+    case Command::SetTrackSample: {
+        SampleData* incoming = static_cast<SampleData*>(c.pointer);
+        Trash trash;
+        trash.isSample = true;
+        if (validTrack(c.track) && tracks_[c.track].synth) {
+            Track& track = tracks_[c.track];
+            trash.pointer = track.trackSample;
+            track.trackSample = incoming;
+            if (track.trackZones) { // one recording or zones: the zones go with the swap
+                Trash zones;
+                zones.isZones = true;
+                zones.pointer = track.trackZones;
+                track.trackZones = nullptr;
+                bin(zones);
+            }
+            track.synth->setSample(incoming ? incoming->data.data() : nullptr, incoming ? static_cast<int>(incoming->data.size()) : 0);
+        } else {
+            trash.pointer = incoming;
+        }
+        bin(trash);
+        break;
+    }
     case Command::SetNote:
         if (validTrack(c.track) && slotFor(c) >= 0 && c.a >= 0 && c.a < kMaxNotes && std::isfinite(c.value) && writable(c)) {
             Note& note = writable(c)->notes[c.bar][c.a];
@@ -1309,6 +1309,67 @@ void Engine::apply(const Command& c) {
                 if (arp.on && arp.slot == slotFor(c)) arp.look = true;
         }
         break;
+    case Command::SetGlideFrom:
+        if (validTrack(c.track)) tracks_[c.track].glideFrom = static_cast<std::uint8_t>(glideFromKind(c.a));
+        break;
+    case Command::NoteOn:
+        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->noteOn(c.a, c.value);
+        break;
+    case Command::NoteOff:
+        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->noteOff(c.a);
+        break;
+    case Command::SelectPreset:
+        if (validTrack(c.track) && tracks_[c.track].synth) {
+            Track& track = tracks_[c.track];
+            track.synth->selectPreset(c.a);
+            // The preset puts its macros back to the middle (Instrument::selectPreset), so that is where
+            // they rest now, as the project's are. Left as they were, a scene with nothing written on a
+            // macro's lane took the OLD sound's knob back. A MOD on a macro is given about it at once,
+            // not left at the bare middle until its offset next changes, nor moved about the knob the
+            // old sound had. With nothing added no macro is given: the synth already has it (a song
+            // with no MOD is the same to the bit; applyProject sends every macro after the preset anyway).
+            for (int lane = 0; lane < 8; ++lane) {
+                track.autoBase[lane] = track.autoNow[lane] = track.autoFrom[lane] = track.autoTo[lane] = kPresetMacro;
+                track.autoGliding[lane] = false;
+                if (track.modOffset[lane] != 0.f) giveLane(track, lane);
+            }
+        }
+        break;
+    case Command::SetMacro:
+        if (validTrack(c.track) && tracks_[c.track].synth && c.value == c.value) {
+            Track& track = tracks_[c.track];
+            if (c.a >= 0 && c.a < 8) { // the knob itself: where the setting rests when nothing automates it
+                track.autoBase[c.a] = track.autoNow[c.a] = c.value;
+                track.autoGliding[c.a] = false;
+                giveLane(track, c.a);
+            } else {
+                track.synth->setMacro(c.a, c.value);
+            }
+        }
+        break;
+    case Command::SetSetting:
+        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->setSetting(c.a, c.b);
+        break;
+    case Command::InstallSynth: {
+        // addSynthTrack() only sends this for a track it found empty.
+        if (validTrack(c.track) && !tracks_[c.track].hasInstrument()) tracks_[c.track].synth.reset(static_cast<Instrument*>(c.pointer));
+        else {
+            Trash trash; // nowhere to put it (no flags: an Instrument)
+            trash.pointer = c.pointer;
+            bin(trash);
+        }
+        break;
+    }
+    default:
+        return false;
+    }
+    return true;
+}
+
+// The commands of one area (apply() above asks each in turn: false, not one of its own). Word for word as they were in
+// apply()'s one switch (2026-11-24, the quality review: it was 592 lines). This one: the song: scenes and their cells, Play, Stop, the tempo, the volume, a track's image, a track taken away.
+bool Engine::applySong(const Command& c) {
+    switch (c.type) {
     case Command::SetSceneCount:
         sceneCount_ = c.a < 1 ? 1 : (c.a > kMaxScenes ? kMaxScenes : c.a);
         break;
@@ -1459,12 +1520,126 @@ void Engine::apply(const Command& c) {
     case Command::SetSceneMeter:
         if (validScene(c.scene)) meter_[c.scene] = c.a < 1 ? kSteps : (c.a > kSteps ? kSteps : c.a);
         break;
-    case Command::SetGlideFrom:
-        if (validTrack(c.track)) tracks_[c.track].glideFrom = static_cast<std::uint8_t>(glideFromKind(c.a));
+    case Command::RemoveInstrument:
+        if (validTrack(c.track)) {
+            Track& track = tracks_[c.track];
+            track.autoHeld = 0; // (a track taken away, or the whole song sent again, holds nothing back)
+            // The holder its stores go back in (send() gives every RemoveInstrument one). A track
+            // already on its way has the first one's; this one goes back empty.
+            SceneSet* holder = static_cast<SceneSet*>(c.pointer);
+            if (!holder) {
+                // (none: it has no stores, or they go back one by one in takeAway)
+            } else if (track.going || track.goneSet) {
+                Trash trash;
+                trash.isImage = true;
+                trash.pointer = holder;
+                bin(trash);
+            } else {
+                track.goneSet = holder;
+            }
+            if (track.going) break; // already on its way
+            // Still sounding (the last block it made): it fades first, and is taken away at the end
+            // of the fade (renderChunk). Silent: at once, as it always was.
+            if (track.hasInstrument() && track.peak.load(std::memory_order_relaxed) > kGoneQuiet) {
+                track.going = true;
+                track.goingGain = 1.f;
+                ++going_;
+                break;
+            }
+            takeAway(c.track);
+        } else if (c.pointer) {
+            Trash trash;
+            trash.isImage = true;
+            trash.pointer = c.pointer;
+            bin(trash);
+        }
         break;
-    case Command::SetLaneFeel:
-        if (validTrack(c.track) && c.a >= 0 && c.a < kDrumLanes) tracks_[c.track].feel[c.a] = laneFeelOf(c.b, c.c);
+    case Command::GiveScene:
+        if (c.pointer) {
+            // A scene that had nothing in it gets its own store (send() sends this before the
+            // first write into it). One there already (never, by send()'s count) keeps its own.
+            SceneStore* const given = static_cast<SceneStore*>(c.pointer);
+            if (validTrack(c.track) && validScene(c.scene) && tracks_[c.track].scenes[c.scene] == blankScene()) {
+                tracks_[c.track].scenes[c.scene] = given;
+            } else {
+                Trash trash;
+                trash.isStore = true;
+                trash.pointer = given;
+                bin(trash);
+            }
+        }
         break;
+    case Command::SetTrackImage:
+        if (c.pointer) {
+            // Pointers swapped, nothing copied: the stores were made from the image by send().
+            SceneSet& set = *static_cast<SceneSet*>(c.pointer);
+            if (validTrack(c.track)) {
+                Track& track = tracks_[c.track];
+                for (int scene = 0; scene < kMaxScenes; ++scene) {
+                    SceneStore* const leaving = track.scenes[scene];
+                    track.scenes[scene] = set.scenes[scene] ? set.scenes[scene] : blankScene();
+                    set.scenes[scene] = written(leaving);
+                }
+                for (int lane = 0; lane < kDrumLanes; ++lane) {
+                    track.drums.setLaneLevel(lane, set.laneLevel[lane]);
+                    track.drums.setLanePart(lane, set.lanePart[lane]);
+                }
+                // Every pattern of the track is new: an arpeggio looks, before its next note, whether its
+                // chord is still there (review 2026-11-23: a cell pasted over played the old chord on).
+                for (auto& arp : track.arps)
+                    if (arp.on) arp.look = true;
+            }
+            Trash trash;
+            trash.isImage = true;
+            trash.pointer = c.pointer;
+            bin(trash);
+        }
+        break;
+    default:
+        return false;
+    }
+    return true;
+}
+
+// The commands of one area (apply() above asks each in turn: false, not one of its own). Word for word as they were in
+// apply()'s one switch (2026-11-24, the quality review: it was 592 lines). This one: effects, their automation, MODs, sends, level, pan and mute.
+bool Engine::applyMix(const Command& c) {
+    switch (c.type) {
+    case Command::InstallEffect: {
+        Trash trash;
+        trash.isEffect = true;
+        SlotFade* fade = nullptr;
+        std::unique_ptr<Effect>* found = effectPlace(c.track, c.a, &fade);
+        if (!found) {
+            trash.pointer = c.pointer; // nowhere to put it
+            bin(trash);
+            break;
+        }
+        std::unique_ptr<Effect>& place = *found;
+        if (validTrack(c.track)) {
+            // Another effect in the slot: where its knobs rest is not known until it says, and what a
+            // MOD added to the one before is not carried over (the next tick works it out again).
+            for (int i = 0; i < 4; ++i) {
+                const int lane = autoLaneOfEffect(c.a, i);
+                tracks_[c.track].autoBase[lane] = tracks_[c.track].autoNow[lane] = kAutoNone;
+                tracks_[c.track].autoGliding[lane] = false;
+                tracks_[c.track].modOffset[lane] = 0.f;
+            }
+            tracks_[c.track].slotChoices[c.a] = static_cast<std::uint8_t>(c.c & 15);
+        }
+        swapEffect(place, *fade, static_cast<Effect*>(c.pointer));
+        // On a bus at rest there is no sound to fade: the new one is simply there, and the old one goes.
+        if (busOfTrack(c.track) >= 0 && !busAwake_[busOfTrack(c.track)].load(std::memory_order_relaxed)) fade->left = 0;
+        if (busOfTrack(c.track) >= 0) {
+            busMix_[busOfTrack(c.track)] = place ? c.b : -1;
+            // As the effect starts: LEVEL at full, until it is said. That is where the
+            // level is GOING: while the one leaving fades out it stays where it was
+            // (runBuses), or a bus turned down would be turned up under its old tail.
+            busLevel_[busOfTrack(c.track)] = 1.f;
+        }
+        if (place) place->setTempo(tempo_);
+        break;
+    }
     case Command::HoldEffectAutomation:
         if (validTrack(c.track) && c.a >= 0 && c.a < kTrackSlots) {
             Track& track = tracks_[c.track];
@@ -1551,53 +1726,6 @@ void Engine::apply(const Command& c) {
         if (c.c > 0) heardAsked_ = c.c;
         tellHeardDone();
         break;
-    case Command::SetLaneLevel:
-        if (validTrack(c.track)) tracks_[c.track].drums.setLaneLevel(c.a, c.value);
-        break;
-    case Command::SetLanePart:
-        if (validTrack(c.track)) tracks_[c.track].drums.setLanePart(c.a, c.value);
-        break;
-    case Command::SetLaneChoke:
-        if (validTrack(c.track)) tracks_[c.track].drums.setLaneChoke(c.a, c.b);
-        break;
-    case Command::SetLaneSwing:
-        if (validTrack(c.track) && c.a >= 0 && c.a < kDrumLanes) tracks_[c.track].swing[c.a] = laneSwingOf(c.b);
-        break;
-    case Command::NoteOn:
-        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->noteOn(c.a, c.value);
-        break;
-    case Command::NoteOff:
-        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->noteOff(c.a);
-        break;
-    case Command::SelectPreset:
-        if (validTrack(c.track) && tracks_[c.track].synth) {
-            Track& track = tracks_[c.track];
-            track.synth->selectPreset(c.a);
-            // The preset puts its macros back to the middle (Instrument::selectPreset), so that is where
-            // they rest now, as the project's are. Left as they were, a scene with nothing written on a
-            // macro's lane took the OLD sound's knob back. A MOD on a macro is given about it at once,
-            // not left at the bare middle until its offset next changes, nor moved about the knob the
-            // old sound had. With nothing added no macro is given: the synth already has it (a song
-            // with no MOD is the same to the bit; applyProject sends every macro after the preset anyway).
-            for (int lane = 0; lane < 8; ++lane) {
-                track.autoBase[lane] = track.autoNow[lane] = track.autoFrom[lane] = track.autoTo[lane] = kPresetMacro;
-                track.autoGliding[lane] = false;
-                if (track.modOffset[lane] != 0.f) giveLane(track, lane);
-            }
-        }
-        break;
-    case Command::SetMacro:
-        if (validTrack(c.track) && tracks_[c.track].synth && c.value == c.value) {
-            Track& track = tracks_[c.track];
-            if (c.a >= 0 && c.a < 8) { // the knob itself: where the setting rests when nothing automates it
-                track.autoBase[c.a] = track.autoNow[c.a] = c.value;
-                track.autoGliding[c.a] = false;
-                giveLane(track, c.a);
-            } else {
-                track.synth->setMacro(c.a, c.value);
-            }
-        }
-        break;
     case Command::SetAutomation:
         if (c.a >= 0 && c.a < kAutoLanes && c.b >= 0 && c.b < kAutoSteps && c.value == c.value && writable(c))
             writable(c)->automation[c.a * kAutoSteps + c.b] = c.value < 0.f ? kAutoNone : (c.value > 1.f ? 1.f : c.value);
@@ -1607,97 +1735,6 @@ void Engine::apply(const Command& c) {
             for (int lane = 0; lane < kAutoLanes; ++lane)
                 if (c.a < 0 || c.a == lane)
                     for (int i = 0; i < kAutoSteps; ++i) store->automation[lane * kAutoSteps + i] = kAutoNone;
-        break;
-    case Command::SetSetting:
-        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->setSetting(c.a, c.b);
-        break;
-    case Command::InstallSynth: {
-        // addSynthTrack() only sends this for a track it found empty.
-        if (validTrack(c.track) && !tracks_[c.track].hasInstrument()) tracks_[c.track].synth.reset(static_cast<Instrument*>(c.pointer));
-        else {
-            Trash trash; // nowhere to put it (no flags: an Instrument)
-            trash.pointer = c.pointer;
-            bin(trash);
-        }
-        break;
-    }
-    case Command::InstallDrums:
-        if (validTrack(c.track) && !tracks_[c.track].hasInstrument()) tracks_[c.track].hasDrums = true;
-        break;
-    case Command::RemoveInstrument:
-        if (validTrack(c.track)) {
-            Track& track = tracks_[c.track];
-            track.autoHeld = 0; // (a track taken away, or the whole song sent again, holds nothing back)
-            // The holder its stores go back in (send() gives every RemoveInstrument one). A track
-            // already on its way has the first one's; this one goes back empty.
-            SceneSet* holder = static_cast<SceneSet*>(c.pointer);
-            if (!holder) {
-                // (none: it has no stores, or they go back one by one in takeAway)
-            } else if (track.going || track.goneSet) {
-                Trash trash;
-                trash.isImage = true;
-                trash.pointer = holder;
-                bin(trash);
-            } else {
-                track.goneSet = holder;
-            }
-            if (track.going) break; // already on its way
-            // Still sounding (the last block it made): it fades first, and is taken away at the end
-            // of the fade (renderChunk). Silent: at once, as it always was.
-            if (track.hasInstrument() && track.peak.load(std::memory_order_relaxed) > kGoneQuiet) {
-                track.going = true;
-                track.goingGain = 1.f;
-                ++going_;
-                break;
-            }
-            takeAway(c.track);
-        } else if (c.pointer) {
-            Trash trash;
-            trash.isImage = true;
-            trash.pointer = c.pointer;
-            bin(trash);
-        }
-        break;
-    case Command::GiveScene:
-        if (c.pointer) {
-            // A scene that had nothing in it gets its own store (send() sends this before the
-            // first write into it). One there already (never, by send()'s count) keeps its own.
-            SceneStore* const given = static_cast<SceneStore*>(c.pointer);
-            if (validTrack(c.track) && validScene(c.scene) && tracks_[c.track].scenes[c.scene] == blankScene()) {
-                tracks_[c.track].scenes[c.scene] = given;
-            } else {
-                Trash trash;
-                trash.isStore = true;
-                trash.pointer = given;
-                bin(trash);
-            }
-        }
-        break;
-    case Command::SetTrackImage:
-        if (c.pointer) {
-            // Pointers swapped, nothing copied: the stores were made from the image by send().
-            SceneSet& set = *static_cast<SceneSet*>(c.pointer);
-            if (validTrack(c.track)) {
-                Track& track = tracks_[c.track];
-                for (int scene = 0; scene < kMaxScenes; ++scene) {
-                    SceneStore* const leaving = track.scenes[scene];
-                    track.scenes[scene] = set.scenes[scene] ? set.scenes[scene] : blankScene();
-                    set.scenes[scene] = written(leaving);
-                }
-                for (int lane = 0; lane < kDrumLanes; ++lane) {
-                    track.drums.setLaneLevel(lane, set.laneLevel[lane]);
-                    track.drums.setLanePart(lane, set.lanePart[lane]);
-                }
-                // Every pattern of the track is new: an arpeggio looks, before its next note, whether its
-                // chord is still there (review 2026-11-23: a cell pasted over played the old chord on).
-                for (auto& arp : track.arps)
-                    if (arp.on) arp.look = true;
-            }
-            Trash trash;
-            trash.isImage = true;
-            trash.pointer = c.pointer;
-            bin(trash);
-        }
         break;
     case Command::SetEffectParam: {
         if (c.value != c.value) break; // never valid: drop it (as SetAutomation drops its NaNs)
@@ -1720,7 +1757,10 @@ void Engine::apply(const Command& c) {
         }
         break;
     }
+    default:
+        return false;
     }
+    return true;
 }
 
 void Engine::clearPending() {
