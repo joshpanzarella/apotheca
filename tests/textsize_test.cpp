@@ -572,6 +572,7 @@ void testWithin() {
     CHECK(&s.canvas.fonts->within(&Fonts::small, words, 1.f) == &s.canvas.fonts->small);
 }
 
+// (A macro is a dial, design A: drawn here at MAIN's height, 114, where its name and value stand above and under it.)
 // A box's name and value (the DEVICE pages) are held at LARGE where XL is too wide for the box; and what a frame drew is written down.
 void testTheBoxes() {
     Screens& s = screens();
@@ -585,9 +586,9 @@ void testTheBoxes() {
     gDrawLog = &log;
     ui::valueBox(s.canvas.r, xl, 10, 40, w, 70, name.c_str(), value.c_str(), 0.5f, false, false);
     ui::valueBox(s.canvas.r, xl, 10, 140, w, 70, "CUTOFF", "1 KHZ", 0.5f, true, false);
-    ui::macroBox(s.canvas.r, xl, 200, 40, w, 70, name.c_str(), value.c_str(), 0.7f, false, false);         // (no picture goes by that name)
-    ui::macroBox(s.canvas.r, xl, 200, 140, w, 70, "TONE", "+60", 0.7f, true, false);                        // a picture in its corner
-    ui::macroBox(s.canvas.r, xl, 400, 40, w, 70, "TONE", value.c_str(), 0.7f, false, false);
+    ui::macroBox(s.canvas.r, xl, 200, 40, w, 114, name.c_str(), value.c_str(), 0.7f, false, false);         // (no picture goes by that name)
+    ui::macroBox(s.canvas.r, xl, 200, 140, w, 114, "TONE", "+60", 0.7f, true, false);                        // a picture in its corner
+    ui::macroBox(s.canvas.r, xl, 400, 40, w, 114, "TONE", value.c_str(), 0.7f, false, false);
     gDrawLog = nullptr;
     CHECK(log.texts.size() == 10);
     if (log.texts.size() == 10) {
@@ -600,7 +601,7 @@ void testTheBoxes() {
     // A macro whose name has a picture leaves the picture its corner: a name that would reach it is held at LARGE.
     log.clear();
     gDrawLog = &log;
-    ui::macroBox(s.canvas.r, xl, 200, 40, w, 70, "TONE", "+0", 0.5f, false, false);
+    ui::macroBox(s.canvas.r, xl, 200, 40, w, 114, "TONE", "+0", 0.5f, false, false);
     gDrawLog = nullptr;
     CHECK(log.texts.size() == 2 && log.texts[0].font == &xl.small);
     CHECK(&xl.within(&Fonts::small, pictured.c_str(), w - 14.f - 27.f) == &xl.fixed().small && &xl.within(&Fonts::small, pictured.c_str(), w - 14.f) == &xl.small);
@@ -610,7 +611,7 @@ void testTheBoxes() {
         CHECK(xl.small.width("RELEASE") > narrow - 14.f - 27.f && xl.small.width("RELEASE") <= narrow - 14.f && xl.fixed().small.width("RELEASE") <= narrow - 14.f - 27.f);
         log.clear();
         gDrawLog = &log;
-        ui::macroBox(s.canvas.r, xl, 200, 240, narrow, 70, "RELEASE", "+0", 0.5f, false, false);
+        ui::macroBox(s.canvas.r, xl, 200, 240, narrow, 114, "RELEASE", "+0", 0.5f, false, false);
         gDrawLog = nullptr;
         CHECK(log.texts.size() == 2 && log.texts[0].font == &xl.fixed().small && log.texts[1].font == &xl.large);
     }
@@ -1249,7 +1250,7 @@ void testTheOtherScreens() {
             char what[48];
             std::snprintf(what, sizeof what, "%s, page %d", synth.name, page);
             // (FM-6's operators: six rows, their boxes held at LARGE at XL; the page's name, its count
-            // and LIVE OUTPUT still follow the setting.)
+            // and SIGNAL still follow the setting.)
             const bool sixRows = synth.kind == TrackKind::Fm6 && fm6Spec().itemCount(page) > 20;
             CHECK(holds(rig, what) > (sixRows ? 1 : 3));
         }

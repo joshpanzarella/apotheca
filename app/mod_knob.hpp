@@ -33,7 +33,7 @@ namespace apotheca {
 
 // Where a screen draws the fields: each one's x (its name above, its value under), the two rows,
 // and the NOW bar (what the MOD adds this moment, from the middle). DEVICE puts them all in one
-// row in LIVE OUTPUT's place; FX in two rows in the heading's place (the knob and NOW above).
+// row in SIGNAL's place; FX in two rows in the heading's place (the knob and NOW above).
 struct ModPlaces {
     float lead, shape, depth, rate, more; // the knob and its MOD; A; UP / DOWN; LEFT / RIGHT; L1 / R1
     float leadY, fieldsY;                 // the top of the knob's name; of the fields' names (values 16 under)
@@ -41,7 +41,7 @@ struct ModPlaces {
 };
 constexpr float kModValueDrop = 16.f; // a value's top under its name's
 
-// DEVICE MAIN: in the LIVE OUTPUT strip's place (ui::kScopeY, 36 tall), one row. The dice stand at
+// DEVICE MAIN: in the SIGNAL strip's place (ui::kScopeY, 36 tall), one row. The dice stand at
 // the bar's left end, so the knob's field starts past them.
 // (NOW from 528: a FREE LFO's slowest SPEED, "0.025 HZ", stands clear of it.)
 constexpr ModPlaces kDeviceModPlaces = {56.f, 166.f, 284.f, 352.f, 444.f,

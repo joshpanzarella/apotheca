@@ -1087,7 +1087,7 @@ effect in those two groups and fails one that does not.
     tests can read the drawn screen (`testTheFxScreenAsDrawn`, with `inked`:
     is this text drawn here in this colour). `app_test --fx` runs just the FX
     screen's tests (about 9 s).
-- **LIVE OUTPUT is a thin strip across the DEVICE page, just above the hints
+- **SIGNAL is a thin strip across the DEVICE page, just above the hints
   bar** (owner, 2026-11-14: the half-width box in the bottom right was too big
   and left room unused). `ui::scopeStrip`, its places in `ui.hpp` (`kScopeY`
   416, `kScopeH` 36, its label inside at the left in `kScopeLabelW`). The
@@ -1110,7 +1110,7 @@ effect in those two groups and fails one that does not.
   pass with nothing to show. **The picture must be exactly what drawing every frame shows, and a
   button is drawn on the pass it is pressed.** A pass is drawn on a STIR (`Stir` in redraw.hpp):
   any SDL event but a stick's motion, a button held, the stick pushed, the song playing; the
-  engine's readouts moved since the last picture (where the song is, the LIVE OUTPUT samples,
+  engine's readouts moved since the last picture (where the song is, the SIGNAL samples,
   every effect meter, MIDI notes and keyboards: `App::readouts`); `App::stirring` (the volume,
   the App's message, the panic notice, the update's answer, plus `Session::stirring`: a fit, a
   recording, a bounce, WiFi on, and the screen's own `Screen::stirring`: a line said for a moment,
@@ -2136,7 +2136,7 @@ effect in those two groups and fails one that does not.
     held is the MOD's; let go after X it does nothing. **X is not taken with A held** (turning).
     X let go with the stick pushed: the cursor waits for it to come back (`stickWait_`, both
     screens; the knob's own `stickWait_` the same when X goes down with the stick pushed).
-  - **Where the fields go** (call B): DEVICE in LIVE OUTPUT's strip, FX in the heading's place, on
+  - **Where the fields go** (call B): DEVICE in SIGNAL's strip, FX in the heading's place, on
     SENDS in the OTHER send's row (`FxScreen::modPanelY`: the held send stays in full view), only
     while X is held. **They are a tight row** (`fonts.fixed()`, the same at every TEXT SIZE:
     `testTheSameAtEverySize`), each chip under its field by ONE constant (`kDeviceModPlaces`,
@@ -2484,7 +2484,7 @@ effect in those two groups and fails one that does not.
     sampler's `SamplePicker`, its preview the cloud at middle C), hold A + up / down the next, R1 there
     RECORD (elsewhere R1 is the page), Y anywhere on SOURCE CATCH; what is said shows in the top bar.
   - **The grains are a readout for the redraw** (`Readouts::grains`, `kStirGrains`: the track up's places,
-    `App::readouts`); `idle_test` has a part (a CLOUD at LEVEL 0, so LIVE OUTPUT stands still and only the
+    `App::readouts`); `idle_test` has a part (a CLOUD at LEVEL 0, so SIGNAL stands still and only the
     grains move).
   - **Eight instruments close the list up**: 46 adding a track, 41 with the words under it, each box a
     pixel short of the pitch (`SongScreen::rowH`, its two lines placed within).

@@ -3,7 +3,7 @@
 // first UP makes one, DEPTH, RATE, SHAPE, PHASE / LENGTH, the dice, hold B), MODS FULL, a choice
 // that takes none, the order of the checks (X held before Y's ROLL, the stick's cursor, L1 / R1's
 // track), the MOD heard while stopped (Session::hearMods) and let go, undo, and what is DRAWN
-// (tests/canvas.hpp): the fields in LIVE OUTPUT's place and in the heading's, each chip's left edge
+// (tests/canvas.hpp): the fields in SIGNAL's place and in the heading's, each chip's left edge
 // its field's, and the plain bar back, pixel for pixel, when X is let go.
 //
 //   modknob_test            all of it
@@ -466,7 +466,7 @@ void testFullAndChoices() {
     rig.tap(SDLK_UP);
     CHECK(rig.mod(t, 0).kind == kModLfo && rig.mod(t, 0).target == kModFirstMacro + 2);
     rig.key(X, false);
-    // A choice (Phazed CHORUS, OCTAVE) takes no MOD: X only hears there, and the LIVE OUTPUT strip stays.
+    // A choice (Phazed CHORUS, OCTAVE) takes no MOD: X only hears there, and the SIGNAL strip stays.
     screen.goTo(0, SynthScreen::kFirstMacro + 6);
     rig.key(X, true);
     rig.frames(1);
@@ -911,16 +911,17 @@ void testDrawnOnDevice() {
     const int t = rig.phazed;
     rig.device(t, 0);
     const ModPlaces& p = kDeviceModPlaces;
-    // Nothing held: LIVE OUTPUT and the plain bar (with HOLD X: MOD, as it fits).
+    // Nothing held: SIGNAL and the plain bar (with HOLD X: MOD, as it fits).
     rig.draw();
     const ui::Hint plain[] = {{"HOLD A", "turn"}, {"B", "back to the middle"}, {"HOLD X", "mod"}, {"START", "play"}};
     CHECK(rig.plainBar(plain, 4) && ui::gHintsOver == 0.f);
-    CHECK(rig.drawn(ui::kScopeX + 7.f, ui::kScopeY + (ui::kScopeH - rig.canvas.fonts->small.capHeight()) / 2.f, "LIVE OUTPUT"));
+    CHECK(rig.drawn(SynthScreen::kMainScopeX + 8.f, SynthScreen::kAdvancedY + 7.f, "SIGNAL"));
+    const std::vector<Uint32> scopeBefore = rig.canvas.part(0, ui::kScopeY, ui::kScreenW, ui::kScopeH);
     const std::vector<Uint32> barBefore = rig.canvas.part(0, kBarTop, ui::kScreenW, ui::kHintsH);
     // X held, no MOD: the knob, NO MOD, the words, and UP's chip under them (at DEPTH's place).
     rig.key(X, true);
     rig.draw();
-    CHECK(!rig.drawn(ui::kScopeX + 7.f, ui::kScopeY + (ui::kScopeH - rig.canvas.fonts->small.capHeight()) / 2.f, "LIVE OUTPUT"));
+    CHECK(rig.canvas.part(0, ui::kScopeY, ui::kScreenW, ui::kScopeH) != scopeBefore); // the fields where SIGNAL's foot was
     CHECK(rig.drawn(p.lead, p.leadY, "TONE") && rig.drawn(p.lead, p.leadY + kModValueDrop, "NO MOD", true));
     CHECK(rig.drawn(p.depth, p.fieldsY + kModValueDrop + 1.f, ModKnob::kNoModWords));
     CHECK((rig.chips() == Chips{{static_cast<int>(p.depth), rig.chipW("UP")}}) && rig.chipIs(p.depth, "UP"));
@@ -968,10 +969,10 @@ void testDrawnOnDevice() {
     rig.key(B, false);
     // Let go: the strip and the bar are back, pixel for pixel.
     rig.key(X, false);
-    rig.frames(120); // (the note's release dies away: the LIVE OUTPUT line is flat again)
+    rig.frames(120); // (the note's release dies away: the SIGNAL line is flat again)
     rig.draw();
     CHECK(rig.canvas.part(0, kBarTop, ui::kScreenW, ui::kHintsH) == barBefore);
-    CHECK(rig.drawn(ui::kScopeX + 7.f, ui::kScopeY + (ui::kScopeH - rig.canvas.fonts->small.capHeight()) / 2.f, "LIVE OUTPUT"));
+    CHECK(rig.drawn(SynthScreen::kMainScopeX + 8.f, SynthScreen::kAdvancedY + 7.f, "SIGNAL"));
     // MODS FULL: no chips at all, the words in their place.
     rig.session().setMod(t, 0, lfoOn(kModFirstMacro + 1));
     rig.session().setMod(t, 1, lfoOn(kModFirstMacro + 2));
@@ -1201,15 +1202,28 @@ void testTheBrassMark() {
     square.shape = kModSquare;
     CHECK(rig.session().setMod(t, 0, square));
     rig.device(t, 0);
-    const auto bar = [](int m, int& x, int& y, int& w) {
-        x = 8 + (m % 4) * SynthScreen::kMacroPitchX + ui::kMacroBarInset;
-        y = SynthScreen::kMacroY + (m / 4) * (SynthScreen::kMacroH + SynthScreen::kMacroGap) + SynthScreen::kMacroH - ui::kMacroBarFromFoot;
-        w = SynthScreen::kMacroW - 2 * ui::kMacroBarInset;
+    // A macro is a dial (design A, 2026-11-24): the mark is a brass tick across its ring.
+    const auto dialOf = [](int m) {
+        return ui::macroDialIn(8 + (m % 4) * SynthScreen::kMacroPitchX, SynthScreen::kMacroY + (m / 4) * (SynthScreen::kMacroH + SynthScreen::kMacroGap),
+                               SynthScreen::kMacroW, SynthScreen::kMacroH);
     };
-    int x = 0, y = 0, w = 0;
-    bar(1, x, y, w);
+    const auto markOn = [&](int m, float at) {
+        const ui::MacroDial dial = dialOf(m);
+        for (float k = dial.radius - dial.ring - 2.f; k <= dial.radius + 2.f; k += 1.f) {
+            const SDL_Point pt = dialPoint(dial.cx, dial.cy, k, at);
+            if (!rig.canvas.is(pt.x, pt.y, ui::kBrass)) return false;
+        }
+        return true;
+    };
+    const auto noMarkOn = [&](int m) {
+        const ui::MacroDial dial = dialOf(m);
+        for (int py = dial.cy - dial.radius - 4; py <= dial.cy + dial.radius + 4; ++py)
+            for (int px = dial.cx - dial.radius - 4; px <= dial.cx + dial.radius + 4; ++px)
+                if (rig.canvas.is(px, py, ui::kBrass)) return false;
+        return true;
+    };
     rig.draw();
-    CHECK(noMark(rig, x, y, w)); // stopped: the MOD does not run, nothing moves
+    CHECK(noMarkOn(1)); // stopped: the MOD does not run, nothing moves
     CHECK(std::isnan(modMarkAt(rig.session(), t, kModFirstMacro + 1, 0.5f)));
     rig.tap(SDLK_RETURN); // START
     CHECK(rig.project().playing);
@@ -1223,12 +1237,10 @@ void testTheBrassMark() {
         rig.session().setMod(t, 1, ModSettings());
     }
     CHECK(modMarkAt(rig.session(), t, kModFirstMacro + 1, 0.5f) == 0.8f);
-    CHECK(markAt(rig, x, y, w, ui::kMacroBarH, 0.8f));
+    CHECK(markOn(1, 0.8f) && !markOn(1, 0.6f));
     for (int m = 0; m < 8; ++m) { // the other seven: no mark (TONE has the cursor, the rest nothing aimed)
         if (m == 1) continue;
-        int ox = 0, oy = 0, ow = 0;
-        bar(m, ox, oy, ow);
-        CHECK(noMark(rig, ox, oy, ow));
+        CHECK(noMarkOn(m));
     }
     // The second MOD on the same knob adds (one clamp): +30% and +40% from the middle is the top.
     ModSettings more = square;
@@ -1237,23 +1249,23 @@ void testTheBrassMark() {
     rig.frames(40); // (to the next macro tick)
     rig.draw();
     CHECK(modMarkAt(rig.session(), t, kModFirstMacro + 1, 0.5f) == 1.f);
-    CHECK(markAt(rig, x, y, w, ui::kMacroBarH, 1.f) && modMarkX(x, w, 1.f) == x + w - kModMarkW); // held inside the bar
+    CHECK(markOn(1, 1.f)); // held to the ring's end
     rig.session().setMod(t, 1, ModSettings());
     // Stopped: gone on the very pass START is pressed.
     rig.key(SDLK_RETURN, true);
     CHECK(std::isnan(modMarkAt(rig.session(), t, kModFirstMacro + 1, 0.5f))); // (before the engine has heard the Stop)
     rig.draw();
-    CHECK(!rig.project().playing && noMark(rig, x, y, w));
+    CHECK(!rig.project().playing && noMarkOn(1));
     rig.key(SDLK_RETURN, false);
     // X held on MOTION while stopped: the MOD runs, and the mark is there; let go, gone.
     rig.device(t, 1);
     rig.key(X, true);
     rig.frames(3);
     rig.draw();
-    CHECK(markAt(rig, x, y, w, ui::kMacroBarH, 0.8f));
+    CHECK(markOn(1, 0.8f));
     rig.key(X, false);
     rig.draw();
-    CHECK(noMark(rig, x, y, w));
+    CHECK(noMarkOn(1));
 
     // FX: a TAPE's FEEDBACK (0.4) under a SQUARE at -25%, its MIX under none, and the ECHO send under +50%.
     const int d = 0;

@@ -49,7 +49,7 @@ enum Stir : unsigned {
     kStirStick = 1u << 2,        // the stick is pushed
     kStirPlaying = 1u << 3,      // the song is playing
     kStirPlace = 1u << 4,        // the engine's place in the song (or its stop, its silencing) moved
-    kStirScope = 1u << 5,        // the LIVE OUTPUT line's sound moved
+    kStirScope = 1u << 5,        // the SIGNAL line's sound moved
     kStirMeters = 1u << 6,       // an effect's meter moved
     kStirMidi = 1u << 7,         // a MIDI keyboard played, or one was plugged in or out
     kStirVolume = 1u << 8,       // the volume showing for a moment
@@ -77,7 +77,7 @@ const char* stirName(unsigned bit);
 // the last picture, and compared on every pass.
 struct Readouts {
     int place[6] = {}; // play step, bar, repeat, scene (with the moves heard), silenced, the Play that ended
-    std::vector<float> scope;  // the LIVE OUTPUT line's samples
+    std::vector<float> scope;  // the SIGNAL line's samples
     std::vector<float> meters; // every effect meter there is
     int midi[2] = {};          // MIDI notes seen, keyboards plugged in
     int load[3] = {};          // the help card's SOUND, WORST and ALL, as drawn (App::loadShown)

@@ -925,7 +925,7 @@ void testCatch() {
     CHECK(bare.session().catchLastBar(0, 5).empty() && bare.project().tracks[0].laneSample[5][0] == 0);
 }
 
-// The recording's picture takes the room the LIVE OUTPUT box left (owner, 2026-11-14): read off
+// The recording's picture takes the room the SIGNAL box left (owner, 2026-11-14): read off
 // the drawn screen, it is as tall as kWaveH allows, not the 40 rows it was.
 void testTheSamplersPictureIsTall() {
     const std::string folder = tempFolder("samples");

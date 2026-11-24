@@ -11,6 +11,7 @@
 #include "text.hpp"
 
 namespace apotheca {
+struct Icon; // icons.hpp
 
 // The size of the lettering is a setting (SET page, TEXT SIZE; owner, 2026-11-12): from where
 // it started to a little bigger than the screens were laid out for. The numbers are kept in
@@ -241,7 +242,7 @@ constexpr float boxValueDrop(int h) { return h > kBoxUsualH ? static_cast<float>
 // A named value in a box. `part` 0..1 draws a bar; below 0 draws none.
 // `centre` draws the bar outward from the middle (for values that go both ways).
 void valueBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, const char* name, const char* value,
-              float part, bool cursor, bool held, bool centre = false);
+              float part, bool cursor, bool held, bool centre = false, const apotheca::Icon* icon = nullptr);
 
 // A macro: its name, a small picture of what it does in the top right, its
 // value, and a bar that grows from the middle. Dim until it is turned away
@@ -269,7 +270,7 @@ constexpr int kMacroBarInset = 7, kMacroBarFromFoot = 11, kMacroBarH = 5;
 // `play` is the pass it is on (from 0) and `step` the step within it.
 void sceneProgress(SDL_Renderer* r, int x, int y, int w, int h, int plays, int play, int step, int steps = kSteps); // `steps` in one pass
 
-// LIVE OUTPUT: the track's latest output as a line, in a thin strip across the whole width of a
+// SIGNAL: the track's latest output as a line, in a thin strip across the whole width of a
 // DEVICE page, just above the hints bar (owner, 2026-11-14: the half-width box in the bottom right
 // was too big and left room unused). Its label is inside it at the left; the line runs in the rest.
 // Every DEVICE page that shows it (the synths' MAIN and settings pages, the sampler, the kit) ends
@@ -282,7 +283,7 @@ constexpr int kScopeY = kScreenH - kHintsH - 4 - kScopeH; // 416: 4 pixels clear
 constexpr int kScopeLabelW = 120;                         // the label's room, inside the strip at its left
 constexpr int kAboveScope = kScopeY - 10;                 // 406: where the controls above it end
 void scopeStrip(SDL_Renderer* r, const Fonts& fonts, const Engine& engine);
-// LIVE OUTPUT as a large scope (DEVICE MAIN, owner 2026-11-24, design A): a dark screen with a graticule, the line
+// SIGNAL as a large scope (DEVICE MAIN, owner 2026-11-24, design A): a dark screen with a graticule, the line
 // as the strip's (bent, the same samples) through its middle, full scale kScopeBoxInset inside its edges, its
 // label at the top left.
 constexpr int kScopeBoxInset = 10;

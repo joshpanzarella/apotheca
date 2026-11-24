@@ -33,6 +33,7 @@
 #include "samples.hpp"
 #include "song_file.hpp"
 #include "synth_spec.hpp"
+#include "icons.hpp"
 #include "temp_folder.hpp"
 
 using namespace apotheca;
@@ -4656,6 +4657,36 @@ void testSendsThroughTheSession() {
 }
 
 static bool inked(const Canvas& canvas, Canvas& scratch, int size, float x, float y, const char* text, SDL_Color colour);
+
+// EVERY SETTING HAS AN ICON (owner, 2026-11-24): every synth's macros and its pages' settings, and every effect's
+// settings (and LEVEL, a bus's MIX), take a drawing by the rules in icons.cpp. A new name no rule takes fails here.
+void testEverySettingHasAnIcon() {
+    int names = 0;
+    const auto check = [&](const char* name, const char* where) {
+        ++names;
+        CHECK(iconFor(name) != nullptr);
+        if (!iconFor(name)) std::printf("    %s: [%s] has no icon (icons.cpp: a rule or a drawing)\n", where, name);
+    };
+    for (int k = 0; k < kInstrumentCount; ++k) {
+        const SynthSpec* spec = specFor(kInstruments[k].kind);
+        if (!spec) continue;
+        for (int m = 0; m < 8; ++m) check(spec->macroNames[m], spec->name);
+        for (int page = 1; page < spec->pages; ++page)
+            for (int i = 0; i < spec->itemCount(page); ++i) {
+                int id = 0;
+                const char* name = nullptr;
+                spec->item(page, i, id, name);
+                check(name, spec->name);
+            }
+    }
+    for (int k = 1; k < kEffectKinds; ++k)
+        for (int p = 0; p < effectInfo(static_cast<EffectKind>(k)).params; ++p) check(effectInfo(static_cast<EffectKind>(k)).paramNames[p], effectInfo(static_cast<EffectKind>(k)).name);
+    check("LEVEL", "a bus");
+    CHECK(names > 300);
+    // The rules read a name's last word first: "LFO DEPTH" is a depth, "AMP DECAY" a decay, and digits are passed over.
+    CHECK(iconFor("LFO DEPTH") == iconFor("DEPTH") && iconFor("AMP DECAY") == iconFor("DECAY") && iconFor("RATE 2") == iconFor("RATE"));
+    CHECK(iconFor("CHORUS") != nullptr && iconFor("CHORUS") != iconFor("TONE") && iconFor("NOTHING LIKE IT") == nullptr);
+}
 
 // The FX screen's picture (design B, 2026-11-24): every effect draws one, inside its box, in the theme's colours, and it
 // follows the settings: for each effect at least one of its settings moved from its usual changes the picture.
@@ -11072,7 +11103,7 @@ void testCloudOnATrack() {
 
 // CLOUD's hints fit the bar at 0 over, on MAIN and its three pages, A held and not, with either help;
 // MAIN says HOLD X on every macro and Y off them; RECORDING says its list, R1 and Y. MAIN's picture
-// has a brass POSITION line and, while a key sounds, teal ticks; LIVE OUTPUT still below the macros.
+// has a brass POSITION line and, while a key sounds, teal ticks; SIGNAL still below the macros.
 void testCloudsHintsFit() {
     Canvas canvas, scratch;
     CHECK(canvas.ok && scratch.ok);
@@ -11627,7 +11658,9 @@ int main(int argc, char** argv) {
         testSongFilesAreAsTheyWere();
         testTheFxScreenShowsCompAtWork();
     testTheFxPictureFollowsTheSettings();
+    testEverySettingHasAnIcon();
         testTheFxPictureFollowsTheSettings();
+        testEverySettingHasAnIcon();
         if (failures == 0) std::printf("app tests passed (FX only)\n");
         return failures == 0 ? 0 : 1;
     }

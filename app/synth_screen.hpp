@@ -68,12 +68,12 @@ public:
     // The setting under the cursor on an advanced page, or -1.
     int settingHere() const;
 
-    // Where MAIN's rows are, from the top down to the LIVE OUTPUT strip (ui::kAboveScope), which
+    // Where MAIN's rows are, from the top down to the SIGNAL strip (ui::kAboveScope), which
     // they fill: FOLDER and PRESET, two rows of four macros, ADVANCED. For the tests too.
     static constexpr int kPresetY = 36, kPresetH = 60;
     static constexpr int kMacroY = kPresetY + kPresetH + 10, kMacroW = 153, kMacroPitchX = 157, kMacroGap = 6;
     static constexpr int kAdvancedH = 56;
-    static constexpr int kMainScopeX = 8 + kMacroW + 6, kMainScopeW = 632 - kMainScopeX; // MAIN's LIVE OUTPUT, right of ADVANCED
+    static constexpr int kMainScopeX = 8 + kMacroW + 6, kMainScopeW = 632 - kMainScopeX; // MAIN's SIGNAL, right of ADVANCED
     static constexpr int kMacroH = (ui::kAboveScope - 10 - kAdvancedH - kMacroGap - kMacroY) / 2;
     static constexpr int kAdvancedY = kMacroY + 2 * kMacroH + kMacroGap + 10;
     // An advanced page that is not an envelope: rows of four settings, spread down to the strip
@@ -123,12 +123,12 @@ public:
     const ModKnob& modKnob() const { return modKnob_; }
 
     // A synth that plays the recording (CLOUD): MAIN's picture under PRESET, and the macros and
-    // ADVANCED below it, a little shorter, still down to the LIVE OUTPUT strip.
+    // ADVANCED below it, a little shorter, still down to the SIGNAL strip.
     static constexpr int kPictureY = kPresetY + kPresetH + 10, kPictureH = 80;
     static constexpr int kPicMacroY = kPictureY + kPictureH + 10;
     static constexpr int kPicMacroH = (ui::kAboveScope - 10 - kAdvancedH - kMacroGap - kPicMacroY) / 2;
     static constexpr int kPicAdvancedY = kPicMacroY + 2 * kPicMacroH + kMacroGap + 10;
-    static_assert(kPicAdvancedY + kAdvancedH <= ui::kAboveScope, "MAIN ends above LIVE OUTPUT");
+    static_assert(kPicAdvancedY + kAdvancedH <= ui::kAboveScope, "MAIN ends above SIGNAL");
     // (MORPH's wave takes the same room: SynthSpec::table.)
     bool picture() const { return spec_.recording || spec_.table; }
     int macroY() const { return picture() ? kPicMacroY : kMacroY; }

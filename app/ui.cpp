@@ -1,6 +1,7 @@
 #include "ui.hpp"
 
 #include "fx_picture.hpp"
+#include "icons.hpp"
 #include "instruments.hpp"
 
 #include <cctype>
@@ -54,42 +55,10 @@ void sceneProgress(SDL_Renderer* r, int x, int y, int w, int h, int plays, int p
     }
 }
 
-// ---- macro pictures -----------------------------------------------------------------
-// Each is a few lines on a 20 by 14 grid, drawn in the top right of its box.
-
-namespace {
-
-struct Stroke { int n; int p[16]; }; // x,y pairs
-struct Picture { const char* name; int family; Stroke strokes[3]; };
-// family: 0 the sound's colour, 1 movement and width, 2 time
-const Picture kPictures[] = {
-    {"TONE", 0, {{4, {0, 4, 9, 4, 13, 2, 19, 13}}}},
-    {"MOTION", 1, {{7, {0, 7, 3, 2, 6, 7, 9, 12, 12, 7, 15, 2, 19, 9}}}},
-    {"ATTACK", 2, {{3, {0, 13, 9, 1, 19, 1}}}},
-    {"RELEASE", 2, {{5, {0, 1, 6, 1, 9, 8, 13, 11, 19, 13}}}},
-    {"DETUNE", 1, {{5, {0, 7, 4, 2, 9, 12, 14, 2, 19, 7}}, {5, {0, 9, 5, 3, 11, 12, 17, 3, 19, 6}}}},
-    {"VIBRATO", 1, {{8, {0, 7, 3, 6, 6, 8, 9, 4, 12, 10, 15, 1, 18, 13, 19, 9}}}},
-    {"CHORUS", 1, {{5, {0, 3, 5, 1, 10, 3, 15, 5, 19, 3}}, {5, {0, 7, 5, 5, 10, 7, 15, 9, 19, 7}}, {5, {0, 11, 5, 9, 10, 11, 15, 13, 19, 11}}}},
-    {"OCTAVE", 0, {{6, {0, 13, 6, 13, 6, 7, 13, 7, 13, 1, 19, 1}}}},
-    {"SHAPE", 0, {{3, {0, 13, 4, 1, 8, 13}}, {4, {11, 13, 11, 2, 18, 2, 18, 13}}}},
-    {"BLEND", 0, {{2, {0, 1, 19, 13}}, {2, {0, 13, 19, 1}}}},
-    {"FORMANT", 0, {{5, {0, 13, 4, 3, 8, 11, 13, 1, 19, 13}}}},
-    {"WIDTH", 1, {{3, {6, 2, 0, 7, 6, 12}}, {3, {13, 2, 19, 7, 13, 12}}, {2, {9, 5, 10, 9}}}},
-    {"VINTAGE", 1, {{7, {0, 7, 3, 5, 6, 9, 9, 6, 12, 10, 15, 4, 19, 7}}}},
-};
-
-const Picture* pictureFor(const char* name) {
-    for (const Picture& p : kPictures)
-        if (std::strcmp(p.name, name) == 0) return &p;
-    return nullptr;
-}
-
-} // namespace
-
 void macroBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, const char* name, const char* value,
               float part, bool cursor, bool held, float mark) {
-    const Picture* picture = pictureFor(name);
-    const SDL_Color family = !picture ? kDim : picture->family == 0 ? kTeal : picture->family == 1 ? kPurple : kText;
+    const Icon* picture = iconFor(name);
+    const SDL_Color family = !picture ? kDim : picture->family == IconFamily::Sound ? kTeal : picture->family == IconFamily::Movement ? kPurple : kText;
     const bool turned = std::fabs(part - 0.5f) > 0.005f; // away from "as the preset has it"
     const SDL_Color accent = held ? kBrass : kTeal;
     const bool tall = h >= kMacroDialTallH;
@@ -108,15 +77,7 @@ void macroBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, c
         const Font& font = fonts.fit(value, picture ? room - 29.f : room);
         font.draw(r, textX, static_cast<float>(y + h - 9) - font.capHeight(), value, valueColour);
     }
-    if (picture) {
-        const SDL_Color c = turned || cursor ? family : faded(family, 110);
-        SDL_SetRenderDrawColor(r, c.r, c.g, c.b, c.a);
-        const int px = x + w - 27, py = tall ? y + 7 : y + h - 21;
-        for (const Stroke& s : picture->strokes)
-            for (int i = 0; i + 1 < s.n; ++i)
-                for (int thick = 0; thick < 2; ++thick) // two passes: one pixel is too faint at this size
-                    SDL_RenderDrawLine(r, px + s.p[2 * i], py + s.p[2 * i + 1] + thick, px + s.p[2 * i + 2], py + s.p[2 * i + 3] + thick);
-    }
+    if (picture) drawIcon(r, *picture, x + w - 27, tall ? y + 7 : y + h - 21, turned || cursor);
     // The dial, lit from the middle in the macro's own colour (the cursor's when it has the cursor).
     drawDial(r, dial.cx, dial.cy, dial.radius, dial.ring, part, 0, 0, cursor ? accent : (picture ? family : kText), mark, true);
     if (cursor) outline(r, x - 1, y - 1, w + 2, h + 2, accent, 2);
@@ -457,10 +418,12 @@ void hintsUnder(SDL_Renderer* r, const Fonts& chosen, const char* dice, const Hi
 }
 
 void valueBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, const char* name, const char* value,
-              float part, bool cursor, bool held, bool centre) {
+              float part, bool cursor, bool held, bool centre, const Icon* icon) {
     box(r, x, y, w, h, kPanel, kLine);
     const SDL_Color accent = held ? kBrass : kTeal;
-    fonts.within(&Fonts::small, name, w - 14.f).draw(r, x + 7.f, y + 7.f, name, kDim);
+    // (With an icon, the name has the top row less the icon's 27 pixels at its right.)
+    fonts.within(&Fonts::small, name, icon ? w - 14.f - 27.f : w - 14.f).draw(r, x + 7.f, y + 7.f, name, kDim);
+    if (icon) drawIcon(r, *icon, x + w - 27, y + 7, cursor);
     fonts.within(&Fonts::large, value, w - 14.f).draw(r, x + 7.f, y + 7.f + fonts.small.capHeight() + 8.f + boxValueDrop(h), value, cursor ? accent : kText);
     if (part >= 0.f) {
         const int bx = x + 7, bw = w - 14, by = y + h - 10;
@@ -489,7 +452,7 @@ void displayBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h,
 void scopeStrip(SDL_Renderer* r, const Fonts& fonts, const Engine& engine) {
     const int y = kScopeY, h = kScopeH;
     box(r, kScopeX, y, kScopeW, h, kPanel, kLine);
-    const char* label = "LIVE OUTPUT";
+    const char* label = "SIGNAL";
     const Font& font = fonts.within(&Fonts::small, label, kScopeLabelW - 14.f);
     font.draw(r, kScopeX + 7.f, y + (h - font.capHeight()) / 2.f, label, kDim);
     // The line, in the rest of the strip.
@@ -515,7 +478,7 @@ void scopeBox(SDL_Renderer* r, const Fonts& fonts, const Engine& engine, int x, 
     // The graticule: eight columns, four rows, the middle line stronger.
     for (int k = 1; k < 8; ++k) fill(r, x + w * k / 8, y + 2, 1, h - 4, kPanel);
     for (int k = 1; k < 4; ++k) fill(r, x + 2, y + h * k / 4, w - 4, 1, k == 2 ? kLine : kPanel);
-    const char* label = "LIVE OUTPUT";
+    const char* label = "SIGNAL";
     fonts.fixed().small.draw(r, x + 8.f, y + 7.f, label, kDim);
     float samples[kScopeSamples];
     engine.readScope(samples, kScopeSamples);

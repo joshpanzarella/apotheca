@@ -1,6 +1,7 @@
 #include "fx_screen.hpp"
 
 #include "fx_picture.hpp"
+#include "icons.hpp"
 
 #include "mods.hpp"
 
@@ -963,6 +964,8 @@ void FxScreen::drawSlot(SDL_Renderer* r, const Fonts& fonts) const {
         drawDial(r, cx, kDialCY, kDialR, kDialRing, shown[p], choices, whichChoice(shown[p], choices), cursor ? accent : kText, mark);
         effectParamText(kind, p, shown[p], text, sizeof text, shown);
         fonts.fit(text, static_cast<float>(kValueRoom)).drawCentered(r, static_cast<float>(cx), static_cast<float>(kDialValueY), text, cursor ? accent : kText);
+        // Its icon (every setting has one: icons.hpp), under the value.
+        if (const Icon* icon = iconFor(named)) drawIcon(r, *icon, cx - kIconW / 2, kDialIconY, cursor || automated || std::fabs(shown[p] - effectDefault(kind, p, bus >= 0)) > 0.005f);
         if (p == effectMeterParam(kind)) {
             // What the effect is doing to the sound just now (COMP: how far it is turning it down): a strip growing
             // from the right, as a meter of this kind does; the picture has it as cells.
