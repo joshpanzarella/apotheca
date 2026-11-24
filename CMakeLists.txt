@@ -239,13 +239,15 @@ if(APOTHECA_BUILD_APP)
     add_test(NAME speed COMMAND speed_test)
     set_tests_properties(speed PROPERTIES TIMEOUT 120)
     # The screen drawn only when it can have changed (app/redraw.hpp): a long session, every pass held
-    # to the picture, and each reason taken away in turn, a third of them in each of idle1 to idle3.
+    # to the picture, and each reason taken away in turn, a fifth of them in each of idle1 to idle5.
     add_executable(idle_test tests/idle_test.cpp)
     target_link_libraries(idle_test PRIVATE apotheca_app)
     add_test(NAME idle1 COMMAND idle_test --part 1)
     add_test(NAME idle2 COMMAND idle_test --part 2)
     add_test(NAME idle3 COMMAND idle_test --part 3)
-    set_tests_properties(idle1 idle2 idle3 PROPERTIES TIMEOUT 120)
+    add_test(NAME idle4 COMMAND idle_test --part 4)
+    add_test(NAME idle5 COMMAND idle_test --part 5)
+    set_tests_properties(idle1 idle2 idle3 idle4 idle5 PROPERTIES TIMEOUT 120)
     target_compile_definitions(chord_test PRIVATE APOTHECA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     # TEXT SIZE: the setting and its row; and every still the program knows, drawn by the program at all four sizes.
     add_executable(textsize_test tests/textsize_test.cpp)
