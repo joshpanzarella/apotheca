@@ -1,0 +1,92 @@
+# Measured
+
+Every timing taken, desk machine (the handheld is 13 to 20 times slower).
+Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lines); CLAUDE.md is the index.
+
+## Measured (desk machine; the handheld is roughly a fifth as fast)
+
+| Thing | Cost |
+| --- | --- |
+| Phazed, 8 notes | 0.9% of a core |
+| PHYSIC, 8 notes struck again every half second, none asleep (2026-11-15, `bench` in a container whose Phazed row read 0.7%): MARIMBA / STEEL (a string) / the worst (CHURCH BELL, DICE 100, every note gliding) / asleep. **Not yet run on the handheld** (x 13 to 17: physic-plan.md, section 14) | 0.21% / 0.23 to 0.37% / 0.40 to 0.59% / 0.01% |
+| PHYSIC with batch 10 (2026-11-16, `physic_test --measure`, the same container): Twelve (PAIR: two strings a note) / every BODY page setting on, not gliding (BELL, DRUM, STRING, MARIMBA) / the same, every note gliding (BELL, STRING) / NOISE 2 s bursts on GLASS, STRING. **Not yet run on the handheld** | 0.44% / 0.43 to 0.57% / 0.73 to 0.77% / 0.48%, 0.64% |
+| ACID, one voice playing a busy 16-step line at 130 BPM (accents, slides, RESONANCE 85, ENV MOD 70: its cutoff moving all the while; batch 1, 2026-11-16): `acid_test --measure cost` / `bench`'s row / with the cutoff still / asleep. The plan's target was 0.15%. **Not yet run on the handheld** | 0.13% / 0.14% / 0.10% / 0.00% |
+| MORPH (2026-11-17, `morph_test --measure cost`, each the best of 15 runs of 2 s): 6 keys, A and B, SUB, LOW 12, MOD ENV on POSITION / 6 keys, A alone / the pool full (UNISON 2, A and B, LOW 24) / UNISON 4 (3 keys) / asleep. 53 M / 87 M instructions a second for the first and the pool full. Its presets while they play (`presets_test --measure-morph`): 0.14% (a bass) to 1.0% (Harmonic Bloom, with BLOOM). **Not yet run on the handheld** | 0.45% / 0.30% / 0.62 to 0.66% / 0.41 to 0.43% / 0.00% |
+| CLOUD (batch 1, 2026-11-16, a busy desk: load 5 to 7; in the same `bench` run PHYSIC 8 notes 0.31%, ACID 0.21%, JAX-EP 6 notes 0.64%, a third over their usual): one key of preset 0 (two grains) / a 4-key chord / the pool full (six keys at 200 grains a second, SIZE 0.35 s, PITCH SPRAY on: 24 grains, all Hermite). The plan's targets 0.08% / 0.5% (ceiling 0.7%). `cloud_test --measure cost` / `bench`. **Not yet run on the handheld** | 0.05 to 0.07% / 0.19 to 0.24% / 0.53 to 0.55%; `bench` 0.06% / - / 0.65% |
+| ...`bench`'s rows after batch 10 (one run, its Phazed row 1.0%): Marimba / Twelve / breathed (Wine Glass, NOISE) / the worst (Church Bell, DICE 100, gliding, PAIR, GUITAR, MOTOR, BUZZ) / asleep | 0.21% / 0.44% / 0.48% / 0.66% / 0.01% |
+| FM-6, 8 notes of E.PIANO 1 / 16 of STRINGS 1, keys again every half second (2026-11-15, `bench`; the plan's three runs 0.49 to 0.63% / 1.02 to 1.30%). QMOD's 8 were 2.6 to 3.4%. **Not yet run on the handheld** (estimated 6 to 10% of a core there for 8, QMOD's measured 57%: fm6-plan.md, section 6) | 0.67% / 1.22% |
+| The busiest song with FM-6 where QMOD was (2026-11-15, one run): the audio thread alone / 2 helpers. **Not yet run on the handheld** | 16.9% / 13.1% of a block, worst 3.0 / 4.4 ms of 5.33, 0 of 1875 late |
+| FM-6, a macro changed, a call; 24 MODs on its macros run, twelve silent tracks (the same run: Phazed +0.18%, JAX-EP +0.14%) | 0.035 us; +0.14% of a core |
+| JAX-EP with its presets (batch 7): 6 notes of A1 String I / the worst of the 32, B15 Planet, keys again every half second / moving cutoff (2026-11-14, three runs: Phazed 0.7%, QMOD 2.8 to 2.9% in them). Each of the 32 that way: 0.47% (B3 Oboe) to 1.07%. **Not yet run on the handheld** | 0.55 to 0.56% / 1.03 to 1.06% / 1.78 to 1.83% |
+| JAX-EP, the same three rows with Twin Analog's code out (batch 8b, 2026-11-15, three runs; the engine's sound not touched: `effects_test --print` the same before and after; Phazed 0.7 to 1.2%, QMOD 2.8 to 3.9% in them). How it got there, batch by batch (0.08% for the bare skeleton), is in `docs/plans/jx3p-plan.md` | 0.55 to 0.67% / 1.04 to 1.26% / 1.78 to 1.79% |
+| JAX-EP after the cutoff's range and the VCA's 0 dB moved (2026-11-15), `bench`'s three rows, the four quieter of seven runs on a busy desk (Phazed 0.7 to 1.1% in them). The 32 one by one were not timed again. **Not yet run on the handheld** | 0.55 to 0.56% / 1.03 to 1.14% / 1.77 to 1.86% |
+| JAX-EP with the VCA straight and its clip counted (2026-11-15, `bench`'s three rows, the two quieter of five runs on a desk shared with another build; Phazed 1.0 to 1.2% in them). **Not yet run on the handheld** | 0.56% / 1.05 to 1.11% / 1.79 to 1.81% |
+| JAX-EP after the resonance was mended (2026-11-16; the read-ahead and the low end given back), `bench`'s three rows timed in turns against the build before, each the best of 60 half seconds, on a busy desk: before 0.51 to 0.54% / 0.98 to 1.02% / 1.72 to 1.78%. **Over on resonant patches (+15%, +13%), under at RESONANCE 0 (-7%)**. Not run on the handheld | 0.49 to 0.50% / 1.14 to 1.19% / 1.92 to 2.01% |
+| Drums, 8 lanes | 0.1% |
+| DRUM SYNTH, all 85 named voices made one after another (2026-11-17, `bench`): the whole / each / the slowest (RIDE) | 68 ms / 0.8 ms / 4.4 ms; 11 on the helper thread |
+| DRUM SYNTH, a voice made on the app's thread when a knob turns (2026-11-17, `bench`; nothing while playing): KICK as it starts / OP HAT / CYMBAL at 6 s (the helper thread); 8 to 20 ns a sample. **Not yet run on the handheld** (x13 to 17: 5 to 10 ms, the longest 60 to 80) | 0.38 / 0.57 / 4.7 ms |
+| FILTER / DRIVE / DELAY / REVERB / CRUSH, one each | 0.03% / 0.12% / 0.02% / 0.07% / 0.01% |
+| TAPE / HALL / HALL with TONE above 50% (a later, slower run: REVERB read 0.09% in it) | 0.13% / 0.18% / 0.21% |
+| Feeding both send buses from 12 tracks | 0.03% |
+| ...and a DELAY and a REVERB on them | 0.12% |
+| ...or TAPE and HALL, what a new song has (2026-11-12, a slower run: DRIVE 0.18%, DELAY and REVERB on the buses 0.09 to 0.18%) | 0.41 to 0.50% |
+| Every hit of twelve busy drum tracks thrown to both buses, nothing on them (2026-11-12; the tracks themselves 1.45%, as before THROW) | 1.2% |
+| CHORUS / COMP / SATURATE, one each (2026-11-12, a run where DRIVE read 0.16%) | 0.18% / 0.11% / 0.18% (0.15% before its plain sound was made late to match) |
+| DUCK, dipping eight times a second (2026-11-12, a run where DRIVE read 0.12%) | 0.02% |
+| SPRING (2026-11-13, four runs on a shared desk: HALL 0.15 to 0.17%, TAPE 0.10 to 0.14%, DRIVE 0.12 to 0.21% in them). Its springs run at a fifth of the sample rate | 0.13% (0.16% in one run) |
+| TAPE with its way down, the same run (0.10% just before it) | 0.11% |
+| PING (2026-11-13, four runs alike; in them DELAY 0.02%, TAPE 0.09 to 0.10%, HALL 0.15%, DRIVE 0.12 to 0.14%) | 0.02% |
+| PLATE (2026-11-13, six runs: HALL 0.15 to 0.16%, TAPE 0.09 to 0.10% in the same) | 0.14 to 0.15% |
+| COMB / VOWEL / EQ (2026-11-14, four runs: DRIVE 0.12%, HALL 0.15%, FILTER 0.03% in all) | 0.04% / 0.08% / 0.07% (one run 0.07 / 0.11 / 0.09) |
+| ...each with a setting turned all the while (PITCH, VOWEL, MID FREQ: worked out again every 16 samples) | 0.08 to 0.10% / 0.13% / 0.10% |
+| FOLD / FUZZ / RING (2026-11-14, four runs: DRIVE 0.12%, SATURATE 0.14 to 0.15%, HALL 0.15% in all; FOLD was 0.30% before its triangle lost its branches; 0.58% since it runs at four times the rate, two runs, DRIVE 0.12%) | 0.58% / 0.16 to 0.18% / 0.03 to 0.04% |
+| ...FOLD's DRIVE, FUZZ's TONE and RING's FREQ turned all the while (FUZZ's TONE was 0.61% before its making up was summed once); RING with a SQUARE | 0.66 to 0.67% (0.32 at twice the rate) / 0.20 to 0.22% / 0.04% (0.06% in one run); 0.04% |
+| WEAR / LIMITER / SNAP (2026-11-14, ten runs on two desks: DRIVE 0.12 to 0.13%, HALL 0.15%, COMP 0.09 to 0.13% in all) | 0.15 to 0.16% (0.40% before its loop worked on locals) / 0.05% (0.09% in one run) / 0.08% |
+| ...WEAR at DIRT 100%, or its WOW turned all the while (0.23% in one run); LIMITER at +20 dB (turning down all the while); SNAP's ATTACK turned all the while | 0.15% / 0.12 to 0.13% / 0.08% |
+| FLANGER / ENSEMBLE / PHASER / TREMOLO (2026-11-14, four runs: DRIVE 0.12%, HALL 0.15%, CHORUS 0.15% in all) | 0.07% / 0.16 to 0.17% / 0.09 to 0.11% / 0.07% (0.11% in one run) |
+| ...FLANGER's, ENSEMBLE's and PHASER's DEPTH turned all the while; TREMOLO at RANDOM | 0.07% / 0.16 to 0.17% / 0.09 to 0.11%; 0.06% |
+| DUB / REVERSE / STUTTER (2026-11-14, three runs: DRIVE 0.12%, TAPE 0.10%, PING 0.02%, HALL 0.15 to 0.21% in all) | 0.05% / 0.03% / 0.03 to 0.04% |
+| ...DUB howling (FEEDBACK 150%) or its TONE turned all the while; REVERSE at FEEDBACK 100%; STUTTER at CHANCE 100% | 0.05 to 0.07% / 0.03% / 0.04% |
+| BLOOM / SHIMMER (2026-11-14, three runs: DRIVE 0.12%, HALL 0.15%, PLATE 0.14 to 0.15% in all; on locals, the sway's weights once a tick: they were 0.74% / 0.56%) | 0.55 to 0.56% / 0.35% |
+| ...BLOOM turned all the while; SHIMMER at 0, or its DECAY turned all the while | 0.66 to 0.67%; 0.34 to 0.35% / 0.39 to 0.40% |
+| ...TAPE and PLATE on the buses of twelve busy drum tracks (TAPE and HALL 0.28 to 0.39% in the same runs) | 0.28 to 0.42% |
+| Everything at once on twelve busy drum tracks: every hit thrown to both buses, sends up, TAPE and HALL on them, a DUCK on each track (2026-11-12; the tracks themselves 1.44%, DRIVE 0.12%) | 1.70% |
+| FEEL on every lane of twelve busy drum tracks, HUMAN TIME and HUMAN LEVEL at 100% (2026-11-15, three runs: the tracks themselves 1.47 to 1.48%, DRIVE 0.12%; the same plain song measured again read -0.03 to +0.04) | 0.10 to 0.11% more; HUMAN TIME alone 0.08 to 0.11; HUMAN LEVEL alone nothing that shows |
+| The step clock alone, eleven silent synth tracks, four plain chords of four keys a bar on each (2026-11-12; 0.68% before chord effects: the cost is looking through each track's waiting notes every chunk) | 0.69 to 0.72% |
+| ...every chord WIDE STRUM, RANDOM, the three human amounts at 100%, x4 | 1.22% |
+| ...every chord an arpeggio at 1/4 step, RANDOM, human at 100% | 1.14% |
+| ...plain chords, two gliding notes after each, the tracks' GLIDE FROM at TOP / PAIRED / NEAREST / RANDOM (2026-11-13, three runs; plain chords alone 0.71 to 0.75% in them, 0.71 to 0.76% just before GLIDE FROM) | 0.71 to 0.72% each: the choice costs nothing that shows |
+| The busiest song (`bench_run.cpp`, `busiestSong`: 12 tracks, chords, throws, three effects a track, buses) in real time, 256-frame blocks: the audio thread alone / with 2 helpers (2026-11-14; SPEED TEST shows both, so the handheld can say whether the helpers carry it; **not yet run on the handheld**) | 19.9% / 13.5% of a block, worst block 2.98 / 2.75 ms of 5.33 |
+| ...the same song with its two Twin Analog tracks (x2) now two JAX-EP tracks on A1 (2026-11-15, three runs after; one run before on the same desk that day read 23.0% / 13.8%). The figures above are the old song's. **Not yet run on the handheld** | 19.6 to 21.1% / 11.6 to 14.2% of a block, worst block 2.92 to 5.95 / 3.96 to 6.08 ms of 5.33 (a shared desk: 0 to 2 blocks of 1875 late) |
+| A macro changed, the synth alone, 8 notes held, a call (MOD batch 0, 2026-11-14; Phazed 8 notes 0.7%, QMOD 2.8%, DRIVE 0.12% in the same run): Phazed / QMOD / Twin Analog (gone since; `bench` now has JAX-EP's row in its place, not yet recorded here). The same value: 0.002 us each | 0.36 / 0.95 / 0.05 us: 24 MODs on QMOD macros 0.21% of a core at a 512-sample tick, 1.71% at 64 |
+| MODs worked out, twelve silent drum tracks, on the sends (MOD batch 1, 2026-11-14, two runs; Phazed 0.7%, QMOD 2.8%, DRIVE 0.12% in them): 1 MOD / 24 MODs, over none. **Since 2026-11-15 the three engines are timed in turns** (`modsAlone`, 40 rounds, each its best): one after another, one run read 24 MODs -0.04% and the next +0.10%. Six runs that way, load 1.5 to 3.4: +0.028 to +0.046% / +0.084 to +0.122% | +0.028% / +0.096% (over the plan's 0.02% / 0.03%: for its cost batch) |
+| 24 MODs on macros RUN through the engine, twelve silent tracks of the synth, a SINE and a STEPPER each (2026-11-14, two runs, a build beside them): QMOD / Phazed, over none | +0.26 to +0.27% / +0.15 and +0.36% (twelve silent Phazed tracks are 2.3 to 2.4% by themselves: noisy) |
+| ...the same, the two engines timed in turns (2026-11-15, three runs, load 2.3 to 3.4; one after another a Phazed run had read -0.06%): QMOD / Phazed / JAX-EP | +0.26 to +0.27% / +0.14 to +0.21% / +0.13 to +0.14% (+0.04% in one run) |
+| JAX-EP, a macro changed, a call (2026-11-15, five runs of six; no early return on the same value) | 0.12 us (0.20 in one run): 24 MODs 0.03% of a core at 512 samples, 0.22% at 64 |
+| Chunks a second, the busiest song: no MOD / a MOD on (one or 24) | 1030 / 1285. The song's own time with them is within the desk's noise (21.7 / 24.3 / 22.5% alone in the quieter run) |
+| The busiest song with 24 MODs (MOD batch 9, 2026-11-15; `busiestMods`: two a track on macros, effect settings, the ECHO send, LEVEL and PAN, every MOD 1's DEPTH lane written; SPEED TEST runs it ten seconds, as the song without), real time, the audio thread alone / 2 helpers, six runs on a quiet desk (load 0.6 to 2.3). In the same runs the song with no MOD: 18.3 to 22.2% / 12.3 to 17.2%; with 1 MOD: 18.1 to 22.1% / 13.1 to 16.9%. **Not yet run on the handheld** | 19.0 to 26.1% / 14.3 to 16.6% of a block, worst block 3.2 to 9.4 / 3.9 to 10.4 ms of 5.33 (one run 60 ms: the machine; 0 to 2 blocks of 1875 late, as with no MOD). **Within the desk's noise of the song without**: the rows cannot tell the MODs' cost apart |
+| ...chunks a second: no MOD / 1 MOD / 24 MODs | 1030 / 1285 / 1287 |
+| MODs worked out, twelve silent drum tracks (the same six runs, the engines timed in turns): 1 MOD / 24 on the sends / **24 on LEVEL and PAN** (batch 8's moving level and pan loop), over none (0.171 to 0.174%) | +0.030 to +0.033% / +0.093 to +0.098% / +0.123 to +0.126% |
+| ...a macro changed, a call: Phazed / QMOD / JAX-EP (the same runs) | 0.36 / 0.92 / 0.11 us; 24 MODs on QMOD's macros run: +0.27% of a core |
+| 24 LFOs FREE against the same 24 in time, twelve silent drum tracks, on the sends (2026-11-16, three `bench` runs, the six engines timed in turns, load 5 to 12; the 24 in time +0.074 to +0.090% over none) | -0.002 to -0.005%: nothing that shows |
+| One idle frame | 0.03 ms |
+| A frame that ends an edit (undo snapshot) | 0.32 to 0.37 ms (speed batch 4, 2026-11-17, `bench --app`; 0.57 to 0.59 before, 12.3 on the handheld). **Handheld: about 7 ms, an estimate** |
+| Undo plus redo (bench: twelve tracks, an edit to one) | **0.63 to 0.67 ms** (speed batch 4; 20.9 to 21.7 before it on the same desk, the handheld's SPEED TEST 200). **Handheld: about 6 to 10 ms, an estimate** |
+| 64 scenes, a scene's patterns made when written (scenes-plan.md, 2026-11-17, `bench --app`, two runs): a frame that ends an edit / undo plus redo / a knob and a hit undone / a track sent whole / NEXT SCENE and its undo / the whole program in memory. With 16 in fixed arrays just before: 0.38 to 0.40 / 0.69 / 1.29 / 0.72 to 0.92 / 5.7 to 6.7 ms / 76 MB; 64 in fixed arrays would have been 1.26 / 2.3 / 4.1 / 2.7 / 18.6 ms / 246 MB. **Not run on the handheld** | 0.28 to 0.29 / 0.53 to 0.56 / 1.04 to 1.08 / 0.46 / 3.6 ms / 40 MB |
+| ...a knob and a hit on two tracks, undone and redone | 1.1 to 1.3 ms (10 to 11 before batch 4; 213 on the handheld). Handheld estimate 12 to 20 ms |
+| The bench's song (33 KB) as text / read back into a song | 0.68 to 0.76 ms / 0.77 to 0.84 ms (1.61 to 1.75 / 3.88 to 3.95 before batch 4; 17.5 / 47 on the handheld). Handheld estimate about 8 / 10 ms |
+| The busiest song shared out other ways (speed plan batch 0, 2026-11-15, one run, load 6): 2 helpers / 3 / 2 heaviest first / 3 heaviest first. **The desk cannot tell; the device's SPEED TEST decides** | 12.0 / 13.3 / 11.4 / 11.1% of a block |
+| A screen pass while the song plays, SDL's software renderer (batch 0): SONG / drum grid | update 0.06 / 0.05 ms, drawing 1.7 / 1.6 ms |
+| Instructions in one second of sound (callgrind, clang -O2 -g, `bench --profile`; speed plan section 8): busiest / twelve silent Phazed / eleven silent samplers, chords / twelve drum tracks / thrown, before batch 1. The busiest song then had two QMOD tracks where FM-6 is now | 2,070 / 351 / 67.5 / 214 / 435 M |
+| ...after batch 1 (the step clock walks only what waits, Phazed rests, its tables shared) | 2,023 / 39.0 / 22.1 / 212 / 432 M; the busiest song's L2 read misses (a 256 KB model) 5.61 to 3.60 M |
+| Twelve silent tracks after batch 1 (one run, load 6): Phazed / QMOD / JAX-EP; eleven silent samplers with plain chords | 0.32 / 0.15 / 0.15%; 0.15% (were 2.38 / 0.70 / 0.71%; 0.72%) |
+| ...after batch 2 (the drum voice loop in runs): instructions, twelve drum tracks / thrown / busiest; timed (load 7 to 9), twelve drum tracks / every hit thrown, added / the busiest song alone, 2 helpers | 53 / 143 / 1,877 M (were 212 / 432 / 2,023); 0.43% / +0.31% (were 1.47% / +1.18%); 15.5 / 10.8% of a block |
+| The busiest song with FM-6 (main 0.565) without / with speed batches 0 to 2; twelve silent FM-6 tracks (instructions, a second of sound) | 1,617 / 1,424 M; 69.1 / 22.6 M |
+
+**No synth is far costlier than another now**: Twin Analog (4.7% and up) went in batch 8b,
+QMOD (2.6 to 3.4%; 57% of a handheld core) on 2026-11-15, for FM-6. **No synth has a quality setting and nothing watches the load**:
+`Instrument::setQualityLimit`, `Engine::watchLoad` / `qualityLimit` / `load`
+/ `noteLoad`, `Project::busy` and the top bar's BUSY: OVERSAMPLING DOWN went
+with Twin, their only user. A song too heavy for the handheld stutters; SPEED
+TEST's busiest song is how to see how near one is. If a synth ever needs the
+watch again, it is in git (the commit before batch 8b).

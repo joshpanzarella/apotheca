@@ -174,7 +174,7 @@ if(APOTHECA_BUILD_APP)
   find_package(Threads REQUIRED)
   # Everything of the app but main(): compiled ONCE, and linked by the program and by every test
   # of it. (It used to be compiled again for each of the nine tests: ten times in all.)
-  add_library(apotheca_app STATIC app/app.cpp app/lane_edit.cpp app/bench_run.cpp app/chords.cpp app/controls.cpp app/sampler_screen.cpp app/settings_screen.cpp app/samples.cpp app/stretch.cpp app/stretch_smooth.cpp app/fx_screen.cpp app/fx_picture.cpp app/input.cpp app/kit_screen.cpp app/note_screen.cpp app/pattern_screen.cpp app/pattern_slices.cpp
+  add_library(apotheca_app STATIC app/app.cpp app/lane_edit.cpp app/bench_run.cpp app/chords.cpp app/controls.cpp app/sampler_screen.cpp app/settings_screen.cpp app/samples.cpp app/stretch.cpp app/stretch_smooth.cpp app/fx_screen.cpp app/fx_picture.cpp app/icons.cpp app/input.cpp app/kit_screen.cpp app/note_screen.cpp app/pattern_screen.cpp app/pattern_slices.cpp
       app/instruments.cpp app/synth_screen.cpp app/mod_knob.cpp app/mod_screen.cpp app/recorder.cpp app/session.cpp app/session_songs.cpp app/session_synth.cpp app/session_samples.cpp app/kits.cpp app/sampler_presets.cpp app/song_file.cpp app/song_screen.cpp app/synth_spec.cpp app/presets.cpp app/drum_voices.cpp app/transfer.cpp app/wifi.cpp app/midi.cpp app/bounce.cpp app/sample_picker.cpp app/designer.cpp app/design_page.cpp
       app/text.cpp app/ui.cpp app/realtime.cpp app/redraw.cpp app/lights.cpp
       app/version.cpp)
@@ -273,6 +273,8 @@ if(APOTHECA_BUILD_APP)
     # The demo render is run and read (nothing else in ctest runs tools/render_demo.cpp).
     add_test(NAME demo COMMAND render_demo ${CMAKE_BINARY_DIR}/demo_test.wav)
     set_tests_properties(demo PROPERTIES PASS_REGULAR_EXPRESSION "bass: Phazed, [^\n]+\nchords: JAX-EP, String I\n20\\.7 seconds, peak 0\\.[5-9]")
-    set_tests_properties(launcher words demo PROPERTIES TIMEOUT 120)
+    # The handheld build and CMake build the same sources (MORPH's tables once did not link on the handheld).
+    add_test(NAME build_sources COMMAND sh ${CMAKE_SOURCE_DIR}/tests/build_sources_test.sh ${CMAKE_SOURCE_DIR})
+    set_tests_properties(launcher words demo build_sources PROPERTIES TIMEOUT 120)
   endif()
 endif()

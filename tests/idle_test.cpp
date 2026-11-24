@@ -335,7 +335,7 @@ void theSession(Rig& rig, const std::string& samples) {
     rig.part = "a song that stops at its end by itself";
     rig.byHand([&] {
         rig.project().songEnd = kSongStop;
-        s.addTrack(TrackKind::Drums); // the track worked on is silent: nothing on LIVE OUTPUT when it stops
+        s.addTrack(TrackKind::Drums); // the track worked on is silent: nothing on SIGNAL when it stops
         rig.project().track = 1;
     });
     rig.press(L2), rig.press(L2), rig.press(L2); // SONG: START there plays the song, not the scene alone
@@ -464,7 +464,7 @@ void theSession(Rig& rig, const std::string& samples) {
     rig.run(3000);
 
     // CLOUD (granular-plan.md): MAIN's picture has a tick at each grain sounding, which move by
-    // themselves while a key sounds and go when it ends. At LEVEL 0 nothing is heard, so LIVE OUTPUT
+    // themselves while a key sounds and go when it ends. At LEVEL 0 nothing is heard, so SIGNAL
     // stands still and only the grains (the readout) say the picture moved.
     rig.part = "a CLOUD's grains on MAIN's picture, at LEVEL 0";
     rig.byHand([&] {
@@ -499,7 +499,7 @@ void theSession(Rig& rig, const std::string& samples) {
     rig.press(X);
     rig.run(3000);
 
-    // MOD (mod_knob.hpp): X held on a knob shows its fields in LIVE OUTPUT's place (DEVICE) or the
+    // MOD (mod_knob.hpp): X held on a knob shows its fields in SIGNAL's place (DEVICE) or the
     // heading's (FX), and while stopped the MOD runs, so NOW moves by itself; let go, they go.
     rig.part = "X held on a macro: its MOD made and heard while stopped, then let go";
     rig.byHand([&] { rig.app->phazed().goTo(0, SynthScreen::kFirstMacro); });
@@ -722,7 +722,7 @@ int main(int argc, char** argv) {
         char name[32];
         std::snprintf(name, sizeof name, "/row%02d.wav", i);
         std::vector<float> wave = tone(0.1f, 0.25f);
-        wave.resize(wave.size() + 24000, 0.f); // and half a second of nothing: the line runs on where LIVE OUTPUT is still
+        wave.resize(wave.size() + 24000, 0.f); // and half a second of nothing: the line runs on where SIGNAL is still
         writeWav(samples + name, wave, 48000);
     }
 

@@ -139,9 +139,12 @@ void SamplerScreen::press(Button b) {
         stepPreset(by);
         return;
     }
-    const int id = settingAt(stop_ - 1);
-    if (stop_ == 0) stepSound(by);
-    else setSetting(id, trk().sampler[id] + (id == sampler::Root ? -by : by)); // PITCH up is the root key down
+    if (stop_ == 0) {
+        stepSound(by);
+        return;
+    }
+    const int id = settingAt(stop_ - 1); // (only past the sound's stop: settingAt(-1) read before the list's start)
+    setSetting(id, trk().sampler[id] + (id == sampler::Root ? -by : by)); // PITCH up is the root key down
 }
 
 void SamplerScreen::stepPreset(int by) {

@@ -11,6 +11,7 @@
 #include "text.hpp"
 
 namespace apotheca {
+struct Icon; // icons.hpp
 
 // The size of the lettering is a setting (SET page, TEXT SIZE; owner, 2026-11-12): from where
 // it started to a little bigger than the screens were laid out for. The numbers are kept in
@@ -241,22 +242,35 @@ constexpr float boxValueDrop(int h) { return h > kBoxUsualH ? static_cast<float>
 // A named value in a box. `part` 0..1 draws a bar; below 0 draws none.
 // `centre` draws the bar outward from the middle (for values that go both ways).
 void valueBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, const char* name, const char* value,
-              float part, bool cursor, bool held, bool centre = false);
+              float part, bool cursor, bool held, bool centre = false, const apotheca::Icon* icon = nullptr);
 
 // A macro: its name, a small picture of what it does in the top right, its
 // value, and a bar that grows from the middle. Dim until it is turned away
 // from the middle, so the ones in use stand out.
+// A value in a display window (DEVICE MAIN's FOLDER and PRESET, design A): valueBox's words in the same places, on
+// the background with faint scan lines, as a synth's patch screen.
+void displayBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, const char* name, const char* value, bool cursor, bool held);
 void macroBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, const char* name, const char* value,
-              float part, bool cursor, bool held);
-// Where a macro box's bar is: kMacroBarInset in from each side, its top kMacroBarFromFoot above the
-// box's foot, kMacroBarH tall (the brass mark of a MOD stands on it: mod_knob.hpp).
+              float part, bool cursor, bool held, float mark = std::nanf(""));
+// A macro is a DIAL turned from the middle (owner, 2026-11-24, design A): lit from the top (the preset as it was
+// made) to its value either way, a dim detent over the top, its name and picture at the top, its value under the
+// dial; a MOD's brass tick across the ring (`mark`). A box shorter than kMacroDialTallH (a picture above the
+// macros: CLOUD, MORPH) puts a smaller dial at its left and the words beside it. Where the dial is:
+constexpr int kMacroDialTallH = 100;
+struct MacroDial {
+    int cx, cy, radius, ring;
+};
+inline MacroDial macroDialIn(int x, int y, int w, int h) {
+    if (h >= kMacroDialTallH) return {x + w / 2, y + 26 + (h - 26 - 30) / 2, 24, 6};
+    return {x + 30, y + h / 2 + 1, 19, 5};
+}
 constexpr int kMacroBarInset = 7, kMacroBarFromFoot = 11, kMacroBarH = 5;
 
 // How far through a scene the song is: one block per time the scene plays.
 // `play` is the pass it is on (from 0) and `step` the step within it.
 void sceneProgress(SDL_Renderer* r, int x, int y, int w, int h, int plays, int play, int step, int steps = kSteps); // `steps` in one pass
 
-// LIVE OUTPUT: the track's latest output as a line, in a thin strip across the whole width of a
+// SIGNAL: the track's latest output as a line, in a thin strip across the whole width of a
 // DEVICE page, just above the hints bar (owner, 2026-11-14: the half-width box in the bottom right
 // was too big and left room unused). Its label is inside it at the left; the line runs in the rest.
 // Every DEVICE page that shows it (the synths' MAIN and settings pages, the sampler, the kit) ends
@@ -269,6 +283,12 @@ constexpr int kScopeY = kScreenH - kHintsH - 4 - kScopeH; // 416: 4 pixels clear
 constexpr int kScopeLabelW = 120;                         // the label's room, inside the strip at its left
 constexpr int kAboveScope = kScopeY - 10;                 // 406: where the controls above it end
 void scopeStrip(SDL_Renderer* r, const Fonts& fonts, const Engine& engine);
+// SIGNAL as a large scope (DEVICE MAIN, owner 2026-11-24, design A): a dark screen with a graticule, the line
+// as the strip's (bent, the same samples) through its middle, full scale kScopeBoxInset inside its edges, its
+// label at the top left.
+constexpr int kScopeBoxInset = 10;
+void scopeBox(SDL_Renderer* r, const Fonts& fonts, const Engine& engine, int x, int y, int w, int h);
+int scopeBoxLineY(float sample, int y, int h);
 // Where the line is drawn for a sample (already turned up and held to -1..1): the strip's middle,
 // and full scale 4 pixels inside its top and bottom edges, never on them.
 constexpr int kScopeMiddle = kScopeY + kScopeH / 2;

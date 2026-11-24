@@ -100,7 +100,7 @@ public:
     const std::string& said() const { return said_; }
     const ui::Playhead& playhead() const { return head_; }
     enum { kSound, kFit, kChoke, kEdit, kColumns }; // (kEdit: the sound's picture)
-    // The lanes' rows, from under the column heads down to the LIVE OUTPUT strip (ui::kAboveScope).
+    // The lanes' rows, from under the column heads down to the SIGNAL strip (ui::kAboveScope).
     static constexpr int kLaneTop = 50, kLaneGap = 4;
     static constexpr int kLaneRowH = (ui::kAboveScope + kLaneGap - kLaneTop) / kDrumLanes;
     // The columns at the right of SOUND: FIT TO, CHOKE, the recording's picture (to the screen's edge, 8 in).
@@ -109,7 +109,7 @@ public:
     const SamplePicker& picker() const { return picker_; }
 
     // The EDIT view. Laid out as the sampler's page: the sound's box at the top (its picture as tall
-    // as the box allows), then two rows of four boxes down to the LIVE OUTPUT strip.
+    // as the box allows), then two rows of four boxes down to the SIGNAL strip.
     bool editing() const { return editing_; }
     void openEdit(int row = 0) { session_.readyLane(project_.track, lane_); editing_ = true; editRow_ = row < 0 ? 0 : (row >= kEditRows ? kEditRows - 1 : row); }
     int editRow() const { return editRow_; }

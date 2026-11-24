@@ -66,7 +66,9 @@ mkdir -p "$pack/apotheca"
 version="0.$(( $(git -C "$here" rev-list --count HEAD 2>/dev/null || echo 0) + 1 ))"
 built=$(date +%Y-%m-%d)
 echo "building $version..."
-flags="--target=aarch64-linux-gnu --sysroot=$sysroot -O2 -mcpu=cortex-a53"
+# -O3, as the desk builds: the same sound to the bit (no fast maths), and PLATE and HALL 17 to 20% cheaper measured
+# on the desk (2026-11-24; the handheld's SPEED TEST is the judge).
+flags="--target=aarch64-linux-gnu --sysroot=$sysroot -O3 -mcpu=cortex-a53"
 # Phazed's engine is C.
 objects=""
 mkdir -p "$out/obj"
@@ -79,12 +81,27 @@ for c in dx7note env exp2 fm_core fm_op_kernel freqlut lfo pitchenv sin; do
     clang++ $flags -std=c++17 -fwrapv -c "$here/third_party/msfa/$c.cc" -o "$out/obj/msfa_$c.o"
     objects="$objects $out/obj/msfa_$c.o"
 done
-clang++ $flags -fuse-ld=lld -std=c++17 -Wall -Wextra -Wno-unused-function \
-    -I"$here/engine/include" -I"$here/third_party" -I"$here/third_party/easycz" \
-    -I"$sysroot/usr/include/SDL2" -D_REENTRANT \
-    -DAPOTHECA_VERSION="\"$version\"" -DAPOTHECA_BUILT="\"$built\"" \
-    "$here"/engine/src/*.cpp "$here"/engine/src/*/*.cpp "$here"/app/*.cpp \
-    $objects \
+# The program's own sources, each compiled by itself and side by side (one long command took minutes on one
+# core), then linked. Every .cpp under engine/src (and a folder of it) and app/: CMakeLists.txt must list the
+# same, and tests/build_sources_test.sh fails where the two differ (MORPH's tables once did not link here).
+# (-Wno-missing-field-initializers: a note, a chord or a kit's line is written in part on purpose, the rest as made.)
+jobs=$(nproc 2>/dev/null || echo 4)
+rm -rf "$out/obj/cpp" && mkdir -p "$out/obj/cpp"
+rm -f "$out/obj/failed"
+running=0
+for f in "$here"/engine/src/*.cpp "$here"/engine/src/*/*.cpp "$here"/app/*.cpp; do
+    o="$out/obj/cpp/$(echo "${f#$here/}" | tr '/' '_').o"
+    ( clang++ $flags -std=c++17 -Wall -Wextra -Wno-unused-function -Wno-missing-field-initializers \
+        -I"$here/engine/include" -I"$here/third_party" -I"$here/third_party/easycz" \
+        -I"$sysroot/usr/include/SDL2" -D_REENTRANT \
+        -DAPOTHECA_VERSION="\"$version\"" -DAPOTHECA_BUILT="\"$built\"" \
+        -c "$f" -o "$o" || { echo "failed: $f" >&2; touch "$out/obj/failed"; } ) &
+    running=$((running + 1))
+    if [ "$running" -ge "$jobs" ]; then wait; running=0; fi
+done
+wait
+[ ! -f "$out/obj/failed" ] || { echo "the build failed" >&2; exit 1; }
+clang++ $flags -fuse-ld=lld "$out"/obj/cpp/*.o $objects \
     -o "$pack/apotheca/apotheca" \
     -lSDL2 -lpthread -lm -static-libstdc++ -static-libgcc -Wl,--allow-shlib-undefined
 
