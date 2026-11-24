@@ -477,10 +477,13 @@ void testTheSongListOnScreen() {
     }
     CHECK(rig.session().songName() == first && rig.project().trackCount() == 3);
     CHECK(rig.app.song().cursorScene() == 0 && rig.app.song().cursorColumn() == 0);
-    // While the list is open the buttons do nothing else.
+    // While the list is open the buttons do nothing else, but START: it plays and stops, as on every
+    // screen (gesture audit G39; it did nothing here).
     rig.tap(SELECT);
     rig.tap(START);
-    CHECK(!rig.project().playing);
+    CHECK(rig.project().playing && rig.app.song().listingSongs());
+    rig.tap(START);
+    CHECK(!rig.project().playing && rig.app.song().listingSongs());
     rig.tap(B);
     // Without a folder (as in the other tests) the list still offers a new song.
     Rig bare;
@@ -616,19 +619,25 @@ void testRevs() {
     CHECK(static_cast<int>(session.revs().size()) == before && rig.app.song().listingSongs());
     rig.tap(Y);
     CHECK(static_cast<int>(session.revs().size()) == before + 1 && rig.app.song().listingSongs());
+    // SELECT + Y is NEXT SCENE on every tab (gesture audit G03), but not in this list: here it is the list's Y.
+    const int scenes = rig.project().sceneCount();
+    rig.key(SELECT, true);
+    rig.tap(Y);
+    rig.key(SELECT, false);
+    CHECK(static_cast<int>(session.revs().size()) == before + 2 && rig.app.song().listingSongs() && rig.project().sceneCount() == scenes);
     // A on the song that is open shows its revs.
     rig.tap(DOWN);
     rig.tap(A);
     CHECK(rig.app.song().listingRevs() && rig.app.song().listCursor() == 0);
     CHECK(session.songName() == name);
     rig.tap(A); // the top row: save a rev
-    CHECK(static_cast<int>(session.revs().size()) == before + 2 && rig.app.song().listingRevs());
+    CHECK(static_cast<int>(session.revs().size()) == before + 3 && rig.app.song().listingRevs());
     rig.tap(X); // X does not
-    CHECK(static_cast<int>(session.revs().size()) == before + 2);
-    rig.tap(Y); // Y does it here as well, and the list shows the new one
     CHECK(static_cast<int>(session.revs().size()) == before + 3);
+    rig.tap(Y); // Y does it here as well, and the list shows the new one
+    CHECK(static_cast<int>(session.revs().size()) == before + 4);
     rig.tap(DOWN, 50);
-    CHECK(rig.app.song().listCursor() == before + 4); // stops at the oldest (after SAVE A REV and NEW NAME)
+    CHECK(rig.app.song().listCursor() == before + 5); // stops at the oldest (after SAVE A REV and NEW NAME)
     rig.tap(UP, 50);
     CHECK(rig.app.song().listCursor() == 0);
     // B goes back to the songs, not out.

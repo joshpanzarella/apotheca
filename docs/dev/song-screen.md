@@ -109,3 +109,36 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   42 px, their numbers held at LARGE, and DRUMS reads DRUM. Tests:
   `tests/mixer_test.cpp`; stills `song-mixer`, `song-mixer-master`, each also
   `-12`.
+- **Hold B on a track deletes the track B went down on** (gesture audit G02, 2026-11-24). It was tied to
+  nothing: the D-pad and the stick still moved the cursor, and `removeTrack(column_)` took whichever
+  track the cursor was on when the bar filled (hold on track 3, RIGHT at 1.9 s, track 4 went, for good).
+  Now `armTrackHold()` keeps the place (`trackHoldColumn_`, `trackHoldScene_`, as the scene hold keeps
+  `sceneHoldScene_`); `update()` calls it off when the cursor leaves it (`atTrackHold`: the stick moves
+  with no press), and **any other press calls it off at the top of `onButton`**, as on FX (A's press
+  included: `deleteCalledOff` is what makes that A no tap, on a head and on a cell; it was
+  `trackHold_ && input.held(B)` read after `update()` had cancelled). Onto a head and off it need no
+  check: only a press goes there. **A tap of B now empties the cell on its LET GO**, and only if the
+  bar never began to fill (`trackHoldPart_` still 0) and the cursor is where B went down: a hold let go
+  of or called off changes nothing, the cell neither (it was emptied on the press, a step of undo even
+  when the delete was given up). House precedent: the KIT EDIT box's B acts on its let go because hold
+  B is live there too (`drums-and-samples.md`). The 2 s length with its quiet 0.5 s is unchanged (the
+  audit's optional 1.5 s was not part of this batch). The REPEATS hold was left alone: its tap already
+  acts on the let go and it has no quiet wait to tell a tap from a hold. **A tab turned and turned
+  back with B held** (L2 / R2 are a press the screen never sees) resumed the timer, and the track went
+  the moment SONG was back: the App now calls `callOffDelete()` every frame another screen is up, as it
+  calls `FxScreen::callOff()`. FX's own hold B has the same gap and was left (not this batch).
+  Tests: `app_test` `testTheTrackHoldStaysOnItsTrack`, `mixer_test` `testOtherButtonsWithA`.
+- **START plays and stops with SONG's lists open** (the list of songs and the list of instruments;
+  gesture audit G39, 2026-11-24): both returned before START's handler, though the help card lists
+  START under ON EVERY SCREEN and the recordings lists already passed it. `playFromCursor()`, guarded by
+  SELECT not held (SEL + START quits, in `main.cpp`). In the song list it comes after `bHeld_ = false`,
+  so it calls a song's delete off, as any press does. The update notice stays modal on purpose
+  (`manual.md`: "Nothing else responds until it is answered"). Tests: `app_test`
+  `testStartWithTheSongListsOpen`, `save_test`.
+- **SELECT + Y on SONG is NEXT SCENE of the scene under the cursor** (gesture audit G03, 2026-11-24;
+  `songs-and-undo.md` has the rest): a cell's row or its REPEATS box (`sceneUnderCursor`); off the scenes
+  (a head, + TRACK, MASTER) the scene being worked on, as on the other tabs. The cursor goes onto the
+  copy (`scenesMoved`). It used to fall through to the screen's Y and mute the track. **Y alone still
+  mutes** (owner, 2026-11-15: "Y for mute is just a one tap"). In the open song list SELECT + Y is still
+  the list's (save a rev): the App leaves that one to the screen. SELECT + L2 / R2 here is the length of
+  the same scene. The App calls `selectWasUsed()`, or SELECT let go would open the song list.

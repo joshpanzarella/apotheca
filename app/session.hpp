@@ -535,7 +535,10 @@ public:
     // undo, which also takes the player (and the playing) back.
     // Returns the new scene, or -1 when there is no room (the song's sixteenth scene has
     // something in it, or the scene worked on is the sixteenth), and then nothing is changed.
-    int nextScene();
+    int nextScene() { return nextScene(project.scene); }
+    // ...of another scene (the SONG screen: the one under its cursor). The player goes to its copy, on a bar
+    // that cell has; with no room nothing changes, the player neither.
+    int nextScene(int scene);
     // The scene that is playing (-1: none), as it is once the engine has heard every scene
     // move sent to it. For the block or so until it has, the engine still says the old number;
     // this is what to ask, not engine.playScene(). (project.playScene is this, once a frame.)

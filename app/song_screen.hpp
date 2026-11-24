@@ -6,7 +6,7 @@
 // The same rule as everywhere: the stick moves, A acts, hold A and the stick
 // turns the thing under the cursor, B removes.
 //
-//   on a cell          A opens it on the Pattern screen. B empties it.
+//   on a cell          A opens it on the Pattern screen. B empties it (on its let go; held, it deletes the track).
 //                      Hold A + stick left / right: how long it is, 1, 2, 4
 //                      or 8 bars. Hold A + UP / DOWN: TRANSPOSE its notes a semitone
 //                      (the stick up / down: an octave; Session::transposeCell). The scene lasts as long as its longest
@@ -133,7 +133,11 @@ public:
     int listCursor() const { return revsOpen_ ? revCursor_ : listCursor_; }
     const std::vector<std::string>& listedSongs() const { return songs_; }
     void scenesMoved(int from, int by); // a scene put in or taken out (NEXT SCENE): the cursor stays on the scene it was on
+    // The scene the cursor is on: a cell's row or its REPEATS box (the song end's empty row too); -1 off the
+    // scenes (a track's head, + TRACK, MASTER). SELECT + Y and SELECT + L2 / R2 act on it here (the App).
+    int sceneUnderCursor() const { return onHead_ || onMaster_ || column_ == addColumn() ? -1 : scene_; }
     void selectWasUsed() { cancelSelectTap(); } // SELECT did something else: letting go is not a tap
+    void callOffDelete() { trackHold_ = false, trackHoldPart_ = 0.f; } // (the App, while another screen is up: B held through a tab and back deletes nothing)
     // AT END: the REPEATS box of the first empty row, just past the song's last scene, is where the
     // song ends. It shows a loop (LOOP) or a stop square (STOP), and A there switches them.
     int songEndRow() const { return project_.sceneCount() < kMaxScenes ? project_.sceneCount() : -1; } // -1: every row is a scene
@@ -156,6 +160,7 @@ private:
     void mixStep(Button direction); // A held on a head: a dB up or down, a step of pan left or right
     void moveCursor(Button direction, bool pressed = false); // pressed: a press of the D-pad itself, not a run of it or the stick
     void setRepeats(int count);
+    void playFromCursor(); // START: the song from the cursor's scene, or stop it
     void stepBars(int by);
     void stepSceneTempo(int scene, int by);
     void stepSceneMeter(int scene, int by);
@@ -214,6 +219,9 @@ private:
 
     bool trackHold_ = false, trackHoldTimed_ = false; // B is being kept held on a track
     Uint32 trackHoldSince_ = 0;
+    int trackHoldColumn_ = 0, trackHoldScene_ = 0; // ...where it went down: the stick leaving it calls it off, as the scene's
+    void armTrackHold();                           // (a press calls it off anyway, so onto a head and off it need no check)
+    bool atTrackHold() const { return column_ == trackHoldColumn_ && scene_ == trackHoldScene_; }
     bool sceneHold_ = false, sceneHoldTimed_ = false; // B is being kept held on a repeat count
     Uint32 sceneHoldSince_ = 0;
     float sceneHoldPart_ = 0.f;

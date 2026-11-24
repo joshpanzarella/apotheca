@@ -192,23 +192,26 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
 
-    // SELECT held with Y, on the PATTERN screen (the drum grid, its slices, the piano roll): NEXT
-    // SCENE. The scene being worked on is copied into a new one right after it and the player is
-    // put there, on the same screen with the cursor where it was, to carry on adding. One press,
-    // nothing asked: SELECT + B takes it back. Y let go afterwards is not the screen's Y. (SELECT let
-    // go is not its tap either: any button pressed while it is held has seen to that, above.)
+    // SELECT held with Y, on every tab: NEXT SCENE. The scene being worked on (on SONG the one under
+    // the cursor) is copied into a new one right after it and the player is put there, on the same
+    // screen with the cursor where it was (on SONG, on the copy), to carry on adding. One press,
+    // nothing asked: SELECT + B takes it back. No screen is handed a SELECT-held Y (its own Y would
+    // mute, CATCH or roll), and Y let go afterwards is not the screen's Y. (SELECT let go is not its
+    // tap either: any button pressed while it is held has seen to that, above, and on SONG
+    // selectWasUsed.) The one exception: in the list of songs SELECT + Y is the list's, save a rev.
     if (b == Button::Y && nextSceneY_ && !event.down) {
         nextSceneY_ = false;
         return;
     }
-    if (b == Button::Y && input.held(Button::Select) && session_.view == View::Pattern) {
+    if (b == Button::Y && input.held(Button::Select) && !(session_.view == View::Song && song_.listingSongs())) {
         if (event.down) nextSceneY_ = true;
         if (event.down && !panicking_) { // (not in a panic: all four shoulder buttons are down, and nothing is to change)
-            const int to = session_.nextScene();
+            const int to = session_.nextScene(sceneOfSelect());
             if (to >= 0) song_.scenesMoved(to - 1, 1); // the SONG screen's cursor goes with its scene
             if (to >= 0) std::snprintf(undoSaid_, sizeof undoSaid_, "SCENE %d: COPY OF %d", to + 1, to);
             else std::snprintf(undoSaid_, sizeof undoSaid_, "NO ROOM: %d SCENES", kMaxScenes);
             undoSaidUntil_ = now_ + 1500;
+            song_.selectWasUsed();
         }
         return;
     }
@@ -233,11 +236,12 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
 
-    // SELECT held with L2 or R2, on the PATTERN screen: the scene a step shorter or longer. Any number
-    // of steps, up to every step of its longest cell; the steps past its end are shaded on the grids.
-    if ((b == Button::L2 || b == Button::R2) && input.held(Button::Select) && session_.view == View::Pattern && !panicking_) {
+    // SELECT held with L2 or R2, on every tab: the scene a step shorter or longer (the scene NEXT SCENE
+    // would copy). Any number of steps, up to every step of its longest cell; the steps past its end are
+    // shaded on the grids.
+    if ((b == Button::L2 || b == Button::R2) && input.held(Button::Select) && !panicking_) {
         if (event.down) {
-            const int scene = project_->scene;
+            const int scene = sceneOfSelect();
             session_.setSceneSteps(scene, project_->sceneSteps(scene) + (b == Button::R2 ? 1 : -1));
             const int steps = project_->sceneSteps(scene), whole = project_->sceneBars(scene) * project_->meterOf(scene);
             if (steps == whole) std::snprintf(undoSaid_, sizeof undoSaid_, "SCENE %d: ALL %d STEPS", scene + 1, steps);
@@ -271,6 +275,13 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
     }
     screenNow().onButton(event, input);
     takeSessionSaid();
+}
+
+// The scene SELECT + Y and SELECT + L2 / R2 act on: the one being worked on, or on SONG the one under
+// the cursor (off the scenes there, on a head, + TRACK or MASTER: the one being worked on).
+int App::sceneOfSelect() const {
+    const int under = session_.view == View::Song ? song_.sceneUnderCursor() : -1;
+    return under >= 0 ? under : project_->scene;
 }
 
 void App::takeSessionSaid() {
@@ -402,6 +413,8 @@ void App::update(const Input& input, Uint32 nowMs) {
     session_.engine.setScopeTrack(project_->track);
     // An effect being tried on the FX screen (A held on a slot's line) is called off when another screen is up.
     if (&screenNow() != &fx_) fx_.callOff();
+    // ...and so is a track being deleted on SONG (B held): L2 / R2 turn the tab without the screen seeing a press.
+    if (&screenNow() != &song_) song_.callOffDelete();
     screenNow().update(input, nowMs);
     takeSessionSaid(); // (what a screen's update said: the stick's TRANSPOSE)
 }
@@ -543,8 +556,8 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
             {"A", "put it back again"},
             {"X", "WRITE on / off: record a knob's moves while playing"},
             {"L1  R1", "quieter / louder"},
-            {"L2  R2", "on PTRN: the scene a step shorter / longer"},
-            {"Y", "on PTRN: NEXT SCENE, a copy of this one to add to"},
+            {"L2  R2", "the scene a step shorter / longer"},
+            {"Y", "NEXT SCENE, a copy of this one to add to"},
             {"UP  DOWN  LEFT  RIGHT", "tempo: a beat a minute / ten at a time"}, // (one line: the card is full)
             {"START", quitWords(quitTurnsOff_)},
         };

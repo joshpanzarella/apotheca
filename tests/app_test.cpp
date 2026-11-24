@@ -1582,6 +1582,174 @@ void testDeletingATrack() {
     CHECK(rig.listen(4000) > 0.01f);
 }
 
+// Hold B on a track deletes THAT track, the one where B went down (gesture audit G02: it deleted whichever
+// the cursor was on when the bar filled, and the cursor still moved). A move (the D-pad, the stick) or any
+// other press calls the delete off, as on FX. A tap of B empties the cell on its LET GO, so a delete called
+// off or let go of early changes nothing at all.
+void testTheTrackHoldStaysOnItsTrack() {
+    Rig rig;
+    Session& session = rig.app.session();
+    SongScreen& song = rig.app.song();
+    rig.app.drums().setStep(0, 0, 1.f);
+    session.addTrack(TrackKind::Phazed);
+    session.addTrack(TrackKind::Jx3p);
+    for (int t = 1; t <= 2; ++t) rig.project().tracks[t].notes[0][0].notes[0] = NoteEvent{0, 60, 1.f, 0.f, 0.8f};
+    const auto full = [&](int t) { return t == 0 ? !rig.project().tracks[0].drums[0][0].empty() : rig.project().tracks[t].notes[0][0].notes[0].velocity > 0.f; };
+    const auto allThere = [&] { return rig.project().trackCount() == 3 && full(0) && full(1) && full(2); };
+    session.view = View::Song;
+    rig.frames(2);
+    CHECK(allThere());
+
+    // Held on track 1, RIGHT pressed with the bar nearly full: called off, and track 2 is not deleted in its
+    // place however long B stays down.
+    song.moveCursorTo(0, 0);
+    rig.key(B, true);
+    rig.frames(112);
+    CHECK(song.trackDeletePart() > 0.8f && allThere());
+    rig.tap(RIGHT);
+    CHECK(song.trackDeletePart() == 0.f && song.cursorColumn() == 1);
+    rig.frames(160);
+    CHECK(allThere() && song.trackDeletePart() == 0.f);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(allThere()); // ...and letting go empties nothing
+    // The stick, the same: it moves the cursor with no press.
+    rig.key(B, true);
+    rig.frames(60);
+    CHECK(song.trackDeletePart() > 0.f);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(160);
+    CHECK(allThere() && song.cursorColumn() == 2 && song.trackDeletePart() == 0.f);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(allThere());
+    // ...down the track's own column too: it is the place B went down on, not only the track.
+    song.moveCursorTo(0, 2);
+    rig.key(B, true);
+    rig.frames(60);
+    rig.key(STICK_DOWN, true);
+    rig.frames(1);
+    rig.key(STICK_DOWN, false);
+    rig.frames(160);
+    CHECK(allThere() && song.cursorColumn() == 2 && song.cursorScene() == 1);
+    rig.key(B, false);
+    rig.frames(1);
+    // ...and along the heads.
+    song.moveCursorTo(0, 1);
+    rig.tap(UP);
+    rig.key(B, true);
+    rig.frames(60);
+    rig.key(STICK_LEFT, true);
+    rig.frames(1);
+    rig.key(STICK_LEFT, false);
+    rig.frames(160);
+    CHECK(allThere() && song.cursorOnHead() && song.cursorColumn() == 0);
+    rig.key(B, false);
+    rig.frames(1);
+    // A tapped on a head while B is held: called off too, and that A is no tap (no list of instruments).
+    rig.key(B, true);
+    rig.frames(40);
+    rig.tap(A);
+    rig.frames(160);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(allThere() && !song.choosing());
+    // Any other press: L1 (which does nothing on a track), START.
+    for (SDL_Keycode other : {L1, START}) {
+        song.moveCursorTo(0, 2);
+        rig.key(B, true);
+        rig.frames(60);
+        rig.tap(other);
+        CHECK(song.trackDeletePart() == 0.f);
+        rig.frames(160);
+        rig.key(B, false);
+        rig.frames(1);
+        CHECK(allThere());
+    }
+    CHECK(rig.project().playing);
+    rig.tap(START);
+    // Moved off and let go before the screen's next frame: the cell left and the cell come to are both kept.
+    song.moveCursorTo(0, 0);
+    rig.key(B, true);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, false);
+    rig.key(B, false);
+    CHECK(song.cursorColumn() == 1 && allThere());
+    rig.frames(1);
+    // Held past the half second the bar waits, then let go: nothing, the cell neither.
+    song.moveCursorTo(0, 2);
+    rig.key(B, true);
+    rig.frames(40);
+    CHECK(song.trackDeletePart() > 0.f);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(allThere());
+    // A tap: the press alone changes nothing, the let go empties the cell, and only that.
+    song.moveCursorTo(0, 1);
+    rig.key(B, true);
+    CHECK(allThere());
+    rig.frames(5);
+    rig.key(B, false);
+    CHECK(!full(1) && full(0) && full(2) && rig.project().trackCount() == 3);
+    // B held and left alone still deletes the track it went down on.
+    song.moveCursorTo(0, 2);
+    rig.key(B, true);
+    rig.frames(130);
+    rig.key(B, false);
+    CHECK(rig.project().trackCount() == 2 && full(0) && rig.project().tracks[1].kind == TrackKind::Phazed);
+    // A tab turned and turned back with B held: the tabs are a press the screen never sees, and the delete
+    // is called off while another screen is up. Coming back, nothing is deleted.
+    song.moveCursorTo(0, 1);
+    rig.key(B, true);
+    rig.frames(60);
+    rig.tap(R2);
+    rig.frames(200);
+    rig.tap(L2);
+    rig.frames(200);
+    CHECK(rig.view() == View::Song && rig.project().trackCount() == 2 && song.trackDeletePart() == 0.f);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(rig.project().trackCount() == 2 && full(0));
+}
+
+// START plays and stops with SONG's lists open too, as on every screen (gesture audit G39; the list of
+// recordings already did). With SELECT held it does not: SELECT + START quits.
+void testStartWithTheSongListsOpen() {
+    Rig rig;
+    markScenes(rig, 3);
+    SongScreen& song = rig.app.song();
+    rig.tap(L2);
+    rig.tap(DOWN); // scene 2
+    rig.tap(SELECT); // the list of songs
+    CHECK(song.listingSongs());
+    rig.tap(START);
+    CHECK(rig.project().playing && song.listingSongs() && sceneHeard(rig) == 1); // the song, from the cursor's scene
+    rig.tap(START);
+    CHECK(!rig.project().playing && song.listingSongs());
+    rig.key(SELECT, true);
+    rig.tap(START);
+    rig.key(SELECT, false);
+    CHECK(!rig.project().playing && song.listingSongs());
+    rig.tap(B);
+    CHECK(!song.listingSongs());
+    // The list of instruments (A on + TRACK).
+    rig.listen(20000);
+    song.moveCursorTo(2, rig.project().trackCount());
+    rig.tap(A);
+    CHECK(song.choosing());
+    rig.tap(START);
+    CHECK(rig.project().playing && song.choosing() && sceneHeard(rig) == 2);
+    rig.tap(START);
+    CHECK(!rig.project().playing && song.choosing());
+    rig.key(SELECT, true);
+    rig.tap(START);
+    rig.key(SELECT, false);
+    CHECK(!rig.project().playing && song.choosing() && rig.project().trackCount() == 1);
+}
+
 void testStepsInAScene() {
     Rig rig;
     Session& session = rig.app.session();
@@ -8500,13 +8668,14 @@ void testASceneOfAnyLength() {
     // Without SELECT they are the tabs, as ever.
     rig.tap(R2);
     CHECK(rig.view() == View::Device && rig.project().sceneSteps(0) == 23);
-    rig.tap(L2);
-    // On other tabs SELECT + L2 / R2 leaves the length alone.
-    rig.tap(L2);
+    // On every other tab too, and the tab does not turn (gesture audit G03: it was PATTERN's alone, and
+    // elsewhere turned the tab). On SONG it is the scene under the cursor: nextscene_test.
     rig.key(SELECT, true);
     rig.tap(R2);
+    CHECK(rig.view() == View::Device && rig.project().sceneSteps(0) == 24);
+    rig.tap(L2);
     rig.key(SELECT, false);
-    CHECK(rig.project().sceneSteps(0) == 23);
+    CHECK(rig.view() == View::Device && rig.project().sceneSteps(0) == 23);
     session.view = View::Pattern;
     // It plays 23 steps: a kick on step 1 comes round every 23.
     rig.app.drums().setStep(0, 0, 1.f);
@@ -11752,6 +11921,15 @@ int main(int argc, char** argv) {
         if (failures == 0) std::printf("app tests passed (keys only)\n");
         return failures == 0 ? 0 : 1;
     }
+    if (argc > 1 && std::string(argv[1]) == "--gestures") { // just SONG's gestures of the gesture audit (for trying a change)
+        testDeletingATrack();
+        testTheTrackHoldStaysOnItsTrack();
+        testStartWithTheSongListsOpen();
+        testASceneOfAnyLength();
+        testTheHelpCardDrawsSel();
+        if (failures == 0) std::printf("app tests passed (gestures only)\n");
+        return failures == 0 ? 0 : 1;
+    }
     if (argc > 1 && std::string(argv[1]) == "--hands") { // just the button standards of the pit stop
         testHoldBDeletesAnEffect();
         testTheHintsFitAndSayWhatTheyDo();
@@ -11813,6 +11991,8 @@ int main(int argc, char** argv) {
     testHoldBAndDragErases();
     testNothingStaysHeld();
     testDeletingATrack();
+    testTheTrackHoldStaysOnItsTrack();
+    testStartWithTheSongListsOpen();
     testStepsInAScene();
     testTheBattery();
     testBatteryLog();

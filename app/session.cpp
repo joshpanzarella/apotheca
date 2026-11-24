@@ -1434,11 +1434,11 @@ int Session::playScene() const {
     return scene;
 }
 
-int Session::nextScene() {
-    const int from = project.scene, to = from + 1;
+int Session::nextScene(int scene) {
+    const int from = scene, to = from + 1;
     if (from < 0 || to >= kMaxScenes || project.sceneCount() >= kMaxScenes) return -1; // no room: the last scene would fall off the end
     // A step of undo of its own. Whatever was being edited just before is a step already; it ends here.
-    if (undoReady_ && cellMark() != cellMark_) noteEdit(); // a hit placed this very frame: its own step, not part of this one
+    if (undoReady_ && cellMark() != cellMark_) noteEdit(); // a hit placed this very frame: its own step, not part of this one (on the cell worked on until now)
     if (editing_ || !undoReady_) settled_ = patternsNow(); // (not ready: before the first frame of a song just opened)
     editing_ = false;
     undo_.push_back({settled_, from});
@@ -1446,7 +1446,8 @@ int Session::nextScene() {
     redo_.clear();
 
     moveScenesHere(from, 1, nullptr);
-    project.scene = to; // the same track and bar: the cell there is as long as the one left
+    project.scene = to; // the same track and bar: the cell there is as long as the one left...
+    if (project.bar >= project.current().bars[to]) project.bar = 0; // ...where it is the one left (another, from SONG: a bar it has)
     tellScenesMoved(from, 1);
     scenesMoved(from, 1);
 

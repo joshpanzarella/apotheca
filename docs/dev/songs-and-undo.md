@@ -104,6 +104,23 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   `project.playScene`, a keyboard note being recorded (`Session::scenesMoved`
   does those two and counts the move), and the player (`UndoStep::nextScene`
   is how undo and redo know to move them). Its tests: `tests/nextscene_test.cpp`.
+- **NEXT SCENE (SELECT + Y) and the scene's length (SELECT + L2 / R2) are the App's, on every tab**
+  (gesture audit G03, 2026-11-24). They were PATTERN's alone: "The gesture belongs to the grids. On the
+  other screens SELECT + Y makes no scene" (`nextscene_test`, commit 211fd8e, 2026-11-12: Claude's
+  choice, not the owner's). Off PATTERN the press fell through to the screen's own Y, which does not
+  look at SELECT: SONG muted, the kit and the sampler CATCH (a sound replaced outside undo), PHYSIC and
+  MOD rolled, and SELECT + L2 / R2 turned the tab. More logical: "SELECT + something is for whole-song
+  things" (CLAUDE.md) holds on every tab, as undo, tempo and volume already did, and NEXT SCENE from
+  DEVICE, FX or MOD is one combo instead of a trip through the tabs. **No screen is handed a
+  SELECT-held Y**, but one: the open song list, where SELECT + Y saves a rev (its Y, as ever). The scene
+  is `App::sceneOfSelect()`: the scene being worked on, or on SONG the one under the cursor
+  (`SongScreen::sceneUnderCursor`: a cell's row or a REPEATS box; a head, + TRACK and MASTER are off the
+  scenes and take the scene being worked on). **`Session::nextScene(scene)`** copies any scene: the player
+  goes to the copy on a bar its cell has, the cell worked on until then is checked for an edit first
+  (so no step of undo is made by the move itself), and with no room nothing changes, the player
+  neither. The unbuilt LIVE tab (`big-features-plan.md`) wants SELECT + L2 / R2 for its QUANTIZE: it
+  would be the one exception. Tests: `nextscene_test` `testOnEveryTab`, `app_test` `testASceneOfAnyLength`,
+  `save_test` (the rev).
 - **A scene move is ONE command, and the audio thread copies nothing**
   (`Engine::moveScenes`, which sends `Command::ScenesMoved`). The engine keeps
   each scene of each track as a piece of its own (`Track::scenes`: kMaxScenes

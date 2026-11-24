@@ -281,8 +281,19 @@ void SongScreen::openRevList() {
     revCursor_ = 0;
 }
 
+void SongScreen::armTrackHold() {
+    trackHold_ = true;
+    trackHoldTimed_ = false;
+    trackHoldPart_ = 0.f;
+    trackHoldColumn_ = column_;
+    trackHoldScene_ = scene_;
+}
+
 void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
+    // B kept held on a track: any other press calls its delete off, as on FX (and A's is then no tap: below).
+    const bool deleteCalledOff = event.down && b != Button::B && trackHold_ && input.held(Button::B);
+    if (event.down && b != Button::B) trackHold_ = false, trackHoldPart_ = 0.f;
 
     // SELECT, pressed and let go with nothing else in between, opens and
     // closes the list of songs. (SELECT with START is "quit", elsewhere.)
@@ -314,6 +325,10 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             return;
         }
         bHeld_ = false; // any other press calls a held B off
+        if (b == Button::Start && !input.held(Button::Select)) { // play / stop with the list open, as everywhere (SEL + START quits)
+            playFromCursor();
+            return;
+        }
         if (isDirection(b)) {
             moveCursor(b);
             repeating_ = b;
@@ -379,6 +394,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
 
     if (choosing_) {
         if (!event.down) return;
+        if (b == Button::Start && !input.held(Button::Select)) playFromCursor(); // as everywhere (SEL + START quits)
         if (isDirection(b)) moveCursor(b);
         if (b == Button::B) choosing_ = false;
         if (b == Button::A) {
@@ -398,7 +414,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     if ((onHead_ || onMaster_) && b == Button::A) {
         if (event.down) {
             mixing_ = true;
-            mixTurned_ = trackHold_ && input.held(Button::B); // A pressed while B was deleting the track calls the delete off (update()), and is no tap
+            mixTurned_ = deleteCalledOff; // A pressed while B was deleting the track calls the delete off (above), and is no tap
             mixSavedDb_ = mixSavedPan_ = 0.f;
             mixShown_ = mixTimed_ = false;
         } else {
@@ -458,11 +474,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
     if (onHead_ && (b == Button::B || b == Button::R1)) {
         // On a track's head: B held deletes the track, as it does on a cell; a tap of it empties nothing here.
-        if (b == Button::B && event.down && !input.held(Button::A)) {
-            trackHold_ = true;
-            trackHoldTimed_ = false;
-            trackHoldPart_ = 0.f;
-        }
+        if (b == Button::B && event.down && !input.held(Button::A)) armTrackHold();
         // R1: its name. It happens when R1 is LET GO (as DUPLICATE A TRACK's: on the way to a
         // panic nothing is named), if the cursor never left the heads meanwhile. The keyboard is on
         // the SET tab; it comes back here.
@@ -483,7 +495,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
                 // Held, the stick sets how many bars long it is. Let go
                 // without doing that, and it opens. (Pressed while B was deleting the track, it calls the delete off and opens nothing.)
                 holding_ = true;
-                turned_ = trackHold_ && input.held(Button::B);
+                turned_ = deleteCalledOff;
                 saved_ = 0.f;
                 savedY_ = 0.f, stickWasYHeld_ = false;
                 transposed_ = 0;
@@ -589,6 +601,14 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         return;
     }
+    // B let go on a cell before its bar began to fill: a tap, and the cell is emptied. Let go later, or after
+    // a move or another press called the delete off: nothing, so a delete given up changes nothing.
+    if (b == Button::B && !event.down && trackHold_) {
+        trackHold_ = false;
+        if (trackHoldPart_ <= 0.f && atTrackHold()) clearCell(column_, scene_);
+        trackHoldPart_ = 0.f;
+        return;
+    }
     if (!event.down) {
         if (b == repeating_) repeating_ = Button::None;
         return;
@@ -624,17 +644,19 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (b == Button::B && !input.held(Button::A)) {
-        // A tap empties the cell. Kept held on a track, it goes on to delete the whole track (update()).
-        trackHold_ = onCell();
-        trackHoldTimed_ = false;
-        trackHoldPart_ = 0.f;
-        if (onCell()) clearCell(column_, scene_);
+        // On a cell the press arms the hold: kept held, it deletes the whole track (update()); let go
+        // before the bar begins, it is a tap and empties the cell (above).
+        if (onCell()) armTrackHold();
         else if (onSongEnd()) session_.setSongEnd(kSongLoop); // back to the usual
         // (A repeat count returns earlier, above: a tap back to 1, a hold the whole scene.)
     } else if (b == Button::Start && !input.held(Button::Select)) {
-        project_.scene = scene_;
-        session_.togglePlay(true); // the song, from this scene
+        playFromCursor();
     }
+}
+
+void SongScreen::playFromCursor() {
+    project_.scene = scene_;
+    session_.togglePlay(true); // the song, from this scene
 }
 
 void SongScreen::update(const Input& input, Uint32 nowMs) {
@@ -660,8 +682,9 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
         tracksSeen_ = project_.trackCount();
     }
     // B kept held on a track: after a moment a bar begins to fill on its head, and when it is full the track is deleted.
-    // A pressed while it fills calls it off, as any other button does on the FX screen.
-    if (!input.held(Button::B) || input.held(Button::A) || !onCell() || listing_ || choosing_) trackHold_ = false, trackHoldPart_ = 0.f;
+    // It is the track where B went down: the cursor leaving that place (the D-pad, the stick) calls it off, as A
+    // or any other press does (onButton), as on the FX screen.
+    if (!input.held(Button::B) || input.held(Button::A) || !onCell() || !atTrackHold() || listing_ || choosing_) trackHold_ = false, trackHoldPart_ = 0.f;
     if (trackHold_) {
         if (!trackHoldTimed_) trackHoldTimed_ = true, trackHoldSince_ = nowMs;
         const Uint32 held = nowMs - trackHoldSince_;

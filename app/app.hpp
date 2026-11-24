@@ -142,6 +142,7 @@ private:
     unsigned sceneCopiesBeforeShoulders_ = 0;
     unsigned saidSeen_ = 0; // Session::saidCount() when its line was last taken
     void takeSessionSaid(); // what the Session asked to be said (a bar copied or pasted) into this box
+    int sceneOfSelect() const; // the scene SELECT + Y and SELECT + L2 / R2 act on (on SONG: the cursor's)
     void logBattery(Uint32 nowMs); // a line of it, when one is due (useBatteryLog)
     NoteScreen notes_;
     KitScreen kit_;
