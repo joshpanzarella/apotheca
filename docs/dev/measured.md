@@ -82,6 +82,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
 | Twelve silent tracks after batch 1 (one run, load 6): Phazed / QMOD / JAX-EP; eleven silent samplers with plain chords | 0.32 / 0.15 / 0.15%; 0.15% (were 2.38 / 0.70 / 0.71%; 0.72%) |
 | ...after batch 2 (the drum voice loop in runs): instructions, twelve drum tracks / thrown / busiest; timed (load 7 to 9), twelve drum tracks / every hit thrown, added / the busiest song alone, 2 helpers | 53 / 143 / 1,877 M (were 212 / 432 / 2,023); 0.43% / +0.31% (were 1.47% / +1.18%); 15.5 / 10.8% of a block |
 | The busiest song with FM-6 (main 0.565) without / with speed batches 0 to 2; twelve silent FM-6 tracks (instructions, a second of sound) | 1,617 / 1,424 M; 69.1 / 22.6 M |
+| The busiest song by effect (2026-11-24, callgrind, one second, desk -O3): PLATE (8 of them) / Phazed's core (2 tracks) / HALL (6) / CHORUS (6) / SATURATE (8) / JAX-EP / COMP (13, and 2.3% more in expf and logf, 7 to 10 instructions a call) / FM-6. **The four effects are already worked on locals**: CHORUS moved onto locals came out the same to the bit and no faster (0.282% to 0.280%), and was taken back | 14.8% / 12.9% / 12.0% / 10.2% / 9.8% / 7.4% / 6.4% / about 7% |
+| -O2 against -O3 (2026-11-24, desk, the same sound to the bit at both): PLATE / HALL / CHORUS, SATURATE, COMP. **The handheld port and the firmware's app were -O2; both are -O3 since 0.866 / 0.893.** Not run on the handheld | 17 to 19% / 20% (at rest; 2 to 5% turning) / no difference |
 
 **No synth is far costlier than another now**: Twin Analog (4.7% and up) went in batch 8b,
 QMOD (2.6 to 3.4%; 57% of a handheld core) on 2026-11-15, for FM-6. **No synth has a quality setting and nothing watches the load**:
