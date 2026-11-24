@@ -476,6 +476,14 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   change of SHAPE fades the numbers (g, k, m0..m2: each step between is a filter that holds) over 30 ticks, one
   fade at a time. At 0 dB a BELL or a shelf is the sound to the bit, so the generic "every setting does
   something" check exempts FREQ, Q and SHAPE (testBand moves each). 15 mutants killed.
+  **The BELL is matched** (Vicanek 2016, `bellOf`; 2026-11-24, after 0.883 shipped it plain). On g = tan(pi f /
+  rate) a bell's gain at 24 kHz is held at 1, so one set high was squeezed back to 0 dB there ("cramping": 16 kHz
+  Q 1.5 was 6.0 dB off the analogue up to 20 kHz, 20 kHz Q 4 7.0; now 0.8 and 1.0, the worst anywhere 2.1). Its
+  poles are the analogue's own and its gain the analogue's at 0 Hz, FREQ and 24 kHz, written in the same g, k,
+  m0..m2 (Slide and the SHAPE fade untouched); a cut is the matched lift upside down; 0 dB is the plain numbers to
+  the bit. **Double, on the tick only** (nothing at rest; Vicanek's own sums cancel in float). It keeps svfG's 0.45
+  ceiling (past half the rate a cut runs away). A song's BELL moves under 0.1 dB at 1 kHz and below (Q 0.7 up), up
+  to 7.7 dB at 20 kHz, toward the analogue curve the FX picture already drew. `testBandMatched`; 6 mutants killed.
 - **A per-sample loop works on locals** (WEAR's `stretch`: up to the tick's
   end, everything the samples change copied in, worked on, copied back).
   Written straight on the effect's own numbers WEAR cost 0.40% of a core; the

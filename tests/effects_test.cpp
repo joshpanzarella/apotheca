@@ -8353,6 +8353,140 @@ static void testBand() {
     }
 }
 
+// BAND's BELL IS MATCHED to the analogue bell (Vicanek's way, 2026-11-24: band.cpp, bellOf): sines through it come out
+// as the analogue bell's |H(jw)| says, up to 20 kHz, a lift and a cut alike. Made the plain way (g = tan(pi f / rate))
+// it was squeezed back to 0 dB at 24 kHz. The worst gap at these points (31 a third of an octave apart from 20 Hz,
+// every 1 kHz from 10 to 20 kHz, and FREQ), matched / the plain bell before:
+//   10 kHz Q 0.7 +-12 dB  0.71 / 4.47     16 kHz Q 1.5 +-12  0.83 / 6.05     20 kHz Q 4 +-12  1.03 / 7.04
+//   1 kHz Q 1.5 +-12      0.01 / 0.02      1 kHz Q 0.3 +-12  0.13 / 0.40
+//   4 kHz Q 0.3 +-6       0.36 / 1.64     10 kHz Q 0.3 +-6   0.36 / 2.88  (Q times A under 0.5: two real poles)
+//   40 Hz Q 30 +-12       0.01 / 0.01     (the narrowest, low: worked out in double; Vicanek's own sums worked in
+//                                          float, in a model, were 17 dB wrong here)
+// Over the whole range (every FREQ and Q, +3 to +12 dB) the matched bell's worst is 2.1 dB (20 kHz, Q 0.7); the plain
+// one's was 7.4 (20 kHz, Q 27).
+static void testBandMatched() {
+    const EffectKind band = EffectKind::Band;
+    const auto settings = [](double hz, double db, double q, int shape, float* s) {
+        s[0] = static_cast<float>(std::log(hz / 20.0) / std::log(1000.0));
+        s[1] = static_cast<float>((db / 12.0 + 1.0) / 2.0);
+        s[2] = static_cast<float>(std::log(q / 0.3) / std::log(100.0));
+        s[3] = (static_cast<float>(shape) + 0.5f) / 4.f;
+    };
+    // The analogue bell, in dB: (s^2 + s A/Q + 1) / (s^2 + s/(Q A) + 1), s = j f / FREQ.
+    const auto analogue = [](double hz, double db, double q, double f) {
+        const double a = std::pow(10.0, db / 40.0), w = f / hz, x = 1.0 - w * w, top = w * a / q, under = w / (q * a);
+        return 10.0 * std::log10((x * x + top * top) / (x * x + under * under));
+    };
+    std::vector<double> points;
+    for (int i = 0; i <= 30; ++i) points.push_back(20.0 * std::pow(1000.0, i / 30.0));
+    for (int k = 10; k <= 20; ++k) points.push_back(1000.0 * k);
+    struct Case { double hz, db, q, most; };
+    const Case cases[] = {{10000.0, 12.0, 0.7, 0.8}, {16000.0, 12.0, 1.5, 0.9}, {20000.0, 12.0, 4.0, 1.1}, {1000.0, 12.0, 1.5, 0.05},
+                          {1000.0, 12.0, 0.3, 0.2},  {4000.0, 6.0, 0.3, 0.45},  {10000.0, 6.0, 0.3, 0.45}, {40.0, 12.0, 30.0, 0.05}};
+    for (const Case& c : cases) {
+        // Long enough for the narrowest to settle (40 Hz at Q 30 rings for half a second), read over the last second.
+        const std::size_t frames = c.q > 10.0 ? 4 * 48000 : 48000;
+        for (double sign : {1.0, -1.0}) {
+            float s[4];
+            settings(c.hz, sign * c.db, c.q, 0, s);
+            double worst = 0.0, where = 0.0, atFreq = 0.0;
+            std::vector<double> at = points;
+            at.push_back(c.hz);
+            for (double f : at) {
+                const std::vector<float> in = sineOf(f, 0.25, frames), out = throughOne(band, s, in);
+                const double got = dB(rmsOf(out, frames - 48000) / rmsOf(in, frames - 48000)), gap = std::fabs(got - analogue(c.hz, sign * c.db, c.q, f));
+                if (gap > worst) worst = gap, where = f;
+                if (f == c.hz) atFreq = got;
+            }
+            SAY("band     matched BELL %5.0f Hz %+3.0f dB Q %4.1f: %+.2f dB at FREQ, the worst %.2f dB off the analogue (at %.0f Hz)\n", c.hz, sign * c.db, c.q, atFreq, worst, where);
+            CHECK(worst < c.most);
+            CHECK(std::fabs(atFreq - sign * c.db) < 0.05); // (matched there exactly)
+        }
+    }
+    // At 0 dB it is the plain numbers, to the bit, high up too: a click comes out a click and then exact zeros
+    // (worked out by the matched sums instead, m1 comes out a hair off 0 and the ring leaks into the zeros after it).
+    for (double hz : {16000.0, 20000.0, 1000.0}) {
+        for (double q : {0.3, 1.5, 30.0}) {
+            float s[4];
+            settings(hz, 0.0, q, 0, s);
+            std::vector<float> click(4800, 0.f);
+            click[100] = 0.9f, click[101] = -0.4f;
+            CHECK(throughOne(band, s, click) == click);
+        }
+    }
+    // A change of SHAPE from a bell at its furthest (its gain at 24 kHz far from 1, or its poles closest to the
+    // circle) to each other shape and back holds: every step of the fade is a filter (g and k over 0), noise in,
+    // nothing out much louder than the louder of the two ends.
+    {
+        const double bells[][3] = {{20000.0, 12.0, 0.3}, {20000.0, -12.0, 0.3}, {20.0, 12.0, 30.0}, {16000.0, -12.0, 30.0}};
+        double worstShare = 0.0;
+        for (const auto& b : bells) {
+            for (int other = 1; other < 4; ++other) {
+                std::unique_ptr<Effect> fx = makeEffect(band, 48000.f, 120.f);
+                float s[4];
+                settings(b[0], b[1], b[2], 0, s);
+                for (int i = 0; i < 4; ++i) fx->setParam(i, s[i]);
+                std::vector<float> left(4 * 9600), right;
+                Noise n(5u);
+                for (float& v : left) v = 0.25f * n.next();
+                right = left;
+                float loudest = 0.f;
+                for (int part = 0; part < 4; ++part) {
+                    if (part == 1) fx->setParam(3, (static_cast<float>(other) + 0.5f) / 4.f);
+                    if (part == 3) fx->setParam(3, 0.125f);
+                    fx->process(left.data() + part * 9600, right.data() + part * 9600, 9600);
+                }
+                for (float v : left) loudest = std::isfinite(v) ? std::fmax(loudest, std::fabs(v)) : 1e30f;
+                worstShare = std::fmax(worstShare, static_cast<double>(loudest) / 0.25);
+            }
+        }
+        SAY("band     a matched BELL's SHAPE faded to each other shape and back: the loudest out %.2f times the noise's loudest\n", worstShare);
+        CHECK(worstShare < 8.0);
+    }
+    // At a rate where 20 kHz is past half of it (the engine runs at 48 kHz; an effect can be made at any), a bell
+    // there is made at 0.45 of the rate, as svfG's corner: past half the rate a cut's damping goes under 0 and the
+    // filter runs away (at 32 kHz, Q 1.5: -3.5).
+    for (double db : {-12.0, 12.0}) {
+        for (double q : {0.3, 1.5, 30.0}) {
+            std::unique_ptr<Effect> fx = makeEffect(band, 32000.f, 120.f);
+            float s[4];
+            settings(20000.0, db, q, 0, s);
+            for (int i = 0; i < 4; ++i) fx->setParam(i, s[i]);
+            std::vector<float> left(16000), right;
+            Noise n(6u);
+            for (float& v : left) v = 0.25f * n.next();
+            right = left;
+            fx->process(left.data(), right.data(), 16000);
+            float loudest = 0.f;
+            for (float v : left) loudest = std::isfinite(v) ? std::fmax(loudest, std::fabs(v)) : 1e30f;
+            CHECK(loudest < 2.f);
+        }
+    }
+    // The matched sums are worked out on the TICK: the same to the bit however the sound is cut into blocks, with
+    // GAIN and FREQ turned while it sounds (every tick works them out), through a sleep and a waking.
+    {
+        std::vector<float> noise(48000);
+        Noise n(8u);
+        for (std::size_t i = 0; i < noise.size(); ++i) noise[i] = i >= 20000 && i < 30000 ? 0.f : 0.4f * n.next();
+        std::vector<float> whole;
+        for (int block : {256, 1, 7, 64}) {
+            std::unique_ptr<Effect> fx = makeEffect(band, 48000.f, 120.f);
+            float s[4];
+            settings(16000.0, 9.0, 2.0, 0, s);
+            for (int i = 0; i < 4; ++i) fx->setParam(i, s[i]);
+            std::vector<float> left = noise, right = noise;
+            const int ends[3] = {6000, 12000, 48000}; // turned at the same samples however it is cut
+            for (int part = 0, at = 0; part < 3; ++part) {
+                if (part == 1) fx->setParam(1, 0.1f);  // GAIN down to -9.6 dB
+                if (part == 2) fx->setParam(0, 0.95f); // FREQ up to 14 kHz
+                for (; at < ends[part]; at += std::min(block, ends[part] - at)) fx->process(left.data() + at, right.data() + at, std::min(block, ends[part] - at));
+            }
+            if (whole.empty()) whole = left;
+            CHECK(left == whole && left != noise);
+        }
+    }
+}
+
 // PITCH (2026-11-24): a pitch shifter, a TYPE of MOD. MIX full: a 440 Hz tone comes out an octave up (880), an octave
 // down (220), a fifth up (659), as near as the pitch can be read; PITCH is a choice of 25 (-12..+12) read in
 // semitones; MIX 0 is the sound untouched to the sample.
@@ -11576,6 +11710,7 @@ int main(int argc, char** argv) {
         {"testShimmer", testShimmer},
         {"testWah", testWah},
         {"testBand", testBand},
+        {"testBandMatched", testBandMatched},
         {"testPitch", testPitch},
     };
     // `effects_test --part 1` and `--part 2`: ctest runs it as two tests, each about half the time,
