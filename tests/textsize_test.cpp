@@ -59,9 +59,13 @@ using namespace stills;
 
 void testEveryViewIsListed() {
     std::string source;
+    // (The stills are set up in stills.cpp since 2026-11-24; main.cpp still reads a few of its own: both are read.)
+    std::string stills;
     CHECK(readTextFile(std::string(APOTHECA_SOURCE_DIR) + "/app/main.cpp", source));
-    CHECK(viewsInMain(source).size() > 60); // (main.cpp was read, and the names found in it)
-    for (const std::string& name : unlisted(source)) std::printf("    main.cpp knows a still named \"%s\": add it to kViews\n", name.c_str());
+    CHECK(readTextFile(std::string(APOTHECA_SOURCE_DIR) + "/app/stills.cpp", stills));
+    source += stills;
+    CHECK(viewsInMain(source).size() > 60); // (the files were read, and the names found in them)
+    for (const std::string& name : unlisted(source)) std::printf("    main.cpp or stills.cpp knows a still named \"%s\": add it to kViews\n", name.c_str());
     CHECK(unlisted(source).empty());
     // The reading itself: each of the ways main.cpp asks, and a still nobody has listed is found.
     const std::vector<std::string> read = viewsInMain("if (std::strcmp(view, \"aa\") == 0 || std::strncmp(view, \"bb\", 2) == 0) x(\"no\"); if (std::strstr(view, \"cc\")) y; std::strcmp(view + 10, \"-dd\")");
