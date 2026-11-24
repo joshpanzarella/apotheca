@@ -603,7 +603,7 @@ std::string Session::designFxState(int track) const {
 }
 
 std::string Session::designModsState(int track) const {
-    char text[128];
+    char text[256]; // (every number at its longest: more than 128)
     const TrackData& t = project.tracks[track];
     std::string out = ",\"mods\":[";
     for (int m = 0; m < kModsPerTrack; ++m) {

@@ -179,7 +179,7 @@ if(APOTHECA_BUILD_APP)
       app/text.cpp app/ui.cpp app/realtime.cpp app/redraw.cpp app/lights.cpp
       app/version.cpp)
   target_include_directories(apotheca_app PUBLIC app third_party)
-  target_compile_options(apotheca_app PRIVATE -Wall -Wextra)
+  target_compile_options(apotheca_app PRIVATE -Wall -Wextra -Wno-missing-field-initializers) # (as the handheld build: a note or a kit's line is written in part on purpose)
   # stb_truetype is someone else's code; do not hold it to our warnings.
   set_source_files_properties(app/text.cpp PROPERTIES COMPILE_OPTIONS "-Wno-unused-function")
   set_source_files_properties(app/version.cpp PROPERTIES COMPILE_DEFINITIONS "APOTHECA_VERSION=\"0.${APOTHECA_CHANGES}\";APOTHECA_BUILT=\"${APOTHECA_BUILT}\"")
@@ -191,7 +191,7 @@ if(APOTHECA_BUILD_APP)
   endif()
 
   add_executable(apotheca app/main.cpp)
-  target_compile_options(apotheca PRIVATE -Wall -Wextra)
+  target_compile_options(apotheca PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
   target_link_libraries(apotheca PRIVATE apotheca_app)
 
   # Timings, for keeping an eye on what things cost: ./build/bench

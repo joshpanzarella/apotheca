@@ -803,7 +803,7 @@ void KitScreen::drawVoice(SDL_Renderer* r, const Fonts& fonts) const {
     const int named = voicePlaceOf(v);
     std::snprintf(text, sizeof text, "%s,", drumsynth::modelName(v.model));
     const char* second = named >= 0 ? voiceName(v.model, named) : "SYNTH";
-    char both[80];
+    char both[sizeof text + 40]; // (the model's name and a voice's: far shorter; the room is what the compiler can prove)
     std::snprintf(both, sizeof both, "%s %s", text, second);
     const Font& big = fonts.within(&Fonts::large, both, sw - 14.f);
     big.draw(r, sx + 7.f, sy + 23.f, text, kText);

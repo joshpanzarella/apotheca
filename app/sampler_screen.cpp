@@ -143,7 +143,8 @@ void SamplerScreen::press(Button b) {
         stepSound(by);
         return;
     }
-    const int id = settingAt(stop_ - 1); // (only past the sound's stop: settingAt(-1) read before the list's start)
+    const int id = settingAt(stop_ - 1);
+    if (id < 0) return; // (a stop that is no setting: settingAt says -1)
     setSetting(id, trk().sampler[id] + (id == sampler::Root ? -by : by)); // PITCH up is the root key down
 }
 
@@ -360,7 +361,7 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
     if (!said_.empty() && nowMs >= saidUntil_) said_.clear();
     const float x = input.stickX(), y = input.stickY();
 
-    if (holding_ && stop_ > 0) {
+    if (holding_ && stop_ > 0 && settingAt(stop_ - 1) >= 0) {
         // A setting: the stick turns it through its whole range in about a second.
         const int id = settingAt(stop_ - 1);
         const float range = static_cast<float>(sampler::settingMax(id) - sampler::settingMin(id));
