@@ -373,7 +373,9 @@ void testTheSceneIsCopied() {
     CHECK(p.tracks[0].bars[1] == 2 && p.tracks[0].bars[2] == 1 && p.tracks[1].bars[1] == 1);
     CHECK(p.tracks[0].drums[1][0].fx[1][12].throwTo == 1 && p.tracks[0].drums[1][0].nudge[2][6] == 0.25f && p.tracks[0].drums[1][0].chance[3][10] == 0.5f);
     CHECK(p.tracks[1].notes[1][0].notes[2].glide == 1 && p.tracks[1].notes[1][0].notes[2].throwTo == 2 && p.tracks[1].notes[1][0].chords[0].ratchet == 2);
-    CHECK(p.tracks[1].automation[1][0][7] == 0.1f + 0.05f * 7.f && p.tracks[1].automation[2][1][3] == 0.7f && p.tracks[1].automation[1][1][3] < 0.f);
+    // (Step 7's value within a millionth: written at run time, where a multiply and an add may be fused into one,
+    // and compared here with a constant the compiler works out unfused. The next step's is 0.05 away.)
+    CHECK(std::fabs(p.tracks[1].automation[1][0][7] - (0.1f + 0.05f * 7.f)) < 1e-6f && p.tracks[1].automation[2][1][3] == 0.7f && p.tracks[1].automation[1][1][3] < 0.f);
     CHECK(p.tracks[0].automation[3][20][0] == 0.3f && p.tracks[0].automation[2][20][0] < 0.f);
     // And as the song file would keep it.
     CHECK(songText(p) == songText(*withCopyAfter(*was, 0)));
@@ -2327,14 +2329,17 @@ void testTheEnginesMove() {
 // trash, and the program frees them (collectGarbage). Counted on every new and delete: after any
 // number of moves in and out, the program holds what it held, to the byte.
 void testNothingFreedOnTheAudioThreadAndAllOfItComesBack() {
-    { // (the counters can see)
+    { // (the counters can see. The pointer is kept where the compiler cannot see it go unused: a new
+      //  and delete of nothing else may be taken out by the optimiser, and then nothing is counted)
+        static int* volatile seen = nullptr;
         const long long held = gHeldBytes;
         gInRender = true;
         int* const one = new int(1);
+        seen = one;
         gInRender = false;
         CHECK(gHeldBytes == held + static_cast<long long>(sizeof(int)) && gNewsInRender == 1 && gDeletesInRender == 0);
         gInRender = true;
-        delete one;
+        delete seen;
         gInRender = false;
         CHECK(gHeldBytes == held && gDeletesInRender == 1);
         gNewsInRender = 0;

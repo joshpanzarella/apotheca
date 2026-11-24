@@ -2274,7 +2274,9 @@ static void testANoteGlides() {
     s.start(57, 69, 0.1f, 48000.f);
     CHECK(s.take(0) == -12.f && s.take(2400) == -12.f && std::fabs(s.take(0) + 6.f) < 1e-3f);
     s.take(2400);
-    CHECK(s.take(100) == 0.f && s.take(100) == 0.f);
+    // (Landed, to a millionth of a semitone: where a multiply and an add are fused (ARM), 2400 steps of
+    // the rate fall half a millionth short, and the slide lands on the block after. Never heard.)
+    CHECK(std::fabs(s.take(100)) < 1e-6f && s.take(100) == 0.f);
     s.start(81, 69, 0.1f, 48000.f);
     s.take(1200);
     CHECK(std::fabs(s.take(0) - 9.f) < 1e-3f);
