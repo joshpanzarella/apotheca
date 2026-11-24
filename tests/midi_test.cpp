@@ -222,9 +222,11 @@ void testAKeyboardPlaysTheTrack() {
     third.on(72);
     CHECK(until([&] { return input.poll(event); }) && until([&] { return input.poll(event); }));
     CHECK(peak(engine, 8000) > 0.02f);
-    // One pulled out while the other stays: the other still plays.
+    // One pulled out while the other stays: the key it held is let go (review 2026-11-23: only the last
+    // keyboard's going let keys go, so 60 sounded for good), and the other still plays.
     second.pullOut();
     CHECK(until([&] { return input.devices() == 1; }));
+    CHECK(until([&] { return input.poll(event); }) && is(event, MidiEvent::NoteOff, 60));
     third.off(72);
     third.on(48);
     CHECK(until([&] { return input.poll(event); }) && until([&] { return input.poll(event); }));
