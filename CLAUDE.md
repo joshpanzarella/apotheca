@@ -1068,6 +1068,18 @@ effect in those two groups and fails one that does not.
     dial through `FxScreen::dialAt(p, part)`; `testTheFxPictureFollowsTheSettings` holds every effect's
     picture (drawn, inside its box, theme colours, at least two settings move it, the meter's brass grows).
     **Nobody has seen it on the handheld.**
+  - **Playing, the picture moves with the song** (owner, 2026-11-24: "light visual feedback"; `FxLive`): a
+    purple line where the song is (DELAY two bars across, its echoes standing where TIME puts them in steps and
+    lit as the line passes; MOD four seconds at the rate it READS, with a brass dot on the sweep; DUCK a bar),
+    the track's level (`Engine::trackPeak`, held and falling a fifth a pass) in a DRIVE or CRUSH wave, a reverb's
+    hit and a brass dot on COMP / LIMITER's curve. **Stopped, nothing moves**: the song playing is the stir, so
+    the redraw needs nothing new. The step's part is counted from when the screen saw the step (SDL ticks).
+  - **Each theme has a style** (`FxStyle`, `fxStyle()` by the theme's name; "extra sauce based on the theme"):
+    VINTAGE (BROWN, GRUVBOX: a knurled cap, an engraved scale, a dotted grid), NEON (DRACULA, TOKYO, MONOKAI: a
+    glow ring outside the lit arc, a lit pointer, curves with a 1-pixel `kLine` afterglow), CLEAN (the rest: a
+    thin ring, a dot pointer, no grid). Shapes only: colours stay the theme's jobs. A new theme falls to CLEAN.
+  - `--frames DIR` with `--shot` keeps every frame drawn (DIR/0000.bmp on): how to see what moves without a
+    handheld.
   - What is automated in the scene worked on has a purple name and line in its
     dial, and a purple line under its line of the list. WRITE itself is said by
     the top bar.

@@ -16,6 +16,9 @@ namespace {
 
 constexpr float kPi = 3.14159265358979f;
 
+const FxLive* gLive = nullptr; // the picture being drawn's (drawEffectPicture sets it)
+bool playing() { return gLive && gLive->playing; }
+
 float held(float v) { return v != v ? 0.f : (v < 0.f ? 0.f : (v > 1.f ? 1.f : v)); }
 
 // Rectangles gathered by colour and drawn in one call each (a call a pixel is slow on the handheld's renderer).
@@ -42,9 +45,12 @@ struct Plot {
 
 // A curve over the plot, `fn(t)` 0..1 bottom to top for t 0..1 along it, two pixels thick; with `under`, filled down to
 // `floor` (0..1) under it first.
+bool sameColour(SDL_Color a, SDL_Color b) { return a.r == b.r && a.g == b.g && a.b == b.b; }
+
 template <typename Fn>
 void curve(SDL_Renderer* r, const Plot& p, Fn fn, SDL_Color line, const SDL_Color* under = nullptr, float floor = 0.f) {
-    Ink ink(line), fillInk(under ? *under : line);
+    Ink ink(line), fillInk(under ? *under : line), glow(kLine);
+    const bool afterglow = fxStyle() == FxStyle::Neon && !sameColour(line, kLine) && !sameColour(line, kDim);
     int last = -1;
     for (int i = 0; i < p.w; ++i) {
         const float t = p.w > 1 ? static_cast<float>(i) / static_cast<float>(p.w - 1) : 0.f;
@@ -56,16 +62,25 @@ void curve(SDL_Renderer* r, const Plot& p, Fn fn, SDL_Color line, const SDL_Colo
         }
         const int from = last < 0 ? yy : (last < yy ? last : yy), to = last < 0 ? yy : (last > yy ? last : yy);
         ink.add(p.x + i, from, i + 1 < p.w ? 2 : 1, to - from + 2);
+        if (afterglow && to + 4 < p.y + p.h) glow.add(p.x + i, from + 3, 1, to - from + 2);
         last = yy;
     }
     if (under) fillInk.draw(r);
+    glow.draw(r);
     ink.draw(r);
 }
 
 // The grid behind a plot: eight columns and its foot.
 void grid(SDL_Renderer* r, const Plot& p, float baseline = 0.f) {
     Ink ink(kPanel2), base(kLine);
-    for (int i = 1; i < 8; ++i) ink.add(p.x + p.w * i / 8, p.y, 1, p.h);
+    const FxStyle style = fxStyle();
+    for (int i = 1; i < 8 && style != FxStyle::Clean; ++i) {
+        if (style == FxStyle::Vintage) {
+            for (int y = p.y; y < p.y + p.h; y += 3) ink.add(p.x + p.w * i / 8, y, 1, 1); // engraved: dotted
+        } else {
+            ink.add(p.x + p.w * i / 8, p.y, 1, p.h);
+        }
+    }
     base.add(p.x, p.yOf(baseline), p.w, 1);
     ink.draw(r);
     base.draw(r);
@@ -87,6 +102,24 @@ float readNumber(EffectKind kind, int index, const float* shown, bool last = fal
         }
     }
     return found;
+}
+
+// A time as a setting reads it, in steps of the song: "1/8" 2, "1/8 DOT" 3, "1/8 T" 4/3, "2 BARS" 32. 0: not a note.
+float stepsOfText(const char* text) {
+    float steps = 0.f;
+    const char* slash = std::strchr(text, '/');
+    if (slash && slash > text && slash[1] >= '0' && slash[1] <= '9') {
+        const char* a = slash;
+        while (a > text && a[-1] >= '0' && a[-1] <= '9') --a;
+        const float top = std::strtof(a, nullptr), under = std::strtof(slash + 1, nullptr);
+        if (under > 0.f) steps = 16.f * top / under;
+    } else if (std::strstr(text, "BAR")) {
+        const float n = std::strtof(text, nullptr);
+        steps = 16.f * (n > 0.f ? n : 1.f);
+    }
+    if (steps > 0.f && std::strstr(text, "DOT")) steps *= 1.5f;
+    if (steps > 0.f && (std::strstr(text, "TRIP") || std::strstr(text, " T"))) steps *= 2.f / 3.f;
+    return steps;
 }
 
 unsigned hashOf(unsigned v) {
@@ -199,7 +232,9 @@ void filterPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
 // ---- DRIVE and CRUSH: two cycles of a sine through it, the plain one under it ----
 void wavePicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
     grid(r, p, 0.5f);
-    const auto plain = [](float t) { return 0.9f * std::sin(2.f * kPi * 2.f * t); };
+    // Playing, the sine is as loud as the track comes out: a quiet part bends less than a loud one.
+    const float loud = playing() ? 0.12f + 0.88f * held(gLive->level) : 0.9f;
+    const auto plain = [=](float t) { return loud * std::sin(2.f * kPi * 2.f * t); };
     curve(r, p, [&](float t) { return 0.5f + 0.45f * plain(t); }, kLine);
     const float mix = s("MIX", 1.f);
     std::function<float(float)> bent;
@@ -256,7 +291,7 @@ void wavePicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
     }
     default: { // DRIVE
         const float k = 1.f + 12.f * s("DRIVE", 0.5f), out = 0.4f + 0.6f * s("OUTPUT", 1.f);
-        bent = [=](float t) { return out * std::tanh(k * plain(t)) / std::tanh(k); };
+        bent = [=](float t) { return out * std::tanh(k * plain(t)) / std::tanh(k * 0.9f); };
         break;
     }
     }
@@ -266,7 +301,20 @@ void wavePicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
 // ---- MOD: how it moves over four seconds ----
 void movePicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
     grid(r, p, 0.f);
-    const float cycles = 0.6f + 9.f * s("RATE", 0.3f) * s("RATE", 0.3f), depth = s("DEPTH", 0.5f);
+    // Four seconds across, at the rate it reads (in Hz, or a note of the song).
+    const float seconds = 4.f, step = gLive ? gLive->stepSeconds : 0.125f;
+    float cycles = 0.6f + 9.f * s("RATE", 0.3f) * s("RATE", 0.3f);
+    if (const int rate = s.index("RATE"); rate >= 0) {
+        char text[48];
+        effectParamText(s.kind, rate, s.shown[rate], text, sizeof text, s.shown);
+        const float notes = stepsOfText(text);
+        const float hz = std::strstr(text, "HZ") ? std::strtof(text, nullptr) : (notes > 0.f ? 1.f / (notes * step) : 0.f);
+        if (hz > 0.f) cycles = hz * seconds > 40.f ? 40.f : hz * seconds;
+    }
+    const float depth = s("DEPTH", 0.5f);
+    // Where it is now: a purple line where the song is, a brass dot on the sweep. (The effect's own wave starts where
+    // the sound after a rest does, so this is its speed, not its place.)
+    const float now = playing() ? std::fmod(static_cast<float>(gLive->steps * gLive->stepSeconds), seconds) / seconds : -1.f;
     if (s.kind == EffectKind::Tremolo) {
         const int shape = s.choice("SHAPE");
         const auto wave = [=](float t) {
@@ -280,7 +328,12 @@ void movePicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
         };
         const float spread = s("SPREAD", 0.f);
         if (spread > 0.01f) curve(r, p, [&](float t) { return 0.9f - 0.8f * depth * (0.5f + 0.5f * wave(t + spread * 0.5f / cycles)); }, kLine);
-        curve(r, p, [&](float t) { return 0.9f - 0.8f * depth * (0.5f + 0.5f * wave(t)); }, kText, &kPanel2, 0.f);
+        const auto level = [&](float t) { return 0.9f - 0.8f * depth * (0.5f + 0.5f * wave(t)); };
+        curve(r, p, level, kText, &kPanel2, 0.f);
+        if (now >= 0.f) {
+            fill(r, p.xOf(now), p.y, 1, p.h, kPurple);
+            fill(r, p.xOf(now) - 3, p.yOf(level(now)) - 3, 7, 7, kBrass);
+        }
         return;
     }
     const float spread = s("SPREAD", s.kind == EffectKind::Ensemble ? 0.5f : 0.f), fb = s("FEEDBACK", 0.f);
@@ -293,6 +346,12 @@ void movePicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
             return 0.5f + 0.42f * (0.15f + 0.85f * depth) * sharp;
         }, v == 0 ? kText : kDim);
     }
+    if (now >= 0.f) {
+        const float sw = std::sin(2.f * kPi * cycles * now);
+        const float sharp = fb > 0.f ? sw * (1.f + fb) / (1.f + fb * std::fabs(sw)) : sw;
+        fill(r, p.xOf(now), p.y, 1, p.h, kPurple);
+        fill(r, p.xOf(now) - 3, p.yOf(0.5f + 0.42f * (0.15f + 0.85f * depth) * sharp) - 3, 7, 7, kBrass);
+    }
 }
 
 // ---- DELAY: the sound and its echoes along two bars ----
@@ -300,11 +359,26 @@ void echoPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
     const bool ping = s.kind == EffectKind::Ping;
     grid(r, p, ping ? 0.5f : 0.f);
     const float time = s("TIME", s("LENGTH", 0.4f));
-    const float gap = static_cast<float>(p.w) * (0.05f + 0.22f * time);
+    // Two bars across: an echo stands where it comes, in steps of the song, where the TIME reads as a note.
+    constexpr float kAcross = 32.f;
+    float gap = static_cast<float>(p.w) * (0.05f + 0.22f * time);
+    for (const char* name : {"TIME", "LENGTH"}) {
+        if (const int i = s.index(name); i >= 0) {
+            char text[48];
+            effectParamText(s.kind, i, s.shown[i], text, sizeof text, s.shown);
+            if (const float steps = stepsOfText(text); steps > 0.f) gap = static_cast<float>(p.w) * steps / kAcross;
+        }
+    }
+    if (gap < 5.f) gap = 5.f;
+    // Playing: a purple line goes across with the song, and what it passes lights up for a step (a hit on every
+    // second bar's top and its echoes, as the picture has them).
+    const float head = playing() ? static_cast<float>(std::fmod(gLive->steps, static_cast<double>(kAcross))) / kAcross : -1.f;
+    const float flash = static_cast<float>(p.w) * 1.5f / kAcross;
+    const auto lit = [&](float x) { const float hx = static_cast<float>(p.x) + head * static_cast<float>(p.w); return head >= 0.f && x <= hx && hx - x < flash; };
     float loss = 0.12f + 0.8f * s("FEEDBACK", 0.4f);
     if (loss > 0.94f) loss = 0.94f;
     const float mix = s("MIX", 0.5f), age = s("AGE", 0.f);
-    Ink dry(kText), echo(kBrass), faint(kDim), ramp(kPanel2);
+    Ink dry(kText), echo(kBrass), faint(kDim), ramp(kPanel2), now(kText);
     const auto put = [&](Ink& ink, float x, float amp, int width, int side) {
         const int hh = static_cast<int>(std::round(amp * static_cast<float>(ping ? p.h / 2 - 2 : p.h - 2)));
         const int left = static_cast<int>(x) - width / 2;
@@ -324,10 +398,12 @@ void echoPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
         const float chance = 0.25f + 0.75f * s("CHANCE", 1.f), width = 6.f + 26.f * time;
         x += gap * 0.6f;
         for (int k = 0; k < repeats && x + width < p.x + p.w; ++k, x += width + 3.f)
-            put(k % 3 == 2 && chance < 0.6f ? faint : echo, x + width / 2.f, (0.35f + 0.6f * mix) * (k == 0 ? 1.f : 0.95f), static_cast<int>(width), 0);
+            put(lit(x + width / 2.f) ? now : (k % 3 == 2 && chance < 0.6f ? faint : echo), x + width / 2.f, (0.35f + 0.6f * mix) * (k == 0 ? 1.f : 0.95f), static_cast<int>(width), 0);
         dry.draw(r);
         faint.draw(r);
         echo.draw(r);
+        now.draw(r);
+        if (head >= 0.f) fill(r, p.xOf(head), p.y, 1, p.h, kPurple);
         return;
     }
     float amp = 0.3f + 0.65f * mix;
@@ -343,13 +419,15 @@ void echoPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
                 ramp.add(static_cast<int>(x) - len + i, p.y + p.h - 1 - ih, 1, ih);
             }
         }
-        put(n > 6 && age > 0.3f ? faint : echo, x, amp, width, ping ? (n % 2 ? -1 : 1) : 0);
+        put(lit(x) ? now : (n > 6 && age > 0.3f ? faint : echo), x, amp, width, ping ? (n % 2 ? -1 : 1) : 0);
         amp *= loss;
     }
     ramp.draw(r);
     dry.draw(r);
     faint.draw(r);
     echo.draw(r);
+    now.draw(r);
+    if (head >= 0.f) fill(r, p.xOf(head), p.y, 1, p.h, kPurple);
 }
 
 // ---- REVERB: the tail, the hit first ----
@@ -390,7 +468,9 @@ void tailPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
             sparkle.add(p.xOf(t), yy, 2, 2);
         }
     }
-    fill(r, p.x + 1, p.y + 1, 4, p.h - 2, kText); // the hit
+    // The hit: playing, as loud as the track comes out now.
+    const int hitH = playing() ? 2 + static_cast<int>(held(gLive->level) * static_cast<float>(p.h - 4)) : p.h - 2;
+    fill(r, p.x + 1, p.y + p.h - 1 - hitH, 4, hitH, kText);
     body.draw(r);
     curve(r, Plot{p.x + 6, p.y, p.w - 6, p.h}, [&](float t) { return envelope(t * (1.f - 6.f / static_cast<float>(p.w)) + 6.f / static_cast<float>(p.w)); }, kText);
     sparkle.draw(r);
@@ -440,7 +520,15 @@ void levelPicture(SDL_Renderer* r, const Plot& p, const Settings& s, float meter
         const auto out = [=](float in) { const float g = in + gain, done = g < thr ? g : thr + (g - thr) / ratio; return mix * done + (1.f - mix) * in; };
         curve(r, sq, [&](float t) { return (out(-60.f + 60.f * t) + 60.f) / 60.f; }, kTeal);
         const float knee = thr - gain;
-        if (knee > -60.f && knee < 0.f) fill(r, sq.xOf((knee + 60.f) / 60.f) - 2, sq.yOf((thr + 60.f) / 60.f) - 2, 6, 6, kBrass);
+        if (knee > -60.f && knee < 0.f) fill(r, sq.xOf((knee + 60.f) / 60.f) - 2, sq.yOf((thr + 60.f) / 60.f) - 2, 6, 6, kLine);
+        if (playing() && gLive->level > 0.001f) {
+            // Where the track's sound is on the curve just now: in at its level, out where the curve takes it.
+            float in = 20.f * std::log10(gLive->level);
+            in = in < -60.f ? -60.f : (in > 0.f ? 0.f : in);
+            const float o = out(in) < -60.f ? -60.f : (out(in) > 0.f ? 0.f : out(in));
+            fill(r, sq.xOf((in + 60.f) / 60.f), sq.y, 1, sq.h, kPurple);
+            fill(r, sq.xOf((in + 60.f) / 60.f) - 3, sq.yOf((o + 60.f) / 60.f) - 3, 7, 7, kBrass);
+        }
         return;
     }
     grid(r, left, 0.f);
@@ -454,6 +542,7 @@ void levelPicture(SDL_Renderer* r, const Plot& p, const Settings& s, float meter
         Ink hits(kBrass);
         for (int k = 0; k < 4; ++k) hits.add(left.x + left.w * k / 4, left.y + left.h - 6, 3, 6);
         hits.draw(r);
+        if (playing()) fill(r, left.xOf(static_cast<float>(std::fmod(gLive->steps, 16.0)) / 16.f), left.y, 1, left.h, kPurple); // a bar across
         return;
     }
     // SNAP: a hit's level, its front made sharper or softer and its tail longer or shorter.
@@ -468,9 +557,18 @@ void levelPicture(SDL_Renderer* r, const Plot& p, const Settings& s, float meter
 
 } // namespace
 
-void drawEffectPicture(SDL_Renderer* r, int x, int y, int w, int h, EffectKind kind, const float* shown, float meterDb) {
+FxStyle fxStyle() {
+    const char* name = gTheme.name ? gTheme.name : "";
+    if (!std::strcmp(name, "BROWN") || !std::strcmp(name, "GRUVBOX")) return FxStyle::Vintage;
+    if (!std::strcmp(name, "DRACULA") || !std::strcmp(name, "TOKYO") || !std::strcmp(name, "MONOKAI")) return FxStyle::Neon;
+    return FxStyle::Clean;
+}
+
+void drawEffectPicture(SDL_Renderer* r, int x, int y, int w, int h, EffectKind kind, const float* shown, float meterDb, const FxLive& live) {
     box(r, x, y, w, h, kPanel, kLine);
     if (kind == EffectKind::None) return;
+    gLive = &live;
+    struct Done { ~Done() { gLive = nullptr; } } done;
     const Settings s{kind, effectInfo(kind), shown};
     const Plot p{x + 12, y + 12, w - 24, h - 24};
     switch (effectInfo(kind).family) {
@@ -492,6 +590,8 @@ SDL_Point dialPoint(int cx, int cy, float radius, float part) {
 
 void drawDial(SDL_Renderer* r, int cx, int cy, int radius, int ring, float part, int choices, int which, SDL_Color lit, float mark) {
     part = held(part);
+    const FxStyle style = fxStyle();
+    if (style == FxStyle::Clean) ring = ring > 4 ? 4 : ring; // a thin ring
     // Where a pixel's centre stands on the ring: how far round it is (0..1), or past the end (> 1, the gap at the foot).
     const auto round = [&](int px, int py, float* d) {
         const float dx = static_cast<float>(px - cx) + 0.5f, dy = static_cast<float>(py - cy) + 0.5f;
@@ -500,14 +600,32 @@ void drawDial(SDL_Renderer* r, int cx, int cy, int radius, int ring, float part,
         while (a < 0.f) a += 360.f;
         return a / kDialSweep;
     };
-    Ink on(lit), off(kLine), face(kPanel2), pointer(kText), brass(kBrass);
+    Ink on(lit), off(kLine), face(kPanel2), pointer(style == FxStyle::Neon ? lit : kText), brass(kBrass), engraved(kLine), knurl(kPanel);
     const float inner = static_cast<float>(radius - ring), faceR = static_cast<float>(radius - ring - 3);
-    for (int py = cy - radius; py <= cy + radius; ++py) {
-        for (int px = cx - radius; px <= cx + radius; ++px) {
+    const int reach = radius + 6;
+    for (int py = cy - reach; py <= cy + reach; ++py) {
+        for (int px = cx - reach; px <= cx + reach; ++px) {
             float d;
             const float t = round(px, py, &d);
-            if (d <= faceR) face.add(px, py, 1, 1);
-            else if (choices <= 0 && d >= inner && d < static_cast<float>(radius) && t <= 1.f) (t <= part ? on : off).add(px, py, 1, 1);
+            if (d <= faceR) {
+                // VINTAGE: the cap's knurled edge, a notch every twelve degrees.
+                const bool notch = style == FxStyle::Vintage && d > faceR - 2.5f && static_cast<int>(std::floor(t * kDialSweep / 12.f + 100.f)) % 2 == 0;
+                (notch ? knurl : face).add(px, py, 1, 1);
+            } else if (choices <= 0 && d >= inner && d < static_cast<float>(radius) && t <= 1.f) {
+                (t <= part ? on : off).add(px, py, 1, 1);
+            } else if (style == FxStyle::Neon && choices <= 0 && d >= radius + 1.5f && d < radius + 2.5f && t <= part) {
+                on.add(px, py, 1, 1); // NEON: a glow ring outside the lit arc
+            }
+        }
+    }
+    if (style == FxStyle::Vintage) {
+        // An engraved scale round the ring: eleven ticks, the ends and the middle longer.
+        for (int k = 0; k <= 10; ++k) {
+            const float t = static_cast<float>(k) / 10.f, out = static_cast<float>(radius) + (k % 5 == 0 ? 5.f : 3.5f);
+            for (float d = static_cast<float>(radius) + 2.f; d <= out; d += 0.5f) {
+                const SDL_Point at = dialPoint(cx, cy, d, t);
+                engraved.add(at.x, at.y, 1, 1);
+            }
         }
     }
     float shownPart = part;
@@ -522,10 +640,16 @@ void drawDial(SDL_Renderer* r, int cx, int cy, int radius, int ring, float part,
         }
         shownPart = choices > 1 ? static_cast<float>(which) / static_cast<float>(choices - 1) : 0.5f;
     }
-    // The pointer: from near the middle out to the face's edge, two pixels wide.
-    for (float k = faceR * 0.35f; k <= faceR - 1.f; k += 0.5f) {
-        const SDL_Point at = dialPoint(cx, cy, k, shownPart);
-        pointer.add(at.x, at.y, 2, 2);
+    if (style == FxStyle::Clean) {
+        // CLEAN: the pointer is a dot near the cap's edge.
+        const SDL_Point at = dialPoint(cx, cy, faceR - 5.f, shownPart);
+        pointer.add(at.x - 2, at.y - 2, 4, 4);
+    } else {
+        // The pointer: from near the middle out to the cap's edge, two pixels wide.
+        for (float k = faceR * 0.35f; k <= faceR - 1.f; k += 0.5f) {
+            const SDL_Point at = dialPoint(cx, cy, k, shownPart);
+            pointer.add(at.x, at.y, 2, 2);
+        }
     }
     if (mark == mark && choices <= 0) {
         // A MOD runs on it: a brass tick across the ring, standing out past it, where the setting is given now.
@@ -535,6 +659,8 @@ void drawDial(SDL_Renderer* r, int cx, int cy, int radius, int ring, float part,
         }
     }
     face.draw(r);
+    knurl.draw(r);
+    engraved.draw(r);
     off.draw(r);
     on.draw(r);
     pointer.draw(r);
