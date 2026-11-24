@@ -42,6 +42,23 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
 - **A recording is 20 s at most** (owner, 2026-11-18: it was 10): `kMaxSampleSeconds` for a file read
   (a longer one is cut there and faded) and `Recorder::kMaxSeconds` for RECORD; `sample_test` holds both
   (15 s kept whole). **Catch is not tied to it**: the engine remembers `kCatchFrames`, ten seconds.
+- **A multisample is found from the names, every time it is read** (`Session::multisampleOf`,
+  `session_samples.cpp`): the song names only the file picked. Files beside it that spell a note
+  (`sampleNote`) are its notes; **VELOCITY LAYERS** (owner, 2026-11-24: picked over round robin, an
+  on-device auto-sampler and a zone view, which are not built) are read from a word (`sampleLayer`:
+  PPP to FFF, never the first word; SOFT, MED, HARD, LOUD; V, VL, VEL, VELOCITY or LAYER and a
+  number, glued straight after a note too, "A0v16"). A file with no layer word sorts as MF. A file
+  with no note but a layer word, whose name is otherwise the picked one's (`sampleLayerStem`), is a
+  layer of the picked one's note: "Snare", "Snare soft", "Snare_HARD". A note's layers split the
+  velocities evenly, softest first (`SampleZone::top`; the engine takes the key's softest zone whose
+  top reaches the velocity, inclusive, so with no layers it is the one zone as before, to the bit).
+  **Caps**: 24 notes (`kMaxZoneNotes`, the nearest to the picked one's, a lower one first on a tie),
+  then `kMaxZones` (48) / notes layers each, at most `kMaxLayers` (4), spread from softest to
+  loudest, the picked one put in place of the nearest kept. **An un-noted picked file's root is 60**
+  (ROOT then moves it as it moves the set; it was ROOT itself, which ROOT moved again). Worst case
+  48 files of 20 s is about 180 MB and is read on the app thread: **load time and memory not
+  measured on the handheld**. `sample_test` (`testLayerNames`, `testVelocityLayers`,
+  `testVelocityLayersCap`); twelve mutants killed.
 - **Sample names from `wavNames` have no `.wav` ending.** The file may end
   `.wav` or `.WAV`: whatever opens or names one tries both (`readRecording`,
   `recordingThere`, `deleteSample`).

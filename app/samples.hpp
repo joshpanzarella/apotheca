@@ -41,6 +41,15 @@ std::string sampleLabel(const std::string& name);
 // A multisample file's note from its name ("Piano/C2" goes at C): the last note spelled in the
 // name by itself ("C2", "C#3", "Db3", any case), C4 as 60. -1: none there, or past the keys.
 int sampleNote(const std::string& name);
+// A multisample file's velocity layer from its name (owner, 2026-11-24: velocity layers), as a number to sort by,
+// softest first; -1: none spelled. A word by itself: a dynamic, PPP 1, PP 2, P 3, MP 4, MF 5, F 6, FF 7, FFF 8 (never
+// the name's first word: "P C3" is a P's C3), SOFT 2, MEDIUM or MED 5, HARD or LOUD 7; or V, VL, VEL, VELOCITY or LAYER
+// with a number, by itself or after it ("v2", "vel 3", "layer2") or straight after a note ("A0v16"): the number. The
+// last one spelled counts; a folder's name is not read.
+int sampleLayer(const std::string& name);
+// The name by itself with its layer word taken out, in small letters, its words one space apart ("Snare_HARD" and
+// "snare soft" are both "snare"): the files that are layers of one sound.
+std::string sampleLayerStem(const std::string& name);
 constexpr int kSampleNameRoom = 64; // the longest a name is kept, with its folder and the ending 0
 
 } // namespace apotheca

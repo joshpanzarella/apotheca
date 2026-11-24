@@ -64,9 +64,15 @@ void Sampler::noteOn(int note, float velocity) {
     int length = length_, root = value_[Root], tune = value_[Tune];
     double spanFrom = 0.0, spanTo = static_cast<double>(length);
     if (zones_) {
-        const SampleZone* zone = &zones_->front();
-        for (const SampleZone& z : *zones_)
-            if (note >= z.lo) zone = &z; // by root, lowest first: the last one starting at or under the key
+        // The key's zones (a root's velocity layers), the softest that reaches this velocity; above them all,
+        // the loudest of them. (No layers: the one zone of the key, as before.)
+        const SampleZone* zone = nullptr;
+        for (const SampleZone& z : *zones_) {
+            if (note < z.lo || note > z.hi) continue;
+            if (!zone || zone->top < velocity) zone = &z;
+            else break; // (a root's layers lie together, softest first)
+        }
+        if (!zone) zone = &zones_->front();
         if (zone->data.empty()) return;
         data = zone->data.data();
         length = static_cast<int>(zone->data.size());
