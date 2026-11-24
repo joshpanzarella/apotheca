@@ -177,11 +177,15 @@ void testReadingWavFiles() {
         CHECK(std::abs(crossings - 440) <= 2); // 440 Hz for half a second
         CHECK(peak > 0.48f && peak < 0.52f);
     }
-    // Ten seconds is the most: a longer file is cut there, and faded so it does not click.
-    CHECK(parseWav(makeWav(1, 8, 1, 8000, 8000 * 12, [](int, int) { return 0.5f; }), out));
-    CHECK(out.size() == 480000 && std::fabs(out[470000] - 0.5f) < 0.01f && std::fabs(out.back()) < 0.01f);
-    CHECK(parseWav(makeWav(1, 8, 1, 8000, 8000 * 9, [](int, int) { return 0.5f; }), out));
-    CHECK(out.size() == 432000 && std::fabs(out.back() - 0.5f) < 0.01f); // under ten: left alone
+    // Twenty seconds is the most (kMaxSampleSeconds; owner, 2026-11-18: it was ten): a longer file is
+    // cut there, and faded so it does not click.
+    CHECK(parseWav(makeWav(1, 8, 1, 8000, 8000 * 24, [](int, int) { return 0.5f; }), out));
+    CHECK(out.size() == 960000 && std::fabs(out[950000] - 0.5f) < 0.01f && std::fabs(out.back()) < 0.01f);
+    CHECK(parseWav(makeWav(1, 8, 1, 8000, 8000 * 19, [](int, int) { return 0.5f; }), out));
+    CHECK(out.size() == 912000 && std::fabs(out.back() - 0.5f) < 0.01f); // under twenty: left alone
+    // Fifteen seconds, longer than the old limit, is kept whole.
+    CHECK(parseWav(makeWav(1, 8, 1, 8000, 8000 * 15, [](int, int) { return 0.5f; }), out));
+    CHECK(out.size() == 720000 && std::fabs(out.back() - 0.5f) < 0.01f);
 
     // A file cut short plays what there is of it.
     std::string cutShort = makeWav(1, 16, 1, 48000, 1000, ramp);
@@ -1364,15 +1368,15 @@ void testTheRecorder() {
     r.arm();
     r.feed(quiet.data(), 48000);
     CHECK(r.finish().empty());
-    // Ten seconds is the most.
+    // Twenty seconds is the most (Recorder::kMaxSeconds).
     r.arm();
     const std::vector<float> loud = tone(1.f, 0.95f);
-    for (int i = 0; i < 9; ++i) r.feed(loud.data(), 48000);
+    for (int i = 0; i < 19; ++i) r.feed(loud.data(), 48000);
     CHECK(!r.full());
     for (int i = 0; i < 3; ++i) r.feed(loud.data(), 48000);
-    CHECK(r.full() && std::fabs(r.seconds() - 10.f) < 0.001f);
+    CHECK(r.full() && std::fabs(r.seconds() - 20.f) < 0.001f);
     take = r.finish();
-    CHECK(take.size() == 480000);
+    CHECK(take.size() == 960000);
     peak = 0.f;
     for (float v : take) peak = std::fabs(v) > peak ? std::fabs(v) : peak;
     CHECK(std::fabs(peak - 0.95f) < 0.01f); // already loud: left as it is
@@ -1524,16 +1528,16 @@ void testRecordingOntoALane() {
     rig.frames(1);
     CHECK(kit.said().find("NOTHING RECORDED") != std::string::npos);
 
-    // Ten seconds: it stops by itself, as "rec 2", on the lane the cursor was on when it began.
+    // Twenty seconds: it stops by itself, as "rec 2", on the lane the cursor was on when it began.
     kit.goTo(5, KitScreen::kSound);
     rig.tap(R1);
     rig.frames(1);
     kit.goTo(6, KitScreen::kSound);
-    for (int i = 0; i < 11; ++i) input.add(tone(1.f, 0.5f));
-    for (int i = 0; i < 400 && session.recording() != Session::Rec::Idle; ++i) rig.frames(1);
+    for (int i = 0; i < 21; ++i) input.add(tone(1.f, 0.5f));
+    for (int i = 0; i < 800 && session.recording() != Session::Rec::Idle; ++i) rig.frames(1);
     CHECK(session.recording() == Session::Rec::Idle && !input.open && session.lastRecorded() == "recorded/rec 2");
     CHECK(std::strcmp(track.laneSample[5], "recorded/rec 2") == 0 && track.laneSample[6][0] == 0);
-    CHECK(readWav(folder + "/recorded/rec 2.wav", file) && file.size() == 480000);
+    CHECK(readWav(folder + "/recorded/rec 2.wav", file) && file.size() == 960000);
     rig.frames(1);
     CHECK(kit.said().find("REC 2") != std::string::npos);
     // Not while A is held.

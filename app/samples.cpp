@@ -100,7 +100,7 @@ bool parseWav(const std::string& bytes, std::vector<float>& out) {
         mono[i] = sum / static_cast<float>(channels);
     }
     out = toEngineRate(mono, rate);
-    // Cut at ten seconds: fade the last few milliseconds so it does not click.
+    // Cut at kMaxSampleSeconds (20 s): fade the last few milliseconds so it does not click.
     if (cut) {
         const std::size_t fade = out.size() < 480 ? out.size() : 480;
         for (std::size_t i = 0; i < fade; ++i) out[out.size() - 1 - i] *= static_cast<float>(i) / static_cast<float>(fade);

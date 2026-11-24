@@ -495,7 +495,7 @@ void Session::update(Uint32 nowMs) {
         float block[2048];
         for (int got = input_->read(block, 2048); got > 0; got = input_->read(block, 2048)) recorder_.feed(block, got);
         if (recorder_.state() == Recorder::Recording) rec_ = Rec::Recording;
-        if (recorder_.full()) finishRecording(); // ten seconds
+        if (recorder_.full()) finishRecording(); // twenty seconds
     }
 
     // Fitted recordings follow the tempo, once it has stopped moving for a

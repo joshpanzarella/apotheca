@@ -2111,7 +2111,7 @@ last bar's worth of sound.
 
 **R1 is Record.** With a USB microphone or audio interface plugged into the
 USB-C port: R1 on a lane starts it waiting for sound, so there is no silence
-on the front. R1 again stops it; it stops by itself at ten seconds. Silence
+on the front. R1 again stops it; it stops by itself at twenty seconds. Silence
 on the end is trimmed, a quiet take is brought up, and it is saved as
 `rec 1.wav`, `rec 2.wav`... in `samples/recorded` and put on the lane. The sampler has the same
 button. Not tried on the handheld yet: it depends on the firmware seeing the
@@ -2125,7 +2125,7 @@ anything while playing. Until it is ready the lane plays what it had.
 
 - WAV files of 8, 16, 24 or 32 bits or 32-bit float, any sample rate, any
   number of channels. They are played as one channel at 48 kHz.
-- **Ten seconds** of each is used.
+- **Twenty seconds** of each is used; a longer file is cut there, with a short fade so it does not click.
 - The song file keeps each lane's file by name and each hit's start. If the
   file is not on the card, the lane plays its drum and says so (FILE NOT
   FOUND. THE DRUM PLAYS.).

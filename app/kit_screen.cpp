@@ -326,7 +326,7 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
         wasRecording_ = true;
         saidUntil_ = nowMs + 3000;
     } else if (wasRecording_) {
-        wasRecording_ = false; // it has just stopped, by R1 or at ten seconds
+        wasRecording_ = false; // it has just stopped, by R1 or at kMaxSeconds (20 s)
         if (!session_.lastRecorded().empty()) {
             said_ = "RECORDED AS \"" + session_.lastRecorded() + "\"";
             for (char& c : said_) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);

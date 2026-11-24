@@ -3,7 +3,7 @@
 //
 // Whatever the file holds (8, 16, 24 or 32-bit whole numbers or 32-bit
 // floats, any sample rate, any number of channels) comes out the way the
-// engine plays it: one channel, 48 kHz, and no longer than ten seconds.
+// engine plays it: one channel, 48 kHz, and no longer than kMaxSampleSeconds (twenty seconds).
 
 #include <string>
 #include <vector>
@@ -11,7 +11,7 @@
 namespace apotheca {
 
 constexpr float kSampleRate = 48000.f;
-constexpr float kMaxSampleSeconds = 10.f;
+constexpr float kMaxSampleSeconds = 20.f; // a recording read from a file (owner, 2026-11-18: it was 10)
 
 // False if the file is not there or is not a WAV this can read.
 bool readWav(const std::string& path, std::vector<float>& out);

@@ -1667,6 +1667,9 @@ effect in those two groups and fails one that does not.
   and lights only what a note plays; the line over it ends there (`Playhead::to`). Not a MOD
   target: no sampler setting is. `engine_test` (`testTheSampler`, `testTheSamplersEndInAnyBlocks`),
   `sample_test` (`testTheSamplersEnd`).
+- **A recording is 20 s at most** (owner, 2026-11-18: it was 10): `kMaxSampleSeconds` for a file read
+  (a longer one is cut there and faded) and `Recorder::kMaxSeconds` for RECORD; `sample_test` holds both
+  (15 s kept whole). **Catch is not tied to it**: the engine remembers `kCatchFrames`, ten seconds.
 - **Sample names from `wavNames` have no `.wav` ending.** The file may end
   `.wav` or `.WAV`: whatever opens or names one tries both (`readRecording`,
   `recordingThere`, `deleteSample`).

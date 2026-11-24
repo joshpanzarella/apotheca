@@ -395,7 +395,7 @@ public:
     // ---- recording -------------------------------------------------------------------
     // Record from the input onto a drum lane, or onto a sampler track (the
     // lane is then ignored). The first call starts it waiting for sound; the
-    // next stops it. It also stops by itself at ten seconds. What was
+    // next stops it. It also stops by itself at twenty seconds. What was
     // recorded is saved as "rec 1", "rec 2"... in the sample folder.
     enum class Rec { Idle, NoInput, Waiting, Recording };
     void useAudioInput(AudioInput* input) { input_ = input; }

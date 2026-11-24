@@ -493,7 +493,7 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
             say(text, 3000);
             wasRecording_ = true;
         } else if (wasRecording_) {
-            wasRecording_ = false; // it has just stopped, by R1 or at ten seconds
+            wasRecording_ = false; // it has just stopped, by R1 or at kMaxSeconds (20 s)
             say(session_.lastRecorded().empty() ? std::string("NOTHING RECORDED: NO SOUND CAME IN") : "RECORDED AS \"" + session_.lastRecorded() + "\"", 3000);
         }
     }
