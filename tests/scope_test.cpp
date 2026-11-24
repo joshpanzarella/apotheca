@@ -1,4 +1,4 @@
-// LIVE OUTPUT on the DEVICE pages, read off the drawn screen (owner, 2026-11-14: "it could be
+// SIGNAL on the DEVICE pages, read off the drawn screen (owner, 2026-11-14: "it could be
 // smaller, and maybe we can utilize the screen better"). The scope is a thin strip across the whole
 // width just above the hints bar, and the controls above it are spread down to it: no large empty
 // band is left between the last row and the strip, and nothing runs into the strip.
@@ -127,12 +127,36 @@ void checkTheStrip(const Canvas& canvas, const char* name) {
     int dim = 0;
     for (int y = top + 1; y < bottom; ++y)
         for (int x = kScopeX + 1; x < divider; ++x) dim += canvas.is(x, y, kDim);
-    check(dim > 40, "LIVE OUTPUT is written in its room");
+    check(dim > 40, "SIGNAL is written in its room");
     // The line: nothing playing, so it lies along the middle, teal, from the divider to the end.
     const int middle = top + kScopeH / 2;
     check(rowIs(canvas, middle, divider + 2, right - 1, kTeal), "the line runs the rest of the width");
     for (int y = top + 1; y < bottom; ++y)
         for (int x = kScopeX + 1; x < divider; ++x) check(!canvas.is(x, y, kTeal), "no line under the label");
+    CHECK(ok);
+}
+
+// A synth's MAIN (design A, owner 2026-11-24): SIGNAL is a large scope right of ADVANCED, down to the strip's foot.
+void checkTheMainScope(const Canvas& canvas, const char* name, int top) {
+    using namespace ui;
+    bool ok = true;
+    const auto check = [&](bool good, const char* what) {
+        if (!good && ok) std::printf("  %s: %s\n", name, what);
+        ok = ok && good;
+    };
+    const int x = SynthScreen::kMainScopeX, w = SynthScreen::kMainScopeW, bottom = kScopeY + kScopeH - 1;
+    check(canvas.is(x + w / 2, top, kLine) && canvas.is(x + w / 2, bottom, kLine), "its edges, top and foot");
+    check(canvas.is(x, (top + bottom) / 2, kLine) && canvas.is(x + w - 1, (top + bottom) / 2, kLine), "its edges, left and right");
+    for (int y = bottom + 1; y < kScreenH - kHintsH; ++y) check(rowIs(canvas, y, 0, kScreenW, kBg), "a clear row under it");
+    int dim = 0;
+    for (int y = top + 4; y < top + 22; ++y)
+        for (int px = x + 4; px < x + 100; ++px) dim += canvas.is(px, y, kDim);
+    check(dim > 30, "SIGNAL is written at its top left");
+    // Nothing playing: the line lies along the middle, teal, across.
+    const int middle = scopeBoxLineY(0.f, top, bottom + 1 - top);
+    int teal = 0;
+    for (int px = x + 3; px < x + w - 3; ++px) teal += canvas.is(px, middle, kTeal) ? 1 : 0;
+    check(teal > w - 12, "the line runs across the middle");
     CHECK(ok);
 }
 
@@ -150,6 +174,11 @@ void testTheStripOnEveryPage() {
             CHECK(canvas.ok);
             if (!canvas.ok) return;
             CHECK(drawPage(canvas, page, theme));
+            if (page.page == 0 && page.kind != TrackKind::Sampler && page.kind != TrackKind::None) {
+                const SynthSpec* spec = specFor(page.kind);
+                checkTheMainScope(canvas, page.name, spec && (spec->recording || spec->table) ? SynthScreen::kPicAdvancedY : SynthScreen::kAdvancedY);
+                continue;
+            }
             checkTheStrip(canvas, page.name);
             const int empty = emptyAboveTheStrip(canvas);
             if (page.fills) {
@@ -187,11 +216,10 @@ void testTheRowsAreSpreadDown() {
     CHECK(SamplerScreen::kPresetY + SamplerScreen::kPresetH == ui::kAboveScope);
     CHECK(SamplerScreen::kWaveH > 40); // the recording's picture got the room too
 
-    // Read off the screen: the kit's last lane, the sampler's last settings and MAIN's ADVANCED end
-    // on the row above kAboveScope (their bottom edges).
+    // Read off the screen: the kit's last lane and the sampler's last settings end on the row above kAboveScope
+    // (their bottom edges). (MAIN's ADVANCED goes down to the foot, beside SIGNAL: checkTheMainScope.)
     struct Edge { Page page; int x; };
     const Edge edges[] = {
-        {{"phazed MAIN", TrackKind::Phazed, 0, true}, 20},  // ADVANCED
         {{"phazed SOUND", TrackKind::Phazed, 1, true}, 20}, // LEVEL
         {{"sampler", TrackKind::Sampler, 0, true}, 20},     // RELEASE
         {{"kit", TrackKind::None, 0, true}, 20},            // lane 8
@@ -221,9 +249,8 @@ void testTheRowsAreSpreadDown() {
 
 const Page kPhazedMain = {"phazed MAIN", TrackKind::Phazed, 0, true};
 
-// ADVANCED's two lines of words stand in ADVANCED's row, beside its box: never over the macros.
-// Read off the screen: the gaps between the macro boxes are empty all the way down to ADVANCED,
-// and the words are in its row.
+// ADVANCED's words stand in ADVANCED's box (design A: "ADVANCED" and how many pages, beside SIGNAL), never over the
+// macros. Read off the screen: the gaps between the macro boxes are empty all the way down to ADVANCED.
 void testTheAdvancedWordsAreInTheirRow() {
     Canvas canvas;
     if (!canvas.ok || !drawPage(canvas, kPhazedMain, kThemeBrown)) { CHECK(false); return; }
@@ -239,19 +266,14 @@ void testTheAdvancedWordsAreInTheirRow() {
                 }
     }
     for (int y = S::kMacroY + 2 * S::kMacroH + S::kMacroGap; y < S::kAdvancedY; ++y) CHECK(rowIs(canvas, y, 0, ui::kScreenW, ui::kBg));
-    int dim = 0, top = ui::kScreenH, bottom = 0;
-    for (int y = S::kMacroY; y < ui::kAboveScope; ++y)
-        for (int x = 174; x < 630; ++x)
-            if (canvas.is(x, y, ui::kDim) && y >= S::kAdvancedY) {
-                ++dim;
-                top = y < top ? y : top;
-                bottom = y > bottom ? y : bottom;
-            }
-    CHECK(dim > 200);
-    CHECK(top > S::kAdvancedY && bottom < S::kAdvancedY + S::kAdvancedH);
-    // Both lines, about the middle of the row.
-    const int middle = S::kAdvancedY + S::kAdvancedH / 2;
-    CHECK(top < middle - 6 && bottom > middle + 6);
+    // The two lines, ADVANCED (text) over the pages (dim), in the box.
+    int text = 0, dim = 0;
+    for (int y = S::kAdvancedY + 2; y < ui::kScopeY + ui::kScopeH - 2; ++y)
+        for (int x = 10; x < 8 + S::kMacroW - 2; ++x) {
+            text += canvas.is(x, y, ui::kText) ? 1 : 0;
+            dim += canvas.is(x, y, ui::kDim) ? 1 : 0;
+        }
+    CHECK(text > 60 && dim > 30);
 }
 
 // The purple "this macro has automation" line runs along the bottom of the macro's box, as tall as
@@ -278,9 +300,10 @@ void testTheAdvancedOutline() {
     using S = SynthScreen;
     Canvas canvas;
     if (!canvas.ok || !drawPage(canvas, kPhazedMain, kThemeBrown, S::kAdvanced)) { CHECK(false); return; }
-    for (int y = S::kAdvancedY - 1; y <= S::kAdvancedY + S::kAdvancedH; ++y) CHECK(canvas.is(7, y, ui::kTeal) && canvas.is(8 + S::kMacroW, y, ui::kTeal));
+    const int foot = ui::kScopeY + ui::kScopeH; // (down beside SIGNAL, to its foot: design A)
+    for (int y = S::kAdvancedY - 1; y <= foot; ++y) CHECK(canvas.is(7, y, ui::kTeal) && canvas.is(8 + S::kMacroW, y, ui::kTeal));
     CHECK(rowIs(canvas, S::kAdvancedY - 1, 7, 9 + S::kMacroW, ui::kTeal));
-    CHECK(rowIs(canvas, S::kAdvancedY + S::kAdvancedH, 7, 9 + S::kMacroW, ui::kTeal));
+    CHECK(rowIs(canvas, foot, 7, 9 + S::kMacroW, ui::kTeal));
 }
 
 // The preset's count ("1 / 65") stands at the right of PRESET's box on the line of its name.
@@ -342,13 +365,11 @@ void testATallBoxsValueIsInItsMiddle() {
     CHECK(ui::boxValueDrop(ui::kBoxUsualH) == 0.f && ui::boxValueDrop(50) == 0.f && ui::boxValueDrop(114) == 22.f);
     Canvas usual, tall;
     if (!usual.ok || !tall.ok) { CHECK(false); return; }
-    for (bool macro : {false, true}) {
+    // (A macro is a dial now, design A: its value stands under its dial, which is checked below.)
+    for (bool macro : {false}) {
         usual.clear();
         tall.clear();
-        if (macro) {
-            ui::macroBox(usual.r, *usual.fonts, 10, 40, 153, 70, "TONE", "+60", 0.8f, false, false);
-            ui::macroBox(tall.r, *tall.fonts, 10, 40, 153, 114, "TONE", "+60", 0.8f, false, false);
-        } else {
+        if (!macro) {
             ui::valueBox(usual.r, *usual.fonts, 10, 40, 153, 70, "CUTOFF", "1 KHZ", -1.f, false, false);
             ui::valueBox(tall.r, *tall.fonts, 10, 40, 153, 114, "CUTOFF", "1 KHZ", -1.f, false, false);
         }
@@ -356,6 +377,10 @@ void testATallBoxsValueIsInItsMiddle() {
         CHECK(usual.part(11, 61, 120, 20) == tall.part(11, 61 + 22, 120, 20)); // the value, 22 lower (left of the picture)
         CHECK(usual.part(11, 61, 120, 20) != tall.part(11, 61, 120, 20));
     }
+    // A tall macro: the dial between the name and the value; a short one: the dial at the left, the words beside it.
+    const ui::MacroDial tallDial = ui::macroDialIn(10, 40, 153, 114), shortDial = ui::macroDialIn(10, 40, 153, 69);
+    CHECK(tallDial.cy - tallDial.radius > 40 + 20 && tallDial.cy + tallDial.radius < 40 + 114 - 26);
+    CHECK(shortDial.cx + shortDial.radius < 10 + 60 && shortDial.cy - shortDial.radius >= 40 && shortDial.cy + shortDial.radius <= 40 + 69);
 }
 
 } // namespace

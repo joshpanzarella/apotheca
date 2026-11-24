@@ -164,7 +164,7 @@ float bell(float f, float centre, float octaves) {
 void filterPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
     grid(r, p, dbToV(0.f));
     const float mix = s("MIX", 1.f);
-    const auto wet = [&](float gain, float t) { // the mix of the effect's gain with the plain sound, as dB
+    const auto wet = [&](float gain) { // the mix of the effect's gain with the plain sound, as dB
         const float g = mix * gain + (1.f - mix);
         return dbToV(20.f * std::log10(g < 1e-4f ? 1e-4f : g));
     };
@@ -175,7 +175,7 @@ void filterPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
         const float f0 = 40.f * std::pow(50.f, s("PITCH", 0.5f)), g = 0.95f * s("FEEDBACK", 0.5f);
         fn = [=](float t) {
             const float f = freqAt(t), c = std::cos(2.f * kPi * f / f0);
-            return wet(1.f / std::sqrt(1.f + g * g - 2.f * g * c) * (1.f - g * 0.5f), t);
+            return wet(1.f / std::sqrt(1.f + g * g - 2.f * g * c) * (1.f - g * 0.5f));
         };
         markT = std::log(f0 / 20.f) / std::log(1000.f);
         break;
@@ -189,7 +189,7 @@ void filterPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
         const float width = 0.9f - 0.65f * s("RESONANCE", 0.5f);
         fn = [=](float t) {
             const float f = freqAt(t);
-            return wet(0.08f + 2.2f * bell(f, f1, width) + 1.6f * bell(f, f2, width), t);
+            return wet(0.08f + 2.2f * bell(f, f1, width) + 1.6f * bell(f, f2, width));
         };
         markT = std::log(f1 / 20.f) / std::log(1000.f);
         break;
@@ -219,7 +219,7 @@ void filterPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
             if (type == 1) g = lp * lp * (q > 1.f ? 1.f / q : 1.f);
             else if (type == 2) g = (x / q) * lp;
             else if (high) g = x * x * lp;
-            return wet(g, t);
+            return wet(g);
         };
         markT = place;
         break;
@@ -588,7 +588,8 @@ SDL_Point dialPoint(int cx, int cy, float radius, float part) {
     return {cx + static_cast<int>(std::floor(radius * std::cos(a))), cy + static_cast<int>(std::floor(radius * std::sin(a)))};
 }
 
-void drawDial(SDL_Renderer* r, int cx, int cy, int radius, int ring, float part, int choices, int which, SDL_Color lit, float mark) {
+void drawDial(SDL_Renderer* r, int cx, int cy, int radius, int ring, float part, int choices, int which, SDL_Color lit, float mark,
+              bool fromMiddle) {
     part = held(part);
     const FxStyle style = fxStyle();
     if (style == FxStyle::Clean) ring = ring > 4 ? 4 : ring; // a thin ring
@@ -600,6 +601,8 @@ void drawDial(SDL_Renderer* r, int cx, int cy, int radius, int ring, float part,
         while (a < 0.f) a += 360.f;
         return a / kDialSweep;
     };
+    const float low = fromMiddle ? (part < 0.5f ? part : 0.5f) : 0.f, high = fromMiddle ? (part < 0.5f ? 0.5f : part) : part;
+    const auto litAt = [&](float t) { return t >= low && t <= high && !(fromMiddle && high - low < 0.004f); };
     Ink on(lit), off(kLine), face(kPanel2), pointer(style == FxStyle::Neon ? lit : kText), brass(kBrass), engraved(kLine), knurl(kPanel);
     const float inner = static_cast<float>(radius - ring), faceR = static_cast<float>(radius - ring - 3);
     const int reach = radius + 6;
@@ -612,11 +615,16 @@ void drawDial(SDL_Renderer* r, int cx, int cy, int radius, int ring, float part,
                 const bool notch = style == FxStyle::Vintage && d > faceR - 2.5f && static_cast<int>(std::floor(t * kDialSweep / 12.f + 100.f)) % 2 == 0;
                 (notch ? knurl : face).add(px, py, 1, 1);
             } else if (choices <= 0 && d >= inner && d < static_cast<float>(radius) && t <= 1.f) {
-                (t <= part ? on : off).add(px, py, 1, 1);
-            } else if (style == FxStyle::Neon && choices <= 0 && d >= radius + 1.5f && d < radius + 2.5f && t <= part) {
+                (litAt(t) ? on : off).add(px, py, 1, 1);
+            } else if (style == FxStyle::Neon && choices <= 0 && d >= radius + 1.5f && d < radius + 2.5f && litAt(t)) {
                 on.add(px, py, 1, 1); // NEON: a glow ring outside the lit arc
             }
         }
+    }
+    if (fromMiddle) {
+        // The detent: a dim mark over the top, where the preset is as it was made.
+        const SDL_Point at = dialPoint(cx, cy, static_cast<float>(radius) + 4.f, 0.5f);
+        engraved.add(at.x - 1, at.y - 2, 2, 3);
     }
     if (style == FxStyle::Vintage) {
         // An engraved scale round the ring: eleven ticks, the ends and the middle longer.

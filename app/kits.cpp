@@ -39,7 +39,6 @@ const Recipe kRecipes[] = {
     {"DUSTY", {{"kick", "BREATH", 0}, {"snare", "BRUSH", 0}, {"clhat", "SHAKER", 1}, {"ophat", "SIZZLE", 1}, {"clap", "PAPER", 0}, {"tom", "LOG", 0}, {"rim", "BLOCK", 0}, {"noise", "HISS", 0}}},
     {"HAND DRUMS", {{"tom", "CONGA", 0}, {"tom", "LOW", 0}, {"clave", "WOODBLOCK", 0}, {"cowbell", "AGOGO", 0}, {"clap", "FINGER SNAP", 0}, {"clave", "HOLLOW", 0}, {"rim", "PING", 0}, {"cymbal", "BELL", 0}}},
 };
-const int kRecipeCount = sizeof kRecipes / sizeof kRecipes[0];
 
 // The recipe as a kit's text; a voice it names that is not in the data is a problem (and the model's usual).
 std::string recipeText(const Recipe& recipe, std::vector<std::string>* problems) {

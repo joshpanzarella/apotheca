@@ -16,7 +16,7 @@ namespace {
 
 constexpr Uint32 kRepeatDelayMs = kCursorDelayMs, kRepeatEveryMs = kCursorEveryMs;
 constexpr float kMovesPerSecond = 14.f, kClicksPerSecond = 5.f, kTurnPerSecond = 1.8f; // (an amount here is -1..1 or 0..1)
-constexpr float kDepthStep = 0.01f, kNotch = 0.05f;
+constexpr float kNotch = 0.05f;
 constexpr double kSpeedOctaves = 4.0; // the stick on a FREE LFO's SPEED: octaves a unit of turn (its 10 octaves in about 1.4 s, pushed full)
 
 float held(float v, float lo, float hi) { return v > hi ? hi : (v < lo ? lo : (v == v ? v : lo)); }

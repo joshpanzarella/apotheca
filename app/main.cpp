@@ -1187,7 +1187,7 @@ int main(int argc, char** argv) {
             mods.goTo(0, 0);
         }
     } else if (std::strncmp(view, "device-mod", 10) == 0) {
-        // X held on a macro of a Phazed track (TONE): its MOD's fields in LIVE OUTPUT's place, each button's
+        // X held on a macro of a Phazed track (TONE): its MOD's fields in SIGNAL's place, each button's
         // chip under its field. device-mod-held: an LFO (TRIANGLE, +40%, 1/2, PHASE 1/4). device-mod-stepper:
         // a STEPPER. device-mod-new: no MOD on it yet (UP makes one). device-mod-full: both MODs on other knobs
         // (MODS FULL). device-mod-deleting: B held on its LFO, the bar filling (the still is taken before the

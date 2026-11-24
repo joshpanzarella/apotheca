@@ -1,5 +1,7 @@
 #include "synth_screen.hpp"
 
+#include "icons.hpp"
+
 #include "mods.hpp"
 #include "samples.hpp"
 
@@ -675,7 +677,7 @@ void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
 
     if (page_ == 0) {
         // ---- MAIN: folder, preset, eight macros, ADVANCED, and the scope ----------
-        valueBox(r, fonts, kFolderX, kPresetY, kFolderW, kPresetH, "FOLDER", spec_.presetCategory(t.preset), -1.f, cursor_ == kFolder, holding_);
+        displayBox(r, fonts, kFolderX, kPresetY, kFolderW, kPresetH, "FOLDER", spec_.presetCategory(t.preset), cursor_ == kFolder, holding_);
         char place[24];
         std::snprintf(text, sizeof text, "%s", spec_.presetName(t.preset));
         int inFolder = 0;
@@ -687,12 +689,12 @@ void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
             const float room = countRight - (kPresetX + 7.f) - fonts.small.width("PRESET") - fonts.small.width(kCountLongest) - 2.f * kNoteGap;
             const Font& row = fonts.within(&Fonts::small, note, room);
             const float y = rowY; // (a row held at LARGE is where LARGE draws it)
-            valueBox(r, fonts, kPresetX, kPresetY, kPresetW, kPresetH, "", text, -1.f, cursor_ == kPreset, holding_);
+            displayBox(r, fonts, kPresetX, kPresetY, kPresetW, kPresetH, "", text, cursor_ == kPreset, holding_);
             row.draw(r, kPresetX + 7.f, y, "PRESET", kDim);
             row.draw(r, kPresetX + 7.f + row.width("PRESET") + kNoteGap, y, note, kDim);
             row.drawRight(r, countRight, y, place, kDim);
         } else {
-            valueBox(r, fonts, kPresetX, kPresetY, kPresetW, kPresetH, "PRESET", text, -1.f, cursor_ == kPreset, holding_);
+            displayBox(r, fonts, kPresetX, kPresetY, kPresetW, kPresetH, "PRESET", text, cursor_ == kPreset, holding_);
             fonts.small.drawRight(r, countRight, rowY, place, kDim);
         }
 
@@ -701,32 +703,31 @@ void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
             // While the song plays an automated macro shows where the pattern has it, not where its knob rests.
             const float v = session_.automated(project_.track, m, t.macro[m]);
             spec_.macroText(m, v, text, sizeof text);
-            macroBox(r, fonts, x, y, kMacroW, macroH(), spec_.macroNames[m], text, v, cursor_ == kFirstMacro + m, holding_);
+            // A MOD on it runs: the brass tick across the dial where the macro is given this moment (batch 6).
+            macroBox(r, fonts, x, y, kMacroW, macroH(), spec_.macroNames[m], text, v, cursor_ == kFirstMacro + m, holding_,
+                     modMarkAt(session_, project_.track, kModFirstMacro + m, v));
             // A purple bar along the bottom: this macro has automation in the cell being worked on.
             if (session_.hasAutomation(project_.track, project_.scene, m)) fill(r, x + 1, y + macroH() - 3, kMacroW - 2, 2, kPurple);
-            // A MOD on it runs: the thin brass mark where the macro is given this moment (batch 6).
-            drawModMark(r, x + kMacroBarInset, y + macroH() - kMacroBarFromFoot, kMacroW - 2 * kMacroBarInset, kMacroBarH,
-                        modMarkAt(session_, project_.track, kModFirstMacro + m, v));
         }
         if (spec_.recording) drawPicture(r, fonts);
         if (spec_.table) drawTablePicture(r, fonts);
-        const int advancedTop = advancedY();
-        box(r, 8, advancedTop, kMacroW, kAdvancedH, kPanel2, kLine);
-        fonts.medium.draw(r, 20.f, advancedTop + (kAdvancedH - fonts.medium.capHeight()) / 2.f, "ADVANCED  >", cursor_ == kAdvanced ? kTeal : kText);
-        if (cursor_ == kAdvanced) outline(r, 7, advancedTop - 1, kMacroW + 2, kAdvancedH + 2, kTeal, 2);
-        const float middle = advancedTop + kAdvancedH / 2.f;
-        std::snprintf(text, sizeof text, "Every setting of this sound, on %d pages.", spec_.pages - 1);
-        fonts.small.draw(r, 174.f, middle - 14.f, text, kDim);
-        fonts.small.draw(r, 174.f, middle + 2.f, "The macros above bend the sound and leave it as it was made.", kDim);
-
+        // ADVANCED at the left, down to the hints bar, and beside it SIGNAL as a large scope (design A: where the
+        // words that said what ADVANCED holds were; the strip under them is the scope's foot now).
+        const int advancedTop = advancedY(), advancedH = kScopeY + kScopeH - advancedTop;
+        box(r, 8, advancedTop, kMacroW, advancedH, kPanel2, kLine);
+        const float middle = advancedTop + advancedH / 2.f;
+        fonts.medium.drawCentered(r, 8.f + kMacroW / 2.f, middle - fonts.medium.capHeight() - 3.f, "ADVANCED", cursor_ == kAdvanced ? kTeal : kText);
+        std::snprintf(text, sizeof text, "%d PAGES  >", spec_.pages - 1);
+        fonts.small.drawCentered(r, 8.f + kMacroW / 2.f, middle + 5.f, text, kDim);
+        if (cursor_ == kAdvanced) outline(r, 7, advancedTop - 1, kMacroW + 2, advancedH + 2, kTeal, 2);
         if (modKnob_.held()) {
-            // X held on a macro: its MOD's fields in LIVE OUTPUT's place, each button under its field.
+            // X held on a macro: its MOD's fields in SIGNAL's place, each button under its field.
             const int m = modKnob_.target() - kModFirstMacro;
             modKnob_.drawFields(r, fonts, kDeviceModPlaces, 0.f, kScopeX, kScopeY, kScopeW, kScopeH, spec_.macroNames[m]);
             modKnob_.drawHints(r, fonts, kDeviceModPlaces);
             return;
         }
-        scopeStrip(r, fonts, session_.engine);
+        scopeBox(r, fonts, session_.engine, kMainScopeX, advancedY(), kMainScopeW, kScopeY + kScopeH - advancedY());
 
         if (holding_) {
             if (cursor_ == kFolder) hint("UP / DOWN", "next / previous folder");
@@ -766,14 +767,14 @@ void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
                 for (char& c : shown) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
                 const Font& valueFont = boxFonts.large;
                 while (shown.size() > 1 && valueFont.width(shown.c_str()) > kMacroW - 14.f) shown.pop_back();
-                valueBox(r, boxFonts, x, y, kMacroW, rowH, it.name, shown.c_str(), -1.f, i == cursor_, holding_);
+                valueBox(r, boxFonts, x, y, kMacroW, rowH, it.name, shown.c_str(), -1.f, i == cursor_, holding_, false, iconFor(it.name));
                 continue;
             }
             const int value = valueOf(it.id);
             settingReading(spec_, values(), it.id, text, sizeof text);
             const int range = spec_.settingMax(it.id) - spec_.settingMin(it.id);
             const float part = isChoice(it.id) ? -1.f : range > 0 ? static_cast<float>(value - spec_.settingMin(it.id)) / range : 0.f; // a choice has no bar
-            valueBox(r, boxFonts, x, y, kMacroW, rowH, it.name, text, part, i == cursor_, holding_);
+            valueBox(r, boxFonts, x, y, kMacroW, rowH, it.name, text, part, i == cursor_, holding_, false, iconFor(it.name));
         }
         scopeStrip(r, fonts, session_.engine);
     } else {

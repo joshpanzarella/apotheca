@@ -169,6 +169,7 @@ public:
     static constexpr int kDialR = 30, kDialRing = 6, kDialCY = kDialY + 74; // the ring: its radius, how thick, its centre
     static constexpr int kDialNameY = kDialY + 10, kDialValueY = kDialY + 116; // the name's top, the value's top
     static constexpr int kMeterX = 10, kMeterW = kDialW - 20, kMeterY = kDialY + kDialH - 16, kMeterH = 4; // (x from the dial's left)
+    static constexpr int kDialIconY = kDialY + 136; // its icon, under the value
     static constexpr int kAutoY = kDialY + kDialH - 5; // the purple line: the setting moves with the pattern
     // A pixel in the middle of dial p's ring, `part` of the way round (for the tests that read a dial).
     static SDL_Point dialAt(int p, float part) { return dialPoint(dialCX(p), kDialCY, kDialR - kDialRing / 2.f, part); }
