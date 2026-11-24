@@ -1381,6 +1381,11 @@ void Engine::apply(const Command& c) {
                     }
                 for (Note& note : store->notes[bar]) note = Note();
             }
+            // An arpeggio of this cell looks, before its next note, whether its chord is still there
+            // (review 2026-11-23: only SetNote told it, so a cell emptied played its chord on).
+            if (validTrack(c.track))
+                for (auto& arp : tracks_[c.track].arps)
+                    if (arp.on && arp.slot / kMaxBars == c.scene) arp.look = true;
         }
         break;
     case Command::SetCellBars:
@@ -1683,6 +1688,10 @@ void Engine::apply(const Command& c) {
                     track.drums.setLaneLevel(lane, set.laneLevel[lane]);
                     track.drums.setLanePart(lane, set.lanePart[lane]);
                 }
+                // Every pattern of the track is new: an arpeggio looks, before its next note, whether its
+                // chord is still there (review 2026-11-23: a cell pasted over played the old chord on).
+                for (auto& arp : track.arps)
+                    if (arp.on) arp.look = true;
             }
             Trash trash;
             trash.isImage = true;
