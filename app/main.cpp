@@ -279,8 +279,8 @@ int main(int argc, char** argv) {
     const char* samples = nullptr;
     int textSize = -1;           // --text-size small | medium | large | xl: a still at that TEXT SIZE
     const char* texts = nullptr; // --texts FILE: what the last frame drew, at each text size in turn (for textsize_test)
-    const char* themes = nullptr; // --themes PREFIX: the last frame drawn in every theme, PREFIX0.bmp to PREFIX5.bmp (for theme_test)
-    int theme = -1;              // --theme NAME: a still in that THEME (brown, blue, green, black, paper, grey)
+    const char* themes = nullptr; // --themes PREFIX: the last frame drawn in every theme, PREFIX0.bmp to PREFIX7.bmp (for theme_test)
+    int theme = -1;              // --theme NAME: a still in that THEME (brown, dracula, nord, gruvbox, tokyo, monokai, solarized, github)
     int stillMs = 1000;          // --still-ms N: how long a still (or the smoke run) goes before its picture is taken
     for (int i = 1; i < argc; ++i)
         if (std::strcmp(argv[i], "--bench") == 0) return runBench(); // the timings and nothing else: no window, no sound
@@ -311,7 +311,7 @@ int main(int argc, char** argv) {
             for (int t = 0; t < kThemes; ++t)
                 if (strcasecmp(argv[i], kThemeTable[t].name) == 0) theme = t;
             if (theme < 0) {
-                std::fprintf(stderr, "--theme is one of brown, blue, green, black, paper, grey\n");
+                std::fprintf(stderr, "--theme is one of brown, dracula, nord, gruvbox, tokyo, monokai, solarized, github\n");
                 return 1;
             }
         }

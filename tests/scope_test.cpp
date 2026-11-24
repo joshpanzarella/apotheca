@@ -144,7 +144,7 @@ int emptyAboveTheStrip(const Canvas& canvas) {
 }
 
 void testTheStripOnEveryPage() {
-    for (int theme : {static_cast<int>(kThemeBrown), static_cast<int>(kThemePaper)}) {
+    for (int theme : {static_cast<int>(kThemeBrown), static_cast<int>(kThemeSolarized)}) {
         for (const Page& page : kPages) {
             Canvas canvas;
             CHECK(canvas.ok);

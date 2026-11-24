@@ -319,7 +319,7 @@ void testTheMark() {
     session.setLaneChoke(0, 7, 2);
     session.setLaneFeel(0, 5, 100, 100); // (beside the feel's mark)
     rig.app.drums().moveCursorTo(5, -1); // (the cursor's outline on one of them)
-    for (int theme : {kThemeBrown, kThemePaper}) {
+    for (int theme : {kThemeBrown, kThemeSolarized}) {
         session.setTheme(theme);
         rig.draw();
         for (int lane = 0; lane < kDrumLanes; ++lane) CHECK(rig.gridPieces(lane) == rig.kit().laneChoke[lane]);

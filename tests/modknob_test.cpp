@@ -1263,8 +1263,8 @@ void testTheBrassMark() {
     const int spaceY = FxScreen::kSendY + FxScreen::kSendH + FxScreen::kSendGap + FxScreen::kSendBarY;
     CHECK(noMark(rig, FxScreen::kPaneX + 12, spaceY, FxScreen::kPaneW - 24)); // SPACE: nothing aimed
     // In PAPER too: the mark is the theme's brass.
-    ui::useTheme(kThemePaper);
-    rig.session().setTheme(kThemePaper);
+    ui::useTheme(kThemeSolarized);
+    rig.session().setTheme(kThemeSolarized);
     rig.draw();
     CHECK(markAt(rig, FxScreen::kPaneX + 12, FxScreen::kSendY + FxScreen::kSendBarY, FxScreen::kPaneW - 24, 14, echoAt > 1.f ? 1.f : echoAt));
     rig.session().setTheme(kThemeBrown);

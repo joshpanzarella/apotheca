@@ -1509,16 +1509,21 @@ effect in those two groups and fails one that does not.
     state with words in it gets a `holds(rig, "what")` there.
   - A still at a size: `--text-size xl`.
 - **The colours are a THEME** (owner, 2026-11-13; SET page, THEME: BROWN,
-  BLUE, GREEN, BLACK, PAPER, GREY; `kThemeTable` in `ui.hpp`; kept as
-  `theme N` in settings.txt, the numbers appended, no line reads BROWN, which
-  is the look as built to the number). `ui::kBg` ... `ui::kStop` are
+  DRACULA, NORD, GRUVBOX, TOKYO, MONOKAI dark, SOLARIZED, GITHUB light: the
+  owner, 2026-11-23, "more like common terminal or IDE themes"; they replaced
+  BLUE, GREEN, BLACK, PAPER and GREY and took their numbers; `kThemeTable` in
+  `ui.hpp`, `kDarkThemes` the first six; kept as `theme N` in settings.txt, no
+  line reads BROWN, which is the look as built to the number). Each new one is
+  its namesake's colours moved in lightness, hues kept, until it met
+  `theme_test`'s rules and stood apart from the others (a script, not by hand:
+  the rules are below). `ui::kBg` ... `ui::kStop` are
   references into `ui::gTheme`, which `App::draw` (and main.cpp, before the
   controls setup) sets from `Session::theme()` each frame. A theme changes
   colours only, never a size or a place.
   - **A new colour goes through the ten names (or `faded()` of one): never
     numbers of its own.** Each name is a JOB (`ui.hpp` says which), kept in
     every theme; pick by job, not by hue.
-  - **A new mark is checked on a light theme** (`--theme paper`). A light
+  - **A new mark is checked on a light theme** (`--theme solarized`; the tests' light theme is `kThemeSolarized`, PAPER's before). A light
     theme keeps the order of the surfaces (bg the deepest, then panel,
     panel2) with its line darker than them; text on a chip filled with an
     accent or with text is written in `kBg`; a wash is `faded(kBg, ...)`.
@@ -1543,7 +1548,7 @@ effect in those two groups and fails one that does not.
     and the play line's glow over anything are in it** (2026-11-17: the stills play the demo, so the
     glow lands where the clock puts it, and over a ghost hit it failed now and then); a new
     translucent thing that moves with the clock is added the same way. A still in a theme:
-    `--theme paper`.
+    `--theme solarized`.
 - **The SET page is five groups under headings, and shows as many rows as fit** (owner, 2026-11-17:
   "enough rows now"; `SettingsScreen::Row`, `groupOf`, `groupName`): SONG (TEMPO, CHORD PACK, KEY,
   SCALE, TRACK NAME, BOUNCE), PLAYING (CLICK, COUNT IN, MUTES, USB KEYBOARD), LOOK (TEXT SIZE, THEME, PIANO

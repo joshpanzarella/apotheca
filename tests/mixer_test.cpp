@@ -566,7 +566,7 @@ void testWhatIsDrawn() {
     Canvas canvas, scratch;
     CHECK(canvas.ok && scratch.ok);
     if (!canvas.ok || !scratch.ok) return;
-    for (int theme : {kThemeBrown, kThemePaper}) {
+    for (int theme : {kThemeBrown, kThemeSolarized}) {
         ui::useTheme(theme);
         Rig rig;
         Session& session = rig.session();

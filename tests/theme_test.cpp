@@ -1,12 +1,12 @@
-// THEME: the colours are a setting (SET page; owner, 2026-11-13). Six themes, four dark and two
-// light; the first is the look as it was built. A theme changes the colours only.
+// THEME: the colours are a setting (SET page; owner, 2026-11-13). Eight themes, six dark and two
+// light (owner, 2026-11-23: after editor themes); the first is the look as it was built. A theme changes the colours only.
 //
-//   theme_test                    the six palettes (each colour's job kept, contrast measured),
+//   theme_test                    the eight palettes (each colour's job kept, contrast measured),
 //                                 the setting (kept, read back, an old file reads BROWN), the
 //                                 row on the SET page and its page moving, in use from the next
 //                                 frame, and every screen the rig can reach drawn in each theme
 //   theme_test views APOTHECA     every still the program knows (tests/stills.hpp), drawn by the
-//                                 program in all six themes (--themes): no colour on the screen
+//                                 program in all eight themes (--themes): no colour on the screen
 //                                 that is not the theme's own, or one of them laid over another
 //   ... views APOTHECA NAME       just the stills whose name has NAME in it, each fault said
 //
@@ -129,9 +129,9 @@ Measured measure(const Theme& t) {
 }
 
 void testThePalettes(bool print) {
-    CHECK(kThemes == 6 && Session::kThemeCount == kThemes && Session::kThemeAsBuilt == kThemeBrown && kThemeBrown == 0);
-    // The numbers are kept in settings.txt: appended, never reordered.
-    CHECK(kThemeBlue == 1 && kThemeGreen == 2 && kThemeBlack == 3 && kThemePaper == 4 && kThemeGrey == 5);
+    CHECK(kThemes == 8 && Session::kThemeCount == kThemes && Session::kThemeAsBuilt == kThemeBrown && kThemeBrown == 0);
+    // The numbers are kept in settings.txt.
+    CHECK(kThemeDracula == 1 && kThemeNord == 2 && kThemeGruvbox == 3 && kThemeTokyo == 4 && kThemeMonokai == 5 && kThemeSolarized == 6 && kThemeGithub == 7);
     // BROWN is the look as it was built, to the number (every pixel test of the program is held to it).
     const Theme& brown = kThemeTable[kThemeBrown];
     const SDL_Color built[10] = {{20, 17, 14, 255}, {31, 26, 22, 255}, {42, 35, 29, 255}, {67, 57, 47, 255}, {224, 213, 191, 255},
@@ -143,14 +143,14 @@ void testThePalettes(bool print) {
     for (int id = 0; id < kThemes; ++id) {
         const Theme& t = kThemeTable[id];
         // A name: one plain word in upper case, and no two the same.
-        bool plain = std::strlen(t.name) >= 3 && std::strlen(t.name) <= 6;
+        bool plain = std::strlen(t.name) >= 3 && std::strlen(t.name) <= 9; // (the SET page's room: textviews holds it)
         for (const char* c = t.name; *c; ++c) plain = plain && *c >= 'A' && *c <= 'Z';
         CHECK(plain);
         for (int other = 0; other < id; ++other) CHECK(std::strcmp(t.name, kThemeTable[other].name) != 0);
         // Solid colours: nothing in a theme is see-through.
         for (const SDL_Color& c : tenOf(t)) CHECK(c.a == 255);
         // The dark ones first, then the light.
-        const bool dark = id < 4;
+        const bool dark = id < kDarkThemes;
         CHECK(dark ? luminance(t.bg) < 0.02 : luminance(t.bg) > 0.5);
         // The surfaces keep their order on either kind: bg the deepest, then panel, then panel2 (a box
         // that stands out). The line is lighter than the surfaces on a dark theme and darker on a
@@ -191,11 +191,11 @@ void testThePalettes(bool print) {
             CHECK(apart(kThemeTable[a].purple, kThemeTable[b].purple) > 8.0);
         }
     // useTheme: a number nobody knows is BROWN.
-    ui::useTheme(kThemePaper);
-    CHECK(same(ui::kBg, kThemeTable[kThemePaper].bg) && same(ui::kText, kThemeTable[kThemePaper].text));
+    ui::useTheme(kThemeSolarized);
+    CHECK(same(ui::kBg, kThemeTable[kThemeSolarized].bg) && same(ui::kText, kThemeTable[kThemeSolarized].text));
     ui::useTheme(17);
     CHECK(same(ui::kBg, brown.bg));
-    ui::useTheme(kThemeGrey);
+    ui::useTheme(kThemeGithub);
     ui::useTheme(-1);
     CHECK(same(ui::kPurple, brown.purple));
 }
@@ -211,10 +211,10 @@ void testTheMeasures() {
     CHECK(same(blind({90, 90, 90, 255}, true), SDL_Color{90, 90, 90, 255}) && same(blind({90, 90, 90, 255}, false), SDL_Color{90, 90, 90, 255}));
     CHECK(apart({10, 20, 30, 255}, {10, 20, 30, 255}) == 0.0 && apart({0, 0, 0, 255}, {255, 255, 255, 255}) > 99.0);
     // A theme that breaks a rule is found: dim too faint, two accents the same.
-    Theme t = kThemeTable[kThemeBlue];
+    Theme t = kThemeTable[kThemeDracula];
     t.dim = t.panel2;
     CHECK(measure(t).dim < 4.5);
-    t = kThemeTable[kThemeBlue];
+    t = kThemeTable[kThemeDracula];
     t.brass = t.teal;
     CHECK(measure(t).apart < 1.0);
 }
@@ -303,7 +303,7 @@ void testTheSettingIsKept() {
         // A file from before the setting: no such line. The look as it was built, and the file left alone.
         writeTextFile(file, "stick 80\noctaves 1\nmidirec 1\ntext 3\n");
         Rig rig;
-        rig.session().setTheme(kThemeGreen);
+        rig.session().setTheme(kThemeGruvbox);
         rig.session().useProgramFolder(folder);
         Rig fresh;
         fresh.session().useProgramFolder(folder);
@@ -314,7 +314,7 @@ void testTheSettingIsKept() {
     }
     {
         // A number nobody knows (a later program's theme), or rubbish: left as it was.
-        writeTextFile(file, "theme 6\ntheme -1\ntheme x\n");
+        writeTextFile(file, "theme 8\ntheme -1\ntheme x\n");
         Rig rig;
         rig.session().useProgramFolder(folder);
         rig.session().loadSettings();
@@ -624,7 +624,7 @@ void testTheColourCheck() {
         bad = c.all();
         CHECK(!colourFaults(kThemeTable[id], bad.data(), ui::kScreenW).empty());
         // BROWN's accents, where a light theme's should be (the colour a screen forgot to route): every one found.
-        if (id >= kThemePaper)
+        if (id >= kDarkThemes)
             for (const SDL_Color& colour : {kThemeTable[kThemeBrown].teal, kThemeTable[kThemeBrown].purple, kThemeTable[kThemeBrown].brass, kThemeTable[kThemeBrown].stop}) {
                 c.clear();
                 ui::fill(c.r, 300, 300, 12, 12, colour);
@@ -634,13 +634,13 @@ void testTheColourCheck() {
             }
     }
     // BROWN's own colours, laid on PAPER where PAPER's should be: the stop square, the tab.
-    ui::useTheme(kThemePaper);
+    ui::useTheme(kThemeSolarized);
     c.clear();
     ui::fill(c.r, 0, 0, 640, 26, ui::kPanel);
     ui::fill(c.r, 620, 8, 10, 10, kThemeTable[kThemeBrown].stop);
     SDL_RenderPresent(c.r);
     std::vector<Uint32> bad = c.all();
-    CHECK(!colourFaults(kThemeTable[kThemePaper], bad.data(), ui::kScreenW).empty());
+    CHECK(!colourFaults(kThemeTable[kThemeSolarized], bad.data(), ui::kScreenW).empty());
     ui::useTheme(kThemeBrown);
 }
 
@@ -743,7 +743,7 @@ std::vector<std::string> viewFaults(const std::string& program, const std::strin
             out.push_back(std::string(kThemeTable[t].name) + ": the bars are not in its panel colour");
         SDL_FreeSurface(picture);
     }
-    // The six are six: each theme changed the picture (no screen ignores it).
+    // The eight are eight: each theme changed the picture (no screen ignores it).
     for (int a = 0; a < kThemes; ++a)
         for (int b = a + 1; b < kThemes; ++b) {
             int differ = 0;
@@ -771,14 +771,14 @@ void testTheStillsFlag(const std::string& program, const std::string& folder) {
     };
     Uint32 pixel = 0;
     CHECK(corner("--view setup", &pixel) && pixel == Canvas::colour(kThemeTable[kThemeBrown].bg)); // nothing asked: as built
-    const char* names[kThemes] = {"brown", "blue", "green", "black", "paper", "grey"};
+    const char* names[kThemes] = {"brown", "dracula", "nord", "gruvbox", "tokyo", "monokai", "solarized", "github"};
     for (int t = 0; t < kThemes; ++t) CHECK(corner((std::string("--view setup --theme ") + names[t]).c_str(), &pixel) && pixel == Canvas::colour(kThemeTable[t].bg));
-    CHECK(corner("--view setup --theme PAPER", &pixel) && pixel == Canvas::colour(kThemeTable[kThemePaper].bg)); // (in either case)
+    CHECK(corner("--view setup --theme SOLARIZED", &pixel) && pixel == Canvas::colour(kThemeTable[kThemeSolarized].bg)); // (in either case)
     CHECK(!corner("--view setup --theme mauve", &pixel)); // a theme nobody knows: said, and no still
-    CHECK(corner("--learn --theme grey", &pixel) && pixel == Canvas::colour(kThemeTable[kThemeGrey].bg));
-    // --themes draws all six and then puts the theme back: a picture kept after it is in the one asked for.
-    const std::string six = "--view setup --theme blue --themes '" + folder + "/six-'";
-    CHECK(corner(six.c_str(), &pixel) && pixel == Canvas::colour(kThemeTable[kThemeBlue].bg));
+    CHECK(corner("--learn --theme github", &pixel) && pixel == Canvas::colour(kThemeTable[kThemeGithub].bg));
+    // --themes draws all eight and then puts the theme back: a picture kept after it is in the one asked for.
+    const std::string six = "--view setup --theme dracula --themes '" + folder + "/six-'";
+    CHECK(corner(six.c_str(), &pixel) && pixel == Canvas::colour(kThemeTable[kThemeDracula].bg));
     for (int t = 0; t < kThemes; ++t) unlink((folder + "/six-" + std::to_string(t) + ".bmp").c_str());
 }
 
@@ -861,7 +861,7 @@ int runViews(const char* program, const char* only) {
         std::printf("%d check(s) failed\n", failures);
         return 1;
     }
-    std::printf("themes, %d stills in six themes: tests passed\n", drawn);
+    std::printf("themes, %d stills in eight themes: tests passed\n", drawn);
     return 0;
 }
 

@@ -11334,7 +11334,7 @@ void testAcidsAccentMark() {
             session.sendNoteBar(t, 0, 0);
             rig->app.notes().moveCursorTo(62, 10);
             rig->frames(1);
-            for (int theme : {kThemeBrown, kThemePaper}) {
+            for (int theme : {kThemeBrown, kThemeSolarized}) {
                 session.setTheme(theme);
                 p.notes[0].velocity = 0.9f;
                 rig->frames(1);

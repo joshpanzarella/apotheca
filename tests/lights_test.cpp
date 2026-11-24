@@ -512,11 +512,11 @@ void testTheRingFollowsTheSong() {
     Rig rig;
     rig.session().useLights(sys.both());
     rig.session().setStickLight(kRingSteps);
-    rig.session().setTheme(kThemePaper);
+    rig.session().setTheme(kThemeGruvbox);
     rig.frames(2);
-    // (LIGHT COLOUR at THEME: PAPER's ring colour is its amber, and beside amber a bar's first step is white.)
-    const Rgb teal = ringThemeColour(kThemePaper), brass = lightColourOf(kLightWhite), dim = dimmed(teal, kRingDim);
-    CHECK(teal == rgb(255, 130, 40) && ringFirstFor(teal) == brass);
+    // (LIGHT COLOUR at THEME: GRUVBOX's ring colour is its orange, and beside orange a bar's first step is white.)
+    const Rgb teal = ringThemeColour(kThemeGruvbox), brass = lightColourOf(kLightWhite), dim = dimmed(teal, kRingDim);
+    CHECK(teal == rgb(255, 110, 20) && ringFirstFor(teal) == brass);
     std::vector<unsigned char> last = sys.last();
     CHECK(last.size() == 51);
     for (int i = 0; i < kRingLeds; ++i) CHECK(last[static_cast<std::size_t>(2 + 3 * i)] == dim.r && last[static_cast<std::size_t>(3 + 3 * i)] == dim.g);
@@ -606,7 +606,7 @@ void testScenesAndColours() {
     const Rgb white = lightColourOf(kLightWhite), brassSet = lightColourOf(kLightBrass);
     for (int which : {kLightBrass, kLightOrange, kLightYellow}) CHECK(ringFirstFor(lightColourOf(which)) == white);
     for (int which : {kLightTeal, kLightPurple, kLightRed, kLightGreen, kLightBlue, kLightPink, kLightWhite}) CHECK(ringFirstFor(lightColourOf(which)) == brassSet);
-    CHECK(ringFirstFor(ringThemeColour(kThemeBrown)) == white && ringFirstFor(ringThemeColour(kThemeBlue)) == brassSet && ringFirstFor(ringThemeColour(kThemeBlack)) == brassSet);
+    CHECK(ringFirstFor(ringThemeColour(kThemeBrown)) == white && ringFirstFor(ringThemeColour(kThemeDracula)) == brassSet && ringFirstFor(ringThemeColour(kThemeMonokai)) == brassSet);
     // ON in RAINBOW: every LED its own hue; dim ones dimmed each by its own.
     ringColours(kLightRainbow, teal, 0, -1, c);
     RingPlace stopped;
@@ -708,7 +708,7 @@ void testTrackColours() {
             CHECK(n == inBar);
             return n;
         };
-        for (int theme : {static_cast<int>(kThemeBrown), static_cast<int>(kThemePaper)}) {
+        for (int theme : {static_cast<int>(kThemeBrown), static_cast<int>(kThemeSolarized)}) {
             session.setTheme(theme);
             session.setStickLight(kRingOn);
             session.setLightColour(kLightTrack);
