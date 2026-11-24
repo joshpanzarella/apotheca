@@ -215,6 +215,19 @@ void SongScreen::setRepeats(int count) {
 }
 
 void SongScreen::clearCell(int track, int scene) {
+    // Already empty: nothing to do, and no step of undo that does nothing. (Read through a const track:
+    // a scene with no pieces is not given any.)
+    const TrackData& seen = project_.tracks[track];
+    bool any = seen.bars[scene] != 1;
+    if (!any && seen.holdsPieces(scene)) {
+        for (int bar = 0; bar < kMaxBars && !any; ++bar) any = !seen.drums[scene][bar].empty() || !seen.notes[scene][bar].empty();
+        for (const auto& lane : seen.automation[scene])
+            for (float v : lane) any = any || v >= 0.f;
+    }
+    if (!any) return;
+    // A step of undo of its own (review 2026-11-23: a cell that was not the one open was emptied with
+    // none: the cell's mark only watches the open cell, and the image sent is no edit).
+    session_.beginOwnUndoStep();
     TrackData& t = project_.tracks[track];
     // Every bar of it, and it is one bar long again. Its automation goes too: an emptied cell
     // must not keep running lanes (as Session::clearScene).
@@ -227,6 +240,7 @@ void SongScreen::clearCell(int track, int scene) {
     }
     session_.clearAutomation(track, scene, -1);
     session_.sendTrackImage(track); // patterns and automation, in one piece (as pasteBar)
+    session_.endOwnUndoStep();
 }
 
 void SongScreen::copyCell(const CellCopy& from, int toTrack, int toScene) {

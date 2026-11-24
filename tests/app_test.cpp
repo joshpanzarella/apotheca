@@ -2848,6 +2848,28 @@ void testUndoAndRedo() {
     session.newSong();
     rig.frames(2);
     CHECK(session.undoSteps() == 0 && session.redoSteps() == 0 && !session.undo());
+    {
+        // A cell that is NOT the one open, emptied from the SONG screen: a step of undo all the same
+        // (review 2026-11-23: none was made, the cell's mark only watching the open cell), and an
+        // empty cell emptied makes none.
+        TrackData& t = rig.project().tracks[0];
+        t.drums[2][0].level[1][4] = 0.7f;
+        session.sendTrackImage(0);
+        session.noteEdit(); // (as the grid marks a hit it writes)
+        settle();
+        const int steps = session.undoSteps();
+        session.view = View::Song;
+        rig.app.song().moveCursorTo(2, 0); // scene 3, track 1: not the cell open (scene 1)
+        rig.tap(B);
+        settle();
+        CHECK(static_cast<const TrackData&>(t).drums[2][0].empty() && session.undoSteps() == steps + 1);
+        rig.tap(B); // empty already
+        settle();
+        CHECK(session.undoSteps() == steps + 1);
+        CHECK(session.undo());
+        CHECK(static_cast<const TrackData&>(rig.project().tracks[0]).drums[2][0].level[1][4] == 0.7f);
+        session.view = View::Pattern;
+    }
 }
 
 void testHoldBErasesDrumHits() {
