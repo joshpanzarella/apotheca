@@ -49,6 +49,7 @@
 //   --no-menu      with --shot: any view as on a handheld with no MENU button (the bar's
 //                  last words are then HLD SEL: HELP)
 //   --shot FILE    save the last frame drawn as a BMP picture
+//   --frames DIR   with --shot: also save every frame drawn, DIR/0000.bmp on (to see what moves)
 //   --battery DIR  read the battery from DIR (laid out like /sys/class/power_supply)
 //   --draw-every-frame  draw and present every pass, as before the screen was left alone
 //                  when nothing on it changes (redraw.hpp): for measuring what that saves
@@ -274,6 +275,8 @@ int main(int argc, char** argv) {
     int paint = 0; // 1: R1, 2: L1
     const char* view = "";
     const char* shot = nullptr;
+    const char* framesDir = nullptr;
+    int framesKept = 0;
     const char* batteryFolder = nullptr;
     const char* songs = nullptr;
     const char* samples = nullptr;
@@ -300,6 +303,7 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--on-tempo") == 0) onTempo = true;
         else if (std::strcmp(argv[i], "--view") == 0 && i + 1 < argc) view = argv[++i];
         else if (std::strcmp(argv[i], "--shot") == 0 && i + 1 < argc) shot = argv[++i];
+        else if (std::strcmp(argv[i], "--frames") == 0 && i + 1 < argc) framesDir = argv[++i];
         else if (std::strcmp(argv[i], "--battery") == 0 && i + 1 < argc) batteryFolder = argv[++i];
         else if (std::strcmp(argv[i], "--songs") == 0 && i + 1 < argc) songs = argv[++i];
         else if (std::strcmp(argv[i], "--samples") == 0 && i + 1 < argc) samples = argv[++i];
@@ -1924,6 +1928,11 @@ int main(int argc, char** argv) {
             else app.draw(renderer, fonts);
         }
         if (!running && shot && *shot) keepPicture(shot);
+        if (framesDir && shot && draw && running) {
+            char frame[512];
+            std::snprintf(frame, sizeof frame, "%s/%04d.bmp", framesDir, framesKept++);
+            keepPicture(frame);
+        }
         if (draw) SDL_RenderPresent(renderer);
         SDL_Delay(16);
     }

@@ -144,6 +144,9 @@ public:
     int knobHere() const;
     // Where the MOD's fields are drawn while X is held: the heading's place; on SENDS the other send's row.
     int modPanelY() const { return !sends(row_) ? kPaneY : (column_ == 1 ? kSendY + kSendH + kSendGap : kSendY); }
+    mutable int liveStep_ = -1;     // the picture's live line: the step it last saw, and when (SDL ticks)
+    mutable Uint32 liveAt_ = 0;
+    mutable float liveLevel_ = 0.f; // the track's level as the picture shows it, held and falling
     int modPanelH() const { return sends(row_) ? kSendH : kHeadH; }
 
     static constexpr int kRows = kTrackSlots + 1 + kBuses + kMasterSlots;

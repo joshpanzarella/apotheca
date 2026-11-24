@@ -4664,9 +4664,9 @@ void testTheFxPictureFollowsTheSettings() {
     CHECK(canvas.ok);
     if (!canvas.ok) return;
     typedef FxScreen F;
-    const auto picture = [&](EffectKind kind, const float* shown, float dB) {
+    const auto picture = [&](EffectKind kind, const float* shown, float dB, const FxLive& live = FxLive()) {
         canvas.clear();
-        drawEffectPicture(canvas.r, F::kPaneX, F::kPicY, F::kPaneW, F::kPicH, kind, shown, dB);
+        drawEffectPicture(canvas.r, F::kPaneX, F::kPicY, F::kPaneW, F::kPicH, kind, shown, dB, live);
         return canvas.part(F::kPaneX, F::kPicY, F::kPaneW, F::kPicH);
     };
     for (int k = 1; k < kEffectKinds; ++k) {
@@ -4714,6 +4714,63 @@ void testTheFxPictureFollowsTheSettings() {
             CHECK(brass(12.f) > brass(2.f) && brass(24.f) > brass(12.f));
         }
     }
+    // PLAYING, it moves with the song (2026-11-24). Stopped: no purple line anywhere in it.
+    const auto purpleAt = [&](int x) {
+        for (int y = F::kPicY + 12; y < F::kPicY + F::kPicH - 12; ++y)
+            if (canvas.is(x, y, ui::kPurple)) return true;
+        return false;
+    };
+    const auto anyPurple = [&] {
+        for (int x = F::kPaneX; x < F::kPaneX + F::kPaneW; ++x)
+            if (purpleAt(x)) return true;
+        return false;
+    };
+    const int plotX = F::kPaneX + 12, plotW = F::kPaneW - 24;
+    for (EffectKind kind : {EffectKind::Tape, EffectKind::Chorus, EffectKind::Tremolo, EffectKind::Duck, EffectKind::Stutter}) {
+        float usual[kEffectParams] = {0.f, 0.f, 0.f, 0.f};
+        for (int p = 0; p < effectInfo(kind).params; ++p) usual[p] = effectDefault(kind, p, false);
+        picture(kind, usual, 0.f);
+        CHECK(!anyPurple());
+        FxLive live;
+        live.playing = true;
+        live.steps = 8.0; // a quarter of the way across two bars (a DELAY's), half of one (DUCK's)
+        live.level = 0.5f;
+        picture(kind, usual, 0.f, live);
+        CHECK(anyPurple());
+        if (kind == EffectKind::Tape || kind == EffectKind::Stutter) CHECK(purpleAt(plotX + static_cast<int>(std::round((plotW - 1) * 0.25f))));
+        if (kind == EffectKind::Duck) CHECK(purpleAt(plotX + static_cast<int>(std::round((plotW - 22 - 14 - 1) * 0.5f))));
+        if (kind == EffectKind::Chorus || kind == EffectKind::Tremolo) { // a second later the line has moved on, and a brass dot rides with it
+            const auto first = canvas.part(F::kPaneX, F::kPicY, F::kPaneW, F::kPicH);
+            live.steps = 16.0;
+            CHECK(picture(kind, usual, 0.f, live) != first);
+        }
+    }
+    // The track's level is in a DRIVE's wave and on COMP's curve.
+    for (EffectKind kind : {EffectKind::Drive, EffectKind::Comp}) {
+        float usual[kEffectParams] = {0.f, 0.f, 0.f, 0.f};
+        for (int p = 0; p < effectInfo(kind).params; ++p) usual[p] = effectDefault(kind, p, false);
+        FxLive live;
+        live.playing = true;
+        live.level = 0.1f;
+        const auto quiet = picture(kind, usual, 0.f, live);
+        live.level = 0.9f;
+        CHECK(picture(kind, usual, 0.f, live) != quiet);
+    }
+    // EACH THEME'S STYLE: VINTAGE engraves a scale outside the ring, NEON lights a glow ring outside the lit arc, CLEAN neither.
+    for (int theme : {static_cast<int>(kThemeBrown), static_cast<int>(kThemeDracula), static_cast<int>(kThemeNord), static_cast<int>(kThemeSolarized)}) {
+        ui::useTheme(theme);
+        canvas.clear();
+        const int cx = 100, cy = 100;
+        drawDial(canvas.r, cx, cy, F::kDialR, F::kDialRing, 0.6f, 0, 0, ui::kTeal, std::nanf(""));
+        const SDL_Point scale = dialPoint(cx, cy, F::kDialR + 4.f, 0.f), glow = dialPoint(cx, cy, F::kDialR + 2.f, 0.3f), past = dialPoint(cx, cy, F::kDialR + 2.f, 0.8f);
+        const FxStyle style = fxStyle();
+        CHECK(style == (theme == kThemeBrown ? FxStyle::Vintage : theme == kThemeDracula ? FxStyle::Neon : FxStyle::Clean));
+        CHECK(canvas.is(scale.x, scale.y, ui::kLine) == (style == FxStyle::Vintage));
+        CHECK(canvas.is(glow.x, glow.y, ui::kTeal) == (style == FxStyle::Neon) && !canvas.is(past.x, past.y, ui::kTeal));
+        const SDL_Point lit = dialPoint(cx, cy, F::kDialR - 2.f, 0.5f), unlit = dialPoint(cx, cy, F::kDialR - 2.f, 0.7f);
+        CHECK(canvas.is(lit.x, lit.y, ui::kTeal) && canvas.is(unlit.x, unlit.y, ui::kLine)); // the ring reads the same in every style
+    }
+    ui::useTheme(kThemeBrown);
 }
 
 // COMP's meter on the FX screen: the row asks the engine for its own slot, and the strip's length.

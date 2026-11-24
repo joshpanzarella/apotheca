@@ -925,7 +925,24 @@ void FxScreen::drawSlot(SDL_Renderer* r, const Fonts& fonts) const {
     float shown[kEffectParams];
     for (int i = 0; i < kEffectParams; ++i) shown[i] = track >= 0 ? session_.automated(track, autoLaneOfEffect(slot, i), d.param[i]) : d.param[i];
     // What it does, drawn from those settings.
-    drawEffectPicture(r, kPaneX, kPicY, kPaneW, kPicH, kind, shown, effectMeterParam(kind) >= 0 ? meterOf(row_) : 0.f);
+    // Playing, the picture moves with the song: where it is (the part of the step gone counted from when the step
+    // came, so a line glides between steps) and how loud this track comes out (held, falling a fifth a pass).
+    FxLive live;
+    if (project_.playing && session_.engine.playStep() >= 0) {
+        const Uint32 now = SDL_GetTicks();
+        const int at = session_.engine.playBar() * kSteps + session_.engine.playStep();
+        if (at != liveStep_) liveStep_ = at, liveAt_ = now;
+        live.playing = true;
+        live.stepSeconds = 15.f / (project_.tempo > 1.f ? project_.tempo : 120.f);
+        const float part = static_cast<float>(now - liveAt_) / 1000.f / live.stepSeconds;
+        live.steps = at + (part > 0.99f ? 0.99f : part);
+        const float peak = track >= 0 ? session_.engine.trackPeak(track) : 0.f;
+        liveLevel_ = peak > liveLevel_ * 0.8f ? peak : liveLevel_ * 0.8f;
+        live.level = liveLevel_ > 1.f ? 1.f : liveLevel_;
+    } else {
+        liveStep_ = -1, liveLevel_ = 0.f;
+    }
+    drawEffectPicture(r, kPaneX, kPicY, kPaneW, kPicH, kind, shown, effectMeterParam(kind) >= 0 ? meterOf(row_) : 0.f, live);
     for (int p = 0; p < kEffectParams; ++p) {
         const int x = dialX(p), cx = dialCX(p);
         if (p >= info.params) {
