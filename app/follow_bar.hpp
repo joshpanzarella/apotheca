@@ -7,6 +7,7 @@
 // One rule for both grids (tests/follow_test.cpp).
 
 #include <cstdint>
+#include <vector>
 
 namespace apotheca {
 
@@ -35,5 +36,43 @@ private:
     bool touched_ = false;
     std::uint32_t touchedMs_ = 0;
 };
+
+
+// THE ROLL'S KEYS FOLLOW THE NOTES (owner, 2026-11-24: "center, to the best of our ability, the current notes on the
+// piano roll as it automatically advances ... on the most concentrated areas"). When FOLLOW shows a bar, the roll's
+// keys move to the stretch of `keys` keys that holds the most of that bar's notes; of those, the one with the most of
+// their length in it; of those, the one whose middle is nearest the middle of the notes it holds (so they sit in the
+// centre); of those, the one nearest where the keys are. A bar with no notes: -1, the keys stay. Each note is a
+// pitch and its length in steps. Returns the lowest key to show, held to lowest..highest.
+struct HeldNote {
+    int pitch;
+    float length;
+};
+inline int keysToShow(const std::vector<HeldNote>& notes, int keys, int lowest, int highest, int now) {
+    if (notes.empty() || keys <= 0) return -1;
+    int best = -1, bestCount = -1;
+    float bestLength = -1.f, bestOff = 0.f;
+    int bestFromNow = 0;
+    for (int low = lowest; low + keys - 1 <= highest; ++low) {
+        int count = 0, lo = 1000, hi = -1;
+        float length = 0.f;
+        for (const HeldNote& n : notes)
+            if (n.pitch >= low && n.pitch < low + keys) {
+                ++count, length += n.length;
+                lo = n.pitch < lo ? n.pitch : lo;
+                hi = n.pitch > hi ? n.pitch : hi;
+            }
+        if (count == 0) continue;
+        // How far the window's middle is from the middle of the notes it holds (in half keys, so it stays whole).
+        const float off = static_cast<float>(2 * low + keys - 1 - (lo + hi));
+        const float offSize = off < 0.f ? -off : off;
+        const int fromNow = low > now ? low - now : now - low;
+        const bool better = count > bestCount ||
+                            (count == bestCount && (length > bestLength + 1e-4f ||
+                                                    (length > bestLength - 1e-4f && (offSize < bestOff || (offSize == bestOff && fromNow < bestFromNow)))));
+        if (better) best = low, bestCount = count, bestLength = length, bestOff = offSize, bestFromNow = fromNow;
+    }
+    return best;
+}
 
 } // namespace apotheca

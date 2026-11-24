@@ -152,12 +152,80 @@ void testTheRoll() {
     followsOn(rig, "roll");
 }
 
+
+// THE ROLL'S KEYS FOLLOW THE NOTES (2026-11-24): the rule by hand.
+void testTheKeysRule() {
+    const int lo = 12, hi = 108;
+    // A chord C, E, G in a window of 12: all three, and centred on them (60..67: the window 58..69).
+    CHECK(keysToShow({{60, 1.f}, {64, 1.f}, {67, 1.f}}, 12, lo, hi, 48) == 58);
+    // Two places: three notes low, two high: the three, centred (40..47 in 38..49).
+    CHECK(keysToShow({{40, 1.f}, {43, 1.f}, {47, 1.f}, {80, 1.f}, {84, 1.f}}, 12, lo, hi, 70) == 38);
+    // As many notes in each: the longer ones (80..83: 76..87).
+    CHECK(keysToShow({{40, 1.f}, {44, 1.f}, {80, 4.f}, {83, 4.f}}, 12, lo, hi, 40) == 76);
+    // Too wide for the window: the most that fit, centred on those.
+    CHECK(keysToShow({{36, 1.f}, {50, 1.f}, {52, 1.f}, {55, 1.f}, {70, 1.f}}, 12, lo, hi, 60) == 47);
+    // No notes: the keys stay.
+    CHECK(keysToShow({}, 24, lo, hi, 48) == -1);
+    // Held to the keyboard's ends: notes at its bottom, and at its top.
+    CHECK(keysToShow({{12, 1.f}, {13, 1.f}}, 24, lo, hi, 48) == 12);
+    CHECK(keysToShow({{107, 1.f}, {108, 1.f}}, 24, lo, hi, 48) == 108 - 23);
+    // One note in a window of 36: in its middle (60 in 43..78: as near the middle as a whole key goes).
+    const int one = keysToShow({{60, 1.f}}, 36, lo, hi, 0);
+    CHECK(one + 17 <= 60 && 60 <= one + 18);
+    // A tie in everything but where the keys are now: the nearest of the windows that centre the notes.
+    const int a = keysToShow({{60, 1.f}, {61, 1.f}}, 12, lo, hi, 0), b = keysToShow({{60, 1.f}, {61, 1.f}}, 12, lo, hi, 100);
+    CHECK(a == 55 && b == 55); // (60..61 sit exactly in the middle of 55..66, wherever the keys were)
+}
+
+// The roll, playing a two-bar cell with its notes low in bar 1 and high in bar 2: the keys go to each bar's
+// notes as FOLLOW shows it, and the cursor is in view. Held at the controls, they stay.
+void testTheRollsKeys() {
+    Rig rig;
+    Session& s = rig.app.session();
+    const int track = rig.project().track;
+    CHECK(s.setTrackKind(track, TrackKind::Phazed));
+    s.setCellBars(track, 0, 2);
+    rig.frames(5);
+    NotePattern& low = rig.project().tracks[track].notes[0][0];
+    NotePattern& high = rig.project().tracks[track].notes[0][1];
+    const int lowKeys[3] = {36, 40, 43}, highKeys[3] = {84, 88, 91};
+    for (int i = 0; i < 3; ++i) {
+        low.notes[i] = NoteEvent{i * 4, lowKeys[i], 2.f, 0.f, 0.8f};
+        high.notes[i] = NoteEvent{i * 4, highKeys[i], 2.f, 0.f, 0.8f};
+    }
+    s.sendNotePattern(track, 0);
+    rig.frames(3);
+    NoteScreen& roll = rig.app.notes();
+    const int keys = s.octavesShown() * 12;
+    const auto shows = [&](const int* at) {
+        const int l = roll.lowestKeyShown();
+        return at[0] >= l && at[2] < l + keys && roll.cursorPitch() >= l && roll.cursorPitch() < l + keys;
+    };
+    s.togglePlay(false);
+    rig.frames(3);
+    CHECK(rig.project().bar == 0 && shows(lowKeys));
+    CHECK(rig.untilBar(1));
+    rig.frames(1);
+    CHECK(rig.project().bar == 1 && shows(highKeys));
+    if (!shows(highKeys)) std::printf("  the keys from %d, the cursor on %d\n", roll.lowestKeyShown(), roll.cursorPitch());
+    // Centred: the window's middle within a key of the notes' middle.
+    const int middle = roll.lowestKeyShown() * 2 + keys - 1;
+    CHECK(middle >= 84 + 91 - 2 && middle <= 84 + 91 + 2);
+    CHECK(rig.untilBar(0));
+    rig.frames(1);
+    CHECK(shows(lowKeys));
+    s.togglePlay(false);
+    rig.frames(5);
+}
+
 } // namespace
 
 int main() {
     testTheRule();
     testTheDrumGrid();
     testTheRoll();
+    testTheKeysRule();
+    testTheRollsKeys();
     if (failures) {
         std::printf("follow: %d failure(s)\n", failures);
         return 1;
