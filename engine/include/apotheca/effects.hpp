@@ -78,7 +78,7 @@ namespace apotheca {
 
 // An effect's number: what a song in memory and a command call it. NEVER
 // reordered, never reused: new ones go at the end, before Count.
-enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Tape /* 6 */, Hall /* 7 */, Chorus /* 8 */, Comp /* 9 */, Saturate /* 10 */, Duck /* 11 */, Ping /* 12 */, Spring /* 13 */, Plate /* 14 */, Comb /* 15 */, Vowel /* 16 */, Eq /* 17 */, Fold /* 18 */, Fuzz /* 19 */, Ring /* 20 */, Wear /* 21 */, Limiter /* 22 */, Snap /* 23 */, Flanger /* 24 */, Ensemble /* 25 */, Phaser /* 26 */, Tremolo /* 27 */, Dub /* 28 */, Reverse /* 29 */, Stutter /* 30 */, Bloom /* 31 */, Shimmer /* 32 */, Count };
+enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Tape /* 6 */, Hall /* 7 */, Chorus /* 8 */, Comp /* 9 */, Saturate /* 10 */, Duck /* 11 */, Ping /* 12 */, Spring /* 13 */, Plate /* 14 */, Comb /* 15 */, Vowel /* 16 */, Eq /* 17 */, Fold /* 18 */, Fuzz /* 19 */, Ring /* 20 */, Wear /* 21 */, Limiter /* 22 */, Snap /* 23 */, Flanger /* 24 */, Ensemble /* 25 */, Phaser /* 26 */, Tremolo /* 27 */, Dub /* 28 */, Reverse /* 29 */, Stutter /* 30 */, Bloom /* 31 */, Shimmer /* 32 */, Wah /* 33 */, Pitch /* 34 */, Count };
 constexpr int kEffectKinds = static_cast<int>(EffectKind::Count);
 constexpr int kEffectParams = 4;
 

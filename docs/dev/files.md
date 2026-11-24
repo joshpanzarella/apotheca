@@ -250,13 +250,13 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   one for another (`effectAt` / `effectPlace` / `effectFromWord`).
 - **A family is only how the list is shown** (owner, 2026-11-12: "TAPE should
   just be one of the delays"; 2026-11-13: seven families). The player picks
-  from FILTER (FILTER, COMB, VOWEL, EQ), DRIVE (DRIVE, SATURATE, FOLD, FUZZ), CRUSH (CRUSH, RING, WEAR), MOD (CHORUS, FLANGER, ENSEMBLE, PHASER, TREMOLO),
+  from FILTER (FILTER, COMB, VOWEL, EQ, WAH), DRIVE (DRIVE, SATURATE, FOLD, FUZZ), CRUSH (CRUSH, RING, WEAR), MOD (CHORUS, FLANGER, ENSEMBLE, PHASER, TREMOLO, PITCH),
   DELAY (CLEAN, TAPE, PING, DUB, REVERSE, STUTTER), REVERB (ROOM, HALL, SPRING, PLATE, BLOOM, SHIMMER), LEVEL (COMP,
   DUCK, LIMITER, SNAP), in that order (`EffectFamily`; the old groups, DIRT and MOVING, are
   gone). Underneath each type is the `EffectKind` it always was, with its
   number and its word, and `info.name` is still its own ("TAPE": bench and
   the tests use it). Fifteen more types were planned (effects-plan.md, "Seven
-  families"); each is a row. COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`); FLANGER, ENSEMBLE, PHASER and TREMOLO, DUB, REVERSE and STUTTER, BLOOM and SHIMMER (branch `newfx2`). The screen asks `effectFamily`,
+  families"); each is a row. COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`); FLANGER, ENSEMBLE, PHASER and TREMOLO, DUB, REVERSE and STUTTER, BLOOM and SHIMMER (branch `newfx2`); WAH (33) and PITCH (34) on 2026-11-24 (owner: "Let's do auto-wah and pitch shifter"). The screen asks `effectFamily`,
   `effectTypeName` (what the type is called: CLEAN, FILTER), `effectTypeShown`
   (the same, but "" where it is the family's own word: a line says FILTER,
   not FILTER FILTER, and DRIVE, not DRIVE DRIVE), `effectTypes` /

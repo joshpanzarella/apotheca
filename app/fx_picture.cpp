@@ -169,8 +169,25 @@ void filterPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
         return dbToV(20.f * std::log10(g < 1e-4f ? 1e-4f : g));
     };
     float markT = -1.f;
-    std::function<float(float)> fn;
+    std::function<float(float)> fn, shut; // shut: WAH's at rest, faint behind it
     switch (s.kind) {
+    case EffectKind::Wah: {
+        // A resonant low pass whose corner the playing moves (wah.cpp's numbers): playing, where this track's level
+        // opens it now; still, where a hit at -20 dB would, so turning SENSE moves it. Faint behind, where it rests.
+        const float sense = s("SENSE", 0.5f), q = std::pow(12.f, s("RESONANCE", 0.5f)), makeUp = 1.f / std::sqrt(q);
+        float open = (playing() ? held(gLive->level) : 0.1f) * (1.f + 39.f * sense * sense);
+        open = open > 1.f ? 1.f : std::sqrt(open);
+        const auto at = [=](float hz) {
+            return [=](float t) {
+                const float x = freqAt(t) / hz;
+                return wet(makeUp / std::sqrt((1.f - x * x) * (1.f - x * x) + (x / q) * (x / q)));
+            };
+        };
+        const float hz = 250.f * std::pow(3500.f / 250.f, open);
+        fn = at(hz), shut = at(250.f);
+        markT = std::log(hz / 20.f) / std::log(1000.f);
+        break;
+    }
     case EffectKind::Comb: {
         const float f0 = 40.f * std::pow(50.f, s("PITCH", 0.5f)), g = 0.95f * s("FEEDBACK", 0.5f);
         fn = [=](float t) {
@@ -225,6 +242,7 @@ void filterPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
         break;
     }
     }
+    if (shut) curve(r, p, shut, kLine);
     curve(r, p, fn, kText, &kPanel2, dbToV(-30.f));
     if (markT >= 0.f && markT <= 1.f) fill(r, p.xOf(markT) - 2, p.yOf(fn(markT)) - 2, 6, 6, kBrass); // where it is set
 }
@@ -298,8 +316,35 @@ void wavePicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
     curve(r, p, [&](float t) { return 0.5f + 0.45f * (mix * bent(t) + (1.f - mix) * plain(t)); }, kText);
 }
 
+// ---- PITCH: the sound (faint) and the sound shifted, over two of its cycles; under them the two heads' fades
+// over a third of a second, as pitch.cpp turns them: each rises and falls once in GRAIN / |1 - speed|, half a turn
+// apart, so the two add to one (at no shift they stand still, one at full) ----
+void pitchPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
+    grid(r, p, 0.f);
+    const float semis = static_cast<float>(s.choice("PITCH") - 12) + (s("FINE", 0.5f) - 0.5f);
+    const float speed = std::pow(2.f, semis / 12.f), turn = std::fabs(1.f - speed);
+    const float grain = 0.02f + 0.1f * s("GRAIN", 0.4f), mix = s("MIX", 0.5f);
+    const float loud = playing() ? 0.12f + 0.88f * held(gLive->level) : 0.9f;
+    const Plot waves{p.x, p.y, p.w, p.h * 7 / 10};
+    curve(r, waves, [&](float t) { return 0.5f + 0.47f * loud * (0.3f + 0.7f * (1.f - mix)) * std::sin(2.f * kPi * 2.f * t); }, kLine);
+    curve(r, waves, [&](float t) { return 0.5f + 0.47f * loud * (0.3f + 0.7f * mix) * std::sin(2.f * kPi * 2.f * speed * t); }, kText);
+    const Plot fades{p.x, p.y + p.h * 4 / 5, p.w, p.h - p.h * 4 / 5};
+    const float turns = turn < 1e-4f ? 0.f : 0.3f * turn / grain; // a head's rise and fall across the picture
+    for (int head = 1; head >= 0; --head) {
+        curve(r, fades, [&](float t) {
+            float ph = turns * t + 0.5f * static_cast<float>(head);
+            ph -= std::floor(ph);
+            return 1.f - std::fabs(2.f * ph - 1.f);
+        }, head == 0 ? kText : kDim);
+    }
+}
+
 // ---- MOD: how it moves over four seconds ----
 void movePicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
+    if (s.kind == EffectKind::Pitch) {
+        pitchPicture(r, p, s);
+        return;
+    }
     grid(r, p, 0.f);
     // Four seconds across, at the rate it reads (in Hz, or a note of the song).
     const float seconds = 4.f, step = gLive ? gLive->stepSeconds : 0.125f;

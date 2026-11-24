@@ -49,6 +49,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
 | ...DUB howling (FEEDBACK 150%) or its TONE turned all the while; REVERSE at FEEDBACK 100%; STUTTER at CHANCE 100% | 0.05 to 0.07% / 0.03% / 0.04% |
 | BLOOM / SHIMMER (2026-11-14, three runs: DRIVE 0.12%, HALL 0.15%, PLATE 0.14 to 0.15% in all; on locals, the sway's weights once a tick: they were 0.74% / 0.56%) | 0.55 to 0.56% / 0.35% |
 | ...BLOOM turned all the while; SHIMMER at 0, or its DECAY turned all the while | 0.66 to 0.67%; 0.34 to 0.35% / 0.39 to 0.40% |
+| WAH / PITCH (2026-11-24, three runs: COMB 0.06 to 0.11%, VOWEL 0.11 to 0.17%, CHORUS 0.20 to 0.23%, HALL 0.20% in all; PITCH on locals made no difference, 0.19%, so it was left plain: the cost is its two heads' four-point reads on both sides) | 0.09% / 0.19% (0.23% in one run) |
+| ...WAH's SENSE or PITCH's FINE turned all the while | 0.09% / 0.19% |
 | ...TAPE and PLATE on the buses of twelve busy drum tracks (TAPE and HALL 0.28 to 0.39% in the same runs) | 0.28 to 0.42% |
 | Everything at once on twelve busy drum tracks: every hit thrown to both buses, sends up, TAPE and HALL on them, a DUCK on each track (2026-11-12; the tracks themselves 1.44%, DRIVE 0.12%) | 1.70% |
 | FEEL on every lane of twelve busy drum tracks, HUMAN TIME and HUMAN LEVEL at 100% (2026-11-15, three runs: the tracks themselves 1.47 to 1.48%, DRIVE 0.12%; the same plain song measured again read -0.03 to +0.04) | 0.10 to 0.11% more; HUMAN TIME alone 0.08 to 0.11; HUMAN LEVEL alone nothing that shows |

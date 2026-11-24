@@ -2085,10 +2085,10 @@ void testTheFxScreen() {
 void testTheListOfEffectsHoldsTheLaterTypes() {
     Screens& s = screens();
     const std::vector<std::vector<std::string>> later = {
-        {"filter", "comb", "vowel", "eq"},
+        {"filter", "comb", "vowel", "eq", "wah"},
         {"drive", "saturate", "fold", "fuzz"},
         {"crush", "ring", "wear"},
-        {"chorus", "flanger", "ensemble", "phaser", "tremolo"},
+        {"chorus", "flanger", "ensemble", "phaser", "tremolo", "pitch"},
         {"clean", "tape", "ping", "dub", "reverse", "stutter"},
         {"room", "hall", "spring", "plate", "bloom", "shimmer"},
         {"comp", "duck", "limiter", "snap"},
@@ -2108,26 +2108,32 @@ void testTheListOfEffectsHoldsTheLaterTypes() {
     for (int size = 0; size < kTextSizes; ++size) {
         const Fonts& chosen = *s.at[size];
         for (const std::vector<std::string>& names : later) {
-            // The planned names: one row, at the size chosen if they fit it, else at LARGE.
+            // The planned names: one row where LARGE has them in one (at the size chosen if they fit it, else at LARGE);
+            // MOD's six since PITCH are two rows at LARGE, so two at every size (2026-11-24: the same words).
             const FxScreen::PickRows rows = FxScreen::pickRows(chosen, names);
-            CHECK(rows.rows == 1 && rows.split == static_cast<int>(names.size()));
-            CHECK(FxScreen::typesWidth(rows.set->small, names, 0, static_cast<int>(names.size())) <= room);
-            const bool fitsChosen = FxScreen::typesWidth(chosen.small, names, 0, static_cast<int>(names.size())) <= room;
-            CHECK(rows.set == (fitsChosen ? &chosen : &chosen.fixed()));
+            const int n = static_cast<int>(names.size());
+            const bool oneAtLarge = FxScreen::typesWidth(chosen.fixed().small, names, 0, n) <= room;
+            CHECK(rows.rows == (oneAtLarge ? 1 : 2));
+            if (oneAtLarge) {
+                CHECK(rows.split == n && FxScreen::typesWidth(rows.set->small, names, 0, n) <= room);
+                const bool fitsChosen = FxScreen::typesWidth(chosen.small, names, 0, n) <= room;
+                CHECK(rows.set == (fitsChosen ? &chosen : &chosen.fixed()));
+                if (size <= kTextLarge) CHECK(rows.set == &chosen); // held only at XL
+            } else {
+                CHECK(FxScreen::typesWidth(rows.set->small, names, 0, rows.split) <= room && FxScreen::typesWidth(rows.set->small, names, rows.split, n) <= room);
+            }
             held += rows.set != &chosen ? 1 : 0;
-            if (size <= kTextLarge) CHECK(rows.set == &chosen); // held only at XL
             // Made up: as many, each as long as SATURATE. Two rows at LARGE, each in the room, both inside the line.
             const std::vector<std::string> made(names.size(), "saturat" + std::string(1, 'e'));
             const FxScreen::PickRows two = FxScreen::pickRows(chosen, made);
             const int count = static_cast<int>(made.size());
-            if (FxScreen::typesWidth(chosen.fixed().small, made, 0, count) > room && FxScreen::typesWidth(chosen.small, made, 0, count) > room) {
-                CHECK(two.rows == 2 && two.set == &chosen.fixed() && two.split > 0 && two.split < count);
+            if (FxScreen::typesWidth(chosen.fixed().small, made, 0, count) > room) { // (LARGE decides: two rows at every size)
+                CHECK(two.rows == 2 && two.split > 0 && two.split < count);
                 CHECK(FxScreen::typesWidth(two.set->small, made, 0, two.split) <= room && FxScreen::typesWidth(two.set->small, made, two.split, count) <= room);
                 const float rowsH = 2.f * two.set->small.capHeight() + FxScreen::kPickRowGap, top = (FxScreen::kPickLineH - rowsH) / 2.f - 1.f;
                 CHECK(top >= 3.f && top + rowsH <= FxScreen::kPickLineH - 3.f); // clear of the cursor's outline, capitals and all
             } else {
-                CHECK(two.rows == 1); // (smaller than LARGE they can fit in one)
-                if (count == 6) CHECK(size < kTextLarge);
+                CHECK(two.rows == 1);
             }
             // The heading's TYPE row, in capitals, on each type in turn: that one in view, the rest that are in view about it,
             // all in the room the row has, and never fewer than three. Which are in view is LARGE's at every size (the same
@@ -2146,7 +2152,8 @@ void testTheListOfEffectsHoldsTheLaterTypes() {
                 FxScreen::typesInView(large.small, upper, at, largeRoom, &lfrom, &lto);
                 CHECK(from == lfrom && to == lto && (&f == &chosen || &f == &large));
                 if (size <= kTextLarge) CHECK(&f == &chosen);
-                CHECK(from >= 0 && from <= at && at < to && to <= count && to - from >= std::min(3, count));
+                // (Never fewer than three; two where both ends are cut: MOD's six since PITCH, on ENSEMBLE, "... ENSEMBLE PHASER ...".)
+                CHECK(from >= 0 && from <= at && at < to && to <= count && to - from >= std::min(from > 0 && to < count ? 2 : 3, count));
                 CHECK(FxScreen::typeRowWidth(f.small, upper, from, to) <= FxScreen::typeRowRoom(f, count));
                 // Not one more would fit at LARGE, at either end (as many as fit there).
                 const float w = FxScreen::typeRowWidth(large.small, upper, from, to);
@@ -2157,7 +2164,7 @@ void testTheListOfEffectsHoldsTheLaterTypes() {
             }
         }
     }
-    CHECK(held >= 1 && held <= 7); // at XL some are held (MOD's five), and only there
+    CHECK(held <= 7); // held only at XL (none since MOD went to two rows with PITCH, each row in XL's own lettering)
     std::printf("    the planned types: %d families held at LARGE at XL\n", held);
 }
 
@@ -2221,7 +2228,7 @@ void testTheListOfEffectsAsDrawn() {
             }
             if (rows.rows == 2) {
                 ++twoRows;
-                CHECK(rows.set == &chosen.fixed() && bands.size() == 2 && bands[1].first > bands[0].second + 1); // two rows apart, at LARGE
+                CHECK(bands.size() == 2 && bands[1].first > bands[0].second + 1); // two rows apart (at the size chosen where each fits)
             }
             // The one lit is in brass, and only it.
             int brass = 0;
