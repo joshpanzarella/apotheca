@@ -456,7 +456,8 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (t.samplerChop && sound.zones == 0)
             for (int i = 1; i < sampler::kChopSlices; ++i) box(r, wx + ww * i / sampler::kChopSlices, wy, 1, wh, kLine, kLine); // its slices
         drawPlayhead(r, head_, lastMs_, wx, wy - 2, ww, wh + 4);
-        if (sound.zones > 0) std::snprintf(text, sizeof text, "%.1f S  %d ZONES", sound.seconds, sound.zones);
+        if (sound.zones > 0 && sound.layers > 1) std::snprintf(text, sizeof text, "%.1f S  %d ZONES  %d LAYERS", sound.seconds, sound.zones, sound.layers);
+        else if (sound.zones > 0) std::snprintf(text, sizeof text, "%.1f S  %d ZONES", sound.seconds, sound.zones);
         else if (t.samplerChop) std::snprintf(text, sizeof text, "%.1f S  CHOP", sound.seconds);
         else std::snprintf(text, sizeof text, "%.1f S", sound.seconds);
         fonts.small.drawRight(r, sx + sw - 8.f, sy + 7.f, text, kDim);

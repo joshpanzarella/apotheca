@@ -8,6 +8,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <string>
+#include <vector>
 
 #include "song_file.hpp"
 
@@ -259,6 +261,94 @@ int sampleNote(const std::string& name) {
         i = at - 1; // past the whole match
     }
     return found;
+}
+
+namespace {
+
+bool letterOrDigit(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'); }
+bool digit(char c) { return c >= '0' && c <= '9'; }
+// "12" as 12; -1 if it is not all digits (or too long to be a layer: more than four).
+int numberOf(const std::string& word) {
+    if (word.empty() || word.size() > 4) return -1;
+    int n = 0;
+    for (char c : word) {
+        if (!digit(c)) return -1;
+        n = n * 10 + (c - '0');
+    }
+    return n;
+}
+
+struct LayerWord {
+    int rank = -1;
+    std::size_t at = 0, length = 0; // where it is spelled in the label (for its stem)
+};
+
+LayerWord findLayer(const std::string& label) {
+    struct Word { std::string text; std::size_t at; };
+    std::vector<Word> words; // its words, in small letters
+    for (std::size_t i = 0; i < label.size();) {
+        if (!letterOrDigit(label[i])) {
+            ++i;
+            continue;
+        }
+        Word w{std::string(), i};
+        for (; i < label.size() && letterOrDigit(label[i]); ++i) w.text += static_cast<char>(label[i] >= 'A' && label[i] <= 'Z' ? label[i] - 'A' + 'a' : label[i]);
+        words.push_back(w);
+    }
+    static const char* const kDynamics[] = {"ppp", "pp", "p", "mp", "mf", "f", "ff", "fff"}; // 1 to 8
+    static const struct { const char* word; int rank; } kWords[] = {{"soft", 2}, {"medium", 5}, {"med", 5}, {"hard", 7}, {"loud", 7}};
+    static const char* const kNumbered[] = {"velocity", "layer", "vel", "vl", "v"}; // the longest first
+    LayerWord found;
+    for (std::size_t k = 0; k < words.size(); ++k) {
+        const std::string& t = words[k].text;
+        LayerWord here;
+        for (int d = 0; d < 8 && k > 0; ++d)
+            if (t == kDynamics[d]) here = {d + 1, words[k].at, t.size()};
+        for (const auto& w : kWords)
+            if (t == w.word) here = {w.rank, words[k].at, t.size()};
+        for (const char* prefix : kNumbered) {
+            if (here.rank >= 0) break;
+            const std::string p(prefix);
+            if (t == p && k + 1 < words.size() && numberOf(words[k + 1].text) >= 0) { // "vel 3": the next word's number
+                const std::size_t end = words[k + 1].at + words[k + 1].text.size();
+                here = {numberOf(words[k + 1].text), words[k].at, end - words[k].at};
+                break;
+            }
+            // "v2", "layer2", or after a note's octave ("a0v16"): never inside a word ("dev2").
+            for (std::size_t i = 0; i + p.size() < t.size(); ++i) {
+                if (t.compare(i, p.size(), p) != 0 || (i > 0 && !digit(t[i - 1]))) continue;
+                const int n = numberOf(t.substr(i + p.size()));
+                if (n >= 0) {
+                    here = {n, words[k].at + i, t.size() - i};
+                    break;
+                }
+            }
+        }
+        if (here.rank >= 0) found = here;
+    }
+    return found;
+}
+
+} // namespace
+
+int sampleLayer(const std::string& name) { return findLayer(sampleLabel(name)).rank; }
+
+std::string sampleLayerStem(const std::string& name) {
+    std::string label = sampleLabel(name);
+    const LayerWord layer = findLayer(label);
+    if (layer.rank >= 0) label.erase(layer.at, layer.length);
+    std::string stem;
+    bool gap = false;
+    for (char c : label) {
+        if (!letterOrDigit(c)) {
+            gap = !stem.empty();
+            continue;
+        }
+        if (gap) stem += ' ';
+        gap = false;
+        stem += static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
+    }
+    return stem;
 }
 
 } // namespace apotheca

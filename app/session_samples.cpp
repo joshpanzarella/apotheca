@@ -539,6 +539,103 @@ void Session::finishRecording() {
     else if (project.tracks[recTrack_].kind == TrackKind::Drums) setLaneSample(recTrack_, recLane_, name);
 }
 
+// A multisample (sampler.hpp): the files beside the picked one that spell notes in their names (sampleNote), each
+// round its own note, and the layers of a note (sampleLayer: "soft", "ff", "v2"), each played by its share of the
+// velocities, softest first. A file that spells no note but a layer, and is the picked one's name otherwise
+// ("Snare hard" beside "Snare soft", sampleLayerStem), is a layer of the picked one's note. Null where that is the
+// picked one alone; else `main` has been moved into it. The picked one plays at its spelled note, or where ROOT says
+// where it spells none (its root is 60, which ROOT moves as it moves the set). At most kMaxZoneNotes notes, the
+// nearest to the picked one's; as many layers on each as kMaxZones leaves room for, up to kMaxLayers, spread from
+// the softest to the loudest; the picked one always among them.
+std::unique_ptr<sampler::SampleZoneSet> Session::multisampleOf(const std::string& name, std::vector<float>& main) {
+    const std::string folder = sampleFolderOf(name), stem = sampleLayerStem(name);
+    const int mainNote = sampleNote(name), mainRoot = mainNote >= 0 ? mainNote : 60;
+    // A layer's place among a note's: its number; none spelled sits with MF (between SOFT and HARD).
+    const auto layerOf = [](const std::string& n) {
+        const int layer = sampleLayer(n);
+        return layer >= 0 ? layer : 5;
+    };
+    struct Candidate {
+        std::string name;
+        int note, layer;
+    };
+    std::vector<Candidate> files{{name, mainRoot, layerOf(name)}}; // the picked one first: it wins a tie
+    for (const std::string& have : sampleNames()) {
+        if (have == name || sampleFolderOf(have) != folder) continue;
+        const int note = sampleNote(have);
+        if (note >= 0 && note <= 127) files.push_back({have, note, layerOf(have)});
+        else if (note < 0 && mainNote < 0 && sampleLayer(have) >= 0 && sampleLayerStem(have) == stem)
+            files.push_back({have, mainRoot, layerOf(have)});
+    }
+    // By note, a note's layers softest first; one note and layer twice keeps the first (the picked one, else the
+    // first by name).
+    std::stable_sort(files.begin() + 1, files.end(), [](const Candidate& a, const Candidate& b) { return a.name < b.name; });
+    std::stable_sort(files.begin(), files.end(), [](const Candidate& a, const Candidate& b) {
+        return a.note != b.note ? a.note < b.note : a.layer < b.layer;
+    });
+    std::vector<std::vector<Candidate>> notes; // each note's layers
+    for (const Candidate& c : files) {
+        if (!notes.empty() && notes.back().front().note == c.note) {
+            if (notes.back().back().layer != c.layer) notes.back().push_back(c); // (the picked one sorts first of a pair)
+        } else {
+            notes.push_back({c});
+        }
+    }
+    if (notes.size() == 1 && notes.front().size() == 1) return nullptr; // the picked one alone
+    // The nearest notes to the picked one's (a lower one first where two are as near), then by note again.
+    std::stable_sort(notes.begin(), notes.end(), [&](const std::vector<Candidate>& a, const std::vector<Candidate>& b) {
+        const int da = std::abs(a.front().note - mainRoot), db = std::abs(b.front().note - mainRoot);
+        return da != db ? da < db : a.front().note < b.front().note;
+    });
+    if (notes.size() > static_cast<std::size_t>(sampler::kMaxZoneNotes)) notes.resize(sampler::kMaxZoneNotes);
+    std::stable_sort(notes.begin(), notes.end(), [](const std::vector<Candidate>& a, const std::vector<Candidate>& b) { return a.front().note < b.front().note; });
+    int room = sampler::kMaxZones / static_cast<int>(notes.size());
+    room = room < 1 ? 1 : (room > sampler::kMaxLayers ? sampler::kMaxLayers : room);
+    std::unique_ptr<sampler::SampleZoneSet> set(new sampler::SampleZoneSet);
+    for (std::vector<Candidate>& layers : notes) {
+        const int n = static_cast<int>(layers.size());
+        if (n > room) { // spread from the softest to the loudest, the picked one kept in place of the nearest to it
+            std::vector<Candidate> kept;
+            for (int k = 0; k < room; ++k) kept.push_back(layers[static_cast<std::size_t>(room == 1 ? n - 1 : (k * (n - 1) + (room - 1) / 2) / (room - 1))]);
+            for (int k = 0; k < n; ++k) {
+                if (layers[static_cast<std::size_t>(k)].name != name) continue;
+                std::size_t nearest = 0;
+                for (std::size_t q = 1; q < kept.size(); ++q)
+                    if (std::abs(kept[q].layer - layers[static_cast<std::size_t>(k)].layer) < std::abs(kept[nearest].layer - layers[static_cast<std::size_t>(k)].layer)) nearest = q;
+                kept[nearest] = layers[static_cast<std::size_t>(k)];
+            }
+            layers = std::move(kept);
+        }
+        std::vector<sampler::SampleZone> read;
+        for (const Candidate& c : layers) {
+            std::vector<float> data;
+            if (c.name == name) data = std::move(main); // (given back below if it ends up alone)
+            else if (!readRecording(sampleFolder_, c.name, data) || data.empty()) continue; // gone or broken: skipped
+            read.push_back(sampler::SampleZone());
+            read.back().data = std::move(data);
+            read.back().root = c.note;
+        }
+        for (std::size_t k = 0; k < read.size(); ++k) {
+            read[k].top = k + 1 == read.size() ? 1.f : static_cast<float>(k + 1) / static_cast<float>(read.size()); // an even share each
+            set->zones.push_back(std::move(read[k]));
+        }
+    }
+    if (set->zones.size() < 2) { // one after all (nothing readable beside it): the picked one alone, given back
+        if (!set->zones.empty()) main = std::move(set->zones.front().data);
+        return nullptr;
+    }
+    // Each note's keys reach halfway to its neighbours'; its layers share them.
+    std::vector<int> roots;
+    for (const sampler::SampleZone& z : set->zones)
+        if (roots.empty() || roots.back() != z.root) roots.push_back(z.root);
+    for (sampler::SampleZone& z : set->zones) {
+        const std::size_t i = static_cast<std::size_t>(std::find(roots.begin(), roots.end(), z.root) - roots.begin());
+        z.lo = i == 0 ? 0 : (roots[i - 1] + z.root) / 2 + 1;
+        z.hi = i + 1 == roots.size() ? 127 : (z.root + roots[i + 1]) / 2;
+    }
+    return set;
+}
+
 // A sampler track's recording, read from its file and handed to the engine.
 // A multisample: where the files beside it spell notes in their names, they
 // play too, each round its own note (sampler.hpp); the song still names only
@@ -567,66 +664,16 @@ void Session::loadTrackSample(int track) {
         if (v > peak) peak = v;
     }
     if (project.tracks[track].kind == TrackKind::Sampler) {
-        // The files beside it with a note in the name. The picked one plays
-        // at its spelled note, or at ROOT where it spells none.
-        const std::string folder = sampleFolderOf(name);
-        const int mainNote = sampleNote(name);
-        const int mainRoot = mainNote >= 0 ? mainNote : project.tracks[track].sampler[sampler::Root];
-        struct Candidate {
-            std::string name;
-            int note;
-        };
-        std::vector<Candidate> beside;
-        for (const std::string& have : sampleNames()) {
-            if (have == name || sampleFolderOf(have) != folder) continue;
-            const int note = sampleNote(have);
-            if (note >= 0 && note <= 127) beside.push_back({have, note});
-        }
-        if (!beside.empty()) {
-            // The nearest notes to the picked one (a lower one first where two
-            // are as near), the picked one always among them.
-            std::stable_sort(beside.begin(), beside.end(), [&](const Candidate& a, const Candidate& b) {
-                const int da = std::abs(a.note - mainRoot), db = std::abs(b.note - mainRoot);
-                return da != db ? da < db : a.note < b.note;
-            });
-            if (beside.size() > static_cast<std::size_t>(sampler::kMaxZones - 1)) beside.resize(sampler::kMaxZones - 1);
-            std::unique_ptr<sampler::SampleZoneSet> set(new sampler::SampleZoneSet);
-            set->zones.push_back(sampler::SampleZone());
-            set->zones.back().data = std::move(main);
-            set->zones.back().root = mainRoot;
-            for (const Candidate& c : beside) {
-                std::vector<float> data;
-                if (!readRecording(sampleFolder_, c.name, data) || data.empty()) continue; // gone or broken: skipped
-                set->zones.push_back(sampler::SampleZone());
-                set->zones.back().data = std::move(data);
-                set->zones.back().root = c.note;
+        std::unique_ptr<sampler::SampleZoneSet> set = multisampleOf(name, main);
+        if (set) {
+            sound.zones = static_cast<int>(set->zones.size());
+            sound.layers = 1;
+            for (std::size_t i = 0, run = 1; i < set->zones.size(); ++i) {
+                run = i > 0 && set->zones[i].root == set->zones[i - 1].root ? run + 1 : 1;
+                if (static_cast<int>(run) > sound.layers) sound.layers = static_cast<int>(run);
             }
-            if (set->zones.size() > 1) {
-                // By root, lowest first; one note twice keeps the picked one.
-                // Each plays up to the middle with its neighbours.
-                std::stable_sort(set->zones.begin(), set->zones.end(),
-                                 [](const sampler::SampleZone& a, const sampler::SampleZone& b) { return a.root < b.root; });
-                std::vector<sampler::SampleZone> kept;
-                for (sampler::SampleZone& z : set->zones) {
-                    if (!kept.empty() && kept.back().root == z.root) continue;
-                    kept.push_back(std::move(z));
-                }
-                set->zones = std::move(kept);
-                if (set->zones.size() > 1) {
-                    for (std::size_t i = 0; i < set->zones.size(); ++i) {
-                        sampler::SampleZone& z = set->zones[i];
-                        z.lo = i == 0 ? 0 : (set->zones[i - 1].root + z.root) / 2 + 1;
-                        z.hi = i + 1 == set->zones.size() ? 127 : (z.root + set->zones[i + 1].root) / 2;
-                    }
-                    sound.zones = static_cast<int>(set->zones.size());
-                    engine.setTrackZones(track, std::move(set));
-                    return;
-                }
-            }
-            // One zone after all (nothing readable beside it, or all one note):
-            // the picked one alone, below. (The survivor is always it: it went
-            // first, and one note twice keeps the first.)
-            main = std::move(set->zones.front().data);
+            engine.setTrackZones(track, std::move(set));
+            return;
         }
     }
     std::unique_ptr<SampleData> data(new SampleData);

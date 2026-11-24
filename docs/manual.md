@@ -152,10 +152,31 @@ most); under a name taken, it replaces that one. A preset is kept as
 
 **A multisample**: where the files beside the picked one spell notes in
 their names (C2, C#3, Db3), they play too, each round its own note — up to 24
-recordings, split halfway between their notes. The picked one plays at its
+notes, split halfway between their notes. The picked one plays at its
 spelled note, or where PITCH says where it spells none; PITCH moves the whole
 set as it moves one recording. The song still names only the one picked, and
 the picture says how many play (3 ZONES).
+
+**Velocity layers**: several recordings of one note, played soft to hard.
+A harder note plays a harder recording. The layer is read from a word in the
+name:
+
+| In the name | Softest to hardest |
+| --- | --- |
+| A dynamic | PPP, PP, P, MP, MF, F, FF, FFF (not as the name's first word) |
+| A word | SOFT, MED or MEDIUM, HARD or LOUD |
+| A number | V1, V2... (also VEL, VL, VELOCITY or LAYER), or straight after the note: A0V1 |
+
+A file with no layer word counts as MF. A note's layers share its notes'
+range of loudness evenly: with three, the softest third of the notes plays the
+first. A note placed on the piano roll (90%) plays the hardest; turn a note's
+level down to reach the softer ones, or play a USB keyboard. **Layers need no
+note in the name**: "Snare", "Snare soft" and "Snare hard" in one folder are one
+sound in three layers, at its own pitch on middle C, as one recording is
+(PITCH moves it). At most 4 layers a note and 48
+recordings in all: with many notes, fewer layers each (the softest and the
+hardest kept first). The picture says it: 6 ZONES  3 LAYERS. A big set takes
+a moment to load.
 
 **CHOP (L1)** cuts the one recording into 16 even slices, C1 up: each key
 plays its slice at its own pitch, PITCH moving every slice together. START,

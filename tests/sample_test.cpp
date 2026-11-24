@@ -2752,7 +2752,7 @@ void testMultisampleCap() {
     Session& session = rig.session();
     CHECK(session.addTrack(TrackKind::Sampler));
     session.setTrackSample(1, "S E1");
-    CHECK(session.trackSound(1).zones == sampler::kMaxZones); // twenty-four, not thirty
+    CHECK(session.trackSound(1).zones == sampler::kMaxZoneNotes && session.trackSound(1).layers == 1); // twenty-four, not thirty
     // The picked one is always among them: its own pitch at its own key.
     rig.render(100000);
     Command c;
@@ -2765,6 +2765,156 @@ void testMultisampleCap() {
     int crossings = 0;
     for (std::size_t i = 2 * 960 + 2; i < out.size(); i += 2) crossings += (out[i - 2] < 0.f) != (out[i] < 0.f);
     CHECK(std::fabs(crossings / 2.0 / ((24000 - 960) / 48000.0) - 333.0) < 5.0);
+}
+
+// VELOCITY LAYERS (owner, 2026-11-24): the words that name one, and which files are layers of one sound.
+void testLayerNames() {
+    CHECK(sampleLayer("Piano C3 pp") == 2 && sampleLayer("Piano C3 p") == 3 && sampleLayer("Piano C3 mp") == 4 && sampleLayer("Piano C3 MF") == 5);
+    CHECK(sampleLayer("Piano C3 f") == 6 && sampleLayer("Piano_C3_ff") == 7 && sampleLayer("Piano-C3-fff") == 8 && sampleLayer("Piano C3 ppp") == 1);
+    CHECK(sampleLayer("Snare soft") == 2 && sampleLayer("Snare Medium") == 5 && sampleLayer("Snare med") == 5 && sampleLayer("Snare HARD") == 7 && sampleLayer("Snare loud") == 7);
+    CHECK(sampleLayer("Piano C3 v2") == 2 && sampleLayer("Piano C3 vel3") == 3 && sampleLayer("Piano C3 VL4") == 4 && sampleLayer("Piano C3 layer 2") == 2);
+    CHECK(sampleLayer("Piano C3 velocity 100") == 100 && sampleLayer("Piano_C3_v127") == 127 && sampleLayer("Piano C3 vel 64") == 64);
+    CHECK(sampleLayer("A0v1") == 1 && sampleLayer("A0v16") == 16 && sampleLayer("C#3v8") == 8); // straight after a note
+    CHECK(sampleNote("A0v16") == 21 && sampleNote("C#3v8") == 49 && sampleNote("Piano C3 ff") == 48 && sampleNote("Piano C3 v2") == 48); // the note still read
+    CHECK(sampleLayer("Piano C3") < 0 && sampleLayer("") < 0 && sampleLayer("dev2") < 0 && sampleLayer("Level C3") < 0 && sampleLayer("v") < 0);
+    CHECK(sampleLayer("P C3") < 0 && sampleLayer("F C3") < 0 && sampleLayer("mf") < 0);  // the first word is a name, never a dynamic
+    CHECK(sampleLayer("Soft C3") == 2 && sampleLayer("v2 C3") == 2);                     // (a word or a number is one anywhere)
+    CHECK(sampleLayer("C3 v12345") < 0 && sampleLayer("C3 pp v3") == 3 && sampleLayer("C3 v3 pp") == 2); // too long a number; the last spelled
+    CHECK(sampleLayer("Loud/Piano C3") < 0 && sampleLayer("ff/Piano C3") < 0);           // folders unread
+    CHECK(sampleLayerStem("Snare_HARD") == "snare" && sampleLayerStem("snare soft") == "snare" && sampleLayerStem("Kits/Snare  v2") == "snare");
+    CHECK(sampleLayerStem("Big Snare - ff") == "big snare" && sampleLayerStem("Snare") == "snare" && sampleLayerStem("A0v16") == "a0");
+    CHECK(sampleLayerStem("Snare 2 hard") != sampleLayerStem("Snare hard"));
+}
+
+// A note's layers each play their share of the velocities, softest first; the keys are shared as a note's are.
+void testVelocityLayers() {
+    const std::string folder = tempFolder("samples");
+    writeWav(folder + "/Piano C3 pp.wav", toneAt(200.f, 2.f, 0.5f), 48000);
+    writeWav(folder + "/Piano C3 mf.wav", toneAt(220.f, 2.f, 0.5f), 48000);
+    writeWav(folder + "/Piano C3 ff.wav", toneAt(240.f, 2.f, 0.5f), 48000);
+    writeWav(folder + "/Piano C4 soft.wav", toneAt(400.f, 2.f, 0.5f), 48000);
+    writeWav(folder + "/Piano C4.wav", toneAt(440.f, 2.f, 0.5f), 48000); // no word: with MF, between SOFT and HARD
+    writeWav(folder + "/Piano C4 hard.wav", toneAt(480.f, 2.f, 0.5f), 48000);
+    writeWav(folder + "/Piano C2.wav", toneAt(100.f, 2.f, 0.5f), 48000);
+    writeWav(folder + "/Piano C2 copy.wav", toneAt(90.f, 2.f, 0.5f), 48000); // the same note and layer: the first by name stays
+    mkdir((folder + "/snare").c_str(), 0755);
+    writeWav(folder + "/snare/Snare soft.wav", toneAt(150.f, 2.f, 0.5f), 48000);
+    writeWav(folder + "/snare/Snare_HARD.wav", toneAt(300.f, 2.f, 0.5f), 48000);
+    writeWav(folder + "/snare/Snare.wav", toneAt(225.f, 2.f, 0.5f), 48000);
+    writeWav(folder + "/snare/Rim hard.wav", toneAt(900.f, 2.f, 0.5f), 48000);      // another sound's layer: not this one's
+    mkdir((folder + "/glued").c_str(), 0755);
+    writeWav(folder + "/glued/A0v1.wav", toneAt(110.f, 2.f, 0.5f), 48000);
+    writeWav(folder + "/glued/A0v2.wav", toneAt(120.f, 2.f, 0.5f), 48000);
+    Rig rig(folder);
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Sampler));
+    rig.project().track = 1;
+    const auto pitchOf = [&](int note, float velocity) {
+        rig.render(100000);
+        Command c;
+        c.type = Command::NoteOn;
+        c.track = 1;
+        c.a = note;
+        c.value = velocity;
+        rig.engine->send(c);
+        const std::vector<float> out = rig.render(24000);
+        c.type = Command::NoteOff;
+        rig.engine->send(c);
+        rig.render(48000);
+        int crossings = 0;
+        for (std::size_t i = 2 * 960 + 2; i < out.size(); i += 2) crossings += (out[i - 2] < 0.f) != (out[i] < 0.f);
+        return crossings / 2.0 / ((24000 - 960) / 48000.0);
+    };
+    const auto near = [](double got, double want) { return std::fabs(got - want) < want * 0.025; };
+
+    session.setTrackSample(1, "Piano C3 mf");
+    CHECK(session.trackSound(1).zones == 7 && session.trackSound(1).layers == 3);
+    // C3's three: a third of the velocities each (to 1/3, to 2/3, the rest), the top of each its own.
+    CHECK(near(pitchOf(48, 0.1f), 200.0) && near(pitchOf(48, 1.f / 3.f), 200.0) && near(pitchOf(48, 0.34f), 220.0));
+    CHECK(near(pitchOf(48, 2.f / 3.f), 220.0) && near(pitchOf(48, 0.67f), 240.0) && near(pitchOf(48, 1.f), 240.0) && near(pitchOf(48, 1.5f), 240.0));
+    // C4's: SOFT, the plain one, HARD. A note placed (kPlacedLevel 0.9) plays the loudest.
+    CHECK(near(pitchOf(60, 0.2f), 400.0) && near(pitchOf(60, 0.5f), 440.0) && near(pitchOf(60, kPlacedLevel), 480.0));
+    // C2's one: every velocity; "Piano C2 copy" (the same note, no word) is not there.
+    CHECK(near(pitchOf(36, 0.1f), 100.0) && near(pitchOf(36, 1.f), 100.0));
+    // The keys as before: a note's layers share theirs (up to the middle with its neighbours).
+    CHECK(near(pitchOf(54, 0.1f), 200.0 * 1.41421356) && near(pitchOf(55, 1.f), 480.0 / 1.33483985) && near(pitchOf(42, 0.9f), 100.0 * 1.41421356));
+    // ROOT moves the whole set.
+    session.setSamplerSetting(1, sampler::Root, 72);
+    CHECK(near(pitchOf(48, 1.f), 120.0));
+    session.setSamplerSetting(1, sampler::Root, 60);
+
+    // Layers with no note: the picked one's name otherwise, all on its key (ROOT's), the plain one with MF.
+    session.setTrackSample(1, "snare/Snare");
+    CHECK(session.trackSound(1).zones == 3 && session.trackSound(1).layers == 3);
+    CHECK(near(pitchOf(60, 0.2f), 150.0) && near(pitchOf(60, 0.5f), 225.0) && near(pitchOf(60, 0.9f), 300.0));
+    CHECK(near(pitchOf(72, 0.9f), 600.0)); // every key, an octave up
+    session.setSamplerSetting(1, sampler::Root, 72); // ROOT is the key that plays it untransposed, as with one recording
+    CHECK(near(pitchOf(72, 0.9f), 300.0) && near(pitchOf(60, 0.2f), 75.0));
+    session.setSamplerSetting(1, sampler::Root, 60);
+    session.setTrackSample(1, "snare/Rim hard"); // nothing else is a rim: one recording
+    CHECK(session.trackSound(1).zones == 0 && near(pitchOf(60, 0.5f), 900.0));
+    // Glued to the note, as a common free piano names its files.
+    session.setTrackSample(1, "glued/A0v2");
+    CHECK(session.trackSound(1).zones == 2 && session.trackSound(1).layers == 2);
+    CHECK(near(pitchOf(21, 0.4f), 110.0) && near(pitchOf(21, 0.6f), 120.0));
+    // Read again with the song: the same set.
+    session.setTrackSample(1, "Piano C3 mf");
+    session.sendSong();
+    CHECK(session.trackSound(1).zones == 7 && near(pitchOf(48, 0.5f), 220.0));
+}
+
+// Over the room: the 24 nearest notes, and as many layers on each as 48 recordings leave, spread from the softest to
+// the loudest, the picked one among them.
+void testVelocityLayersCap() {
+    const std::string folder = tempFolder("samples");
+    static const char* semitone[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    for (int midi = 40; midi < 70; ++midi) // thirty notes, five layers each: a different pitch for each layer
+        for (int v = 1; v <= 5; ++v) {
+            char name[32];
+            std::snprintf(name, sizeof name, "S %s%d v%d", semitone[midi % 12], midi / 12 - 1, v);
+            writeWav(folder + "/" + name + ".wav", toneAt(100.f * static_cast<float>(v), 0.5f, 0.5f), 48000);
+        }
+    mkdir((folder + "/eight").c_str(), 0755);
+    for (int v = 1; v <= 8; ++v) { // one note, eight layers: room for four
+        char name[32];
+        std::snprintf(name, sizeof name, "eight/T C3 v%d", v);
+        writeWav(folder + "/" + name + ".wav", toneAt(100.f * static_cast<float>(v), 0.5f, 0.5f), 48000);
+    }
+    writeWav(folder + "/eight/T C4 v1.wav", toneAt(50.f, 0.5f, 0.5f), 48000);
+    Rig rig(folder);
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Sampler));
+    const auto pitchOf = [&](int note, float velocity) {
+        rig.render(100000);
+        Command c;
+        c.type = Command::NoteOn;
+        c.track = 1;
+        c.a = note;
+        c.value = velocity;
+        rig.engine->send(c);
+        const std::vector<float> out = rig.render(24000);
+        c.type = Command::NoteOff;
+        rig.engine->send(c);
+        rig.render(48000);
+        int crossings = 0;
+        for (std::size_t i = 2 * 960 + 2; i < 2 * 12000; i += 2) crossings += (out[i - 2] < 0.f) != (out[i] < 0.f);
+        return crossings / 2.0 / ((12000 - 960) / 48000.0); // (the first quarter second: the files are half a second, played up to a tritone higher)
+    };
+    const auto near = [](double got, double want) { return std::fabs(got - want) < want * 0.025 + 2.0; };
+    session.setTrackSample(1, "S E3 v3"); // 52: the middle layer of a note in the middle
+    CHECK(session.trackSound(1).zones == sampler::kMaxZones && session.trackSound(1).layers == 2);
+    // Two layers a note: the softest and the loudest (v1, v5); on the picked one's note, the picked one in place of the
+    // nearer of them (v1).
+    CHECK(near(pitchOf(56, 0.3f), 100.0) && near(pitchOf(56, 0.9f), 500.0));
+    CHECK(near(pitchOf(52, 0.3f), 300.0) && near(pitchOf(52, 0.9f), 500.0));
+    // The 24 nearest notes to E3 (52): 40 to 63; 64 to 69 are left out, so 69 plays 63's, transposed.
+    CHECK(near(pitchOf(69, 0.9f), 500.0 * std::pow(2.0, 6.0 / 12.0)));
+    // Eight layers on two notes: four each at most, spread (v1, v3, v6, v8: 0, 7/3, 14/3, 7 rounded).
+    session.setTrackSample(1, "eight/T C3 v8");
+    CHECK(session.trackSound(1).zones == 5 && session.trackSound(1).layers == 4);
+    CHECK(near(pitchOf(48, 0.2f), 100.0) && near(pitchOf(48, 0.4f), 300.0) && near(pitchOf(48, 0.7f), 600.0) && near(pitchOf(48, 0.9f), 800.0));
+    session.setTrackSample(1, "eight/T C3 v5"); // the picked one in place of the nearest kept (v6)
+    CHECK(near(pitchOf(48, 0.7f), 500.0) && near(pitchOf(48, 0.4f), 300.0));
 }
 
 void testSamplerChop() {
@@ -2962,6 +3112,9 @@ int main(int, char**) {
     testNoteNames();
     testMultisampleZones();
     testMultisampleCap();
+    testLayerNames();
+    testVelocityLayers();
+    testVelocityLayersCap();
     testSamplerChop();
     testSamplerChopFile();
     if (failures) {

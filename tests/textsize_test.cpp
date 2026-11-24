@@ -179,6 +179,10 @@ int runViews(const char* program, const char* only) {
     wav("drums/kicks/sub drop with a long name", 1.1f, 40.f);
     wav("drums/snares/crack", 0.15f, 900.f);
     wav("drums/one shot", 0.3f, 300.f);
+    // A multisample with velocity layers (sampler-layers): two notes, three layers each.
+    mkdir((samples + "/grand piano").c_str(), 0755);
+    for (const char* name : {"grand piano/Grand C3 pp", "grand piano/Grand C3 mf", "grand piano/Grand C3 ff", "grand piano/Grand C4 pp", "grand piano/Grand C4 mf", "grand piano/Grand C4 ff"})
+        wav(name, 0.3f, 262.f);
 
     if (!only) testTheStillsFlag(program, folder);
     std::vector<std::vector<std::string>> faults(static_cast<std::size_t>(kViewCount));

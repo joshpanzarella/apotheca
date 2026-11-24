@@ -54,16 +54,21 @@ int settingMax(int id);
 int settingDefault(int id);
 constexpr int kVoices = 8;
 constexpr float kVoiceGain = 0.6f; // a full-level note at full velocity; chords have room
-constexpr int kMaxZones = 24;      // recordings in a multisample, at most
+constexpr int kMaxZones = 48;      // recordings in a multisample, at most (24 before velocity layers, 2026-11-24)...
+constexpr int kMaxZoneNotes = 24;  // ...on this many notes at most...
+constexpr int kMaxLayers = 4;      // ...each with at most this many velocity layers
 constexpr int kChopSlices = 16;    // ...and in a chop, always sixteen, from kChopBase up
 constexpr int kChopBase = 24;      // C1 plays the first slice
 struct SampleZone {
     std::vector<float> data; // the zone's recording, mono, at the engine's rate
     int root = 60;           // the key it was made at: it plays untransposed there
     int lo = 0, hi = 127;    // the keys that play it
+    float top = 1.f;         // the loudest note (velocity, 0..1) that plays it: a note's softer layers come first
 };
 struct SampleZoneSet {
-    std::vector<SampleZone> zones; // by root, lowest first; lo..hi join with no gaps
+    // By root, lowest first, and a root's layers softest first (by `top`: the last is 1); lo..hi join with no
+    // gaps, and a root's layers share theirs.
+    std::vector<SampleZone> zones;
 };
 }
 

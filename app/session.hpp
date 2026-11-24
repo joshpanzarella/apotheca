@@ -338,6 +338,7 @@ public:
         float fittedTempo = 0.f;  // the tempo the one in the engine was made for
         int fittedSteps = 0;
         int zones = 0;            // a sampler's multisample: how many recordings play (0: one, as always)
+        int layers = 0;           // ...and the most velocity layers on one of its notes (1: none)
         unsigned version = 0;     // goes up whenever the lane's sound changes
     };
     const LaneSound& laneSound(int track, int lane) const { return sounds_[track][lane]; }
@@ -1045,6 +1046,7 @@ private:
     void dropRecording(); // a recording under way called off, its take thrown away
     std::string lastRecorded_;
     void loadTrackSample(int track);
+    std::unique_ptr<sampler::SampleZoneSet> multisampleOf(const std::string& name, std::vector<float>& main);
     void install(int track, int lane, const std::vector<float>& samples);
     void madeLane(int track, int lane, std::vector<float> made); // a synth voice made: the lane's recording, then shapeLane
     void shapeLane(int track, int lane);   // the lane's sound made again from its source, from the cut on (then FIT, then installLane)

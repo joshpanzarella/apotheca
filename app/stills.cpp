@@ -27,6 +27,7 @@
 #include "song_file.hpp"
 #include "text.hpp"
 #include "stills.hpp"
+#include "samples.hpp"
 
 namespace apotheca {
 
@@ -350,7 +351,14 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         if (!app.session().addTrack(TrackKind::Sampler)) app.session().setTrackKind(app.project().trackCount() - 1, TrackKind::Sampler); // (the demo has all twelve: the last becomes one)
         app.project().track = app.project().trackCount() - 1;
         const std::vector<std::string> names = app.session().sampleNames();
-        if (!names.empty()) app.session().setTrackSample(app.project().track, names[0]);
+        std::string pick = names.empty() ? std::string() : names[0];
+        if (std::strcmp(view, "sampler-layers") == 0) // a multisample with velocity layers: the first file with a note and a layer
+            for (const std::string& name : names)
+                if (sampleNote(name) >= 0 && sampleLayer(name) >= 0) {
+                    pick = name;
+                    break;
+                }
+        if (!pick.empty()) app.session().setTrackSample(app.project().track, pick);
         app.session().setSamplerSetting(app.project().track, sampler::Start, 12);
         app.session().setSamplerSetting(app.project().track, sampler::End, 80); // (its mark too)
         app.session().view = View::Device;
