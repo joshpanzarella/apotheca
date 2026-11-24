@@ -1,5 +1,5 @@
 // The easy wins (docs/plans/easywins-plan.md), a section a batch:
-//   taptempo   TAP TEMPO: the rule (tap_tempo.hpp), A on the drum grid's tempo row and on SET's TEMPO.
+//   taptempo   TAP TEMPO: the rule (tap_tempo.hpp), A on the drum grid's tempo row and on SET's TEMPO, timed by each press's own time.
 //   click      the METRONOME and the COUNT IN: the engine (where each click falls, the song as it was
 //              with it off, any blocks, the count's end on its sample, Stop and the tempo meanwhile), the
 //              SET rows and settings.txt, when the Session tells the engine, a bounce without it.
@@ -65,10 +65,11 @@ struct Rig {
         app.session().view = View::Pattern;
         frames(2);
     }
-    void key(SDL_Keycode code, bool down) {
+    void key(SDL_Keycode code, bool down, Uint32 stamp = 0) { // (`stamp`: the time SDL puts on the event; 0, none)
         SDL_Event event = {};
         event.type = down ? SDL_KEYDOWN : SDL_KEYUP;
         event.key.keysym.sym = code;
+        event.common.timestamp = stamp;
         ButtonEvent press;
         if (input.handle(event, press)) app.onButton(press, input);
     }
@@ -196,6 +197,34 @@ void testTapOnTheSetPage() {
     CHECK(rig.project().tempo == 87.f);
 }
 
+// A tap is timed by the press's own time, SDL's stamp on its event, not by the pass that read it (gesture audit
+// G06: the pass's clock was up to a pass out each tap). Taps 500 ms apart by their stamps, read by passes 512 ms
+// apart: 120 BPM, where the passes say 117. On the drum grid's tempo row and on SET's TEMPO.
+void testTapByThePressesOwnTime() {
+    for (const bool onSet : {false, true}) {
+        Rig rig;
+        if (onSet) {
+            rig.session().view = View::Settings;
+            rig.frames(1);
+            rig.app.settings().goTo(SettingsScreen::kTempo);
+            rig.frames(1);
+        } else {
+            rig.app.drums().moveCursorTo(0, 0);
+            rig.tap(UP);
+            CHECK(rig.app.drums().cursorOnTempo());
+        }
+        Uint32 stamp = 50000;
+        for (int i = 0; i < 5; ++i) {
+            rig.key(A, true, stamp);
+            rig.frames(1);
+            rig.key(A, false, stamp + 60);
+            rig.frames(31); // 32 passes from tap to tap: 512 ms by the pass's clock
+            stamp += 500;
+        }
+        CHECK(rig.project().tempo == 120.f);
+        CHECK(rig.said() == "TAPPED: 120 BPM");
+    }
+}
 
 // ---- batch 2: the METRONOME and the COUNT IN -----------------------------------------------------
 
@@ -1759,7 +1788,7 @@ struct Section {
 int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     const Section sections[] = {
-        {"taptempo", [] { testTheTapRule(), testTapOnTheDrumGrid(), testTapOnTheSetPage(); }},
+        {"taptempo", [] { testTheTapRule(), testTapOnTheDrumGrid(), testTapOnTheSetPage(), testTapByThePressesOwnTime(); }},
         {"click", [] { testTheClick(), testTheCountIn(), testTheClickInTheApp(); }},
         {"transpose", [] { testChordNames(), testTransposeACell(), testTransposeOnSong(); }},
         {"scale", [] { testTheScales(), testTheScaleInTheSong(), testTheRollKeepsToIt(); }},

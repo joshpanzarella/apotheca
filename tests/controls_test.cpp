@@ -1,17 +1,29 @@
 // Tests for the controls setup: learning what a device sends for each
 // button, keeping it, and reading buttons through it. The "device" is a
-// stream of the events SDL would deliver.
+// stream of the events SDL would deliver. And the rest between two passes
+// (pass_wait.hpp: a press ends it, nothing else does) and a press's own time
+// (ButtonEvent::ms, for TAP TEMPO): gesture audit G06.
+//
+// `controls_test --measure` times main.cpp's loop as a model on this desk: the rest
+// alone (one SDL_Delay(16) before, the four naps now) and how long a press waits
+// to be read, pressed at random beside passes of 1.7 ms of work.
 
 #include <SDL.h>
 
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
+#include <random>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "controls.hpp"
 #include "input.hpp"
 #include "joysticks.hpp"
+#include "pass_wait.hpp"
 
 using namespace apotheca;
 
@@ -365,6 +377,299 @@ void testTheSetupDoesNotTakeAWrongAnswer() {
     CHECK(is(feed(pad, {axis(7, 32767)}), {{Button::Right, true}}));
 }
 
+// ---- a press's own time, and the rest between passes (gesture audit G06) ------------------------
+
+SDL_Event stamped(SDL_Event e, Uint32 ms) {
+    e.common.timestamp = ms;
+    return e;
+}
+SDL_Event padButton(int button, bool down) {
+    SDL_Event e = {};
+    e.type = down ? SDL_CONTROLLERBUTTONDOWN : SDL_CONTROLLERBUTTONUP;
+    e.cbutton.button = static_cast<Uint8>(button);
+    return e;
+}
+SDL_Event padAxis(int which, int value) {
+    SDL_Event e = {};
+    e.type = SDL_CONTROLLERAXISMOTION;
+    e.caxis.axis = static_cast<Uint8>(which);
+    e.caxis.value = static_cast<Sint16>(value);
+    return e;
+}
+
+// A press carries the time SDL stamped on its event (TAP TEMPO times a tap by it); one made up has none.
+void testAPressHasItsOwnTime() {
+    Input keys;
+    std::vector<ButtonEvent> got = feed(keys, {stamped(keyEvent(SDLK_x, true), 1234), stamped(keyEvent(SDLK_x, false), 1300)});
+    CHECK(is(got, {{Button::A, true}, {Button::A, false}}) && got[0].ms == 1234 && got[1].ms == 1300);
+    // SDL's own gamepad: a button, and a trigger that comes as an axis.
+    Input pad;
+    got = feed(pad, {stamped(padButton(SDL_CONTROLLER_BUTTON_B, true), 2000), stamped(padAxis(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 30000), 2017)});
+    CHECK(is(got, {{Button::A, true}, {Button::L2, true}}) && got[0].ms == 2000 && got[1].ms == 2017);
+    // Learned controls: a hat that moved two at once hands the second on (pending) at the same time.
+    const ControlMap map = learnTheHandheld();
+    Input handheld;
+    handheld.useMap(&map);
+    got = feed(handheld, {stamped(hat(SDL_HAT_UP | SDL_HAT_RIGHT), 3000), stamped(hat(SDL_HAT_CENTERED), 3050), stamped(axis(5, 32767), 3070)});
+    CHECK(is(got, {{Button::Up, true}, {Button::Right, true}, {Button::Up, false}, {Button::Right, false}, {Button::R2, true}}));
+    CHECK(got.size() == 5 && got[0].ms == 3000 && got[1].ms == 3000 && got[2].ms == 3050 && got[3].ms == 3050 && got[4].ms == 3070);
+    // A let-go made up for a gamepad gone has no time, and whenPressed then takes the pass's clock.
+    ButtonEvent ups[static_cast<int>(Button::Count)];
+    for (ButtonEvent& up : ups) up.ms = 99;
+    int many = 0;
+    handheld.letGoOfAll(ups, many);
+    CHECK(many == 1 && ups[0].button == Button::R2 && ups[0].ms == 0);
+    CHECK(whenPressed(ups[0], 777) == 777 && whenPressed(got[4], 777) == 3070);
+}
+
+// SDL as the rest sees it, with a pretend clock: an event due at a time is on the queue from then.
+struct PretendQueue {
+    Uint32 now = 0;
+    std::vector<SDL_Event> due; // in the order they come, each stamped with when
+    std::vector<Uint32> naps;
+    int looks = 0;
+    void at(Uint32 ms, SDL_Event e) { // (kept in time order, the same times in the order given)
+        std::size_t i = due.size();
+        while (i > 0 && due[i - 1].common.timestamp > ms) --i;
+        due.insert(due.begin() + static_cast<std::ptrdiff_t>(i), stamped(e, ms));
+    }
+    int rest(PassWait& wait, const Input& input) {
+        return wait.rest(
+            input, [&](Uint32 ms) { naps.push_back(ms), now += ms; },
+            [&](std::vector<SDL_Event>& into) {
+                ++looks;
+                while (!due.empty() && due.front().common.timestamp <= now) into.push_back(due.front()), due.erase(due.begin());
+            });
+    }
+};
+// What the next pass reads from the rest (at most `most`, so a fault cannot go round for ever).
+std::vector<SDL_Event> readKept(PassWait& wait, std::size_t most = 100) {
+    std::vector<SDL_Event> read;
+    SDL_Event e;
+    while (wait.waiting() > 0 && read.size() < most && wait.next(e)) read.push_back(e);
+    return read;
+}
+
+void testTheRestEndsOnAPressAndOnNothingElse() {
+    const ControlMap map = learnTheHandheld(); // the D-pad a hat, A joystick button 3, the triggers axes 2 and 5, the stick 0 and 1
+    Input handheld;
+    handheld.useMap(&map);
+    // Nothing comes: four naps of 4 ms, the 16 ms rest it always was (the owner's, 2026-11-15), looking before each.
+    {
+        PassWait wait;
+        PretendQueue q;
+        CHECK(q.rest(wait, handheld) == PassWait::kNaps);
+        CHECK(q.naps == std::vector<Uint32>({4, 4, 4, 4}) && q.now == 16 && q.looks == 4);
+    }
+    // No press: the stick's motion (a resting stick that jitters, and one pushed hard), a trigger short of its
+    // threshold, a key's repeat, the window, the mouse. The whole rest, and all of it kept for the pass, in order.
+    {
+        PassWait wait;
+        PretendQueue q;
+        for (Uint32 ms = 0; ms < 16; ++ms) q.at(ms, axis(static_cast<int>(ms % 2), ms % 3 == 0 ? 32000 : -300));
+        q.at(5, axis(2, -20000)); // L2's trigger, resting at -32768: 12768 up, short of 16000
+        SDL_Event repeat = keyEvent(SDLK_x, true);
+        repeat.key.repeat = 1;
+        q.at(6, repeat);
+        SDL_Event window = {};
+        window.type = SDL_WINDOWEVENT;
+        q.at(7, window);
+        SDL_Event mouse = {};
+        mouse.type = SDL_MOUSEMOTION;
+        q.at(9, mouse);
+        CHECK(q.rest(wait, handheld) == PassWait::kNaps && q.now == 16);
+        const std::size_t taken = 13 + 4; // the stick's at 0 to 12 (the last look is at 12), and the four others
+        CHECK(wait.waiting() == taken && q.due.size() == 3); // (those at 13 to 15 the pass reads itself)
+        const std::vector<SDL_Event> read = readKept(wait);
+        bool inOrder = read.size() == taken;
+        for (std::size_t i = 1; i < read.size(); ++i) inOrder = inOrder && read[i].common.timestamp >= read[i - 1].common.timestamp;
+        CHECK(inOrder && read[6].type == SDL_JOYAXISMOTION && read[6].jaxis.axis == 2 && read[8].type == SDL_KEYDOWN && read[10].type == SDL_WINDOWEVENT &&
+              read[13].type == SDL_MOUSEMOTION);
+        CHECK(wait.waiting() == 0);
+    }
+    // A press 6 ms in: seen at the look after the second nap (8 ms), and the rest ends there. The pass reads it
+    // then, with what came before it and beside it, in order; what has not come yet waits for SDL.
+    {
+        PassWait wait;
+        PretendQueue q;
+        q.at(1, axis(0, 20000));
+        q.at(6, joyButton(3, true)); // A
+        q.at(7, axis(1, 100));
+        q.at(9, joyButton(3, false));
+        CHECK(q.rest(wait, handheld) == 2 && q.now == 8 && q.looks == 3 && q.due.size() == 1);
+        // The rest only looked: the program's Input has not been touched. The pass reads the press, at its time.
+        CHECK(!handheld.held(Button::A));
+        const std::vector<SDL_Event> read = readKept(wait);
+        CHECK(read.size() == 3 && read[0].type == SDL_JOYAXISMOTION && read[1].type == SDL_JOYBUTTONDOWN && read[2].type == SDL_JOYAXISMOTION);
+        const std::vector<ButtonEvent> got = feed(handheld, read);
+        CHECK(is(got, {{Button::A, true}}) && got[0].ms == 6);
+        // The next rest looks only at what is new: what the pass read is not a press again (A let go meanwhile).
+        feed(handheld, {joyButton(3, false)});
+        q.due.clear();
+        CHECK(q.rest(wait, handheld) == PassWait::kNaps);
+        feed(handheld, {joyButton(3, true)}); // (held again, for the next part)
+    }
+    // A press that came while the pass was at work (here a let-go: A is held now): no rest at all.
+    {
+        PassWait wait;
+        PretendQueue q;
+        q.at(0, joyButton(3, false));
+        CHECK(q.rest(wait, handheld) == 0 && q.naps.empty() && q.looks == 1 && wait.waiting() == 1);
+        CHECK(is(feed(handheld, readKept(wait)), {{Button::A, false}}));
+    }
+    // Every kind of press ends it: the D-pad's hat, a trigger past its threshold, a volume key, a keyboard
+    // stand-in, and with no learned controls SDL's own gamepad (a button, a trigger).
+    {
+        Input sdlPad;
+        SDL_Event volume = keyEvent(SDLK_VOLUMEDOWN, true);
+        const std::vector<std::pair<const Input*, SDL_Event>> presses = {
+            {&handheld, hat(SDL_HAT_LEFT)}, {&handheld, axis(5, 0)}, {&handheld, volume}, {&handheld, keyEvent(SDLK_RETURN, true)},
+            {&sdlPad, padButton(SDL_CONTROLLER_BUTTON_START, true)}, {&sdlPad, padAxis(SDL_CONTROLLER_AXIS_TRIGGERRIGHT, 25000)}};
+        for (const auto& press : presses) {
+            PassWait wait;
+            PretendQueue q;
+            q.at(10, press.second);
+            CHECK(q.rest(wait, *press.first) == 3 && q.now == 12);
+        }
+        // And not those that are no press there: the stick on SDL's gamepad, R2 half pressed, a key let go that was not down.
+        for (const SDL_Event& none : {padAxis(SDL_CONTROLLER_AXIS_LEFTX, 32000), padAxis(SDL_CONTROLLER_AXIS_TRIGGERRIGHT, 12000), keyEvent(SDLK_z, false)}) {
+            PassWait wait;
+            PretendQueue q;
+            q.at(10, none);
+            CHECK(q.rest(wait, sdlPad) == PassWait::kNaps);
+        }
+    }
+    // A let-go of a button the program holds ends it; the trigger easing off but still past its let-go threshold does not.
+    {
+        feed(handheld, {axis(2, 32767)}); // L2 held
+        CHECK(handheld.held(Button::L2));
+        PassWait wait;
+        PretendQueue q;
+        q.at(2, axis(2, -20000)); // 12768 up: held still (let go under 9000)
+        q.at(5, axis(2, -32768)); // let go
+        CHECK(q.rest(wait, handheld) == 2 && handheld.held(Button::L2));
+    }
+}
+
+// The rest with SDL itself: its queue, its clock, a gamepad of its own make-believe read by SDL's pump.
+void testTheRestWithSdl() {
+#if SDL_VERSION_ATLEAST(2, 0, 14)
+    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    if (SDL_InitSubSystem(SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS) != 0) {
+        std::printf("  (no SDL events here: %s)\n", SDL_GetError());
+        return;
+    }
+    SDL_Event e;
+    const int index = SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER, 6, 15, 1);
+    SDL_GameController* pad = index >= 0 ? SDL_GameControllerOpen(index) : nullptr;
+    CHECK(pad != nullptr);
+    while (SDL_PollEvent(&e)) {} // what SDL said as it started, and the pad arriving
+    Input input;
+    PassWait wait;
+    // A press already on the queue: no rest at all, and the pass reads it with SDL's stamp.
+    SDL_Event press = keyEvent(SDLK_x, true);
+    SDL_PushEvent(&press);
+    CHECK(wait.rest(input) == 0);
+    ButtonEvent got;
+    CHECK(wait.next(e) && e.type == SDL_KEYDOWN && input.handle(e, got) && got.button == Button::A && got.ms == e.common.timestamp);
+    CHECK(!wait.next(e));
+    feed(input, {keyEvent(SDLK_x, false)}); // (A let go)
+    if (pad) {
+        SDL_Joystick* stick = SDL_GameControllerGetJoystick(pad);
+        const SDL_GameControllerButtonBind leftX = SDL_GameControllerGetBindForAxis(pad, SDL_CONTROLLER_AXIS_LEFTX);
+        const SDL_GameControllerButtonBind b = SDL_GameControllerGetBindForButton(pad, SDL_CONTROLLER_BUTTON_B); // the handheld's A
+        CHECK(leftX.bindType == SDL_CONTROLLER_BINDTYPE_AXIS && b.bindType == SDL_CONTROLLER_BINDTYPE_BUTTON);
+        // The stick pushed: the whole rest (16 ms by SDL's clock), and its motion, read by the rest's own pump, kept for the pass.
+        SDL_JoystickSetVirtualAxis(stick, leftX.value.axis, 30000);
+        const Uint32 from = SDL_GetTicks();
+        CHECK(wait.rest(input) == PassWait::kNaps);
+        CHECK(SDL_GetTicks() - from >= PassWait::kRestMs);
+        CHECK(wait.waiting() >= 1);
+        bool moved = false;
+        while (wait.next(e)) moved = moved || (e.type == SDL_CONTROLLERAXISMOTION && e.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX && e.caxis.value == 30000);
+        CHECK(moved);
+        // A button pressed on it: the rest's pump reads it, and the rest ends at once.
+        SDL_JoystickSetVirtualButton(stick, b.value.button, 1);
+        CHECK(wait.rest(input) == 0);
+        bool pressed = false;
+        while (wait.next(e))
+            if (input.handle(e, got) && got.button == Button::A && got.down) pressed = got.ms == e.common.timestamp && got.ms != 0;
+        CHECK(pressed && input.held(Button::A));
+        SDL_GameControllerClose(pad);
+        SDL_JoystickDetachVirtual(index);
+        while (SDL_PollEvent(&e)) {}
+    }
+    SDL_QuitSubSystem(SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS);
+#endif
+}
+
+// --measure: main.cpp's loop as a model on this desk. Passes of `workMs` of work (the desk draws a screen in
+// 1.6 to 1.7 ms, docs/dev/measured.md), each ending in the old rest (SDL_Delay(16)) or the new; a helper thread
+// presses A at random. Says the pass's length with nothing pressed, and how long a press waits to be read.
+void measureTheLoop() {
+    if (SDL_InitSubSystem(SDL_INIT_EVENTS) != 0) {
+        std::printf("no SDL events here: %s\n", SDL_GetError());
+        return;
+    }
+    using Clock = std::chrono::steady_clock;
+    const auto busy = [](double ms) {
+        const Clock::time_point until = Clock::now() + std::chrono::microseconds(static_cast<long>(ms * 1000.0));
+        while (Clock::now() < until) {}
+    };
+    const auto sinceMs = [](Clock::time_point t) { return std::chrono::duration<double, std::milli>(Clock::now() - t).count(); };
+    for (const double workMs : {1.7, 25.0}) {
+        for (const bool naps : {false, true}) {
+            Input input;
+            PassWait wait;
+            SDL_Event e;
+            while (SDL_PollEvent(&e)) {}
+            const auto pass = [&](std::vector<double>* waited, const std::vector<Clock::time_point>* pushed) {
+                while (naps ? wait.next(e) : SDL_PollEvent(&e) == 1) {
+                    ButtonEvent got;
+                    if (input.handle(e, got) && got.down && waited && e.key.windowID < pushed->size())
+                        waited->push_back(sinceMs((*pushed)[e.key.windowID]));
+                }
+                busy(workMs);
+                if (naps) wait.rest(input);
+                else SDL_Delay(16);
+            };
+            // Nothing pressed: the pass's length.
+            const Clock::time_point idleFrom = Clock::now();
+            const int idlePasses = 60;
+            for (int i = 0; i < idlePasses; ++i) pass(nullptr, nullptr);
+            const double passMs = sinceMs(idleFrom) / idlePasses;
+            // A pressed and let go 150 times, 30 to 90 ms apart.
+            const int presses = 150;
+            std::vector<Clock::time_point> pushed(presses);
+            std::vector<double> waited;
+            std::atomic<bool> done{false};
+            std::thread presser([&] {
+                std::mt19937 dice(7);
+                std::uniform_int_distribution<int> gap(30000, 90000);
+                for (int i = 0; i < presses; ++i) {
+                    std::this_thread::sleep_for(std::chrono::microseconds(gap(dice)));
+                    SDL_Event down = keyEvent(SDLK_x, true), up = keyEvent(SDLK_x, false);
+                    down.key.windowID = static_cast<Uint32>(i);
+                    up.key.windowID = static_cast<Uint32>(presses);
+                    pushed[static_cast<std::size_t>(i)] = Clock::now();
+                    SDL_PushEvent(&down);
+                    SDL_PushEvent(&up);
+                }
+                done = true;
+            });
+            while (!done) pass(&waited, &pushed);
+            pass(&waited, &pushed);
+            presser.join();
+            double sum = 0.0, worst = 0.0;
+            for (double w : waited) sum += w, worst = w > worst ? w : worst;
+            std::printf("work %4.1f ms, %-26s a pass with nothing pressed %5.1f ms; a press read after %4.1f ms on average, %4.1f at worst (%d read)\n", workMs,
+                        naps ? "the rest in four naps:" : "one SDL_Delay(16) (before):", passMs, waited.empty() ? 0.0 : sum / static_cast<double>(waited.size()), worst,
+                        static_cast<int>(waited.size()));
+        }
+    }
+    SDL_QuitSubSystem(SDL_INIT_EVENTS);
+}
+
 } // namespace
 
 // A gamepad that goes and comes back is read again (review 2026-11-23: opened once at the start, a
@@ -417,11 +722,18 @@ void testAGamepadComesBack() {
 #endif
 }
 
-int main(int, char**) {
+int main(int argc, char** argv) {
+    if (argc > 1 && std::strcmp(argv[1], "--measure") == 0) {
+        measureTheLoop();
+        return 0;
+    }
     testLearningAndUsingTheHandheld();
     testATriggerWhoseRestSdlKnows();
     testTriggersNobodyToldUsAbout();
     testTheSetupDoesNotTakeAWrongAnswer();
+    testAPressHasItsOwnTime();
+    testTheRestEndsOnAPressAndOnNothingElse();
+    testTheRestWithSdl();
     testAGamepadComesBack();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);

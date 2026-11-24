@@ -267,7 +267,7 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (!event.down) return;
         if (row_ == kBounce && !session_.bouncing())
             session_.startBounce(bounceWhat_ == 0 ? Session::Bounce::Song : bounceWhat_ == 1 ? Session::Bounce::EachTrack : bounceWhat_ == 2 ? Session::Bounce::ThisTrack : Session::Bounce::MidiFile);
-        if (row_ == kTempo) session_.tapTempo(lastMs_); // TAP TEMPO: A in time
+        if (row_ == kTempo) session_.tapTempo(whenPressed(event, lastMs_)); // TAP TEMPO: A in time, by the press's own time
         if (row_ == kTrackName) typing_ = true, password_ = false, typed_ = project_.current().name, key_ = 0;
         if (row_ == kWifi) session_.toggleTransfer(lastMs_ * 2654435761u + 977u);
         if (row_ == kHotspot) session_.setHotspot(session_.wifi().now().status.state != WifiState::Hotspot, lastMs_ * 2654435761u + 977u);

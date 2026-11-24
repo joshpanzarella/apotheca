@@ -188,8 +188,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   pages never had the scope and do not. `scope_test` reads it all off the
   drawn screen in BROWN and PAPER.
 - **The screen is drawn only when it can have changed** (owner, 2026-11-15: save the battery,
-  "I don't want the user to notice"; `app/redraw.hpp`). main.cpp still goes round every 16 ms,
-  reads the buttons and runs `App::update`; only `App::draw` and the present are left out on a
+  "I don't want the user to notice"; `app/redraw.hpp`). main.cpp still goes round every 16 ms
+  (a press cuts the rest short: below), reads the buttons and runs `App::update`; only `App::draw` and the present are left out on a
   pass with nothing to show. **The picture must be exactly what drawing every frame shows, and a
   button is drawn on the pass it is pressed.** A pass is drawn on a STIR (`Stir` in redraw.hpp):
   any SDL event but a stick's motion, a button held, the stick pushed, the song playing; the
@@ -213,6 +213,39 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - The test makes the sound between passes, as the audio thread does while main.cpp waits, and
     holds it up once (`stalled`): a Stop heard three passes late takes the playhead away with no
     button, which only the readouts see.
+  - **The 16 ms rest is four naps of 4 ms, and a press ends it** (gesture audit G06, 2026-11-24;
+    `app/pass_wait.hpp`). Before each nap the events that came are taken off SDL's queue and read on
+    a copy of the program's `Input`: a button pressed or let go (a trigger or a D-pad sent as an
+    axis too, once past its threshold) or a volume key ends the rest, and the next pass reads it at
+    once. Before, every pass ended in one `SDL_Delay(16)`, so a press that came during the drawing
+    or the rest waited all of it before it was read. **The idle cadence is the owner's rule above
+    and is kept**: nothing but a press ends the rest. The stick's motion does not (a resting stick
+    that jitters sends a stream of it: `stirred` already left it out), nor a key's repeat, nor the
+    window, so with no press a pass is the same 16 ms rest. A press costs at most one pass (one
+    picture) more than before; a held button none. The events the rest took are read by the next
+    pass first, in order (`PassWait::next`), so nothing is lost or read twice.
+    - Only SDL calls every SDL2 has (`SDL_PumpEvents`, `SDL_PeepEvents`, `SDL_Delay`): the
+      handheld runs its firmware's libSDL2, of an age not known here. `SDL_WaitEventTimeout` was
+      not used: it wakes on every event, the stick's included.
+    - Pumping every 4 ms also times a press: SDL2 stamps an event with `SDL_GetTicks` as it queues
+      it, and `ButtonEvent::ms` carries that stamp. **TAP TEMPO times a tap by it**
+      (`whenPressed`), not by the pass's clock (`lastMs_`, up to a pass out each tap). A tap during
+      the rest is timed to within a nap (4 ms); one during the pass's work is stamped when the
+      work ends. A ButtonEvent made up (a gamepad gone, a test's) has no time, and the tap then
+      takes the pass's clock.
+    - `controls_test` holds it (`testTheRestEndsOnAPressAndOnNothingElse`, `testTheRestWithSdl`
+      with SDL's make-believe gamepad, `testAPressHasItsOwnTime`), and `easy_test taptempo`
+      the taps (`testTapByThePressesOwnTime`). `idle_test`'s pass is still 16 ms: a press's
+      shorter pass is a drawn pass, and nothing in the redraw counts the time between passes.
+    - Measured (desk, 2026-11-24, `controls_test --measure`, a model of the loop with 1.7 ms of
+      work a pass): a pass with nothing pressed 17.8 ms before, 18.2 ms now (the four naps run
+      about 0.1 ms over each); a press read after 9.5 ms on average and 17.7 at worst before,
+      2.0 and 4.1 now. With 25 ms of work (the handheld's 13 to 20 times, an estimate): 18.5 /
+      40.8 ms before, 8.8 / 24.4 now. The whole program left alone on the drum grid (`--demo`,
+      offscreen, dummy sound, under strace): a pass 20.05 ms before, 19.92 ms now; its CPU over
+      20 s the same within the desk's noise (8.4 to 8.8 s before, 7.9 to 8.3 s now, nearly all
+      the sound's threads). **Not measured on the handheld**: what four pumps a pass cost there,
+      and how late its presses really were.
   - Measured (desk, 2026-11-15): the drum grid left alone, the whole program for 20 s (software
     renderer, dummy sound): 1.1 s of CPU, against 5.8 s drawing every frame. A pass's drawing in
     the test's software renderer: 1.8 to 2.4 ms by screen; deciding whether to draw: 0.001 ms.

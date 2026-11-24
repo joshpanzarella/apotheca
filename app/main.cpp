@@ -80,6 +80,7 @@
 #include "drum_voices.hpp"
 #include "power_off.hpp"
 #include "redraw.hpp"
+#include "pass_wait.hpp"
 #include "bench_run.hpp"
 #include "controls.hpp"
 #include "input.hpp"
@@ -571,10 +572,12 @@ int main(int argc, char** argv) {
     const char* offWhy = nullptr; // set: the program ends to turn the handheld off ("quit", "idle")
     powerOff.busy(SDL_GetTicks());
     Uint32 audioTriedAt = 0; // the sound card gone: when it was last tried again
+    // The rest between passes: 16 ms with nothing pressed, cut short by a press (pass_wait.hpp).
+    PassWait wait;
     while (running) {
         SDL_Event event;
         bool stirred = false; // a button, or anything of the window, this pass (a stick's motion counts by where it is)
-        while (SDL_PollEvent(&event)) {
+        while (wait.next(event)) { // (what came during the rest first, then SDL's own)
             if (event.type != SDL_JOYAXISMOTION && event.type != SDL_CONTROLLERAXISMOTION) stirred = true;
             if (event.type == SDL_QUIT) running = false;
             // Desk testing only: the handheld has no Escape key.
@@ -743,7 +746,7 @@ int main(int argc, char** argv) {
             keepPicture(frame);
         }
         if (draw) SDL_RenderPresent(renderer);
-        SDL_Delay(16);
+        wait.rest(input); // 16 ms in four naps, and a button pressed meanwhile ends it: the next pass reads it at once
     }
 
     app.session().saveNow(); // the last couple of seconds of changes

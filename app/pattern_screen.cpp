@@ -799,7 +799,7 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
             if (step_ == kLaneName) audition(lane_, kNewHitLevel);
             else if (!hitHere()) placeHit(1.f);
         }
-        if (event.down && onTempo_) session_.tapTempo(lastMs_); // TAP TEMPO: A in time (held, with a direction, it still turns)
+        if (event.down && onTempo_) session_.tapTempo(whenPressed(event, lastMs_)); // TAP TEMPO: A in time, by the press's own time (held, with a direction, it still turns)
         shaping_ = event.down;
         axis_ = Axis::None; // a new hold is a new choice of job for the stick
         if (!event.down && !dicing_) turning_ = Turning::Nothing;

@@ -22,7 +22,8 @@ public:
     static constexpr Uint32 kForgetMs = 2000;
     static constexpr int kGapsKept = 4;
 
-    // A tap at `ms` (a frame's clock): the tempo the taps say, or 0 while this is the first of a run.
+    // A tap at `ms` (the press's own time, ButtonEvent::ms: gesture audit G06; a pass's clock was a
+    // pass out): the tempo the taps say, or 0 while this is the first of a run.
     float tap(Uint32 ms) {
         if (taps_ > 0 && (ms < times_[(taps_ - 1) % kKept] || ms - times_[(taps_ - 1) % kKept] > kForgetMs)) taps_ = 0;
         times_[taps_ % kKept] = ms;
