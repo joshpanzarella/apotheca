@@ -676,7 +676,8 @@ std::string Session::catchLastBar(int track, int lane) {
     if (sampleFolder_.empty() || track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return "";
     const bool sampler = holdsRecording(project.tracks[track].kind); // its one recording; the lane does not matter
     if (!sampler && project.tracks[track].kind != TrackKind::Drums) return "";
-    const std::vector<float> bar = engine.lastBar();
+    int barSteps = kSteps;
+    const std::vector<float> bar = engine.lastBar(&barSteps);
     float peak = 0.f;
     for (float v : bar) peak = std::fabs(v) > peak ? std::fabs(v) : peak;
     if (peak < 1e-4f) return ""; // nothing was playing
@@ -693,7 +694,7 @@ std::string Session::catchLastBar(int track, int lane) {
         setTrackSample(track, name);
     } else {
         setLaneSample(track, lane, name);
-        setLaneFit(track, lane, kSteps); // it is a bar long now, and stays one when the tempo moves
+        setLaneFit(track, lane, barSteps); // it is the bar's steps long (12 in 3/4: review 2026-11-23, it was always 16), and stays so when the tempo moves
     }
     return name;
 }

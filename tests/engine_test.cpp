@@ -2439,6 +2439,31 @@ static void testPanic() {
     CHECK(!engine->silenced());
 }
 
+// The bar caught says how many steps it had (review 2026-11-23: CATCH fitted every bar to 16, so a
+// bar of 3/4 played a third slow): 16 in 4/4, 12 in a scene of 12 steps a bar, 16 for a bar's worth.
+static void testTheCatchSaysItsSteps() {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.4f)));
+    engine->send(step(0, 0, 1.f));
+    int steps = 0;
+    renderFrames(*engine, 5000);
+    engine->lastBar(&steps);
+    CHECK(steps == 16);
+    Command meter = make(Command::SetSceneMeter, 0, 12);
+    meter.scene = 0;
+    engine->send(meter);
+    engine->send(make(Command::Play, 0, 0, 1));
+    renderFrames(*engine, 12 * kStep + 5 * kStep);
+    const std::vector<float> bar = engine->lastBar(&steps);
+    CHECK(steps == 12 && bar.size() == 12u * kStep);
+    engine->send(make(Command::Stop));
+    renderFrames(*engine, 1000);
+    engine->send(trigger(0, 0.5f)); // played by hand: a bar's worth up to now, 16 steps of it
+    renderFrames(*engine, 3000);
+    engine->lastBar(&steps);
+    CHECK(steps == 16);
+}
+
 static void testCatchingTheLastBar() {
     std::unique_ptr<Engine> engine(new Engine);
     CHECK(engine->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.4f)));
@@ -3752,6 +3777,7 @@ int main() {
     testEffectsOneByOne();
     testEffectsInTheEngine();
     testCatchingTheLastBar();
+    testTheCatchSaysItsSteps();
     testPanic();
     testANoteEndsPartWayThroughAStep();
     testARecordingOnALane();

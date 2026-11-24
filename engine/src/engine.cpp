@@ -238,16 +238,18 @@ bool Engine::setLaneSample(int track, int lane, std::unique_ptr<SampleData> samp
     return true;
 }
 
-std::vector<float> Engine::lastBar() const {
+std::vector<float> Engine::lastBar(int* steps) const {
     const std::uint64_t now = caughtCount_.load(std::memory_order_relaxed);
     std::uint64_t end = barEndedAt_.load(std::memory_order_relaxed);
-    int frames = barFrames_.load(std::memory_order_relaxed);
+    int frames = barFrames_.load(std::memory_order_acquire);
+    if (steps) *steps = barSteps_.load(std::memory_order_relaxed);
     // No whole bar, or one so long ago that the ring has gone round past it:
     // the last bar's worth up to now.
     if (frames <= 0 || now - (end - static_cast<std::uint64_t>(frames)) > static_cast<std::uint64_t>(kCatchFrames)) {
         frames = barFramesNow_.load(std::memory_order_relaxed);
         if (frames > kCatchFrames) frames = kCatchFrames;
         end = now;
+        if (steps) *steps = kSteps; // (a bar's worth at the present tempo)
     }
     std::vector<float> out(static_cast<std::size_t>(frames), 0.f);
     for (int i = 0; i < frames; ++i) {
@@ -1864,10 +1866,13 @@ int Engine::sceneSteps(int scene) const {
 void Engine::barLine() {
     const std::uint64_t now = caughtCount_.load(std::memory_order_relaxed);
     if (!firstStep_ && now - barBeganAt_ <= static_cast<std::uint64_t>(kCatchFrames)) {
-        barFrames_.store(static_cast<int>(now - barBeganAt_), std::memory_order_relaxed);
+        const long long steps = stepsFired_ - barBeganStep_; // (a scene of 3/4: 12; a short last bar: fewer)
+        barSteps_.store(steps >= 1 && steps <= kSteps ? static_cast<int>(steps) : kSteps, std::memory_order_relaxed);
+        barFrames_.store(static_cast<int>(now - barBeganAt_), std::memory_order_release);
         barEndedAt_.store(now, std::memory_order_relaxed);
     }
     barBeganAt_ = now;
+    barBeganStep_ = stepsFired_;
 }
 
 // QUEUED MUTES: every gate that waited is set (a bar's first sample, or Stop).

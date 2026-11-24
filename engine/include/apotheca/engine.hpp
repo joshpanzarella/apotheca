@@ -513,7 +513,9 @@ public:
     // stopped. If there is no such bar (the song is in its first bar, or
     // something has been played by hand since it stopped, or there was a
     // panic) it is the last bar's worth of sound up to now. From the control thread; allocates.
-    std::vector<float> lastBar() const;
+    // `steps`, if given: how many steps that bar had (12 in a scene of 3/4, fewer in a scene's short
+    // last bar; 16 for the bar's worth up to now), so what is caught can be fitted to them.
+    std::vector<float> lastBar(int* steps = nullptr) const;
 
     // True from a Panic until the output has opened again.
     bool silenced() const { return silenced_.load(std::memory_order_relaxed); }
@@ -1042,7 +1044,9 @@ private:
     std::atomic<std::uint64_t> caughtCount_{0};    // frames ever written to it
     std::atomic<std::uint64_t> barEndedAt_{0};     // caughtCount_ when the last whole bar ended
     std::atomic<int> barFrames_{0};                // how long that bar was; 0: none yet
+    std::atomic<int> barSteps_{kSteps};            // ...and how many steps it had (stored before barFrames_)
     std::uint64_t barBeganAt_ = 0;
+    long long barBeganStep_ = 0;                   // stepsFired_ when the bar playing began
     std::atomic<int> barFramesNow_{96000};         // a bar at the present tempo
 
     std::uint32_t dice_ = 0x2545F491u; // for chance; runs on, so no two bars need match
