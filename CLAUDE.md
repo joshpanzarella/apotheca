@@ -1050,16 +1050,27 @@ effect in those two groups and fails one that does not.
     function. A new type's name is checked there at every size.
   - **The page goes down to `kPageBottom`** (449: 7 above the hints bar, as
     its top is 7 under the top bar; owner, 2026-11-13: it stopped 40 short).
-    The same layout, taller: a line of the list is `kLineH` 41 (was 36), a
-    setting's row `kSetH` 74 (was 66), the heading `kHeadH` 93 (was 92), a
+    The same layout, taller: a line of the list is `kLineH` 41 (was 36), the
+    picture `kPicH` 140 and the dials `kDialH` 168, the heading `kHeadH` 93 (was 92), a
     send's row `kSendH` 193 (was 128; its value, bar and purple line at
     `kSendValueY`, `kSendBarY`, `kSendLineY`, the last two from its foot), a
     line of the list of effects `kPickLineH` 38 (was 31). `fx_screen.hpp`
     works each out from the foot and `static_assert`s that all four columns
     end on it.
-  - What is automated in the scene worked on has a purple line under its row
-    and "moves with the pattern", and a purple line under its line of the
-    list. WRITE itself is said by the top bar.
+  - **A slot's settings are DIALS under a PICTURE** (owner, 2026-11-24, design B of two mock-ups: "A was
+    feeling a bit too clinical"). Under the heading, `drawEffectPicture` (`app/fx_picture.cpp`) draws what the
+    effect does from its settings as shown (a filter's curve, a drive's bent sine, a delay's echoes, a reverb's
+    tail, a MOD's sweep, COMP and LIMITER's in/out curve with the meter as brass cells): theme colours only, no
+    blending, no words, rectangles gathered by colour. Then four dials (`dialX`, `kDialCY`, `kDialR`; an
+    effect with three settings leaves the fourth place empty): an amount a ring lit as far round, a choice a dot
+    each, the MOD's brass tick across the ring, COMP's strip at the dial's foot, automation a purple name and
+    line (`kAutoY`). A value has `kValueRoom` (88); `testFxTextsFit` holds every reading to it. Tests read a
+    dial through `FxScreen::dialAt(p, part)`; `testTheFxPictureFollowsTheSettings` holds every effect's
+    picture (drawn, inside its box, theme colours, at least two settings move it, the meter's brass grows).
+    **Nobody has seen it on the handheld.**
+  - What is automated in the scene worked on has a purple name and line in its
+    dial, and a purple line under its line of the list. WRITE itself is said by
+    the top bar.
   - The places things are drawn are constants in `fx_screen.hpp`, so the
     tests can read the drawn screen (`testTheFxScreenAsDrawn`, with `inked`:
     is this text drawn here in this colour). `app_test --fx` runs just the FX

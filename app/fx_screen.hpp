@@ -58,6 +58,7 @@
 //                    note is heard as long as X is
 //   START            play / stop
 
+#include "fx_picture.hpp"
 #include "screen.hpp"
 #include <SDL.h>
 
@@ -154,8 +155,20 @@ public:
     static constexpr int kPageBottom = ui::kScreenH - ui::kHintsH - 7;
     static constexpr int kListX = 8, kListW = 200, kLineH = 41, kLineGap = 3;
     static constexpr int kPaneX = 222, kPaneW = ui::kScreenW - 8 - kPaneX, kPaneY = 34, kHeadH = 93;
-    static constexpr int kSetY = kPaneY + kHeadH + 8, kSetGap = 6, kSetH = (kPageBottom - kSetY - 3 * kSetGap) / 4; // a setting's row
-    static constexpr int kValueX = kPaneX + 12, kBarX = kPaneX + 168, kBarW = kPaneW - 168 - 14, kBarH = 10; // in it: the value, the bar
+    // Under the heading (owner, 2026-11-24, design B): the picture of what the effect does, then its settings as four
+    // dials in a row, a dial a setting, each in its box: its name at the top, the ring, its value under it, a meter's
+    // strip (COMP) and the purple line of automation at the foot.
+    static constexpr int kSetY = kPaneY + kHeadH + 8;
+    static constexpr int kPicY = kSetY, kPicH = 140;
+    static constexpr int kDialGap = 6, kDialY = kPicY + kPicH + kDialGap, kDialH = kPageBottom - kDialY, kDialW = (kPaneW - 3 * kDialGap) / 4;
+    static constexpr int dialX(int p) { return kPaneX + p * (kDialW + kDialGap); }
+    static constexpr int dialCX(int p) { return dialX(p) + kDialW / 2; }
+    static constexpr int kDialR = 30, kDialRing = 6, kDialCY = kDialY + 74; // the ring: its radius, how thick, its centre
+    static constexpr int kDialNameY = kDialY + 10, kDialValueY = kDialY + 116; // the name's top, the value's top
+    static constexpr int kMeterX = 10, kMeterW = kDialW - 20, kMeterY = kDialY + kDialH - 16, kMeterH = 4; // (x from the dial's left)
+    static constexpr int kAutoY = kDialY + kDialH - 5; // the purple line: the setting moves with the pattern
+    // A pixel in the middle of dial p's ring, `part` of the way round (for the tests that read a dial).
+    static SDL_Point dialAt(int p, float part) { return dialPoint(dialCX(p), kDialCY, kDialR - kDialRing / 2.f, part); }
     static constexpr int kSendY = kPaneY + 20, kSendGap = 9, kSendH = (kPageBottom - kSendY - kSendGap) / 2; // a send's row
     // In a send's row, down from its top: the value; the bar, the purple line and its words (these three from its foot).
     static constexpr int kSendValueY = 40 + (kSendH - 128) / 2, kSendBarY = kSendH - 44, kSendLineY = kSendH - 24, kSendWordsY = kSendH - 18;
@@ -191,8 +204,8 @@ public:
         if (alone) return kNameX + fonts.medium.width(type) <= nameEnd(kind) - kNameClear ? fonts : large;
         return !type[0] || fits(fonts) ? fonts : large;
     }
-    // The room a value has, in a setting's row and in a send's.
-    static constexpr int kValueRoom = kBarX - kValueX - 8;
+    // The room a value (and a name) has in a dial.
+    static constexpr int kValueRoom = kDialW - 10;
 
     // A family's types on its line in the list of effects, as they are written there: "clean", "tape", "ping",
     // with ", " between. In one row in the lettering chosen if they fit kPickTypesX to the box's right edge
@@ -292,7 +305,8 @@ private:
 
 // The page reaches its foot exactly: the list's last line, the fourth setting and the second send.
 static_assert(FxScreen::lineY(FxScreen::kRows - 1) + FxScreen::kLineH == FxScreen::kPageBottom, "the list ends at the page's foot");
-static_assert(FxScreen::kSetY + 4 * FxScreen::kSetH + 3 * FxScreen::kSetGap == FxScreen::kPageBottom, "the settings end at the page's foot");
+static_assert(FxScreen::kDialY + FxScreen::kDialH == FxScreen::kPageBottom && FxScreen::dialX(3) + FxScreen::kDialW <= FxScreen::kPaneX + FxScreen::kPaneW, "the dials end at the page's foot and the pane's edge");
+static_assert(FxScreen::kDialCY + FxScreen::kDialR < FxScreen::kDialValueY - 4 && FxScreen::kDialCY - FxScreen::kDialR > FxScreen::kDialNameY + 16, "the ring clears the name and the value");
 static_assert(FxScreen::kSendY + 2 * FxScreen::kSendH + FxScreen::kSendGap == FxScreen::kPageBottom, "the sends end at the page's foot");
 static_assert(FxScreen::kPickY + 2 * FxScreen::kPickPad + FxScreen::kPickLines * FxScreen::kPickLineH == FxScreen::kPageBottom, "the list of effects ends at the page's foot");
 
