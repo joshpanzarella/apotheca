@@ -459,14 +459,18 @@ void Engine::sceneIn(SceneStore& to, const float (*level)[kDrumLanes][kSteps], c
         for (int slot = 0; slot < kMaxNotes; ++slot) {
             const TrackImage::Note& from = notes[bar][slot];
             Note& note = to.notes[bar][slot];
-            note.step = from.step;
-            note.pitch = from.pitch;
-            note.length = from.length;
-            note.nudge = from.nudge;
-            note.velocity = from.velocity;
-            note.ratchet = from.ratchet;
-            note.glide = static_cast<std::uint8_t>(glideKind(from.glide));
-            note.throwTo = from.throwTo & 3;
+            // Held as SetNote holds one (review 2026-11-23: a pitch over 127 here wrote past a track's
+            // `offIn` and `keysHeld`; the app holds them today, the engine did not).
+            const bool sound = from.velocity > 0.f && std::isfinite(from.velocity) && from.step < kSteps && from.pitch <= 127 &&
+                               std::isfinite(from.length) && from.length >= kShortestNote;
+            note.step = sound ? from.step : 0;
+            note.pitch = sound ? from.pitch : 0;
+            note.length = sound ? (from.length > 255.f ? 255.f : from.length) : 0.f;
+            note.nudge = sound && std::isfinite(from.nudge) ? (from.nudge < -0.5f ? -0.5f : (from.nudge > 0.5f ? 0.5f : from.nudge)) : 0.f;
+            note.velocity = sound ? (from.velocity > 1.f ? 1.f : from.velocity) : 0.f;
+            note.ratchet = static_cast<std::uint8_t>(sound ? (from.ratchet > kMaxRatchet ? kMaxRatchet : from.ratchet) : 0);
+            note.glide = static_cast<std::uint8_t>(sound ? glideKind(from.glide) : kGlideOff);
+            note.throwTo = static_cast<std::uint8_t>(sound ? from.throwTo & 3 : 0);
             note.play = chordPlayChecked(from.play, 8);
         }
     }

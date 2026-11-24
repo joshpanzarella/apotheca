@@ -85,6 +85,12 @@ Answer raw(int port, const std::string& request) {
     if (blank != std::string::npos) answer.head = all.substr(at, blank - at);
     return answer;
 }
+// The port in an address the handheld says ("10.0.0.2:8080/1234"): none said is 80, which a desk may
+// let the program have (a browser asks it itself).
+int portOf(const std::string& address) {
+    const std::size_t colon = address.find(':'), slash = address.find('/');
+    return colon == std::string::npos || colon > slash ? 80 : std::atoi(address.c_str() + colon + 1);
+}
 Answer get(int port, const std::string& path) { return raw(port, "GET " + path + " HTTP/1.1\r\nHost: x\r\n\r\n"); }
 Answer put(int port, const std::string& path, const std::string& body) {
     return raw(port, "PUT " + path + " HTTP/1.1\r\nHost: x\r\nContent-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body);
@@ -495,6 +501,25 @@ void testDeletingAndMoving() {
     CHECK(exists(root + "/secret.wav") && exists(out + "/x.wav"));
 }
 
+// The address is asked of the system at most once a second, but a server started again (another PIN)
+// is said at once, on the same frame (review 2026-11-23).
+void testTheAddressIsKeptAndRenewed() {
+    const std::string root = tempFolder("transfer");
+    std::unique_ptr<Engine> engine(new Engine);
+    App app(*engine);
+    Session& session = app.session();
+    session.useSongFolder(root + "/songs", 3);
+    session.useSampleFolder(root + "/samples");
+    CHECK(session.toggleTransfer(5) && session.transferOn());
+    const std::string first = session.transferAddress();
+    CHECK(!first.empty() && session.transferAddress() == first);
+    CHECK(!session.toggleTransfer(5) && !session.transferOn()); // off
+    CHECK(session.toggleTransfer(77) && session.transferOn());  // on again: another PIN
+    const std::string again = session.transferAddress();
+    CHECK(again.substr(again.rfind('/')) != first.substr(first.rfind('/')));
+    session.toggleTransfer(5);
+}
+
 void testTurningItOnFromTheDevice() {
     const std::string root = tempFolder("transfer");
     std::unique_ptr<Engine> engine(new Engine);
@@ -529,8 +554,8 @@ void testTurningItOnFromTheDevice() {
     CHECK(session.transferOn() && app.song().listingSongs());
     const std::string address = session.transferAddress();
     const std::size_t colon = address.find(':'), slash = address.find('/');
-    CHECK(colon != std::string::npos && slash != std::string::npos);
-    const int port = std::atoi(address.c_str() + colon + 1);
+    CHECK(slash != std::string::npos);
+    const int port = colon == std::string::npos ? 80 : std::atoi(address.c_str() + colon + 1); // (none on port 80, where a desk lets it: a browser asks it itself)
     const std::string door = address.substr(slash);
     CHECK(get(port, door).status == 200);
     // A recording sent to it lands in the sample folder, where the kit screen looks.
@@ -565,7 +590,7 @@ void testTurningItOnFromTheDevice() {
         second.session().useSampleFolder(root + "/samples");
         CHECK(second.session().toggleTransfer(7));
         const std::string a = second.session().transferAddress();
-        lastPort = std::atoi(a.c_str() + a.find(':') + 1);
+        lastPort = portOf(a);
         lastDoor = a.substr(a.find('/'));
         CHECK(get(lastPort, lastDoor).status == 200);
     }
@@ -630,7 +655,7 @@ void testUpdatingOverWiFi() {
     // Before the program's folder is known, an update is refused.
     CHECK(session.toggleTransfer(5));
     std::string address = session.transferAddress();
-    int port = std::atoi(address.c_str() + address.find(':') + 1);
+    int port = portOf(address);
     std::string door = address.substr(address.find('/'));
     CHECK(put(port, door + "/update/apotheca", program).status == 400);
     session.toggleTransfer(5);
@@ -638,7 +663,7 @@ void testUpdatingOverWiFi() {
     CHECK(!exists(programs + "/apotheca.pending")); // one never answered last time does not linger
     CHECK(session.toggleTransfer(6));
     address = session.transferAddress();
-    port = std::atoi(address.c_str() + address.find(':') + 1);
+    port = portOf(address);
     door = address.substr(address.find('/'));
 
     // What is refused: no number, the wrong processor, not a program, too big, the wrong way of asking.
@@ -836,7 +861,7 @@ static void testTheOpenSongFollows() {
 
     CHECK(session.toggleTransfer(9));
     const std::string address = session.transferAddress();
-    const int port = std::atoi(address.c_str() + address.find(':') + 1);
+    const int port = portOf(address);
     const std::string door = address.substr(address.find('/'));
 
     // Moved into a folder under a new name: both lanes and the sampler track that used it use the
@@ -1227,7 +1252,7 @@ static void testFoundOnLoad() {
     // whatever folder, is taken if it is the only one. One of a name that has two is not.
     CHECK(session.toggleTransfer(9));
     const std::string address = session.transferAddress();
-    const int port = std::atoi(address.c_str() + address.find(':') + 1);
+    const int port = portOf(address);
     const std::string door = address.substr(address.find('/'));
     const unsigned playing = session.laneSound(0, 0).version;
     // One of another name arriving wakes nothing: a missing one is not looked for each time some file comes.
@@ -1312,7 +1337,7 @@ static void testSavedSongsFollow() {
 
     CHECK(session.toggleTransfer(9));
     const std::string address = session.transferAddress();
-    const int port = std::atoi(address.c_str() + address.find(':') + 1);
+    const int port = portOf(address);
     const std::string door = address.substr(address.find('/'));
     frames(1); // the autosave has had its turn: the next is two seconds off
     CHECK(post(port, door + "/samples/thud.wav", "kicks/big%20boom.wav").status == 200);
@@ -1444,7 +1469,7 @@ static void testTheOpenSongIsRefused() {
     session.useSampleFolder(root + "/samples2");
     CHECK(session.toggleTransfer(5));
     const std::string address = session.transferAddress();
-    const int p2 = std::atoi(address.c_str() + address.find(':') + 1);
+    const int p2 = portOf(address);
     const std::string d2 = address.substr(address.find('/'));
     const std::string first = session.songName();
     std::string url = first;
@@ -1637,6 +1662,7 @@ int main(int argc, char** argv) {
     testTheServer();
     testDeletingAndMoving();
     testTurningItOnFromTheDevice();
+    testTheAddressIsKeptAndRenewed();
     testUpdatingOverWiFi();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);

@@ -406,6 +406,7 @@ std::string Session::transferName() const {
 
 bool Session::toggleTransfer(unsigned seed) {
     hotspotOwnsTransfer_ = false; // a hand on the WIFI PAGE: HOTSPOT owns nothing now (setHotspot says when it does)
+    addressAsked_ = false;        // another port and PIN: the address is asked again at once
     if (transfer_.running()) {
         transfer_.stop();
         discardUpdate(); // an update nobody answered goes when WiFi is turned off

@@ -1775,6 +1775,37 @@ static void testNotANumberNeverStays() {
     CHECK(heard > 0.01f);
 }
 
+// A track image's notes are held as SetNote holds a note (review 2026-11-23: a pitch over 127 there
+// wrote past a track's `offIn` and `keysHeld`). Each bad note is silent; a good one beside them plays.
+static void testAnImageHoldsItsNotes() {
+    for (int good = 0; good <= 1; ++good) {
+        std::unique_ptr<Engine> e(new Engine);
+        CHECK(e->addSynthTrack(1, SynthKind::Phazed));
+        std::unique_ptr<TrackImage> image(new TrackImage);
+        const auto put = [&](int slot, int step, int pitch, float length, float velocity) {
+            TrackImage::Note& n = image->notes[0][slot];
+            n.step = static_cast<std::uint8_t>(step), n.pitch = static_cast<std::uint8_t>(pitch), n.length = length, n.velocity = velocity;
+        };
+        put(0, 0, 200, 4.f, 0.8f);                                       // a pitch no key has
+        put(1, 40, 60, 4.f, 0.8f);                                       // a step past the bar
+        put(2, 0, 60, 4.f, std::numeric_limits<float>::quiet_NaN());     // a velocity that is not a number
+        put(3, 0, 60, std::numeric_limits<float>::infinity(), 0.8f);     // a length without end
+        if (good) put(4, 0, 57, 4.f, 0.8f);
+        CHECK(e->setTrackImage(1, std::move(image)));
+        e->send(make(Command::Play, 0, 0, 1));
+        const std::vector<float> out = renderFrames(*e, 4 * kStep);
+        float most = 0.f;
+        bool numbers = true;
+        for (float v : out) numbers = numbers && std::isfinite(v), most = std::max(most, std::fabs(v));
+        CHECK(numbers);
+        if (good) CHECK(most > 0.01f);
+        else {
+            if (most != 0.f) std::printf("  bad notes in an image sounded: %g\n", most);
+            CHECK(most == 0.f);
+        }
+    }
+}
+
 static void testATrackTakenAwayKeepsTheClock() {
     std::unique_ptr<Engine> a(new Engine), b(new Engine);
     for (Engine* e : {a.get(), b.get()}) {
@@ -3732,6 +3763,7 @@ int main() {
     testATrackTakenAwayFades();
     testATrackTakenAwayKeepsTheClock();
     testNotANumberNeverStays();
+    testAnImageHoldsItsNotes();
     testStepEffectsTravel();
     testANoteRatchets();
     testRatchetsHoldUp();

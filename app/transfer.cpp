@@ -1243,6 +1243,7 @@ void Transfer::answer(int fd) {
         if (kind == "songs") songs.unlock();
         if (!gone) return reply(fd, "500 Could Not Delete", "text/plain", "could not delete it\n");
         if (kind == "samples") noteChange(name, ""); // (its folder stays, empty or not)
+        if (kind == "chords") chordsReceived_.fetch_add(1); // (before received_: the session reads that first)
         received_.fetch_add(1);
         return reply(fd, "200 OK", "text/plain", "deleted\n");
     }
@@ -1343,6 +1344,7 @@ void Transfer::answer(int fd) {
     if (kind == "songs") songs.unlock();
     if (!written) return reply(fd, "500 Could Not Save", "text/plain", "could not save it: is the card full?\n");
     if (kind == "samples") noteChange("", name);
+    if (kind == "chords") chordsReceived_.fetch_add(1); // (before received_: the session reads that first)
     received_.fetch_add(1);
     reply(fd, "200 OK", "text/plain", "saved\n");
 }

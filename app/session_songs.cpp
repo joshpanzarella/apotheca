@@ -53,8 +53,10 @@ void Session::useSongFolder(const std::string& folder, std::uint32_t seed) {
     songName_.clear(); // (no song is open while what is owed is finished: every saved one is gone through)
     finishOwed();      // a program stopped while saved songs followed a rename: finished before any is opened
     std::string last;
+    lastSaid_.clear();
     if (readTextFile(folder_ + "/last.txt", last)) {
         while (!last.empty() && (last.back() == '\n' || last.back() == '\r')) last.pop_back();
+        lastSaid_ = last;
         std::string text;
         if (!last.empty() && readTextFile(pathOf(last), text) && parseSong(text, project)) {
             songName_ = last;
@@ -107,8 +109,15 @@ bool Session::saveNow() {
         if (!writeTextFile(pathOf(songName_), text)) return false; // try again next time
     }
     savedText_ = text;
-    writeTextFile(folder_ + "/last.txt", songName_ + "\n");
+    rememberLast();
     return true;
+}
+
+// last.txt names the song open, for the next start: written only when that changes (review
+// 2026-11-23: it was written, two fsyncs, with every autosave, every two seconds of editing).
+void Session::rememberLast() {
+    if (songName_ == lastSaid_) return;
+    if (writeTextFile(folder_ + "/last.txt", songName_ + "\n")) lastSaid_ = songName_;
 }
 
 // A song that cannot be saved is not shut (review 2026-11-23: on a full card, a new song or another
@@ -139,7 +148,7 @@ bool Session::openSong(const std::string& name) {
     if (folder_.empty() || !readTextFile(pathOf(name), text) || !parseSong(text, project)) return false;
     songName_ = name;
     savedText_ = songText(project);
-    writeTextFile(folder_ + "/last.txt", songName_ + "\n");
+    rememberLast();
     applyProject();
     findMissing(); // a recording moved while this song was shut: the new name is saved with the next autosave
     return true;
@@ -469,7 +478,7 @@ std::string Session::renameSong() {
         songName_ = old;
     }
     songName_ = fresh;
-    writeTextFile(folder_ + "/last.txt", songName_ + "\n");
+    rememberLast();
     return songName_;
 }
 
@@ -543,6 +552,10 @@ bool Session::openRev(int rev) {
     for (int other : revs()) {
         std::string theirs;
         if (kept) break;
+        // Only a rev of the same size can be the same: the rest are not read (review 2026-11-23: every
+        // rev was read whole, fifty of a long song at each rev opened).
+        struct stat info;
+        if (stat(revPath(other).c_str(), &info) != 0 || static_cast<std::size_t>(info.st_size) != now.size()) continue;
         kept = readTextFile(revPath(other), theirs) && theirs == now;
     }
     if (!kept && saveRev() == 0) return false; // could not keep it: do not throw it away

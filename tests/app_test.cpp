@@ -5957,6 +5957,20 @@ void testMovingEffectsKeepsEverythingWithThem() {
     CHECK(!moveEffectSlot(session, -1, 0, 1) && !moveEffectSlot(session, kNumTracks, 0, 1));
     CHECK(!moveEffectSlot(session, kMasterTrack, 0, 1) && !moveEffectSlot(session, kEchoBus, 0, 1));
     CHECK(track.effects[0].kind == static_cast<int>(EffectKind::Filter) && track.effects[1].kind == static_cast<int>(EffectKind::Tape) && written(1) == 1);
+    // A busy track: four lanes of each slot written at every step of 40 scenes (40960 steps). The move
+    // is one image of the track, not a command a step, so nothing is lost from the engine's queue
+    // (review 2026-11-23: past 16384 commands the whole song was sent again).
+    for (int scene = 0; scene < 40; ++scene)
+        for (int slot = 0; slot < 2; ++slot)
+            for (int p = 0; p < 4; ++p)
+                for (int step = 0; step < kAutoSteps; ++step) track.automation[scene][lane(slot, p)][step] = 0.25f + 0.5f * static_cast<float>(slot);
+    session.sendTrackImage(0);
+    rig.frames(2);
+    rig.render(512);
+    const unsigned dropped = rig.engine->dropped(), images = session.imagesSent();
+    CHECK(moveEffectSlot(session, 0, 0, 1));
+    CHECK(rig.engine->dropped() == dropped && session.imagesSent() == images + 1);
+    CHECK(track.automation[39][lane(0, 3)][kAutoSteps - 1] == 0.75f && track.automation[39][lane(1, 3)][kAutoSteps - 1] == 0.25f);
 }
 
 // A scene's tempo and meter are steps of undo of their own: no later undo silently reverts them.

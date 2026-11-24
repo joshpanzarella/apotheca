@@ -122,14 +122,22 @@ bool moveEffectSlot(Session& session, int track, int slot, int by) {
     TrackData& now = session.project.tracks[track];
     now.effects[a] = dataB;
     now.effects[b] = dataA;
+    // The two slots' lanes swapped in the song, and the track's patterns sent once, whole (review
+    // 2026-11-23: a command for every step written, up to 64 scenes of eight lanes, filled the
+    // engine's queue on a busy track, and the whole song was sent again).
+    bool movedAny = false;
     for (int scene = 0; scene < kMaxScenes; ++scene) {
-        for (int p = 0; p < kEffectParams; ++p) {
-            session.clearAutomation(track, scene, autoLaneOfEffect(a, p));
-            session.clearAutomation(track, scene, autoLaneOfEffect(b, p));
-        }
+        if (!now.automation.has(scene)) continue; // (nothing written there: no piece made for it)
+        for (int p = 0; p < kEffectParams; ++p)
+            for (const int l : {autoLaneOfEffect(a, p), autoLaneOfEffect(b, p)})
+                for (float& v : now.automation[scene][l]) movedAny = movedAny || v >= 0.f, v = kAutoNone;
     }
-    for (const Wrote& w : intoA) session.setAutomation(track, w.scene, w.lane, w.step, w.value);
-    for (const Wrote& w : intoB) session.setAutomation(track, w.scene, w.lane, w.step, w.value);
+    for (const std::vector<Wrote>* into : {&intoA, &intoB})
+        for (const Wrote& w : *into) now.automation[w.scene][w.lane][w.step] = w.value;
+    if (movedAny) {
+        session.noteEdit();
+        session.sendTrackImage(track);
+    }
     for (int m = 0; m < kModsPerTrack; ++m) {
         ModSettings mod = session.modData(track, m);
         const int at = modTargetSlot(mod.target);

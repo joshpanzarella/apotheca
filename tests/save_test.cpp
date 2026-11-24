@@ -1745,6 +1745,31 @@ void testASongThatCannotBeSavedStaysOpen() {
     CHECK(readTextFile(path, kept) && kept.find("\ntempo 133\n") != std::string::npos);
 }
 
+// last.txt is written when the song open changes, not with every autosave (review 2026-11-23: two
+// fsyncs every two seconds of editing). Written over by hand after the first save, it stays so through
+// edits and saves; another song open writes it.
+void testLastIsWrittenOnlyWhenTheSongChanges() {
+    const std::string folder = tempFolder("test");
+    Rig rig(folder);
+    fillSong(rig);
+    CHECK(rig.session().saveNow());
+    const std::string last = folder + "/last.txt";
+    std::string said;
+    CHECK(readTextFile(last, said) && said == rig.session().songName() + "\n");
+    CHECK(writeTextFile(last, "left alone\n"));
+    for (int i = 0; i < 5; ++i) {
+        rig.project().tempo = 101.f + static_cast<float>(i);
+        CHECK(rig.session().saveNow());
+    }
+    CHECK(readTextFile(last, said) && said == "left alone\n");
+    const std::string first = rig.session().songName();
+    CHECK(rig.session().newSong());
+    fillSong(rig);
+    CHECK(rig.session().saveNow());
+    CHECK(readTextFile(last, said) && said == rig.session().songName() + "\n" && rig.session().songName() != first);
+    CHECK(rig.session().openSong(first) && readTextFile(last, said) && said == first + "\n");
+}
+
 int main(int, char**) {
     testScenesPastSixteen();
     testNumbersAsSnprintfWritesThem();
@@ -1759,6 +1784,7 @@ int main(int, char**) {
     testASongFromTheOnePresetBuilds();
     testBadFiles();
     testASongThatCannotBeSavedStaysOpen();
+    testLastIsWrittenOnlyWhenTheSongChanges();
     testSavedAsYouGoAndBackAtTheNextStart();
     testAnOpenedSongSoundsLikeTheOneSaved();
     testNewSongAndTheList();

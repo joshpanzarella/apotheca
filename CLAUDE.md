@@ -1182,6 +1182,13 @@ effect in those two groups and fails one that does not.
   with `sendSong()` and keep the steps: a delete takes its track out of every
   step's text (`dropTrackText`), and another instrument is passed by (its kind
   differs). The delete itself is still not undone.
+- **The undo marks (`cellMark`, `soundMark`) are 64 bits, mixed eight bytes at a time** (`markMix`):
+  only ever compared with one made the same way, in memory. A byte at a time, the idle frame was 0.048 ms
+  on the desk; now 0.014 (`bench --app`, 2026-11-23).
+- **last.txt is written only when the song open is another** (`Session::rememberLast`): it was written,
+  two fsyncs, with every autosave. A song or rev opened, a rename and a new song's first save write it.
+- **Moving an effect a slot swaps the lanes in the song and sends the track's image once**
+  (`moveEffectSlot`): a command a step filled the queue on a busy track, and the song was sent again.
 - **The song's text is made a track at a time** (`SongTextCache`,
   `Session::textNow()`): a track whose text would be as it was when its text
   was made is not written again. **It is compared by what the text reads**
@@ -1335,6 +1342,9 @@ effect in those two groups and fails one that does not.
   glide's length go through both (`glideKind`, `chordPlayChecked`).
   `nextscene_test` hands a scene over with them beside the same notes written
   by commands, and beside the bars the piano roll sends.
+- **`sceneIn` holds each note as `SetNote` holds one** (a pitch over 127, a step past the bar, a velocity
+  or length that is not a number: silent; length to 255, nudge to half a step, ratchet to `kMaxRatchet`).
+  A pitch over 127 wrote past `offIn` and `keysHeld` (review 2026-11-23; `testAnImageHoldsItsNotes`).
 - **What plays while a scene moves goes with it, and nothing of a chord is
   worked out from a scene's number** (the join of chord effects and the scene
   move, 2026-11-13). `chordSeed` takes the bar of the CELL, not the bar of the
@@ -2800,6 +2810,9 @@ effect in those two groups and fails one that does not.
   group of its own, read with `poll`), and the drain after an answer is a second and 64 KB at most. Its
   sockets are close-on-exec. **A song sent is checked by its first line only** (`isSongText`): parsing it
   there read the app's preset lists under the app thread's feet. `transfer_test` `testStopNeverWaits`.
+- **The chord packs are read again only when a pack is sent or deleted** (`Transfer::chordsReceived`),
+  not for every file. **The WiFi page's address is asked of the system at most once a second**
+  (`Session::transferAddress`), and at once after the server starts or stops (another PIN).
 - **A song sent under the open song's name is refused** (409, "that song is
   open on the handheld", case not counted: a card may not tell them apart).
   The Session tells the server the name (`Transfer::setOpenSong`, from

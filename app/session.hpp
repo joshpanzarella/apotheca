@@ -361,7 +361,11 @@ public:
     // The NETWORK row is up on the SET page (set by it each frame): `update` then asks for a scan
     // every 10 s as well as the status every second (wifi.hpp), which it asks for on every screen.
     bool wifiLooking = false;
-    std::string transferAddress() const { return pretendAddress_.empty() ? transfer_.address() : pretendAddress_; } // what to type into the browser
+    std::string transferAddress() const { // what to type into the browser
+        if (!pretendAddress_.empty()) return pretendAddress_;
+        if (!addressAsked_ || now_ - addressAt_ >= 1000 || now_ < addressAt_) addressKept_ = transfer_.address(), addressAt_ = now_, addressAsked_ = true;
+        return addressKept_;
+    }
     // The page's address by NAME ("apotheca.local/4821": the name our firmware says, with the
     // address's port, unless it is 80, and number), or "" where no name is said (the port; not joined; an older system).
     std::string transferName() const;
@@ -832,6 +836,13 @@ private:
     std::string revPath(int rev) const;
     std::string freshName();
     std::string folder_, songName_ = "untitled", savedText_;
+    std::string lastSaid_;  // what last.txt says (rememberLast writes it only when the song open is another)
+    void rememberLast();
+    // The address the WiFi page is at, asked of the system at most once a second (it was asked two or
+    // three times a frame where it is shown: review 2026-11-23).
+    mutable std::string addressKept_;
+    mutable Uint32 addressAt_ = 0;
+    mutable bool addressAsked_ = false;
     // The song's text as it is now (songText(project), to the byte), made again a track at a time
     // where a track has changed since it was last asked. Valid until it is asked again.
     const std::string& textNow() const { return textNow_.text(project); }
@@ -888,7 +899,7 @@ private:
     unsigned sceneMoves_ = 0;
     unsigned movesSent_ = 0;
     std::size_t movesUnheard(unsigned heard) const;
-    std::uint32_t cellMark() const;                  // changes when the cell being worked on does
+    std::uint64_t cellMark() const;                  // changes when the cell being worked on does
     // A step of undo: the patterns as text. `nextScene` is -1, or the scene a "next scene" was
     // made from, when that is what lies between this text and the one it is swapped for: taking
     // it back or putting it forward moves the player and the playing as well as the patterns.
@@ -914,8 +925,8 @@ private:
     // macros, a sampler's settings) and GLIDE FROM, the master's effects and the buses' (their
     // LEVEL with them). Whatever changes them is seen here, as the cell is (cellMark): no screen
     // has to say so. restoreSounds puts them back from a step, through the engine's usual commands.
-    std::uint32_t soundMark() const;
-    std::uint32_t soundMark_ = 0;
+    std::uint64_t soundMark() const;
+    std::uint64_t soundMark_ = 0;
     void restoreSounds(const StepRead& was, const bool same[kNumTracks]);
     void restoreEffect(int track, int slot, const EffectData& then);
     void sendMod(int track, int mod); // the project's MOD told to the engine (OFF: one command)
@@ -924,7 +935,7 @@ private:
     std::string settled_;                            // the patterns when things were last still
     bool editing_ = false, restoring_ = false, undoReady_ = false;
     Uint32 editedAt_ = 0;
-    std::uint32_t cellMark_ = 0;
+    std::uint64_t cellMark_ = 0;
     void serveDesigner();
     void serveKit(const DesignRequest& r); // a KIT's requests (serveDesigner)
     void serveFx(const DesignRequest& r);  // an EFFECTS request (any instrument: serveDesigner)
@@ -990,7 +1001,7 @@ private:
     bool updateWaiting_ = false;
     bool updateReady_ = false; // accepted this run; the bar says so until the next start
     float updateMegabytes_ = 0.f;
-    unsigned seenReceived_ = 0;
+    unsigned seenChords_ = 0; // Transfer::chordsReceived() when the packs were last read
     unsigned sampleFiles_ = 0;
     // Saved songs still to follow a rename (followLater): each batch of renames with the files it
     // goes through, in order.

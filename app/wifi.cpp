@@ -337,11 +337,26 @@ void Wifi::work() {
 
 // Runs `program WORD [NAME]`, the password (if any) on its stdin, and gathers what it says. No shell:
 // a network's name is one argument whatever it holds. Half a minute at most, then it is stopped.
+namespace {
+// A pipe whose two ends close in any program started from here. Linux makes it so in one call; a desk
+// without pipe2 (a Mac) sets each end after (it starts no other program meanwhile that matters).
+int closingPipe(int ends[2]) {
+#ifdef __linux__
+    return pipe2(ends, O_CLOEXEC);
+#else
+    if (pipe(ends) != 0) return -1;
+    fcntl(ends[0], F_SETFD, FD_CLOEXEC);
+    fcntl(ends[1], F_SETFD, FD_CLOEXEC);
+    return 0;
+#endif
+}
+} // namespace
+
 bool Wifi::run(const std::string& program, const Job& job, std::string& out) {
     static const char* const kWords[] = {"up", "down", "scan", "status", "join", "forget", "hotspot"};
     int in[2], back[2];
-    if (pipe2(in, O_CLOEXEC) != 0) return false;
-    if (pipe2(back, O_CLOEXEC) != 0) {
+    if (closingPipe(in) != 0) return false;
+    if (closingPipe(back) != 0) {
         close(in[0]), close(in[1]);
         return false;
     }

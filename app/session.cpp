@@ -421,11 +421,11 @@ void Session::update(Uint32 nowMs) {
         cellMark_ = cellMark();
         soundMark_ = soundMark();
     }
-    if (const std::uint32_t mark = cellMark(); mark != cellMark_) {
+    if (const std::uint64_t mark = cellMark(); mark != cellMark_) {
         cellMark_ = mark;
         noteEdit();
     }
-    if (const std::uint32_t mark = soundMark(); mark != soundMark_) {
+    if (const std::uint64_t mark = soundMark(); mark != soundMark_) {
         soundMark_ = mark;
         noteEdit();
     }
@@ -446,9 +446,10 @@ void Session::update(Uint32 nowMs) {
         updateWaiting_ = stat((programFolder_ + "/apotheca.pending").c_str(), &info) == 0;
         updateMegabytes_ = updateWaiting_ ? static_cast<float>(info.st_size) / (1024.f * 1024.f) : 0.f;
     }
-    // A chord pack that has just arrived over WiFi is there to pick from at once.
-    if (transfer_.received() != seenReceived_) {
-        seenReceived_ = transfer_.received();
+    // A chord pack that has just arrived over WiFi is there to pick from at once. (Only for a pack: every
+    // pack was read again for any file sent, a recording too, until review 2026-11-23.)
+    if (transfer_.chordsReceived() != seenChords_) {
+        seenChords_ = transfer_.chordsReceived();
         if (!chordFolder_.empty()) packs = loadChordPacks(chordFolder_);
     }
     // And a recording renamed, moved, deleted or sent from the page: the open song follows.
@@ -1065,13 +1066,26 @@ void Session::recordAutomation(int track, int lane, float value) {
 // the patterns are taken back out of it.)
 std::string Session::patternsNow() const { return textNow(); }
 
-std::uint32_t Session::cellMark() const {
+namespace {
+// Bytes mixed into an undo mark, eight at a time (a byte at a time, the two marks cost about 0.1 ms of
+// every frame on the desk over some 50 KB, a dozen times that on the handheld: review 2026-11-23).
+// Only ever compared with a mark made the same way, in memory: never kept anywhere.
+void markMix(std::uint64_t& h, const void* data, std::size_t size) {
+    const unsigned char* p = static_cast<const unsigned char*>(data);
+    for (; size >= 8; p += 8, size -= 8) {
+        std::uint64_t w;
+        std::memcpy(&w, p, 8);
+        h = (h ^ w) * 0x9e3779b97f4a7c15ull;
+        h ^= h >> 31;
+    }
+    for (; size > 0; ++p, --size) h = (h ^ *p) * 0x100000001b3ull;
+}
+} // namespace
+
+std::uint64_t Session::cellMark() const {
     const TrackData& t = project.current();
-    std::uint32_t h = 2166136261u + static_cast<std::uint32_t>(project.track * 131 + project.scene);
-    const auto mix = [&](const void* data, std::size_t size) {
-        const unsigned char* bytes = static_cast<const unsigned char*>(data);
-        for (std::size_t i = 0; i < size; ++i) h = (h ^ bytes[i]) * 16777619u;
-    };
+    std::uint64_t h = 0xcbf29ce484222325ull + static_cast<std::uint64_t>(project.track * 131 + project.scene);
+    const auto mix = [&](const void* data, std::size_t size) { markMix(h, data, size); };
     if (t.kind == TrackKind::Drums) {
         for (int bar = 0; bar < kMaxBars; ++bar) {
             const DrumPattern& p = t.drums[project.scene][bar];
@@ -1097,12 +1111,9 @@ std::uint32_t Session::cellMark() const {
 }
 
 // Everything undo covers besides the patterns (see soundMark_ in session.hpp), as one number.
-std::uint32_t Session::soundMark() const {
-    std::uint32_t h = 2166136261u;
-    const auto mix = [&](const void* data, std::size_t size) {
-        const unsigned char* bytes = static_cast<const unsigned char*>(data);
-        for (std::size_t i = 0; i < size; ++i) h = (h ^ bytes[i]) * 16777619u;
-    };
+std::uint64_t Session::soundMark() const {
+    std::uint64_t h = 0xcbf29ce484222325ull;
+    const auto mix = [&](const void* data, std::size_t size) { markMix(h, data, size); };
     for (int t = 0; t < kNumTracks; ++t) {
         const TrackData& track = project.tracks[t];
         if (track.kind == TrackKind::None) continue;

@@ -81,6 +81,7 @@ public:
     std::string address() const;
     // Goes up each time a file is received, deleted or moved, so the screen can look again.
     unsigned received() const { return received_.load(); }
+    unsigned chordsReceived() const { return chordsReceived_.load(); } // of those, chord packs sent or deleted
     // What has happened to recordings since this was last asked, oldest first. Names are as a
     // song keeps them: no ".wav", and "kicks/808" in a folder. Sent: only `to`. Deleted: only
     // `from`. Renamed or moved: both. Safe to call from another thread than the server's; each
@@ -130,7 +131,7 @@ private:
     int serving_ = -1;               // under servingMutex_
     std::atomic<int> benchGroup_{0}; // the speed test's process group, while it runs
     bool stopped() const { return stopping_.load(); }
-    std::atomic<unsigned> received_{0};
+    std::atomic<unsigned> received_{0}, chordsReceived_{0};
     std::mutex changesMutex_, songFiles_, openMutex_;
     std::string openSong_; // under openMutex_
     int wrong_ = 0;                // wrong numbers since the last lockout or quiet spell (the server's thread only)
