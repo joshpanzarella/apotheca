@@ -2089,7 +2089,7 @@ void testTheFxScreen() {
 void testTheListOfEffectsHoldsTheLaterTypes() {
     Screens& s = screens();
     const std::vector<std::vector<std::string>> later = {
-        {"filter", "comb", "vowel", "eq", "wah"},
+        {"filter", "comb", "vowel", "eq", "band", "wah"},
         {"drive", "saturate", "fold", "fuzz"},
         {"crush", "ring", "wear"},
         {"chorus", "flanger", "ensemble", "phaser", "tremolo", "pitch"},

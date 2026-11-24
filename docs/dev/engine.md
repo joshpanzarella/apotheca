@@ -469,6 +469,13 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   write place and the heads at 0, so a render is the same however long the silence was. At 0 shift the
   wet is the dry a GRAIN late: a comb against the dry, as any shifter. `testPitch` measures the new
   pitch by band level against the input (a zero-crossing count is thrown by the splices).
+- **BAND (FILTER), 2026-11-24: one EQ band anywhere**, EQ's state-variable filter and Simper's sums per
+  SHAPE (BELL with proportional Q, k = 1 / (Q A), so a cut is the lift upside down; NOTCH m1 = -k; the shelves
+  with g over / times the root of A, so FREQ is the shelf's middle, half the gain there). **A shelf's Q is held
+  at 2** (at 30 full-scale noise came out 19 times as loud) and its reading says so; NOTCH's GAIN reads "-". A
+  change of SHAPE fades the numbers (g, k, m0..m2: each step between is a filter that holds) over 30 ticks, one
+  fade at a time. At 0 dB a BELL or a shelf is the sound to the bit, so the generic "every setting does
+  something" check exempts FREQ, Q and SHAPE (testBand moves each). 15 mutants killed.
 - **A per-sample loop works on locals** (WEAR's `stretch`: up to the tick's
   end, everything the samples change copied in, worked on, copied back).
   Written straight on the effect's own numbers WEAR cost 0.40% of a core; the

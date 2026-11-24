@@ -1315,6 +1315,8 @@ int apotheca::runBench() {
         if (kind == EffectKind::Shimmer) effect("SHIMMER, DECAY TURNING", kind, 1, 0.f, true);
         if (kind == EffectKind::Wah) effect("WAH, SENSE TURNING", kind, 0, 0.f, true);
         if (kind == EffectKind::Pitch) effect("PITCH, FINE TURNING", kind, 1, 0.f, true);
+        if (kind == EffectKind::Band) effect("BAND, NOTCH", kind, 3, 0.375f);
+        if (kind == EffectKind::Band) effect("BAND, FREQ TURNING", kind, 0, 0.f, true);
     }
 
     // The send buses, as what they add to a song of twelve busy drum tracks.

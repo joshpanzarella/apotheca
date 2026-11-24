@@ -75,7 +75,7 @@ const Rule kRules[] = {
     {"TONE", "filter"}, {"CUTOFF", "filter"}, {"FILTER", "filter"}, {"DAMPING", "filter"}, {"HIGH", "filter"},
     {"BRIGHT", "bright"}, {"BRILLIANCE", "bright"},
     {"HPF", "high pass"}, {"LOW", "high pass"},
-    {"RESO", "resonance"}, {"RESONANCE", "resonance"}, {"FORMANT", "peak"}, {"VOWEL", "peak"}, {"MID", "peak"}, {"FREQ", "peak"},
+    {"RESO", "resonance"}, {"RESONANCE", "resonance"}, {"Q", "resonance"}, {"FORMANT", "peak"}, {"VOWEL", "peak"}, {"MID", "peak"}, {"FREQ", "peak"},
     {"SHIFT", "steps"}, {"OCTAVE", "steps"}, {"PITCH", "steps"}, {"TUNE", "steps"}, {"COARSE", "steps"}, {"TRANSPOSE", "steps"},
     {"SEMI", "steps"}, {"NOTE", "steps"}, {"RANGE", "steps"}, {"STEPS", "steps"},
     {"FINE", "fine"},
