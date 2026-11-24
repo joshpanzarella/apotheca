@@ -502,6 +502,95 @@ static void busiestSong(Engine& e) {
     e.send(c);
 }
 
+// A TYPICAL SONG (2026-11-24, the quality review): what a player makes, beside the busiest, which puts a reverb on
+// every track. Eight tracks at 120 BPM: two drum tracks (a beat, percussion), an ACID bass line, JAX-EP chords (A1),
+// FM-6 chords (E.PIANO 1), a PHAZED lead, a PHYSIC arpeggio, a MORPH pad (four keys held). One effect on each
+// (COMP on the beat, SATURATE on the bass, CHORUS on the chords, TAPE on the lead), sends to the buses (TAPE and
+// HALL, a new song's), COMP and LIMITER on the master. Flush-to-zero on, as in the program.
+static void typicalSong(Engine& e) {
+    std::vector<float> scratch(512);
+    const auto settle = [&](int blocks) {
+        for (int r = 0; r < blocks; ++r) e.render(scratch.data(), 256);
+    };
+    Command c;
+    c.type = Command::SetTempo;
+    c.value = 120.f;
+    e.send(c);
+    e.addDrumTrack(1);
+    const SynthKind kinds[6] = {SynthKind::Acid, SynthKind::Jx3p, SynthKind::Fm6, SynthKind::Phazed, SynthKind::Physic, SynthKind::Morph};
+    for (int i = 0; i < 6; ++i) e.addSynthTrack(2 + i, kinds[i]);
+    settle(4);
+    for (int i = 0; i < 6; ++i) {
+        c = Command();
+        c.type = Command::SelectPreset;
+        c.track = 2 + i;
+        c.a = kinds[i] == SynthKind::Fm6 ? kBusiestFm6Preset : 0;
+        e.send(c);
+    }
+    const auto hit = [&](int track, int lane, int step, float level) {
+        c = Command();
+        c.type = Command::SetStep;
+        c.track = track;
+        c.value = level;
+        c.a = lane;
+        c.b = step;
+        e.send(c);
+    };
+    for (int step = 0; step < kSteps; ++step) {
+        if (step % 4 == 0) hit(0, 0, step, 1.f);                  // kick
+        if (step % 8 == 4) hit(0, 1, step, 0.9f);                 // snare
+        hit(0, 2, step, step % 2 ? 0.5f : 0.8f);                  // closed hat
+        if (step % 3 == 0) hit(1, 4, step, 0.6f);                 // percussion
+        if (step % 5 == 2) hit(1, 6, step, 0.5f);
+    }
+    settle(2);
+    const auto note = [&](int track, int slot, int step, int pitch, int length, float level) {
+        c = Command();
+        c.type = Command::SetNote;
+        c.track = track;
+        c.a = slot;
+        c.b = step;
+        c.c = pitch;
+        c.d = length;
+        c.value = level;
+        e.send(c);
+    };
+    for (int step = 0; step < kSteps; ++step) note(2, step, step, 36 + (step % 4 == 3 ? 7 : step % 7 == 0 ? 12 : 0), 1, step % 4 == 0 ? 1.f : 0.8f); // the bass line
+    for (int chord = 0; chord < 2; ++chord)
+        for (int key = 0; key < 4; ++key) {
+            note(3, chord * 4 + key, chord * 8, 55 + 4 * key - (key > 1 ? 1 : 0) + chord * 5, 8, 0.8f); // JAX-EP chords
+            note(4, chord * 4 + key, chord * 8 + 2, 60 + 3 * key + chord * 2, 4, 0.7f);                  // FM-6 stabs
+        }
+    for (int i = 0; i < 6; ++i) note(5, i, i * 2 + (i > 2 ? 2 : 0), 72 + (i * 5) % 9, 2, 0.8f);          // the lead
+    for (int step = 0; step < kSteps; ++step) note(6, step, step, 60 + (step * 7) % 12 + (step % 8 < 4 ? 0 : 12), 1, 0.7f); // the arpeggio
+    for (int key = 0; key < 4; ++key) note(7, key, 0, 48 + 7 * key, 16, 0.6f);                         // the pad, a whole bar
+    settle(4);
+    e.setEffect(0, 0, EffectKind::Comp);
+    e.setEffect(2, 0, EffectKind::Saturate);
+    e.setEffect(3, 0, EffectKind::Chorus);
+    e.setEffect(5, 0, EffectKind::Tape);
+    e.setEffect(kMasterTrack, 0, EffectKind::Comp);
+    e.setEffect(kMasterTrack, 1, EffectKind::Limiter);
+    e.setEffect(kEchoBus, 0, EffectKind::Tape);
+    e.setEffect(kSpaceBus, 0, EffectKind::Hall);
+    const float sends[8][2] = {{0.f, 0.15f}, {0.2f, 0.3f}, {0.f, 0.f}, {0.1f, 0.35f}, {0.1f, 0.3f}, {0.3f, 0.4f}, {0.2f, 0.3f}, {0.f, 0.45f}};
+    for (int t = 0; t < 8; ++t)
+        for (int bus = 0; bus < kBuses; ++bus) {
+            c = Command();
+            c.type = Command::SetSend;
+            c.track = t;
+            c.a = bus;
+            c.value = sends[t][bus];
+            e.send(c);
+        }
+    settle(20);
+    e.collectGarbage();
+    e.setFlushDenormals(true);
+    c = Command();
+    c.type = Command::Play;
+    e.send(c);
+}
+
 // MODs on the busiest song: one, on the first drum track's ECHO send; or 24, two on every track,
 // every kind of target a MOD takes (batch 9): MOD 1 an LFO on a drum track's second slot's first
 // setting (SATURATE's DRIVE or CHORUS's first) or a synth track's first macro; MOD 2 a STEPPER on
@@ -549,13 +638,13 @@ void apotheca::sendBusiestMods(Engine& engine, int mods) { busiestMods(engine, m
 // The busiest song in real time: a block is worked out, then the thread sleeps until the next
 // is due, as the sound card's thread does. On its own thread, which asks for realtime priority
 // as the program's audio thread does (`realtime`), and the helpers as the program's do.
-static WholeSongTimes playWholeSong(int helpers, double seconds, bool realtime, int mods = 0, bool heaviest = false) {
+static WholeSongTimes playWholeSong(int helpers, double seconds, bool realtime, int mods = 0, bool heaviest = false, bool typical = false) {
     WholeSongTimes times;
     std::thread player([&] {
         if (realtime) times.realtime = makeThreadRealtime(70);
         std::unique_ptr<Engine> engine(new Engine);
-        busiestSong(*engine);
-        busiestMods(*engine, mods);
+        if (typical) typicalSong(*engine);
+        else busiestSong(*engine), busiestMods(*engine, mods);
         std::vector<float> out(512);
         for (int i = 0; i < 400; ++i) { // two seconds, so every tail and bus is going
             engine->render(out.data(), 256);
@@ -626,6 +715,7 @@ static void macroCost(const char* name, Instrument& synth, int macro) {
 }
 
 WholeSongTimes apotheca::timeWholeSong(int helpers, double seconds, int mods) { return playWholeSong(helpers, seconds, false, mods); }
+WholeSongTimes apotheca::timeTypicalSong(int helpers, double seconds) { return playWholeSong(helpers, seconds, false, 0, false, true); }
 void apotheca::sendBusiestSong(Engine& engine) { busiestSong(engine); }
 
 // What working MODs out costs, with next to nothing under it: twelve drum tracks that play no hit,
@@ -943,6 +1033,11 @@ int apotheca::runProfile(const char* name, double seconds) {
         busiestMods(*engine, what == "busiest-mods" ? 24 : 0);
         std::vector<float> out(512);
         for (int i = 0; i < 400; ++i) engine->render(out.data(), 256), engine->collectGarbage(); // every tail and bus going, as the rows
+    } else if (what == "typical") {
+        engine.reset(new Engine);
+        typicalSong(*engine);
+        std::vector<float> out(512);
+        for (int i = 0; i < 400; ++i) engine->render(out.data(), 256), engine->collectGarbage();
     } else if (what == "drums") {
         engine = busSongEngine(false, EffectKind::None, EffectKind::None); // twelve busy drum tracks
     } else if (what == "drums-thrown") {
@@ -954,7 +1049,7 @@ int apotheca::runProfile(const char* name, double seconds) {
     } else if (what == "empty") {
         engine.reset(new Engine);
     } else {
-        std::printf("bench --profile NAME [SECONDS]: busiest, busiest-mods, drums, drums-thrown, chords, phazed-silent, jaxep-silent, fm6-silent, empty\n");
+        std::printf("bench --profile NAME [SECONDS]: busiest, busiest-mods, typical, drums, drums-thrown, chords, phazed-silent, jaxep-silent, fm6-silent, empty\n");
         return 1;
     }
     const int blocks = static_cast<int>(std::max(0.0, seconds) * 48000.0 / 256.0);
@@ -977,6 +1072,15 @@ static void wholeSongRows() {
                     t.blocks, t.chunksPerSecond, t.realtime ? "" : " (no realtime priority)");
         sayClocks(watch);
         if (h == helpers) break; // a machine of one core has no helpers: one row
+    }
+    // A typical song beside it (8 tracks, one effect each, sends, the master): what a player meets.
+    std::printf("a typical song (8 tracks: two drums, ACID, JAX-EP, FM-6, PHAZED, PHYSIC, MORPH; one effect each, sends), in real time:\n");
+    for (int h : {0, helpers}) {
+        const WholeSongTimes t = playWholeSong(h, 10.0, true, 0, false, true);
+        char name[40];
+        std::snprintf(name, sizeof name, h == 0 ? "on the audio thread alone" : "with %d helper%s", t.helpers, t.helpers == 1 ? "" : "s");
+        std::printf("  %-28s %5.1f%% of a block, 1 in 100 over %.2f ms, worst %.2f ms, %d of %d too late\n", name, 100.0 * t.meanMs / (256.0 / 48.0), t.p99Ms, t.worstMs, t.over, t.blocks);
+        if (h == helpers) break;
     }
 }
 
