@@ -8528,11 +8528,33 @@ static void testPitch() {
 struct HeldLevel {
     double dip = 0.0, bump = 0.0, level = 0.0;
 };
+// The size of a sine of `hz` in `y`, read as above at every sample from `from` to `to`, against its median.
+static HeldLevel strayOf(const std::vector<float>& y, double hz, std::size_t from, std::size_t to) {
+    const std::size_t mean = 48;
+    const double d = 2.0 * std::sin(2.0 * kPi * hz / 48000.0);
+    std::vector<double> power(y.size(), 0.0), sizes;
+    for (std::size_t i = 1; i + 1 < y.size(); ++i) {
+        const double slope = (static_cast<double>(y[i + 1]) - y[i - 1]) / d;
+        power[i] = static_cast<double>(y[i]) * y[i] + slope * slope;
+    }
+    double sum = 0.0;
+    for (std::size_t i = from - mean; i < to; ++i) {
+        sum += power[i] - (i >= from ? power[i - mean] : 0.0);
+        if (i >= from) sizes.push_back(std::sqrt(std::fmax(sum, 0.0) / static_cast<double>(mean)));
+    }
+    std::sort(sizes.begin(), sizes.end());
+    const double median = sizes[sizes.size() / 2];
+    HeldLevel h;
+    h.dip = dB(sizes.front() / median);
+    h.bump = dB(sizes.back() / median);
+    h.level = dB(median / 0.5);
+    return h;
+}
 // `turning` 1: GRAIN turned all the while instead, every 64 samples, from 120 ms down to 20 in 50 steps and back at
 // once; 2: GRAIN 120 ms turned to 20 at once at 0.6 s.
 static HeldLevel heldThroughPitch(int semis, double hz, float grain = 0.4f, int turning = 0) {
     const float s[4] = {(static_cast<float>(semis + 12) + 0.5f) / 25.f, 0.5f, grain, 1.f};
-    const std::size_t frames = 62400, from = 14400, mean = 48;
+    const std::size_t frames = 62400, from = 14400;
     std::vector<float> y = throughOne(EffectKind::Pitch, s, sineOf(hz, 0.5, frames));
     if (turning) {
         std::unique_ptr<Effect> fx = fresh(EffectKind::Pitch, s[0], s[1], 1.f, s[3]);
@@ -8544,24 +8566,59 @@ static HeldLevel heldThroughPitch(int semis, double hz, float grain = 0.4f, int 
             fx->process(y.data() + at, right.data() + at, static_cast<int>(std::min<std::size_t>(64, frames - at)));
         }
     }
-    const double d = 2.0 * std::sin(2.0 * kPi * hz * std::pow(2.0, semis / 12.0) / 48000.0);
-    std::vector<double> power(frames, 0.0), sizes;
-    for (std::size_t i = 1; i + 1 < frames; ++i) {
-        const double slope = (static_cast<double>(y[i + 1]) - y[i - 1]) / d;
-        power[i] = static_cast<double>(y[i]) * y[i] + slope * slope;
+    return strayOf(y, hz * std::pow(2.0, semis / 12.0), from, frames - 1);
+}
+
+// A NEW NOTE AFTER THE HEAD WAS SENT OFF ITS SPLICE: a sine of `before` held at -12, GRAIN 20 ms, MIX full; at `turn`,
+// GRAIN turned to 120 ms, which sends the place the head splices at 100 ms further off. `stop`: PITCH turned to 0 with
+// it (the head stands still short of its splice), held 0.5 s, then to -5. A sine of `after` instead a little later
+// (10 ms on; stopping, 0.25 s). Its size from when the head reads the new note alone (175 ms on; stopping, 0.1 s
+// after -5) for 1.4 s, through the first splice after the turn and some after.
+static HeldLevel newNoteThroughPitch(double before, double after, std::size_t turn, bool stop) {
+    const auto semis = [](int st) { return (static_cast<float>(st + 12) + 0.5f) / 25.f; };
+    std::unique_ptr<Effect> fx = fresh(EffectKind::Pitch, semis(-12), 0.5f, 0.f, 1.f);
+    const std::size_t back = turn + 24000, change = stop ? turn + 12000 : turn + 480, from = stop ? back + 4800 : turn + 8400, to = from + 67200;
+    std::vector<float> y(to + 64), right;
+    double phase = 0.0;
+    for (std::size_t i = 0; i < y.size(); ++i) {
+        y[i] = static_cast<float>(0.5 * std::sin(phase));
+        phase += 2.0 * kPi * (i < change ? before : after) / 48000.0;
     }
-    double sum = 0.0;
-    for (std::size_t i = from - mean; i < frames - 1; ++i) {
-        sum += power[i] - (i >= from ? power[i - mean] : 0.0);
-        if (i >= from) sizes.push_back(std::sqrt(std::fmax(sum, 0.0) / static_cast<double>(mean)));
+    right = y;
+    for (std::size_t at = 0; at < y.size(); at += 64) {
+        if (at == turn) {
+            fx->setParam(2, 1.f);
+            if (stop) fx->setParam(0, semis(0));
+        }
+        if (stop && at == back) fx->setParam(0, semis(-5));
+        fx->process(y.data() + at, right.data() + at, static_cast<int>(std::min<std::size_t>(64, y.size() - at)));
     }
-    std::sort(sizes.begin(), sizes.end());
-    const double median = sizes[sizes.size() / 2];
-    HeldLevel h;
-    h.dip = dB(sizes.front() / median);
-    h.bump = dB(sizes.back() / median);
-    h.level = dB(median / 0.5);
-    return h;
+    return strayOf(y, after * std::pow(2.0, (stop ? -5 : -12) / 12.0), from, to);
+}
+
+// A SEARCH CAUGHT BY THE STOP: a sine of 220 Hz at -12, GRAIN 120 ms, MIX full; at 6400 samples PITCH turned to 0, so
+// the head stops short of its place, no search under way; at `shorter`, GRAIN turned to 20 ms, which brings the place
+// in behind the head and starts a search late (a share a tick: the head has all the time it likes). The speed lands on
+// 0 some 12300 samples after the turn; a search begun in the 32 ticks before it is caught half done. 0.4 s after the
+// turn a sine of 329.6 Hz instead; at 0.6 s FINE to -50 cents (PITCH still 0), and the head splices at once. The new
+// note's size from then for 1 s (read at -50 cents: while FINE glides there it reads up to 0.26 dB out).
+static HeldLevel caughtByTheStop(std::size_t shorter) {
+    std::unique_ptr<Effect> fx = fresh(EffectKind::Pitch, 0.5f / 25.f, 0.5f, 1.f, 1.f);
+    const std::size_t stop = 6400, change = stop + 19200, back = stop + 28800, to = back + 48000;
+    std::vector<float> y(to + 64), right;
+    double phase = 0.0;
+    for (std::size_t i = 0; i < y.size(); ++i) {
+        y[i] = static_cast<float>(0.5 * std::sin(phase));
+        phase += 2.0 * kPi * (i < change ? 220.0 : 329.6) / 48000.0;
+    }
+    right = y;
+    for (std::size_t at = 0; at < y.size(); at += 64) {
+        if (at == stop) fx->setParam(0, 12.5f / 25.f);
+        if (at == shorter) fx->setParam(2, 0.f);
+        if (at == back) fx->setParam(1, 0.f);
+        fx->process(y.data() + at, right.data() + at, static_cast<int>(std::min<std::size_t>(64, y.size() - at)));
+    }
+    return strayOf(y, 329.6 * std::pow(2.0, -0.5 / 12.0), back, to);
 }
 
 // THE FOLD-BACK OF A BRIGHT SOUND SHIFTED UP: a saw at `hz` with every harmonic up to 23 kHz (as a synth's), through
@@ -8760,6 +8817,36 @@ static void testPitchMatched() {
     // across 0 read a corner of 5.00 while the low-pass came on at 0.45 of the rate (a fraction of a sample late
     // at once); its corner now rises to the top of the band as the speed comes down to 1.
     for (int p = 0; p < 4; ++p) CHECK(seen.stepDown[p] < 1.2 && seen.cornerDown[p] < 1.2 && seen.stepUp[p] < 1.2 && seen.cornerUp[p] < 1.2);
+}
+
+// PITCH'S SEARCH GOES STALE (review of the matched splices, 2026-11-25). Shifting down, GRAIN turned longer sends the
+// place the head splices at further off (20 ms to 120: 0.2 s more at -12), and PITCH and FINE landing on 0 with it
+// stop the head short of it. The search for that splice was kept, and used whenever the head got there: matched to
+// the sound before, out of step with a note played since. 220 Hz at -12, GRAIN 20 ms, turned at each of 75 places 64
+// samples apart (a whole round of the head and more: a search is under way or done for its last 544 samples), then a
+// fifth up (newNoteThroughPitch). Before: a 9.4 dB dip at the next splice; stopped, 9.9. One note held through the
+// stop (the review's own case) was 0.02 either way: a place found on a held note is in step with it whenever found.
+// And a search caught half done by the stop was frozen, then went on reading a line written over since: 11.8 dB
+// (caughtByTheStop, GRAIN turned shorter at 41 places about where the speed lands on 0). Dropping a search sent far
+// off mends the first two (with only the stop mended, the first was still 9.4); forgetting it at the stop mends the
+// last (with only the dropping, still 11.8). Now 0.00, 0.00, 0.02, 0.01.
+static void testPitchStaleSearch() {
+    for (int way = 0; way < 4; ++way) {
+        // 0: GRAIN turned, the new note 10 ms on; 1: and PITCH to 0, the new note in the stop; 2: the same, one note;
+        // 3: caught by the stop.
+        const double before = 220.0, after = way == 2 ? 220.0 : 329.6;
+        const std::size_t first = way == 3 ? 6400 + 10880 : 28800, places = way == 3 ? 41 : 75;
+        double dip = 0.0, bump = -600.0;
+        std::size_t worstAt = 0;
+        for (std::size_t turn = first; turn < first + places * 64; turn += 64) {
+            const HeldLevel h = way == 3 ? caughtByTheStop(turn) : newNoteThroughPitch(before, after, turn, way > 0);
+            if (h.dip < dip) dip = h.dip, worstAt = turn;
+            bump = std::fmax(bump, h.bump);
+        }
+        static const char* const ways[4] = {"GRAIN 20 ms to 120 at -12, a new note", "...and PITCH to 0, held 0.5 s, then -5, a new note in the stop", "...the same, one note held", "a search caught half done by the stop, a new note"};
+        SAY("pitch    %s: the deepest dip %.2f dB (turned at %zu), the highest bump %+.2f\n", ways[way], dip, worstAt, bump);
+        CHECK(dip > -0.5 && bump < 0.5);
+    }
 }
 
 static void testVowel() {
@@ -11954,6 +12041,7 @@ int main(int argc, char** argv) {
         {"testBandMatched", testBandMatched},
         {"testPitch", testPitch},
         {"testPitchMatched", testPitchMatched},
+        {"testPitchStaleSearch", testPitchStaleSearch},
     };
     // `effects_test --part 1` and `--part 2`: ctest runs it as two tests, each about half the time,
     // so neither comes near its two minutes on a busy machine. Part 2 is everything from

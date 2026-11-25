@@ -480,7 +480,14 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   long the silence was. At 0 shift the wet is the dry half a GRAIN late: a comb against the dry, as any shifter.
   `testPitch` measures the new pitch by band level against the input (a zero-crossing count is thrown by the
   splices); `testPitchMatched` the held level, the fold-back, the house rules (PITCH had not been through
-  `holdsTheRules`). 10 mutants killed.
+  `holdsTheRules`). 10 mutants killed. **A search is kept only while its splice is near** (review, 2026-11-25):
+  sent more than twice as far off as a search starts (GRAIN turned longer, the speed slowed) it is dropped, and at
+  a stop (PITCH and FINE at 0) it is forgotten. Kept, a note played since crossed out of step at the next splice,
+  9.4 to 9.9 dB, and a search caught half done by the stop went on reading a line written over since, 11.8
+  (`testPitchStaleSearch`). The review's own test, one note held through the stop, could not see it: a place
+  found on a held note stays in step with it. A held setting renders the same to the bit as before. 4 of 5
+  mutants killed; dropping at once at 34 ticks (not twice that) lives: a search started again is paced to the
+  speed then, which only fell, so it still finishes in time; the two only saves the work.
 - **BAND (FILTER), 2026-11-24: one EQ band anywhere**, EQ's state-variable filter and Simper's sums per
   SHAPE (BELL with proportional Q, k = 1 / (Q A), so a cut is the lift upside down; NOTCH m1 = -k; the shelves
   with g over / times the root of A, so FREQ is the shelf's middle, half the gain there). **A shelf's Q is held

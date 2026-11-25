@@ -25,9 +25,14 @@
 // head plays some 5 to 11 ms before the splice. IT IS SPREAD OVER TICKS: it starts 32 ticks before the splice and
 // does a 32nd of it a tick, three 32nds at most (in one go it is 10.8 us on the desk: 3 to 4% of a handheld block).
 // Late (the speed or GRAIN turned under it), shifting down the head waits for it, and for the place it found to be
-// behind the newest sample (GRAIN turned shorter); up it cannot, and takes the best found so far. Nothing to match
-// (silence, a line still empty since waking, or a sound all in its sides, left the right upside down): the plain
-// GRAIN. The heads keep the place they were given, so the delay is up to 25 ms longer than a GRAIN.
+// behind the newest sample (GRAIN turned shorter); up it cannot, and takes the best found so far. A SEARCH IS KEPT
+// ONLY WHILE ITS SPLICE IS NEAR (review, 2026-11-25): sent more than twice as far off as a search starts (GRAIN
+// turned longer, the speed slowed), or the head stopped (PITCH and FINE at 0), it is dropped and done again nearer.
+// What it found matched the sound then: kept, a note played since crossed out of step at the next splice (220 Hz to
+// a fifth up, 10 ms after GRAIN went from 20 ms to 120 at -12: a 9.4 dB dip 0.2 to 0.3 s on; stopped, 9.9), and one
+// caught half done by the stop went on, after it, reading a line written over since (11.8; on a held note, 1.2).
+// Nothing to match (silence, a line still empty since waking, or a sound all in its sides, left the right upside down):
+// the plain GRAIN. The heads keep the place they were given, so the delay is up to 25 ms longer than a GRAIN.
 //
 // SHIFTING UP, what goes on the line is low-passed first (4 poles): what was over half the rate over the speed would
 // come out over the top and fold back down, out of tune. Its corner is just under that (0.5 / speed - 0.025 x (speed
@@ -73,6 +78,8 @@ constexpr int kFineReach = 4;           // the fine pass: this far either side o
 constexpr int kFineCost = 6;            // a fine place costs about six rough ones
 constexpr int kSearchTicks = 32;        // the search's share a tick: a 32nd of it...
 constexpr int kMostShares = 3;          // ...and never more than three shares, however late it is
+constexpr int kDropTicks = 2 * (kSearchTicks + 2); // a search whose splice is sent further off is dropped (twice: a
+                                                   // speed halved under it keeps it)
 // The 4-pole Butterworth low-pass (two state-variable stages, k = 1 / Q).
 constexpr float kButterK[2] = {1.8477591f, 0.7653669f};
 
@@ -310,14 +317,21 @@ private:
 
     // Once a tick: start the search when the head is some 32 ticks from its splice, and do this tick's share: what
     // is left over the ticks left, at least a 32nd of the whole and at most three 32nds. Late (the speed or GRAIN
-    // turned under it), shifting down it waits for the search; up it cannot, and takes the best found so far.
+    // turned under it), shifting down it waits for the search; up it cannot, and takes the best found so far. Sent
+    // far off or stopped, the search is dropped.
     void searchTick() {
-        if (turn_ == 0.f) return;
+        if (turn_ == 0.f) { // standing still: by its splice, what a search found would be old sound's
+            search_ = Search();
+            return;
+        }
         const int dir = turn_ < 0.f ? 1 : -1;
         if (search_.state != kNone && search_.dir != dir) search_ = Search(); // turned round: start again
-        if (search_.state == kDone) return;
         const float grain = grain_.now * sr_, move = std::fabs(turn_) * static_cast<float>(kTick);
         const float toPlace = std::min((dir > 0 ? delay_[active_] - upEnd() : downEnd(grain) - delay_[active_]) / move, 1e6f);
+        // Sent more than twice as far off as a search starts (GRAIN turned longer, the speed nearer 1 or slowing to
+        // a stop): what it found matched the sound then, and a note played since is out of step with it. Again, nearer.
+        if (search_.state != kNone && toPlace > static_cast<float>(kDropTicks)) search_ = Search();
+        if (search_.state == kDone) return;
         if (search_.state == kNone) {
             if (toPlace > static_cast<float>(kSearchTicks + 2)) return;
             begin(dir, static_cast<int>(grain));
