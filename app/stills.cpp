@@ -47,6 +47,21 @@ void tapKey(SDL_Keycode key, int times = 1) {
     }
 }
 
+// "rest-presses": SEL held, eight taps of UP, SEL let go, pushed from SDL's timer thread 7 ms apart (SDL_PushEvent may be
+// called from any thread). They come while main.cpp works or rests, and the rest (pass_wait.hpp) takes most of them
+// off SDL's queue: the tempo goes up 8 only if main.cpp reads them from its PassWait (textviews).
+Uint32 pushRestPress(Uint32, void* param) {
+    int& tick = *static_cast<int*>(param);
+    if (tick > 8) {
+        pushKey(SDLK_BACKSPACE, false);
+        return 0; // (the last: the timer stops)
+    }
+    if (tick == 0) pushKey(SDLK_BACKSPACE, true); // SEL, held
+    else tapKey(SDLK_UP);                         // SEL + UP: the tempo a beat up
+    ++tick;
+    return 7;
+}
+
 } // namespace
 
 void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap& controlMap, int& stillMs) {
@@ -1218,6 +1233,15 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         if (std::strcmp(view, "help-nomenu") == 0) pushKey(SDLK_BACKSPACE, true); // SELECT, held
     } else if (std::strcmp(view, "kit-old") == 0) {
         app.session().view = View::Device;
+    } else if (std::strcmp(view, "rest-presses") == 0) {
+        // Presses that come while the program rests between passes (gesture audit G06): the drum grid at 100 BPM,
+        // and SEL + UP eight times from a timer once the passes are going. The top bar reads 108 when every one
+        // was read (textsize_test testPressesInTheRest).
+        app.session().view = View::Pattern;
+        app.session().setTempo(100.f);
+        static int ticks = 0;
+        ticks = 0;
+        if (SDL_AddTimer(60, pushRestPress, &ticks) == 0) std::fprintf(stderr, "rest-presses: no timer: %s\n", SDL_GetError());
     }
 
     if (smoke) {

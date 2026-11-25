@@ -274,6 +274,16 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
       with SDL's make-believe gamepad, `testAPressHasItsOwnTime`), and `easy_test taptempo`
       the taps (`testTapByThePressesOwnTime`). `idle_test`'s pass is still 16 ms: a press's
       shorter pass is a drawn pass, and nothing in the redraw counts the time between passes.
+    - **main.cpp must read its events from the PassWait** (`while (wait.next(event))`), never
+      from SDL's queue: the rest takes most presses off that queue, and they would sit in it unread
+      (the program would ignore most buttons). The tests above model the loop themselves, and every
+      other still pushes its keys before the first pass, so none of them could see that line go
+      wrong (review of B1, 2026-11-25). **`textviews` runs the program on the `rest-presses` still**
+      (`testPressesInTheRest`): SEL held and eight taps of UP pushed from an SDL timer 7 ms apart
+      once the passes are going, so most land in a rest; the top bar must read 108 BPM from 100.
+      With the poll put back it reads 100 (even SEL's press is lost). What it cannot see: main.cpp
+      resting with `SDL_Delay(16)` again instead of `wait.rest` (every press is still read, only
+      later); that is the rest's latency, held in `controls_test` on the PassWait itself.
     - Measured (desk, 2026-11-24, `controls_test --measure`, a model of the loop with 1.7 ms of
       work a pass): a pass with nothing pressed 17.8 ms before, 18.2 ms now (the four naps run
       about 0.1 ms over each); a press read after 9.5 ms on average and 17.7 at worst before,

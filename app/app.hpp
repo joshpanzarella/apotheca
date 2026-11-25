@@ -191,6 +191,12 @@ private:
     char undoSaid_[64] = "";
     int resyncsSeen_ = 0;
     Uint32 undoSaidUntil_ = 0;
+    // A chord's length said by L2 / R2 with Y held on the roll (G27): the box sits over the middle of the pack's
+    // tiles, so it goes as soon as the pick moves on (another chord, inversion or pack). When that box ends
+    // (0: none up), and the pick it was said on.
+    Uint32 lengthSaidUntil_ = 0;
+    int lengthSaidPick_[3] = {};
+    void dropLengthSaid(); // the box above, gone once the pick moves on
     bool help_ = false;
     // The help card's line of how hard the program works (cpu_use.hpp, Engine::soundShare): read
     // while it is open, kept here so a pass draws what the redraw compared (Readouts::load).

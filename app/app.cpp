@@ -290,7 +290,12 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         // drum grid Y held is the dice, and they stay swallowed there (below).
         if (input.held(Button::Y) && session_.view == View::Pattern && isSynth(project_->current().kind) && !panicking_) {
             notes_.onButton(event, input);
+            const unsigned saidBefore = saidSeen_;
             takeSessionSaid();
+            if (saidSeen_ != saidBefore) { // (the box covers the tiles: dropLengthSaid takes it away when the pick moves on)
+                lengthSaidUntil_ = undoSaidUntil_;
+                lengthSaidPick_[0] = notes_.handIndex(), lengthSaidPick_[1] = notes_.handInversion(), lengthSaidPick_[2] = session_.packIndex();
+            }
             return;
         }
         // On the drum grid, R2 with R1 held turns R1's brush random. R2 by
@@ -344,6 +349,21 @@ void App::takeSessionSaid() {
     saidSeen_ = session_.saidCount();
     std::snprintf(undoSaid_, sizeof undoSaid_, "%s", session_.saidText());
     undoSaidUntil_ = now_ + 1500;
+}
+
+// The box that says a chord's length (L2 / R2 with Y held on the roll, G27) is drawn over the middle three of the
+// pack's tiles, the lit one among them: while the player is still choosing, it hid the chord a RIGHT would pick.
+// So it goes once the pick moves on, by the D-pad or the stick: another chord, inversion or pack. Let go of Y, it
+// stays its moment (the tiles are gone, and it says what landed: nothing moves the pick with Y up).
+void App::dropLengthSaid() {
+    if (lengthSaidUntil_ == 0) return;
+    if (undoSaidUntil_ != lengthSaidUntil_ || now_ >= lengthSaidUntil_) { // something else said since, or it went
+        lengthSaidUntil_ = 0;
+        return;
+    }
+    if (notes_.handIndex() == lengthSaidPick_[0] && notes_.handInversion() == lengthSaidPick_[1] && session_.packIndex() == lengthSaidPick_[2]) return;
+    undoSaidUntil_ = 0;
+    lengthSaidUntil_ = 0;
 }
 
 void App::changeVolume(float by) {
@@ -493,6 +513,7 @@ void App::update(const Input& input, Uint32 nowMs) {
     if (&screenNow() != &kit_) kit_.callOffDelete();
     screenNow().update(input, nowMs);
     takeSessionSaid(); // (what a screen's update said: the stick's TRANSPOSE)
+    dropLengthSaid();
     // Where the card does not come up (the name keys, SET's keys and button test), the bar does not offer it.
     // Asked after the screen's update: the button test closes by itself there, and the bar drawn this pass
     // must be the one the redraw saw change (idle_test).

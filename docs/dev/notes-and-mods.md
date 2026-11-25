@@ -113,11 +113,28 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     the room where it lands as ever. A chord being swapped: its own length, held to the cell's end
     and the next chord as `setLength` holds it, the cursor kept inside it, and `handLength_` takes it
     too (as hold A on a chord sets it). The App's box says what lands (`CHORD 8 STEPS`, `CHORD 16
-    STEPS, 3 FIT HERE`); nothing is said where nothing changes. **The App sends L2 / R2 to the roll
+    STEPS: 3 FIT`); nothing is said where nothing changes. **The App sends L2 / R2 to the roll
     while Y is held on a synth track** (as it does while A is held); on the drum grid Y held is the
-    dice and they stay swallowed. The hint is `L2 R2 length` (fits at XL, the swap's longer B
-    included). **A panic begun with L2 or R2 while Y is held changes the length and does not put it
-    back**, as the A-held nudge does not. `easy_test chordlength`.
+    dice and they stay swallowed. **A panic begun with L2 or R2 while Y is held changes the length
+    and does not put it back**, as the A-held nudge does not. `easy_test chordlength`.
+    - After review (2026-11-25), three things put right:
+      - **The box goes as soon as the pick moves on** (`App::dropLengthSaid`): another chord,
+        inversion or pack, by the D-pad or the stick. It is drawn at y 410-444, x 190-450, over the
+        middle three tiles (y 418 down), the lit one among them, so for 1.5 s after an L2 / R2 the
+        chord a RIGHT would pick was hidden. X (hear it again) moves nothing and leaves it; let go of
+        Y it stays its moment (the tiles are gone; it says what landed). Something said since (SEL +
+        L2 / R2's scene steps) is not the length's and is left be. Showing the length in the strip
+        instead was weighed: the strip's top line has no room for it beside the pack, the count, INV
+        and the right-hand words, and the look is settled. `testTheLengthsBoxMakesWay`.
+      - **`CHORD 16 STEPS: 15 FIT`**, not `CHORD 16 STEPS, 15 FIT HERE`: that measured 256 pixels at
+        LARGE and 278 at XL against the box's 248 of room (260 less 12), so it crowded the box's edge
+        even held at LARGE. The new one is 204 at LARGE, 222 at XL; the test measures the widest the
+        code says (16 asked at step 1 of an empty one-bar cell) at XL.
+      - **The swap's row has no `L2 R2 length`**: with `A notes` and `B as it was` (G26) it ran 11
+        pixels over with `HLD SEL: HELP` (the help word dropped; the earlier claim "fits at XL, the
+        swap's longer B included" was checked with MENU: HELP and the new chord only). A new chord's
+        row keeps it; the manual says L2 / R2 do the same on a swap. Both rows are drawn under both
+        helps at LARGE and XL in `testTheTriggersSetTheChordsLength`.
   - **B while Y is held on a chord puts it back as Y found it; Y held + A breaks it into loose notes**
     (gesture audit G26, 2026-11-25, under the owner's "any of my decisions can be reversed if there is
     a more logical method", 2026-11-24). Since the first chords (d213631, 2026-11-10) B on a swap

@@ -2427,7 +2427,7 @@ Y is the chord button. Chords come from the song's chord pack.
 | ...left / right | The next chord (stick or D-pad, either) |
 | ...up / down | Inversion: the bottom note goes up an octave, or the top one comes down |
 | ...L1 / R1 | Another pack |
-| ...L2 / R2 | **Half or twice as long**: 1, 2, 4, 8 or 16 steps (from a length between two, the next one that way). The box above the bar says it, and where it does not fit here: CHORD 16 STEPS, 3 FIT HERE |
+| ...L2 / R2 | **Half or twice as long**: 1, 2, 4, 8 or 16 steps (from a length between two, the next one that way). The box above the bar says it, and where it does not fit here: CHORD 16 STEPS: 3 FIT. It goes when you pick another chord, inversion or pack, so the chords are not hidden |
 | ...X | Hear it again |
 | Let go of Y | The chord lands at the cursor, and the cursor moves on past it |
 | ...B first | Nothing lands |

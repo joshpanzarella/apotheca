@@ -157,6 +157,26 @@ void testTheStillsFlag(const std::string& program, const std::string& folder) {
     if (without) SDL_FreeSurface(without);
 }
 
+// Presses that come while the program rests between passes are read (gesture audit G06; review of B1-latency). The
+// rest (pass_wait.hpp) takes them off SDL's queue, so main.cpp must read its events from the PassWait: polling SDL's
+// queue there, every press the rest took would be lost, and controls_test, idle_test and the other stills (their
+// keys pushed before the first pass) would never see it. "rest-presses" pushes SEL and eight taps of UP from a timer,
+// 7 ms apart, once the passes are going: most land in a rest, and the top bar reads 108 BPM (from 100) only if all
+// eight were read.
+void testPressesInTheRest(const std::string& program, const std::string& folder) {
+    const std::string texts = folder + "/rest";
+    const std::string command = "SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy '" + program + "' --demo --view rest-presses --still-ms 600 --texts '" + texts + "' > /dev/null 2>&1";
+    CHECK(std::system(command.c_str()) == 0);
+    textfit::Frame frames[4];
+    CHECK(textfit::readFrames(texts.c_str(), frames) == 4);
+    std::string tempo; // the number furthest right in the top bar, just before BPM (a scene's "1" is further left)
+    float tempoX = 0.f;
+    for (const textfit::Text& t : frames[kTextLarge].texts)
+        if (t.y < ui::kTopBarH && t.x > tempoX && !t.words.empty() && t.words.find_first_not_of("0123456789") == std::string::npos) tempo = t.words, tempoX = t.x;
+    CHECK(tempo == "108");
+    if (tempo != "108") std::printf("    the top bar read %s BPM, not 108: a press that came in a rest was lost\n", tempo.c_str());
+}
+
 int runViews(const char* program, const char* only) {
     testEveryViewIsListed();
     const std::string folder = tempFolder("textviews"), samples = folder + "/samples";
@@ -184,7 +204,7 @@ int runViews(const char* program, const char* only) {
     for (const char* name : {"grand piano/Grand C3 pp", "grand piano/Grand C3 mf", "grand piano/Grand C3 ff", "grand piano/Grand C4 pp", "grand piano/Grand C4 mf", "grand piano/Grand C4 ff"})
         wav(name, 0.3f, 262.f);
 
-    if (!only) testTheStillsFlag(program, folder);
+    if (!only) testTheStillsFlag(program, folder), testPressesInTheRest(program, folder);
     std::vector<std::vector<std::string>> faults(static_cast<std::size_t>(kViewCount));
     std::vector<char> ran(static_cast<std::size_t>(kViewCount), 0);
     std::atomic<int> next{0};

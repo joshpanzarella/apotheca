@@ -34,7 +34,8 @@
 //                  volume (the SET page, on VOLUME), setup-lights, setup-light (on our own firmware: BRIGHTNESS,
 //                  STICK LIGHT on STEPS), brightness (MENU + a volume key's box, on the drum grid), update-ready, update-ready-drums,
 //                  update-accepted (an update accepted: the bar, and the notice), nomenu and help-nomenu
-//                  (a handheld with no MENU button: its hint, and its help card)
+//                  (a handheld with no MENU button: its hint, and its help card), rest-presses (SEL + UP eight
+//                  times from a timer while the passes rest: 108 BPM when main.cpp read them all, textviews)
 //                  picker, picker-in, picker-deep, picker-deleting, picker-new, picker-typing, picker-carrying, picker-folder-deleting, sampler-picker (with --samples: the list
 //                  of recordings in its columns: on SAMPLES, in a folder, two folders down, B held, the sampler's)
 //                  kit-edit, kit-edit-held, kit-edit-deleting, kit-edit-column (a lane's EDIT view: with --samples

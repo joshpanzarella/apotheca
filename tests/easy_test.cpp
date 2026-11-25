@@ -2263,7 +2263,7 @@ void testTheTriggersSetTheChordsLength() {
     rig.key(Y, true);
     rig.frames(1);
     rig.tap(TRIGGER_R2, 3);
-    CHECK(roll.handLength() == 16.f && rig.said() == "CHORD 16 STEPS, 3 FIT HERE");
+    CHECK(roll.handLength() == 16.f && rig.said() == "CHORD 16 STEPS: 3 FIT");
     rig.tap(B); // (called off: nothing lands)
     rig.key(Y, false);
     rig.frames(1);
@@ -2288,18 +2288,34 @@ void testTheTriggersSetTheChordsLength() {
     rig.key(Y, false);
     rig.frames(1);
     CHECK(roll.chordCount() == 2);
-    // The hints while Y is held fit the bar.
-    Canvas canvas;
-    if (canvas.ok) {
-        roll.moveCursorTo(60, 12);
-        rig.key(Y, true);
-        rig.frames(1);
-        canvas.clear();
-        rig.app.draw(canvas.r, *canvas.fonts);
-        CHECK(ui::gHintsOver == 0.f);
-        rig.tap(B);
-        rig.key(Y, false);
-        rig.frames(1);
+    // The hints while Y is held fit the bar, at LARGE and at XL, with either help: on a new chord (B cancel) and on
+    // a swap (the chord at step 0, two long: A notes, B as it was, the longer row). The swap's has no room for
+    // L2 R2 (11 pixels over with HLD SEL: HELP): only a new chord's says it.
+    Canvas canvas, scratch;
+    if (canvas.ok && scratch.ok) {
+        const std::vector<unsigned char> ttf = loadFontFile();
+        Fonts xl;
+        xl.fixedSet = canvas.fonts.get();
+        CHECK(xl.load(canvas.r, ttf, kTextXl));
+        for (int swap = 0; swap < 2; ++swap) {
+            roll.moveCursorTo(60, swap ? 1 : 12);
+            rig.key(Y, true);
+            rig.frames(1);
+            for (const char* help : {"MENU: HELP", "HLD SEL: HELP"})
+                for (const Fonts* fonts : {static_cast<const Fonts*>(canvas.fonts.get()), static_cast<const Fonts*>(&xl)}) {
+                    ui::gHelpHint = help; // (App::update sets it each pass from the controls)
+                    canvas.clear();
+                    rig.app.draw(canvas.r, *fonts);
+                    CHECK(ui::gHintsOver == 0.f);
+                    if (ui::gHintsOver != 0.f) std::printf("    %s, %s: %.0f pixels over\n", swap ? "swap" : "new chord", help, static_cast<double>(ui::gHintsOver));
+                    if (fonts == &xl && help[0] == 'H') CHECK(barSays(canvas, scratch, "length") == !swap); // (read once a row: slow)
+                }
+            rig.tap(B); // (called off, or put back as it was: nothing changes)
+            rig.key(Y, false);
+            rig.frames(1);
+        }
+        CHECK(roll.chordCount() == 2 && bar.chords[0].length == 2.f);
+        ui::gHelpHint = "MENU: HELP";
     }
     // On the drum grid Y held is the dice: L2 / R2 stay swallowed, and turn no tab. Nor do they reach
     // the roll, though it still thinks Y is held there (the track changed under a held Y).
@@ -2323,6 +2339,77 @@ void testTheTriggersSetTheChordsLength() {
     rig.frames(1);
 }
 
+// G27, after review: the box that says the length sits over the middle of the pack's tiles, the lit one among
+// them. It goes as soon as the pick moves on (another chord, inversion or pack, by the D-pad or the stick); let go
+// of Y with nothing moved, it stays its moment. And its longest line fits the box at XL.
+void testTheLengthsBoxMakesWay() {
+    Rig rig;
+    NoteScreen& roll = rollOnPhazed(rig);
+    Session& session = rig.session();
+    // Y held, the length changed (R2, or L2 from 16): is the box up?
+    const auto lengthSaid = [&] {
+        rig.key(Y, true);
+        rig.frames(1);
+        rig.tap(roll.handLength() < 16.f ? TRIGGER_R2 : TRIGGER_L2);
+        return roll.picking() && rig.said().find("CHORD") == 0;
+    };
+    roll.moveCursorTo(60, 0);
+    for (SDL_Keycode press : {RIGHT, LEFT, UP, DOWN, R1, L1, STICK_RIGHT, STICK_LEFT}) {
+        CHECK(lengthSaid());
+        const int hand = roll.handIndex(), inversion = roll.handInversion(), pack = session.packIndex();
+        rig.tap(press);
+        CHECK(roll.picking() && (roll.handIndex() != hand || roll.handInversion() != inversion || session.packIndex() != pack));
+        CHECK(rig.said().empty());
+        rig.tap(B); // (called off: nothing lands)
+        rig.key(Y, false);
+        rig.frames(1);
+    }
+    CHECK(roll.chordCount() == 0);
+    // X hears it again and moves nothing: the box stays. Let go of Y: it stays, and says what landed.
+    CHECK(lengthSaid());
+    rig.tap(X);
+    CHECK(rig.said().find("CHORD") == 0);
+    rig.key(Y, false);
+    rig.frames(1);
+    CHECK(roll.chordCount() == 1 && rig.said().find("CHORD") == 0);
+    // Something else said since is not the length's: a move of the pick leaves it be.
+    roll.moveCursorTo(60, 12);
+    CHECK(lengthSaid());
+    rig.key(SELECT, true);
+    rig.tap(TRIGGER_L2); // the scene a step shorter, said in the same box
+    rig.key(SELECT, false);
+    rig.frames(1);
+    const std::string scene = rig.said();
+    rig.tap(RIGHT);
+    CHECK(scene.find("SCENE") == 0 && rig.said() == scene);
+    rig.tap(B);
+    rig.key(Y, false);
+    rig.frames(1);
+    // The longest it says, 16 asked where 15 fit (a chord at step 1 of an empty one-bar cell), fits the box's room
+    // (260 wide less 12) in the medium letters at XL: never held at LARGE, never crowding the box's edge.
+    NotePattern& bar = rig.track(1).notes[0][0];
+    for (ChordEvent& c : bar.chords) c.velocity = 0.f;
+    session.sendNoteBar(1, 0, 0);
+    CHECK(roll.chordCount() == 0);
+    roll.moveCursorTo(60, 1);
+    rig.key(Y, true);
+    rig.frames(1);
+    if (roll.handLength() >= 16.f) rig.tap(TRIGGER_L2);
+    while (roll.handLength() < 16.f) rig.tap(TRIGGER_R2);
+    CHECK(rig.said() == "CHORD 16 STEPS: 15 FIT");
+    Canvas canvas;
+    if (canvas.ok) {
+        const std::vector<unsigned char> ttf = loadFontFile();
+        Fonts xl;
+        xl.fixedSet = canvas.fonts.get();
+        CHECK(xl.load(canvas.r, ttf, kTextXl));
+        CHECK(xl.medium.width(rig.said().c_str()) <= 260.f - 12.f);
+    }
+    rig.tap(B);
+    rig.key(Y, false);
+    rig.frames(1);
+}
+
 int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     const Section sections[] = {
@@ -2337,7 +2424,7 @@ int main(int argc, char** argv) {
         {"kits", [] { testTheKitsText(), testKitsInTheSession(), testTheKitStop(); }},
         {"stick", [] { testTheStickCarriesAsTheDpad(), testXLetGoWithTheStickPushed(), testTheStickOnRepeats(); }},
         {"xempty", [] { testXAndBEmptyAHit(), testXAndBEmptyALanesFeel(), testXAndBEmptyANoteAndAChord(); }},
-        {"chordlength", [] { testTheTriggersSetTheChordsLength(); }},
+        {"chordlength", [] { testTheTriggersSetTheChordsLength(), testTheLengthsBoxMakesWay(); }},
     };
     for (const Section& s : sections) {
         bool wanted = argc < 2;

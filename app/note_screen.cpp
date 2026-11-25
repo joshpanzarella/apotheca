@@ -535,7 +535,8 @@ void NoteScreen::doubleHand(int way) {
     }
     char text[48];
     const int whole = static_cast<int>(std::lround(to)), here = static_cast<int>(std::lround(lands));
-    if (here < whole) std::snprintf(text, sizeof text, "CHORD %d STEPS, %d FIT HERE", whole, here);
+    // (Short: "CHORD 16 STEPS, 15 FIT HERE" ran past the box's room, 248 pixels, even held at LARGE.)
+    if (here < whole) std::snprintf(text, sizeof text, "CHORD %d STEPS: %d FIT", whole, here);
     else std::snprintf(text, sizeof text, whole == 1 ? "CHORD %d STEP" : "CHORD %d STEPS", whole);
     session_.say(text);
 }
@@ -1560,7 +1561,9 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("LEFT / RIGHT", "chord");
         hint("UP / DOWN", "invert"); // (G26: "inversion" with A's chip added ran 13 pixels over at XL)
         hint("L1 R1", "pack");
-        hint("L2 R2", "length");
+        // On a swap the row is full: with A's and B's longer words, L2 R2 ran 11 pixels over with "HLD SEL: HELP",
+        // so it is shown on a new chord, and the manual says it does the same on a swap (G27 review).
+        if (editing_ < 0) hint("L2 R2", "length");
         if (editing_ >= 0) hint("A", "notes"); // into loose notes
         hint("B", editing_ >= 0 ? "as it was" : "cancel");
     } else if (fxHeld_ && !under && chordUnder) {
