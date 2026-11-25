@@ -40,6 +40,18 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   fsynced, renamed over `NAME`, and the folder fsynced (a flat battery left
   an empty song). `save_test` checks the order on Linux. Its cost on the
   handheld's card is not measured.
+- **settings.txt and volume.txt are written once what they would say has stood still a second**
+  (gesture audit G43, 2026-11-25; `Session::keepSettings`, `kKeepRestMs`): every setter wrote at once,
+  two fsyncs, nine times a second with RIGHT held on a SET row, and at an end of THEME for nothing. Now
+  **never when the text is what the card has** (`settingsKept_`, `volumeKept_`: what was read, or
+  written, or what stands for no file), a change back before the second is up writes nothing, and
+  `Session::update` writes what is owed a second after the last change. **On the way out
+  `keepSettingsNow`** (main.cpp, after `saveNow`, before the power-off mark; `~Session` too). Every way
+  the program ends goes through there: SEL + START, the idle rule, SDL_QUIT (SDL turns TERM and INT into
+  it), and on our firmware every way off sends TERM first (`S95apotheca`). **Not covered: a power cut
+  (the power key held 10 s, a battery pulled), a crash, a KILL**, which lose the song's last two seconds
+  too; and how the stock firmware's own power key ends the program is not known (TERM: covered).
+  `app_test` `testSettingsWaitToStandStill`; the tests that read a file at once call `keepSettingsNow`.
 - **A deleted song goes to `deleted/` under a name nothing there has** (song
   or rev: "ash well", else "ash well 2"), through `binSong`, which the
   Session and the WiFi page share. Renamed over, the first one's revs paired

@@ -1736,8 +1736,10 @@ void testQueuedMutesInTheApp() {
         }
         // Kept in settings.txt only when it is not AT ONCE.
         std::string text;
+        session.keepSettingsNow(); // (written once it has stood still a second: kKeepRestMs)
         CHECK(readTextFile(folder + "/settings.txt", text) && text.find("\nmutes 1\n") != std::string::npos);
         session.setMutes(Session::kMutesAtOnce);
+        session.keepSettingsNow();
         CHECK(readTextFile(folder + "/settings.txt", text) && text.find("mutes") == std::string::npos);
         session.setMutes(Session::kMutesNextBar);
     }

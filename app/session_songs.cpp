@@ -307,16 +307,37 @@ void Session::finishOwed() {
 
 float Session::ui_stickSpeed() { return ui::gStickSpeed; }
 
-void Session::keepSettings() const {
+void Session::keepSettings() {
     if (programFolder_.empty()) return;
-    writeTextFile(programFolder_ + "/settings.txt", "stick " + std::to_string(static_cast<int>(std::round(ui::gStickSpeed * 100.f))) + "\noctaves " +
+    settingsOwed_ = settingsText() != settingsKept_; // (and changed back before it was written: owed no more)
+    if (settingsOwed_) keepAfter_ = now_;
+}
+
+void Session::keepSettingsNow() {
+    if (!programFolder_.empty()) {
+        if (settingsOwed_) {
+            const std::string text = settingsText();
+            if (text != settingsKept_ && writeTextFile(programFolder_ + "/settings.txt", text)) settingsKept_ = text; // (not written: tried again at the next change)
+        }
+        if (volumeOwed_) {
+            const std::string text = volumeText();
+            if (text != volumeKept_ && writeTextFile(programFolder_ + "/volume.txt", text)) volumeKept_ = text;
+        }
+    }
+    settingsOwed_ = volumeOwed_ = false;
+}
+
+std::string Session::volumeText() const { return std::to_string(static_cast<int>(std::round(volume_ * 100.f))) + "\n"; }
+
+std::string Session::settingsText() const {
+    return "stick " + std::to_string(static_cast<int>(std::round(ui::gStickSpeed * 100.f))) + "\noctaves " +
                                                         std::to_string(octaves_) + "\nmidirec " + (midiRecord_ ? "1" : "0") + "\ntext " + std::to_string(textSize_) +
                                                         "\ntheme " + std::to_string(theme_) + "\nbrightness " + std::to_string(brightness_) +
                                                         "\nlight " + std::to_string(stickLight_) + "\nclick " + std::to_string(click_) +
                                                         "\ncountin " + (countIn_ ? "1" : "0") + "\n" +
                                                         (lightColour_ != kLightTheme ? "lightcolour " + std::to_string(lightColour_) + "\n" : "") +
                                                         (mutes_ != kMutesAtOnce ? "mutes " + std::to_string(mutes_) + "\n" : "") +
-                                                        (ringLevel_ != kBrightUsual ? "ringlevel " + std::to_string(ringLevel_) + "\n" : ""));
+                                                        (ringLevel_ != kBrightUsual ? "ringlevel " + std::to_string(ringLevel_) + "\n" : "");
 }
 
 void Session::setBrightness(int percent) {
@@ -381,7 +402,12 @@ void Session::setTheme(int theme) {
 
 void Session::loadSettings() {
     std::string text;
-    if (programFolder_.empty() || !readTextFile(programFolder_ + "/settings.txt", text)) return;
+    if (programFolder_.empty()) return;
+    if (!readTextFile(programFolder_ + "/settings.txt", text)) {
+        settingsKept_ = settingsText(); // (no file: as built, and the same again is nothing to write)
+        settingsOwed_ = false;
+        return;
+    }
     std::istringstream lines(text);
     std::string name;
     int value = 0;
@@ -402,6 +428,10 @@ void Session::loadSettings() {
         if (name == "ringlevel" && value >= kBrightLeast && value <= kBrightMost) setRingLevel(value); // (none: 70, as the screen)
     }
     programFolder_ = folder;
+    // What is read now is what the card has: the same again is not written. (With no file: what stands
+    // for none; a setting changed is written then.) Anything owed from before it is what was read now.
+    settingsKept_ = settingsText();
+    settingsOwed_ = false;
 }
 
 void Session::loadVolume(float ifNone) {
@@ -415,6 +445,8 @@ void Session::loadVolume(float ifNone) {
     programFolder_.clear(); // setting it now is not a change worth writing down
     setVolume(volume);
     programFolder_ = folder;
+    volumeKept_ = volumeText(); // (no file: the volume that stands for none, which is nothing to write either)
+    volumeOwed_ = false;
 }
 
 void Session::setTempo(float bpm) {

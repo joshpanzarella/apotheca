@@ -10,10 +10,12 @@ namespace apotheca {
 
 namespace {
 
-// The order they are asked for. The ones that matter most come first.
+// The order they are asked for. The ones that matter most come first; the stick's two ways come
+// after MENU, then the stick pressed in (L3, and R3 where there is a second stick).
 const Button kOrder[] = {Button::Up, Button::Down, Button::Left, Button::Right, Button::A, Button::B, Button::X, Button::Y,
                          Button::L1, Button::R1, Button::L2, Button::R2, Button::Start, Button::Select, Button::Menu};
 constexpr int kButtonSteps = sizeof kOrder / sizeof kOrder[0];
+static_assert(kButtonSteps + 4 == ControlLearner::kSteps, "the buttons, the stick's two ways, L3 and R3");
 constexpr Uint32 kSkipAfterMs = 8000;
 constexpr Uint32 kSettleMs = 600; // at the very start, what the axes say is where they rest
 constexpr int kAxisPress = 16000, kAxisRelease = 9000; // of 32767, measured from where the axis rests
@@ -30,7 +32,7 @@ void put(std::ostringstream& out, const char* name, const RawControl& c) {
 
 std::string ControlMap::text() const {
     std::ostringstream out;
-    out << "apotheca-controls 1\n";
+    out << "apotheca-controls " << version << '\n';
     for (int i = 0; i < static_cast<int>(Button::Count); ++i) put(out, buttonName(static_cast<Button>(i)), button[i]);
     put(out, "STICK-RIGHT", stickRight);
     put(out, "STICK-DOWN", stickDown);
@@ -42,6 +44,7 @@ bool ControlMap::parse(const std::string& text) {
     std::string line;
     if (!std::getline(lines, line) || line.compare(0, 17, "apotheca-controls") != 0) return false;
     ControlMap made;
+    made.version = std::atoi(line.c_str() + 17) >= 2 ? 2 : 1; // (no number, or 1: from before L3 was asked for)
     while (std::getline(lines, line)) {
         std::istringstream in(line);
         std::string name, kind;
@@ -67,20 +70,45 @@ bool ControlMap::parse(const std::string& text) {
 
 ControlLearner::ControlLearner() {
     for (int& rest : axisRest_) rest = 0;
+    for (int i = 0; i < kButtonSteps; ++i) asks_[i] = static_cast<int>(kOrder[i]);
+    asks_[kButtonSteps] = kAskStickRight;
+    asks_[kButtonSteps + 1] = kAskStickDown;
+    asks_[kButtonSteps + 2] = static_cast<int>(Button::L3);
+    asks_[kButtonSteps + 3] = static_cast<int>(Button::R3);
+}
+
+void ControlLearner::askOnlyFor(const ControlMap& kept, Button button) {
+    map_ = kept;
+    map_.version = ControlMap::kVersion; // asked now: never again, whatever the answer
+    asks_[0] = static_cast<int>(button);
+    count_ = 1;
+    step_ = 0;
+    stepBegan_ = now_; // (its wait starts now; 0 before the first update: from that)
+    complaint_ = "";
 }
 
 RawControl* ControlLearner::target() {
-    if (step_ < kButtonSteps) return &map_.button[static_cast<int>(kOrder[step_])];
-    return step_ == kButtonSteps ? &map_.stickRight : &map_.stickDown;
+    const int a = ask();
+    if (a >= 0) return &map_.button[a];
+    return a == kAskStickRight ? &map_.stickRight : &map_.stickDown;
 }
 
 const char* ControlLearner::asking() const {
-    if (step_ < kButtonSteps) return buttonLabel(kOrder[step_]);
-    return step_ == kButtonSteps ? "THE STICK, TO THE RIGHT" : step_ == kButtonSteps + 1 ? "THE STICK, DOWN" : "";
+    if (done()) return "";
+    const int a = ask();
+    if (a == static_cast<int>(Button::L3)) return "L3: THE STICK, PRESSED IN";
+    if (a == static_cast<int>(Button::R3)) return "R3: A SECOND STICK, PRESSED IN";
+    if (a >= 0) return buttonLabel(static_cast<Button>(a));
+    return a == kAskStickRight ? "THE STICK, TO THE RIGHT" : "THE STICK, DOWN";
 }
 
-// MENU is often kept by the firmware for itself, and a device may have no stick.
-bool ControlLearner::canSkip() const { return step_ >= kButtonSteps - 1 && step_ < kSteps; }
+// MENU is often kept by the firmware for itself, a device may have no stick, and whether a firmware
+// passes the stick pressed in is not known (the stock one's: nobody knows yet).
+bool ControlLearner::canSkip() const {
+    if (done()) return false;
+    const int a = ask();
+    return a < 0 || a == static_cast<int>(Button::Menu) || a == static_cast<int>(Button::L3) || a == static_cast<int>(Button::R3);
+}
 
 float ControlLearner::skipIn() const {
     const Uint32 gone = now_ - stepBegan_;
@@ -123,7 +151,7 @@ bool ControlLearner::pressedNow(const SDL_Event& e, RawControl& out) {
             axisKnown_[axis] = true;
             return false;
         }
-        if (!axisKnown_[axis] && step_ >= kButtonSteps) {
+        if (!axisKnown_[axis] && ask() < 0) {
             // The stick is being asked for, and a stick rests in the middle.
             axisRest_[axis] = 0;
             axisKnown_[axis] = true;
@@ -189,19 +217,25 @@ void ControlLearner::handle(const SDL_Event& event) {
         return;
     }
     if (waitingForRelease_) return; // still the press that answered the step before
-    const bool stickStep = step_ >= kButtonSteps;
-    if (stickStep && got.kind != RawControl::JoyAxis) {
+    const int a = ask();
+    if (a < 0 && got.kind != RawControl::JoyAxis) {
         complaint_ = "THAT IS A BUTTON. PUSH THE STICK.";
         return;
     }
-    // Each control can mean one thing only.
-    for (int i = 0; i < step_ && i < kButtonSteps; ++i) {
-        if (map_.button[static_cast<int>(kOrder[i])].same(got)) {
+    // The stick pressed in is a button: a way the stick moves is not it (that axis would then press
+    // L3 whenever the stick was pushed).
+    if ((a == static_cast<int>(Button::L3) || a == static_cast<int>(Button::R3)) && got.kind == RawControl::JoyAxis) {
+        complaint_ = "THAT IS THE STICK MOVING. PRESS IT IN.";
+        return;
+    }
+    // Each control can mean one thing only (the buttons asked for already, or kept from before: askOnlyFor).
+    for (int i = 0; i < static_cast<int>(Button::Count); ++i) {
+        if (i != a && map_.button[i].kind != RawControl::None && map_.button[i].same(got)) {
             complaint_ = "THAT ONE IS ALREADY TAKEN. PRESS A DIFFERENT ONE.";
             return;
         }
     }
-    if (step_ == kButtonSteps + 1 && map_.stickRight.kind == RawControl::JoyAxis && map_.stickRight.index == got.index) {
+    if (a == kAskStickDown && map_.stickRight.kind == RawControl::JoyAxis && map_.stickRight.index == got.index) {
         complaint_ = "THAT IS THE SAME WAY AS BEFORE. PUSH IT DOWN.";
         return;
     }
@@ -225,8 +259,8 @@ void ControlLearner::update(Uint32 nowMs) {
     now_ = nowMs;
     if (!done() && canSkip() && nowMs - stepBegan_ >= kSkipAfterMs) {
         // Left unset: the device does not have it, or keeps it for itself.
-        // (Skipping "stick right" skips "stick down" too: there is no stick.)
-        step_ = step_ == kButtonSteps ? kSteps : step_ + 1;
+        // (Skipping "stick right" skips the rest too: with no stick, no stick to press in.)
+        step_ = ask() == kAskStickRight ? count_ : step_ + 1;
         stepBegan_ = nowMs;
         complaint_ = "";
     }
@@ -238,12 +272,13 @@ void ControlLearner::draw(SDL_Renderer* r, const Fonts& chosen) const {
     SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
     fill(r, 0, 0, kScreenW, kScreenH, kBg);
     fonts.medium.draw(r, 40.f, 40.f, "SETTING UP THE CONTROLS", kDim);
-    fonts.small.draw(r, 40.f, 64.f, "Once only. Apotheca learns what each of this handheld's buttons sends.", kDim);
+    fonts.small.draw(r, 40.f, 64.f, count_ == 1 ? "One button is new since this handheld was set up. Once only."
+                                                : "Once only. Apotheca learns what each of this handheld's buttons sends.", kDim);
     char text[96];
-    std::snprintf(text, sizeof text, "%d OF %d", step_ + 1 > kSteps ? kSteps : step_ + 1, kSteps);
+    std::snprintf(text, sizeof text, "%d OF %d", step_ + 1 > count_ ? count_ : step_ + 1, count_);
     fonts.small.drawRight(r, kScreenW - 40.f, 40.f, text, kDim);
 
-    const bool stick = step_ >= kButtonSteps;
+    const bool stick = !done() && ask() < 0;
     fonts.large.draw(r, 40.f, 150.f, stick ? "PUSH" : "PRESS", kText);
     box(r, 40, 180, kScreenW - 80, 70, kPanel2, kTeal);
     outline(r, 40, 180, kScreenW - 80, 70, kTeal, 2);
@@ -256,7 +291,7 @@ void ControlLearner::draw(SDL_Renderer* r, const Fonts& chosen) const {
     // What the device is sending, in its own terms: proof that it is being heard.
     fonts.small.draw(r, 40.f, kScreenH - 60.f, "THE HANDHELD LAST SENT:", kDim);
     fonts.small.draw(r, 220.f, kScreenH - 60.f, saw_.empty() ? "nothing yet" : saw_.c_str(), saw_.empty() ? kBrass : kText);
-    fonts.small.draw(r, 40.f, kScreenH - 40.f, "To do this again later: the SETUP screen, or hold any button for two seconds just after Apotheca starts.", kDim);
+    fonts.small.draw(r, 40.f, kScreenH - 40.f, "To do this again later: the SET tab, CONTROLS row, hold A for a second.", kDim);
 }
 
 } // namespace apotheca

@@ -48,9 +48,16 @@ the bottom bar always says what the buttons do where you are.
 **The first start on the handheld sets up the controls.** Apotheca asks for
 each button in turn ("PRESS A", "PRESS B"...) and learns what this handheld
 sends for it, whatever the firmware calls it. It takes about twenty seconds,
-once. MENU and the stick may be left out by waiting eight seconds, for a
-device that has none or keeps MENU for itself. The answers are kept in
+once. After the stick it asks for **L3, the stick pressed in** (it opens
+MASTER from any screen), and R3 for a second stick. MENU, the stick, L3 and R3
+may each be left out by waiting eight seconds, for a device that has none or
+whose firmware keeps it for itself (whether the stock firmware passes the
+stick's click on is not known yet). The answers are kept in
 `controls.txt` in the `apotheca` folder.
+
+A handheld set up before L3 was asked for is asked for **L3 alone, once**, at
+its next start: press the stick in, or wait eight seconds. Either way it is not
+asked again.
 
 **To set them up again** (another handheld, or a button learned wrongly),
 either of two ways:
@@ -85,7 +92,9 @@ and the stick shapes the thing under the cursor:
 on every screen (X hears what is under the cursor, on SONG it solos the track; the stick and D-pad
 move, A, B, START, L2 / R2, what SELECT does with other buttons, how to
 stop all sound), and the **battery**. Let go and it closes. On a handheld whose firmware keeps MENU for
-itself, holding SELECT for a moment does it instead.
+itself, holding SELECT by itself for a moment does it instead. Press another button with SELECT (SELECT
++ B to undo, the D-pad for the tempo...) and the card stays away until SELECT is let go, so what that
+did can be seen.
 
 **Above the battery the card says how hard the handheld is working**, a new
 reading each second while it is open:
@@ -441,6 +450,12 @@ A notice comes up (ALL SOUND STOPPED), in case it was an accident. Once
 the buttons are let go, any button puts it away (that press does nothing
 else), or it goes by itself after four seconds.
 
+What the shoulder buttons did on the way to all four is put back: the tab, a
+bar or scene copied, and **a recording that R1 began** (R1 pressed first on a
+kit lane, the sampler or CLOUD's RECORDING) is called off, and nothing of it is
+kept. A recording that was already running when R1 went down first is ended by
+that R1, as any R1 ends it, and kept.
+
 ## SETUP (the SET tab)
 
 ![The SET tab](manual/volume.png)
@@ -462,7 +477,7 @@ that way.
 | CHORD PACK | Another pack | |
 | KEY | The song's key, C to B (round) | |
 | SCALE | **SCALE LOCK**: CHROMATIC (no key: every key, the usual), MAJOR, MINOR, DORIAN, PHRYGIAN, LYDIAN, MIXOLYDIAN, LOCRIAN, MAJOR PENT, MINOR PENT, HARMONIC MINOR, BLUES. On, the piano roll's cursor steps left / right only through the scale's keys (and any key a note of the bar shown is on, so it can still be reached), the keys out of it are drawn dim, a note carried sideways (hold R1) goes to the next key of the scale, and the chord pack's chords are moved into the key (a major pack in a minor scale to its relative major: C major's chords in A minor stay C, Dm...). Kept in the song; a step of undo | |
-| TRACK NAME | A name for the track being worked on, from a list | **Type one**: a grid of letters and numbers. A types, **Y deletes a letter, B keeps the name and leaves** (with nothing typed B leaves and the name stays as it was), START keeps it too (with nothing typed: the instrument's own name). Ten characters. |
+| TRACK NAME | A name for the track being worked on, from a list | **Type one**, when A is let go (hold A + left / right only picks from the list): a grid of letters and numbers. A types, **Y deletes a letter, B keeps the name and leaves** (with nothing typed B leaves and the name stays as it was), START keeps it too (with nothing typed: the instrument's own name). Ten characters. |
 | VOLUME | A twentieth | |
 | BRIGHTNESS | The screen, 10% to 100% in fives (also **MENU + the volume keys**, ten at a time). **Only on Apotheca's own system for the RG40XXV** | |
 | STICK LIGHT | The light round the stick: OFF, ON (steady, in LIGHT COLOUR), BEAT (a flash on every beat while the song plays), STEPS (the ring goes round once a scene: its sixteen lights share the scene's length, the bar's first step in brass). **Only on Apotheca's own system** | |
@@ -483,7 +498,9 @@ that way.
 | CONTROLS | | Hold a second: set the controls up again |
 
 The first three belong to the song. The rest belong to the handheld and are
-kept in `settings.txt` and `volume.txt` beside the program.
+kept in `settings.txt` and `volume.txt` beside the program: written a second
+after the last change (a held RIGHT writes once, at the end), and when
+Apotheca quits or turns off.
 
 The page shows twelve rows. Going down past BUTTONS moves it up a row to show
 CONTROLS; a small arrow after HANDHELD (or PROJECT) says a row is out of sight
@@ -763,7 +780,10 @@ You have a loop going and want the next part of the song to start from it.
 
 ![Bouncing, on the SET tab](manual/bounce.png)
 
-**SET tab, BOUNCE row.** Left / right picks what, A starts it.
+**SET tab, BOUNCE row.** Left / right picks what, A starts it when it is let
+go (hold A + left / right only picks, as on other screens). **Hold B a second
+stops one under way** (the row's bar fills); nothing of it is kept, not even
+the tracks of an EACH TRACK already finished.
 
 | What | Files written |
 | --- | --- |
@@ -1704,7 +1724,9 @@ zip).
 1. The page sends it. It is checked (a program for this processor, 30 MB at
    most) and only set aside. The network alone installs nothing.
 2. The handheld shows AN UPDATE HAS ARRIVED. **Hold A for a second** to
-   accept, or B to throw it away. Nothing else responds until it is answered.
+   accept, or **hold B for a second** to delete it (a bar fills for either;
+   a deleted one has to be sent again). Nothing else responds until it is
+   answered.
 3. Accepted, it is used the next time Apotheca starts. The program that was
    running is kept. Until then the right-hand end of the hints bar says
    **RESTART TO UPDATE**, on every screen. SELECT + START quits; start
@@ -1812,11 +1834,11 @@ A few things mean one thing everywhere:
 | --- | --- |
 | A | Place, open, pick. Held: a direction shapes or turns what is under the cursor |
 | B | Delete, empty, go back |
-| **Hold B** | **Delete for good**: a track (2 s), a song (1 s), a recording in the list (1 s). The row fills as you hold; let go early and nothing happens |
+| **Hold B** | **Delete for good**: a track (2 s), a song (1 s), a recording in the list (1 s), an update sent over WiFi (1 s). The row fills as you hold; let go early and nothing happens |
 | X | Hear it. A recording plays **for as long as X is held** (a tap: a moment). Held on a drum hit: its step effects. Held on a knob: its MOD |
 | Hold R1 | On an empty step: paint as you drag. On a note: carry it. On SONG: copy a cell; R1 on another cell pastes it there |
 | L2 / R2 | The tabs |
-| **L3** (press the stick in) | **The SONG screen with MASTER under the cursor**: hold A + up / down is the output's level at once, whatever the handheld's own volume. L3 again (still on MASTER): back where you were |
+| **L3** (press the stick in) | **The SONG screen with MASTER under the cursor**: hold A + up / down is the output's level at once, whatever the handheld's own volume. L3 again (still on MASTER): back where you were. Only where the controls setup learned it (it asks for it after the stick) |
 | SELECT + something | Things about the whole song: undo, tempo, volume, WRITE, the scene's length, the next scene |
 
 A held D-pad runs at one of two speeds on every screen: fast for a cursor

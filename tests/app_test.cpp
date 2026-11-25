@@ -2049,6 +2049,18 @@ void testBouncing() {
     CHECK(!session.bouncing() && wavsIn().size() == before);
     for (const std::string& n : wavsIn()) CHECK(read(n).left.size() >= body + kAfter); // every file there is whole
     CHECK(wavsIn().size() <= before + 1 && filesEnding(folder, ".wav.part").empty());
+    // An EACH TRACK cut short, its first track whole and the second under way: nothing of it is kept,
+    // the whole one neither (it was a part of the stems, never padded to their one length).
+    {
+        const std::size_t had = wavsIn().size();
+        sleep(1);
+        CHECK(session.startBounce(Session::Bounce::EachTrack));
+        while (session.bouncing() && session.bounceProgress() <= 0.55f) usleep(200);
+        CHECK(session.bouncing() && session.bounceProgress() > 0.5f);
+        session.cancelBounce();
+        CHECK(!session.bouncing() && session.bounceFiles() == 0 && session.bounceLast().empty());
+        CHECK(wavsIn().size() == had && filesEnding(folder, ".wav.part").empty());
+    }
     // Whole files are never taken for half-written ones: every bounce made is still there after one more starts.
     const std::size_t whole = wavsIn().size();
     rig.project().repeats[0] = 1;
@@ -2856,6 +2868,39 @@ void testTheHelpCard() {
     CHECK(!other.app.helpShowing() && other.view() == View::Device); // having shown it, letting go is not a tap
     other.tap(SELECT); // a quick tap still is
     CHECK(other.view() == View::Song);
+    // SELECT held with another button is a combo, not the card (G38): SEL + B, B, B undoing shows each
+    // UNDONE in the box the card would cover, however long SELECT stays down.
+    other.app.session().view = View::Device;
+    other.frames(1);
+    other.key(SELECT, true);
+    other.frames(5);
+    other.tap(B);
+    CHECK(std::string(other.app.undoSaid()).find("UNDO") != std::string::npos);
+    other.frames(60);
+    CHECK(!other.app.helpShowing());
+    other.tap(B);
+    other.frames(60);
+    CHECK(!other.app.helpShowing() && std::string(other.app.undoSaid()).find("UNDO") != std::string::npos);
+    other.key(SELECT, false);
+    other.frames(1);
+    CHECK(!other.app.helpShowing() && other.view() == View::Device); // (used: no tap either)
+    // Held by itself, the card; another button then puts it away until SELECT is let go.
+    other.key(SELECT, true);
+    other.frames(27);
+    CHECK(other.app.helpShowing());
+    other.tap(UP); // SEL + UP: a beat a minute faster, and the card goes so the screen is seen
+    other.frames(1);
+    CHECK(!other.app.helpShowing() && other.project().tempo == 121.f);
+    other.frames(60);
+    CHECK(!other.app.helpShowing());
+    other.key(SELECT, false);
+    other.frames(1);
+    other.key(SELECT, true); // a new hold: the card again
+    other.frames(27);
+    CHECK(other.app.helpShowing());
+    other.key(SELECT, false);
+    other.frames(1);
+    CHECK(!other.app.helpShowing() && other.view() == View::Device);
     rig.frames(1); // back to a handheld with MENU, for the tests after this one
     CHECK(std::string(ui::gHelpHint) == "MENU: HELP");
 }
@@ -3322,6 +3367,117 @@ void testAQmodSongOpensOnFm6() {
     CHECK(again.find("track fm6") != std::string::npos && again.find("qmod") == std::string::npos);
 }
 
+// SET acts on A's let go on BOUNCE and TRACK NAME, and only if nothing else went down while A was held
+// (G15: hold A + RIGHT, the habit of every other screen, started a bounce on the press). Hold B a second
+// on a bounce under way stops it, nothing kept.
+void testSetActsOnTheLetGo() {
+    const std::string folder = tempFolder("setbounce");
+    const auto wavs = [&] { return filesEnding(folder, ".wav").size() + filesEnding(folder, ".mid").size(); };
+    Rig rig;
+    Session& session = rig.app.session();
+    session.useBounceFolder(folder);
+    // A long song: 24 scenes of a 16-times bar at the slowest tempo, a kick on each beat (about 38 minutes).
+    for (int step = 0; step < kSteps; step += 4) rig.app.drums().setStep(0, step, 1.f);
+    rig.project().repeats[0] = kMaxRepeats;
+    for (int i = 0; i < 23; ++i) CHECK(session.nextScene(i) == i + 1);
+    for (int i = 0; i < 24; ++i) rig.project().repeats[i] = kMaxRepeats;
+    session.setTempo(kMinTempo);
+    session.view = View::Settings;
+    SettingsScreen& setup = rig.app.settings();
+    setup.goTo(SettingsScreen::kBounce);
+    rig.frames(2);
+    // Hold A + RIGHT: RIGHT picks EACH TRACK, and the let go starts nothing.
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    rig.frames(3);
+    rig.key(A, false);
+    rig.frames(2);
+    CHECK(!session.bouncing() && wavs() == 0);
+    // Hold A and the stick sideways: the same.
+    rig.key(A, true);
+    rig.key(STICK_LEFT, true);
+    rig.frames(1);
+    rig.key(STICK_LEFT, false);
+    rig.frames(1);
+    rig.key(A, false);
+    rig.frames(2);
+    CHECK(!session.bouncing() && wavs() == 0);
+    // Hold A, any other button (B, X): no tap either.
+    rig.key(A, true);
+    rig.tap(X);
+    rig.key(A, false);
+    CHECK(!session.bouncing());
+    // A down here, carried to another row and let go there: nothing.
+    rig.key(A, true);
+    setup.goTo(SettingsScreen::kTrackName);
+    rig.key(A, false);
+    CHECK(!session.bouncing() && !setup.typing());
+    setup.goTo(SettingsScreen::kBounce);
+    // A tapped: the song, on the let go.
+    rig.key(A, true);
+    rig.frames(3);
+    CHECK(!session.bouncing());
+    rig.key(A, false);
+    CHECK(session.bouncing());
+    // Hold B a second: stopped, nothing kept. Most of a second, or another button with it, is not enough.
+    rig.key(B, true);
+    rig.frames(50);
+    CHECK(session.bouncing() && setup.stopPart() > 0.7f);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(session.bouncing() && setup.stopPart() == 0.f);
+    rig.key(B, true);
+    rig.frames(30);
+    rig.tap(X); // any other press calls it off
+    rig.frames(40);
+    CHECK(session.bouncing() && setup.stopPart() == 0.f);
+    rig.key(B, false);
+    rig.key(B, true);
+    rig.frames(30);
+    rig.tap(DOWN); // ...and the cursor off the row
+    rig.frames(40);
+    CHECK(session.bouncing() && setup.stopPart() == 0.f && setup.cursorRow() == SettingsScreen::kClick);
+    rig.key(B, false);
+    setup.goTo(SettingsScreen::kBounce);
+    {
+        Canvas canvas; // its hint says how
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(ui::gHintsOver == 0.f);
+    }
+    rig.key(B, true);
+    rig.frames(61);
+    CHECK(session.bouncing());
+    rig.frames(4);
+    CHECK(!session.bouncing() && session.bounceFiles() == 0 && wavs() == 0 && filesEnding(folder, ".wav.part").empty());
+    CHECK(std::string(rig.app.undoSaid()) == SettingsScreen::kBounceStoppedWords);
+    rig.key(B, false);
+    rig.frames(2);
+    // B with no bounce under way does nothing.
+    rig.tap(B);
+    CHECK(!session.bouncing() && rig.view() == View::Settings);
+
+    // TRACK NAME: hold A + RIGHT is the next name from the list, and no keys.
+    setup.goTo(SettingsScreen::kTrackName);
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    rig.key(A, false);
+    CHECK(!setup.typing() && std::string(rig.project().tracks[0].name) == kTrackNames[1]);
+    rig.key(A, true);
+    CHECK(!setup.typing()); // (not on the press)
+    rig.key(A, false);
+    CHECK(setup.typing() && setup.typed() == kTrackNames[1]);
+    rig.tap(B);
+    CHECK(!setup.typing());
+    // TEMPO keeps its press: tap tempo is A in time.
+    setup.goTo(SettingsScreen::kTempo);
+    rig.frames(120);
+    rig.tap(A);
+    rig.frames(30);
+    rig.key(A, true);
+    CHECK(std::string(rig.app.undoSaid()).find("TAPPED") == 0); // the second tap's tempo, on its press
+    rig.key(A, false);
+}
+
 void testTypingATrackName() {
     Rig rig;
     rig.app.session().view = View::Settings;
@@ -3651,6 +3807,80 @@ void testSelectGoesToTheSongScreen() {
     rig.key(A, false);
     rig.key(SELECT, false);
     CHECK(rig.view() == View::Device);
+}
+
+// settings.txt and volume.txt (G43): never written for a value that is what the card has (a held RIGHT
+// at an end of THEME wrote a file and two fsyncs nine times a second), and otherwise once what they
+// would say has stood still a second, and on the way out (keepSettingsNow; the Session's end too).
+void testSettingsWaitToStandStill() {
+    const std::string folder = tempFolder("keep");
+    const std::string settings = folder + "/settings.txt", volume = folder + "/volume.txt";
+    const auto there = [](const std::string& path) { struct stat st; return stat(path.c_str(), &st) == 0; };
+    std::string kept;
+    {
+        Rig rig;
+        Session& session = rig.app.session();
+        session.useProgramFolder(folder);
+        session.loadVolume(0.4f);
+        session.loadSettings();
+        rig.frames(2);
+        // What it is already: nothing written, however often.
+        for (int i = 0; i < 20; ++i) {
+            session.setTheme(session.theme());
+            session.setVolume(0.4f);
+            CHECK(!session.settingsOwed()); // (nothing owed: no file, and no waiting either)
+            rig.frames(7);
+        }
+        rig.frames(100);
+        CHECK(!there(settings) && !there(volume) && !session.settingsOwed());
+        // A held run (THEME, nine a second): nothing on the card until it has stood still a second.
+        session.view = View::Settings;
+        rig.app.settings().goTo(SettingsScreen::kTheme);
+        rig.key(RIGHT, true);
+        rig.frames(60); // (about five steps, and on to the end)
+        CHECK(!there(settings) && session.settingsOwed());
+        rig.key(RIGHT, false);
+        rig.frames(58);
+        CHECK(!there(settings));
+        rig.frames(8);
+        CHECK(readTextFile(settings, kept) && kept.find("theme " + std::to_string(session.theme()) + "\n") != std::string::npos && !session.settingsOwed());
+        // Held on at the end: what the card has already. Nothing more is written.
+        std::remove(settings.c_str());
+        rig.key(RIGHT, true);
+        rig.frames(60);
+        rig.key(RIGHT, false);
+        rig.frames(100);
+        CHECK(!there(settings) && !session.settingsOwed());
+        // Changed, and back again before it was written: nothing.
+        session.setTheme(0);
+        rig.frames(10);
+        session.setTheme(Session::kThemeCount - 1);
+        rig.frames(100);
+        CHECK(!there(settings));
+        // The volume the same way (SEL + R1, louder).
+        rig.key(SELECT, true);
+        rig.tap(R1);
+        rig.tap(R1);
+        rig.key(SELECT, false);
+        rig.frames(30);
+        CHECK(!there(volume) && near(session.volume(), 0.6f));
+        rig.frames(40);
+        CHECK(readTextFile(volume, kept) && kept == "60\n");
+        std::remove(volume.c_str());
+        rig.key(SELECT, true);
+        rig.tap(R1);
+        rig.tap(L1); // (back to 60: what the card had)
+        rig.key(SELECT, false);
+        rig.frames(100);
+        CHECK(!there(volume));
+        // On the way out: written at once (main.cpp), and by the Session's end too.
+        session.setVolume(0.9f);
+        session.keepSettingsNow();
+        CHECK(readTextFile(volume, kept) && kept == "90\n");
+        session.setOctavesShown(3);
+        CHECK(!there(settings));
+    }
+    CHECK(readTextFile(settings, kept) && kept.find("octaves 3\n") != std::string::npos);
 }
 
 void testTheSetupScreen() {
@@ -11930,6 +12160,16 @@ int main(int argc, char** argv) {
         if (failures == 0) std::printf("app tests passed (gestures only)\n");
         return failures == 0 ? 0 : 1;
     }
+    if (argc > 1 && std::string(argv[1]) == "--setup") { // just the gesture audit's batch A2: the help card, SET's let go, the setup screen
+        testSettingsWaitToStandStill();
+        testTheHelpCard();
+        testSetActsOnTheLetGo();
+        testTheSetupScreen();
+        testTypingATrackName();
+        testBouncing();
+        if (failures == 0) std::printf("app tests passed (setup only)\n");
+        return failures == 0 ? 0 : 1;
+    }
     if (argc > 1 && std::string(argv[1]) == "--hands") { // just the button standards of the pit stop
         testHoldBDeletesAnEffect();
         testTheHintsFitAndSayWhatTheyDo();
@@ -12002,6 +12242,8 @@ int main(int argc, char** argv) {
     testRecordingAutomation();
     testChoicesClick();
     testTheHelpCard();
+    testSetActsOnTheLetGo();
+    testSettingsWaitToStandStill();
     testTheHelpCardDrawsSel();
     testTheHelpCardSaysTheLoad();
     testQuittingTurnsTheHandheldOff();

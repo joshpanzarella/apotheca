@@ -703,9 +703,48 @@ void testUpdatingOverWiFi() {
     key(A, false);
     frames(80);
     CHECK(session.updateWaiting() && !exists(programs + "/apotheca.new"));
-    // B throws it away.
+    // B held a second deletes it (G40: a tap of B threw it away, while accepting took a hold). A tap,
+    // or most of a second, is not enough; nor is a hold that another button calls off.
     tap(B);
+    frames(80);
+    CHECK(session.updateWaiting() && exists(programs + "/apotheca.pending") && !app.updateDeleting());
+    key(B, true);
+    frames(50);
+    CHECK(app.updateDeleting());
+    key(B, false);
+    frames(80);
+    CHECK(session.updateWaiting() && !app.updateDeleting());
+    key(B, true);
+    frames(30);
+    tap(START); // any other press calls the delete off
+    frames(60);
+    CHECK(session.updateWaiting() && !app.updateDeleting() && !app.project().playing);
+    key(B, false);
+    // A and B: the one pressed last is the one that fills. A held, then B: A's hold is called off.
+    key(A, true);
+    frames(30);
+    key(B, true);
+    frames(50);
+    CHECK(session.updateWaiting() && !exists(programs + "/apotheca.new") && app.updateDeleting());
+    key(A, false);
+    key(B, false);
+    frames(80);
+    // B held, then A: B's is called off, and A's is not finished either (let go at 0.8 s).
+    key(B, true);
+    frames(30);
+    key(A, true);
+    frames(50);
+    CHECK(session.updateWaiting() && !app.updateDeleting());
+    key(A, false);
+    key(B, false);
+    frames(80);
+    CHECK(session.updateWaiting() && !exists(programs + "/apotheca.new") && exists(programs + "/apotheca.pending"));
+    key(B, true);
+    frames(61);
+    CHECK(session.updateWaiting());
+    frames(4);
     CHECK(!session.updateWaiting() && !exists(programs + "/apotheca.pending") && !exists(programs + "/apotheca.new"));
+    key(B, false);
     frames(2);
     tap(SDLK_RIGHT); // the buttons are the screen's again
     CHECK(app.drums().cursorStep() == 1 && app.updateSaid() == 0);
@@ -743,6 +782,7 @@ void testUpdatingOverWiFi() {
     session.loadVolume(0.4f);
     CHECK(std::fabs(session.volume() - 0.4f) < 1e-4f && !exists(programs + "/volume.txt")); // nothing kept yet: the quiet default
     session.setVolume(0.7f);
+    session.keepSettingsNow(); // (written once it has stood still a second: kKeepRestMs)
     CHECK(readTextFile(programs + "/volume.txt", kept) && kept == "70\n");
     {
         std::unique_ptr<Engine> next(new Engine);

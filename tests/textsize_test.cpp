@@ -667,6 +667,7 @@ void testTheSettingIsKept() {
         // Every size is kept as its number, with the other settings, as soon as it is set.
         for (int size : {kTextXl, kTextSmall, kTextMedium, kTextLarge, kTextXl}) {
             session.setTextSize(size);
+            session.keepSettingsNow(); // (written once it has stood still a second: kKeepRestMs)
             CHECK(session.textSize() == size);
             CHECK(readTextFile(file, kept) && kept == "stick " + std::to_string(static_cast<int>(std::round(ui::gStickSpeed * 100.f))) + "\noctaves 2\nmidirec 0\ntext " + std::to_string(size) + "\ntheme 0\nbrightness 70\nlight 1\nclick 0\ncountin 0\n");
         }
@@ -675,10 +676,12 @@ void testTheSettingIsKept() {
         CHECK(session.textSize() == kTextXl);
         session.setTextSize(-5);
         CHECK(session.textSize() == kTextSmall);
+        session.keepSettingsNow();
         CHECK(readTextFile(file, kept) && kept.find("text 0\n") != std::string::npos);
         // Another setting changed keeps the size too.
         session.setTextSize(kTextXl);
         session.setOctavesShown(3);
+        session.keepSettingsNow();
         CHECK(readTextFile(file, kept) && kept.find("octaves 3\n") != std::string::npos && kept.find("text 3\n") != std::string::npos);
     }
     {
@@ -1871,6 +1874,12 @@ void testTheOtherScreens() {
     session.pretendBounce(1.f, 123.4f);
     rig.frames(1);
     holds(rig, "a bounce in its tail");
+    rig.key(B, true); // B held on it: its bar fills, and the row says nothing is kept
+    rig.frames(20);
+    CHECK(setup.stopPart() > 0.f);
+    holds(rig, "a bounce being stopped");
+    rig.key(B, false);
+    rig.frames(1);
     CHECK(std::system(("rm -rf '" + folder + "'").c_str()) == 0);
 }
 
@@ -1896,6 +1905,38 @@ void testTheControlsSetup() {
     for (Uint32 pixel : alone) lit += pixel != Canvas::colour(ui::kBg) ? 1 : 0;
     CHECK(lit > 2000); // (something was drawn)
     for (int size = 0; size < kTextSizes; ++size) CHECK(seen[size] == alone);
+    // Every step's words fit its box (the screen less 40 a side, at LARGE), L3's and R3's the longest;
+    // the lines above and below fit the screen. Each step answered by a key of its own (the stick's by an axis).
+    const Fonts& large = s.canvas.fonts->fixed();
+    const float box = ui::kScreenW - 80.f - 16.f, line = ui::kScreenW - 80.f;
+    ControlLearner walk;
+    walk.update(1000);
+    walk.update(2000);
+    for (int step = 0; !walk.done() && step < 40; ++step) {
+        const float w = large.large.width(walk.asking());
+        if (w > box) std::printf("    \"%s\" is %.0f wide: the box has %.0f\n", walk.asking(), static_cast<double>(w), static_cast<double>(box));
+        CHECK(w <= box);
+        SDL_Event e = {};
+        if (std::string(walk.asking()).find("THE STICK,") == 0) {
+            e.type = SDL_JOYAXISMOTION;
+            e.jaxis.axis = static_cast<Uint8>(std::string(walk.asking()).find("RIGHT") != std::string::npos ? 0 : 1);
+            e.jaxis.value = 30000;
+            walk.handle(e);
+            e.jaxis.value = 0;
+            walk.handle(e);
+        } else {
+            e.type = SDL_KEYDOWN;
+            e.key.keysym.sym = SDLK_a + step;
+            walk.handle(e);
+            e.type = SDL_KEYUP;
+            walk.handle(e);
+        }
+    }
+    CHECK(walk.done());
+    for (const char* words : {"One button is new since this handheld was set up. Once only.", "Once only. Apotheca learns what each of this handheld's buttons sends.",
+                              "To do this again later: the SET tab, CONTROLS row, hold A for a second.",
+                              "If this handheld has none, or nothing happens: wait 8 seconds and it is left out."})
+        CHECK(large.small.width(words) <= line);
 }
 
 // The notices that only an update over WiFi brings up are not drawn here: their lines are measured.
@@ -1910,7 +1951,7 @@ void testTheUpdateNotice() {
         {&Fonts::small, "The one running now is kept. If the new one does not"}, {&Fonts::small, "start, Apotheca goes back to this one by itself."},
         {&Fonts::large, "COULD NOT KEEP THE UPDATE"}, {&Fonts::medium, "Nothing was changed. Is the card full?"},
         {&Fonts::large, "AN UPDATE HAS ARRIVED"}, {&Fonts::medium, "A new Apotheca was sent over WiFi (39.9 MB)."},
-        {&Fonts::small, "Only accept it if you sent it yourself."}, {&Fonts::small, "HOLD A for a second to accept.    B to throw it away."},
+        {&Fonts::small, "Only accept it if you sent it yourself."}, {&Fonts::small, App::kUpdateWords}, {&Fonts::small, App::kUpdateDeletingWords},
     };
     for (const Line& line : lines)
         for (int size = 0; size < kTextSizes; ++size) {

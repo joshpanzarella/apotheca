@@ -395,7 +395,11 @@ int main(int argc, char** argv) {
     static ControlMap controlMap;
     std::string savedControls;
     const bool mapped = !smoke && !shot && !learn && readTextFile(controlsFile, savedControls) && controlMap.parse(savedControls);
-    bool learning = !mapped && !smoke && (!shot || learn) && (joysticks > 0 || learn || handheld);
+    // A map from a setup that never asked for L3 (the stick pressed in: MASTER from any screen), and
+    // with none in it: L3 alone, once. Answered or let go by, the map is written again and not asked again.
+    const bool askL3 = mapped && controlMap.neverAskedL3() && (joysticks > 0 || handheld);
+    if (askL3) learner.askOnlyFor(controlMap, Button::L3);
+    bool learning = askL3 || (!mapped && !smoke && (!shot || learn) && (joysticks > 0 || learn || handheld));
     SDL_GameController*& pad = sticks.pad;
     sticks.raw = mapped || learning;
     if (!mapped && !learning) {
@@ -405,7 +409,8 @@ int main(int argc, char** argv) {
             if (SDL_IsGameController(i)) pad = SDL_GameControllerOpen(i);
         }
     }
-    std::printf("controls: %s\n", mapped ? "as learned (controls.txt)" : learning ? "not learned yet: asking for each button"
+    std::printf("controls: %s\n", askL3 ? "as learned (controls.txt), but L3 was never asked for: asking for it alone"
+                                   : mapped ? "as learned (controls.txt)" : learning ? "not learned yet: asking for each button"
                                                                         : pad ? SDL_GameControllerName(pad) : "no gamepad found, keyboard stand-in only");
 
     // List what the device can record from, so a log from the handheld shows
@@ -747,6 +752,7 @@ int main(int argc, char** argv) {
     }
 
     app.session().saveNow(); // the last couple of seconds of changes
+    app.session().keepSettingsNow(); // ...and a setting or the volume changed in the last second (they wait to stand still)
     // Saved: now the system may turn the handheld off (its supervisor reads the mark once we have gone).
     if (offWhy && powerOff.turnsOff()) {
         if (powerOff.writeMark(offWhy)) std::printf("turning the handheld off (%s)\n", offWhy);

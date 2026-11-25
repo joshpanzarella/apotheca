@@ -104,7 +104,19 @@ ControlMap learnTheHandheld() {
     answer(learner, axis(0, 30000), axis(0, 0));
     CHECK(std::string(learner.asking()) == "THE STICK, DOWN" && !learner.done());
     answer(learner, axis(1, 30000), axis(1, 0));
-    CHECK(learner.done());
+    // Then the stick pressed in: L3 (MASTER from any screen), and R3 for a second stick. Both may be
+    // let go by, as MENU may: whether a firmware passes them is not known.
+    CHECK(std::string(learner.asking()).find("L3") == 0 && learner.canSkip() && !learner.done());
+    learner.handle(axis(0, 30000)); // the stick pushed while pressing it in: not the press
+    CHECK(learner.step() == 17 && std::string(learner.complaint()).find("PRESS IT IN") != std::string::npos);
+    learner.handle(axis(0, 0));
+    answer(learner, joyButton(12, true), joyButton(12, false));
+    CHECK(std::string(learner.asking()).find("R3") == 0 && learner.canSkip() && learner.complaint()[0] == 0);
+    answer(learner, joyButton(12, true), joyButton(12, false)); // the same button again: refused
+    CHECK(learner.step() == 18 && std::string(learner.complaint()).find("ALREADY") != std::string::npos);
+    answer(learner, joyButton(13, true), joyButton(13, false));
+    CHECK(learner.done() && learner.steps() == ControlLearner::kSteps && ControlLearner::kSteps == 19);
+    CHECK(learner.map().version == 2 && learner.map().text().compare(0, 20, "apotheca-controls 2\n") == 0);
     return learner.map();
 }
 
@@ -136,6 +148,9 @@ void testLearningAndUsingTheHandheld() {
     CHECK(is(feed(input, {joyButton(7, true), joyButton(8, true), joyButton(10, true), joyButton(9, true), joyButton(11, true)}),
              {{Button::L1, true}, {Button::R1, true}, {Button::Start, true}, {Button::Select, true}, {Button::Menu, true}}));
     feed(input, {joyButton(7, false), joyButton(8, false), joyButton(10, false), joyButton(9, false), joyButton(11, false)});
+    CHECK(is(feed(input, {joyButton(12, true), joyButton(12, false), joyButton(13, true)}), {{Button::L3, true}, {Button::L3, false}, {Button::R3, true}}));
+    feed(input, {joyButton(13, false)});
+    CHECK(is(feed(input, {axis(0, 32767), axis(0, 0)}), {})); // (the stick moving presses no L3)
     // The D-pad: a hat. Moving from one way straight to another lets go of the first, then presses
     // the second, from the one event (a hat sends no second event for it).
     CHECK(is(feed(input, {hat(SDL_HAT_UP)}), {{Button::Up, true}}));
@@ -328,9 +343,17 @@ void testTheSetupDoesNotTakeAWrongAnswer() {
     CHECK(!learner.done() && std::string(learner.complaint()).find("SAME WAY") != std::string::npos);
     learner.handle(axis(3, 0));
     answer(learner, axis(4, 30000), axis(4, 0));
+    // L3 and R3: nothing comes (a firmware that keeps the stick's click), and each is left out after the wait.
+    CHECK(!learner.done() && std::string(learner.asking()).find("L3") == 0);
+    learner.update(1000 + 20000 + 7900);
+    CHECK(std::string(learner.asking()).find("L3") == 0);
+    learner.update(1000 + 20000 + 8100);
+    CHECK(std::string(learner.asking()).find("R3") == 0 && learner.skipIn() > 7.f);
+    learner.update(1000 + 20000 + 16300);
     CHECK(learner.done());
     const ControlMap map = learner.map();
-    CHECK(map.button[static_cast<int>(Button::Menu)].kind == RawControl::None);
+    CHECK(map.button[static_cast<int>(Button::Menu)].kind == RawControl::None && map.button[static_cast<int>(Button::L3)].kind == RawControl::None);
+    CHECK(!map.neverAskedL3()); // asked, and let go by: not asked again
     Input input;
     input.useMap(&map);
     feed(input, {axis(3, -32767)});
@@ -345,7 +368,7 @@ void testTheSetupDoesNotTakeAWrongAnswer() {
     for (int i = 0; i < 15; ++i) answer(noStick, joyButton(i, true), joyButton(i, false));
     CHECK(std::string(noStick.asking()) == "THE STICK, TO THE RIGHT");
     noStick.update(1200 + 9000);
-    CHECK(noStick.done() && noStick.map().stickRight.kind == RawControl::None);
+    CHECK(noStick.done() && noStick.map().stickRight.kind == RawControl::None); // (and no stick to press in: L3 and R3 too)
     // A D-pad that reports as two axes is learned as four directions.
     ControlLearner axes;
     axes.update(500);
@@ -363,6 +386,63 @@ void testTheSetupDoesNotTakeAWrongAnswer() {
     pad.useMap(&padMap);
     CHECK(is(feed(pad, {axis(6, -32767), axis(6, 0), axis(6, 32767), axis(6, 0)}), {{Button::Up, true}, {Button::Up, false}, {Button::Down, true}, {Button::Down, false}}));
     CHECK(is(feed(pad, {axis(7, 32767)}), {{Button::Right, true}}));
+}
+
+// A map kept by a setup from before L3 was asked for (controls.txt's first line says 1, or no number):
+// with no L3 in it, L3 alone is asked for, once, onto the map as it was; answered or let go by, it is
+// a 2 and is not asked again. A 1 that has an L3 (our own firmware's, written by hand) is not asked.
+void testAnOldMapIsAskedForL3Once() {
+    const ControlMap learned = learnTheHandheld();
+    std::string old = learned.text();
+    old.replace(0, 19, "apotheca-controls 1");
+    const std::size_t l3 = old.find("\nL3 ");
+    old.replace(l3 + 1, old.find('\n', l3 + 1) - l3 - 1, "L3 none 0 0 0");
+    ControlMap kept;
+    CHECK(kept.parse(old) && kept.version == 1 && kept.neverAskedL3());
+    CHECK(kept.parse("apotheca-controls\nUP key 1 0 0\nDOWN key 2 0 0\nLEFT key 3 0 0\nRIGHT key 4 0 0\nA key 5 0 0\nB key 6 0 0\n") && kept.neverAskedL3());
+    ControlMap firmware; // as controls-rg40xxv.txt: a 1, with L3 written in
+    CHECK(firmware.parse("apotheca-controls 1\nUP button 13 0 0\nDOWN button 14 0 0\nLEFT button 15 0 0\nRIGHT button 16 0 0\nA button 1 0 0\nB button 0 0 0\nL3 button 11 0 0\n"));
+    CHECK(firmware.version == 1 && !firmware.neverAskedL3());
+    ControlMap two;
+    CHECK(two.parse(learned.text()) && two.version == 2 && !two.neverAskedL3());
+    std::string twoNoL3 = old;
+    twoNoL3.replace(0, 19, "apotheca-controls 2");
+    CHECK(two.parse(twoNoL3) && !two.neverAskedL3()); // asked before and let go by: not again
+
+    CHECK(kept.parse(old));
+    ControlLearner learner;
+    learner.update(1000);
+    learner.askOnlyFor(kept, Button::L3);
+    learner.update(2000);
+    CHECK(learner.steps() == 1 && learner.step() == 0 && std::string(learner.asking()).find("L3") == 0 && learner.canSkip());
+    // What is in the map already is taken: the A button, or a D-pad way.
+    answer(learner, joyButton(3, true), joyButton(3, false));
+    CHECK(!learner.done() && std::string(learner.complaint()).find("ALREADY") != std::string::npos);
+    answer(learner, hat(SDL_HAT_LEFT), hat(SDL_HAT_CENTERED));
+    CHECK(!learner.done());
+    answer(learner, joyButton(12, true), joyButton(12, false));
+    CHECK(learner.done());
+    const ControlMap now = learner.map();
+    CHECK(now.version == 2 && !now.neverAskedL3() && now.button[static_cast<int>(Button::L3)].kind == RawControl::JoyButton);
+    // Everything else is as it was, the R3 that was never asked for too.
+    for (int i = 0; i < static_cast<int>(Button::Count); ++i)
+        if (i != static_cast<int>(Button::L3)) CHECK(now.button[i].same(kept.button[i]) && now.button[i].kind == kept.button[i].kind);
+    CHECK(now.stickRight.same(kept.stickRight) && now.stickDown.same(kept.stickDown));
+    ControlMap back;
+    CHECK(back.parse(now.text()) && !back.neverAskedL3() && back.text() == now.text());
+    Input input;
+    input.useMap(&back);
+    CHECK(is(feed(input, {joyButton(12, true), joyButton(3, true)}), {{Button::L3, true}, {Button::A, true}}));
+
+    // Nothing pressed: after the wait it is left out, and the map is a 2, never asked again.
+    ControlLearner waited;
+    waited.update(1000);
+    waited.update(5000);
+    waited.askOnlyFor(kept, Button::L3); // (its eight seconds from now, not from the start)
+    waited.update(12900);
+    CHECK(!waited.done() && waited.skipIn() > 0.f);
+    waited.update(13100);
+    CHECK(waited.done() && waited.map().button[static_cast<int>(Button::L3)].kind == RawControl::None && !waited.map().neverAskedL3());
 }
 
 } // namespace
@@ -422,6 +502,7 @@ int main(int, char**) {
     testATriggerWhoseRestSdlKnows();
     testTriggersNobodyToldUsAbout();
     testTheSetupDoesNotTakeAWrongAnswer();
+    testAnOldMapIsAskedForL3Once();
     testAGamepadComesBack();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);

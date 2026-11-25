@@ -570,6 +570,13 @@ bool Session::startBounce(Bounce what) {
         long long longest = 0;
         for (long long length : lengths) longest = length > longest ? length : longest;
         for (std::size_t i = 0; i < paths.size() && !job->cancel.load(); ++i) padWav(paths[i], lengths[i], longest, static_cast<int>(rate));
+        // Stopped (hold B on BOUNCE, or Apotheca closed): nothing of it is kept, the tracks already whole
+        // too (an EACH TRACK cut short was a part of its stems, never padded to one length).
+        if (job->cancel.load()) {
+            for (const std::string& path : paths) std::remove(path.c_str());
+            made = 0;
+            job->last.clear();
+        }
         job->files = made;
         job->progress.store(1.f);
         job->done.store(true);

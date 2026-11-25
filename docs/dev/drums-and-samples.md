@@ -42,6 +42,13 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
 - **A recording is 20 s at most** (owner, 2026-11-18: it was 10): `kMaxSampleSeconds` for a file read
   (a longer one is cut there and faded) and `Recorder::kMaxSeconds` for RECORD; `sample_test` holds both
   (15 s kept whole). **Catch is not tied to it**: the engine remembers `kCatchFrames`, ten seconds.
+- **A panic calls off a recording that R1 began on the way** (gesture audit G25, 2026-11-25;
+  `App::recBeforeShoulders_`, noted at the first shoulder, as the copies are): R1 first on a kit lane, the
+  sampler or CLOUD's RECORDING starts one, which would have replaced the sound when it ended, outside undo.
+  `Session::dropRecording` (public now) stops the input and keeps nothing. **Not covered: a recording
+  already running when R1 went down first**: that R1 ends it, and its take is written and put on at once
+  (`finishRecording`), which a panic cannot take back. `sample_test`
+  `testThePanicCallsOffARecordingBegunOnTheWay`.
 - **A multisample is found from the names, every time it is read** (`Session::multisampleOf`,
   `session_samples.cpp`): the song names only the file picked. Files beside it that spell a note
   (`sampleNote`) are its notes; **VELOCITY LAYERS** (owner, 2026-11-24: picked over round robin, an

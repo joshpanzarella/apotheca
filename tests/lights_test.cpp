@@ -408,6 +408,7 @@ void testKept() {
         rig.session().setBrightness(-5);
         CHECK(rig.session().brightness() == kBrightLeast);
         rig.session().setBrightness(40);
+        rig.session().keepSettingsNow(); // (written once it has stood still a second: kKeepRestMs)
         const std::string text = got(folder + "/settings.txt");
         CHECK(text.find("\nbrightness 40\n") != std::string::npos && text.find("\nlight 2\n") != std::string::npos);
         CHECK(text.find("\nringlevel 40\n") != std::string::npos);
@@ -644,9 +645,11 @@ void testScenesAndColours() {
         }
         CHECK(seen >= 33); // round the scene and on into its next time
         rig.session().togglePlay(false);
+        rig.session().keepSettingsNow();
         const std::string text = got(folder + "/settings.txt");
         CHECK(text.find("\nlightcolour 4\n") != std::string::npos);
         rig.session().setLightColour(kLightTheme);
+        rig.session().keepSettingsNow();
         CHECK(got(folder + "/settings.txt").find("lightcolour") == std::string::npos); // (left out at THEME)
         rig.session().setLightColour(kLightRainbow);
     }

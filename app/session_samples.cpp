@@ -476,6 +476,8 @@ bool Session::setHotspot(bool on, unsigned seed) {
 // ---- updating Apotheca over WiFi ---------------------------------------------------------
 
 void Session::useProgramFolder(const std::string& folder) {
+    keepSettingsNow(); // (what is owed to the folder before)
+    settingsKept_.clear(), volumeKept_.clear(); // what this one has is not known yet (loadSettings, loadVolume)
     programFolder_ = folder;
     transfer_.setProgramFolder(folder);
     // One that was sent but never answered, last time: it does not linger.

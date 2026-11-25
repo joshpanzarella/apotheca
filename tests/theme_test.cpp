@@ -279,8 +279,10 @@ void testTheSettingIsKept() {
         session.useProgramFolder(folder);
         session.loadSettings(); // (no file: as it was)
         CHECK(session.theme() == kThemeBrown);
-        for (int t = 0; t < kThemes; ++t) {
+        for (int i = 1; i <= kThemes; ++i) { // (BROWN last: set as it is, nothing is owed to the card)
+            const int t = i % kThemes;
             session.setTheme(t);
+            session.keepSettingsNow(); // (written once it has stood still a second: kKeepRestMs)
             CHECK(session.theme() == t);
             std::string kept;
             CHECK(readTextFile(file, kept) && kept.find("\ntheme " + std::to_string(t) + "\n") != std::string::npos);

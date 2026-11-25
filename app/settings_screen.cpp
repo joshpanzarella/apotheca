@@ -225,7 +225,13 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
         else if (b == repeating_) repeating_ = Button::None;
         return;
     }
-    if (event.down && b != Button::B) forgetting_ = false; // (any other button calls a forgetting off)
+    if (event.down && b != Button::B) forgetting_ = false, stopping_ = false; // (any other button calls a forgetting or a stop off)
+    if (event.down && b != Button::A) aTap_ = false; // (a direction, or anything else, with A held: no tap of A)
+    // BOUNCE while one is under way: hold B a second stops it, nothing kept (a bar fills, as NETWORK's forget).
+    if (row_ == kBounce && b == Button::B) {
+        stopping_ = event.down && session_.bouncing(), stopTimed_ = false;
+        return;
+    }
     if (row_ == kNetwork && session_.wifiHere()) {
         // NETWORK: hold A + up / down picks, let go joins; hold B forgets the one joined.
         if (b == Button::A) {
@@ -264,11 +270,18 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
         holding_ = event.down && row_ == kControls;
         holdTimed_ = false;
         holdPart_ = 0.f;
-        if (!event.down) return;
-        if (row_ == kBounce && !session_.bouncing())
-            session_.startBounce(bounceWhat_ == 0 ? Session::Bounce::Song : bounceWhat_ == 1 ? Session::Bounce::EachTrack : bounceWhat_ == 2 ? Session::Bounce::ThisTrack : Session::Bounce::MidiFile);
+        // BOUNCE and TRACK NAME act on A's let go, and only if nothing else went down while it was held:
+        // hold A + a direction turns a value everywhere else, and here that habit started a bounce (G15).
+        if (!event.down) {
+            const bool tap = aTap_ && aRow_ == row_;
+            aTap_ = false;
+            if (tap && row_ == kBounce && !session_.bouncing())
+                session_.startBounce(bounceWhat_ == 0 ? Session::Bounce::Song : bounceWhat_ == 1 ? Session::Bounce::EachTrack : bounceWhat_ == 2 ? Session::Bounce::ThisTrack : Session::Bounce::MidiFile);
+            if (tap && row_ == kTrackName) typing_ = true, password_ = false, typed_ = project_.current().name, key_ = 0;
+            return;
+        }
+        aTap_ = row_ == kBounce || row_ == kTrackName, aRow_ = row_;
         if (row_ == kTempo) session_.tapTempo(lastMs_); // TAP TEMPO: A in time
-        if (row_ == kTrackName) typing_ = true, password_ = false, typed_ = project_.current().name, key_ = 0;
         if (row_ == kWifi) session_.toggleTransfer(lastMs_ * 2654435761u + 977u);
         if (row_ == kHotspot) session_.setHotspot(session_.wifi().now().status.state != WifiState::Hotspot, lastMs_ * 2654435761u + 977u);
         if (row_ == kTest) testing_ = true, testTimed_ = false, lastPressed_ = Button::None;
@@ -298,9 +311,21 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
     if (!input.held(Button::A)) holding_ = false, holdPart_ = 0.f;
     if (!input.held(Button::A) || row_ != kNetwork) picking_ = false; // (a let go this screen never saw joins nothing)
     if (!input.held(Button::B) || row_ != kNetwork) forgetting_ = false;
+    if (!input.held(Button::A)) aTap_ = false; // (a let go this screen never saw is no tap)
+    if (!input.held(Button::B) || row_ != kBounce || !session_.bouncing()) stopping_ = false; // (ended by itself meanwhile: nothing to stop)
     if (!networkSaid_.empty() && nowMs >= networkSaidUntil_) networkSaid_.clear();
     // Our firmware's WiFi: its status asked for now and then, and a scan while the NETWORK row is up.
     session_.wifiLooking = row_ == kNetwork && !typing_; // (Session::update asks; the status is asked for on every screen)
+    stopPart_ = 0.f;
+    if (stopping_) {
+        if (!stopTimed_) stopTimed_ = true, stopSince_ = nowMs;
+        stopPart_ = static_cast<float>(nowMs - stopSince_) / static_cast<float>(kStopHoldMs);
+        if (nowMs - stopSince_ >= kStopHoldMs) {
+            stopping_ = false, stopPart_ = 0.f;
+            session_.cancelBounce();
+            session_.say(kBounceStoppedWords);
+        }
+    }
     forgetPart_ = 0.f;
     if (forgetting_) {
         if (!forgetTimed_) forgetTimed_ = true, forgetSince_ = nowMs;
@@ -392,6 +417,7 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
         saved_ += stickWas_ ? std::fabs(push) * (sideways ? kChangesPerSecond : kMovesPerSecond) * dt : 1.f;
         stickWas_ = true;
         for (; saved_ >= 1.f; saved_ -= 1.f) {
+            aTap_ = false; // (the stick moved something with A held: no tap of A, as a direction pressed)
             if (picking_) {
                 if (!sideways) pickStep(push > 0.f ? 1 : -1);
             } else if (sideways) {
@@ -569,7 +595,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 if (tail >= 0.f) std::snprintf(text, sizeof text, "TAIL  %d S", static_cast<int>(tail));
                 else std::snprintf(text, sizeof text, "WORKING  %d%%", static_cast<int>(session_.bounceProgress() * 100.f));
                 part = session_.bounceProgress();
-                note = tail >= 0.f ? "until the echoes have died away" : "you can carry on meanwhile";
+                note = stopPart_ > 0.f ? kStoppingWords : tail >= 0.f ? "until the echoes have died away" : "you can carry on meanwhile";
             } else {
                 std::snprintf(text, sizeof text, "%s", what[bounceWhat_]);
                 if (session_.bounceFiles() > 0) std::snprintf(bounced_, sizeof bounced_, "done: %d file%s, on the WiFi page", session_.bounceFiles(), session_.bounceFiles() == 1 ? "" : "s");
@@ -738,6 +764,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             outline(r, lx + 2, ly, kLockW - 4, 7, kBrass);
         }
         if (row == kNetwork && here && forgetPart_ > 0.f) fill(r, 16, y + rowH - 10, static_cast<int>(w * (forgetPart_ > 1.f ? 1.f : forgetPart_)), 4, kStop);
+        if (row == kBounce && here && stopPart_ > 0.f) fill(r, 16, y + rowH - 10, static_cast<int>(w * (stopPart_ > 1.f ? 1.f : stopPart_)), 4, kStop);
         if (note[0]) noteFont.drawRight(r, kNoteRight, y + (rowH - 6 - noteFont.capHeight()) / 2.f, note, kDim);
         if (part >= 0.f) {
             // The bar, between the value and what is said: at 250 as it always was, or further right where
@@ -761,7 +788,10 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     hint("UP / DOWN", "choose");
     if (row_ < kWifi) hint("LEFT / RIGHT", "change");
-    if (row_ == kBounce) hint("A", session_.bouncing() ? "(working)" : "bounce");
+    if (row_ == kBounce) {
+        if (!session_.bouncing()) hint("A", "bounce");
+        else hint("HOLD B", stopPart_ > 0.f ? "stopping" : "stop it");
+    }
     if (row_ == kTempo) hint("A", "tap it");
     if (row_ == kTrackName) hint("A", "type a name");
     if (row_ == kWifi) hint("A", session_.transferOn() ? "turn off" : "turn on");

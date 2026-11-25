@@ -402,6 +402,7 @@ public:
     void useAudioInput(AudioInput* input) { input_ = input; }
     Rec toggleRecording(int track, int lane); // what it is doing now
     Rec recording() const { return rec_; }
+    void dropRecording(); // a recording under way called off, its take thrown away (the panic: one R1 began on the way)
     float recordSeconds() const { return recorder_.seconds(); }
     float recordLevel() const { return recorder_.level(); }
     const std::string& lastRecorded() const { return lastRecorded_; } // "" if the last one came to nothing
@@ -432,6 +433,12 @@ public:
     float volume() const { return volume_; }
     void setVolume(float volume);
     void loadVolume(float ifNone); // at start: what was kept, or this
+    // volume.txt and settings.txt are written once what they would say has stood still for
+    // kKeepRestMs (Session::update), never when it is what the card has already (G43: a held RIGHT on
+    // a SET row wrote a file and two fsyncs nine times a second, at an end too), and on the way out.
+    static constexpr Uint32 kKeepRestMs = 1000;
+    void keepSettingsNow(); // what is owed, written now (main.cpp on the way out; the destructor too)
+    bool settingsOwed() const { return settingsOwed_ || volumeOwed_; }
     // Two more things about the handheld, kept in "settings.txt" beside the
     // program: how fast the stick is (1 is as first built) and how many
     // octaves the piano roll shows (1, 2 or 3).
@@ -1002,7 +1009,12 @@ private:
     struct Recording { bool on = false; int track = 0, scene = 0, bar = 0, slot = 0, startedAt = 0; };
     Recording recordingNote_[128];
     static float ui_stickSpeed();
-    void keepSettings() const;
+    void keepSettings(); // settings.txt is owed, if what it would say is not what the card has
+    std::string settingsText() const;
+    std::string volumeText() const;
+    std::string settingsKept_, volumeKept_; // what the card has (written or read; "" not known)
+    bool settingsOwed_ = false, volumeOwed_ = false;
+    Uint32 keepAfter_ = 0; // the last change owed: written kKeepRestMs after it
     Transfer transfer_;
     bool hotspotOwnsTransfer_ = false; // HOTSPOT turned the page on: turning it off turns it off again
     std::string programFolder_;
@@ -1046,7 +1058,6 @@ private:
     Recorder recorder_;
     Rec rec_ = Rec::Idle;
     int recTrack_ = 0, recLane_ = 0;
-    void dropRecording(); // a recording under way called off, its take thrown away
     std::string lastRecorded_;
     void loadTrackSample(int track);
     std::unique_ptr<sampler::SampleZoneSet> multisampleOf(const std::string& name, std::vector<float>& main);

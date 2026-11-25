@@ -517,6 +517,7 @@ void Session::update(Uint32 nowMs) {
         nextSaveAt_ = nowMs + kSaveEveryMs;
         saveNow();
     }
+    if (settingsOwed() && nowMs - keepAfter_ >= kKeepRestMs) keepSettingsNow(); // (stood still a second: G43)
     endHearing();
     syncSong();
 }
@@ -1017,7 +1018,9 @@ void Session::setVolume(float volume) {
     c.type = Command::SetVolume;
     c.value = volume_ * volume_; // squared: even steps to the ear
     engine.send(c);
-    if (!programFolder_.empty()) writeTextFile(programFolder_ + "/volume.txt", std::to_string(static_cast<int>(std::round(volume_ * 100.f))) + "\n");
+    if (programFolder_.empty()) return;
+    volumeOwed_ = volumeText() != volumeKept_; // (written once it has stood still: update)
+    if (volumeOwed_) keepAfter_ = now_;
 }
 
 // ---- automation ---------------------------------------------------------------------------
@@ -2027,6 +2030,7 @@ void Session::setSend(int track, int bus, float value) {
 // ---- recordings on drum lanes -------------------------------------------------------
 
 Session::~Session() {
+    keepSettingsNow(); // (main.cpp has written them already; a Session that goes another way keeps them too)
     cancelBounce();
     if (input_ && rec_ != Rec::Idle && rec_ != Rec::NoInput) input_->stop();
     if (job_ && job_->thread.joinable()) job_->thread.join();

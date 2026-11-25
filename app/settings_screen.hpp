@@ -12,6 +12,9 @@
 //                                on HOTSPOT: our own network on / off (a phone joins it with one tap)
 //                                on TRACK NAME: type a name (below)
 //                                on BOUNCE: write the song (or its tracks) out as WAV files
+//                                (these two on A's let go, and only if no direction or other button went
+//                                down while it was held: hold A + a direction is not a tap)
+//   hold B for a second          on BOUNCE, while one is under way: stop it, nothing kept
 //                                on BUTTONS: the button test
 //   hold A for a second          on CONTROLS: set the controls up again
 //   START                        play / stop
@@ -116,6 +119,12 @@ public:
     static const char* const kPasswordKeys[3]; // each forty; '\x01' is a key with nothing on it
     static const char* const kPasswordSetNames[3];
     static constexpr Uint32 kForgetHoldMs = 1000;
+    // BOUNCE while one is under way: hold B a second stops it (G15). Nothing of it is kept, as when
+    // Apotheca is closed during one (Session::cancelBounce); the box above the bar says so.
+    static constexpr Uint32 kStopHoldMs = 1000;
+    static constexpr const char* kStoppingWords = "STOPPING IT: NOTHING IS KEPT";
+    static constexpr const char* kBounceStoppedWords = "BOUNCE STOPPED: NOTHING KEPT";
+    float stopPart() const { return stopPart_; }
     static constexpr const char* kForgettingWords = "FORGETTING IT: CANNOT BE UNDONE";
     bool typingPassword() const { return typing_ && password_; }
     int passwordSet() const { return keySet_; }
@@ -158,6 +167,11 @@ private:
     bool forgetting_ = false, forgetTimed_ = false;
     Uint32 forgetSince_ = 0;
     float forgetPart_ = 0.f;
+    bool stopping_ = false, stopTimed_ = false; // B held on BOUNCE with one under way
+    Uint32 stopSince_ = 0;
+    float stopPart_ = 0.f;
+    bool aTap_ = false; // A is down on BOUNCE or TRACK NAME and nothing else has gone down: its let go acts
+    int aRow_ = 0;      // the row it went down on
     std::string networkSaid_; // said on the row for a moment (TOO SHORT...)
     Uint32 networkSaidUntil_ = 0;
     void moveKey(Button direction);

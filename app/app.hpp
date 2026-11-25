@@ -98,7 +98,8 @@ public:
     bool brightnessShowing() const { return now_ < volumeShownUntil_ && boxIsBrightness_; }
     bool volumeShowing() const { return now_ < volumeShownUntil_; }
     // MENU held: a card of what the buttons do everywhere. It goes when MENU is let go.
-    // (With no MENU button on the device: SELECT, held for a moment.)
+    // (With no MENU button on the device: SELECT, held by itself for a moment; another button pressed
+    // with it is a combo, and the card stays away until SELECT is let go.)
     bool helpShowing() const { return help_; }
     // SELECT + B takes back the last change to the patterns; SELECT + A puts it forward again.
     // What it said about that, for a moment: "UNDONE", "NOTHING TO UNDO"...
@@ -108,6 +109,10 @@ public:
     // nothing else) or four seconds have gone by.
     bool panicNoteShowing() const { return panicNote_; }
     int updateSaid() const { return updateSaid_; } // 0 nothing, 1 "accepted", 2 "could not"
+    // The update notice's line of what to do, and what it says while B is held (it cannot be undone).
+    static constexpr const char* kUpdateWords = "HOLD A for a second to accept.    HOLD B to delete it.";
+    static constexpr const char* kUpdateDeletingWords = "DELETING IT: CANNOT BE UNDONE";
+    bool updateDeleting() const { return updateDeleting_; } // B is held on the update notice, its bar filling
     void sayUpdateAcceptedForStill() { updateSaid_ = 1, updateSaidUntil_ = ~0u; } // (--view update-accepted)
 
 private:
@@ -126,7 +131,8 @@ private:
     bool boxIsBrightness_ = false; // the volume's box says the BRIGHTNESS
     bool menuUsed_ = false;        // MENU held for a volume key: no help card until it is let go
     bool updateHeld_ = false;   // A is down on the update notice
-    Uint32 updateSince_ = 0, updateSaidUntil_ = 0;
+    bool updateDeleting_ = false; // ...or B, deleting it
+    Uint32 updateSince_ = 0, updateSaidUntil_ = 0, deleteSince_ = 0;
     int updateSaid_ = 0;        // 1: accepted, 2: could not; shown for a few seconds
     bool panicNote_ = false; // the notice is up
     Uint32 panicNoteUntil_ = 0, now_ = 0;
@@ -140,6 +146,7 @@ private:
     unsigned copiesBeforeShoulders_ = 0;
     std::unique_ptr<Session::SceneClip> sceneClipBeforeShoulders_;
     unsigned sceneCopiesBeforeShoulders_ = 0;
+    Session::Rec recBeforeShoulders_ = Session::Rec::Idle; // ...and a recording: R1 first on a lane or the sampler begins one
     unsigned saidSeen_ = 0; // Session::saidCount() when its line was last taken
     void takeSessionSaid(); // what the Session asked to be said (a bar copied or pasted) into this box
     int sceneOfSelect() const; // the scene SELECT + Y and SELECT + L2 / R2 act on (on SONG: the cursor's)
@@ -172,6 +179,7 @@ private:
     bool pretending_ = false;
     Uint32 selectHeldSince_ = 0; // 0: not held
     bool selectAlone_ = false; // SELECT is down and nothing else has been pressed since
+    bool selectUsed_ = false;  // ...and on every screen: something else was pressed while SELECT is down (no help card)
     bool nextSceneY_ = false;  // Y is down from SELECT + Y (next scene): letting it go is not a tap of Y
     SynthScreen phazed_; // the same screen, once for each synth
     SynthScreen jaxep_;

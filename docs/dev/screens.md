@@ -242,6 +242,34 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   sends one event for two changes (a diagonal let go, one way straight to another), and RIGHT stayed held.
   A sound card gone (`SDL_AUDIODEVICEREMOVED`) is opened again a second apart. `controls_test`
   (`testAGamepadComesBack`, SDL's make-believe joystick). **The sound card's return is not tested.**
+- **The controls setup asks for L3 and R3 after the stick** (gesture audit G05, 2026-11-25; `ControlLearner`,
+  `kSteps` 19): L3 is MASTER from any screen (owner, 2026-11-17), and on the stock port it never fired:
+  with a learned map a joystick button not in it is dropped (`Input::handleMapped`), and SDL's own
+  LEFTSTICK is never read then (the gamepad is not opened). MENU, the stick, L3 and R3 may each be let go
+  by after `kSkipAfterMs` (8 s); skipping the stick skips L3 and R3 too. **An axis is never L3 or R3**
+  (THAT IS THE STICK MOVING: a stick way learned as L3 would press it whenever the stick was pushed). A
+  control already in the map is refused at any step, a kept map's too. **controls.txt's first line is
+  `apotheca-controls 2` from this setup on** (`ControlMap::version`); a 1 (or no number) with no L3
+  (`neverAskedL3`) is asked for L3 alone, once, at the next start (`askOnlyFor`, main.cpp), and written
+  again as a 2 whatever the answer. Our firmware's `controls-rg40xxv.txt` is a 1 with L3 in it: not asked.
+  **Whether the stock firmware passes the stick's click is not known**: the setup's "THE HANDHELD LAST
+  SENT" line will say. R3 has no job in the program yet (asked because the brief asked for both).
+  The setup's last line was a promise nothing kept ("hold any button for two seconds just after Apotheca
+  starts"); it names the way that is there: SET, CONTROLS, hold A. `controls_test`
+  (`testAnOldMapIsAskedForL3Once`), `textsize_test` (every step's words fit their box).
+- **The help card with no MENU is SELECT held by ITSELF** (gesture audit G38, 2026-11-25): any other button
+  pressed while SELECT is down (`App::selectUsed_`, every screen, set at the top of `onButton`) puts it
+  away until SELECT is let go, as MENU + a volume key does (`menuUsed_`). It covered the box above the bar,
+  so SEL + B, B, B undid blind. `app_test` `testTheHelpCard`.
+- **SET acts on A's LET GO on BOUNCE and TRACK NAME, only if nothing else went down while A was held**
+  (gesture audit G15, 2026-11-25; `SettingsScreen::aTap_`, `aRow_`): a direction, the stick moving
+  something, or any other button calls the tap off, and so does the cursor on another row. Hold A + a
+  direction turns a value on every other screen, and here that habit started a bounce on A's press
+  (RIGHT then only changed what to bounce). TEMPO keeps the press (tap tempo is A in time); WIFI PAGE,
+  HOTSPOT and BUTTONS keep it too (no LEFT / RIGHT there, so no habit to meet). **Hold B a second on a
+  bounce under way stops it** (`stopping_`, `kStopHoldMs`, a red bar as NETWORK's forget, the note
+  `kStoppingWords`, the hint HOLD B stop it in place of A (working); any other press calls it off). The box
+  above the bar then says `kBounceStoppedWords`. `app_test` `testSetActsOnTheLetGo`.
 - **The list of instruments stands higher when it must** (`SongScreen::listTop`): six rows and what
   goes said under them (another instrument for a track) reached past the hints bar from `kListY`
   (70), so the box rises to end `kListBottom` (8 above the bar); adding a track it stands at 70 as

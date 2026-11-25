@@ -55,9 +55,12 @@ Screen& App::screenNow() {
 }
 
 void App::onButton(const ButtonEvent& event, const Input& input) {
+    const Button b = event.button;
+    // SELECT held with another button is a combo (undo, the tempo, the volume...), not the help card:
+    // anything pressed while it is down puts the card away for the rest of that hold (no MENU: update()).
+    if (event.down) selectUsed_ = b == Button::Select ? false : (selectUsed_ || input.held(Button::Select));
     // All four shoulder buttons at once: panic. Silence now, whatever screen
     // this is. It lasts as long as they are held.
-    const Button b = event.button;
     const bool shoulder = b == Button::L1 || b == Button::R1 || b == Button::L2 || b == Button::R2;
     if (shoulder && event.down) {
         const int down = input.held(Button::L1) + input.held(Button::R1) + input.held(Button::L2) + input.held(Button::R2);
@@ -69,6 +72,7 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
             copiesBeforeShoulders_ = session_.barCopies();
             *sceneClipBeforeShoulders_ = session_.sceneClip(); // ...or, on SONG, R1 copies a scene
             sceneCopiesBeforeShoulders_ = session_.sceneCopies();
+            recBeforeShoulders_ = session_.recording(); // ...or, on a kit lane, the sampler or CLOUD's RECORDING, R1 records
         }
         if (down == 4) {
             panicking_ = true;
@@ -87,6 +91,11 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
                 saidSeen_ = session_.saidCount();
                 undoSaidUntil_ = 0;
             }
+            // A recording begun on the way (R1 first) is called off, its take thrown away: it would replace
+            // the lane's or the track's sound when it ended. (One that was running is another thing: R1 first
+            // ends it, and its take is kept at once, as any R1 keeps it.)
+            const auto under = [](Session::Rec r) { return r == Session::Rec::Waiting || r == Session::Rec::Recording; };
+            if (under(session_.recording()) && !under(recBeforeShoulders_)) session_.dropRecording();
             song_.shouldersPressed();  // (L1 then R1 on a head was on its way here: no track is copied)
             drums_.shouldersPressed(); // L1 let go after this is no tap of L1
             notes_.shouldersPressed();
@@ -103,13 +112,17 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         session_.panic(false);
     }
     // An update has arrived over WiFi and wants an answer. Nothing else
-    // happens until it has one: hold A for a second to accept, B to refuse.
+    // happens until it has one: hold A for a second to accept, hold B a second to delete it (a bar
+    // fills for each, update()). Of A and B, the one pressed last is the one that fills; any other
+    // press calls a delete off, as everywhere.
     if (session_.updateWaiting()) {
-        if (b == Button::A) updateHeld_ = event.down, updateSince_ = 0;
-        else if (b == Button::B && event.down) session_.discardUpdate(), updateHeld_ = false;
+        if (b == Button::A) updateHeld_ = event.down, updateSince_ = 0, updateDeleting_ = updateDeleting_ && !event.down;
+        else if (b == Button::B) updateDeleting_ = event.down, deleteSince_ = 0, updateHeld_ = updateHeld_ && !event.down;
+        else if (event.down) updateDeleting_ = false;
         return;
     }
     updateHeld_ = false;
+    updateDeleting_ = false;
 
     // The notice is up and the buttons are let go: the next press only puts
     // it away. It might have been an accident; that press must not also
@@ -355,7 +368,9 @@ void App::update(const Input& input, Uint32 nowMs) {
     // The help card: there for as long as MENU is held. On a handheld whose
     // firmware keeps MENU for itself (it was left out of the controls setup),
     // SELECT held by itself for four tenths of a second does it instead; then
-    // letting go of SELECT is not a tap.
+    // letting go of SELECT is not a tap. Another button pressed with SELECT (a combo: SEL + B, B, B
+    // undoing) puts it away until SELECT is let go, so the box above the bar is seen (the volume,
+    // UNDONE...), as MENU's card goes for MENU + a volume key.
     const bool busy = (session_.view == View::Settings && (settings_.testing() || settings_.typing())) || typingAFolder();
     const bool menu = input.has(Button::Menu);
     ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP";
@@ -365,6 +380,9 @@ void App::update(const Input& input, Uint32 nowMs) {
         help_ = input.held(Button::Menu) && !busy && !menuUsed_;
     } else if (!input.held(Button::Select)) {
         selectHeldSince_ = 0;
+        help_ = false;
+        selectUsed_ = false;
+    } else if (selectUsed_) {
         help_ = false;
     } else if (selectHeldSince_ == 0) {
         selectHeldSince_ = nowMs;
@@ -390,6 +408,15 @@ void App::update(const Input& input, Uint32 nowMs) {
     }
     helpWas_ = help_;
     if (panicNote_ && !panicking_ && nowMs >= panicNoteUntil_) panicNote_ = false;
+    // B held for a whole second on the update notice: deleted (G40: a tap of B threw it away, while accepting took a hold).
+    if (!input.held(Button::B)) updateDeleting_ = false; // (a let go the notice never saw)
+    if (session_.updateWaiting() && updateDeleting_) {
+        if (deleteSince_ == 0) deleteSince_ = nowMs;
+        if (nowMs - deleteSince_ >= kUpdateHoldMs) {
+            updateDeleting_ = false;
+            session_.discardUpdate();
+        }
+    }
     // A held for a whole second on the update notice: accepted.
     if (session_.updateWaiting() && updateHeld_) {
         if (updateSince_ == 0) updateSince_ = nowMs;
@@ -516,12 +543,14 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
             fonts.large.draw(renderer, x + 18.f, y + 16.f, "AN UPDATE HAS ARRIVED", kTeal);
             fonts.medium.draw(renderer, x + 18.f, y + 46.f, size, kText);
             fonts.small.draw(renderer, x + 18.f, y + 72.f, "Only accept it if you sent it yourself.", kBrass);
-            fonts.small.draw(renderer, x + 18.f, y + 96.f, "HOLD A for a second to accept.    B to throw it away.", kText);
-            // The hold, filling.
+            if (updateDeleting_) fonts.small.draw(renderer, x + 18.f, y + 96.f, kUpdateDeletingWords, kStop);
+            else fonts.small.draw(renderer, x + 18.f, y + 96.f, kUpdateWords, kText);
+            // The hold, filling: A's in teal, B's in red.
             fill(renderer, x + 18, y + 120, w - 36, 8, kLine);
-            if (updateHeld_ && updateSince_ != 0) {
-                const float part = static_cast<float>(now_ - updateSince_) / static_cast<float>(kUpdateHoldMs);
-                fill(renderer, x + 18, y + 120, static_cast<int>((w - 36) * (part > 1.f ? 1.f : part)), 8, kTeal);
+            const Uint32 since = updateDeleting_ ? deleteSince_ : updateHeld_ ? updateSince_ : 0;
+            if (since != 0) {
+                const float part = static_cast<float>(now_ - since) / static_cast<float>(kUpdateHoldMs);
+                fill(renderer, x + 18, y + 120, static_cast<int>((w - 36) * (part > 1.f ? 1.f : part)), 8, updateDeleting_ ? kStop : kTeal);
             }
         }
     } else if (panicNote_) {

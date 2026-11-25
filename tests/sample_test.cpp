@@ -1475,6 +1475,49 @@ void testARecordingFollowsItsTrack() {
     CHECK(session.recording() == Session::Rec::Idle && !input.open);
 }
 
+// The panic puts back what the shoulders did on the way (G25): R1 first on a lane begins a recording,
+// which would replace the lane's sound when it ended. One begun on the way is called off, its take
+// thrown away; one that was already waiting goes on (L1 first: nothing of it was on the way).
+void testThePanicCallsOffARecordingBegunOnTheWay() {
+    const SDL_Keycode L1 = SDLK_q, L2 = SDLK_1;
+    const std::string folder = tempFolder("samples-panic");
+    Rig rig(folder);
+    Session& session = rig.session();
+    FakeInput input;
+    session.useAudioInput(&input);
+    KitScreen& kit = rig.app.kit();
+    TrackData& track = rig.project().tracks[0];
+    session.view = View::Device;
+    kit.goTo(3, KitScreen::kSound);
+    rig.frames(2);
+    const std::string before = track.laneSample[3];
+    // R1 first: a recording begins (it waits for sound)...
+    rig.key(R1, true);
+    CHECK(session.recording() == Session::Rec::Waiting && input.open);
+    rig.frames(3);
+    rig.key(L1, true);
+    rig.key(L2, true);
+    rig.key(R2, true); // ...all four: the panic, and it is called off
+    CHECK(rig.app.panicNoteShowing() && session.recording() == Session::Rec::Idle && !input.open);
+    input.add(tone(0.5f, 0.25f));
+    rig.frames(30);
+    for (SDL_Keycode k : {R1, L1, L2, R2}) rig.key(k, false);
+    rig.frames(30);
+    CHECK(session.recording() == Session::Rec::Idle && std::string(track.laneSample[3]) == before && session.lastRecorded().empty());
+    // One waiting before the shoulders, the panic begun with L1: it waits on (the panic changes nothing else).
+    rig.frames(300);
+    rig.tap(B); // (the notice's put away)
+    rig.tap(R1);
+    CHECK(session.recording() == Session::Rec::Waiting);
+    rig.key(L1, true);
+    rig.key(L2, true);
+    rig.key(R2, true);
+    rig.key(R1, true);
+    CHECK(rig.app.panicNoteShowing() && session.recording() == Session::Rec::Waiting);
+    for (SDL_Keycode k : {R1, L1, L2, R2}) rig.key(k, false);
+    session.dropRecording();
+}
+
 void testRecordingOntoALane() {
     const std::string folder = tempFolder("samples");
     Rig rig(folder);
@@ -3107,6 +3150,7 @@ int main(int, char**) {
     testTheSamplersEnd();
     testTheRecorder();
     testRecordingOntoALane();
+    testThePanicCallsOffARecordingBegunOnTheWay();
     testARecordingFollowsItsTrack();
     testRecordingOntoACloud();
     testNoteNames();
