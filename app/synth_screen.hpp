@@ -164,10 +164,16 @@ public:
     bool typing() const { return keys_.isOpen(); }
     const std::string& typed() const { return keys_.typed(); }
     int keyAt() const { return keys_.keyAt(); }
+    void closeKeys(); // closed, nothing kept (the panic: keys R1 opened on its way)
     static constexpr int kTypeColumns = NameKeys::kColumns, kPresetNameLength = 24; // the grid, and a name's most (the page's too)
     // Hold B on PRESET, on one of the player's own: its file is deleted when the bar is full (as a kit's).
     static constexpr Uint32 kPresetDeleteMs = ui::kHoldForGoodMs;
     static constexpr const char* kPresetDeletingWords = "DELETING THE PRESET: CANNOT BE UNDONE";
+    // The keys' title while what is typed names one of the player's own: B (or START) writes over its file.
+    static constexpr const char* kPresetReplacingWords = "B REPLACES THE PRESET: CANNOT BE UNDONE";
+    // A hold of B that never saw its let go (L2 / R2 turned the tab, SELECT went to SONG): called off, so the
+    // bar does not come back full (App::update, for every screen not shown).
+    void callOffDelete();
     float presetDeletePart() const { return presetDeletePart_; }
     bool onOwnPreset() const; // the track is on one of the player's own presets (USER)
 
@@ -205,6 +211,11 @@ private:
     int cursor_ = kPreset;
     int placePage_[kNumTracks] = {}, placeStop_[kNumTracks] = {}; // each track's ADVANCED place (page 0: none yet)
     void keepPlace(); // the page and stop shown, as the track's place (on an advanced page)
+    // The track the page and stop shown are for. Two tracks of one synth share this screen, and it stays on its
+    // page when another is picked (on SONG): followTrack then opens the arriving track's own place (or page 1
+    // at firstStop), so keepPlace never writes one track's place under another's number. goTo sets it.
+    int shownTrack_ = -1;
+    void followTrack();
     static constexpr int kChoiceRange = 12; // a setting with this many steps or fewer is a choice, not a range
     bool isChoice(int id) const;
     bool choicePushed_ = false; // the stick is over, and has already clicked a choice once

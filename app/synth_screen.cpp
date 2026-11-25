@@ -50,6 +50,20 @@ void SynthScreen::goTo(int page, int cursor) {
     page_ = page < 0 ? 0 : (page >= spec_.pages ? spec_.pages - 1 : page);
     const int count = itemCount();
     cursor_ = cursor < 0 ? 0 : (cursor >= count ? count - 1 : cursor);
+    shownTrack_ = project_.track; // (the place is the track's now up)
+}
+
+// Another track of this synth up since the last look: on an advanced page, its own place (G13: it was shown the
+// page the other track left, and keepPlace then wrote that over its own; on CLOUD a track that had never opened
+// the pages landed on RECORDING, where R1 records). MAIN is every track's alike, and stays.
+void SynthScreen::followTrack() {
+    const int t = project_.track, was = shownTrack_;
+    if (t == was) return;
+    shownTrack_ = t;
+    if (was < 0 || page_ == 0 || t < 0 || t >= kNumTracks) return;
+    if (was < kNumTracks) placePage_[was] = page_, placeStop_[was] = cursor_; // (the leaving track's, as last shown: a page turned since the last frame too)
+    if (placePage_[t] > 0) goTo(placePage_[t], placeStop_[t]);
+    else goTo(1, firstStop(1));
 }
 
 // L1 / R1: the next page, the cursor on the same row and column where it has them, else the nearest
@@ -122,6 +136,19 @@ void SynthScreen::typeButton(Button b) {
     if (name.empty()) return; // (nothing typed: B leaves)
     if (!session_.savePreset(project_.track, name)) say("NOT SAVED", 2500);
     else say((taken ? "REPLACED " : "SAVED AS ") + name, 2500);
+}
+
+void SynthScreen::closeKeys() {
+    if (!keys_.isOpen()) return;
+    keys_.close();
+    saved_ = 0.f;
+    stickWasX_ = false; // (as after B or START)
+}
+
+void SynthScreen::callOffDelete() {
+    presetDeleting_ = false;
+    presetDeletePart_ = 0.f;
+    picker_.callOffDelete();
 }
 
 bool SynthScreen::nameTaken() const {
@@ -365,6 +392,7 @@ void SynthScreen::endMod(const Input& input) {
 
 void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
+    followTrack(); // (a press in the frame another track came up: the place is that track's)
     if (keys_.isOpen()) { // naming a preset to save: every button is the keys'.
         if (event.down) typeButton(b);
         else keys_.letGo(b);
@@ -374,12 +402,6 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (picker_.isOpen()) { // CLOUD's list of recordings: every button is its own but START
         if (b == Button::Start && event.down && !input.held(Button::Select) && !picker_.typing()) session_.togglePlay(false);
         else picker_.onButton(event, project_.playing);
-        return;
-    }
-    // CLOUD: while a take waits or runs, R1 stops it from any page and stop, before SAVE on PRESET and a page
-    // turned (gesture audit G34: off RECORDING R1 turned the page and the take ran on).
-    if (b == Button::R1 && event.down && spec_.recording && session_.recordingNow()) {
-        session_.toggleRecording(project_.track, 0);
         return;
     }
     // X: hear the sound. Held on a macro (MAIN, A not held), it is also the macro's MOD: the X-held
@@ -398,6 +420,13 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (modKnob_.held() && modKnob_.onButton(event, lastMs_)) return;
+    // CLOUD: while a take waits or runs, R1 stops it from any page and stop, before SAVE on PRESET and a page
+    // turned (gesture audit G34: off RECORDING R1 turned the page and the take ran on). Not while X holds a
+    // macro's MOD: R1 is the MOD's there (its PHASE, LENGTH or SPEED), as the kit's EDIT and VOICE keep theirs.
+    if (b == Button::R1 && event.down && spec_.recording && session_.recordingNow()) {
+        session_.toggleRecording(project_.track, 0);
+        return;
+    }
     // A tap of A on CLOUD's RECORDING: the list of recordings. Held, it turns to the next one.
     if (b == Button::A && onRecording()) {
         if (!event.down && holding_ && !stepped_) openPicker();
@@ -455,6 +484,7 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
             holding_ = false;
             repeating_ = Button::None;
             saved_ = 0.f;
+            stickWait_ = input.stickX() != 0.f || input.stickY() != 0.f; // (it was stepping: not off the stop at once, as a MOD let go)
         }
         return;
     }
@@ -495,7 +525,8 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
         picker_.rescan(session_.sampleNames(), session_.sampleFolders());
     }
     if (!input.held(Button::A)) holding_ = false;
-    keepPlace(); // (on an advanced page: where A on ADVANCED comes back to)
+    followTrack(); // (another track of this synth picked: its own page and stop)
+    keepPlace();   // (on an advanced page: where A on ADVANCED comes back to)
     // B kept held on one of the player's own presets: its file is deleted when the bar is full. (Let go, A
     // held, off PRESET or another track up: called off.)
     if (!input.held(Button::B) || input.held(Button::A) || page_ != 0 || cursor_ != kPreset || project_.track != presetDeleteTrack_ || keys_.isOpen()) presetDeleting_ = false;
@@ -583,7 +614,8 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
 // sounding a teal tick at its place, top and bottom (Engine::grainPlaces, as of the last chunk).
 void SynthScreen::drawTyping(SDL_Renderer* r, const Fonts& fonts) const {
     // B saves (under a name taken: replaces it, and the bar says so first); with nothing typed it leaves.
-    keys_.draw(r, fonts, "SAVE AS PRESET", kDim, "(empty: name it to save)", keys_.typed().empty() ? "leave" : nameTaken() ? "replace" : "save", nullptr);
+    const bool taken = nameTaken(); // (its file is written over: CLAUDE.md, what cannot be undone says so where it is confirmed)
+    keys_.draw(r, fonts, taken ? kPresetReplacingWords : "SAVE AS PRESET", taken ? kBrass : kDim, "(empty: name it to save)", keys_.typed().empty() ? "leave" : taken ? "replace" : "save", nullptr);
 }
 
 void SynthScreen::drawPicture(SDL_Renderer* r, const Fonts& fonts) const {

@@ -56,7 +56,12 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   MOD screen's DELETING THIS MOD is the house wording), REPEATS' **HOLD B empty** (it empties the
   scene, a step of undo; it said delete), and the help card's **UNDO the last change (20 deep)** (it
   said "to the patterns"). `app_test` `testHoldBDeletesAnEffect` takes the deleted effect back with SEL
-  + B. `ctest -R words` fails a text that says erase, remove or rub out (the word is delete; a cell
+  + B. **Replacing one of the player's own presets says it where it is confirmed** (review of A3,
+  2026-11-25): while the name typed is taken, the name keys' title is `kPresetReplacingWords`, **B
+  REPLACES THE PRESET: CANNOT BE UNDONE**, in brass (the colour of SONG's words for what goes), on a
+  synth's and the sampler's keys; it said SAVE AS PRESET and only the bar's B replace told, though R1
+  on one's own opens with its name typed in, so one B writes over the file. `app_test`
+  `testDeletingAPresetSaysItCannotBeUndone`, `textsize` (whole at XL). `ctest -R words` fails a text that says erase, remove or rub out (the word is delete; a cell
   is emptied), and since C4-docs (2026-11-25) the same words anywhere in the manual or README.md (the
   roll's chord said "B to remove it"; the three are now "delete"), with plants of its own.
 - **A recording is a step of undo** (gesture audit G04, 2026-11-25): a drum lane's (with its FIT, cut

@@ -86,8 +86,14 @@ public:
     bool typing() const { return keys_.isOpen(); }
     const std::string& typed() const { return keys_.typed(); }
     int keyAt() const { return keys_.keyAt(); }
+    void closeKeys(); // closed, nothing kept (the panic: keys R1 opened on its way)
     float presetDeletePart() const { return presetDeletePart_; }
     static constexpr const char* kPresetDeletingWords = "DELETING THE PRESET: CANNOT BE UNDONE"; // the bar while B is held (as the kit's)
+    // The keys' title while what is typed names a preset already: B (or START) writes over its file.
+    static constexpr const char* kPresetReplacingWords = "B REPLACES THE PRESET: CANNOT BE UNDONE";
+    // A hold of B that never saw its let go (L2 / R2 turned the tab, SELECT went to SONG): called off, so the
+    // bar does not come back full (App::update, for every screen not shown).
+    void callOffDelete();
     static constexpr int kTypeColumns = NameKeys::kColumns, kPresetNameLength = 24; // the grid, and a name's most (the synth's too)
     const ui::Playhead& playhead() const { return head_; }
     int timesHeard() const { return timesHeard_; } // how often it has been played from this screen (for tests)
@@ -122,6 +128,7 @@ private:
     bool wasRecording_ = false;
     float saved_ = 0.f, turned_ = 0.f;
     bool stickWas_ = false;
+    bool stickWait_ = false; // B with A held put the sound back with the stick still pushed: it moves nothing until it comes back
     int loopPush_ = 0; // LOOP with A held: which way the stick is pushed past half, 1 up, -1 down, 0 not (its click is spent)
     ui::StickClimb climb_; // a full push held on the cursor climbs (G07)
     Button repeating_ = Button::None;

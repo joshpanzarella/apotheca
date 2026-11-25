@@ -148,6 +148,9 @@ public:
     const Row* under() const { return cursor_ >= 0 && cursor_ < count() ? &rows_[static_cast<std::size_t>(cursor_)] : nullptr; }
     bool flat() const { return dirs_.empty(); }                     // no folders at all: one list
     float deletePart() const { return deletePart_; }
+    // B held on a recording or a folder, its let go never seen (L2 / R2 turned the tab): called off, so the bar
+    // does not come back full (the screen's callOffDelete, from App::update).
+    void callOffDelete() { deleting_ = refusing_ = false, deletePart_ = 0.f; }
     const std::string& carried() const { return carried_; }         // the recording being carried ("": none)
     std::string carryTo() const;                                    // the folder it would go to if R1 were let go now ("": out of every folder)
     bool typing() const { return keys_.isOpen(); }                  // a new folder's name is being typed: every button is its

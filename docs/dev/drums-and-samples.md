@@ -63,7 +63,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
 - **While a take waits or runs, R1 stops it from any stop of a screen that records** (gesture audit
   G34, 2026-11-25; `Session::recordingNow`, checked first in each screen's `onButton`): the kit's lanes,
   every column and the KIT stop (where R1 did nothing), the sampler's every stop (on PRESET R1 opened
-  the name keys and the take ran on) and CLOUD's every page (`instruments.md`), A held or not. Not the
+  the name keys and the take ran on) and CLOUD's every page (`instruments.md`; not while X holds a
+  macro's MOD there: R1 is the MOD's), A held or not. Not the
   kit's EDIT and VOICE views, where the recording line is not shown (VOICE's R1 is the next synth
   lane). **The line is one function, `Session::recordingLine`**, and says the limit from
   `Recorder::kMaxSeconds`: all three copies said OF 10 after the limit went to 20. The R1 hint says
@@ -535,7 +536,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     turned since is kept in two presses (R1, B). The sampler's PRESET is worked out from the sound
     (`samplerPresetOf`), so a sampler sound turned since shows "-" and R1 opens empty there: only a
     synth (whose `preset` is kept) gets the two presses after a turn. START is not said on the
-    preset keys (it does what B does) and still does nothing with nothing typed.
+    preset keys (it does what B does) and still does nothing with nothing typed. **While the name typed is
+    taken the title says B REPLACES THE PRESET: CANNOT BE UNDONE** (review of A3, 2026-11-25:
+    `kPresetReplacingWords`; songs-and-undo.md).
     `app_test` `testSavePresetOnDevice`, `testSamplerPresetsOnDevice`,
     `testTheNameKeysRunAtAListsPace`, `testDeletingAPresetSaysItCannotBeUndone` (the bar's words);
     `textsize` holds each at its longest (24 W's), SAVED AS and REPLACED too (the sampler's said line
@@ -545,7 +548,14 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     The tabs, SELECT's tap, SELECT + anything, L3 and the help card (`busy`) do nothing there; SELECT +
     B is the keys' B. Only the four shoulders' panic still acts (it is before the keys in
     `App::onButton`), and the keys are still up after it. SET's keys are SET's own case there (the
-    button test with them). `app_test` `testThePresetKeysHaveEveryButton`.
+    button test with them). `app_test` `testThePresetKeysHaveEveryButton`. **Keys that R1 opened on the
+    way to a panic are closed by it** (review of A3, 2026-11-25; `App::typingBeforeShoulders_`, noted at
+    the first shoulder as the copies and a recording are, then `closePresetKeys` on every synth screen
+    and the sampler, since R2 first may have turned to DEVICE and the panic turned back): R1 first on
+    PRESET opened them, on one of the player's own with its name typed in, and after the panic the bar
+    said B replace, so the second B wrote over the file (the first put the notice away). Nothing is
+    kept; keys up before the panic stay up. `app_test` `testAPanicClosesTheKeysItOpened`. The bar
+    offers no help card there (`screens.md`).
   - **+ NEW FOLDER is a row** (`Kind::NewFolder`: the last of SAMPLES and of a first-level
     folder; not in UNSORTED, not two levels down; only when `Jobs::makeFolder` is given). A
     opens the name keys (`NameKeys`, the one set: above), twelve letters, made in SMALL letters,
@@ -643,12 +653,23 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   level, FEEL, SWING, CHOKE), the recording (`setTrackSample`), the sampler's settings and CHOP, the
   preset, settings (`settingCount`) and macros (`sendSynthPatch`, as undo puts a synth back), the track
   sound (`putTrackSound`: effects, sends, GLIDE FROM, MODs), and the memory last, so a plain preset
-  picked next puts back what it would have without the trip. Not the mixer, the name, mute or solo. One kept at a time
+  picked next puts back what it would have without the trip. **The effects' automation and remembered
+  TYPEs too** (review of A4, 2026-11-25; `KeptSound::lanes` and `types`, `putEffectLanesBack`): they are
+  in the patterns and the slot memory, not the fields, and a whole preset passed over that put another
+  effect in a slot cleared its lanes in every scene and forgot its TYPEs (`setEffect`), so the slot came
+  back bare though the manual said "as they were". Each slot holding its kept effect again gets its lanes
+  as kept (the steps no more, no less) and its TYPEs; when nothing differs (most often) nothing is done,
+  else written into the song and the track sent once, whole (`sendTrackImage`, as FX's line move: a
+  command a step could fill the engine's queue). **A stick still pushed then waits for the middle** on
+  all three screens (`stickWait_`, as a MOD let go): it was stepping the sounds, and the next frame moved
+  the cursor off the stop (the synth's at once, the kit's and the sampler's a moment later), where a held
+  D-pad was already stopped. Not the mixer, the name, mute or solo. One kept at a time
   (one A), in memory only; forgotten by `removeTrack`, `duplicateTrack` and `applyProject` (a number
   then names another track) and never put on another instrument. The put-back is a change like any
   other: a step of undo (a recording, as ever, is not). **The mixer's B with A held is not this** (owner,
   2026-11-14, song-screen.md): it is 0 dB and the middle, a reset, and stays so. `sample_test`
-  `testBWithAHeldPutsTheSoundBack`, `testAKeptSoundIsForgotten`; `easy_test` `testTheKitStop`; `app_test`
+  `testBWithAHeldPutsTheSoundBack` (also: B with A held on FIT with no step first is no tap, the lanes and
+  TYPEs, the stick's wait), `testAKeptSoundIsForgotten`; `easy_test` `testTheKitStop`; `app_test`
   `testAPutBackSoundIsTheEngines` (the engine plays the sound put back, to the sample).
 - **A tap of A on FIT sets the bars the recording fills** (gesture audit G45, 2026-11-25;
   `laneFitFor`, `KitScreen::fitToItsBars`): FIT started at OFF, so the usual 1 BAR was the fifth click.
@@ -660,7 +681,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   nearest by ratio, since a stretch is one: 24 steps in 4/4 are 2 bars, not 1. **Nothing on a
   built-in drum, a DRUM SYNTH voice or a file not found** (a hit, not a loop; `fitsByTap`), where the
   bar keeps HOLD A fit to steps; on a recording it says A fit to its bars. Hold A + up / down stays
-  exact. One step of undo, as FIT is (`laneFit` is in `soundMark`). **Left as it was**: FIT's box reads
+  exact, **from a count between FIT's stops too** (review of A4, 2026-11-25: `stepFit` took 24 as the stop
+  below it, 16, so DOWN went to 8 and 24 and 48 could not be stepped back to; now DOWN lands on the stop
+  below, UP on the one above; CATCH's 12 in 3/4 had the same fault). One step of undo, as FIT is (`laneFit` is in `soundMark`). **Left as it was**: FIT's box reads
   16-step bars (`laneFitText`), so a tap's 48 steps in 3/4 (four of its bars) reads 3 BARS and 12 reads
   12 STEPS, as CATCH's 12 always has; a question for the owner, not changed here. `sample_test`
   `testATapOnFitFitsItsBars`.
@@ -677,4 +700,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   preset before (its sound its own now: `presetSounds_` reset, as `savePreset` does); not a step of
   undo. Undo's older steps still hold the old numbers (as after a `savePreset` that sorts in before
   others): a step taken back after a delete can name the next preset. `app_test`
-  `testDeletingOwnSynthPresets`.
+  `testDeletingOwnSynthPresets`. **A tab turned with B still held calls it off** (review of A3,
+  2026-11-25; each screen's `callOffDelete`, from `App::update` for every screen not shown, beside SONG's):
+  L2 / R2 and SELECT's tap never reach the screen, and it is not updated while away, so back with B still
+  held the bar's clock had run and the file went at once, the bar never seen. The same for the kit's
+  EDIT and VOICE holds and a list of recordings' (`SamplePicker::callOffDelete`). `app_test`
+  `testATabCallsOffAHoldOfB`, `sample_test` `testATabCallsOffARecordingsDelete`.

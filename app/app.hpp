@@ -164,6 +164,8 @@ private:
     std::unique_ptr<Session::SceneClip> sceneClipBeforeShoulders_;
     unsigned sceneCopiesBeforeShoulders_ = 0;
     Session::Rec recBeforeShoulders_ = Session::Rec::Idle; // ...and a recording: R1 first on a lane or the sampler begins one
+    bool typingBeforeShoulders_ = false; // ...and the name keys: R1 first on a synth's or the sampler's PRESET opens them
+    void closePresetKeys(); // the name keys of every synth's and the sampler's PRESET, wherever they were opened
     unsigned saidSeen_ = 0; // Session::saidCount() when its line was last taken
     void takeSessionSaid(); // what the Session asked to be said (a bar copied or pasted) into this box
     int sceneOfSelect() const; // the scene SELECT + Y and SELECT + L2 / R2 act on (on SONG: the cursor's)

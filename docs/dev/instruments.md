@@ -23,7 +23,13 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   `keepPlace`, `turnPage`; `app_test` `testAdvancedKeepsItsPlace`). Each track keeps the page and stop it
   was last on, **in memory only, never in the song** (as FX's `last_`): written by `update()` while an
   advanced page shows (so a track left by another track's coming, not by B, keeps it too) and by B on
-  its way to MAIN. **A on ADVANCED opens there**; a track never on the pages opens page 1 at
+  its way to MAIN. **Another track of the same synth picked while a page shows opens ITS place**
+  (review of A4, 2026-11-25; `shownTrack_`, `followTrack`, first thing in `update()` and `onButton`):
+  one screen serves every track of a synth and stayed on its page, so `keepPlace` wrote the leaving
+  track's page and stop over the arriving track's own, and on CLOUD a track that had never opened the
+  pages showed RECORDING, where R1 records. Now the leaving track's place is kept as last shown (a page
+  turned since the last frame too), and the arriving one opens its own, or page 1 at `firstStop`. MAIN
+  is every track's alike and stays. `goTo` (the tests' and stills') sets the place for the track up. **A on ADVANCED opens there**; a track never on the pages opens page 1 at
   `firstStop` (0, or 1 on CLOUD). **L1 / R1 keep the cursor's row and column** (`index / columns`, an
   envelope page's eight to a row and its HOLD AT / LAST STEP row as Phazed's `moveCursor` counts them):
   on FM-6 the same knob of the next operator is under it, one press each. Where the next page has no
@@ -35,7 +41,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   was when A went down (gesture audit G12, 2026-11-25: `Session::keepSound` / `putSoundBack`, the whole
   rule in drums-and-samples.md): the preset, its settings and macros told to the engine as undo tells
   them (`sendSynthPatch`), the effects a whole preset brought, and the recording. Heard (`hear()`), and
-  A is spent. B with A held on a macro or a page's setting still does nothing.
+  A is spent; **a stick still pushed then waits for the middle** (`stickWait_`, as a MOD let go: it was
+  stepping presets, and moved the cursor off PRESET on the next frame, review of A4). B with A held on a
+  macro or a page's setting still does nothing.
 - **A new synth track tells the engine its first preset** (`Session::addTrack` calls
   `sendSynthPatch`). The engine makes a synth on its start patch, which is no preset: JAX-EP and
   FM-6 played it (a plain saw, one sine) under a MAIN that said A1 or BRASS 1 until a preset was
@@ -255,7 +263,10 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     `SynthScreen::firstStop`): "A, R1", page 2 on every other synth, started a recording here, and so
     did R1 once the pages came round to SOURCE. Both land on POSITION; a place remembered on RECORDING
     (the player was there last) opens on it. **While a take waits or runs, R1 on any page and stop stops
-    it** (G34), before SAVE on MAIN's PRESET and before a page turn.
+    it** (G34), before SAVE on MAIN's PRESET and before a page turn, **but after a held MOD's buttons**
+    (review of A4, 2026-11-25): with X held on a macro R1 is the MOD's PHASE / LENGTH / SPEED, and the
+    stop came first and took it (the line is not even refreshed while the MOD holds the screen), as the
+    kit's EDIT and VOICE keep their own R1. `sample_test` `testR1StopsATakeFromAnyStop`.
   - **The grains are a readout for the redraw** (`Readouts::grains`, `kStirGrains`: the track up's places,
     `App::readouts`); `idle_test` has a part (a CLOUD at LEVEL 0, so SIGNAL stands still and only the
     grains move).

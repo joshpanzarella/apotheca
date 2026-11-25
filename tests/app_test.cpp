@@ -2998,7 +2998,10 @@ void testTheHelpCard() {
     other.key(SELECT, false);
     other.frames(1);
     CHECK(!other.app.helpShowing() && other.view() == View::Device);
-    rig.frames(1); // back to a handheld with MENU, for the tests after this one
+    rig.frames(1); // back to a handheld with MENU, for the tests after this one; but it is in the button test,
+    CHECK(rig.app.settings().testing() && ui::gHelpHint[0] == 0); // ...where the card does not come up, so the bar does not offer it
+    rig.app.session().view = View::Pattern;
+    rig.frames(1);
     CHECK(std::string(ui::gHelpHint) == "MENU: HELP");
 }
 
@@ -7815,6 +7818,18 @@ void testDeletingOwnSynthPresets() {
     rig->key(B, false);
     rig->tap(UP);
     CHECK(screen.cursor() == SynthScreen::kPreset && userPresets(TrackKind::Phazed).size() == 3);
+    // L2 / R2 turn the tab without this screen seeing a press, and it is not looked at while away: with B still
+    // held, back on it, the bar must start again, not come back full (the file went at once).
+    rig->key(B, true);
+    rig->frames(30);
+    rig->tap(R2);
+    rig->frames(70);
+    rig->tap(L2);
+    rig->frames(10);
+    CHECK(rig->app.session().view == View::Device && screen.presetDeletePart() == 0.f);
+    rig->key(B, false);
+    rig->frames(1);
+    CHECK(userPresets(TrackKind::Phazed).size() == 3 && screen.said().empty());
     rig->frames(2);
     const int steps = session.undoSteps();
     // Held the whole second: BB's file goes, and the screen says so. The track keeps its sound, named by the
@@ -7913,6 +7928,92 @@ void testThePresetKeysHaveEveryButton() {
         rig.key(SELECT, false);
         rig.frames(2);
         CHECK(!typing() && session.undoSteps() == steps && session.view == View::Device);
+    }
+}
+
+// The four shoulders' panic begun with R1 on PRESET (R1, then L1, L2, R2): R1 opens the name keys on its way, on
+// one of the player's own with its name typed in, and the next B would replace its file. The panic closes keys
+// it opened, wherever (R2 first turned the tab to DEVICE, and the panic turned it back); keys that were up
+// before it stay up (testThePresetKeysHaveEveryButton).
+void testAPanicClosesTheKeysItOpened() {
+    for (int sampler = 0; sampler < 2; ++sampler) {
+        Rig rig;
+        Session& session = rig.app.session();
+        const std::string folder = tempFolder("panickeys");
+        session.usePresetFolder(folder);
+        CHECK(session.addTrack(sampler ? TrackKind::Sampler : TrackKind::Phazed)); // track 1
+        rig.project().track = 1;
+        session.view = View::Device;
+        const auto typing = [&] { return sampler ? rig.app.sampler().typing() : rig.app.phazed().typing(); };
+        const auto said = [&] { return sampler ? rig.app.sampler().said() : rig.app.phazed().said(); };
+        // One of the player's own, the track on it (a synth turned since: B would write the turn over the file).
+        std::string before, file;
+        if (sampler) {
+            CHECK(session.saveSamplerPreset(1, "AA") && session.samplerPresetOf(1) == 0);
+            rig.app.sampler().goTo(SamplerScreen::kPresetStop);
+            CHECK(readTextFile(folder + "/AA.sampler", before));
+        } else {
+            CHECK(session.savePreset(1, "AA"));
+            session.setSynthSetting(1, phazed::Level, rig.project().tracks[1].patch.value[phazed::Level] == 3 ? 4 : 3);
+            rig.app.phazed().goTo(0, SynthScreen::kPreset);
+            CHECK(readTextFile(folder + "/AA.phazed", before));
+        }
+        rig.frames(2);
+        for (int first = 0; first < 2; ++first) {
+            // R1 first on DEVICE; then R2 first, from the roll's tab to DEVICE, where R1 comes next.
+            if (first == 1) session.view = View::Pattern, rig.frames(2);
+            const std::vector<SDL_Keycode> order = first == 0 ? std::vector<SDL_Keycode>{R1, L1, L2, R2} : std::vector<SDL_Keycode>{R2, R1, L1, L2};
+            for (SDL_Keycode k : order) rig.key(k, true), rig.frames(1);
+            CHECK(rig.app.panicNoteShowing() && session.view == (first == 0 ? View::Device : View::Pattern));
+            for (SDL_Keycode k : order) rig.key(k, false);
+            rig.frames(1);
+            rig.tap(B); // (puts the note away)
+            session.view = View::Device;
+            rig.frames(2);
+            CHECK(!typing());
+            rig.tap(B); // (on PRESET, the keys shut: a tap of B, nothing written)
+            rig.frames(2);
+            CHECK(!typing() && said().empty() && readTextFile(folder + (sampler ? "/AA.sampler" : "/AA.phazed"), file) && file == before);
+        }
+        session.usePresetFolder(tempFolder("panickeys-clean")); // the registry is global: leave it empty for later tests
+    }
+}
+
+// A hold of B on one of the player's own (the sampler's preset, a kit on the KIT stop) is called off by a tab turned
+// with B still held, as a synth's is (testDeletingOwnSynthPresets): back on the screen, the bar starts again.
+void testATabCallsOffAHoldOfB() {
+    for (int place = 0; place < 2; ++place) {
+        Rig rig;
+        Session& session = rig.app.session();
+        session.usePresetFolder(tempFolder("tabcallsoff"));
+        session.view = View::Device;
+        std::size_t was = 0;
+        const auto count = [&] { return place == 0 ? session.samplerPresets().size() : session.kits().size(); };
+        if (place == 0) {
+            CHECK(session.addTrack(TrackKind::Sampler));
+            rig.project().track = 1;
+            CHECK(session.saveSamplerPreset(1, "AA"));
+            rig.app.sampler().goTo(SamplerScreen::kPresetStop);
+        } else {
+            rig.project().track = 0;
+            CHECK(rig.project().tracks[0].kind == TrackKind::Drums && !session.saveKit(0).empty());
+            rig.app.kit().goToKit();
+        }
+        was = count();
+        rig.frames(2);
+        const auto part = [&] { return place == 0 ? rig.app.sampler().presetDeletePart() : rig.app.kit().kitDeletePart(); };
+        rig.key(B, true);
+        rig.frames(30);
+        CHECK(part() > 0.3f);
+        rig.tap(R2);
+        rig.frames(70);
+        rig.tap(L2);
+        rig.frames(10);
+        CHECK(session.view == View::Device && part() == 0.f && count() == was);
+        rig.key(B, false);
+        rig.frames(2);
+        CHECK(count() == was);
+        session.usePresetFolder(tempFolder("tabcallsoff-clean")); // the registry is global: leave it empty for later tests
     }
 }
 
@@ -8222,19 +8323,31 @@ void testAdvancedKeepsItsPlace() {
     CHECK(screen.page() == 2 && screen.cursor() == 21);
     rig.tap(L1);
     CHECK(screen.page() == 1 && screen.cursor() == voiceStops - 1);
-    // Left by another track rather than B: the place is still the track's (kept as it is shown).
+    // Left by another track rather than B (picked on SONG, the screen on page 5): the place is still the track's,
+    // and the other track, up on it now, shows ITS own place (page 1, its last stop there), which it keeps. (It
+    // was shown page 5, and its own place was written over with it.)
     rig.project().track = 1;
     rig.frames(1);
     screen.goTo(5, 2);
     rig.frames(1);
-    rig.project().track = 2; // (the screen stays on page 5: shown for the other track now)
+    rig.project().track = 2;
     rig.frames(1);
-    screen.goTo(2, 0);
+    CHECK(screen.page() == 1 && screen.cursor() == voiceStops - 1);
     rig.tap(B);
     rig.project().track = 1;
     rig.frames(1);
     rig.tap(A);
     CHECK(screen.page() == 5 && screen.cursor() == 2);
+    rig.project().track = 2; // (on page 5 for track 1: track 2's own place again)
+    rig.frames(1);
+    CHECK(screen.page() == 1 && screen.cursor() == voiceStops - 1);
+    rig.tap(B);
+    rig.project().track = 1;
+    rig.frames(1);
+    CHECK(screen.page() == 0); // (B left it on MAIN: MAIN is every track's, and stays)
+    rig.tap(A);
+    CHECK(screen.page() == 5 && screen.cursor() == 2);
+    rig.tap(B);
     // From an envelope (eight to a row) to a page of four: a column past the fourth is the row's fourth.
     CHECK(session.addTrack(TrackKind::Phazed));
     rig.project().track = 3;
@@ -8250,6 +8363,20 @@ void testAdvancedKeepsItsPlace() {
     phazed.goTo(9, 13);
     rig.tap(R1);
     CHECK(phazed.page() == 1 && phazed.cursor() == 7);
+    // A track that has not opened the pages arrives on page 1 at its first stop; on CLOUD that is not RECORDING
+    // (where R1 records), but the stop after it.
+    for (TrackKind kind : {TrackKind::Fm6, TrackKind::Cloud}) {
+        CHECK(session.addTrack(kind) && session.addTrack(kind));
+        const int a = rig.project().trackCount() - 2, b = a + 1;
+        SynthScreen& s = kind == TrackKind::Cloud ? rig.app.cloud() : rig.app.fm6();
+        rig.project().track = a;
+        rig.frames(1);
+        s.goTo(3, 2);
+        rig.frames(1);
+        rig.project().track = b;
+        rig.frames(1);
+        CHECK(s.page() == 1 && s.cursor() == s.firstStop(1) && (kind != TrackKind::Cloud || (s.cursor() == 1 && !s.onRecording())));
+    }
 }
 
 void testAdvancedPages() {
@@ -11744,16 +11871,26 @@ void testDeletingAPresetSaysItCannotBeUndone() {
             if (ui::gHintsOver != 0.f) std::printf("    the hints are %.0f pixels over\n", static_cast<double>(ui::gHintsOver));
             return ui::gHintsOver == 0.f;
         };
+        // The keys' title: what they do, and where B (or START) would write over a file, that it cannot be undone.
+        const char* replacing = sampler ? SamplerScreen::kPresetReplacingWords : SynthScreen::kPresetReplacingWords;
+        CHECK(std::string(SynthScreen::kPresetReplacingWords) == SamplerScreen::kPresetReplacingWords);
+        const auto title = [&](const char* words, SDL_Color colour) { return inked(canvas, scratch, 0, 40.f, 46.f, words, colour); };
         CHECK(draw() && !hintKeyed(canvas, scratch, "HOLD B", "delete this preset"));
+        CHECK(ui::gHelpHint[0] != 0); // (the help card can be had here: the bar offers it)
         rig.tap(R1);
         CHECK(draw() && hintKeyed(canvas, scratch, "B", "leave") && !hintedOn(canvas, scratch, "save") && !hintKeyed(canvas, scratch, "Y", "delete"));
+        CHECK(title("SAVE AS PRESET", ui::kDim) && !title(replacing, ui::kBrass));
+        CHECK(ui::gHelpHint[0] == 0); // (every button is the keys': no help card, so the bar does not offer one)
         rig.tap(A, 2);
         CHECK(draw() && hintKeyed(canvas, scratch, "B", "save") && hintKeyed(canvas, scratch, "Y", "delete") && !hintedOn(canvas, scratch, "replace") && !hintKeyed(canvas, scratch, "START", "save"));
         rig.tap(B); // saved as AA: the track is on it
+        rig.frames(1);
+        CHECK(ui::gHelpHint[0] != 0);
         rig.tap(R1); // ...so its name is typed in: B would replace it
         CHECK(draw() && hintKeyed(canvas, scratch, "B", "replace") && !hintedOn(canvas, scratch, "save"));
+        CHECK(title(replacing, ui::kBrass) && !title("SAVE AS PRESET", ui::kDim));
         rig.tap(Y);
-        CHECK(draw() && hintKeyed(canvas, scratch, "B", "save"));
+        CHECK(draw() && hintKeyed(canvas, scratch, "B", "save") && title("SAVE AS PRESET", ui::kDim));
         rig.tap(Y);
         rig.tap(B);
         CHECK(sampler ? !rig.app.sampler().typing() : !synth.typing());
@@ -13636,6 +13773,8 @@ int main(int argc, char** argv) {
         testSamplerPresetsOnDevice();
         testDeletingOwnSynthPresets();
         testThePresetKeysHaveEveryButton();
+        testAPanicClosesTheKeysItOpened();
+        testATabCallsOffAHoldOfB();
         testTheNameKeysRunAtAListsPace();
         testAHeldYDeletesOn();
         testDeletingAPresetSaysItCannotBeUndone();
@@ -13643,6 +13782,13 @@ int main(int argc, char** argv) {
         testTheHintsFitAndSayWhatTheyDo();
         testTheHelpCard();
         if (failures == 0) std::printf("app tests passed (naming only)\n");
+        return failures == 0 ? 0 : 1;
+    }
+    if (argc > 1 && std::string(argv[1]) == "--pages") { // just the gesture audit's batch A4 here: ADVANCED's place, the sound put back
+        testAdvancedKeepsItsPlace();
+        testAdvancedPages();
+        testAPutBackSoundIsTheEngines();
+        if (failures == 0) std::printf("app tests passed (pages only)\n");
         return failures == 0 ? 0 : 1;
     }
     if (argc > 1 && std::string(argv[1]) == "--navigation") { // just the gesture audit's batch A5: going round, headings, the climb, SONG's cell
@@ -13808,6 +13954,8 @@ int main(int argc, char** argv) {
     testSamplerPresetsOnDevice();
     testDeletingOwnSynthPresets();
     testThePresetKeysHaveEveryButton();
+    testAPanicClosesTheKeysItOpened();
+    testATabCallsOffAHoldOfB();
     testTheNameKeysRunAtAListsPace();
     testAHeldYDeletesOn();
     testDeletingAPresetSaysItCannotBeUndone();

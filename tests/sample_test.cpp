@@ -1753,6 +1753,51 @@ void testR1StopsATakeFromAnyStop() {
     screen.goTo(0, SynthScreen::kPreset);
     rig.tap(R1);
     CHECK(session.recording() == Session::Rec::Idle && !screen.typing() && screen.page() == 0);
+    // X held on a macro is its MOD's gesture, R1 its PHASE: the take runs on.
+    screen.goTo(1, 0);
+    rig.tap(R1);
+    CHECK(session.recording() == Session::Rec::Waiting);
+    screen.goTo(0, SynthScreen::kFirstMacro);
+    rig.key(X, true);
+    rig.frames(1);
+    rig.tap(UP); // (the first UP makes an LFO: PHASE 0)
+    CHECK(screen.modKnob().held() && session.modData(2, 0).kind != kModOff && session.modData(2, 0).phase == 0);
+    rig.tap(R1);
+    CHECK(session.modData(2, 0).phase == 1 && session.recording() == Session::Rec::Waiting);
+    rig.key(X, false);
+    rig.frames(1);
+    rig.tap(R1); // (X let go: R1 stops it again)
+    CHECK(session.recording() == Session::Rec::Idle);
+}
+
+// B held on a recording in a list of recordings deletes its file for good when the bar is full. L2 / R2 turn the
+// tab without the list seeing a press, and it is not looked at while away: with B still held, back on it, the bar
+// starts again rather than coming back full (the file went at once, the bar never seen filling).
+void testATabCallsOffARecordingsDelete() {
+    const SDL_Keycode L2 = SDLK_1;
+    const std::string folder = tempFolder("samples-tabcallsoff");
+    CHECK(writeWav(folder + "/aa.wav", tone(0.3f, 0.3f), 48000) && writeWav(folder + "/bb.wav", tone(0.3f, 0.3f), 48000));
+    Rig rig(folder);
+    Session& session = rig.session();
+    KitScreen& kit = rig.app.kit();
+    session.setLaneSample(0, 2, "aa");
+    session.view = View::Device;
+    kit.goTo(2, KitScreen::kSound);
+    rig.frames(2);
+    rig.tap(A);
+    CHECK(kit.picker().isOpen() && kit.picker().under() && kit.picker().under()->name == "aa");
+    rig.key(B, true);
+    rig.frames(30);
+    CHECK(kit.picker().deletePart() > 0.3f);
+    rig.tap(R2);
+    rig.frames(70);
+    rig.tap(L2);
+    rig.frames(10);
+    CHECK(session.view == View::Device && kit.picker().isOpen() && kit.picker().deletePart() == 0.f);
+    rig.key(B, false);
+    rig.frames(2);
+    struct stat st;
+    CHECK(stat((folder + "/aa.wav").c_str(), &st) == 0);
 }
 
 // B with A held puts back the sound A went down on (gesture audit G12), with one function shared with the
@@ -1796,6 +1841,29 @@ void testBWithAHeldPutsTheSoundBack() {
     rig.tap(B);
     rig.key(A, false);
     CHECK(drums.laneFit[2] == 32);
+    // ...and with no step first, A's let go after B is still no tap: FIT is not set to the recording's bars.
+    rig.key(A, true);
+    rig.tap(B);
+    rig.key(A, false);
+    CHECK(drums.laneFit[2] == 32);
+    // The stick still pushed when B puts the sound back moves nothing until it comes back to the middle (it was
+    // stepping the sounds: it would move the cursor off the lane at once).
+    kit.goTo(2, KitScreen::kSound);
+    rig.frames(2);
+    rig.key(A, true);
+    rig.key(STICK_UP, true);
+    rig.frames(10);
+    CHECK(std::string(drums.laneSample[2]) != "bb");
+    rig.tap(B);
+    rig.frames(30);
+    CHECK(std::string(drums.laneSample[2]) == "bb" && kit.cursorLane() == 2 && kit.cursorColumn() == KitScreen::kSound);
+    rig.key(STICK_UP, false);
+    rig.key(A, false);
+    rig.frames(2);
+    rig.key(STICK_UP, true); // (back in the middle and pushed again: a move)
+    rig.frames(1);
+    rig.key(STICK_UP, false);
+    CHECK(kit.cursorLane() == 1);
 
     // The sampler's SOUND: "bb"; hold A, UP ("cc"), B: "bb". A down, B, A up: no list (it was no tap).
     CHECK(session.addTrack(TrackKind::Sampler));
@@ -1817,6 +1885,23 @@ void testBWithAHeldPutsTheSoundBack() {
     rig.key(A, false);
     rig.frames(1);
     CHECK(std::string(smp.sample) == "bb" && !sampler.picker().isOpen());
+    // The stick still pushed when B puts it back waits for the middle (the cursor stays on SOUND: DOWN, since
+    // UP from SOUND goes nowhere).
+    rig.key(A, true);
+    rig.key(STICK_DOWN, true);
+    rig.frames(10);
+    CHECK(std::string(smp.sample) != "bb");
+    rig.tap(B);
+    rig.frames(30);
+    CHECK(std::string(smp.sample) == "bb" && sampler.cursor() == 0);
+    rig.key(STICK_DOWN, false);
+    rig.key(A, false);
+    rig.frames(2);
+    rig.key(STICK_DOWN, true);
+    rig.frames(1);
+    rig.key(STICK_DOWN, false);
+    CHECK(sampler.cursor() != 0);
+    sampler.goTo(0);
     // ...and PRESET: two saved (each whole: ONE with a REVERB, TWO with none), the track on neither with a DELAY.
     session.setTrackSample(1, "aa");
     session.setSamplerSetting(1, sampler::Attack, 10);
@@ -1869,15 +1954,61 @@ void testBWithAHeldPutsTheSoundBack() {
     session.setSynthMacro(3, 0, 0.2f);
     session.setSynthSetting(3, 0, ph.patch.value[0] == 0 ? 1 : 0);
     session.setEffect(3, 0, EffectKind::Delay);
+    // ...its automation written in two scenes, and the TYPE its slot remembers: a whole preset passed over puts
+    // another effect in the slot (setEffect: its lanes cleared, its TYPEs forgotten); B puts them back too.
+    const int lane = autoLaneOfEffect(0, 1);
+    session.setAutomation(3, 0, lane, 4, 0.7f);
+    session.setAutomation(3, 2, lane, 9, 0.3f);
+    session.rememberType(3, 0, ph.effects[0]);
+    float remembered[kEffectParams];
+    CHECK(session.rememberedType(3, 0, EffectKind::Delay, remembered));
     const std::string own = trackSoundText(TrackKind::Phazed, trackSoundOf(ph));
     const std::vector<int> values(ph.patch.value, ph.patch.value + phazed::kSettings);
     phazed.goTo(0, SynthScreen::kPreset);
     rig.key(A, true);
     rig.tap(RIGHT, 8);
     CHECK(ph.preset == 66 && trackSoundText(TrackKind::Phazed, trackSoundOf(ph)) != own && hintsFit(rig));
+    CHECK(ph.effects[0].kind != static_cast<int>(EffectKind::Delay) && !session.hasAutomation(3, 0, lane) && !session.hasAutomation(3, 2, lane) && !session.rememberedType(3, 0, EffectKind::Delay, remembered));
+    const unsigned images = session.imagesSent();
     rig.tap(B);
     rig.key(A, false);
     CHECK(ph.preset == 2 && ph.macro[0] == 0.2f && std::vector<int>(ph.patch.value, ph.patch.value + phazed::kSettings) == values && trackSoundText(TrackKind::Phazed, trackSoundOf(ph)) == own);
+    CHECK(rig.project().tracks[3].automation[0][lane][4] == 0.7f && rig.project().tracks[3].automation[2][lane][9] == 0.3f && session.rememberedType(3, 0, EffectKind::Delay, remembered));
+    int written = 0;
+    for (int scene = 0; scene < kMaxScenes; ++scene)
+        for (int l = autoLaneOfEffect(0, 0); l < autoLaneOfEffect(kTrackSlots, 0); ++l)
+            for (int step = 0; step < kAutoSteps; ++step) written += rig.project().tracks[3].automation[scene][l][step] >= 0.f ? 1 : 0;
+    CHECK(written == 2 && session.imagesSent() == images + 1); // (the two steps, and no more; the track sent once, whole)
+    // Nothing of the lanes changed on the way (a plain preset): nothing written, nothing sent.
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(ph.preset == 3);
+    rig.tap(B);
+    rig.key(A, false);
+    CHECK(ph.preset == 2 && session.imagesSent() == images + 1 && rig.project().tracks[3].automation[0][lane][4] == 0.7f);
+    // A step written in a kept slot's lanes since A went down goes too: the lanes as they were, no more. (No
+    // screen writes one while A steps the sounds; the Session is asked directly here.)
+    session.keepSound(3);
+    session.setAutomation(3, 1, lane, 5, 0.5f);
+    CHECK(session.putSoundBack(3) && !session.hasAutomation(3, 1, lane) && rig.project().tracks[3].automation[0][lane][4] == 0.7f);
+    CHECK(session.imagesSent() == images + 2);
+    // The stick still pushed when B puts it back moves nothing until it comes back to the middle (it was
+    // stepping the presets: the cursor would go off PRESET to the macros at once).
+    rig.key(A, true);
+    rig.key(STICK_UP, true);
+    rig.frames(40);
+    CHECK(ph.preset != 2);
+    rig.tap(B);
+    rig.frames(20);
+    CHECK(ph.preset == 2 && phazed.cursor() == SynthScreen::kPreset && phazed.page() == 0);
+    rig.key(STICK_UP, false);
+    rig.key(A, false);
+    rig.frames(2);
+    rig.key(STICK_DOWN, true);
+    rig.frames(1);
+    rig.key(STICK_DOWN, false);
+    CHECK(phazed.cursor() != SynthScreen::kPreset);
+    CHECK(trackSoundText(TrackKind::Phazed, trackSoundOf(ph)) == own);
     // FOLDER too.
     phazed.goTo(0, SynthScreen::kFolder);
     rig.key(A, true);
@@ -1986,6 +2117,17 @@ void testATapOnFitFitsItsBars() {
     kit.goTo(1, KitScreen::kFit);
     rig.tap(A);
     CHECK(track.laneFit[1] == 24);
+    // 24 is no stop of FIT's: hold A + DOWN lands on the stop below it (16, not 8), UP on the one above (32).
+    rig.key(A, true);
+    rig.tap(DOWN);
+    rig.key(A, false);
+    CHECK(track.laneFit[1] == 16);
+    rig.tap(A);
+    CHECK(track.laneFit[1] == 24);
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(track.laneFit[1] == 32);
     // A built-in drum, a synth voice, a file not found: nothing (and the bar keeps HOLD A fit to steps).
     CHECK(kit.fitsByTap()); // (on "long", a recording found)
     for (int lane : {2, 3, 4}) {
@@ -3738,6 +3880,7 @@ int main(int, char**) {
     testThePanicCallsOffARecordingBegunOnTheWay();
     testARecordingFollowsItsTrack();
     testRecordingOntoACloud();
+    testATabCallsOffARecordingsDelete();
     testR1StopsATakeFromAnyStop();
     testBWithAHeldPutsTheSoundBack();
     testAKeptSoundIsForgotten();

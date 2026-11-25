@@ -149,6 +149,10 @@ public:
     float kitDeletePart() const { return kitDeletePart_; }
     static constexpr Uint32 kKitDeleteMs = ui::kHoldForGoodMs; // (a kit's file: for good)
     static constexpr const char* kKitDeletingWords = "DELETING THE KIT: CANNOT BE UNDONE";
+    // A hold of B that never saw its let go (L2 / R2 turned the tab, SELECT went to SONG): called off, so the
+    // bar does not come back full (App::update, while another screen is up): the kit's, EDIT's and VOICE's
+    // and the list of recordings'.
+    void callOffDelete();
 
 private:
     TrackData& trk() { return project_.current(); }
@@ -181,7 +185,8 @@ private:
     void stepKit(int by);
     bool holding_ = false; // A is held
     bool stepped_ = false; // ...and something was changed with it, so letting go is not a tap
-    void putBack();        // B with A held on SOUND or the KIT stop: the sound as A went down (G12)
+    void putBack(const Input& input); // B with A held on SOUND or the KIT stop: the sound as A went down (G12)
+    bool stickWait_ = false; // ...the stick still pushed then: it moves nothing until it comes back to the middle
     void fitToItsBars();
     SamplePicker picker_;
     void openPicker();

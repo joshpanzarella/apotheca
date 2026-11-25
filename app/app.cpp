@@ -77,6 +77,7 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
             *sceneClipBeforeShoulders_ = session_.sceneClip(); // ...or, on SONG, R1 copies a scene
             sceneCopiesBeforeShoulders_ = session_.sceneCopies();
             recBeforeShoulders_ = session_.recording(); // ...or, on a kit lane, the sampler or CLOUD's RECORDING, R1 records
+            typingBeforeShoulders_ = typingAName();     // ...or, on a synth's or the sampler's PRESET, R1 opens the name keys
         }
         if (down == 4) {
             panicking_ = true;
@@ -104,6 +105,10 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
             // ends it, and its take is kept at once, as any R1 keeps it.)
             const auto under = [](Session::Rec r) { return r == Session::Rec::Waiting || r == Session::Rec::Recording; };
             if (under(session_.recording()) && !under(recBeforeShoulders_)) session_.dropRecording();
+            // The name keys opened on the way (R1 first on PRESET, perhaps on a tab R2 turned to) are closed, nothing
+            // kept: on one of the player's own they open with its name typed in, and the next B would replace its
+            // file. Keys that were up before the panic stay up, with what was typed.
+            if (!typingBeforeShoulders_) closePresetKeys();
             song_.shouldersPressed();  // (L1 then R1 on a head was on its way here: no track is copied)
             drums_.shouldersPressed(); // L1 let go after this is no tap of L1
             notes_.shouldersPressed();
@@ -322,6 +327,11 @@ void App::showTab(View to) {
     session_.view = to;
 }
 
+void App::closePresetKeys() {
+    for (SynthScreen* synth : {&phazed_, &jaxep_, &fm6_, &physic_, &acid_, &cloud_, &morph_}) synth->closeKeys();
+    sampler_.closeKeys();
+}
+
 // The scene SELECT + Y and SELECT + L2 / R2 act on: the one being worked on, or on SONG the one under
 // the cursor (off the scenes there, on a head, + TRACK or MASTER: the one being worked on).
 int App::sceneOfSelect() const {
@@ -405,7 +415,7 @@ void App::update(const Input& input, Uint32 nowMs) {
     // UNDONE...), as MENU's card goes for MENU + a volume key.
     const bool busy = (session_.view == View::Settings && (settings_.testing() || settings_.typing())) || typingAName();
     const bool menu = input.has(Button::Menu);
-    ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP";
+    ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP"; // (busy: none, set after the screen's update below)
     ui::gUpdateReady = session_.updateReady();
     if (menu) {
         if (!input.held(Button::Menu)) menuUsed_ = false;
@@ -475,8 +485,18 @@ void App::update(const Input& input, Uint32 nowMs) {
     if (&screenNow() != &fx_) fx_.callOff();
     // ...and so is a track being deleted on SONG (B held): L2 / R2 turn the tab without the screen seeing a press.
     if (&screenNow() != &song_) song_.callOffDelete();
+    // ...and so is a hold of B on a preset, a kit, EDIT or VOICE, or in a list of recordings: back with B still held,
+    // the bar would have been full at once (its file deleted, never seen filling).
+    for (SynthScreen* synth : {&phazed_, &jaxep_, &fm6_, &physic_, &acid_, &cloud_, &morph_})
+        if (&screenNow() != synth) synth->callOffDelete();
+    if (&screenNow() != &sampler_) sampler_.callOffDelete();
+    if (&screenNow() != &kit_) kit_.callOffDelete();
     screenNow().update(input, nowMs);
     takeSessionSaid(); // (what a screen's update said: the stick's TRANSPOSE)
+    // Where the card does not come up (the name keys, SET's keys and button test), the bar does not offer it.
+    // Asked after the screen's update: the button test closes by itself there, and the bar drawn this pass
+    // must be the one the redraw saw change (idle_test).
+    if ((session_.view == View::Settings && (settings_.testing() || settings_.typing())) || typingAName()) ui::gHelpHint = "";
 }
 
 unsigned App::stirring() const {

@@ -866,11 +866,18 @@ private:
     void putPresetSound(int track, const TrackSound* sound); // null: a plain preset
     // What keepSound kept: the track's fields as A went down (no patterns: none are copied), and what a
     // whole preset had found there then. track -1: nothing.
+    // The effects' automation is in the patterns, not the fields, so it is kept beside them: setEffect clears a
+    // slot's lanes in every scene (and forgets the TYPEs it remembered) when a whole preset passed over puts
+    // another effect in it, and the put-back puts the old effect in again with nothing written for it.
+    struct KeptPoint { int scene, lane, step; float value; };
     struct KeptSound {
         int track = -1;
         std::unique_ptr<TrackData> was;
         PresetSoundMemory memory;
+        std::vector<KeptPoint> lanes;     // every step written in the effects' lanes (8..19), any scene
+        TypeMemory types[kTrackSlots];    // what each slot remembered of the TYPEs of its family
     };
+    void putEffectLanesBack(int track); // the kept lanes and TYPEs, on each slot that holds its kept effect again
     KeptSound kept_;
     struct Sounding { int track = -1, pitch = 0; Uint32 until = 0; };
     Sounding sounding_[8];

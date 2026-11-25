@@ -134,7 +134,56 @@ void Session::keepSound(int track) {
     if (!kept_.was) kept_.was.reset(new TrackData); // (large: kept on the heap, made once)
     kept_.was->fieldsFrom(project.tracks[track]);
     kept_.memory = presetSounds_[track];
+    const TrackData& t = project.tracks[track];
+    kept_.lanes.clear(); // (its room kept: one A down after another makes nothing new)
+    for (int scene = 0; scene < kMaxScenes; ++scene) {
+        if (!t.automation.has(scene)) continue; // (nothing written there)
+        for (int lane = autoLaneOfEffect(0, 0); lane < autoLaneOfEffect(kTrackSlots, 0); ++lane)
+            for (int step = 0; step < kAutoSteps; ++step) {
+                const float v = t.automation[scene][lane][step];
+                if (v >= 0.f) kept_.lanes.push_back({scene, lane, step, v});
+            }
+    }
+    for (int slot = 0; slot < kTrackSlots; ++slot) kept_.types[slot] = typeMemory_[memorySlot(track, slot)];
     kept_.track = track;
+}
+
+// Each slot that holds the effect it held when A went down: its lanes in every scene as they were then, and the
+// TYPEs it remembered. Only a whole preset passed over (setEffect) changes them while A is held, so most often
+// nothing differs and nothing is done. Written into the song and the track sent once, whole (as FX's move of a
+// line: a command for every step could fill the engine's queue); a step of undo with the rest.
+void Session::putEffectLanesBack(int track) {
+    TrackData& t = project.tracks[track];
+    const TrackData& was = *kept_.was;
+    bool slot[kTrackSlots];
+    for (int s = 0; s < kTrackSlots; ++s) {
+        slot[s] = t.effects[s].kind == was.effects[s].kind;
+        if (slot[s]) typeMemory_[memorySlot(track, s)] = kept_.types[s];
+    }
+    // The same as kept? Every kept step there, and no more written than were kept.
+    int now = 0, same = 0, kept = 0;
+    for (const KeptPoint& p : kept_.lanes)
+        if (slot[autoSlotOfLane(p.lane)]) {
+            ++kept;
+            same += t.automation.has(p.scene) && t.automation[p.scene][p.lane][p.step] == p.value ? 1 : 0;
+        }
+    for (int scene = 0; scene < kMaxScenes; ++scene) {
+        if (!t.automation.has(scene)) continue;
+        for (int lane = autoLaneOfEffect(0, 0); lane < autoLaneOfEffect(kTrackSlots, 0); ++lane)
+            if (slot[autoSlotOfLane(lane)])
+                for (float v : t.automation[scene][lane]) now += v >= 0.f ? 1 : 0;
+    }
+    if (now == kept && same == kept) return;
+    for (int scene = 0; scene < kMaxScenes; ++scene) {
+        if (!t.automation.has(scene)) continue;
+        for (int lane = autoLaneOfEffect(0, 0); lane < autoLaneOfEffect(kTrackSlots, 0); ++lane)
+            if (slot[autoSlotOfLane(lane)])
+                for (float& v : t.automation[scene][lane]) v = kAutoNone;
+    }
+    for (const KeptPoint& p : kept_.lanes)
+        if (slot[autoSlotOfLane(p.lane)]) t.automation[p.scene][p.lane][p.step] = p.value;
+    noteEdit();
+    sendTrackImage(track);
 }
 
 // Through the usual setters, each only where it differs: the kit's lanes as a kit is put on (putKit),
@@ -162,6 +211,7 @@ bool Session::putSoundBack(int track) {
         }
     }
     putTrackSound(track, trackSoundOf(was));
+    putEffectLanesBack(track);
     presetSounds_[track] = kept_.memory;
     return true;
 }

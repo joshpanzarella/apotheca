@@ -172,8 +172,10 @@ save keeps. **R1 on it saves the track's sound under a name**: the name keys
 come up (A types, Y deletes a letter, **B saves and leaves**, as START does;
 with nothing typed B leaves and saves nothing; 24 letters at most). On one of
 your own its name is typed in already, so **R1 then B saves over it**. Under a
-name taken it replaces that one, and says REPLACED (SAVED AS for a new one).
-While a recording waits or runs, R1 stops it instead, here as on every box.
+name taken it replaces that one, and says REPLACED (SAVED AS for a new one);
+while the name typed is taken, the keys' title says B REPLACES THE PRESET:
+CANNOT BE UNDONE. While a recording waits or runs, R1 stops it instead, here
+as on every box.
 A preset is kept as `NAME.sampler` in `presets` beside the program.
 
 **A multisample**: where the files beside the picked one spell notes in
@@ -479,7 +481,9 @@ What the shoulder buttons did on the way to all four is put back: the tab, a
 bar or scene copied, and **a recording that R1 began** (R1 pressed first on a
 kit lane, the sampler or CLOUD's RECORDING) is called off, and nothing of it is
 kept. A recording that was already running when R1 went down first is ended by
-that R1, as any R1 ends it, and kept.
+that R1, as any R1 ends it, and kept. **Name keys that R1 opened on the way**
+(R1 first on PRESET) are closed again, nothing saved; keys that were up
+before the panic stay up with what was typed.
 
 ## SETUP (the SET tab)
 
@@ -739,9 +743,13 @@ three effects, its ECHO and SPACE sends, GLIDE FROM and its two MODs.
 - **B with A still held puts back the sound you started from**: the preset,
   its settings and macros, your effects, sends and MODs, all as they were when
   A went down, however many presets you passed (one press, where undo was one
-  step a preset). The same on FOLDER, on the sampler's SOUND and PRESET, on
-  CLOUD's RECORDING and on a drum lane's SOUND, as on the KIT stop. A then does
-  nothing more until you press it again.
+  step a preset). Your effects come back with their automation and the
+  TYPEs they remembered, even where a whole preset you passed put another
+  effect in their place. The same on FOLDER, on the sampler's SOUND and
+  PRESET, on CLOUD's RECORDING and on a drum lane's SOUND, as on the KIT stop.
+  A then does nothing more until you press it again, and a stick still pushed
+  moves nothing until it has come back to the middle (so the cursor stays on
+  the box).
 - **A new track starts plain** on its synth's first preset, whatever that
   preset holds.
 - The mixer's LEVEL and PAN are never in a preset.
@@ -752,10 +760,15 @@ three effects, its ECHO and SPACE sends, GLIDE FROM and its two MODs.
   every synth. **On one of your own its name is typed in already: R1 then B
   saves over it** (a sound turned since it was picked, kept in two presses).
   Under a name taken it replaces that one, and says REPLACED (SAVED AS for a
-  new one); while you type, the bar says B replace instead of B save.
+  new one); while you type, the bar says B replace instead of B save, and the
+  title over the keys says **B REPLACES THE PRESET: CANNOT BE UNDONE** (the
+  old file is gone once it is written over).
 - **Hold B a second on PRESET, on one of your own (USER)**: its file is
   deleted. A bar fills along PRESET and the bar at the bottom says DELETING
-  THE PRESET: CANNOT BE UNDONE; let go sooner and it stays. The track keeps
+  THE PRESET: CANNOT BE UNDONE; let go sooner and it stays. Any other button
+  calls it off, L2 / R2 and SELECT's tap too: back on PRESET with B still held,
+  the bar starts again from empty (the same for a kit, the sampler's presets,
+  and a recording in the list). The track keeps
   its sound, named now by the preset before it; another track on one of your
   own stays on it.
 - A sampler saves the same way (recording, settings, CHOP and the whole
@@ -1301,7 +1314,7 @@ track makes a sound at once.
   R1; elsewhere R1 turns the page). ADVANCED opens on POSITION the first time,
   and a page turn never lands on RECORDING, so R1 records only once you have
   moved onto it. **While a take waits or runs, R1 stops it** on any page and
-  any box. **Y on SOURCE is CATCH**: the last bar the
+  any box (but with X held on a macro, R1 is its MOD's, as ever). **Y on SOURCE is CATCH**: the last bar the
   song played becomes this track's recording (SELECT + B puts back the one it
   had). B in the list leaves the
   recording as it was. "THE BUILT-IN TONE" at the top of the list is none.
@@ -1928,8 +1941,10 @@ letter at a list's pace, so an old name goes in one hold), **B keeps what is
 typed and leaves**
 (with nothing typed it just leaves), START keeps it too. The keys run at a
 list's pace. While they are up every button is theirs: the tabs, SELECT and
-L3 do nothing there, and the help card does not come up. The four shoulder
-buttons' panic still works.
+L3 do nothing there, and the help card does not come up (the bar does not
+offer it). The four shoulder buttons' panic still works; keys that R1 opened
+on its way to the panic (R1 pressed first on PRESET) are closed again, with
+nothing saved.
 
 On PRESET with A held, **left / right go eight presets at a time**, as in the
 list of recordings.
@@ -2133,7 +2148,7 @@ patterns or the effects. A changed kit reads YOUR OWN until it is saved.
 | On | Hold A + stick up / down | B |
 | --- | --- | --- |
 | SOUND | From the built-in drum: UP each recording by name, DOWN the twelve synth models. Heard as it changes. **B with A still held: the lane as it was when A went down** (its EDIT and FIT too) | The drum back |
-| FIT TO | Off, 1, 2, 4, 8 steps, 1 bar, 2 bars, 4 bars. **A tap of A on a recording: the bars it fills at the tempo** (1, 2 or 4 bars in the scene's meter, or 1 to 8 steps for a short one) | Off |
+| FIT TO | Off, 1, 2, 4, 8 steps, 1 bar, 2 bars, 4 bars. **A tap of A on a recording: the bars it fills at the tempo** (1, 2 or 4 bars in the scene's meter, or 1 to 8 steps for a short one). From a count between those (24 steps, two bars of 3/4), hold A + down goes to the one below it (16), up to the one above (32) | Off |
 | CHOKE | None, 1, 2 | None |
 | EDIT | (A opens the lane's EDIT view, below) | |
 
@@ -2567,8 +2582,9 @@ above). PHYSIC has five (SOUND, RING, PLAY, DICE, BODY: see PHYSIC, above). L1 a
 R1 turn the pages; B goes back to MAIN. **The cursor keeps its place** as a page
 turns (the same row and box, or the nearest the page has): on FM-6 the same
 knob of the next operator. **A on ADVANCED comes back to the page and box the
-track was last on** (each track its own; the first time, page 1). The place is
-not kept in the song.
+track was last on** (each track its own; the first time, page 1). Another
+track of the same synth picked while the pages are up shows its own page and
+box, never the last one's. The place is not kept in the song.
 
 JAX-EP is a virtual analog synth modeled after a popular DCO synth, and its
 pages are that synth's panel:

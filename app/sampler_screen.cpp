@@ -241,6 +241,7 @@ void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
             holding_ = false;
             repeating_ = Button::None;
             saved_ = turned_ = 0.f;
+            stickWait_ = input.stickX() != 0.f || input.stickY() != 0.f; // (it was stepping: not off the stop at once)
         }
     } else if (b == Button::B && !holding_) {
         if (stop_ == 0) session_.setTrackSample(project_.track, "");
@@ -287,6 +288,19 @@ void SamplerScreen::typeButton(Button b) {
     if (name.empty()) return; // (nothing typed: B leaves)
     said_ = !session_.saveSamplerPreset(project_.track, name) ? "NOT SAVED" : (taken ? "REPLACED " : "SAVED AS ") + name;
     saidUntil_ = lastMs_ + 2500;
+}
+
+void SamplerScreen::closeKeys() {
+    if (!keys_.isOpen()) return;
+    keys_.close();
+    saved_ = 0.f;
+    stickWas_ = false; // (as after B or START)
+}
+
+void SamplerScreen::callOffDelete() {
+    presetDeleting_ = false;
+    presetDeletePart_ = 0.f;
+    picker_.callOffDelete();
 }
 
 bool SamplerScreen::nameTaken() const {
@@ -351,7 +365,8 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
         saidUntil_ = nowMs + 3000;
     }
     if (!said_.empty() && nowMs >= saidUntil_) said_.clear();
-    const float x = input.stickX(), y = input.stickY();
+    if (stickWait_ && input.stickX() == 0.f && input.stickY() == 0.f) stickWait_ = false;
+    const float x = stickWait_ ? 0.f : input.stickX(), y = stickWait_ ? 0.f : input.stickY();
 
     if (holding_ && stop_ > 0 && settingAt(stop_ - 1) == sampler::Loop) {
         // LOOP, a choice (off, on): it clicks once a push past half, up ON and down OFF, as the D-pad does (gesture
@@ -394,7 +409,8 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
 
 void SamplerScreen::drawTyping(SDL_Renderer* r, const Fonts& fonts) const {
     // B saves (under a name taken: replaces it, and the bar says so first); with nothing typed it leaves.
-    keys_.draw(r, fonts, "SAVE AS PRESET", kDim, "(empty: name it to save)", keys_.typed().empty() ? "leave" : nameTaken() ? "replace" : "save", nullptr);
+    const bool taken = nameTaken(); // (its file is written over: CLAUDE.md, what cannot be undone says so where it is confirmed)
+    keys_.draw(r, fonts, taken ? kPresetReplacingWords : "SAVE AS PRESET", taken ? kBrass : kDim, "(empty: name it to save)", keys_.typed().empty() ? "leave" : taken ? "replace" : "save", nullptr);
 }
 
 void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {

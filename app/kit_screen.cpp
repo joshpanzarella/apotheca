@@ -103,7 +103,9 @@ void KitScreen::stepFit(int by) {
     int now = 0;
     for (int i = 0; i < kLaneFitCount; ++i)
         if (kLaneFits[i] <= trk().laneFit[lane_]) now = i;
-    const int to = now + by;
+    // Between two stops (a tap's 12, 24 or 48 in 3/4, CATCH's 12): `now` is the stop below, so DOWN lands on it
+    // (24 to 16, not 8) and UP on the stop above.
+    const int to = by < 0 && kLaneFits[now] != trk().laneFit[lane_] ? now : now + by;
     if (to < 0 || to >= kLaneFitCount) return;
     session_.setLaneFit(project_.track, lane_, kLaneFits[to]);
 }
@@ -168,11 +170,22 @@ void KitScreen::stepKit(int by) {
 // B with A held on SOUND or the KIT stop (gesture audit G12): the track's sound as it was when A went down,
 // heard as each step is. A is spent, as FX's and MOD's call-off: the D-pad and the stick are the cursor's
 // again, and its let go is no tap (no list, no VOICE view).
-void KitScreen::putBack() {
+// The stick still pushed then waits until it comes back to the middle (as a MOD let go): it was stepping the
+// sounds, and would move the cursor off the stop at once.
+void KitScreen::putBack(const Input& input) {
     if (session_.putSoundBack(project_.track) && !project_.playing) hear();
     holding_ = false;
     repeating_ = Button::None;
     saved_ = 0.f;
+    stickWait_ = input.stickX() != 0.f || input.stickY() != 0.f;
+}
+
+void KitScreen::callOffDelete() {
+    kitDeleting_ = false;
+    kitDeletePart_ = 0.f;
+    deleting_ = bBack_ = false;
+    deletePart_ = 0.f;
+    picker_.callOffDelete();
 }
 
 // A built-in drum, a DRUM SYNTH voice (a hit, not a loop: it has no laneSample) or a file not found has no
@@ -244,7 +257,7 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         if (b == Button::B) {
             if (event.down && holding_) {
-                putBack();
+                putBack(input);
             } else if (event.down) {
                 const int now = session_.kitOf(project_.track);
                 kitDeleting_ = now >= 0 && session_.kits()[static_cast<std::size_t>(now)].own;
@@ -306,7 +319,7 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
         repeat_.restart();
     } else if (b == Button::B && holding_) {
         stepped_ = true; // (A's let go after it is no tap: on FIT no fit to its bars)
-        if (column_ == kSound) putBack();
+        if (column_ == kSound) putBack(input);
     } else if (b == Button::B && !holding_) {
         if (column_ == kSound) session_.setLaneSample(project_.track, lane_, "");
         else if (column_ == kFit) session_.setLaneFit(project_.track, lane_, 0);
@@ -389,7 +402,8 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
     }
     if (!said_.empty() && nowMs >= saidUntil_) said_.clear();
     // One move at once, then at a steady rate. With A held only up / down counts.
-    const float x = holding_ ? 0.f : input.stickX(), y = input.stickY();
+    if (stickWait_ && input.stickX() == 0.f && input.stickY() == 0.f) stickWait_ = false; // (back in the middle after a put-back)
+    const float x = holding_ || stickWait_ ? 0.f : input.stickX(), y = stickWait_ ? 0.f : input.stickY();
     const bool sideways = std::fabs(x) > std::fabs(y);
     const float push = sideways ? x : y;
     // The cursor climbs on a full push held (G07); with A held it is the list of sounds, slow enough to hear each.

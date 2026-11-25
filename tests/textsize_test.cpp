@@ -1305,6 +1305,7 @@ void testTheOtherScreens() {
         CHECK(phazed.typed() == longest);
         holds(rig, "a synth's preset keys, B replacing");
         CHECK(drew("replace") && !drew("save"));
+        CHECK(drew(SynthScreen::kPresetReplacingWords) && capAtXl(SynthScreen::kPresetReplacingWords) > 0.f); // (whole at XL: not cut)
         rig.tap(B);
         CHECK(phazed.said() == "REPLACED " + longest);
         holds(rig, "a synth, REPLACED a long name");
@@ -1630,7 +1631,7 @@ void testTheOtherScreens() {
         holds(rig, "the sampler, SAVED AS a long name");
         rig.tap(R1);
         holds(rig, "the sampler's preset keys, B replacing");
-        CHECK(drew("replace"));
+        CHECK(drew("replace") && drew(SamplerScreen::kPresetReplacingWords) && capAtXl(SamplerScreen::kPresetReplacingWords) > 0.f);
         rig.tap(B);
         CHECK(screen.said() == "REPLACED " + longest);
         holds(rig, "the sampler, REPLACED a long name");

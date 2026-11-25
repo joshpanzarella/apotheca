@@ -331,6 +331,16 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   pressed while SELECT is down (`App::selectUsed_`, every screen, set at the top of `onButton`) puts it
   away until SELECT is let go, as MENU + a volume key does (`menuUsed_`). It covered the box above the bar,
   so SEL + B, B, B undid blind. `app_test` `testTheHelpCard`.
+- **The bar offers the help card only where it comes up** (review of gesture audit A3, 2026-11-25):
+  `ui::gHelpHint` is empty while `busy` (any name keys, `App::typingAName`, and SET's keys and button
+  test), so the bar does not end in HLD SEL: HELP or MENU: HELP there. A3 had made every button the
+  preset keys', and their bar still offered a card that no longer came up (SET's keys and the folder
+  keys had the same wrong hint before). `Font::draw` of an empty text draws nothing, so `hintHelp` and
+  `gHintsOver` need no change (the 6 pixels it keeps for the gap are kept). **It is emptied at the END of
+  `App::update`, after the screen's own**: the button test closes by itself in `SettingsScreen::update`, and
+  set before that, the hint lagged a pass, so the pass the redraw drew lacked it and the next (left out)
+  had it (`idle_test`: 485 pixels). `app_test` `testDeletingAPresetSaysItCannotBeUndone`,
+  `testTheHelpCard` (the button test).
 - **SET acts on A's LET GO on BOUNCE and TRACK NAME, only if nothing else went down while A was held**
   (gesture audit G15, 2026-11-25; `SettingsScreen::aTap_`, `aRow_`): a direction, the stick moving
   something, or any other button calls the tap off, and so does the cursor on another row. Hold A + a
