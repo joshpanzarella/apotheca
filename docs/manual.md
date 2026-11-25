@@ -1550,11 +1550,11 @@ The track columns share the width of the screen: with few tracks they are wide.
 
 | On | A | Hold A + stick | B | R1 |
 | --- | --- | --- | --- | --- |
-| A cell | Opens it on PATTERN | Left / right: how long it is (1, 2, 4 or 8 bars). **Up / down: TRANSPOSE** its notes and chords a semitone (the stick up / down: an octave), every bar of it; the box above the bar says how far (MOVED +3 SEMITONES). A drum cell does not move. If a key would pass C0 or C8 nothing moves (NO ROOM). One step of undo | Empties it (on letting go) | **R1** copies it; **R1** on another cell pastes it there, on its let go, and **the copy stays** (its brass mark too), so the next cell takes it with one more R1. Notes go on notes (any synth or sampler) and drums on drums (NO PASTE: OTHER KIND). **R1** on the copied cell clears the copy without pasting. Each paste is one step of undo |
+| A cell | Opens it on PATTERN | Left / right: how long it is (1, 2, 4 or 8 bars). **Up / down: TRANSPOSE** its notes and chords a semitone (the stick up / down: an octave), every bar of it; the box above the bar says how far (MOVED +3 SEMITONES). A drum cell does not move. If a key would pass C0 or C8 nothing moves (NO ROOM). One step of undo | Empties it (on letting go) | **R1** copies it; **R1** on another cell pastes it there, on its let go, and **the copy is cleared** (its brass mark too), so the next R1 copies the cell it is on. Notes go on notes (any synth or sampler) and drums on drums (NO PASTE: OTHER KIND; the copy is kept for elsewhere). **R1** on the copied cell clears the copy without pasting. Each paste is one step of undo |
 | A track's head (up from the top scene, with the D-pad) | **A** (a quick tap) changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go (the list warns UNSAVED PATCHES WILL BE LOST). This cannot be undone. Held, it is the mixer: once its card is up, letting go never changes it, turned or not. While it is held the head fills with the level, as a lane's name does. **R1**, on its let go, types its name. **Hold L1 and press R1** copies the track: a new track right after it with the same instrument, sound, effects, sends, MODs, mixer, name and every scene's patterns (the tracks after it move a place along; twelve is the most). The copy is not soloed. It is not undone by SELECT + B: hold B on the copy deletes it. **Hold B** two seconds deletes the track. Y and X work there as on its cells. | | | |
 | A track (any of its cells) | **Y** mutes it and **X** solos it, each a tap, at once, playing or not; again to undo. X does not hear the track here: on its DEVICE page it does. L1 does nothing on a track. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. SELECT + Y there is NEXT SCENE, not a mute. | | | |
 | A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell: when B is let go, or at once if you move or press another button, not A, in its first half second.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted, the cell neither. **It is the track B went down on: moving the cursor (D-pad or stick) or pressing any other button calls it off.** The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
-| A repeat count | Tap: 1, 2, 4, 8. **R1** copies the whole scene; **R1** on another row pastes it there, on its let go, and **the copy stays** (brass) for the next. **R1** on the copied scene clears it | Up / down: times the scene plays, 1 to 16. Left / right: how many steps the scene's bars have, 16 or fewer (as the D-pad's). One job a push | Back to 1; held half a second, empties the whole scene (one step of undo) | |
+| A repeat count | Tap: 1, 2, 4, 8. **R1** copies the whole scene; **R1** on another row pastes it there, on its let go, and **the copy is cleared** (its brass mark too). **R1** on the copied scene clears it without pasting | Up / down: times the scene plays, 1 to 16. Left / right: how many steps the scene's bars have, 16 or fewer (as the D-pad's). One job a push | Back to 1; held half a second, empties the whole scene (one step of undo) | |
 | The song's end (the REPEATS box of the first empty row, just past the last scene) | Switches what the song does at its end: LOOP (a loop arrow) or STOP (a square) | | Back to LOOP | |
 | + TRACK | Pick DRUMS, PHAZED, JAX-EP, SAMPLER, FM-6, PHYSIC, ACID, CLOUD or MORPH | | | |
 | MASTER (the head at the right-hand end, right of + TRACK) | | Its level and pan, as a track's (below) | | |
@@ -1645,7 +1645,7 @@ On the drum grid (the slice view too) and the piano roll:
 | Gesture | Does |
 | --- | --- |
 | **Hold L1, press R1** | **Copy** the bar on screen: BAR 1 COPIED (on the drums, as it is pressed; on the roll, as R1 is let go unmoved — moved, it carried instead) |
-| **Hold L1, press A** | **Paste** it over the bar on screen: PASTED ON BAR 2. The copy stays, so another bar takes it with one more L1 + A |
+| **Hold L1, press A** | **Paste** it over the bar on screen: PASTED ON BAR 2, and the copy is cleared. With nothing copied it says NOTHING COPIED YET and places nothing |
 
 So steps 1-16 onto 17-32: on bar 1, hold L1 and press R1; run the cursor on
 into bar 2; hold L1 and press A.
@@ -1654,7 +1654,8 @@ into bar 2; hold L1 and press A.
   with its level, nudge, chance, start, step effects and THROW. On the roll
   its notes and chords, with everything they do.
 - **It can go anywhere**: another bar of the cell, another cell, another
-  scene, another track. The copy stays until the next copy, a new song too.
+  scene, another track. The copy is kept until it is pasted or another bar
+  is copied, a new song too; a paste that is refused keeps it.
 - **A drum bar only goes on a drum track. Notes go on any synth or sampler
   track.** Otherwise it says so and nothing changes.
 - **A note that runs over the bar line keeps its length**, but stops at the
@@ -1920,7 +1921,7 @@ A few things mean one thing everywhere:
 | B | Delete, empty, go back. On a setting: its usual value (a synth's pages: back to MAIN). With A still held after stepping sounds or trying effects (or Y on a chord): back to what was there when it went down |
 | **Hold B** | **Delete for good**: a track (2 s), a song (1 s), a recording in the list (1 s), one of your own presets or kits (1 s), an update sent over WiFi (1 s). The row fills as you hold; let go early and nothing happens. **What SELECT + B can bring back takes half a second**: an effect, a MOD, a scene emptied, EDIT's or VOICE's every box back (there the words say DELETING or empty, not CANNOT BE UNDONE) |
 | X | Hear it, **for as long as X is held** (a tap: a moment), and over the song while it plays. A drum hit plays whole, as the pattern plays it. Held on a drum hit: its step effects. Held on a knob: its MOD |
-| Hold R1 | On an empty step: paint as you drag. On a note: carry it. On SONG (a tap): copy a cell; R1 on another cell pastes it there, and the copy stays for the next |
+| Hold R1 | On an empty step: paint as you drag. On a note: carry it. On SONG (a tap): copy a cell; R1 on another cell pastes it there, and the copy is cleared |
 | Y | The screen's own job: chance, a chord, a mute, a catch, a roll of the dice. Held on one of FX's lines, up / down moves the effect |
 | L2 / R2 | The tabs, round the ends (L2 on SONG is SET) |
 | **L3** (press the stick in) | **The SONG screen with MASTER under the cursor**: hold A + up / down is the output's level at once, whatever the handheld's own volume. L3 again (still on MASTER): back where you were. Only where the controls setup learned it (it asks for it after the stick) |

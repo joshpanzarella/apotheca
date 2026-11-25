@@ -129,8 +129,13 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - **The clipboard is memory only**, never in the song file; a new song keeps it. It holds a drum
     bar (`DrumPattern`, every field) or a note bar (`NotePattern`, chords and their effects), the bar's
     16 steps of every automation lane, and where it came from.
-  - **The copy stays after a paste** (gesture audit G23, 2026-11-25: a paste spent it; reasons in
-    `song-screen.md`), so one bar goes on bar after bar with L1 + A each; L1 + R1 copies afresh.
+  - **A paste spends the copy** (owner, 2026-11-25, reversing gesture audit G23 of that morning, which
+    read "The copy stays after a paste ... so one bar goes on bar after bar with L1 + A each"; the
+    owner's words in `song-screen.md`). L1 + A pastes and empties the clipboard, so another L1 + A says
+    NOTHING COPIED YET and places nothing, and the next L1 + R1 copies the bar shown, wherever it is. A
+    Same (BAR 2 IS THE SAME ALREADY) or a refusal pastes nothing and keeps it. No mark on the grids (none
+    was ever drawn). `copybar_test testAPasteSpendsTheCopy`, the slice view in `testTheSlicesAndL1`, the
+    roll in `testNotes`.
   - **A paste REPLACES the bar** and is **one step of undo of its own** (as NEXT SCENE: the burst
     before it ends, and `settled_` is taken after it, so an edit straight after is a step too). Onto a
     bar that is already the same (compared field by field; automation too on the same track): nothing,

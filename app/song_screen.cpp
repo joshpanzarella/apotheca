@@ -328,7 +328,12 @@ void SongScreen::pasteCellHere(int toTrack, int toScene) {
     }
     session_.beginOwnUndoStep();
     copyCell(cellCopy_, toTrack, toScene);
-    session_.endOwnUndoStep(); // the copy stays, brass-marked, for another paste (G23); R1 on its cell clears it
+    // Spent: a paste clears the copy and its brass mark, so the next R1 copies afresh, wherever the cursor is
+    // (the owner, 2026-11-25, putting back what gesture audit G23 changed: "you don't have to go all the way
+    // back to the thing you originally copied").
+    cellCopied_ = false;
+    cellCopy_.has = false;
+    session_.endOwnUndoStep();
     session_.say("CELL PASTED");
 }
 
@@ -645,9 +650,9 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         } else if (event.down && column_ == kRepeatColumn) {
             // COPY A SCENE: nothing copied, and it copies now (the AT END row too: it is an empty scene
             // like any). The copied scene again: the copy is cleared, as a cell's (G23, 2026-11-25: it
-            // copied it again; a paste no longer spends a copy, so this is the way to put one down).
-            // Else the paste waits for R1's let go (as DUPLICATE A TRACK's: on the way to a panic
-            // nothing pastes).
+            // copied it again; kept when the owner put back the paste that spends the copy, the same day,
+            // so R1 on the copied one means one thing for both). Else the paste waits for R1's let go
+            // (as DUPLICATE A TRACK's: on the way to a panic nothing pastes), and spends the copy.
             if (session_.copiedScene() < 0) session_.copySceneHere(scene_);
             else if (session_.copiedScene() == scene_) {
                 session_.clearSceneCopy();

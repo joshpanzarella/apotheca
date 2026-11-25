@@ -662,7 +662,9 @@ Session::BarCopy Session::pasteBar(int track, int scene, int bar) {
             for (int step = 0; step < kSteps; ++step) t.automation[scene][lane][bar * kSteps + step] = clip_.automation[lane][step];
     sendTrackImage(track); // every bar of it, in one piece (as setCellBars)
     endOwnUndoStep();
-    // The copy stays for another paste (gesture audit G23, 2026-11-25: a paste spent it); a new copy replaces it.
+    // Spent: a paste clears the copy (a Same, or a refusal, keeps it). The owner, 2026-11-25, putting back what
+    // gesture audit G23 changed that morning, for a bar as for a cell and a scene (song-screen.md).
+    clip_.has = false;
     return BarCopy::Done;
 }
 
@@ -763,8 +765,9 @@ Session::SceneCopy Session::pasteScene(int scene) {
     engine.send(c);
     if (scene == project.scene) project.bar = 0;
     endOwnUndoStep();
-    // The copy stays for another paste, its brass mark on the scene it came from (gesture audit G23,
-    // 2026-11-25: a paste spent it); R1 on that scene clears it (clearSceneCopy).
+    // Spent: a paste clears the copy, and its brass mark with it (a Same, or a refusal, keeps it; the owner,
+    // 2026-11-25, putting back what gesture audit G23 changed). R1 on the copied scene clears it unpasted.
+    sceneClip_->has = false;
     return SceneCopy::Done;
 }
 

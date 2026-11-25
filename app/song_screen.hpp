@@ -12,13 +12,13 @@
 //                      (the stick up / down: an octave; Session::transposeCell). The scene lasts as long as its longest
 //                      cell; a shorter one goes round under it, and is
 //                      drawn once with a LOOPS mark.
-//                      R1 copies it; R1 on another cell pastes it there (on its let go), and the
-//                      copy stays (brass) for the next; R1 on the copied cell clears it (G23).
+//                      R1 copies it (brass); R1 on another cell pastes it there (on its let go), and
+//                      the paste spends the copy; R1 on the copied cell clears it unpasted.
 //   on a repeat count  (the column left of the tracks) hold A + stick up /
 //                      down: how many times the scene plays. Tap A: 1, 2, 4, 8.
 //                      R1 copies the whole scene; R1 on another row pastes it there (on its let go),
-//                      and the copy stays, as a cell's. Hold B half a second (G29): empty the whole
-//                      scene (one step of undo).
+//                      and the paste spends the copy, as a cell's. Hold B half a second (G29): empty
+//                      the whole scene (one step of undo).
 //   on + TRACK         A, then pick the instrument: drums, Phazed, JAX-EP...
 //   on a track's head  (up from the top scene) tap A: its instrument. R1, on its let go: its name.
 //                      Hold B: delete it.

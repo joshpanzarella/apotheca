@@ -509,7 +509,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     It says "where R1 is taken" because on the drum grid hold Y + a direction is already the exact chance,
     a hit's slice and the lane dice (`PatternScreen::nudgeExact`), and the roll's hold Y is the chord.
   - Brought in line, each from its own batch: L2 / R2 go round and a long list goes round on a press (G35);
-    SELECT's combos on every tab (G03); the copy stays after a paste, on SONG and the grids (G23); a stick
+    SELECT's combos on every tab (G03); R1 on the copied cell or scene clears it (G23; its copy kept after
+    a paste was put back by the owner, 2026-11-25: a paste spends the copy, on SONG and the grids); a stick
     move is a use of L1 (G31); B during a held pick puts back what it found (G12, G26; the mixer's reset
     stays, owner 2026-11-14); B on a setting is its usual value, a synth page's still goes back (G17);
     one set of name keys with every button theirs (G01), Y held deleting on (G48); X heard as long as held,

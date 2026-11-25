@@ -372,9 +372,13 @@ void testCopyingABar() {
     rig.app.song().moveCursorTo(0, 0);
     rig.tap(R1); // copy
     rig.app.song().moveCursorTo(1, 0);
-    rig.tap(R1); // paste: the copy stays (G23)
+    rig.tap(R1); // paste: the copy is spent (the owner, 2026-11-25)
+    rig.app.song().moveCursorTo(0, 0);
+    rig.tap(R1); // copy again
     rig.app.song().moveCursorTo(2, 0);
-    rig.tap(R1); // paste again, with no copy between
+    rig.tap(R1); // paste
+    rig.app.song().moveCursorTo(0, 0);
+    rig.tap(R1); // copy the drum cell again
     rig.app.song().moveCursorTo(2, 1);
     rig.tap(R1); // onto the synth: a drum bar cannot go there
     CHECK(!rig.project().tracks[1].notes[2][0].empty()); // and it did not wipe the synth's bar
@@ -441,7 +445,9 @@ void testTheCellCopyStaysPut() {
     rig.tap(DOWN, 3); // moving on pastes nothing more
     CHECK(!rig.project().tracks[0].drums[1][0].empty());
     for (int scene = 2; scene <= 4; ++scene) CHECK(rig.project().tracks[0].drums[scene][0].empty());
-    // R1 on a repeat count or on + TRACK leaves the cell copy alone (the paste before kept it: G23).
+    // R1 on a repeat count or on + TRACK leaves the cell copy alone.
+    rig.app.song().moveCursorTo(0, 0);
+    rig.tap(R1); // copy again: the paste before spent it
     rig.app.song().moveCursorTo(0, -1);
     rig.tap(R1); // that copies the scene, another clipboard
     rig.tap(RIGHT, 2); // onto + TRACK
@@ -13946,7 +13952,7 @@ int main(int argc, char** argv) {
         if (failures == 0) std::printf("app tests passed (held keys only)\n");
         return failures == 0 ? 0 : 1;
     }
-    if (argc > 1 && std::string(argv[1]) == "--holds") { // just the gesture audit's batch C3: held Y, B on SET, the hold lengths, the copy kept
+    if (argc > 1 && std::string(argv[1]) == "--holds") { // just the gesture audit's batch C3: held Y, B on SET, the hold lengths, the copy (spent by a paste again)
         testAHeldYDeletesOn();
         testBOnASettingIsItsUsual();
         testTheHoldLengths();

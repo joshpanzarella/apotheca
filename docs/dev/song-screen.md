@@ -30,21 +30,30 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   (`SongScreen::shouldersPressed`): a panic begun L1, R1 on a head copies nothing. A let go the SONG
   screen never saw copies nothing either (`update`). A cell is emptied by B and copied by a TAP of R1
   (below): nothing was added there.
-- **A copy stays after a paste: a cell, a scene and a bar** (gesture audit G23, 2026-11-25, under the
-  owner's "any of my decisions can be reversed if there is a more logical method", 2026-11-24). It was
-  "A copy clears on paste (scene, cell, bar)", an item of the owner's feature queue in commit e7b847d
-  (2026-11-21). One part into the next scenes cost a copy before every paste (R1 copy, move, R1 paste:
-  3 presses a scene, or copying the cell just pasted); with the copy kept it is move, R1 (2). The
-  brass mark stays on the copied cell or REPEATS box, so a copy still armed is seen, and each paste is
-  its own step of undo. **R1 on the copied cell or scene clears it** ("COPY CLEARED"; the bar's R1
-  says `clear` there, `paste` elsewhere). A scene gained this: R1 on the copied scene used to copy it
-  again (a fresh snapshot); now that is R1 twice (clear, copy). `Session::clearSceneCopy` counts in
-  `sceneCopies()`, so a panic begun with that R1 puts the copy back, as it does a copy. A bar's copy
-  (hold L1 + R1 / A) stays too; it has no mark on the grids (it never had one, and the look is
-  settled), and L1 + R1 copies afresh. **SONG's copy is a TAP of R1, not a drag** (the drag went on
-  2026-11-19, `docs/plans/easywins-plan.md`); CLAUDE.md and the manual said "hold R1 and drag" until
-  G23. `copyscene_test` `testTheCopyStays`, `testTheGesture`, `testTheMarkAndHints`; `copybar_test`
-  `testTheCopyStaysForAnotherPaste`.
+- **A paste spends the copy: a cell, a scene and a bar** (owner, 2026-11-25: "I didn't like the
+  retaining copy. I liked the way we had it where you copy, clipboard has it, another R1 pastes and then
+  the clipboard is clear. That gives you the chance to copy something else nearby, and you don't have to
+  go all the way back to the thing you originally copied."). **This reverses gesture audit G23** of the
+  same morning, which read: "A copy stays after a paste: a cell, a scene and a bar ... One part into the
+  next scenes cost a copy before every paste (R1 copy, move, R1 paste: 3 presses a scene, or copying the
+  cell just pasted); with the copy kept it is move, R1 (2)." G23 had itself reversed "A copy clears on
+  paste (scene, cell, bar)", an item of the owner's feature queue in commit e7b847d (2026-11-21), so that
+  rule is back. What G23 missed: with the copy kept, copying anything else meant going back to the copied
+  cell to clear it first. So: R1 copies (the brass mark on the cell or REPEATS box); R1 elsewhere pastes on
+  its let go, and the copy and its mark go (`SongScreen::pasteCellHere`, `Session::pasteScene`,
+  `Session::pasteBar`, each `has = false`); the next R1 copies whatever is under the cursor. **A refusal
+  or a Same pastes nothing and keeps the copy** (NO PASTE: OTHER KIND, DRUMS GO ON A DRUM TRACK, a bar
+  past the cell's end; SCENE 2 IS THE SAME, BAR 2 IS THE SAME ALREADY). A bar's L1 + A with nothing
+  copied says NOTHING COPIED YET and places nothing. Each paste is its own step of undo, and undo does not
+  bring a spent copy back. **Kept from G23**: R1 on the copied cell or scene before a paste clears it
+  ("COPY CLEARED"; a scene used to copy itself again: one meaning for both), so R1's hint says `copy` with
+  nothing copied, `clear` on the copied one and `paste` elsewhere; `Session::clearSceneCopy` counts in
+  `sceneCopies()`, so a panic begun with that R1 puts the copy back, as it does a copy; and a copy moves
+  with its scene through NEXT SCENE (next rule). **SONG's copy is a TAP of R1, not a drag** (the drag went
+  on 2026-11-19, `docs/plans/easywins-plan.md`; CLAUDE.md and the manual said "hold R1 and drag" until
+  G23). `copyscene_test` `testAPasteSpendsTheCopy`, `testTheGesture`, `testTheMarkAndHints`;
+  `copybar_test` `testAPasteSpendsTheCopy` (the slice view in `testTheSlicesAndL1`, the roll in
+  `testNotes`); `app_test` `testCopyingABar`.
 - **A copy moves with its scene when a NEXT SCENE goes in before it** (G23 review, 2026-11-25). The cell
   copy went on any scene move (`SongScreen::scenesMoved`) and the scene copy kept its number
   (`Session::scenesMoved` moved only the playing and a recording). Short-lived copies hid it; a kept copy
@@ -55,8 +64,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   mark's place moves. A copy whose scene falls off the end (the last, pushed off) goes
   (`sceneFallsOff`): its scene is gone and no mark could show it. A paste waiting for R1's let go
   (`cellPasteScene_`, `scenePaste_`) lands on the cell or scene R1 went down on, where it is now: before,
-  the copy going called the cell's off and the scene's landed on the old number. `copyscene_test`
-  `testTheCopyFollowsNextScene`, `testCellCopyCleared`.
+  the copy going called the cell's off and the scene's landed on the old number. With a paste spending
+  the copy again (rule above), this still holds for a copy made before a NEXT SCENE and pasted or cleared
+  after it. `copyscene_test` `testTheCopyFollowsNextScene`, `testCellCopyCleared`.
 - **The owner's five of 2026-11-18** (`easy_test looks`). SONG's column word is REPEATS (`SongScreen::
   kRepeatsWord`, low in the heads' row, 10 above the first box; `kRepeatW` 38, it was 34, so the word
   fits at LARGE: the columns start 4 further right). **A lane's volume in its name's box is `kPanel2`,
