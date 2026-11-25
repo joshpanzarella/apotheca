@@ -333,9 +333,9 @@ void wavePicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
     curve(r, p, [&](float t) { return 0.5f + 0.45f * (mix * bent(t) + (1.f - mix) * plain(t)); }, kText);
 }
 
-// ---- PITCH: the sound (faint) and the sound shifted, over two of its cycles; under them the two heads' fades
-// over a third of a second, as pitch.cpp turns them: each rises and falls once in GRAIN / |1 - speed|, half a turn
-// apart, so the two add to one (at no shift they stand still, one at full) ----
+// ---- PITCH: the sound (faint) and the sound shifted, over two of its cycles; under them the two heads over a
+// third of a second, as pitch.cpp turns them: one plays a piece of GRAIN / |1 - speed| alone, then the other takes
+// over in 5 ms, the two adding to one (at no shift one stands still, at full) ----
 void pitchPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
     grid(r, p, 0.f);
     const float semis = static_cast<float>(s.choice("PITCH") - 12) + (s("FINE", 0.5f) - 0.5f);
@@ -346,12 +346,13 @@ void pitchPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
     curve(r, waves, [&](float t) { return 0.5f + 0.47f * loud * (0.3f + 0.7f * (1.f - mix)) * std::sin(2.f * kPi * 2.f * t); }, kLine);
     curve(r, waves, [&](float t) { return 0.5f + 0.47f * loud * (0.3f + 0.7f * mix) * std::sin(2.f * kPi * 2.f * speed * t); }, kText);
     const Plot fades{p.x, p.y + p.h * 4 / 5, p.w, p.h - p.h * 4 / 5};
-    const float turns = turn < 1e-4f ? 0.f : 0.3f * turn / grain; // a head's rise and fall across the picture
+    const float pieces = turn < 1e-4f ? 0.f : 0.3f * turn / grain, cross = 0.005f / 0.3f; // across the picture, and a crossing
     for (int head = 1; head >= 0; --head) {
         curve(r, fades, [&](float t) {
-            float ph = turns * t + 0.5f * static_cast<float>(head);
-            ph -= std::floor(ph);
-            return 1.f - std::fabs(2.f * ph - 1.f);
+            const float at = pieces * t, k = std::floor(at); // in pieces
+            const float into = pieces > 0.f ? (at - k) / pieces : 1.f, u = k > 0.f && into < cross ? into / cross : 1.f;
+            const float in = u * u * (3.f - 2.f * u);                      // the one coming in (the first piece: head 1's)
+            return (static_cast<int>(k) % 2 == 1 - head) ? in : 1.f - in; // (the other going out)
         }, head == 0 ? kText : kDim);
     }
 }
