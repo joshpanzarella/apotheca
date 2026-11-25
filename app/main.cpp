@@ -86,6 +86,7 @@
 #include "controls.hpp"
 #include "input.hpp"
 #include "joysticks.hpp"
+#include "crash_report.hpp"
 #include "realtime.hpp"
 #include "song_file.hpp"
 #include "text.hpp"
@@ -513,6 +514,7 @@ int main(int argc, char** argv) {
             const std::string logs = beside.substr(0, beside.size() - 6) + "logs";
             mkdir(logs.c_str(), 0755);
             app.useBatteryLog(logs + "/battery.log");
+            crash::install(logs); // a death or a freeze written to logs/crash.txt, for the owner to send
         }
         // Sounds made on the sound-designer page: a "presets" folder beside the program.
         if (!smoke && !shot) app.session().useBounceFolder(beside.substr(0, beside.size() - 6) + "bounces");
@@ -581,6 +583,7 @@ int main(int argc, char** argv) {
     // The rest between passes: 16 ms with nothing pressed, cut short by a press (pass_wait.hpp).
     PassWait wait;
     while (running) {
+        crash::alive();
         SDL_Event event;
         bool stirred = false; // a button, or anything of the window, this pass (a stick's motion counts by where it is)
         while (wait.next(event)) { // (what came during the rest first, then SDL's own)
@@ -625,10 +628,21 @@ int main(int argc, char** argv) {
                 continue;
             }
 
+            if (event.type == SDL_JOYAXISMOTION || event.type == SDL_CONTROLLERAXISMOTION) { // the stick, for the crash trail: a push past half, once a way
+                static int lastWay[8] = {};
+                const int axis = event.type == SDL_JOYAXISMOTION ? event.jaxis.axis : event.caxis.axis;
+                const int value = event.type == SDL_JOYAXISMOTION ? event.jaxis.value : event.caxis.value;
+                const int way = value > 16000 ? 1 : value < -16000 ? -1 : 0;
+                if (axis >= 0 && axis < 8 && way != lastWay[axis]) {
+                    lastWay[axis] = way;
+                    crash::note("stick axis %d %d, view %d", axis, way, static_cast<int>(app.session().view));
+                }
+            }
             ButtonEvent press;
             if (!input.handle(event, press)) continue;
             stirred = true;
             do { // (and whatever else the one event moved: a hat's diagonal)
+                crash::note("button %d %s, view %d", static_cast<int>(press.button), press.down ? "down" : "up", static_cast<int>(app.session().view));
                 if (input.held(Button::Select) && input.held(Button::Start)) running = false, offWhy = "quit";
                 else app.onButton(press, input);
             } while (running && input.pending(press));
