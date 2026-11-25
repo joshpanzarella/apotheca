@@ -168,6 +168,14 @@ void SettingsScreen::goTo(int row) {
     while (first_ > 0 && fits(places() - 1, first_ - 1)) --first_; // (the last row in view: no room left empty under it)
 }
 
+// L1 / R1 on the rows (gesture audit G28, 2026-11-25): the first row of the group before / after the
+// cursor's, round the ends. A group's first row is always here (a heading stands on it).
+void SettingsScreen::jumpGroup(int by) {
+    const int group = ((groupOf(row_) + by) % kGroups + kGroups) % kGroups;
+    for (int r = 0; r < kRows; ++r)
+        if (here(r) && groupOf(r) == group) return goTo(r);
+}
+
 void SettingsScreen::change(int by) {
     switch (row_) {
     case kTempo: session_.setTempo(project_.tempo + static_cast<float>(by)); break;
@@ -259,6 +267,15 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
             return;
         }
     }
+    // L1 / R1: the heading before / after (G28). A press, never a run; off CONTROLS a hold of A lets go, as a move does.
+    if (b == Button::L1 || b == Button::R1) {
+        if (event.down) {
+            jumpGroup(b == Button::R1 ? 1 : -1);
+            holding_ = false;
+            holdPart_ = 0.f;
+        }
+        return;
+    }
     if (b == Button::A) {
         holding_ = event.down && row_ == kControls;
         holdTimed_ = false;
@@ -285,8 +302,8 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (isDirection(b)) {
-        if (b == Button::Up) step(-1);
-        if (b == Button::Down) step(1);
+        if (b == Button::Up) step(-1, true); // (a press: round the ends; the run below stops at them)
+        if (b == Button::Down) step(1, true);
         if (b == Button::Left) change(-1);
         if (b == Button::Right) change(1);
         holding_ = false; // moving off lets go
@@ -402,11 +419,12 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
     const float x = stickX_, y = stickY_;
     const bool sideways = std::fabs(x) > std::fabs(y);
     const float push = sideways ? x : y;
+    const float climb = climb_.times(sideways || picking_ ? 0.f : push, nowMs); // the rows are a cursor: a full push held climbs (G07)
     if (push == 0.f) {
         saved_ = 0.f;
         stickWas_ = false;
     } else {
-        saved_ += stickWas_ ? std::fabs(push) * (sideways ? kChangesPerSecond : kMovesPerSecond) * dt : 1.f;
+        saved_ += stickWas_ ? std::fabs(push) * (sideways ? kChangesPerSecond : kMovesPerSecond * climb) * dt : 1.f;
         stickWas_ = true;
         for (; saved_ >= 1.f; saved_ -= 1.f) {
             aTap_ = false; // (the stick moved something with A held: no tap of A, as a direction pressed)
@@ -755,7 +773,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         drawKey(r, fonts, 16.f + fonts.small.width(lastHeading) + 6.f + (both ? kArrowsApart : 0.f), lastHeadingY, "DOWN", kDim);
     }
 
-    Hint list[5];
+    Hint list[6];
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     hint("UP / DOWN", "choose");
@@ -785,6 +803,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (row_ == kHotspot) hint("A", session_.wifi().now().status.state == WifiState::Hotspot ? "turn off" : "turn on");
     if (row_ == kTest) hint("A", "open the test");
     if (row_ == kControls) hint("HOLD A", "set up again");
+    if (!picking_ && forgetPart_ <= 0.f) hint("L1 / R1", "page"); // (G28: the heading before / after; "page" as in the list of recordings, where L1 / R1 is a page)
     hint("SELECT", "to SONG");
     hints(r, fonts, list, count);
 }

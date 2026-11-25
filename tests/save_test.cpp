@@ -97,6 +97,8 @@ struct Rig {
     }
     void tap(SDL_Keycode code, int times = 1) { for (int i = 0; i < times; ++i) { key(code, true); key(code, false); } }
     void frames(int count) { for (int i = 0; i < count; ++i) { clock += 16; app.update(input, clock); } }
+    // A direction held: it runs, and a run stops at a list's end (a press there goes round: G35).
+    void run(SDL_Keycode code, int count = 60) { key(code, true); frames(count); key(code, false); }
     std::vector<float> render(int n) {
         std::vector<float> out(2 * n);
         engine->render(out.data(), n);
@@ -464,7 +466,10 @@ void testTheSongListOnScreen() {
 
     // Below it, the saved songs. The first one made is there to open.
     rig.tap(SELECT);
-    rig.tap(UP); // already at the top: stays
+    rig.tap(UP); // at the top: a press goes round to the bottom (G35)...
+    CHECK(rig.app.song().listCursor() == static_cast<int>(rig.app.song().listedSongs().size()));
+    rig.tap(DOWN); // ...and back round to the top
+    CHECK(rig.app.song().listCursor() == 0);
     rig.tap(DOWN);
     rig.tap(A);
     CHECK(rig.session().songName() == first || rig.session().songName() == second);
@@ -636,9 +641,13 @@ void testRevs() {
     CHECK(static_cast<int>(session.revs().size()) == before + 3);
     rig.tap(Y); // Y does it here as well, and the list shows the new one
     CHECK(static_cast<int>(session.revs().size()) == before + 4);
-    rig.tap(DOWN, 50);
-    CHECK(rig.app.song().listCursor() == before + 5); // stops at the oldest (after SAVE A REV and NEW NAME)
-    rig.tap(UP, 50);
+    rig.run(DOWN);
+    CHECK(rig.app.song().listCursor() == before + 5); // a run stops at the oldest (after SAVE A REV and NEW NAME)
+    rig.run(UP);
+    CHECK(rig.app.song().listCursor() == 0);
+    rig.tap(UP); // a press at the top goes round to the oldest (G35)
+    CHECK(rig.app.song().listCursor() == before + 5);
+    rig.tap(DOWN);
     CHECK(rig.app.song().listCursor() == 0);
     // B goes back to the songs, not out.
     rig.tap(B);
@@ -647,7 +656,7 @@ void testRevs() {
     CHECK(rig.app.song().listingRevs());
     // A on a rev goes back to it and closes the list. The oldest is rev 1.
     rig.project().tempo = 77.f;
-    rig.tap(DOWN, 50);
+    rig.run(DOWN);
     rig.tap(A);
     CHECK(!rig.app.song().listingSongs() && rig.project().tempo == firstTempo);
     CHECK(songText(rig.project()) == first);
@@ -706,7 +715,7 @@ void testRenamingAndDeletingSongs() {
     session.view = View::Song;
     // Put the list's cursor on a song, wherever the list has it just now.
     const auto goToSong = [&](const std::string& name) {
-        rig.tap(UP, 20);
+        rig.run(UP); // (a run stops at the top)
         for (std::size_t i = 0; i < song.listedSongs().size(); ++i)
             if (song.listedSongs()[i] == name) rig.tap(DOWN, static_cast<int>(i) + 1);
     };
@@ -739,7 +748,7 @@ void testRenamingAndDeletingSongs() {
     rig.tap(B);
     CHECK(song.listingSongs() && song.listedSongs()[static_cast<std::size_t>(song.listCursor() - 1)] == third);
     // Y elsewhere names nothing.
-    rig.tap(UP, 9);
+    rig.run(UP);
     rig.tap(Y);
     CHECK(session.songName() == third);
     goToSong(first + " two");
@@ -781,7 +790,7 @@ void testRenamingAndDeletingSongs() {
     CHECK(session.songName() == third && exists(folder + "/" + third + ".song") && exists(folder + "/" + third + ".2.rev"));
     CHECK(readTextFile(folder + "/deleted/" + first + " two.song", last) && last == text);
     // NEW SONG cannot be deleted.
-    rig.tap(UP, 5);
+    rig.run(UP);
     rig.key(B, true);
     rig.frames(80);
     rig.key(B, false);

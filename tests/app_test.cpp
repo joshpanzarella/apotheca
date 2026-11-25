@@ -80,6 +80,17 @@ struct Rig {
     }
     Project& project() { return app.project(); }
     View view() { return app.session().view; }
+    // The stick pushed part of the way (-1..1 as the handheld sends it, before the dead zone), as a gamepad does.
+    void stick(float x, float y) {
+        for (int axis = 0; axis < 2; ++axis) {
+            SDL_Event event = {};
+            event.type = SDL_CONTROLLERAXISMOTION;
+            event.caxis.axis = static_cast<Uint8>(axis == 0 ? SDL_CONTROLLER_AXIS_LEFTX : SDL_CONTROLLER_AXIS_LEFTY);
+            event.caxis.value = static_cast<Sint16>((axis == 0 ? x : y) * 32767.f);
+            ButtonEvent press;
+            if (input.handle(event, press)) app.onButton(press, input);
+        }
+    }
 };
 
 // Keyboard stand-ins (see app/input.cpp).
@@ -114,7 +125,9 @@ void testTabs() {
     rig.tap(L2);
     CHECK(rig.view() == View::Song);
     rig.tap(L2);
-    CHECK(rig.view() == View::Song); // the row of tabs has ends
+    CHECK(rig.view() == View::Settings); // the row of tabs goes round (G35): SONG and SET are one press apart
+    rig.tap(R2);
+    CHECK(rig.view() == View::Song); // ...both ways
     rig.tap(R2, 2);
     CHECK(rig.view() == View::Device);
     rig.tap(R2);
@@ -124,6 +137,8 @@ void testTabs() {
     rig.tap(R2);
     CHECK(rig.view() == View::Settings);
     rig.tap(R2);
+    CHECK(rig.view() == View::Song);
+    rig.tap(L2);
     CHECK(rig.view() == View::Settings);
     // Not while shaping something: a slip of the finger must not change screens.
     rig.tap(L2, 4);
@@ -3892,16 +3907,20 @@ void testTheSetupScreen() {
         session.useProgramFolder(folder);
         session.loadSettings(); // nothing kept yet: as built
         CHECK(session.octavesShown() == 2 && near(session.stickSpeed(), stickBefore));
-        // The last tab, one past MOD; the row of tabs still has an end.
+        // The last tab, one past MOD; R2 there goes round to SONG (G35), L2 back.
         session.view = View::Mods;
         rig.tap(R2);
         CHECK(rig.view() == View::Settings);
         rig.tap(R2);
+        CHECK(rig.view() == View::Song);
+        rig.tap(L2);
         CHECK(rig.view() == View::Settings);
         SettingsScreen& setup = rig.app.settings();
         CHECK(setup.cursorRow() == SettingsScreen::kTempo);
         rig.tap(UP);
-        CHECK(setup.cursorRow() == SettingsScreen::kTempo); // the list has ends too
+        CHECK(setup.cursorRow() == SettingsScreen::kControls); // a press at an end goes round (G35)...
+        rig.tap(DOWN);
+        CHECK(setup.cursorRow() == SettingsScreen::kTempo); // ...both ways
         // TEMPO
         rig.tap(RIGHT, 3);
         rig.tap(LEFT);
@@ -4276,10 +4295,11 @@ void testTheStickSpeedAndTheVolume() {
         ui::gStickSpeed = 1.f;
         return rig.app.song().cursorScene();
     };
+    // (A full push held climbs, G07: 10 cells at a steady 24 a second became 14. The climb is scaled the same.)
     const int full = travel(1.f), slower = travel(0.75f), half = travel(0.5f);
-    CHECK(full >= 9 && full <= 11);
-    CHECK(slower >= 7 && slower <= 8);   // a quarter off
-    CHECK(half >= 5 && half <= 6);
+    CHECK(full >= 13 && full <= 15);
+    CHECK(slower >= 10 && slower <= 12); // a quarter off
+    CHECK(half >= 7 && half <= 8);
     // ...and what it turns with a button held, the same.
     const auto turned = [](float speed) {
         ui::gStickSpeed = speed;
@@ -12474,6 +12494,318 @@ void testAnAcidLine() {
     CHECK(acid->ties() - ties == 4 && acid->strikes() - strikes == 12);
 }
 
+// ---- gesture audit, batch A5: going round, the headings, the stick's climb, SONG's cell ------------------
+
+// G35: SET's rows go round on a PRESS of the D-pad at either end; a held D-pad or the stick stops there.
+void testTheEndsOfSetsRows() {
+    using S = SettingsScreen;
+    Rig rig;
+    S& setup = rig.app.settings();
+    rig.app.session().view = View::Settings;
+    setup.goTo(S::kTempo);
+    rig.tap(UP);
+    CHECK(setup.cursorRow() == S::kControls && setup.shown(S::kControls));
+    rig.tap(DOWN);
+    CHECK(setup.cursorRow() == S::kTempo && setup.firstShown() == 0);
+    // A held D-pad runs at the list's pace and stops at the end, however long it is held.
+    rig.key(DOWN, true);
+    rig.frames(300);
+    rig.key(DOWN, false);
+    CHECK(setup.cursorRow() == S::kControls);
+    rig.key(UP, true);
+    rig.frames(300);
+    rig.key(UP, false);
+    CHECK(setup.cursorRow() == S::kTempo);
+    // The stick is a run too: it never goes round.
+    rig.key(STICK_UP, true);
+    rig.frames(30);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    CHECK(setup.cursorRow() == S::kTempo);
+    setup.goTo(S::kControls);
+    rig.key(STICK_DOWN, true);
+    rig.frames(30);
+    rig.key(STICK_DOWN, false);
+    rig.frames(1);
+    CHECK(setup.cursorRow() == S::kControls);
+}
+
+// G28: on SET, L1 / R1 go to the first row of the heading before / after, round the ends. Typing a name
+// keeps them; a hold of A on CONTROLS lets go; the panic puts the row back; the bar says so and fits.
+void testSetJumpsHeadings() {
+    using S = SettingsScreen;
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    Rig rig;
+    S& setup = rig.app.settings();
+    rig.app.session().view = View::Settings;
+    const int firsts[S::kGroups] = {S::kTempo, S::kClick, S::kTextSize, S::kVolume, S::kWifi};
+    for (int i = 1; i <= S::kGroups; ++i) {
+        rig.tap(R1);
+        CHECK(setup.cursorRow() == firsts[i % S::kGroups] && setup.shown(setup.cursorRow()));
+    }
+    // L1: the heading BEFORE the cursor's, from anywhere in its group; round the start.
+    setup.goTo(S::kTheme);
+    rig.tap(L1);
+    CHECK(setup.cursorRow() == S::kClick);
+    rig.tap(L1);
+    CHECK(setup.cursorRow() == S::kTempo);
+    rig.tap(L1);
+    CHECK(setup.cursorRow() == S::kWifi && setup.shown(S::kWifi));
+    setup.goTo(S::kStick); // the last of HANDHELD: R1 is SETUP's first, not a row down
+    rig.tap(R1);
+    CHECK(setup.cursorRow() == S::kWifi);
+    rig.tap(R1);
+    CHECK(setup.cursorRow() == S::kTempo && setup.firstShown() == 0);
+    // A held on CONTROLS sets the controls up again at a second: R1 on the way lets go of it, as a move does.
+    setup.goTo(S::kControls);
+    rig.key(A, true);
+    rig.frames(20);
+    rig.tap(R1);
+    rig.frames(60);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(!setup.takeRelearn() && setup.cursorRow() == S::kTempo);
+    // Typing a track's name: every button is the keys', L1 / R1 too.
+    setup.goTo(S::kTrackName);
+    rig.tap(A);
+    CHECK(setup.typing());
+    rig.tap(R1);
+    rig.tap(L1);
+    CHECK(setup.typing() && setup.cursorRow() == S::kTrackName);
+    rig.tap(B);
+    CHECK(!setup.typing());
+    // The panic: L1 first jumped a heading; all four shoulders put the row back (and the tab).
+    setup.goTo(S::kKey);
+    rig.key(L1, true);
+    CHECK(setup.cursorRow() == S::kWifi);
+    rig.key(L2, true);
+    rig.key(R1, true);
+    rig.key(R2, true);
+    CHECK(rig.view() == View::Settings && setup.cursorRow() == S::kKey);
+    for (SDL_Keycode k : {L1, L2, R1, R2}) rig.key(k, false);
+    rig.frames(1);
+    rig.tap(X); // (the first press puts the panic's notice away)
+    // Every row's bar says L1 / R1 and holds all of its hints.
+    if (!canvas.ok || !scratch.ok) return;
+    for (int row = 0; row < S::kRows; ++row) {
+        if (!setup.here(row)) continue;
+        setup.goTo(row);
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        if (ui::gHintsOver != 0.f) std::printf("FAIL SET's row %d: the hints are %.1f over\n", row, static_cast<double>(ui::gHintsOver));
+        CHECK(ui::gHintsOver == 0.f && hintKeyed(canvas, scratch, "L1 / R1", "page"));
+    }
+}
+
+// G07: on a cursor, a FULL push of the stick held climbs to three times the screen's own rate over a
+// second; a part push moves as it always did; a value turned, a list or the kit's sounds do not climb.
+void testTheStickClimbsOnACursor() {
+    using S = SettingsScreen;
+    // The rule.
+    {
+        ui::StickClimb climb;
+        Uint32 t = 1000;
+        CHECK(climb.times(0.8f, t) == 1.f);
+        CHECK(climb.times(1.f, t += 16) == 1.f); // full from here: the screen's own rate first
+        for (int i = 0; i < 31; ++i) climb.times(1.f, t += 16);
+        CHECK(near(climb.times(1.f, t += 16), 1.f + 2.f * 0.512f)); // half a second on: about twice
+        for (int i = 0; i < 40; ++i) climb.times(-1.f, t += 16);    // (either way)
+        CHECK(climb.times(-1.f, t += 16) == 3.f && climb.times(1.f, t += 16) == 3.f); // a second on: three times, and no more
+        CHECK(climb.times(0.85f, t += 16) == 1.f && climb.times(1.f, t += 16) == 1.f); // short of full: back to the bottom
+        climb.times(1.f, t += 16);
+        CHECK(climb.times(1.f, t += 16) > 1.f);
+        CHECK(climb.times(1.f, t += 500) == 1.f); // not asked for half a second (another screen): from the bottom
+    }
+    // SET's rows (7 a second at STICK SPEED 1): a part push as before, a full push held climbing, scaled by STICK SPEED.
+    const auto rows = [](float raw, int frames, float speed) {
+        ui::gStickSpeed = speed;
+        Rig rig;
+        S& setup = rig.app.settings();
+        rig.app.session().view = View::Settings;
+        setup.goTo(S::kTempo);
+        rig.frames(2);
+        rig.stick(0.f, raw);
+        rig.frames(frames);
+        rig.stick(0.f, 0.f);
+        ui::gStickSpeed = 1.f;
+        return setup.placeOf(setup.cursorRow());
+    };
+    const int part = rows(0.84f, 62, 1.f), full = rows(1.f, 62, 1.f), slow = rows(1.f, 62, 0.5f);
+    std::printf("  the stick on SET's rows for a second: part push %d rows, full %d, full at 50%% %d\n", part, full, slow);
+    CHECK(part == 6);              // 1 at once, then 0.8 x 7 a second: as before G07
+    CHECK(full >= 13 && full <= 15); // steady, it was 7
+    CHECK(slow >= 6 && slow <= 8);   // ...half that at STICK SPEED 50% (steady, it was 4)
+    // The roll's keys (36 a second): 23 keys in 40 frames steady, about 37 climbing.
+    {
+        Rig rig;
+        addPhazed(rig);
+        rig.project().track = 1;
+        rig.app.session().view = View::Pattern;
+        rig.app.notes().moveCursorTo(24, 0);
+        rig.frames(2);
+        rig.key(STICK_RIGHT, true);
+        rig.frames(40);
+        rig.key(STICK_RIGHT, false);
+        const int keys = rig.app.notes().cursorPitch() - 24;
+        CHECK(keys >= 35 && keys <= 39);
+    }
+    // A value turned does not climb: TEMPO sideways, 9 a second.
+    {
+        Rig rig;
+        rig.app.session().view = View::Settings;
+        rig.app.settings().goTo(S::kTempo);
+        const float tempo = rig.project().tempo;
+        rig.frames(2);
+        rig.key(STICK_RIGHT, true);
+        rig.frames(62);
+        rig.key(STICK_RIGHT, false);
+        CHECK(rig.project().tempo == tempo + 9.f);
+    }
+    // The kit's sounds with A held stay slow enough to hear each one (8 a second): 7 in 50 frames, not the 12 of a climb.
+    {
+        Rig rig;
+        rig.app.session().view = View::Device;
+        rig.app.kit().goTo(0, KitScreen::kSound);
+        rig.frames(2);
+        rig.key(A, true);
+        rig.key(STICK_DOWN, true);
+        rig.frames(50);
+        rig.key(STICK_DOWN, false);
+        rig.key(A, false);
+        CHECK(rig.project().tracks[0].laneSynth[0].on() && rig.project().tracks[0].laneSynth[0].model == 7);
+    }
+    // SONG's list of instruments is a list: 8 in 20 frames at 24 a second, not the 10 of a climb.
+    {
+        Rig rig;
+        rig.app.session().view = View::Song;
+        rig.app.song().moveCursorTo(0, 1); // + TRACK
+        rig.tap(A);
+        CHECK(rig.app.song().choosing());
+        rig.key(STICK_DOWN, true);
+        rig.frames(20);
+        rig.key(STICK_DOWN, false);
+        rig.frames(1);
+        rig.tap(A);
+        CHECK(rig.project().trackCount() == 2 && rig.project().tracks[1].kind == kInstruments[(1 + 8) % kInstrumentCount].kind);
+    }
+}
+
+// G46: SONG opens with its cursor on the cell being worked on; a tab off SONG takes the cell the cursor was
+// moved to on this visit (bar 1), and nothing else: a glance, the same cell (its bar kept), a head.
+void testSongOpensOnTheCellWorkedOn() {
+    Rig rig;
+    Session& session = rig.app.session();
+    SongScreen& song = rig.app.song();
+    Project& p = rig.project();
+    CHECK(session.addTrack(TrackKind::Phazed) && session.addTrack(TrackKind::Phazed));
+    for (int t = 0; t < 3; ++t)
+        for (int s = 0; s < 3; ++s) p.tracks[t].bars[s] = 2;
+    p.track = 2, p.scene = 1, p.bar = 1;
+    rig.tap(L2);
+    CHECK(rig.view() == View::Song && song.cursorScene() == 1 && song.cursorColumn() == 2 && !song.cursorOnHead() && !song.cursorOnMaster());
+    rig.tap(R2); // a glance: nothing changes, the bar kept
+    CHECK(rig.view() == View::Pattern && p.track == 2 && p.scene == 1 && p.bar == 1);
+    rig.tap(L2);
+    rig.tap(LEFT);
+    rig.tap(DOWN);
+    rig.tap(R2); // moved: that cell, from its first bar
+    CHECK(rig.view() == View::Pattern && p.track == 1 && p.scene == 2 && p.bar == 0);
+    // Along the heads and down is a move too (no cell was passed on the way).
+    p.track = 1, p.scene = 0;
+    rig.tap(L2);
+    rig.tap(UP);
+    CHECK(song.cursorOnHead() && song.cursorColumn() == 1);
+    rig.tap(LEFT);
+    rig.tap(DOWN);
+    CHECK(!song.cursorOnHead() && song.cursorColumn() == 0 && song.cursorScene() == 0);
+    rig.tap(R2);
+    CHECK(p.track == 0 && p.scene == 0 && p.bar == 0);
+    p.track = 1, p.scene = 2;
+    p.bar = 1;
+    rig.tap(L2);
+    CHECK(song.cursorScene() == 2 && song.cursorColumn() == 1);
+    rig.tap(RIGHT);
+    rig.tap(LEFT);
+    rig.tap(R2); // away and back to the same cell: its bar kept
+    CHECK(p.track == 1 && p.scene == 2 && p.bar == 1);
+    // START on another scene's cell plays from there and makes it the scene worked on; the cursor brought
+    // back to the cell it opened on is still a move this visit, and R2 opens that cell (a bar 1: it changed).
+    rig.tap(L2);
+    rig.tap(UP);
+    rig.tap(START);
+    CHECK(p.playing && p.scene == 1);
+    rig.tap(DOWN);
+    rig.tap(R2);
+    CHECK(p.track == 1 && p.scene == 2 && p.bar == 0);
+    session.togglePlay(false);
+    rig.frames(1);
+    p.bar = 1;
+    // Not moved, the cursor takes nothing, even where the work moved elsewhere meanwhile (here by hand).
+    rig.tap(L2);
+    p.track = 0, p.scene = 0;
+    rig.tap(R2);
+    CHECK(p.track == 0 && p.scene == 0 && p.bar == 1);
+    p.track = 1, p.scene = 2;
+    // A trip to a head to mute: nothing is taken (nor on REPEATS).
+    rig.tap(L2);
+    rig.tap(UP, 3);
+    CHECK(song.cursorOnHead() && song.cursorColumn() == 1);
+    rig.tap(Y);
+    rig.tap(R2);
+    CHECK(p.tracks[1].muted && p.track == 1 && p.scene == 2 && p.bar == 1);
+    rig.tap(L2);
+    song.moveCursorTo(0, -1);
+    rig.tap(R2);
+    CHECK(p.track == 1 && p.scene == 2 && p.bar == 1);
+    // L2 off SONG goes round to SET, and takes the cell too (its TRACK NAME is that track's).
+    rig.tap(L2);
+    song.moveCursorTo(0, 0);
+    rig.tap(L2);
+    CHECK(rig.view() == View::Settings && p.track == 0 && p.scene == 0 && p.bar == 0);
+    // FX steps the track (L1 / R1): a look at SONG and back keeps that track.
+    session.view = View::Effects;
+    rig.tap(R1);
+    CHECK(p.track == 1);
+    rig.tap(L2, 3);
+    CHECK(rig.view() == View::Song && song.cursorColumn() == 1 && song.cursorScene() == 0);
+    rig.tap(R2, 3);
+    CHECK(rig.view() == View::Effects && p.track == 1 && p.scene == 0);
+    // SELECT's tap from another tab opens SONG on the cell too.
+    song.moveCursorTo(5, 2);
+    session.view = View::Device;
+    rig.tap(SELECT);
+    CHECK(rig.view() == View::Song && song.cursorScene() == 0 && song.cursorColumn() == 1);
+    rig.tap(R2);
+    CHECK(p.track == 1 && p.scene == 0);
+    // L3 opens SONG on MASTER: any cell reached from there is a move.
+    rig.tap(L2);
+    song.moveCursorTo(2, 2);
+    rig.tap(R2);
+    CHECK(p.track == 2 && p.scene == 2);
+    p.track = 0, p.scene = 0;
+    rig.tap(SDLK_3); // L3
+    CHECK(rig.view() == View::Song && song.cursorOnMaster());
+    song.moveCursorTo(2, 2);
+    rig.tap(R2);
+    CHECK(p.track == 2 && p.scene == 2 && p.bar == 0);
+    // The panic: R2 first took a moved cell (and L2 on the way opened SONG again); all four put it all back.
+    p.bar = 1;
+    rig.tap(L2);
+    song.moveCursorTo(0, 0);
+    rig.key(R2, true);
+    CHECK(rig.view() == View::Pattern && p.track == 0 && p.scene == 0);
+    rig.key(L1, true);
+    rig.key(L2, true);
+    rig.key(R1, true);
+    CHECK(rig.view() == View::Song && p.track == 2 && p.scene == 2 && p.bar == 1 && song.cursorScene() == 0 && song.cursorColumn() == 0);
+    for (SDL_Keycode k : {L1, L2, R1, R2}) rig.key(k, false);
+    rig.frames(1);
+    rig.tap(R2); // the cursor is still where it was moved to on that visit: R2 takes it, as it would have
+    CHECK(rig.view() == View::Pattern && p.track == 0 && p.scene == 0 && p.bar == 0);
+}
+
 int main(int argc, char** argv) {
     // The engine's own presets only: the tests here are of their tables. The presets the app's data
     // adds (and any track sound it gives a built-in) are presets_test's.
@@ -12596,6 +12928,17 @@ int main(int argc, char** argv) {
         if (failures == 0) std::printf("app tests passed (naming only)\n");
         return failures == 0 ? 0 : 1;
     }
+    if (argc > 1 && std::string(argv[1]) == "--navigation") { // just the gesture audit's batch A5: going round, headings, the climb, SONG's cell
+        testTabs();
+        testTheEndsOfSetsRows();
+        testSetJumpsHeadings();
+        testTheStickClimbsOnACursor();
+        testSongOpensOnTheCellWorkedOn();
+        testTheSetupScreen();
+        testTheStickSpeedAndTheVolume();
+        if (failures == 0) std::printf("app tests passed (navigation only)\n");
+        return failures == 0 ? 0 : 1;
+    }
     if (argc > 1 && std::string(argv[1]) == "--hands") { // just the button standards of the pit stop
         testHoldBDeletesAnEffect();
         testTheHintsFitAndSayWhatTheyDo();
@@ -12686,6 +13029,10 @@ int main(int argc, char** argv) {
     testThePianoRollZooms();
     testTheRollsZoomIsATapOnly();
     testTheStickSpeedAndTheVolume();
+    testTheEndsOfSetsRows();
+    testSetJumpsHeadings();
+    testTheStickClimbsOnACursor();
+    testSongOpensOnTheCellWorkedOn();
     testTheTempoFromAnyScreen();
     testTheEffectsScreen();
     testTryingAnEffectKeepsIt();

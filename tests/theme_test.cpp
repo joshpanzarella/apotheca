@@ -408,8 +408,10 @@ void testTheRow() {
     CHECK(setup.firstShown() == 1);
     rig.tap(UP);
     CHECK(setup.cursorRow() == S::kTempo && setup.firstShown() == 0);
-    rig.tap(UP);
-    CHECK(setup.cursorRow() == S::kTempo && setup.firstShown() == 0); // the list has ends
+    rig.tap(UP); // a press at the top goes round to the last row (G35), the page with it...
+    CHECK(setup.cursorRow() == S::kControls && setup.firstShown() == atEnd);
+    rig.tap(DOWN); // ...and back
+    CHECK(setup.cursorRow() == S::kTempo && setup.firstShown() == 0);
     // The headings: SONG over the first row; PLAYING and LOOK each over its group's first row, a gap before it.
     rig.draw();
     CHECK(rig.drewText("PLAYING") && rig.drewText("LOOK") && !rig.drewText("SETUP") && !rig.drewText("HANDHELD"));

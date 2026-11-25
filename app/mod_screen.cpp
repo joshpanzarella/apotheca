@@ -453,11 +453,12 @@ void ModScreen::update(const Input& input, Uint32 nowMs) {
     } else {
         const bool sideways = std::fabs(x) > std::fabs(y);
         const float push = sideways ? x : y;
+        const float climb = climb_.times(holding_ ? 0.f : push, nowMs); // the cursor: a full push held climbs (G07)
         if (push == 0.f) {
             saved_ = 0.f;
             stickWas_ = false;
         } else {
-            saved_ += stickWas_ ? std::fabs(push) * (holding_ ? kClicksPerSecond : kMovesPerSecond) * dt : 1.f;
+            saved_ += stickWas_ ? std::fabs(push) * (holding_ ? kClicksPerSecond : kMovesPerSecond * climb) * dt : 1.f;
             stickWas_ = true;
             for (; saved_ >= 1.f; saved_ -= 1.f)
                 press(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));

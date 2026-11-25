@@ -365,8 +365,11 @@ void testTheSetPage() {
     }
     // The last row in view with HANDHELD's six and SETUP's three, and no room left empty under it.
     CHECK(setup.cursorRow() == S::kControls && setup.shown(S::kVolume) && setup.shown(S::kLightColour) && !setup.fits(setup.places() - 1, setup.firstShown() - 1));
-    rig.tap(DOWN);
-    CHECK(setup.cursorRow() == S::kControls);
+    const int lastPage = setup.firstShown();
+    rig.tap(DOWN); // a press at the end goes round to the top, the page with it (G35)...
+    CHECK(setup.cursorRow() == S::kTempo && setup.firstShown() == 0);
+    rig.tap(UP); // ...and back
+    CHECK(setup.cursorRow() == S::kControls && setup.firstShown() == lastPage);
     for (int place = setup.firstShown(); place < setup.places(); ++place) {
         const int row = setup.rowAt(place);
         CHECK(setup.fits(place, setup.firstShown()));

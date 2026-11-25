@@ -151,6 +151,9 @@ private:
     bool cameByL3_ = false;          // the SONG screen's MASTER was reached by L3 (and nothing has moved since)
     bool slicingBeforeShoulders_ = false;
     int trackBeforeShoulders_ = 0;
+    int sceneBeforeShoulders_ = 0, barBeforeShoulders_ = 0; // ...or R2 off SONG takes the cursor's cell (G46)
+    int setRowBeforeShoulders_ = 0;                         // ...or, on SET, L1 / R1 jump a heading (G28)
+    SongScreen::Visit songBeforeShoulders_{};               // ...or L2 / R2 open SONG, its cursor on the cell worked on (G46)
     // ...and the copied bar: L1 then R1 on the way to all four is a copy (hold L1, R1), which a panic puts back.
     Session::BarClip clipBeforeShoulders_;
     unsigned copiesBeforeShoulders_ = 0;
@@ -160,6 +163,9 @@ private:
     unsigned saidSeen_ = 0; // Session::saidCount() when its line was last taken
     void takeSessionSaid(); // what the Session asked to be said (a bar copied or pasted) into this box
     int sceneOfSelect() const; // the scene SELECT + Y and SELECT + L2 / R2 act on (on SONG: the cursor's)
+    // To another tab by the player (L2 / R2, SELECT's tap): SONG opens with its cursor on the cell being
+    // worked on, and a tab off SONG takes the cell its cursor was moved to on this visit (G46).
+    void showTab(View to);
     void logBattery(Uint32 nowMs); // a line of it, when one is due (useBatteryLog)
     NoteScreen notes_;
     KitScreen kit_;

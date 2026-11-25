@@ -79,8 +79,12 @@ stand-in for testing at a desk: each key presses one handheld button, so the
 keyboard can do nothing the handheld cannot.
 
 **The handheld has one stick, and one rule for it.** With nothing held it
-moves the cursor (so does the D-pad; hold either and it runs). Hold a button
-and the stick shapes the thing under the cursor:
+moves the cursor (so does the D-pad; hold either and it runs). Pushed part of
+the way it moves at a steady pace, faster the further it goes; **pushed all the
+way and held, it speeds up**, to three times that pace over a second, for the
+long trips (scene 1 to scene 40, the top of SET to the bottom). Only a cursor
+speeds up: a value being turned, a list of sounds or presets, a choice, never.
+Hold a button and the stick shapes the thing under the cursor:
 
 | Held | The stick |
 | --- | --- |
@@ -129,7 +133,15 @@ and the buses' (their LEVEL too). Tempo, mutes, names, the kit's recordings
 and a track deleted or given another instrument are not. The song keeps
 playing while you undo.
 
-**L2 and R2** walk along the screens: SONG, PATTERN, DEVICE, FX, MOD, SET.
+**L2 and R2** walk along the screens: SONG, PATTERN, DEVICE, FX, MOD, SET,
+**round the ends**: L2 on SONG is SET, R2 on SET is SONG.
+**SONG opens with its cursor on the cell you are working on.** Move it, and
+the next L2 or R2 takes the cell it is on to PATTERN, DEVICE, FX and MOD, from
+its first bar, as a tap of A on it does (brought back to the cell you were
+working on, that cell keeps its bar). Leave it alone, or leave it on a track's
+head, REPEATS, + TRACK or MASTER, and nothing changes. So a trip to mute or solo
+another track (Y or X) on its head leaves your cell; on one of its cells it
+takes that track.
 The bar at the top writes PATTERN as **PTRN** and DEVICE as **DVICE**, to give
 the six tabs room; this manual keeps the full words.
 **SELECT**, tapped by itself, goes to SONG from anywhere (and on SONG opens
@@ -472,7 +484,11 @@ TRACK NAME, BOUNCE), **PLAYING** (CLICK, COUNT IN, MUTES, USB KEYBOARD), **LOOK*
 SIZE, THEME, PIANO ROLL), **HANDHELD** (VOLUME, BRIGHTNESS, STICK LIGHT, LIGHT
 COLOUR, RING LEVEL, STICK SPEED) and **SETUP** (WIFI PAGE, NETWORK, HOTSPOT, BUTTONS, CONTROLS). The page moves
 a row at a time; a small arrow after a heading says there are rows out of sight
-that way.
+that way. **L1 / R1** go to the first row of the heading before / after
+(round the ends: R1 on SETUP is TEMPO again), so CONTROLS is three presses
+from TEMPO: L1, DOWN, DOWN. **UP on the first row goes round to the last, and
+DOWN on the last to the first**, a press at a time; a held D-pad or the stick
+stops at the end. While a track's name is typed L1 and R1 are the keys'.
 
 | Row | Left / right | A |
 | --- | --- | --- |
@@ -1614,6 +1630,9 @@ into bar 2; hold L1 and press A.
 
 In the list:
 
+- **UP on the top row goes round to the bottom, and DOWN on the bottom to the
+  top**, a press at a time; a held D-pad or the stick stops at the end. The
+  revs' list does the same.
 - **Y** saves a rev of the open song, wherever the cursor is (X hears, so it
   saves nothing).
 - **A on the open song** lists its revs. Its second row, **NEW NAME**, gives
@@ -1638,7 +1657,9 @@ remembered between starts. Catch takes the sound before the volume, so a
 quiet handheld still catches at full level.
 
 The stick's speed, for everything it moves and turns on every screen, is one
-number: `gStickSpeed` in `app/ui.hpp` (0.75: a quarter slower than first built).
+setting: STICK SPEED on the SET tab (25% to 150%; 75%, a quarter slower than
+first built, until it is changed). The speeding up of a full push held is
+scaled by it too.
 
 ## Files over WiFi
 
@@ -1838,7 +1859,9 @@ is let go, **left / right turn the pattern a step** later or earlier. It writes
 over the lane's bar as the dice do (a hit that stays where one was keeps its
 level and effects; a new one is placed at 90%), the box says EVEN: 5 HITS,
 TURNED 2, and undo puts the lane back.
-Up from the top lane is the tempo: hold A + up / down turns it, and **A tapped in
+Up from the top lane is the tempo, and down from the bottom lane is the BARS
+stop (then the tempo, then the top lane: the column goes round either way).
+On the tempo hold A + up / down turns it, and **A tapped in
 time sets it** (from the second tap: the beat of the last five taps; a pause of
 two seconds starts again). SETUP's TEMPO row taps the same way.
 

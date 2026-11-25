@@ -119,9 +119,10 @@ constexpr int kScreenW = 640, kScreenH = 480;
 constexpr int kTopBarH = 26, kHintsH = 24;
 
 // How fast the stick moves and turns things, on every screen: 1 is as first
-// built; lower is slower. The owner asked for a quarter off (2026-11).
-// It is a variable so it can become a setting, and so the tests can measure
-// the screens at their own speeds.
+// built; lower is slower. The owner asked for a quarter off (2026-11): the
+// default of the SET page's STICK SPEED (Session::setStickSpeed). A variable,
+// so the tests can measure the screens at their own speeds. (A full push held
+// on a cursor climbs past it: StickClimb, below.)
 inline float gStickSpeed = 0.75f;
 
 // What the end of the hint bar says about the help card: "MENU: HELP", or
@@ -192,6 +193,39 @@ inline int waveEndMarkX(float end, int w) { const int x = static_cast<int>(end *
 // enough to see or hear each one go by.
 constexpr Uint32 kCursorDelayMs = 170, kCursorEveryMs = 30;
 constexpr Uint32 kListDelayMs = 200, kListEveryMs = 110;
+
+// A long list's ends (gesture audit G35, 2026-11-25: SET's rows, the list of songs and its revs): a
+// PRESS of the D-pad at an end goes round to the other end; a held D-pad running on, or the stick,
+// stops there, so a run never carries past the end it was going to. `at` 0..count-1, `by` 1 or -1.
+constexpr int listStep(int at, int by, int count, bool pressed) {
+    return count <= 0 ? 0 : at + by < 0 ? (pressed ? count - 1 : 0) : at + by >= count ? (pressed ? 0 : count - 1) : at + by;
+}
+
+// The stick on a CURSOR (gesture audit G07, 2026-11-25): a push short of kStickFullPush moves at the
+// screen's own rate, as always; a FULL push held climbs from that rate to kStickClimbTo times it over
+// kStickClimbSeconds and stays there while it is held full. STICK SPEED scales the whole of it, as it
+// scales everything the stick does. Only a cursor climbs: a value turned, a list or a choice stepped
+// through does not (the kit's sounds with A held stay slow enough to hear each one).
+// A climb not asked about for kStickClimbGapMs (the screen was away, or the stick was doing something
+// else) starts again from the bottom.
+constexpr float kStickFullPush = 0.9f, kStickClimbTo = 3.f;
+constexpr Uint32 kStickClimbMs = 1000, kStickClimbGapMs = 100;
+struct StickClimb {
+    Uint32 fullSince = 0; // when the push became full (0: it is not)
+    Uint32 lastAt = 0;    // when it was last asked
+    // How many times the screen's own rate, this frame: 1 below a full push, up to kStickClimbTo.
+    float times(float push, Uint32 nowMs) {
+        const bool again = lastAt == 0 || nowMs < lastAt || nowMs - lastAt > kStickClimbGapMs;
+        lastAt = nowMs ? nowMs : 1;
+        if (push < kStickFullPush && push > -kStickFullPush) {
+            fullSince = 0;
+            return 1.f;
+        }
+        if (fullSince == 0 || again) fullSince = lastAt;
+        const Uint32 held = nowMs > fullSince ? nowMs - fullSince : 0;
+        return 1.f + (kStickClimbTo - 1.f) * static_cast<float>(held < kStickClimbMs ? held : kStickClimbMs) / static_cast<float>(kStickClimbMs);
+    }
+};
 
 // A button's name as it is written in a cream box. The four directions are
 // drawn as arrows, not spelled out ("UP / DOWN" is two small arrows): the same

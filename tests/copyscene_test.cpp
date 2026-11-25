@@ -775,7 +775,7 @@ void testTheMarkAndHints() {
     };
     song.moveCursorTo(0, -1);
     CHECK(draw() && hintKeyed(canvas, scratch, "R1", "copy"));
-    CHECK(hintKeyed(canvas, scratch, "HOLD B", "delete"));
+    CHECK(hintKeyed(canvas, scratch, "HOLD B", "empty")); // (the scene is emptied, one step of undo: G10)
     rig.tap(R1);
     CHECK(draw() && hintKeyed(canvas, scratch, "R1", "paste"));
     song.moveCursorTo(1, -1);

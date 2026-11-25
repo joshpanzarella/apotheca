@@ -142,3 +142,26 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   mutes** (owner, 2026-11-15: "Y for mute is just a one tap"). In the open song list SELECT + Y is still
   the list's (save a rev): the App leaves that one to the screen. SELECT + L2 / R2 here is the length of
   the same scene. The App calls `selectWasUsed()`, or SELECT let go would open the song list.
+- **SONG opens on the cell being worked on; a tab off SONG takes the cell its cursor was moved to** (gesture
+  audit G46, 2026-11-25; `App::showTab`, `SongScreen::openOnWorkingCell`, `movedToCell`). The tabs only changed
+  `session.view`, and nothing ever put SONG's cursor on `project.track` / `scene`, so R2 x 3 with the cursor on
+  track 5 showed track 2's effects. Now every way the PLAYER opens SONG (L2 / R2, SELECT's tap) puts the cursor
+  on that cell, not moved (`movedThisVisit_`; L3 opens on MASTER, from where a cell is reached only by a move,
+  so it needs nothing of its own).
+  A direction or the stick on the grid (`moveCursor`) or `moveCursorTo` (a track added, copied or deleted; the
+  tests) is a move. A tab off SONG (L2 to SET too, since the tabs go round: SET's TRACK NAME is that track's)
+  takes the cursor's cell if the cursor was moved this visit and is on a CELL (not a head, REPEATS, + TRACK or
+  MASTER): track, scene and bar 1, as a tap of A; where that is the cell worked on already (away and back) its
+  bar is kept. **A flag, not "is it where it opened"**: START on another scene's cell makes that scene the one
+  worked on (`playFromCursor`), and the cursor brought back to where it opened must still take its cell (a first
+  try compared places and showed START's scene). Other ways off SONG are their own: A on a cell, R1 on a head
+  (TRACK NAME, and back), L3 back, the panic.
+  - **Kept**: FX and MOD's L1 / R1 step the track (owner, 2026-11-14): a look at SONG and back keeps the track
+    stepped to, since SONG opens on it. **Solo is a tap of X** (owner, 2026-11-15) and Y mutes: on a track's
+    HEAD neither moves the edit; **on a CELL of another track the trip is a move**, and R2 then opens that
+    track. That is the audit's named trade-off, accepted with the brief; the bar's mute and solo are said on the
+    head, so the head is the usual place.
+  - **The panic puts all of it back**: the scene and the bar besides the track (`App::sceneBeforeShoulders_`,
+    `barBeforeShoulders_`: R2 first may have taken a cell), and SONG's cursor and where it opened
+    (`SongScreen::Visit`, `visit()` / `putBack`: L2 or R2 on the way may have opened SONG and moved it). Tests:
+    `app_test` `testSongOpensOnTheCellWorkedOn`.

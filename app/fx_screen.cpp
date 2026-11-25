@@ -688,12 +688,13 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
         // Moving, or stepping through the effects or the types: one at once, then steadily.
         const bool sideways = (!holding_ || picking()) && std::fabs(x) > std::fabs(y);
         const float push = sideways ? x : y;
+        const bool kinds = holding_ || (sideways && typeKey() != nullptr); // (a TYPE from the settings: at the list's pace)
+        const float climb = climb_.times(kinds ? 0.f : push, nowMs);       // the cursor: a full push held climbs (G07)
         if (push == 0.f) {
             saved_ = 0.f;
             stickWas_ = false;
         } else {
-            const bool kinds = holding_ || (sideways && typeKey() != nullptr); // (a TYPE from the settings: at the list's pace)
-            saved_ += stickWas_ ? std::fabs(push) * (kinds ? kKindsPerSecond : kMovesPerSecond) * dt : 1.f;
+            saved_ += stickWas_ ? std::fabs(push) * (kinds ? kKindsPerSecond : kMovesPerSecond * climb) * dt : 1.f;
             stickWas_ = true;
             for (; saved_ >= 1.f; saved_ -= 1.f)
                 press(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));

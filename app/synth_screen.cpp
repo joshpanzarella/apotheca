@@ -541,15 +541,16 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
         stickWasX_ = stickWasY_ = false;
     } else {
         choicePushed_ = false;
+        const float climbX = climbX_.times(x, nowMs), climbY = climbY_.times(y, nowMs); // a full push held climbs (G07)
         if (x == 0.f) stickX_ = 0.f, stickWasX_ = false;
         else {
-            stickX_ += stickWasX_ ? std::fabs(x) * kStickStopsPerSecond * dt : 1.f;
+            stickX_ += stickWasX_ ? std::fabs(x) * kStickStopsPerSecond * climbX * dt : 1.f;
             stickWasX_ = true;
             for (; stickX_ >= 1.f; stickX_ -= 1.f) moveCursor(x > 0.f ? Button::Right : Button::Left);
         }
         if (y == 0.f) stickY_ = 0.f, stickWasY_ = false;
         else {
-            stickY_ += stickWasY_ ? std::fabs(y) * kStickStopsPerSecond * dt : 1.f;
+            stickY_ += stickWasY_ ? std::fabs(y) * kStickStopsPerSecond * climbY * dt : 1.f;
             stickWasY_ = true;
             for (; stickY_ >= 1.f; stickY_ -= 1.f) moveCursor(y > 0.f ? Button::Down : Button::Up);
         }

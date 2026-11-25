@@ -122,6 +122,17 @@ public:
     void showMixCardForStill() { mixShown_ = mixTimed_ = true; } // (a still is taken before kMixCardMs has gone by)
     bool mixCardUp() const { return mixing_ && (mixShown_ || mixTurned_); } // ...and its card is drawn: held kMixCardMs, or something turned
     void moveToMaster() { onHead_ = false, onMaster_ = true; }
+    // The tabs (G46, the App): SONG opens with the cursor on the cell being worked on (project track and
+    // scene). movedToCell: the cell the cursor is on, if the cursor was moved on this visit (a direction,
+    // the stick, or moveCursorTo) and is on a cell (not a head, + TRACK, MASTER or REPEATS). (L3 opens on
+    // MASTER: a cell is reached from there only by a move, so it needs nothing of its own.)
+    void openOnWorkingCell();
+    bool movedToCell(int* track, int* scene) const;
+    // Where the cursor is and whether it moved: the App keeps it at a panic's first shoulder, whose L2 / R2 on
+    // the way may open SONG (and move its cursor), and puts it back with the tab.
+    struct Visit { int scene, column, top; bool onHead, onMaster, moved; };
+    Visit visit() const { return {scene_, column_, top_, onHead_, onMaster_, movedThisVisit_}; }
+    void putBack(const Visit& p) { scene_ = p.scene, column_ = p.column, top_ = p.top, onHead_ = p.onHead, onMaster_ = p.onMaster, movedThisVisit_ = p.moved; }
     // The mixer card while A is held on a head: placed under the head (for the tests to read).
     static constexpr int kMixCardW = 136, kMixCardH = 62;
     struct Place { int x, y; };
@@ -190,6 +201,7 @@ private:
     int scene_ = 0;
     int column_ = 0;
     int top_ = 0; // first scene shown
+    bool movedThisVisit_ = false; // the cursor was moved since SONG was opened on the cell worked on (G46)
     bool choosing_ = false; // the instrument list is open
     int choice_ = 0;        // its place in kInstruments
 
@@ -247,6 +259,7 @@ private:
     Uint32 lastMs_ = 0;
     float stickX_ = 0.f, stickY_ = 0.f;
     bool stickWasX_ = false, stickWasY_ = false;
+    ui::StickClimb climbX_, climbY_; // a full push held climbs (G07)
 };
 
 } // namespace apotheca

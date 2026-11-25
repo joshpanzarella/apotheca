@@ -2,7 +2,8 @@
 // The SETUP screen: the last tab. Things about this song, things about this
 // handheld, and the way back into the controls setup.
 //
-//   up / down (stick or D-pad)   choose a row
+//   up / down (stick or D-pad)   choose a row (a press of the D-pad at either end goes round; a run stops there)
+//   L1 / R1                      the heading before / after: its first row (round the ends)
 //   left / right                 change it (a choice, such as TEXT SIZE or THEME, clicks once a push)
 //
 // BRIGHTNESS and STICK LIGHT are shown only where the system gives the program the screen's
@@ -107,7 +108,11 @@ public:
 
     // To a row; one that is not here gives the next that is (or the one before, at the end).
     void goTo(int row);
-    void step(int by) { goTo(rowAt(placeOf(row_) + by)); } // up or down a place; the list has ends
+    // Up or down a place. A press of the D-pad at an end goes round to the other (G35); a held D-pad
+    // or the stick stops there (ui::listStep).
+    void step(int by, bool pressed = false) { goTo(rowAt(ui::listStep(placeOf(row_), by, places(), pressed))); }
+    // L1 / R1: to the first row of the heading before / after the cursor's, round the ends (G28).
+    void jumpGroup(int by);
     int cursorRow() const { return row_; }
     bool testing() const { return testing_; }
     bool typing() const { return password_ || keys_.isOpen(); } // a track's name, or a network's password
@@ -187,6 +192,7 @@ private:
     bool relearn_ = false;
     float saved_ = 0.f;
     bool stickWas_ = false;
+    ui::StickClimb climb_; // a full push held on the rows climbs (G07)
     Button repeating_ = Button::None;
     Uint32 repeatAt_ = 0, lastMs_ = 0;
     float stickX_ = 0.f, stickY_ = 0.f; // for the test's picture

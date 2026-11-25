@@ -383,11 +383,13 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
     const float x = holding_ ? 0.f : input.stickX(), y = input.stickY();
     const bool sideways = std::fabs(x) > std::fabs(y);
     const float push = sideways ? x : y;
+    // The cursor climbs on a full push held (G07); with A held it is the list of sounds, slow enough to hear each.
+    const float climb = climb_.times(holding_ ? 0.f : push, nowMs);
     if (push == 0.f) {
         saved_ = 0.f;
         stickWas_ = false;
     } else {
-        saved_ += stickWas_ ? std::fabs(push) * kStepsPerSecond * (holding_ ? 1.f : 2.f) * dt : 1.f;
+        saved_ += stickWas_ ? std::fabs(push) * kStepsPerSecond * (holding_ ? 1.f : 2.f * climb) * dt : 1.f;
         stickWas_ = true;
         for (; saved_ >= 1.f; saved_ -= 1.f)
             press(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
@@ -543,11 +545,12 @@ void KitScreen::editUpdate(const Input& input, Uint32 nowMs, float dt) {
     } else {
         const bool sideways = std::fabs(x) > std::fabs(y);
         const float push = sideways ? x : y;
+        const float climb = climb_.times(push, nowMs); // the cursor among the boxes: a full push held climbs (G07)
         if (push == 0.f) {
             saved_ = 0.f;
             stickWas_ = false;
         } else {
-            saved_ += stickWas_ ? std::fabs(push) * kEditMovesPerSecond * dt : 1.f;
+            saved_ += stickWas_ ? std::fabs(push) * kEditMovesPerSecond * climb * dt : 1.f;
             stickWas_ = true;
             for (; saved_ >= 1.f; saved_ -= 1.f) {
                 deleting_ = bBack_ = false;
@@ -805,11 +808,12 @@ void KitScreen::voiceUpdate(const Input& input, Uint32 nowMs, float dt) {
     } else {
         const bool sideways = std::fabs(x) > std::fabs(y);
         const float push = sideways ? x : y;
+        const float climb = climb_.times(push, nowMs); // the cursor among the boxes: a full push held climbs (G07)
         if (push == 0.f) {
             saved_ = 0.f;
             stickWas_ = false;
         } else {
-            saved_ += stickWas_ ? std::fabs(push) * kEditMovesPerSecond * dt : 1.f;
+            saved_ += stickWas_ ? std::fabs(push) * kEditMovesPerSecond * climb * dt : 1.f;
             stickWas_ = true;
             for (; saved_ >= 1.f; saved_ -= 1.f) {
                 deleting_ = bBack_ = false;

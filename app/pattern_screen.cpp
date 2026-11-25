@@ -538,7 +538,7 @@ void PatternScreen::moveCursor(Button direction) {
         return;
     }
     if (onBars_) {
-        // BARS sits above the tempo; down goes back to it, up comes round to the bottom.
+        // BARS sits above the tempo, and round below the bottom lane: down goes to the tempo, up to the bottom lane.
         // Left and right show the bar before or after, round the ends.
         if (direction == Button::Down) onBars_ = false, onTempo_ = true;
         if (direction == Button::Up) onBars_ = false, lane_ = kDrumLanes - 1;
@@ -551,11 +551,16 @@ void PatternScreen::moveCursor(Button direction) {
         if (direction == Button::Up) onTempo_ = false, onBars_ = true;
         return;
     }
+    // Up from the top lane is the tempo, then BARS; down from the bottom lane is BARS, then the tempo (G35:
+    // it skipped them, so the column was a ring one way only).
     if (direction == Button::Up) {
         if (lane_ == 0) onTempo_ = true;
         else --lane_;
     }
-    if (direction == Button::Down) moveCursorTo(lane_ + 1, step_);
+    if (direction == Button::Down) {
+        if (lane_ == kDrumLanes - 1) onBars_ = true;
+        else ++lane_;
+    }
     // Sideways: the lane's name, then the bar's sixteen steps. Off the right
     // of step 16 is the next bar of the cell; after the last bar, the name
     // again. The name is always one left of step 1, whichever bar is showing.
@@ -951,15 +956,17 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
         axis_ = Axis::None;
         // Nothing held: the stick runs the cursor. One move at once, then at
         // a speed set by how far it is pushed.
+        // A full push held climbs (G07).
+        const float climbX = climbX_.times(x, nowMs), climbY = climbY_.times(y, nowMs);
         if (x == 0.f) stickX_ = 0.f, stickWasX_ = false;
         else {
-            stickX_ += stickWasX_ ? std::fabs(x) * feel.stickCellsPerSecond * dt : 1.f;
+            stickX_ += stickWasX_ ? std::fabs(x) * feel.stickCellsPerSecond * climbX * dt : 1.f;
             stickWasX_ = true;
             for (; stickX_ >= 1.f; stickX_ -= 1.f) dragCursor(x > 0.f ? Button::Right : Button::Left);
         }
         if (y == 0.f) stickY_ = 0.f, stickWasY_ = false;
         else {
-            stickY_ += stickWasY_ ? std::fabs(y) * feel.stickCellsPerSecond * 0.5f * dt : 1.f; // eight lanes: half speed is plenty
+            stickY_ += stickWasY_ ? std::fabs(y) * feel.stickCellsPerSecond * 0.5f * climbY * dt : 1.f; // eight lanes: half speed is plenty
             stickWasY_ = true;
             for (; stickY_ >= 1.f; stickY_ -= 1.f) dragCursor(y > 0.f ? Button::Down : Button::Up);
         }

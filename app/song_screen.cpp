@@ -77,11 +77,24 @@ void SongScreen::mixStep(Button direction) {
 }
 
 void SongScreen::moveCursorTo(int scene, int column) {
+    movedThisVisit_ = true;
     onHead_ = onMaster_ = addFromHeads_ = false;
     scene_ = scene < 0 ? 0 : (scene >= kMaxScenes ? kMaxScenes - 1 : scene);
     column_ = column < kRepeatColumn ? kRepeatColumn : (column > lastColumn() ? lastColumn() : column);
     if (scene_ < top_) top_ = scene_;
     if (scene_ >= top_ + kVisibleRows) top_ = scene_ - kVisibleRows + 1;
+}
+
+void SongScreen::openOnWorkingCell() {
+    moveCursorTo(project_.scene, project_.track);
+    movedThisVisit_ = false;
+}
+
+bool SongScreen::movedToCell(int* track, int* scene) const {
+    if (!movedThisVisit_ || !onCell() || onHead_) return false;
+    *track = column_;
+    *scene = scene_;
+    return true;
 }
 
 // The scenes from `from` on are one place further down the song (by = 1) or back up it (-1).
@@ -96,10 +109,10 @@ void SongScreen::scenesMoved(int from, int by) {
 
 void SongScreen::moveCursor(Button direction, bool pressed) {
     if (listing_) {
+        // A press of the D-pad at either end goes round to the other; a run (held, or the stick) stops there (G35).
         int& cursor = revsOpen_ ? revCursor_ : listCursor_;
         const int last = static_cast<int>(revsOpen_ ? revs_.size() + kRevsFirst - 1 : songs_.size());
-        if (direction == Button::Up && cursor > 0) --cursor;
-        if (direction == Button::Down && cursor < last) ++cursor;
+        if (direction == Button::Up || direction == Button::Down) cursor = ui::listStep(cursor, direction == Button::Down ? 1 : -1, last + 1, pressed);
         return;
     }
     if (choosing_) {
@@ -107,6 +120,7 @@ void SongScreen::moveCursor(Button direction, bool pressed) {
         if (direction == Button::Down) choice_ = (choice_ + 1) % kInstrumentCount;
         return;
     }
+    movedThisVisit_ = true; // (G46: a tab off SONG takes the cell it is on now)
     // MASTER, the head at the right-hand end: back left to + TRACK, or the last track's head.
     if (onMaster_) {
         if (direction == Button::Left) {
@@ -330,7 +344,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             return;
         }
         if (isDirection(b)) {
-            moveCursor(b);
+            moveCursor(b, true); // (a press: round the ends)
             repeating_ = b;
             repeatAt_ = 0;
         }
@@ -766,15 +780,18 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
         stickX_ = stickY_ = 0.f;
         stickWasX_ = stickWasY_ = false;
     } else {
+        // The cells are a cursor: a full push held climbs (G07). The lists (songs, instruments) do not.
+        const bool cells = !listing_ && !choosing_;
+        const float climbX = climbX_.times(cells ? x : 0.f, nowMs), climbY = climbY_.times(cells ? y : 0.f, nowMs);
         if (x == 0.f) stickX_ = 0.f, stickWasX_ = false;
         else {
-            stickX_ += stickWasX_ ? std::fabs(x) * kStickCellsPerSecond * dt : 1.f;
+            stickX_ += stickWasX_ ? std::fabs(x) * kStickCellsPerSecond * climbX * dt : 1.f;
             stickWasX_ = true;
             for (; stickX_ >= 1.f; stickX_ -= 1.f) moveCursor(x > 0.f ? Button::Right : Button::Left);
         }
         if (y == 0.f) stickY_ = 0.f, stickWasY_ = false;
         else {
-            stickY_ += stickWasY_ ? std::fabs(y) * kStickCellsPerSecond * dt : 1.f;
+            stickY_ += stickWasY_ ? std::fabs(y) * kStickCellsPerSecond * climbY * dt : 1.f;
             stickWasY_ = true;
             for (; stickY_ >= 1.f; stickY_ -= 1.f) moveCursor(y > 0.f ? Button::Down : Button::Up);
         }

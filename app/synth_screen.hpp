@@ -216,6 +216,7 @@ private:
     Uint32 lastMs_ = 0;
     float stickX_ = 0.f, stickY_ = 0.f;
     bool stickWasX_ = false, stickWasY_ = false;
+    ui::StickClimb climbX_, climbY_; // a full push held on the cursor climbs (G07)
     ModKnob modKnob_;
     bool stickWait_ = false; // X let go off a MOD with the stick still pushed: it moves nothing until it comes back
     void endMod(const Input& input);

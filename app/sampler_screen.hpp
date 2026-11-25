@@ -120,6 +120,7 @@ private:
     bool wasRecording_ = false;
     float saved_ = 0.f, turned_ = 0.f;
     bool stickWas_ = false;
+    ui::StickClimb climb_; // a full push held on the cursor climbs (G07)
     Button repeating_ = Button::None;
     Uint32 repeatAt_ = 0, lastMs_ = 0;
     Uint32 heardAt_ = 0; // when a changed setting was last heard

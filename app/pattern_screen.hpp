@@ -300,6 +300,7 @@ private:
     BarFollow follow_; // the view follows the bar playing (follow_bar.hpp)
     float stickX_ = 0.f, stickY_ = 0.f; // cursor part-moves saved up
     bool stickWasX_ = false, stickWasY_ = false;
+    ui::StickClimb climbX_, climbY_; // a full push held climbs (G07)
 };
 
 } // namespace apotheca

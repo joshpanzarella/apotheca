@@ -308,6 +308,30 @@ void testTheCalls() {
 
 // ---- the row -----------------------------------------------------------------------------------
 
+// The stick through the networks (A held) is a list, not a cursor: a full push held does not climb (gesture
+// audit G07). Seven a second at the stick's speed (75% here): five more after the first in a second.
+void testTheStickOverTheNetworks() {
+    Rig rig("wifistick");
+    S& setup = rig.setup();
+    std::string scan;
+    for (int i = 0; i < 16; ++i) scan += "-" + std::to_string(40 + i) + " open Net" + std::to_string(i) + "\n";
+    rig.say("scan", scan);
+    rig.on();
+    rig.tap(DOWN);
+    rig.settle();
+    CHECK(setup.cursorRow() == S::kNetwork && rig.wifi().now().networks.size() == 16);
+    rig.key(A, true), rig.frames(1);
+    CHECK(setup.picking() && setup.picked() == -1);
+    rig.key(SDLK_k, true); // the stick, down, all the way
+    rig.frames(62);
+    rig.key(SDLK_k, false);
+    CHECK(setup.picking() && setup.picked() == 5);
+    rig.tap(B); // (nothing joined)
+    rig.key(A, false), rig.frames(1);
+    rig.settle();
+    CHECK(rig.log().find("join") == std::string::npos);
+}
+
 void testTheRow() {
     {
         // No program (the port): no row, and nothing runs.
@@ -814,7 +838,7 @@ struct Section {
 int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     const Section sections[] = {
-        {"lines", [] { testTheLines(); }}, {"calls", [] { testTheCalls(); }}, {"row", [] { testTheRow(); }},
+        {"lines", [] { testTheLines(); }}, {"calls", [] { testTheCalls(); }}, {"row", [] { testTheRow(); testTheStickOverTheNetworks(); }},
         {"password", [] { testThePassword(); }}, {"drawn", [] { testDrawn(); }},
     };
     for (const Section& s : sections) {

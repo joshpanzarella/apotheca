@@ -68,6 +68,10 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
             viewBeforeShoulders_ = session_.view; // the first of them: the triggers may turn the tabs on the way
             slicingBeforeShoulders_ = drums_.slicing(); // ...and L1 may open or shut the slices
             trackBeforeShoulders_ = session_.project.track; // ...or, on FX, L1 / R1 step the track
+            sceneBeforeShoulders_ = session_.project.scene;  // ...or R2 off SONG takes the cursor's cell, its scene and bar 1 (G46)
+            barBeforeShoulders_ = session_.project.bar;
+            setRowBeforeShoulders_ = settings_.cursorRow();  // ...or, on SET, L1 / R1 jump a heading (G28)
+            songBeforeShoulders_ = song_.visit();             // ...or the triggers open SONG, its cursor put on that cell (G46)
             clipBeforeShoulders_ = session_.barClip();       // ...or, on the grids, L1 then R1 copy the bar
             copiesBeforeShoulders_ = session_.barCopies();
             *sceneClipBeforeShoulders_ = session_.sceneClip(); // ...or, on SONG, R1 copies a scene
@@ -80,6 +84,10 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
             session_.view = viewBeforeShoulders_;
             if (drums_.slicing() != slicingBeforeShoulders_) drums_.setSlicing(slicingBeforeShoulders_);
             if (trackBeforeShoulders_ < session_.project.trackCount()) session_.project.track = trackBeforeShoulders_;
+            session_.project.scene = sceneBeforeShoulders_;
+            session_.project.bar = barBeforeShoulders_;
+            if (settings_.cursorRow() != setRowBeforeShoulders_) settings_.goTo(setRowBeforeShoulders_);
+            song_.putBack(songBeforeShoulders_);
             session_.wantSlices = -1;
             if (session_.barCopies() != copiesBeforeShoulders_) { // a copy on the way: not meant
                 session_.setBarClip(clipBeforeShoulders_);
@@ -166,7 +174,7 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
     if (session_.view != View::Song) {
         if (b == Button::Select) {
             if (event.down) selectAlone_ = true;
-            else if (selectAlone_) selectAlone_ = false, session_.view = View::Song;
+            else if (selectAlone_) selectAlone_ = false, showTab(View::Song);
             return;
         }
         if (event.down) selectAlone_ = false;
@@ -266,7 +274,7 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
 
-    // The shoulder triggers walk along the tabs. Nothing else uses them.
+    // The shoulder triggers walk along the tabs, round the ends (G35: SONG and SET are one press apart).
     if (event.button == Button::L2 || event.button == Button::R2) {
         // With A held on a grid they nudge what A has hold of, early or late.
         if (input.held(Button::A) && session_.view == View::Pattern && !panicking_) {
@@ -281,13 +289,30 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
             return;
         }
         if (!event.down || input.held(Button::A) || input.held(Button::Y)) return;
-        const int now = static_cast<int>(session_.view);
-        const int next = now + (event.button == Button::R2 ? 1 : -1);
-        if (next >= 0 && next <= static_cast<int>(View::Settings)) session_.view = static_cast<View>(next);
+        const int tabs = static_cast<int>(View::Settings) + 1;
+        const int next = (static_cast<int>(session_.view) + (event.button == Button::R2 ? 1 : tabs - 1)) % tabs;
+        showTab(static_cast<View>(next));
         return;
     }
     screenNow().onButton(event, input);
     takeSessionSaid();
+}
+
+// The tabs (gesture audit G46, 2026-11-25). SONG's cursor never followed the cell being worked on, and a tab
+// off SONG showed that cell whatever the cursor was on: R2 x 3 with the cursor on track 5 could show track
+// 2's effects. Now SONG opens on the cell being worked on, and leaving it by a tab takes the cell its cursor
+// was moved to on this visit (track, scene, bar 1, as a tap of A), or nothing: a glance at SONG, the cell
+// worked on (away and back: its bar is kept), a head, REPEATS, + TRACK or MASTER change nothing.
+void App::showTab(View to) {
+    if (session_.view == to) return;
+    int track = 0, scene = 0;
+    if (session_.view == View::Song && song_.movedToCell(&track, &scene) && (track != project_->track || scene != project_->scene)) {
+        project_->track = track;
+        project_->scene = scene;
+        project_->bar = 0;
+    }
+    if (to == View::Song) song_.openOnWorkingCell();
+    session_.view = to;
 }
 
 // The scene SELECT + Y and SELECT + L2 / R2 act on: the one being worked on, or on SONG the one under

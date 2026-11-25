@@ -270,6 +270,59 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   bounce under way stops it** (`stopping_`, `kStopHoldMs`, a red bar as NETWORK's forget, the note
   `kStoppingWords`, the hint HOLD B stop it in place of A (working); any other press calls it off). The box
   above the bar then says `kBounceStoppedWords`. `app_test` `testSetActsOnTheLetGo`.
+- **The tabs go round** (gesture audit G35, 2026-11-25; `App::onButton`, `showTab`): L2 on SONG is SET, R2 on
+  SET is SONG. They stopped at both ends, so SONG to SET was R2 five times and L2 on SONG did nothing; no owner
+  decision was found for the ends. A quick run of L2 can now carry on past SONG into SET (the audit's trade-off).
+  `app_test` `testTabs`.
+- **A long list goes round on a PRESS, and a run stops at its end** (G35; `ui::listStep(at, by, count, pressed)`):
+  SET's rows (`SettingsScreen::step(by, pressed)`) and the list of songs and its revs (`SongScreen::moveCursor`'s
+  `pressed`). A press of the D-pad at an end goes to the other end; a held D-pad running on, and the stick, stop
+  there, so a run never carries past the end it was going to (as SONG's scenes already stopped short of the heads:
+  "only a press of the D-pad goes onto the head"). The page follows (`goTo`). **Left as they were, on purpose:
+  tracks stop** (FX and MOD's L1 / R1, SONG's columns: "nothing in the program wraps tracks", owner, 2026-11-14:
+  the hints show which way is left) **and FX's TYPE stops at its family's ends** (owner, 2026-11-14: the bar shows
+  no RIGHT on the last, no LEFT on the first). Lists that went round on every move still do (the FX list, KIT's
+  rows and columns, synth MAIN, presets with UP / DOWN, the instrument list); SET's KEY, CHORD PACK, TRACK NAME
+  and BOUNCE values still go round and SCALE, THEME, TEXT SIZE still stop (values, not the list).
+  `app_test` `testTheEndsOfSetsRows`, `testTheSetupScreen`; `save_test` (the list of songs and its revs, a press
+  and a run, `Rig::run`); `lights_test`, `theme_test` (the page with it).
+- **The drum grid's column is a ring both ways** (G35; `PatternScreen::moveCursor`): down from lane 8 is BARS, then
+  the tempo, then lane 1, as up from lane 1 was always the tempo, then BARS, then lane 8. Down from lane 8 went
+  straight to lane 1, skipping both. The brushes and B's drag skip the two stops (`onStep`). `ui_test`
+  `testCursorMovesAndWraps`. (The KIT page's lanes have the same one-way ring: down from lane 8 is lane 1, up from
+  lane 1 the KIT stop. Not in the brief; left.)
+- **On SET, L1 / R1 go to the first row of the heading before / after the cursor's, round the ends** (gesture
+  audit G28, 2026-11-25; `SettingsScreen::jumpGroup`). TEMPO to CONTROLS was 17 presses on the stock port; it is 3
+  (L1, DOWN, DOWN). From inside a group L1 is the group BEFORE (THEME, L1: CLICK), never its own first row: one
+  meaning each way. A press, never a run; a hold of A on CONTROLS lets go as a move does (`holding_`); while a
+  name or a password is typed every button is the keys'; NETWORK's pick (A held) swallows them. **L1 / R1 kept
+  their FX and MOD meaning** (the track, owner, 2026-11-14): SET's TRACK NAME and BOUNCE THIS TRACK act on the
+  track worked on, and on SET L1 / R1 are the headings, as they are a page in the list of recordings. The bar
+  says `L1 / R1 page` (the recordings list's word: "heading" ran 15 pixels over on NETWORK with HOLD A and HOLD B,
+  "group" a fraction); it is left off while NETWORK picks or forgets, whose bars are their own. **The panic puts
+  the row back** (`App::setRowBeforeShoulders_`, as FX's track). `app_test` `testSetJumpsHeadings` (every row's
+  bar fits and says it).
+- **The stick on a CURSOR speeds up when it is pushed all the way and held** (gesture audit G07, 2026-11-25;
+  `ui::StickClimb`, `kStickFullPush` 0.9 after the dead zone, `kStickClimbTo` 3, `kStickClimbMs` 1000): a part
+  push moves at the screen's own rate exactly as before; a full push held climbs from that rate to three times it
+  over a second and stays there. A climb not asked for `kStickClimbGapMs` (100 ms: another screen, the stick on
+  other work) starts again from the bottom. Every rate is still times STICK SPEED, the climb with it.
+  **The owner's earlier call, kept in part and moved:** "The owner asked for a quarter off (2026-11)" (`ui.hpp`,
+  commit 37bcdbc, now STICK SPEED's default 75%). The quarter off stays on every rate and on every part push; only
+  a FULL push HELD goes past it. Why that is more logical: at 75% the stick ran slower than a held D-pad on most
+  screens (SET 5.25 rows a second against 9, FX 10.5 against 33), against "stick for big moves, D-pad for exact
+  ones"; a full push held is the one gesture that only ever means a big move, and SONG's scene 1 to 40 or SET's
+  TEMPO to CONTROLS halve (about 2.2 s to 1 s). The owner allowed reversing a decision where a method is more
+  logical (2026-11-24). **Cursors only**: SET's rows, SONG's cells, the drum grid, the roll, FX, MOD, the
+  sampler's and a synth's stops, the kit's lanes and its EDIT and VOICE boxes. **Not**: a value turned (hold A,
+  hold X, SET's LEFT / RIGHT: "the owner's rule: faster is better" would argue for it, but one turn time slows
+  hit LEVEL from 0.44 s to 1 s), a list (the list of songs, the instruments, NETWORK's networks, the recordings
+  list, which squares its push already), the name and password keys, and **the kit's sounds with A held** ("slow
+  enough to hear each sound", kit_screen.cpp). A wrapping cursor (the drum grid's row, the FX list) goes round
+  sooner when held full: the audit's named risk. `app_test` `testTheStickClimbsOnACursor` (the rule; SET's rows
+  part, full and at 50%; TEMPO turned; the kit's sounds; the instrument list), `testTheStickSpeedAndTheVolume`
+  (SONG); `ui_test` (the drum grid, painting); `wifi_test` `testTheStickOverTheNetworks` (NETWORK's list, A held). **0.9 is a guess at "all the way"**: what the handheld's stick
+  reads at its rim is not measured.
 - **The list of instruments stands higher when it must** (`SongScreen::listTop`): six rows and what
   goes said under them (another instrument for a track) reached past the hints bar from `kListY`
   (70), so the box rises to end `kListBottom` (8 above the bar); adding a track it stands at 70 as
@@ -399,7 +452,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   NETWORK, BUTTONS, CONTROLS). The heading of the first row in view stands above the rows (`kHeadingY`); every
   other heading in view takes `kHeadingGap` before its group's first row. So **twelve rows are in
   view with one heading among them, eleven with two, ten with three** (`placeY`, `fits`, `kPageFoot`;
-  `kRowsShown` 12 is the most). It moves one row at a time, by as little as shows the cursor, and
+  `kRowsShown` 12 is the most). It moves one row at a time (L1 / R1 a heading, and a press at either end goes
+  round: G28, G35 above), by as little as shows the cursor, and
   leaves no room empty under the last row. **The page counts PLACES, not rows** (`here`, `placeOf`,
   `rowAt`; `firstShown` is a place): a row that is not on this handheld is passed by. **A group's
   first row must always be here** (a heading stands on it): only BRIGHTNESS, STICK LIGHT, LIGHT
