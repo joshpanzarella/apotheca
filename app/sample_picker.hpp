@@ -37,8 +37,8 @@
 //                  it would go. Nothing goes on the lane meanwhile. B with R1 held calls it off.
 //                  Every saved song and rev that names it follows (Session::moveSample).
 //   A              on a recording: keep it. On a folder: into it. On + NEW FOLDER (the last row
-//                  of SAMPLES and of a first-level folder): the keys for its name, as a track's
-//                  name is typed (A types, B deletes or leaves, Y or START keeps it).
+//                  of SAMPLES and of a first-level folder): the name keys (name_keys.hpp: A types,
+//                  Y deletes, B or START makes it; nothing typed, B leaves).
 //   B              a tap: put back what was there before the list was opened
 //   hold B         for a second: DELETE the recording under the cursor from the
 //                  handheld, for good (a bad catch, a take not wanted), or an
@@ -66,6 +66,7 @@
 
 #include "redraw.hpp"
 #include "input.hpp"
+#include "name_keys.hpp"
 #include "session.hpp"
 #include "ui.hpp"
 
@@ -113,9 +114,7 @@ public:
     static constexpr Uint32 kCarryHoldMs = 300;  // R1 held this long on a recording carries it; let go sooner, it is a page
     static constexpr Uint32 kSaidMs = 2500;      // how long the top line says what was done, or why not
     static constexpr int kFolderNameLength = 12; // the longest a folder's name is typed
-    static const char* const kKeys;              // the keys a name is typed with, row after row (the SET page's)
-    static constexpr int kKeyColumns = 10, kKeyCount = 40;
-    static constexpr float kKeysPerSecond = 7.f;  // the stick over the keys
+    static constexpr const char* kKeys = NameKeys::kKeys; // the keys a name is typed with (name_keys.hpp: the one set)
 
     // `folders`: the folders there are (Session::sampleFolders), the empty ones too. `first` names
     // the row before everything ("THE BUILT-IN DRUM").
@@ -138,8 +137,8 @@ public:
     float deletePart() const { return deletePart_; }
     const std::string& carried() const { return carried_; }         // the recording being carried ("": none)
     std::string carryTo() const;                                    // the folder it would go to if R1 were let go now ("": out of every folder)
-    bool typing() const { return typing_; }                         // a new folder's name is being typed: every button is its
-    const std::string& typed() const { return typed_; }
+    bool typing() const { return keys_.isOpen(); }                  // a new folder's name is being typed: every button is its
+    const std::string& typed() const { return keys_.typed(); }
     const std::string& said() const { return said_; }               // what the top line says just now ("": the title)
     bool moving() const { return moving_; }                         // a move's saved songs are following: the top line says MOVING TO
     bool copying() const { return copying_; }                       // a move is being copied (a card that will not rename): MOVING TO too
@@ -169,7 +168,6 @@ private:
     void drop(bool playing);                 // R1 let go while carrying
     void moved(const std::string& from, const std::string& to, const std::string& folder, Session::FileJob did, int failuresBefore); // a move's end
     void typeButton(Button b);
-    void moveKey(Button direction);
     void keepFolder();
     void say(const std::string& words) { said_ = words; saidUntil_ = lastMs_ + kSaidMs; }
     void quiet() { if (jobs_.hear) jobs_.hear(Hear::Quiet); } // what the list started stops (the cursor moved on)
@@ -211,9 +209,8 @@ private:
     bool r1Down_ = false, r1Timed_ = false;       // R1 went down on a recording: a page when let go, a carry if held
     Uint32 r1Since_ = 0;
     std::string carried_;
-    bool typing_ = false;
-    std::string typed_, typingIn_;                // the name so far, and the folder it will be in ("": SAMPLES)
-    int key_ = 0;
+    NameKeys keys_;                               // a new folder's name being typed
+    std::string typingIn_;                        // the folder it will be in ("": SAMPLES)
     std::string said_;
     Uint32 saidUntil_ = 0;
     std::string movingTo_;           // a move whose saved songs are still following: said MOVING until they are

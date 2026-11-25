@@ -138,8 +138,8 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
 
-    // A new folder's name being typed in the list of recordings: every button is the list's, the tabs too.
-    if (typingAFolder() && !panicking_) {
+    // A name being typed (a new folder, a preset): every button is the keys', the tabs, SELECT and L3 too.
+    if (typingAName() && !panicking_) {
         screenNow().onButton(event, input);
         return;
     }
@@ -371,7 +371,7 @@ void App::update(const Input& input, Uint32 nowMs) {
     // letting go of SELECT is not a tap. Another button pressed with SELECT (a combo: SEL + B, B, B
     // undoing) puts it away until SELECT is let go, so the box above the bar is seen (the volume,
     // UNDONE...), as MENU's card goes for MENU + a volume key.
-    const bool busy = (session_.view == View::Settings && (settings_.testing() || settings_.typing())) || typingAFolder();
+    const bool busy = (session_.view == View::Settings && (settings_.testing() || settings_.typing())) || typingAName();
     const bool menu = input.has(Button::Menu);
     ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP";
     ui::gUpdateReady = session_.updateReady();
@@ -581,7 +581,7 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
             {"SELECT, tapped", "the SONG screen. On SONG: the list of songs"},
         };
         const Line held[] = {
-            {"B", "UNDO the last change to the patterns (20 deep)"},
+            {"B", "UNDO the last change (20 deep)"},
             {"A", "put it back again"},
             {"X", "WRITE on / off: record a knob's moves while playing"},
             {"L1  R1", "quieter / louder"},

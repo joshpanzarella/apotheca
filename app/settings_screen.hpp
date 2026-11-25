@@ -19,10 +19,10 @@
 //   hold A for a second          on CONTROLS: set the controls up again
 //   START                        play / stop
 //
-// Typing a track's name: a grid of letters and numbers. The stick or D-pad
-// moves, A types the one under the cursor, B deletes the last (B with
-// nothing typed leaves without changing the name), Y or START keeps it.
-// Ten characters at most. While it is open every button belongs to it.
+// Typing a track's name: the name keys (name_keys.hpp), opened with the name there is. A types,
+// Y deletes the last letter, B keeps it and leaves (with nothing typed the name stays as it was),
+// START keeps it too (with nothing typed: the instrument's own name). Ten characters at most. While
+// it is open every button belongs to it.
 //
 // The button test shows what Apotheca hears from each button and the stick.
 // While it is open every button goes to it and does nothing else. It closes
@@ -38,6 +38,7 @@
 #include <vector>
 
 #include "input.hpp"
+#include "name_keys.hpp"
 #include "session.hpp"
 #include "ui.hpp"
 
@@ -109,9 +110,10 @@ public:
     void step(int by) { goTo(rowAt(placeOf(row_) + by)); } // up or down a place; the list has ends
     int cursorRow() const { return row_; }
     bool testing() const { return testing_; }
-    bool typing() const { return typing_; }
-    const std::string& typed() const { return typed_; }
-    static const char* const kKeys; // the grid's characters, row after row
+    bool typing() const { return password_ || keys_.isOpen(); } // a track's name, or a network's password
+    // What is typed: the name while its keys are up, else the password (a network's draft is kept when they go).
+    const std::string& typed() const { return keys_.isOpen() ? keys_.typed() : typed_; }
+    static constexpr const char* kKeys = NameKeys::kKeys; // the grid's characters, row after row
     // NETWORK (firmware-plan.md, section 14): hold A + up / down through the networks found, let go
     // to join; one that needs a password opens the keys in their PASSWORD mode (three sets of forty,
     // X turns to the next: small letters, capitals, signs; 63 letters at most, 8 at least). Hold B a
@@ -126,9 +128,9 @@ public:
     static constexpr const char* kBounceStoppedWords = "BOUNCE STOPPED: NOTHING KEPT";
     float stopPart() const { return stopPart_; }
     static constexpr const char* kForgettingWords = "FORGETTING IT: CANNOT BE UNDONE";
-    bool typingPassword() const { return typing_ && password_; }
+    bool typingPassword() const { return password_; }
     int passwordSet() const { return keySet_; }
-    int keyAt() const { return key_; } // the key the cursor is on
+    int keyAt() const { return keys_.isOpen() ? keys_.keyAt() : key_; } // the key the cursor is on
     bool picking() const { return picking_; }
     int picked() const { return pick_; }
     float forgetPart() const { return forgetPart_; }
@@ -150,15 +152,16 @@ private:
     int first_ = 0; // the row at the top of the page
     mutable char bounced_[64] = "";
     int bounceWhat_ = 0; // 0 the song, 1 each track, 2 this track
-    bool typing_ = false;
+    NameKeys keys_;         // a track's name being typed
     bool fromSong_ = false; // the keyboard was asked for from the SONG screen, and goes back there
-    std::string typed_;
-    int key_ = 0; // which character of the grid the cursor is on
+    void openName(bool fromSong); // the name keys, with the track's name typed in
     void typeButton(Button b);
+    std::string typed_; // a network's password (its draft is kept for the next try at that network)
+    int key_ = 0;       // which character of the password keys the cursor is on
     void passwordButton(Button b);
     void pickStep(int by);
     void joinPicked();
-    bool password_ = false; // the keys are in PASSWORD mode
+    bool password_ = false; // the PASSWORD keys are up
     int keySet_ = 0;
     std::string passwordFor_; // the network the password is for
     bool picking_ = false, pickMoved_ = false;

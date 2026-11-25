@@ -1274,6 +1274,51 @@ void testTheOtherScreens() {
     }
     CHECK(pagesSeen == 10 + 6 + 9 + 6 + 3 + 4 + 6);
 
+    // A synth's own preset (gesture audit G01, G30): the name keys at their longest, saying save and then replace;
+    // what is said in the top bar after, a long own name on MAIN, and the bar while B deletes it.
+    {
+        for (int t = 0; t < kNumTracks; ++t)
+            if (project.tracks[t].kind == TrackKind::Phazed) project.track = t;
+        SynthScreen& phazed = rig.app.phazed();
+        session.usePresetFolder(tempFolder("textsize-presets"));
+        const std::string longest(SynthScreen::kPresetNameLength, 'W');
+        phazed.goTo(0, SynthScreen::kPreset);
+        rig.frames(1);
+        rig.tap(R1);
+        CHECK(phazed.typing() && phazed.typed().empty());
+        holds(rig, "a synth's preset keys, nothing typed");
+        CHECK(drew("(empty: name it to save)") && drew("leave"));
+        rig.tap(DOWN, 2);
+        rig.tap(RIGHT, 2); // (W, the widest letter)
+        rig.tap(A, SynthScreen::kPresetNameLength + 2);
+        CHECK(phazed.typed() == longest);
+        holds(rig, "a synth's preset keys, a name at its longest");
+        CHECK(drew("24 OF 24") && drew("save"));
+        rig.tap(B);
+        CHECK(!phazed.typing() && phazed.said() == "SAVED AS " + longest);
+        holds(rig, "a synth, SAVED AS a long name");
+        rig.tap(R1);
+        CHECK(phazed.typed() == longest);
+        holds(rig, "a synth's preset keys, B replacing");
+        CHECK(drew("replace") && !drew("save"));
+        rig.tap(B);
+        CHECK(phazed.said() == "REPLACED " + longest);
+        holds(rig, "a synth, REPLACED a long name");
+        rig.frames(200);
+        holds(rig, "a synth on its own preset, a long name");
+        CHECK(drew("delete this preset"));
+        rig.key(B, true);
+        rig.frames(30);
+        holds(rig, "a synth's own preset being deleted");
+        CHECK(drew(SynthScreen::kPresetDeletingWords) && phazed.presetDeletePart() > 0.f);
+        rig.frames(50);
+        rig.key(B, false);
+        rig.frames(1);
+        CHECK(userPresets(TrackKind::Phazed).empty() && phazed.said() == longest + " DELETED. THE TRACK KEEPS ITS SOUND");
+        holds(rig, "a synth, a long name DELETED");
+        session.usePresetFolder(tempFolder("textsize-presets-clean")); // (the registry is global)
+    }
+
     // JAX-EP (jx3p-plan.md, batch 6b): every setting of every page with the cursor on it, at the bottom of what
     // it reads and, with A held, at the top (a knob: 0.0 and 10.0; a choice: its first and its last word).
     {
@@ -1561,6 +1606,44 @@ void testTheOtherScreens() {
         rig.frames(1);
         holds(rig, "the sampler, each setting");
     }
+    // Its own preset (gesture audit G01, G10): the name keys at their longest, saying save and then replace; what
+    // is said after, a long own name on PRESET, and the bar while B deletes it, which says it cannot be undone.
+    {
+        SamplerScreen& screen = rig.app.sampler();
+        session.usePresetFolder(tempFolder("textsize-sampler-presets"));
+        const std::string longest(SamplerScreen::kPresetNameLength, 'W');
+        screen.goTo(SamplerScreen::kPresetStop);
+        rig.frames(1);
+        rig.tap(R1);
+        CHECK(screen.typing() && screen.typed().empty());
+        rig.tap(DOWN, 2);
+        rig.tap(RIGHT, 2);
+        rig.tap(A, SamplerScreen::kPresetNameLength);
+        CHECK(screen.typed() == longest);
+        holds(rig, "the sampler's preset keys, a name at its longest");
+        rig.tap(B);
+        CHECK(!screen.typing() && screen.said() == "SAVED AS " + longest);
+        holds(rig, "the sampler, SAVED AS a long name");
+        rig.tap(R1);
+        holds(rig, "the sampler's preset keys, B replacing");
+        CHECK(drew("replace"));
+        rig.tap(B);
+        CHECK(screen.said() == "REPLACED " + longest);
+        holds(rig, "the sampler, REPLACED a long name");
+        rig.frames(200);
+        holds(rig, "the sampler on its own preset, a long name");
+        CHECK(drew("delete this preset"));
+        rig.key(B, true);
+        rig.frames(30);
+        holds(rig, "the sampler's own preset being deleted");
+        CHECK(drew(SamplerScreen::kPresetDeletingWords) && screen.presetDeletePart() > 0.f);
+        rig.frames(50);
+        rig.key(B, false);
+        rig.frames(1);
+        CHECK(session.samplerPresets().empty() && screen.said() == longest + " DELETED. THE TRACK KEEPS ITS SOUND");
+        holds(rig, "the sampler, a long name DELETED");
+        session.usePresetFolder(tempFolder("textsize-sampler-presets-clean"));
+    }
     session.setTrackSample(project.track, "not there");
     rig.frames(2);
     holds(rig, "the sampler, its recording gone");
@@ -1828,6 +1911,7 @@ void testTheOtherScreens() {
     rig.key(MENU, true);
     rig.frames(2);
     holds(rig, "the help card", 0, true);
+    CHECK(drew("UNDO the last change (20 deep)")); // (it was "...to the patterns": undo covers the sounds and effects too, gesture audit G10)
     rig.key(MENU, false);
     rig.frames(2);
     for (SDL_Keycode shoulder : {L1, R1, L2, R2}) rig.key(shoulder, true);

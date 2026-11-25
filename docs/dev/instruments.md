@@ -259,8 +259,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - **Every click of a setting reads another way** (batch 5's review): the readings carry as many
     figures as it takes (SPRAY 1 +-0.005%, SIZE 5.0 MS, DENSITY 1.00 HZ); `testCloudOnATrack` walks
     every value of every setting. **A CLOUD (or a sampler) given an instrument with no recording lets its
-    recording go** (`setTrackKind`); the two pass theirs to each other. **`App::typingAFolder` knows
-    CLOUD's list too**: a new list of recordings goes in it, or L2 / R2 turn the tab under the keys.
+    recording go** (`setTrackKind`); the two pass theirs to each other. **`App::typingAName` (it was
+    `typingAFolder`) knows CLOUD's list too**: a new list of recordings goes in it, or L2 / R2 turn the tab under the keys.
   - Stills `cloud`, `cloud-1` to `cloud-3`, `cloud-long`, `cloud-sounding` (a key held: the still is
     taken before the engine renders, so no ticks show there; `testCloudsHintsFit` reads them off a
     drawn screen).

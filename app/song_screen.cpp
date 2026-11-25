@@ -1288,7 +1288,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             hint("TAP A", "1 > 2 > 4 > 8");
         }
         hint("R1", session_.copiedScene() < 0 ? "copy" : "paste"); // (which scene: its brass mark)
-        if (!onSongEnd()) hint("HOLD B", "delete"); // (no START: with it the bar runs over, as on a cell)
+        if (!onSongEnd()) hint("HOLD B", "empty"); // the scene's cells are emptied, one step of undo (no START: with it the bar runs over, as on a cell)
     } else if (column_ == addColumn()) {
         hint("A", "add a track");
         hint("START", project_.playing ? "stop" : "play song");

@@ -22,8 +22,6 @@ constexpr float kChoicesPerSecond = 5.f; // the stick held over on a choice
 constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs;
 constexpr float kStickStopsPerSecond = 16.f;
 constexpr float kMacroPerSecond = 2.f;    // stick fully over: bottom to top in half a second
-constexpr float kTypeMovesPerSecond = 7.f; // over the naming keys, as the track name's
-constexpr char kTypeKeys[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_ "; // as the track name's: presetNameFrom's letters
 constexpr float kPresetsPerSecond = 10.f;
 constexpr Uint32 kListPreviewMs = 1500, kListRestMs = 4000; // CLOUD's list of recordings: a preview, and X on it
 
@@ -95,41 +93,32 @@ void SynthScreen::moveCursor(Button direction) {
 
 // ---- naming a preset to save ------------------------------------------------------------
 
-void SynthScreen::moveTypeKey(Button direction) {
-    const int count = 40, columns = kTypeColumns;
-    int col = key_ % columns, row = key_ / columns;
-    if (direction == Button::Left) col = (col + columns - 1) % columns;
-    if (direction == Button::Right) col = (col + 1) % columns;
-    if (direction == Button::Up) row = (row + count / columns - 1) % (count / columns);
-    if (direction == Button::Down) row = (row + 1) % (count / columns);
-    key_ = row * columns + col;
+// B or START keeps what is typed: the preset is saved, under a name taken replacing that one (and saying
+// so). B with nothing typed leaves; START with nothing typed does nothing (the keys say to name it).
+void SynthScreen::typeButton(Button b) {
+    const NameKeys::Asked asked = keys_.press(b);
+    if (asked == NameKeys::Asked::Nothing) return;
+    const std::string name = presetNameFrom(keys_.typed());
+    if (keys_.typed().empty() && asked == NameKeys::Asked::Start) return;
+    const bool taken = nameTaken();
+    keys_.close();
+    saved_ = 0.f;
+    stickWasX_ = false; // the keys' stick is not the knobs': the next push starts over
+    if (name.empty()) return; // (nothing typed: B leaves)
+    if (!session_.savePreset(project_.track, name)) say("NOT SAVED", 2500);
+    else say((taken ? "REPLACED " : "SAVED AS ") + name, 2500);
 }
 
-void SynthScreen::typeButton(Button b) {
-    if (isDirection(b)) {
-        moveTypeKey(b);
-        repeating_ = b;
-        repeatAt_ = 0;
-    } else if (b == Button::A) {
-        const char c = kTypeKeys[key_];
-        // No space first, and not two together; 24 at most, as the page's names.
-        const bool space = c == ' ';
-        if (static_cast<int>(typed_.size()) < kPresetNameLength && !(space && (typed_.empty() || typed_.back() == ' '))) typed_ += c;
-    } else if (b == Button::Y) {
-        if (!typed_.empty()) typed_.pop_back(); // the last letter goes
-    } else if (b == Button::B) {
-        typing_ = false; // leaves without saving
-        saved_ = 0.f;
-        stickWasX_ = false; // the keys' stick is not the knobs': the next push starts over
-    } else if (b == Button::Start) {
-        if (typed_.empty()) return; // (the keys say to name it)
-        const std::string name = presetNameFrom(typed_);
-        typing_ = false;
-        saved_ = 0.f;
-        stickWasX_ = false;
-        if (name.empty() || !session_.savePreset(project_.track, typed_)) say("NOT SAVED", 2500);
-        else say("SAVED AS " + name, 2500);
-    }
+bool SynthScreen::nameTaken() const {
+    const std::string name = presetNameFrom(keys_.typed());
+    for (const UserPreset& p : userPresets(trk().kind))
+        if (!name.empty() && p.name == name) return true;
+    return false;
+}
+
+bool SynthScreen::onOwnPreset() const {
+    const int own = trk().preset - builtInPresets(trk().kind);
+    return own >= 0 && own < static_cast<int>(userPresets(trk().kind).size());
 }
 
 // ---- changing the sound ----------------------------------------------------------------
@@ -347,11 +336,12 @@ void SynthScreen::endMod(const Input& input) {
 
 void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
-    if (typing_) { // naming a preset to save: every button is the keys'.
+    if (keys_.isOpen()) { // naming a preset to save: every button is the keys'.
         if (event.down) typeButton(b);
-        else if (b == repeating_) repeating_ = Button::None;
+        else keys_.letGo(b);
         return;
     }
+    if (event.down && b != Button::B) presetDeleting_ = false; // (any other button calls a delete off)
     if (picker_.isOpen()) { // CLOUD's list of recordings: every button is its own but START
         if (b == Button::Start && event.down && !input.held(Button::Select) && !picker_.typing()) session_.togglePlay(false);
         else picker_.onButton(event, project_.playing);
@@ -402,6 +392,7 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
     if (!event.down) {
         if (b == repeating_) repeating_ = Button::None;
+        if (b == Button::B) presetDeleting_ = false;
         return;
     }
     if (isDirection(b)) {
@@ -416,7 +407,11 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
     if (b == Button::B && !holding_) {
         if (page_ > 0) goTo(0, kAdvanced); // back to MAIN, on the way in
-        else if (cursor_ >= kFirstMacro && cursor_ < kAdvanced) {
+        else if (cursor_ == kPreset) { // one of the player's own: B kept held deletes its file (as a kit's)
+            presetDeleting_ = onOwnPreset();
+            presetDeleteTimed_ = false;
+            presetDeleteTrack_ = project_.track;
+        } else if (cursor_ >= kFirstMacro && cursor_ < kAdvanced) {
             // Back to the middle, and whatever automation it had in this cell goes.
             const bool writing = session_.writing();
             session_.setWriting(false); // this is a reset, not a move to record
@@ -430,9 +425,9 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (now == Session::Rec::NoInput) say("NO INPUT FOUND: PLUG IN A USB MICROPHONE OR INTERFACE", 3000);
         else if (now == Session::Rec::Idle && session_.lastRecorded().empty()) say("NOTHING RECORDED: NO SOUND CAME IN", 3000);
     } else if (b == Button::R1 && page_ == 0 && cursor_ == kPreset && !holding_) {
-        typing_ = true; // save the sound: the keys come up to name it
-        typed_.clear();
-        key_ = 0;
+        // Save the sound: the keys come up to name it. On one of the player's own its name is typed in, so
+        // R1 then B saves over it.
+        keys_.open(onOwnPreset() ? spec_.presetName(trk().preset) : "", kPresetNameLength);
     } else if (b == Button::R1 && page_ > 0) {
         goTo(page_ == spec_.pages - 1 ? 1 : page_ + 1, 0);
     } else if (b == Button::L1 && page_ > 0) {
@@ -450,6 +445,20 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
         picker_.rescan(session_.sampleNames(), session_.sampleFolders());
     }
     if (!input.held(Button::A)) holding_ = false;
+    // B kept held on one of the player's own presets: its file is deleted when the bar is full. (Let go, A
+    // held, off PRESET or another track up: called off.)
+    if (!input.held(Button::B) || input.held(Button::A) || page_ != 0 || cursor_ != kPreset || project_.track != presetDeleteTrack_ || keys_.isOpen()) presetDeleting_ = false;
+    presetDeletePart_ = 0.f;
+    if (presetDeleting_) {
+        if (!presetDeleteTimed_) presetDeleteTimed_ = true, presetDeleteSince_ = nowMs;
+        presetDeletePart_ = static_cast<float>(nowMs - presetDeleteSince_) / static_cast<float>(kPresetDeleteMs);
+        if (nowMs - presetDeleteSince_ >= kPresetDeleteMs) {
+            presetDeleting_ = false;
+            presetDeletePart_ = 0.f;
+            const std::string name = onOwnPreset() ? spec_.presetName(trk().preset) : "";
+            say(!name.empty() && session_.deleteSynthPreset(project_.track) ? name + " DELETED. THE TRACK KEEPS ITS SOUND" : "NOT DELETED", 2500);
+        }
+    }
     // Let go when X is up, off MAIN, or when another track is up (two tracks of one synth share this
     // screen; picked on SONG with X still held): the gesture is the knob's on the track shown.
     if (!input.held(Button::X) || page_ != 0 || project_.track != modKnob_.track()) endMod(input);
@@ -459,24 +468,8 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
     dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number
     lastMs_ = nowMs;
     const float x = input.stickX(), y = input.stickY();
-    if (typing_) {
-        // The stick moves over the keys, one at once and then steadily; a held D-pad direction runs.
-        const bool sideways = std::fabs(x) >= std::fabs(y);
-        const float push = sideways ? x : y;
-        if (push == 0.f) {
-            saved_ = 0.f;
-            stickWasX_ = false;
-        } else {
-            saved_ += stickWasX_ ? std::fabs(push) * kTypeMovesPerSecond * dt : 1.f;
-            stickWasX_ = true;
-            for (; saved_ >= 1.f; saved_ -= 1.f) moveTypeKey(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
-        }
-        if (repeating_ != Button::None && repeatAt_ == 0) {
-            repeatAt_ = nowMs + kRepeatDelayMs;
-        } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-            repeatAt_ = nowMs + kRepeatEveryMs;
-            moveTypeKey(repeating_);
-        }
+    if (keys_.isOpen()) {
+        keys_.update(input, nowMs, dt);
         return;
     }
     if (modKnob_.held()) {
@@ -542,29 +535,8 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
 // POSITION (both as the knobs have them now, macros on), POSITION a brass line, and each grain
 // sounding a teal tick at its place, top and bottom (Engine::grainPlaces, as of the last chunk).
 void SynthScreen::drawTyping(SDL_Renderer* r, const Fonts& fonts) const {
-    char text[64];
-    fonts.small.draw(r, 40.f, 46.f, "SAVE AS PRESET", kDim);
-    // What has been typed, with a mark where the next letter goes.
-    box(r, 40, 66, kScreenW - 80, 52, kPanel2, kTeal);
-    const float tx = 56.f, ty = 66.f + (52.f - fonts.large.capHeight()) / 2.f;
-    fonts.large.draw(r, tx, ty, typed_.c_str(), kText);
-    if (static_cast<int>(typed_.size()) < kPresetNameLength) fill(r, static_cast<int>(tx + fonts.large.width(typed_.c_str()) + (typed_.empty() ? 0 : 3)), 66 + 14, 2, 24, kTeal);
-    std::snprintf(text, sizeof text, "%d OF %d", static_cast<int>(typed_.size()), kPresetNameLength);
-    fonts.small.drawRight(r, kScreenW - 56.f, 66.f + (52.f - fonts.small.capHeight()) / 2.f, text, kDim);
-    if (typed_.empty()) fonts.small.draw(r, tx + 12.f, 66.f + (52.f - fonts.small.capHeight()) / 2.f, "(empty: name it to save)", kDim);
-    const int kw = 52, kh = 52, gx = (kScreenW - kTypeColumns * kw) / 2, gy = 140;
-    for (int i = 0; i < 40; ++i) {
-        const int x = gx + (i % kTypeColumns) * kw, y = gy + (i / kTypeColumns) * kh;
-        const bool here = i == key_;
-        box(r, x + 2, y + 2, kw - 4, kh - 4, here ? kTeal : kPanel, here ? kTeal : kLine);
-        char one[8];
-        std::snprintf(one, sizeof one, "%s", kTypeKeys[i] == ' ' ? "SPACE" : std::string(1, kTypeKeys[i]).c_str());
-        const Font& font = kTypeKeys[i] == ' ' ? fonts.within(&Fonts::small, one, kw - 4 - 6.f) : fonts.large; // ("SPACE" at XL is wider than its key: held at LARGE)
-        font.drawCentered(r, x + kw / 2.f, y + (kh - font.capHeight()) / 2.f, one, here ? kBg : kText);
-    }
-    const bool none = typed_.empty();
-    const Hint list[] = {{"A", "type"}, {"Y", none ? nullptr : "delete"}, {"B", "leave"}, {"START", "save"}};
-    hints(r, fonts, list, 4);
+    // B saves (under a name taken: replaces it, and the bar says so first); with nothing typed it leaves.
+    keys_.draw(r, fonts, "SAVE AS PRESET", kDim, "(empty: name it to save)", keys_.typed().empty() ? "leave" : nameTaken() ? "replace" : "save", nullptr);
 }
 
 void SynthScreen::drawPicture(SDL_Renderer* r, const Fonts& fonts) const {
@@ -664,7 +636,7 @@ void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
     std::snprintf(text, sizeof text, "%s / %s", name, spec_.pageNames[page_]);
     if (!said_.empty()) std::snprintf(text, sizeof text, "%s", said_.c_str()); // (CATCH, RECORD: for a moment)
     topBar(r, fonts, View::Device, text, project_);
-    if (typing_) {
+    if (keys_.isOpen()) {
         drawTyping(r, fonts); // naming a preset to save: the keys instead of the rows
         return;
     }
@@ -697,6 +669,8 @@ void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
             displayBox(r, fonts, kPresetX, kPresetY, kPresetW, kPresetH, "PRESET", text, cursor_ == kPreset, holding_);
             fonts.small.drawRight(r, countRight, rowY, place, kDim);
         }
+        // B held on one of the player's own: the bar along PRESET's foot fills (as the sampler's).
+        if (presetDeletePart_ > 0.f) fill(r, kPresetX, kPresetY + kPresetH - 2, static_cast<int>(kPresetW * (presetDeletePart_ > 1.f ? 1.f : presetDeletePart_)), 2, kStop);
 
         for (int m = 0; m < kMacros; ++m) {
             const int x = 8 + (m % 4) * kMacroPitchX, y = macroY() + (m / 4) * (macroH() + kMacroGap);
@@ -729,7 +703,9 @@ void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
         }
         scopeBox(r, fonts, session_.engine, kMainScopeX, advancedY(), kMainScopeW, kScopeY + kScopeH - advancedY());
 
-        if (holding_) {
+        if (presetDeletePart_ > 0.f) {
+            hint("HOLD B", kPresetDeletingWords);
+        } else if (holding_) {
             if (cursor_ == kFolder) hint("UP / DOWN", "next / previous folder");
             else if (cursor_ == kPreset) { hint("UP / DOWN", "next / previous preset"); hint("LEFT / RIGHT", "8 at a time"); }
             else hint("UP / DOWN", "turn it");
@@ -737,12 +713,15 @@ void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
             if (cursor_ == kAdvanced) hint("A", "open");
             else hint("HOLD A", cursor_ < kFirstMacro ? "change" : "turn");
             if (cursor_ == kPreset) hint("R1", "save");
+            if (cursor_ == kPreset && onOwnPreset()) hint("HOLD B", "delete this preset");
             if (cursor_ >= kFirstMacro && cursor_ < kAdvanced) hint("B", "back to the middle");
             // (Where the bar has room for it with nothing left out. The help card says it everywhere.)
             if (cursor_ >= kFirstMacro && cursor_ < kAdvanced && modTargetFits(t, kModFirstMacro + cursor_ - kFirstMacro)) hint("HOLD X", "mod");
             // PHYSIC's roll: said off the macros, where the bar has room (on a macro B and HOLD X fill it).
             if (spec_.roll && (cursor_ < kFirstMacro || cursor_ >= kAdvanced)) hint("Y", "new sound");
-            hint("START", project_.playing ? "stop" : "play");
+            // On one of the player's own START yields to the delete, as on the sampler's PRESET (it is on every
+            // other bar, and the top bar shows playing): PHYSIC's bar ran 32 pixels over.
+            if (!(cursor_ == kPreset && onOwnPreset())) hint("START", project_.playing ? "stop" : "play");
         }
         hints(r, fonts, list, count);
         return;

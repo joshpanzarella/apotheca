@@ -150,14 +150,16 @@ plays the recording as it was made; an octave up, twice as fast.
 | --- | --- | --- |
 | SOUND | **Tap A: the list of recordings.** Or hold A + up / down: one at a time | None |
 | PITCH, TUNE, START, END, ATTACK, RELEASE, LOOP, LEVEL | The stick turns it; the D-pad moves it by one | Its usual value |
-| PRESET | The preset after / before: the ends stop | Held a second, on one of your own: deletes its file (the track keeps its sound) |
+| PRESET | The preset after / before: the ends stop | Held a second, on one of your own: deletes its file (the bar says CANNOT BE UNDONE; the track keeps its sound) |
 
 **PRESET is the sound kept as a preset of its own** (or "-"): the
 recording, its settings, CHOP and the whole sound around it, as a synth's
-save keeps. **R1 on it saves the track's sound under a name**: the keys come
-up (A types, Y deletes, B leaves without saving, START saves, 24 letters at
-most); under a name taken, it replaces that one. A preset is kept as
-`NAME.sampler` in `presets` beside the program.
+save keeps. **R1 on it saves the track's sound under a name**: the name keys
+come up (A types, Y deletes a letter, **B saves and leaves**, as START does;
+with nothing typed B leaves and saves nothing; 24 letters at most). On one of
+your own its name is typed in already, so **R1 then B saves over it**. Under a
+name taken it replaces that one, and says REPLACED (SAVED AS for a new one).
+A preset is kept as `NAME.sampler` in `presets` beside the program.
 
 **A multisample**: where the files beside the picked one spell notes in
 their names (C2, C#3, Db3), they play too, each round its own note — up to 24
@@ -293,7 +295,7 @@ to the sound just now.
 | | **Hold A** | **The list of effects opens on the right**: the seven families, each line naming its types. Up / down steps through it, and you **hear** each one at once, but it is only **tried**: the effect that was in the slot, its settings and its automation are kept aside. **Let go of A** and the one you are on goes in (another family at its usual settings, its automation gone). Let go on the effect you started on and it is back exactly as it was. |
 | | Hold A + left / right | The **TYPE**, for an effect that has types. Tried too, with the settings the two types share; let go and it goes in, its automation moved with it |
 | | Hold A, then **B** | **As it was**: nothing tried goes in. Leaving the screen or the track with A held does the same |
-| | Hold B | **Deletes the effect**, with its settings and its automation: a bar fills for a second, and the heading says DELETING: CANNOT BE UNDONE. Let go sooner and it stays. On SENDS a tap of B: nothing sent. |
+| | Hold B | **Deletes the effect**, with its settings and its automation: a bar fills for a second, and the heading says DELETING THIS EFFECT. Let go sooner and it stays. **SELECT + B brings it back**, its settings and automation with it. On SENDS a tap of B: nothing sent. |
 | | Hold Y + up / down | On one of the track's own three lines: **moves it** there, settings, automation and MODs with it. The cursor goes with it; the ends stop. One step of undo. The buses' and the master's never move. |
 | The settings | Up / down | The next setting |
 | | Left | Back to the list, on the same line, from any setting. (Right does nothing here.) |
@@ -705,10 +707,19 @@ three effects, its ECHO and SPACE sends, GLIDE FROM and its two MODs.
   preset holds.
 - The mixer's LEVEL and PAN are never in a preset.
 - **R1 on PRESET** on the DEVICE screen saves the sound as a preset of its
-  own: the keys come up to name it (A types, Y deletes, B leaves without
-  saving, START saves, 24 letters at most). It lands in the USER folder with
-  everything above, on every synth; under a name taken, it replaces that one.
-  A sampler saves the same way (recording, settings, CHOP and the whole
+  own: the name keys come up (A types, Y deletes a letter, **B saves and
+  leaves**, as START does; with nothing typed B leaves and saves nothing; 24
+  letters at most). It lands in the USER folder with everything above, on
+  every synth. **On one of your own its name is typed in already: R1 then B
+  saves over it** (a sound turned since it was picked, kept in two presses).
+  Under a name taken it replaces that one, and says REPLACED (SAVED AS for a
+  new one); while you type, the bar says B replace instead of B save.
+- **Hold B a second on PRESET, on one of your own (USER)**: its file is
+  deleted. A bar fills along PRESET and the bar at the bottom says DELETING
+  THE PRESET: CANNOT BE UNDONE; let go sooner and it stays. The track keeps
+  its sound, named now by the preset before it; another track on one of your
+  own stays on it.
+- A sampler saves the same way (recording, settings, CHOP and the whole
   sound), picked with hold A + up / down and deleted with B held a second;
   one of yours is kept as `NAME.sampler` in `presets`.
 - Built-in presets beyond the synth's own are added after them, each in a
@@ -1834,7 +1845,7 @@ A few things mean one thing everywhere:
 | --- | --- |
 | A | Place, open, pick. Held: a direction shapes or turns what is under the cursor |
 | B | Delete, empty, go back |
-| **Hold B** | **Delete for good**: a track (2 s), a song (1 s), a recording in the list (1 s), an update sent over WiFi (1 s). The row fills as you hold; let go early and nothing happens |
+| **Hold B** | **Delete for good**: a track (2 s), a song (1 s), a recording in the list (1 s), one of your own presets or kits (1 s), an update sent over WiFi (1 s). The row fills as you hold; let go early and nothing happens. (An effect, a MOD or a scene emptied by hold B comes back with SELECT + B: there the words say DELETING or empty, not CANNOT BE UNDONE) |
 | X | Hear it. A recording plays **for as long as X is held** (a tap: a moment). Held on a drum hit: its step effects. Held on a knob: its MOD |
 | Hold R1 | On an empty step: paint as you drag. On a note: carry it. On SONG: copy a cell; R1 on another cell pastes it there |
 | L2 / R2 | The tabs |
@@ -1844,6 +1855,13 @@ A few things mean one thing everywhere:
 A held D-pad runs at one of two speeds on every screen: fast for a cursor
 (33 moves a second), slow for a list or a choice (9 a second), so each one
 can be seen or heard as it goes by.
+
+**Typing a name is the same everywhere** (a track's, a new folder's, a
+preset's): A types, Y deletes a letter, **B keeps what is typed and leaves**
+(with nothing typed it just leaves), START keeps it too. The keys run at a
+list's pace. While they are up every button is theirs: the tabs, SELECT and
+L3 do nothing there, and the help card does not come up. The four shoulder
+buttons' panic still works.
 
 On PRESET with A held, **left / right go eight presets at a time**, as in the
 list of recordings.
@@ -2415,7 +2433,8 @@ CUTOFF, RESO, ENV, TUNE, MIX, LFO, ATTACK, RELEASE. FM-6's are BRIGHT,
 FEEDBACK, ATTACK, DECAY, RELEASE, DETUNE, LFO, PITCH ENV. PHYSIC's are TONE, POSITION,
 DECAY, MATERIAL, STRETCH, RELEASE, DICE, OCTAVE. MORPH's are POSITION, MIX,
 CUTOFF, RESO, ENV POS, ENV CUT, DETUNE, RELEASE. Hold A + stick turns the one under
-the cursor; B puts a macro back in the middle. Each macro has a small picture
+the cursor; B puts a macro back in the middle. On PRESET, R1 saves the sound
+as one of your own and hold B deletes one of your own ("Presets", above). Each macro has a small picture
 of what it does and a colour for its kind (teal: the sound's colour; purple:
 movement and width; cream: time), and stays dim until it is turned. Macros bend the sound and
 leave the preset as it was made. A new preset is played at once when the

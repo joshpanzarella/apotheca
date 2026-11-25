@@ -9,9 +9,10 @@
 //              B: its usual value.
 //   PRESET     the sound kept as a preset of its own, or "-". Hold A + up /
 //              down: the preset after / before (ends stop). R1 saves it: the
-//              keys come up to name it (A types, Y deletes, B leaves without
-//              saving, START saves). Hold B a second on one of your own:
-//              deletes its file (the track keeps its sound).
+//              name keys come up (name_keys.hpp: A types, Y deletes, B or START
+//              saves; with nothing typed B leaves), on one of your own with its
+//              name typed in. Hold B a second on one of your own: deletes its
+//              file, CANNOT BE UNDONE (the track keeps its sound).
 //                PITCH    semitones up or down: up is higher. (Kept in the song
 //                         as the old "root key": middle C less the pitch.)
 //                TUNE     cents
@@ -42,6 +43,7 @@
 #include <vector>
 
 #include "input.hpp"
+#include "name_keys.hpp"
 #include "sample_picker.hpp"
 #include "session.hpp"
 #include "ui.hpp"
@@ -80,11 +82,12 @@ public:
     static int endMarkX(float end, int w) { return ui::waveEndMarkX(end, w); } // END's mark, inside the picture
     void goTo(int stop) { stop_ = stop < 0 ? 0 : (stop > kPresetStop ? kPresetStop : stop); }
     int cursor() const { return stop_; }
-    bool typing() const { return typing_; }
-    const std::string& typed() const { return typed_; }
-    int keyAt() const { return key_; }
+    bool typing() const { return keys_.isOpen(); }
+    const std::string& typed() const { return keys_.typed(); }
+    int keyAt() const { return keys_.keyAt(); }
     float presetDeletePart() const { return presetDeletePart_; }
-    static constexpr int kTypeColumns = 10, kPresetNameLength = 24; // the grid, and a name's most (the synth's too)
+    static constexpr const char* kPresetDeletingWords = "DELETING THE PRESET: CANNOT BE UNDONE"; // the bar while B is held (as the kit's)
+    static constexpr int kTypeColumns = NameKeys::kColumns, kPresetNameLength = 24; // the grid, and a name's most (the synth's too)
     const ui::Playhead& playhead() const { return head_; }
     int timesHeard() const { return timesHeard_; } // how often it has been played from this screen (for tests)
     const std::string& said() const { return said_; }
@@ -123,13 +126,11 @@ private:
     bool headHeld_ = false; // head_ runs for as long as X holds the sound
     float release_ = 0.f;   // seconds the held sound's RELEASE runs once X is let go
     int timesHeard_ = 0;
-    // Naming a preset to save (R1 on PRESET): the keys, as a track's name is typed.
+    // Naming a preset to save (R1 on PRESET): the name keys, as a track's name is typed.
     void typeButton(Button b);
-    void moveTypeKey(Button direction);
     void drawTyping(SDL_Renderer* r, const Fonts& fonts) const;
-    bool typing_ = false;
-    std::string typed_;
-    int key_ = 0; // which character of the grid the cursor is on
+    bool nameTaken() const; // what is typed names one of the presets already: B or START replaces it
+    NameKeys keys_;
     // Deleting one's own preset: B held a second on it (as a kit's).
     static constexpr Uint32 kPresetDeleteMs = 1000;
     bool presetDeleting_ = false, presetDeleteTimed_ = false;

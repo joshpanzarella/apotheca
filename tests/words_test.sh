@@ -7,6 +7,8 @@
 # reader's, "twin" by itself, which an old song's track is read by. Nor does a
 # text promise BEST QUALITY: a bounce is the song as it plays (no synth has a
 # quality to turn up; the mend of batches 8a to 8c).
+# And the word is "delete" (the UI audit, 2026-11-11; gesture audit G10, 2026-11-24): no text of the
+# app says erase, remove or rub out (a cell is "emptied").
 # FM-6 (owner, 2026-11-15) is "after a classic 80s synth": no Yamaha, no DX7
 # either (the copied-in FM core under third_party/msfa is read with the rest).
 # The engine's texts are read for those names too (preset and folder names
@@ -56,6 +58,8 @@ scan() {
                 if (low ~ /twin analog|oversampl/) printf "%s:%d: the synth that went: \"%s\"\n", file, strline, str
                 if (low ~ /best quality/) printf "%s:%d: a quality nothing has: \"%s\"\n", file, strline, str
                 if (namesOnly) return   # (the engine: no screen, so no SELECT to draw)
+                # One word: delete. Not erase, remove or rub out.
+                if (low ~ /(^|[^a-z])(eras(e|es|ed|ing)|remov(e|es|ed|ing)|rub(s|bed|bing)? out)([^a-z]|$)/) printf "%s:%d: not the word (delete, or empty): \"%s\"\n", file, strline, str
                 if (low !~ /(^|[^a-z])select([^a-z]|$)/) return
                 ok = 0
                 if (ctx ~ /hint\($/) ok = 1                                                    # hint("SELECT...", ...)
@@ -157,7 +161,7 @@ faults() { scan "$1"; makers "$1"; engine "$1"; }
 
 bad=$(faults "$app")
 if [ -n "$bad" ]; then
-    echo "The device would show SELECT spelled out (it is drawn as SEL), a maker's name (the synth is JAX-EP), or the synth that went:"
+    echo "The device would show SELECT spelled out (it is drawn as SEL), a maker's name (the synth is JAX-EP), the synth that went, or erase, remove or rub out (the word is delete):"
     echo "$bad"
     exit 1
 fi
@@ -291,6 +295,15 @@ PLANT
 plant a-word-in-physics-parts ../engine/src/physic/modes.hpp caught <<'PLANT'
 constexpr const char* kSays = "a JX-3P's bell";
 PLANT
+plant an-erase x.cpp caught <<'PLANT'
+    hint("HOLD B", "erase");
+PLANT
+plant a-remove x.cpp caught <<'PLANT'
+    say("REMOVED: THE KIT");
+PLANT
+plant a-rub-out x.cpp caught <<'PLANT'
+    const char* words = "B rubs out the last letter";
+PLANT
 plant the-bass-boxs-model ../engine/src/acid.cpp caught <<'PLANT'
     {"Classic TB-303", "CLASSIC", {0}},
 PLANT
@@ -331,6 +344,8 @@ const char* const kPage = R"page(<p>Hold SELECT, then "X".</p>
     note = "SELECTED" "SELECTS" "RESELECT";
     note = "also SEL + L1 / R1";
     char q = '"'; // SELECT
+    q.erase(0, 5); // erase, remove or rub out in a comment: not on the screen
+    note = "ERASER" "REMOVAL" "RUBBER" "STUB OUT";
 PLANT
 if [ "$fails" -ne 0 ]; then exit 1; fi
 echo "words test passed"

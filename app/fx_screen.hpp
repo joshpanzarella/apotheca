@@ -126,7 +126,9 @@ public:
     void callOff();
     // B held on an effect's line: how far the bar has filled, 0..1. Full, the effect is deleted.
     static constexpr Uint32 kDeleteHoldMs = 1000;
-    static constexpr const char* kDeletingWords = "DELETING: CANNOT BE UNDONE"; // in the heading while the bar fills
+    // In the heading while the bar fills. Effects are in undo (since 2026-11-14: Session::soundMark), so
+    // SEL + B brings one back: the MOD screen's words, not CANNOT BE UNDONE (gesture audit G10).
+    static constexpr const char* kDeletingWords = "DELETING THIS EFFECT";
     float deletePart() const { return deletePart_; }
     // What the effect on a line is showing just now (COMP: the dB it is turning
     // the sound down), from the engine; 0 for a line with nothing to show. And

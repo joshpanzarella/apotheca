@@ -215,6 +215,7 @@ void Session::usePresetFolder(const std::string& folder) {
             UserPreset preset;
             std::string text;
             preset.name = presetNameFrom(name.substr(0, name.size() - ending.size()));
+            preset.file = name;
             if (!preset.name.empty() && readTextFile(folder + "/" + name, text) && readPresetFile(kind, text, preset)) presets.push_back(preset);
         }
         setUserPresets(kind, presets);
@@ -238,6 +239,28 @@ bool Session::savePreset(int track, const std::string& typed) {
     for (std::size_t i = 0; i < mine.size(); ++i)
         if (mine[i].name == name) t.preset = builtInPresets(t.kind) + static_cast<int>(i);
     if (undoReady_) soundMark_ = soundMark(); // retargeting the number is not an edit (a file saved)
+    return true;
+}
+
+bool Session::deleteSynthPreset(int track) {
+    if (track < 0 || track >= kNumTracks || presetFolder_.empty()) return false;
+    const TrackKind kind = project.tracks[track].kind;
+    const int first = builtInPresets(kind), gone = project.tracks[track].preset;
+    const std::vector<UserPreset>& mine = userPresets(kind);
+    const int own = gone - first;
+    if (!specFor(kind) || own < 0 || own >= static_cast<int>(mine.size()) || mine[static_cast<std::size_t>(own)].file.empty()) return false;
+    if (std::remove((presetFolder_ + "/" + mine[static_cast<std::size_t>(own)].file).c_str()) != 0) return false;
+    usePresetFolder(presetFolder_); // the list read again: the ones after it are a place earlier now
+    // Every track of this synth stays on its preset: past it, a place earlier. A track on the one deleted keeps
+    // its sound (nothing is sent: nothing changed), named by the preset before it, and that sound is its own
+    // now (as savePreset's): a plain preset picked next leaves its effects.
+    for (int i = 0; i < kNumTracks; ++i) {
+        TrackData& t = project.tracks[i];
+        if (t.kind != kind || t.preset < gone) continue;
+        if (t.preset == gone) presetSounds_[i] = PresetSoundMemory();
+        --t.preset;
+    }
+    if (undoReady_) soundMark_ = soundMark(); // retargeting the numbers is not an edit (a file deleted)
     return true;
 }
 

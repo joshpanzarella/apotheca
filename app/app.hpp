@@ -17,6 +17,7 @@
 
 #include <SDL.h>
 
+#include <initializer_list>
 #include <memory>
 #include <string>
 
@@ -101,7 +102,8 @@ public:
     // (With no MENU button on the device: SELECT, held by itself for a moment; another button pressed
     // with it is a combo, and the card stays away until SELECT is let go.)
     bool helpShowing() const { return help_; }
-    // SELECT + B takes back the last change to the patterns; SELECT + A puts it forward again.
+    // SELECT + B takes back the last change (the patterns, and since 2026-11-14 the sounds and effects:
+    // Session::soundMark); SELECT + A puts it forward again.
     // What it said about that, for a moment: "UNDONE", "NOTHING TO UNDO"...
     const char* undoSaid() const { return now_ < undoSaidUntil_ ? undoSaid_ : ""; }
     // The notice that says a panic happened. It stays while the buttons are
@@ -117,9 +119,17 @@ public:
 
 private:
     Screen& screenNow();
-    bool typingAFolder() const { // the list of recordings is up, with a new folder's name being typed
+    // A name is being typed (name_keys.hpp) on the screen up: a new folder in the list of recordings, or a
+    // synth's or the sampler's preset. Every button is the keys' then, the tabs, SELECT and L3 too; only the
+    // four shoulders' panic still acts. (SET's keys, a track's name or a password, are the SET page's own
+    // case in onButton: the button test is there too.)
+    bool typingAName() const {
         const Screen* now = &screenNow();
-        return (now == &kit_ && kit_.picker().typing()) || (now == &sampler_ && sampler_.picker().typing()) || (now == &cloud_ && cloud_.picker().typing());
+        if (now == &kit_) return kit_.picker().typing();
+        if (now == &sampler_) return sampler_.typing() || sampler_.picker().typing();
+        for (const SynthScreen* synth : {&phazed_, &jaxep_, &fm6_, &physic_, &acid_, &cloud_, &morph_})
+            if (now == synth) return synth->typing() || synth->picker().typing();
+        return false;
     }
     const Screen& screenNow() const { return const_cast<App*>(this)->screenNow(); }
     std::unique_ptr<Project> project_; // large, so not on the stack

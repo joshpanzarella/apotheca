@@ -14,8 +14,6 @@ using namespace ui;
 namespace {
 constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs;
 constexpr float kMovesPerSecond = 14.f, kSoundsPerSecond = 8.f;
-constexpr float kTypeMovesPerSecond = 7.f; // over the naming keys, as the synth's
-constexpr char kTypeKeys[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_ "; // as the track name's: presetNameFrom's letters
 const char* const kNames[sampler::kSettings] = {"PITCH", "TUNE", "START", "ATTACK", "RELEASE", "LOOP", "LEVEL", "END"};
 // The order the page shows them in: END beside START (it is the last id: ids are appended).
 const int kShown[sampler::kSettings] = {sampler::Root, sampler::Tune, sampler::Start, sampler::End, sampler::Attack, sampler::Release, sampler::Loop, sampler::Level};
@@ -180,9 +178,9 @@ void SamplerScreen::openPicker() {
 
 void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
-    if (typing_) { // naming a preset to save: every button is the keys'.
+    if (keys_.isOpen()) { // naming a preset to save: every button is the keys'.
         if (event.down) typeButton(b);
-        else if (b == repeating_) repeating_ = Button::None;
+        else keys_.letGo(b);
         return;
     }
     if (picker_.isOpen()) {
@@ -222,9 +220,10 @@ void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
         saidUntil_ = lastMs_ + 2500;
     } else if (b == Button::R1 && !holding_) {
         if (stop_ == kPresetStop) {
-            typing_ = true; // save the sound: the keys come up to name it
-            typed_.clear();
-            key_ = 0;
+            // Save the sound: the keys come up to name it, on one of the player's own with its name typed in
+            // (R1 then B saves over it).
+            const int now = session_.samplerPresetOf(project_.track);
+            keys_.open(now >= 0 ? session_.samplerPresets()[static_cast<std::size_t>(now)].name : "", kPresetNameLength);
             return;
         }
         // Record from the input: once to start (it waits for sound), again to stop.
@@ -246,41 +245,27 @@ void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
 
 // ---- naming a preset to save -----------------------------------------------------------
 
-void SamplerScreen::moveTypeKey(Button direction) {
-    const int count = 40, columns = kTypeColumns;
-    int col = key_ % columns, row = key_ / columns;
-    if (direction == Button::Left) col = (col + columns - 1) % columns;
-    if (direction == Button::Right) col = (col + 1) % columns;
-    if (direction == Button::Up) row = (row + count / columns - 1) % (count / columns);
-    if (direction == Button::Down) row = (row + 1) % (count / columns);
-    key_ = row * columns + col;
+// B or START keeps what is typed: the preset is saved, under a name taken replacing that one (and saying
+// so). B with nothing typed leaves; START with nothing typed does nothing (the keys say to name it).
+void SamplerScreen::typeButton(Button b) {
+    const NameKeys::Asked asked = keys_.press(b);
+    if (asked == NameKeys::Asked::Nothing) return;
+    if (keys_.typed().empty() && asked == NameKeys::Asked::Start) return;
+    const std::string name = presetNameFrom(keys_.typed());
+    const bool taken = nameTaken();
+    keys_.close();
+    saved_ = 0.f;
+    stickWas_ = false; // the keys' stick is not the knobs': the next push starts over
+    if (name.empty()) return; // (nothing typed: B leaves)
+    said_ = !session_.saveSamplerPreset(project_.track, name) ? "NOT SAVED" : (taken ? "REPLACED " : "SAVED AS ") + name;
+    saidUntil_ = lastMs_ + 2500;
 }
 
-void SamplerScreen::typeButton(Button b) {
-    if (isDirection(b)) {
-        moveTypeKey(b);
-        repeating_ = b;
-        repeatAt_ = 0;
-    } else if (b == Button::A) {
-        const char c = kTypeKeys[key_];
-        // No space first, and not two together; 24 at most, as the page's names.
-        const bool space = c == ' ';
-        if (static_cast<int>(typed_.size()) < kPresetNameLength && !(space && (typed_.empty() || typed_.back() == ' '))) typed_ += c;
-    } else if (b == Button::Y) {
-        if (!typed_.empty()) typed_.pop_back(); // the last letter goes
-    } else if (b == Button::B) {
-        typing_ = false; // leaves without saving
-        saved_ = 0.f;
-        stickWas_ = false; // the keys' stick is not the knobs': the next push starts over
-    } else if (b == Button::Start) {
-        if (typed_.empty()) return; // (the keys say to name it)
-        const std::string name = presetNameFrom(typed_);
-        typing_ = false;
-        saved_ = 0.f;
-        stickWas_ = false;
-        said_ = name.empty() || !session_.saveSamplerPreset(project_.track, typed_) ? "NOT SAVED" : "SAVED AS " + name;
-        saidUntil_ = lastMs_ + 2500;
-    }
+bool SamplerScreen::nameTaken() const {
+    const std::string name = presetNameFrom(keys_.typed());
+    for (const Session::SamplerPreset& p : const_cast<Session&>(session_).samplerPresets())
+        if (!name.empty() && p.name == name) return true;
+    return false;
 }
 
 void SamplerScreen::update(const Input& input, Uint32 nowMs) {
@@ -318,25 +303,8 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
     }
     picker_.update(input, nowMs, project_.playing);
     if (picker_.isOpen()) return;
-    if (typing_) {
-        // The stick moves over the keys, one at once and then steadily; a held D-pad direction runs.
-        const float x = input.stickX(), y = input.stickY();
-        const bool sideways = std::fabs(x) >= std::fabs(y);
-        const float push = sideways ? x : y;
-        if (push == 0.f) {
-            saved_ = 0.f;
-            stickWas_ = false;
-        } else {
-            saved_ += stickWas_ ? std::fabs(push) * kTypeMovesPerSecond * dt : 1.f;
-            stickWas_ = true;
-            for (; saved_ >= 1.f; saved_ -= 1.f) moveTypeKey(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
-        }
-        if (repeating_ != Button::None && repeatAt_ == 0) {
-            repeatAt_ = nowMs + kRepeatDelayMs;
-        } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-            repeatAt_ = nowMs + kRepeatEveryMs;
-            moveTypeKey(repeating_);
-        }
+    if (keys_.isOpen()) {
+        keys_.update(input, nowMs, dt);
         return;
     }
     // While recording, the line says how it is going.
@@ -394,29 +362,8 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
 }
 
 void SamplerScreen::drawTyping(SDL_Renderer* r, const Fonts& fonts) const {
-    char text[64];
-    fonts.small.draw(r, 40.f, 46.f, "SAVE AS PRESET", kDim);
-    // What has been typed, with a mark where the next letter goes.
-    box(r, 40, 66, kScreenW - 80, 52, kPanel2, kTeal);
-    const float tx = 56.f, ty = 66.f + (52.f - fonts.large.capHeight()) / 2.f;
-    fonts.large.draw(r, tx, ty, typed_.c_str(), kText);
-    if (static_cast<int>(typed_.size()) < kPresetNameLength) fill(r, static_cast<int>(tx + fonts.large.width(typed_.c_str()) + (typed_.empty() ? 0 : 3)), 66 + 14, 2, 24, kTeal);
-    std::snprintf(text, sizeof text, "%d OF %d", static_cast<int>(typed_.size()), kPresetNameLength);
-    fonts.small.drawRight(r, kScreenW - 56.f, 66.f + (52.f - fonts.small.capHeight()) / 2.f, text, kDim);
-    if (typed_.empty()) fonts.small.draw(r, tx + 12.f, 66.f + (52.f - fonts.small.capHeight()) / 2.f, "(empty: name it to save)", kDim);
-    const int kw = 52, kh = 52, gx = (kScreenW - kTypeColumns * kw) / 2, gy = 140;
-    for (int i = 0; i < 40; ++i) {
-        const int x = gx + (i % kTypeColumns) * kw, y = gy + (i / kTypeColumns) * kh;
-        const bool here = i == key_;
-        box(r, x + 2, y + 2, kw - 4, kh - 4, here ? kTeal : kPanel, here ? kTeal : kLine);
-        char one[8];
-        std::snprintf(one, sizeof one, "%s", kTypeKeys[i] == ' ' ? "SPACE" : std::string(1, kTypeKeys[i]).c_str());
-        const Font& font = kTypeKeys[i] == ' ' ? fonts.within(&Fonts::small, one, kw - 4 - 6.f) : fonts.large; // ("SPACE" at XL is wider than its key: held at LARGE)
-        font.drawCentered(r, x + kw / 2.f, y + (kh - font.capHeight()) / 2.f, one, here ? kBg : kText);
-    }
-    const bool none = typed_.empty();
-    const Hint list[] = {{"A", "type"}, {"Y", none ? nullptr : "delete"}, {"B", "leave"}, {"START", "save"}};
-    hints(r, fonts, list, 4);
+    // B saves (under a name taken: replaces it, and the bar says so first); with nothing typed it leaves.
+    keys_.draw(r, fonts, "SAVE AS PRESET", kDim, "(empty: name it to save)", keys_.typed().empty() ? "leave" : nameTaken() ? "replace" : "save", nullptr);
 }
 
 void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
@@ -424,7 +371,7 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     trackName(project_, project_.track, name, sizeof name);
     std::snprintf(text, sizeof text, "%s / SOUND", name);
     topBar(r, fonts, View::Device, text, project_);
-    if (typing_) {
+    if (keys_.isOpen()) {
         drawTyping(r, fonts); // naming a preset to save: the keys instead of the rows
         return;
     }
@@ -435,7 +382,8 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // ---- the recording ------------------------------------------------------------
     const int sx = 8, sy = kSoundY, sw = 624, sh = kSoundH;
     box(r, sx, sy, sw, sh, kPanel, kLine);
-    fonts.small.draw(r, sx + 7.f, sy + 7.f, said_.empty() ? "SOUND" : said_.c_str(), said_.empty() ? kDim : kBrass);
+    const char* top = said_.empty() ? "SOUND" : said_.c_str(); // (a preset's name at its longest in what is said: held at LARGE at XL)
+    fonts.within(&Fonts::small, top, sw - 14.f).draw(r, sx + 7.f, sy + 7.f, top, said_.empty() ? kDim : kBrass);
     char upper[80];
     if (!t.sample[0]) std::snprintf(upper, sizeof upper, "NONE");
     else if (sampleFolderOf(t.sample).empty()) std::snprintf(upper, sizeof upper, "%s", t.sample);
@@ -489,7 +437,9 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     Hint list[8];
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
-    if (holding_) {
+    if (presetDeletePart_ > 0.f) {
+        hint("HOLD B", kPresetDeletingWords); // (a file, gone for good: the kit's words)
+    } else if (holding_) {
         hint("UP / DOWN", stop_ == 0 ? "next / previous recording" : (stop_ == kPresetStop ? "next / previous preset" : "turn it"));
     } else if (stop_ == kPresetStop) {
         hint("HOLD A", "pick one");

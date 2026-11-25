@@ -7338,7 +7338,8 @@ void testSavePresetOnDevice() {
     TrackData& track = rig->project().tracks[1];
     const std::string folder = tempFolder("savepreset");
     session.usePresetFolder(folder);
-    // R1 on PRESET opens the keys; A types, Y deletes, B leaves without saving.
+    // R1 on PRESET opens the name keys, on a built-in with nothing typed; A types, Y deletes. With nothing
+    // typed B leaves, and nothing is saved.
     CHECK(screen.cursor() == SynthScreen::kPreset);
     rig->tap(R1);
     CHECK(screen.typing() && screen.typed().empty());
@@ -7349,35 +7350,48 @@ void testSavePresetOnDevice() {
     CHECK(screen.typed() == "AB");
     rig->tap(Y);
     CHECK(screen.typed() == "A");
+    rig->tap(Y);
     rig->tap(B);
-    CHECK(!screen.typing() && userPresets(TrackKind::Phazed).empty());
-    // Again, kept with START: the file, the list, the track on it.
+    CHECK(!screen.typing() && userPresets(TrackKind::Phazed).empty() && screen.said().empty());
+    // B keeps what is typed (owner, 2026-11-15, "a new one does too"; gesture audit G01): the file, the list, the track on it.
     rig->tap(R1);
     rig->tap(A);
     rig->tap(RIGHT);
     rig->tap(A);
     CHECK(screen.typed() == "AB");
-    rig->tap(START);
+    rig->tap(B);
     CHECK(!screen.typing() && screen.said() == "SAVED AS AB");
     std::string file;
     CHECK(readTextFile(folder + "/AB.phazed", file));
     CHECK(userPresets(TrackKind::Phazed).size() == 1 && track.preset == builtInPresets(TrackKind::Phazed));
-    // Under a name taken, it replaces that one.
+    // On one of the player's own, R1 opens with its name typed in: R1 then B saves over it, and says REPLACED.
     const std::string before = file;
     session.setSynthSetting(1, phazed::Level, track.patch.value[phazed::Level] == 3 ? 4 : 3);
     rig->tap(R1);
-    rig->tap(A);
-    rig->tap(RIGHT);
-    rig->tap(A);
-    rig->tap(START);
-    CHECK(userPresets(TrackKind::Phazed).size() == 1);
+    CHECK(screen.typing() && screen.typed() == "AB" && screen.keyAt() == 0);
+    rig->tap(B);
+    CHECK(!screen.typing() && screen.said() == "REPLACED AB" && userPresets(TrackKind::Phazed).size() == 1);
     CHECK(readTextFile(folder + "/AB.phazed", file) && file != before);
+    // START keeps too (and does not play): a new name is SAVED AS, a name taken REPLACED.
+    rig->tap(R1);
+    rig->tap(A);
+    CHECK(screen.typed() == "ABA");
+    rig->tap(START);
+    CHECK(!screen.typing() && screen.said() == "SAVED AS ABA" && userPresets(TrackKind::Phazed).size() == 2 && !rig->project().playing);
+    CHECK(track.preset == builtInPresets(TrackKind::Phazed) + 1);
+    rig->tap(R1);
+    CHECK(screen.typed() == "ABA");
+    rig->tap(Y);
+    rig->tap(START);
+    CHECK(!screen.typing() && screen.said() == "REPLACED AB" && userPresets(TrackKind::Phazed).size() == 2 && track.preset == builtInPresets(TrackKind::Phazed));
     // Empty: START does nothing, B leaves.
     rig->tap(R1);
+    rig->tap(Y, 2);
+    CHECK(screen.typed().empty());
     rig->tap(START);
-    CHECK(screen.typing() && userPresets(TrackKind::Phazed).size() == 1);
+    CHECK(screen.typing() && userPresets(TrackKind::Phazed).size() == 2);
     rig->tap(B);
-    CHECK(!screen.typing());
+    CHECK(!screen.typing() && userPresets(TrackKind::Phazed).size() == 2);
     // Every synth keeps presets the same way.
     for (TrackKind kind : {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Physic, TrackKind::Acid, TrackKind::Cloud, TrackKind::Morph}) {
         if (track.kind != kind) CHECK(session.setTrackKind(1, kind));
@@ -7414,7 +7428,7 @@ void testSamplerPresetsOnDevice() {
     rig.tap(UP);
     CHECK(screen.cursor() == 7);
     screen.goTo(SamplerScreen::kPresetStop);
-    // R1 on PRESET opens the keys; A types, Y deletes, B leaves without saving.
+    // R1 on PRESET opens the name keys; A types, Y deletes. With nothing typed B leaves, and nothing is saved.
     rig.tap(R1);
     CHECK(screen.typing() && screen.typed().empty());
     rig.tap(A);
@@ -7424,14 +7438,15 @@ void testSamplerPresetsOnDevice() {
     CHECK(screen.typed() == "AB");
     rig.tap(Y);
     CHECK(screen.typed() == "A");
+    rig.tap(Y);
     rig.tap(B);
     CHECK(!screen.typing() && session.samplerPresets().empty());
-    // Again, kept with START: the file, the list, the track on it.
+    // B keeps what is typed (gesture audit G01): the file, the list, the track on it.
     rig.tap(R1);
     rig.tap(A);
     rig.tap(RIGHT);
     rig.tap(A);
-    rig.tap(START);
+    rig.tap(B);
     CHECK(!screen.typing() && screen.said() == "SAVED AS AB");
     rig.frames(200);
     CHECK(screen.said().empty()); // the line clears: not only recording synths say things
@@ -7443,15 +7458,22 @@ void testSamplerPresetsOnDevice() {
     CHECK(session.samplerPresetOf(1) == -1);
     const std::string before = file;
     rig.tap(R1);
+    CHECK(screen.typed().empty()); // (on none: nothing typed in)
     rig.tap(A);
     rig.tap(RIGHT);
     rig.tap(A);
     rig.tap(START);
-    CHECK(session.samplerPresets().size() == 1);
+    CHECK(session.samplerPresets().size() == 1 && screen.said() == "REPLACED AB");
     CHECK(readTextFile(folder + "/presets/AB.sampler", file) && file != before);
     CHECK(session.samplerPresetOf(1) == 0);
+    // On one of the player's own, R1 opens with its name typed in: R1 then B saves over it.
+    rig.tap(R1);
+    CHECK(screen.typing() && screen.typed() == "AB" && screen.keyAt() == 0);
+    rig.tap(B);
+    CHECK(!screen.typing() && screen.said() == "REPLACED AB" && session.samplerPresets().size() == 1 && session.samplerPresetOf(1) == 0);
     // Empty: START does nothing, B leaves.
     rig.tap(R1);
+    rig.tap(Y, 2);
     rig.tap(START);
     CHECK(screen.typing() && session.samplerPresets().size() == 1);
     rig.tap(B);
@@ -7471,7 +7493,8 @@ void testSamplerPresetsOnDevice() {
     rig.tap(DOWN);
     rig.key(A, false);
     CHECK(session.samplerPresetOf(1) == 0); // (past the first: stops)
-    // B held deletes the file; another button calls it off; the track keeps its sound.
+    // B held deletes the file (the bar says CANNOT BE UNDONE: testDeletingAPresetSaysItCannotBeUndone); another
+    // button calls it off; the track keeps its sound.
     rig.key(B, true);
     rig.frames(30);
     CHECK(screen.presetDeletePart() > 0.3f && screen.presetDeletePart() < 0.7f);
@@ -7505,6 +7528,202 @@ void testSamplerPresetsOnDevice() {
     rig.frames(1);
     CHECK(screen.cursor() == 7); // moved at once, not after the keys' leftover
     rig.key(STICK_UP, false);
+}
+
+// Hold B on one of the player's own synth presets: a second, and its file is deleted (gesture audit G30: only
+// the SD card could). The track keeps its sound; every track of that synth stays on its own preset (the numbers
+// past it move up one); it is not a step of undo (a file, as a kit's or a sampler preset's).
+void testDeletingOwnSynthPresets() {
+    std::unique_ptr<Rig> rig(onPhazed());
+    Session& session = rig->app.session();
+    SynthScreen& screen = rig->app.phazed();
+    TrackData& track = rig->project().tracks[1];
+    const std::string folder = tempFolder("deletepreset");
+    session.usePresetFolder(folder);
+    const int first = builtInPresets(TrackKind::Phazed);
+    // On a built-in, hold B does nothing.
+    CHECK(screen.cursor() == SynthScreen::kPreset && !screen.onOwnPreset());
+    rig->key(B, true);
+    rig->frames(80);
+    rig->key(B, false);
+    rig->frames(1);
+    CHECK(screen.presetDeletePart() == 0.f && track.preset == 0 && screen.said().empty());
+    // Three of the player's own, AA, BB and CC; a second PHAZED track on CC, this one on BB.
+    for (int i = 0; i < 3; ++i) {
+        session.setSynthSetting(1, phazed::Level, 3 + i);
+        CHECK(session.savePreset(1, std::string(2, static_cast<char>('A' + i))));
+    }
+    CHECK(session.addTrack(TrackKind::Phazed)); // track 2
+    session.chooseSynthPreset(2, first + 2);
+    session.chooseSynthPreset(1, first + 1);
+    rig->project().track = 1;
+    rig->frames(2);
+    CHECK(track.preset == first + 1 && track.patch.value[phazed::Level] == 4 && screen.onOwnPreset());
+    const PhazedPatch sound = track.patch;
+    // Held: the bar fills. Any other button calls it off; let go before it is full, it stays.
+    rig->key(B, true);
+    rig->frames(30);
+    CHECK(screen.presetDeletePart() > 0.3f && screen.presetDeletePart() < 0.7f);
+    rig->tap(Y);
+    rig->frames(1);
+    CHECK(screen.presetDeletePart() == 0.f);
+    rig->frames(60);
+    rig->key(B, false);
+    rig->frames(1);
+    rig->key(B, true);
+    rig->frames(40);
+    rig->key(B, false);
+    rig->frames(40);
+    CHECK(userPresets(TrackKind::Phazed).size() == 3 && screen.presetDeletePart() == 0.f);
+    // Another track of this synth up with B still held (the two share this screen): called off, CC stays.
+    rig->key(B, true);
+    rig->frames(30);
+    rig->project().track = 2;
+    rig->frames(60);
+    rig->key(B, false);
+    rig->frames(1);
+    CHECK(userPresets(TrackKind::Phazed).size() == 3 && screen.said().empty());
+    rig->project().track = 1;
+    // Off PRESET (a macro), B held is the macro's and deletes nothing.
+    rig->tap(DOWN);
+    rig->key(B, true);
+    rig->frames(70);
+    rig->key(B, false);
+    rig->tap(UP);
+    CHECK(screen.cursor() == SynthScreen::kPreset && userPresets(TrackKind::Phazed).size() == 3);
+    rig->frames(2);
+    const int steps = session.undoSteps();
+    // Held the whole second: BB's file goes, and the screen says so. The track keeps its sound, named by the
+    // preset before it (AA); track 2 stays on CC, a place earlier now.
+    rig->key(B, true);
+    rig->frames(70);
+    rig->key(B, false);
+    rig->frames(2);
+    std::string file;
+    CHECK(!readTextFile(folder + "/BB.phazed", file) && readTextFile(folder + "/AA.phazed", file) && readTextFile(folder + "/CC.phazed", file));
+    CHECK(userPresets(TrackKind::Phazed).size() == 2 && screen.said() == "BB DELETED. THE TRACK KEEPS ITS SOUND");
+    CHECK(track.preset == first && std::memcmp(track.patch.value, sound.value, sizeof sound.value) == 0);
+    CHECK(rig->project().tracks[2].preset == first + 1 && std::string(phazedSpec().presetName(first + 1)) == "CC");
+    CHECK(session.undoSteps() == steps); // (no step of undo: a file went, the song did not change)
+    // On the first of the player's own, the preset before is the last built-in.
+    rig->key(B, true);
+    rig->frames(70);
+    rig->key(B, false);
+    rig->frames(2);
+    CHECK(userPresets(TrackKind::Phazed).size() == 1 && screen.said() == "AA DELETED. THE TRACK KEEPS ITS SOUND");
+    CHECK(track.preset == first - 1 && !screen.onOwnPreset() && rig->project().tracks[2].preset == first);
+    // Its file gone by other means (WiFi, the card): NOT DELETED, and nothing moves.
+    session.chooseSynthPreset(1, first);
+    CHECK(std::remove((folder + "/CC.phazed").c_str()) == 0);
+    rig->key(B, true);
+    rig->frames(70);
+    rig->key(B, false);
+    rig->frames(2);
+    CHECK(screen.said() == "NOT DELETED" && track.preset == first && rig->project().tracks[2].preset == first);
+    session.usePresetFolder(tempFolder("deletepreset-clean")); // the registry is global: leave it empty for later tests
+}
+
+// While a preset's name is typed every button is the keys' (gesture audit G01), as on SET and in the list of
+// recordings: no tab turns, no SONG screen, no L3, no undo, WRITE, NEXT SCENE, scene length or tempo, no
+// help card. The four shoulders' panic still works, and the keys are still up after it.
+void testThePresetKeysHaveEveryButton() {
+    const SDL_Keycode MENU = SDLK_TAB, L3 = SDLK_3;
+    for (int sampler = 0; sampler < 2; ++sampler) {
+        Rig rig;
+        Session& session = rig.app.session();
+        Project& project = rig.project();
+        CHECK(session.addTrack(sampler ? TrackKind::Sampler : TrackKind::Phazed)); // track 1
+        project.track = 1;
+        session.view = View::Device;
+        if (sampler) rig.app.sampler().goTo(SamplerScreen::kPresetStop);
+        else rig.app.phazed().goTo(0, SynthScreen::kPreset);
+        rig.frames(2);
+        // A change for undo to take back.
+        TrackData& track = project.tracks[1];
+        if (sampler) session.setSamplerSetting(1, sampler::Level, track.sampler[sampler::Level] == 33 ? 34 : 33);
+        else session.setSynthSetting(1, phazed::Level, track.patch.value[phazed::Level] == 3 ? 4 : 3);
+        rig.frames(2);
+        if (session.undoSteps() == 0) std::printf("    %s: no step of undo for the change\n", sampler ? "sampler" : "phazed");
+        const int steps = session.undoSteps(), scenes = project.sceneCount(), sceneSteps = project.sceneSteps(0);
+        const float tempo = project.tempo;
+        const bool writing = session.writing();
+        CHECK(steps > 0);
+        const auto typing = [&] { return sampler ? rig.app.sampler().typing() : rig.app.phazed().typing(); };
+        const auto typed = [&] { return sampler ? rig.app.sampler().typed() : rig.app.phazed().typed(); };
+        rig.tap(R1);
+        rig.tap(A);
+        CHECK(typing() && typed() == "A");
+        rig.tap(L2);
+        rig.tap(R2);
+        rig.tap(L3);
+        rig.tap(SELECT);
+        rig.frames(2);
+        CHECK(session.view == View::Device && typing());
+        rig.key(SELECT, true);
+        rig.tap(UP); // (the keys' cursor, not the tempo)
+        rig.tap(X);
+        rig.tap(Y);  // (the keys' Y: the last letter goes, no NEXT SCENE)
+        rig.tap(L2);
+        rig.key(SELECT, false);
+        rig.frames(2);
+        CHECK(project.tempo == tempo && session.writing() == writing && project.sceneCount() == scenes && project.sceneSteps(0) == sceneSteps);
+        CHECK(session.view == View::Device && typing() && typed().empty() && (sampler ? rig.app.sampler().keyAt() : rig.app.phazed().keyAt()) == 30);
+        rig.tap(A);
+        CHECK(typed() == "4");
+        // No help card over the keys (MENU held, or SELECT held by itself).
+        rig.key(MENU, true);
+        rig.frames(5);
+        CHECK(!rig.app.helpShowing());
+        rig.key(MENU, false);
+        rig.frames(1);
+        // The panic: silence, the note, and the keys still up with what was typed.
+        for (SDL_Keycode k : {L1, R1, L2, R2}) rig.key(k, true), rig.frames(1);
+        CHECK(rig.app.panicNoteShowing() && session.view == View::Device && typing());
+        for (SDL_Keycode k : {L1, R1, L2, R2}) rig.key(k, false);
+        rig.frames(1);
+        rig.tap(Y); // (puts the note away, and does nothing else)
+        CHECK(!rig.app.panicNoteShowing() && typing() && typed() == "4");
+        // SELECT + B is the keys' B: it keeps the name and leaves; nothing is undone.
+        rig.key(SELECT, true);
+        rig.tap(B);
+        rig.key(SELECT, false);
+        rig.frames(2);
+        CHECK(!typing() && session.undoSteps() == steps && session.view == View::Device);
+    }
+}
+
+// The name keys run at a list's pace wherever a name is typed (gesture audit G01: the preset keys ran at a
+// cursor's, 170 then every 30 ms): RIGHT held 30 frames (480 ms) is one key at once and three more.
+void testTheNameKeysRunAtAListsPace() {
+    for (int place = 0; place < 3; ++place) {
+        Rig rig;
+        Session& session = rig.app.session();
+        if (place == 0) {
+            session.view = View::Settings;
+            rig.app.settings().goTo(SettingsScreen::kTrackName);
+            rig.tap(A);
+        } else {
+            CHECK(session.addTrack(place == 1 ? TrackKind::Phazed : TrackKind::Sampler));
+            rig.project().track = 1;
+            session.view = View::Device;
+            if (place == 1) rig.app.phazed().goTo(0, SynthScreen::kPreset);
+            else rig.app.sampler().goTo(SamplerScreen::kPresetStop);
+            rig.frames(1);
+            rig.tap(R1);
+        }
+        const auto keyAt = [&] { return place == 0 ? rig.app.settings().keyAt() : place == 1 ? rig.app.phazed().keyAt() : rig.app.sampler().keyAt(); };
+        const bool typing = place == 0 ? rig.app.settings().typing() : place == 1 ? rig.app.phazed().typing() : rig.app.sampler().typing();
+        CHECK(typing && keyAt() == 0);
+        rig.key(RIGHT, true);
+        rig.frames(13); // 208 ms: still the first (a cursor's pace, 170 ms, had gone on)
+        CHECK(keyAt() == 1);
+        rig.frames(17);
+        rig.key(RIGHT, false);
+        CHECK(keyAt() == 4);
+        if (keyAt() != 4) std::printf("    place %d: RIGHT held 480 ms went %d keys\n", place, keyAt());
+        rig.frames(30);
+        CHECK(keyAt() == 4); // (let go: it stops)
+    }
 }
 
 // Hold A on SOUND and step while WiFi deletes a recording: the step goes through what is there
@@ -9890,7 +10109,9 @@ bool hintedOn(const Canvas& canvas, Canvas& scratch, const char* words) {
     return false;
 }
 
-// HOLD B deletes an effect for good, with a bar that fills and says it cannot be undone. A tap does nothing.
+// HOLD B deletes an effect, with a bar that fills and says DELETING THIS EFFECT. A tap does nothing. Effects are
+// in undo (since 2026-11-14), so SEL + B brings it back, settings and automation too: the words do not say
+// CANNOT BE UNDONE (gesture audit G10; they did).
 void testHoldBDeletesAnEffect() {
     Canvas canvas, scratch;
     CHECK(canvas.ok && scratch.ok);
@@ -9918,7 +10139,8 @@ void testHoldBDeletesAnEffect() {
     rig.tap(B);
     rig.frames(100);
     CHECK(first.kind == static_cast<int>(EffectKind::Tape) && near(first.param[1], 0.9f) && fx.deletePart() == 0.f);
-    // Held: the bar fills, and the heading says it cannot be undone; let go before it is full and it stays.
+    // Held: the bar fills, and the heading says so; let go before it is full and it stays.
+    CHECK(std::string(F::kDeletingWords) == "DELETING THIS EFFECT");
     rig.key(B, true);
     rig.frames(40);
     CHECK(fx.deletePart() > 0.5f && fx.deletePart() < 1.f && first.kind == static_cast<int>(EffectKind::Tape));
@@ -9960,6 +10182,18 @@ void testHoldBDeletesAnEffect() {
     rig.frames(70);
     rig.key(B, false);
     rig.frames(1);
+    CHECK(first.kind == 0 && !session.hasAutomation(0, 2, autoLaneOfEffect(0, 1)));
+    // SEL + B brings it back, its settings and its automation with it; SEL + A deletes it again.
+    rig.frames(2);
+    rig.key(SELECT, true);
+    rig.tap(B);
+    rig.key(SELECT, false);
+    rig.frames(2);
+    CHECK(first.kind == static_cast<int>(EffectKind::Tape) && near(first.param[1], 0.9f) && session.hasAutomation(0, 2, autoLaneOfEffect(0, 1)));
+    rig.key(SELECT, true);
+    rig.tap(A);
+    rig.key(SELECT, false);
+    rig.frames(2);
     CHECK(first.kind == 0 && !session.hasAutomation(0, 2, autoLaneOfEffect(0, 1)));
     // An empty line says nothing of B, and holding it there does nothing.
     draw();
@@ -10129,7 +10363,7 @@ void testTheHintsFitAndSayWhatTheyDo() {
         rig.app.song().moveCursorTo(0, rig.project().trackCount());
         CHECK(draw());
         rig.app.song().moveCursorTo(0, -1);
-        CHECK(draw());
+        CHECK(draw() && hintKeyed(canvas, scratch, "HOLD B", "empty") && !hintKeyed(canvas, scratch, "HOLD B", "delete")); // (it empties the scene: one step of undo)
         // ...on the PLAYS box where the song ends (AT END): what it does there, LOOP or STOP.
         rig.app.song().moveCursorTo(rig.app.song().songEndRow(), -1);
         CHECK(rig.app.song().onSongEnd() && draw() && hintKeyed(canvas, scratch, "A", "song end: loop"));
@@ -10772,6 +11006,59 @@ void testDeletingATrackSaysItCannotBeUndone() {
         rig.frames(1);
         CHECK(rig.project().trackCount() == 2 && draw() && !hintedOn(canvas, scratch, SongScreen::kTrackDeletingWords));
         if (head) rig.tap(DOWN);
+    }
+}
+
+// The preset keys say what B does (gesture audit G01): leave with nothing typed, save, or replace where the
+// name is one of the player's own already; START is not said (it does what B does). On one of the player's own
+// the bar says HOLD B delete this preset, and while B is held that it CANNOT BE UNDONE (a file: G10 for the
+// sampler, which said nothing, G30 for the synths), as the kit's. Every bar fits, PHYSIC's dice and all.
+void testDeletingAPresetSaysItCannotBeUndone() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    for (TrackKind kind : {TrackKind::Phazed, TrackKind::Physic, TrackKind::Sampler}) {
+        Rig rig;
+        Session& session = rig.app.session();
+        session.usePresetFolder(tempFolder("presetwords"));
+        CHECK(session.addTrack(kind)); // track 1
+        rig.project().track = 1;
+        session.view = View::Device;
+        const bool sampler = kind == TrackKind::Sampler;
+        SynthScreen& synth = kind == TrackKind::Phazed ? rig.app.phazed() : rig.app.physic();
+        if (sampler) rig.app.sampler().goTo(SamplerScreen::kPresetStop);
+        else synth.goTo(0, SynthScreen::kPreset);
+        const char* deleting = sampler ? SamplerScreen::kPresetDeletingWords : SynthScreen::kPresetDeletingWords;
+        const auto draw = [&] {
+            rig.frames(1);
+            canvas.clear();
+            rig.app.draw(canvas.r, fonts);
+            if (ui::gHintsOver != 0.f) std::printf("    the hints are %.0f pixels over\n", static_cast<double>(ui::gHintsOver));
+            return ui::gHintsOver == 0.f;
+        };
+        CHECK(draw() && !hintKeyed(canvas, scratch, "HOLD B", "delete this preset"));
+        rig.tap(R1);
+        CHECK(draw() && hintKeyed(canvas, scratch, "B", "leave") && !hintedOn(canvas, scratch, "save") && !hintKeyed(canvas, scratch, "Y", "delete"));
+        rig.tap(A, 2);
+        CHECK(draw() && hintKeyed(canvas, scratch, "B", "save") && hintKeyed(canvas, scratch, "Y", "delete") && !hintedOn(canvas, scratch, "replace") && !hintKeyed(canvas, scratch, "START", "save"));
+        rig.tap(B); // saved as AA: the track is on it
+        rig.tap(R1); // ...so its name is typed in: B would replace it
+        CHECK(draw() && hintKeyed(canvas, scratch, "B", "replace") && !hintedOn(canvas, scratch, "save"));
+        rig.tap(Y);
+        CHECK(draw() && hintKeyed(canvas, scratch, "B", "save"));
+        rig.tap(Y);
+        rig.tap(B);
+        CHECK(sampler ? !rig.app.sampler().typing() : !synth.typing());
+        // On it: HOLD B delete this preset; held, the bar says it cannot be undone; let go, it does not.
+        CHECK(draw() && hintKeyed(canvas, scratch, "HOLD B", "delete this preset") && !hintedOn(canvas, scratch, deleting));
+        rig.key(B, true);
+        rig.frames(30);
+        CHECK((sampler ? rig.app.sampler().presetDeletePart() : synth.presetDeletePart()) > 0.f);
+        CHECK(draw() && hintKeyed(canvas, scratch, "HOLD B", deleting));
+        rig.key(B, false);
+        CHECK(draw() && !hintedOn(canvas, scratch, deleting));
+        session.usePresetFolder(tempFolder("presetwords-clean")); // the registry is global: leave it empty for later tests
     }
 }
 
@@ -12170,6 +12457,21 @@ int main(int argc, char** argv) {
         if (failures == 0) std::printf("app tests passed (setup only)\n");
         return failures == 0 ? 0 : 1;
     }
+    if (argc > 1 && std::string(argv[1]) == "--naming") { // just the gesture audit's batch A3: the name keys, deleting presets, the words
+        testTypingATrackName();
+        testNamingATrackFromTheSongScreen();
+        testSavePresetOnDevice();
+        testSamplerPresetsOnDevice();
+        testDeletingOwnSynthPresets();
+        testThePresetKeysHaveEveryButton();
+        testTheNameKeysRunAtAListsPace();
+        testDeletingAPresetSaysItCannotBeUndone();
+        testHoldBDeletesAnEffect();
+        testTheHintsFitAndSayWhatTheyDo();
+        testTheHelpCard();
+        if (failures == 0) std::printf("app tests passed (naming only)\n");
+        return failures == 0 ? 0 : 1;
+    }
     if (argc > 1 && std::string(argv[1]) == "--hands") { // just the button standards of the pit stop
         testHoldBDeletesAnEffect();
         testTheHintsFitAndSayWhatTheyDo();
@@ -12291,6 +12593,10 @@ int main(int argc, char** argv) {
     testPresetsAndFolders();
     testSavePresetOnDevice();
     testSamplerPresetsOnDevice();
+    testDeletingOwnSynthPresets();
+    testThePresetKeysHaveEveryButton();
+    testTheNameKeysRunAtAListsPace();
+    testDeletingAPresetSaysItCannotBeUndone();
     testHeldAStepsThroughLiveSamples();
     testABuiltInPresetRestsTheMacrosWhereTheyShow();
     testMacros();

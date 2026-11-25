@@ -10,10 +10,13 @@
 //                    A new sound is played at once when the song is stopped.
 //   a macro          hold A + stick up / down. B puts it back in the middle.
 //   ADVANCED         A opens the pages.
-//   R1 on PRESET     save the sound as a preset of its own: the keys come up to name it
-//                    (A types, Y deletes, B leaves without saving, START saves). It lands in
-//                    the USER folder with everything the page's SAVE AS PRESET keeps; under a
-//                    name taken, it replaces that one.
+//   R1 on PRESET     save the sound as a preset of its own: the name keys come up (name_keys.hpp:
+//                    A types, Y deletes, B or START saves; with nothing typed B leaves). On one of
+//                    the player's own its name is typed in already, so R1 then B saves over it. It
+//                    lands in the USER folder with everything the page's SAVE AS PRESET keeps;
+//                    under a name taken, it replaces that one (and says REPLACED).
+//   hold B on PRESET on one of the player's own: a second, and its file is deleted (CANNOT BE UNDONE);
+//                    the track keeps its sound.
 //   X                hear the sound. Held on a macro: its MOD (mod_knob.hpp), its fields in LIVE
 //                    OUTPUT's place while X is held, and the note heard as long as X is.
 //   Y                PHYSIC and CLOUD (SynthSpec::roll): a new sound from the dice.
@@ -40,6 +43,7 @@
 
 #include "input.hpp"
 #include "mod_knob.hpp"
+#include "name_keys.hpp"
 #include "sample_picker.hpp"
 #include "session.hpp"
 #include "synth_spec.hpp"
@@ -145,11 +149,16 @@ public:
     const SamplePicker& picker() const { return picker_; }
     const std::string& said() const { return said_; }
 
-    // Naming a preset to save (R1 on PRESET): the keys, as a track's name is typed.
-    bool typing() const { return typing_; }
-    const std::string& typed() const { return typed_; }
-    int keyAt() const { return key_; }
-    static constexpr int kTypeColumns = 10, kPresetNameLength = 24; // the grid, and a name's most (the page's too)
+    // Naming a preset to save (R1 on PRESET): the name keys, as a track's name is typed.
+    bool typing() const { return keys_.isOpen(); }
+    const std::string& typed() const { return keys_.typed(); }
+    int keyAt() const { return keys_.keyAt(); }
+    static constexpr int kTypeColumns = NameKeys::kColumns, kPresetNameLength = 24; // the grid, and a name's most (the page's too)
+    // Hold B on PRESET, on one of the player's own: its file is deleted when the bar is full (as a kit's).
+    static constexpr Uint32 kPresetDeleteMs = 1000;
+    static constexpr const char* kPresetDeletingWords = "DELETING THE PRESET: CANNOT BE UNDONE";
+    float presetDeletePart() const { return presetDeletePart_; }
+    bool onOwnPreset() const; // the track is on one of the player's own presets (USER)
 
     // Cursor stops on MAIN.
     enum { kFolder, kPreset, kFirstMacro, kAdvanced = kFirstMacro + kSynthMacros, kMainStops };
@@ -213,11 +222,14 @@ private:
 
     // Naming a preset to save.
     void typeButton(Button b);
-    void moveTypeKey(Button direction);
     void drawTyping(SDL_Renderer* r, const Fonts& fonts) const;
-    bool typing_ = false;
-    std::string typed_;
-    int key_ = 0; // which character of the grid the cursor is on
+    bool nameTaken() const; // what is typed names one of the player's own presets already: B or START replaces it
+    NameKeys keys_;
+    // Deleting one's own preset: B held a second on PRESET.
+    bool presetDeleting_ = false, presetDeleteTimed_ = false;
+    Uint32 presetDeleteSince_ = 0;
+    float presetDeletePart_ = 0.f;
+    int presetDeleteTrack_ = -1; // the track B went down on (two tracks of one synth share this screen)
     void say(const std::string& words, Uint32 ms);
     void drawPicture(SDL_Renderer* r, const Fonts& fonts) const;
     void drawTablePicture(SDL_Renderer* r, const Fonts& fonts) const;

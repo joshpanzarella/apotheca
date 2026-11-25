@@ -306,7 +306,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   controls.txt, which stays SELECT). The web pages, README and the manual keep
   the full word. `ctest -R words` (`tests/words_test.sh`) reads the sources and fails
   on a string that would show it spelled out; it plants its own faults at the
-  end and must catch each (add a plant with a new rule).
+  end and must catch each (add a plant with a new rule). **It fails erase, remove and rub out
+  too** (any form; gesture audit G10, 2026-11-24): the word is delete, a cell is emptied.
 - **The lettering's size is a setting, and the program holds TWO sets of
   fonts** (owner, 2026-11-12; SET page, TEXT SIZE: SMALL, MEDIUM, LARGE, XL;
   `kTextPoints` in `ui.hpp`; kept as `text N` in settings.txt, the numbers

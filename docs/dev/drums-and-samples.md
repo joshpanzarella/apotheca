@@ -403,16 +403,38 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - **Typing a name: A types, Y deletes the last letter, B keeps what is typed and leaves, START
     keeps it too** (owner, 2026-11-15: "I find myself pressing B to back out of the track naming"; it
     was B delete, Y or START keep). With nothing typed B leaves and changes nothing (the track's name
-    stays, no folder is made), and START gives a track its instrument's own name. The two places a
-    name is typed, `SettingsScreen::typeButton` (a track's name, from SET or a SONG head) and
-    `SamplePicker::typeButton` (a new folder), keep the same keys; a new one does too. A folder
+    stays, no folder is made), and START gives a track its instrument's own name. A folder
     refused (taken, too long) keeps the keys up, whichever of B or START asked. Y does not repeat
     (B never did). The still `typing` showed the SET page, not the keys, until then: the demo's START
     kept the name.
+  - **One set of name keys, `NameKeys` (`app/name_keys.hpp`), in all four places** (gesture audit G01,
+    2026-11-24): a track's name (`SettingsScreen`, from SET or a SONG head), a new folder
+    (`SamplePicker`), a synth's preset and the sampler's (R1 on PRESET). The preset keys came in on
+    2026-11-21 (e7b847d) as two more copies, after the rule above said "a new one does too", and broke
+    it: **B left and threw the name away** ("PAD 2" is 29 presses), they ran at a cursor's pace (170 /
+    30 ms), and the tabs, SELECT's tap, undo and tempo acted under them. The keys own what is typed,
+    the cursor, the stick and **a held D-pad at a list's pace (`ui::kList...`)**, and draw the box, the
+    grid and the bar; `press()` answers `Keep` (B) or `Start`, and the screen does the keeping and
+    closes them. A preset typed: B or START saves it; under a name of the player's own already it is
+    **REPLACED** (said after, and the bar says B replace before; SAVED AS for a new one: START replaced
+    without a word before). **R1 on one of the player's own opens with its name typed in**, so a sound
+    turned since is kept in two presses (R1, B). The sampler's PRESET is worked out from the sound
+    (`samplerPresetOf`), so a sampler sound turned since shows "-" and R1 opens empty there: only a
+    synth (whose `preset` is kept) gets the two presses after a turn. START is not said on the
+    preset keys (it does what B does) and still does nothing with nothing typed.
+    `app_test` `testSavePresetOnDevice`, `testSamplerPresetsOnDevice`,
+    `testTheNameKeysRunAtAListsPace`, `testDeletingAPresetSaysItCannotBeUndone` (the bar's words);
+    `textsize` holds each at its longest (24 W's), SAVED AS and REPLACED too (the sampler's said line
+    is held at LARGE where a long name runs past the box at XL).
+  - **While a name is typed every button is the keys'** (`App::typingAName`, it was `typingAFolder`):
+    the kit's, the sampler's and CLOUD's list of recordings, a synth's and the sampler's preset keys.
+    The tabs, SELECT's tap, SELECT + anything, L3 and the help card (`busy`) do nothing there; SELECT +
+    B is the keys' B. Only the four shoulders' panic still acts (it is before the keys in
+    `App::onButton`), and the keys are still up after it. SET's keys are SET's own case there (the
+    button test with them). `app_test` `testThePresetKeysHaveEveryButton`.
   - **+ NEW FOLDER is a row** (`Kind::NewFolder`: the last of SAMPLES and of a first-level
     folder; not in UNSORTED, not two levels down; only when `Jobs::makeFolder` is given). A
-    opens the keys a track's name is typed with (the list's own copy: `typeButton`,
-    `drawTyping`; SettingsScreen's was not touched), twelve letters, made in SMALL letters,
+    opens the name keys (`NameKeys`, the one set: above), twelve letters, made in SMALL letters,
     a space at the end dropped. **While typing every button is the list's, START too**
     (`picker_.typing()` in the kit's and the sampler's `onButton`); the still `picker-typing`
     is therefore not given the demo's START, which would make the folder.
@@ -441,7 +463,7 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
       (`index()` counts each folder once; `side()` keeps the two columns beside the cursor's;
       `rowsMade()` is the tests' count). Whatever changes `all_` or `dirs_` calls `index()`.
     - **While a folder's name is typed L2 / R2 and MENU's help are the list's too**
-      (`App::typingAFolder`).
+      (`App::typingAName`: every name typed, since gesture audit G01).
     - **`wavNames` lists only what `sampleNameOk` takes** (a file of 64 letters or more is not
       offered: resting on it put a cut name on the lane).
     - **On the WiFi page a file in a folder may be as long as a loose one** (60 with its ending;
@@ -489,3 +511,17 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   `easy_test kits` (`builtInKitProblems`). A kit put on goes through the lanes' own setters, so it is a
   step of undo as they are (a recording is not put back). A player's own are `kit N.kit` in the preset
   folder. Stills `kit-preset`, `-held`, `-own`. **Nobody has heard the kits.**
+- **Hold B deletes one of the player's own presets the same way everywhere** (gesture audit G10, G30,
+  2026-11-24): a kit (`kKitDeletingWords`), a sampler preset (`SamplerScreen::kPresetDeletingWords`:
+  it said nothing, a 2-pixel line only, though the file is gone for good) and a synth's
+  (`SynthScreen::kPresetDeletingWords`, new: no way but the SD card before; the WiFi page's folders hold
+  no presets). A second, a bar that fills, and the bar at the bottom says **CANNOT BE UNDONE** while
+  it does; any other button, A held or the cursor off PRESET calls it off (on a synth, another track
+  of it up too: two tracks of one synth share the screen). The track keeps its sound;
+  with an own preset on PRESET the bar's START yields to HOLD B delete this preset (PHYSIC's dice made
+  it 32 pixels over). A synth's: `Session::deleteSynthPreset` (the file by `UserPreset::file`, as
+  read), then every track of that synth past it a place earlier, and a track on it named by the
+  preset before (its sound its own now: `presetSounds_` reset, as `savePreset` does); not a step of
+  undo. Undo's older steps still hold the old numbers (as after a `savePreset` that sorts in before
+  others): a step taken back after a delete can name the next preset. `app_test`
+  `testDeletingOwnSynthPresets`.

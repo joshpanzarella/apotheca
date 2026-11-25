@@ -628,6 +628,10 @@ public:
     // Keep the track's sound, as it is now with its macros, under a name.
     // The track is then on that preset. False if the name is no good or it could not be written.
     bool savePreset(int track, const std::string& name);
+    // The player's own preset the track is on: its file deleted, for good (hold B on PRESET). The track keeps
+    // its sound, and every track of that synth stays on its own preset (the numbers past it move up one).
+    // False if the track is not on one of the player's own, or the file could not be deleted.
+    bool deleteSynthPreset(int track);
     // KIT PRESETS (easywins batch 7; kits.cpp). The list: the built-in kits (recipes of DRUM SYNTH's named
     // voices), then the player's own ("NAME.kit" in the preset folder, written by SAVE as KIT 1, KIT 2...).
     // A kit is a drum track's every lane: its recording or synth voice, EDIT, FIT, one-slice, level,

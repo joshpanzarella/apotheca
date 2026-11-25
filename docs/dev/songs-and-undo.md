@@ -49,6 +49,15 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   with `sendSong()` and keep the steps: a delete takes its track out of every
   step's text (`dropTrackText`), and another instrument is passed by (its kind
   differs). The delete itself is still not undone.
+- **Words follow undo** (gesture audit G10, 2026-11-24): CANNOT BE UNDONE only where undo cannot bring
+  it back (a file: a song, a kit, a preset, a recording; a track; a network; the update). What undo
+  brings back says what is happening: FX's hold B **DELETING THIS EFFECT** (it said DELETING: CANNOT BE
+  UNDONE, written at 01:57 on 2026-11-14, three and a half hours before effects went into undo; the
+  MOD screen's DELETING THIS MOD is the house wording), REPEATS' **HOLD B empty** (it empties the
+  scene, a step of undo; it said delete), and the help card's **UNDO the last change (20 deep)** (it
+  said "to the patterns"). `app_test` `testHoldBDeletesAnEffect` takes the deleted effect back with SEL
+  + B. `ctest -R words` fails a text that says erase, remove or rub out (the word is delete; a cell
+  is emptied).
 - **The undo marks (`cellMark`, `soundMark`) are 64 bits, mixed eight bytes at a time** (`markMix`):
   only ever compared with one made the same way, in memory. A byte at a time, the idle frame was 0.048 ms
   on the desk; now 0.014 (`bench --app`, 2026-11-23).

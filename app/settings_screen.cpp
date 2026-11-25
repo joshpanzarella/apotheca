@@ -20,9 +20,6 @@ constexpr Uint32 kRepeatDelayMs = ui::kListDelayMs, kRepeatEveryMs = ui::kListEv
 constexpr float kMovesPerSecond = 7.f, kChangesPerSecond = 9.f;
 }
 
-// Four rows of ten: the letters, the digits, and the three marks a name may have. '_' at the end; the space is the wide one.
-const char* const SettingsScreen::kKeys = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_ ";
-
 // The PASSWORD keys: three sets of forty. Every sign a WPA password may hold is on one of them.
 const char* const SettingsScreen::kPasswordKeys[3] = {
     "abcdefghijklmnopqrstuvwxyz0123456789 -_.",
@@ -48,14 +45,14 @@ void SettingsScreen::passwordButton(Button b) {
         // joins, as START does. START with fewer says how many it takes.
         const bool short_ = static_cast<int>(typed_.size()) < kWifiPasswordLeast;
         if (b == Button::B && short_) {
-            typing_ = false;
+            password_ = false;
             saved_ = 0.f;
             stickWas_ = false;
         } else if (!short_) {
             session_.wifi().join(passwordFor_, typed_);
             std::fill(typed_.begin(), typed_.end(), '\0'); // (it goes no further than the program's stdin)
             typed_.clear();
-            typing_ = false, password_ = false, saved_ = 0.f, stickWas_ = false;
+            password_ = false, saved_ = 0.f, stickWas_ = false;
         } else if (!typed_.empty()) {
             networkSaid_ = "8 AT LEAST";
             networkSaidUntil_ = lastMs_ + 2500;
@@ -81,7 +78,7 @@ void SettingsScreen::joinPicked() {
     const WifiNetwork& net = nets_[static_cast<std::size_t>(pick_)];
     if (net.needsPassword()) {
         if (passwordFor_ != net.name) typed_.clear(); // another network: no draft of it
-        typing_ = true, password_ = true, fromSong_ = false;
+        password_ = true, fromSong_ = false;
         passwordFor_ = net.name;
         key_ = 0, keySet_ = 0;
     } else {
@@ -99,33 +96,24 @@ void SettingsScreen::moveKey(Button direction) {
     key_ = row * columns + col;
 }
 
+void SettingsScreen::openName(bool fromSong) {
+    row_ = kTrackName;
+    password_ = false;
+    fromSong_ = fromSong;
+    keys_.open(project_.current().name, kNameLength);
+}
+
 void SettingsScreen::typeButton(Button b) {
-    if (isDirection(b)) {
-        moveKey(b);
-        repeating_ = b;
-        repeatAt_ = 0;
-    } else if (b == Button::A) {
-        const char c = kKeys[key_];
-        // No space first, and not two together; ten at most.
-        const bool space = c == ' ';
-        if (static_cast<int>(typed_.size()) < kNameLength && !(space && (typed_.empty() || typed_.back() == ' '))) typed_ += c;
-    } else if (b == Button::Y) {
-        if (!typed_.empty()) typed_.pop_back(); // the last letter goes
-    } else if (b == Button::B) {
-        // Leaves, keeping what is typed (owner, 2026-11-15: B is pressed to back out). Nothing typed: the
-        // name stays as it was.
-        if (!typed_.empty()) session_.setTrackName(project_.track, typed_);
-        typing_ = false;
-        saved_ = 0.f;
-        stickWas_ = false; // the keys' stick is not the rows': the next push starts over
-    } else if (b == Button::Start) {
-        session_.setTrackName(project_.track, typed_); // (nothing typed: the instrument's own name)
-        typing_ = false;
-        saved_ = 0.f;
-        stickWas_ = false;
-    }
+    const NameKeys::Asked asked = keys_.press(b);
+    if (asked == NameKeys::Asked::Nothing) return;
+    // B leaves, keeping what is typed (owner, 2026-11-15: B is pressed to back out); nothing typed: the name
+    // stays as it was. START keeps it too; nothing typed: the instrument's own name.
+    if (asked == NameKeys::Asked::Start || !keys_.typed().empty()) session_.setTrackName(project_.track, keys_.typed());
+    keys_.close();
+    saved_ = 0.f;
+    stickWas_ = false; // the keys' stick is not the rows': the next push starts over
     // Opened from the SONG screen: back to it when the typing is over.
-    if (!typing_ && fromSong_) {
+    if (fromSong_) {
         fromSong_ = false;
         session_.view = View::Song;
     }
@@ -173,7 +161,7 @@ void SettingsScreen::goTo(int row) {
     if (to >= kRows)
         for (to = row; to > 0 && !here(to); --to) {}
     row_ = to;
-    session_.wifiLooking = row_ == kNetwork && !typing_; // (at once: Session::update asks before this screen's update)
+    session_.wifiLooking = row_ == kNetwork && !typing(); // (at once: Session::update asks before this screen's update)
     const int place = placeOf(row_);
     if (place < first_) first_ = place;
     while (first_ < place && !fits(place, first_)) ++first_;
@@ -220,9 +208,14 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down) lastPressed_ = b, testTimed_ = false;
         return;
     }
-    if (typing_) {
-        if (event.down) password_ ? passwordButton(b) : typeButton(b);
+    if (password_) {
+        if (event.down) passwordButton(b);
         else if (b == repeating_) repeating_ = Button::None;
+        return;
+    }
+    if (keys_.isOpen()) {
+        if (event.down) typeButton(b);
+        else keys_.letGo(b);
         return;
     }
     if (event.down && b != Button::B) forgetting_ = false, stopping_ = false; // (any other button calls a forgetting or a stop off)
@@ -277,7 +270,7 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
             aTap_ = false;
             if (tap && row_ == kBounce && !session_.bouncing())
                 session_.startBounce(bounceWhat_ == 0 ? Session::Bounce::Song : bounceWhat_ == 1 ? Session::Bounce::EachTrack : bounceWhat_ == 2 ? Session::Bounce::ThisTrack : Session::Bounce::MidiFile);
-            if (tap && row_ == kTrackName) typing_ = true, password_ = false, typed_ = project_.current().name, key_ = 0;
+            if (tap && row_ == kTrackName) openName(false);
             return;
         }
         aTap_ = row_ == kBounce || row_ == kTrackName, aRow_ = row_;
@@ -315,7 +308,7 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
     if (!input.held(Button::B) || row_ != kBounce || !session_.bouncing()) stopping_ = false; // (ended by itself meanwhile: nothing to stop)
     if (!networkSaid_.empty() && nowMs >= networkSaidUntil_) networkSaid_.clear();
     // Our firmware's WiFi: its status asked for now and then, and a scan while the NETWORK row is up.
-    session_.wifiLooking = row_ == kNetwork && !typing_; // (Session::update asks; the status is asked for on every screen)
+    session_.wifiLooking = row_ == kNetwork && !typing(); // (Session::update asks; the status is asked for on every screen)
     stopPart_ = 0.f;
     if (stopping_) {
         if (!stopTimed_) stopTimed_ = true, stopSince_ = nowMs;
@@ -343,12 +336,7 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
     // The SONG screen asked for the keyboard, for the track its cursor is on.
     if (session_.wantTrackName) {
         session_.wantTrackName = false;
-        row_ = kTrackName;
-        typing_ = true;
-        password_ = false;
-        fromSong_ = true;
-        typed_ = project_.current().name;
-        key_ = 0;
+        openName(true);
     }
 
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
@@ -376,7 +364,11 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
         repeating_ = Button::None;
         return;
     }
-    if (typing_) {
+    if (keys_.isOpen()) {
+        keys_.update(input, nowMs, dt);
+        return;
+    }
+    if (password_) {
         // The stick moves over the keys, one at once and then steadily; a held D-pad direction runs.
         const bool sideways = std::fabs(stickX_) > std::fabs(stickY_);
         const float push = sideways ? stickX_ : stickY_;
@@ -446,7 +438,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     topBar(r, fonts, View::Settings, "", project_);
     char text[96];
 
-    if (typing_ && password_) {
+    if (password_) {
         // A network's password: the keys in three sets. What is typed is shown (the handheld is in
         // your hand, and a wrong letter costs a minute); its end where it is too long for the box.
         const std::string title = "PASSWORD FOR " + passwordFor_;
@@ -485,31 +477,11 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hints(r, fonts, list, 5);
         return;
     }
-    if (typing_) {
+    if (keys_.isOpen()) {
         char title[48];
         std::snprintf(title, sizeof title, "TRACK %d: ITS NAME", project_.track + 1);
-        fonts.small.draw(r, 40.f, 46.f, title, kDim);
-        // What has been typed, with a mark where the next letter goes.
-        box(r, 40, 66, kScreenW - 80, 52, kPanel2, kTeal);
-        const float tx = 56.f, ty = 66.f + (52.f - fonts.large.capHeight()) / 2.f;
-        fonts.large.draw(r, tx, ty, typed_.c_str(), kText);
-        if (static_cast<int>(typed_.size()) < kNameLength) fill(r, static_cast<int>(tx + fonts.large.width(typed_.c_str()) + (typed_.empty() ? 0 : 3)), 66 + 14, 2, 24, kTeal);
-        std::snprintf(text, sizeof text, "%d OF %d", static_cast<int>(typed_.size()), kNameLength);
-        fonts.small.drawRight(r, kScreenW - 56.f, 66.f + (52.f - fonts.small.capHeight()) / 2.f, text, kDim);
-        if (typed_.empty()) fonts.small.draw(r, tx + 12.f, 66.f + (52.f - fonts.small.capHeight()) / 2.f, "(empty: its instrument's own name)", kDim);
-        const int kw = 52, kh = 52, gx = (kScreenW - kKeyColumns * kw) / 2, gy = 140;
-        for (int i = 0; i < 40; ++i) {
-            const int x = gx + (i % kKeyColumns) * kw, y = gy + (i / kKeyColumns) * kh;
-            const bool here = i == key_;
-            box(r, x + 2, y + 2, kw - 4, kh - 4, here ? kTeal : kPanel, here ? kTeal : kLine);
-            char one[8];
-            std::snprintf(one, sizeof one, "%s", kKeys[i] == ' ' ? "SPACE" : std::string(1, kKeys[i]).c_str());
-            const Font& font = kKeys[i] == ' ' ? fonts.within(&Fonts::small, one, kw - 4 - 6.f) : fonts.large; // ("SPACE" at XL is wider than its key: held at LARGE)
-            font.drawCentered(r, x + kw / 2.f, y + (kh - font.capHeight()) / 2.f, one, here ? kBg : kText);
-        }
-        const bool none = typed_.empty();
-        const Hint list[] = {{"A", "type"}, {"Y", none ? nullptr : "delete"}, {"B", none ? "leave" : "keep"}, {"START", none ? "its own name" : nullptr}};
-        hints(r, fonts, list, 4);
+        const bool none = keys_.typed().empty();
+        keys_.draw(r, fonts, title, kDim, "(empty: its instrument's own name)", none ? "leave" : "keep", none ? "its own name" : nullptr);
         return;
     }
     if (testing_) {
