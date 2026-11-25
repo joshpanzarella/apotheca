@@ -380,8 +380,10 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         const bool onMacro = page_ == 0 && cursor_ >= kFirstMacro && cursor_ < kAdvanced && !holding_;
         if (onMacro && modKnob_.hold(project_.track, kModFirstMacro + (cursor_ - kFirstMacro), input)) repeating_ = Button::None;
-        if (onMacro && !project_.playing) session_.auditionHeld(project_.track, 60, kPlacedLevel, this); // heard as long as X is (a tap as ever)
-        else hear();
+        // Heard as long as X is (a tap as ever), on every stop and page, and over the song while it plays (gesture
+        // audit G33: off a macro it was a fixed moment, and nothing while playing). A MOD held is still heard
+        // only while stopped (call E: Session::hearMods).
+        session_.auditionHeld(project_.track, 60, kPlacedLevel, this);
         return;
     }
     if (modKnob_.held() && modKnob_.onButton(event, lastMs_)) return;

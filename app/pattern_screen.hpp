@@ -58,8 +58,8 @@
 // The grid shows one bar; running the cursor off the right of step 16 goes on to the next
 // bar, and the top bar says which (BAR 2 OF 4).
 //
-// The cursor can also sit on a lane's name (A plays the drum, hold A + stick
-// is that drum's volume), on the tempo (up from the top lane; hold A + stick),
+// The cursor can also sit on a lane's name (A alone is silent there, X plays
+// the drum; hold A + stick is that drum's volume), on the tempo (up from the top lane; hold A + stick),
 // and on BARS (up from the tempo; left / right the bar before or after, round the ends,
 // hold A + up / down the cell's count, more or fewer). With A or Y held, the D-pad
 // nudges the same values in exact steps.

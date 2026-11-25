@@ -138,6 +138,10 @@ public:
     // Play, a new song and panic let go too.
     static constexpr Uint32 kAuditionMs = 350;
     void auditionHeld(int track, int pitch, float velocity, const void* owner);  // a synth track (the sampler): this key
+    // A chord's keys, held as one and let go together (the roll's X on a chord, gesture audit G33). heard_ names
+    // the first; every key is held in its Sounding (kHeldOn).
+    void auditionHeld(int track, const int* pitches, int count, float velocity, const void* owner);
+    int keysHeld() const { int n = 0; for (const Sounding& s : sounding_) n += s.track >= 0 && s.until == kHeldOn ? 1 : 0; return n; } // (for the tests)
     void hearLaneHeld(int track, int lane, float level, const void* owner, float start = 0.f, float part = 0.f); // a drum lane
     void letGoHeard(Uint32 lasts = kAuditionMs); // X let go: it stops `lasts` after it began (a tap: kAuditionMs), or now if that has gone by
     void keepHearing(bool xHeld, const void* screen);
@@ -823,7 +827,8 @@ private:
     struct Sounding { int track = -1, pitch = 0; Uint32 until = 0; };
     Sounding sounding_[8];
     static constexpr Uint32 kHeldOn = 0xffffffffu; // a Sounding's `until` while X holds it
-    // What X holds (or last held). lane -1: a synth key (`pitch`), its Sounding held at kHeldOn.
+    // What X holds (or last held). lane -1: a synth key (`pitch`; a chord's first), its Sounding (a chord's: each
+    // key's) held at kHeldOn. Only what X holds now is ever at kHeldOn: letGoHeard lets every one go.
     struct Heard { int track = -1, lane = -1, pitch = 0; Uint32 since = 0, ends = 0; const void* owner = nullptr; bool held = false; };
     Heard heard_;
     struct LaneStop { int track = -1, lane = 0; Uint32 at = 0; }; // a drum lane's audition, let go, to be stopped at `at`

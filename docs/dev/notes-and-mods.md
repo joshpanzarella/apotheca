@@ -211,7 +211,11 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     which sends `ModAudition` only when what runs changes, nothing while playing (and runs it again
     after Stop); `keepModsHeard` (App, beside `keepHearing`) lets go when X is up, another screen
     or track; `dropHearing` (panic, a new song) forgets it. The synth's note is held as long as X
-    is (`auditionHeld`), on DEVICE and on FX: a tap is still a tap.
+    is (`auditionHeld`), on DEVICE and on FX: a tap is still a tap. **Since gesture audit G33
+    (2026-11-25) the note is held while playing too, over the song** (it was held only while stopped):
+    the MOD is still run only while stopped, as call E says; playing, the song's MODs run on the note.
+    Why, and the rest of X's one rule (the roll's chord included): `drums-and-samples.md`, "X sounds
+    for as long as it is held".
   - **"HOLD X: mod" is in a bar only where it fits at `gHintsOver` 0** (call G): DEVICE MAIN on a
     macro that takes one (FM-6's, every one); FX on SENDS, not on a setting (22
     pixels over). The help card's X line says it everywhere.

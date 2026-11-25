@@ -24,6 +24,24 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   audition chokes the hit before it anyway, joined or not). On a hit, X held stays the step
   effects' hold. The line over the picture stops with it (`heardEnds`).
   `tests/hear_test.cpp`. The SONG screen's X solos the track (it heard it until 2026-11-15).
+- **X sounds for as long as it is held wherever it plays something, and over the song while it plays**
+  (gesture audit G33, 2026-11-25; the owner: "any of my decisions can be reversed if there is a more logical
+  method", 2026-11-24). Before, on a synth: DEVICE off a macro (FOLDER, PRESET, every ADVANCED page) played a
+  fixed `kAuditionMs` note and **nothing while playing** (`SynthScreen::hear`, "if (!project_.playing)"); a
+  macro, FX's settings and the MOD tab held the note **only while stopped**; FX's list gave a synth the short
+  note; the roll's note and key a fixed moment, **its chord nothing while playing** ("the song will play it
+  soon enough", `NoteScreen::hearChord`). Now every X there is `Session::auditionHeld`, playing or not: one
+  rule ("X hears; held, as long as held") instead of four, and a preset, note or chord is heard against the
+  song in one press instead of stop, X, start (the loop restarts). A note over the song can clash: that is
+  what the player asked to hear. **A tap is still `kAuditionMs`, and a drum hit still plays whole** (as the
+  pattern plays it; a tapped built-in drum whole: `letGoHeard`). **What stays: a MOD held is run only while
+  stopped** (call E, 2026-11-15, kept: `Session::hearMods` sends nothing while playing, where the song's
+  MODs run). Stepping a preset or moving a note or chord with A held stays silent while playing (not X).
+  A chord's keys are held as one: `Session::auditionHeld(track, pitches, count, ...)`; every key X holds is
+  at `kHeldOn` (only what X holds now ever is), so `letGoHeard` and `stopHeard` let every key go, and a held
+  key struck again (a setting turned) stays held. **A on a drum lane's name is silent** (it sounded the drum
+  on every press, so every hold of A for the lane's volume was heard); X hears it there, held.
+  `hear_test testXHoldsWhatItPlays`. **Not heard on the handheld.**
 - **A hit, a note or a chord placed starts at `kPlacedLevel` (0.9, `project.hpp`; owner,
   2026-11-15: it was 0.8), the brushes too, and every screen's X or A hears at it** (the KIT,
   SAMPLER, synth, FX and MOD pages, the designer page's keys): what is heard is what is placed. A

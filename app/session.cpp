@@ -242,21 +242,27 @@ void Session::audition(int track, int pitch, float velocity) {
     c.a = pitch;
     c.value = velocity;
     engine.send(c);
-    // (A setting turned while X holds this very key is heard on the held note: it stays held.)
-    const bool held = hearingHeld() && heard_.lane < 0 && heard_.track == track && heard_.pitch == pitch;
+    // (A setting turned while X holds this very key is heard on the held note: it stays held. A key of a
+    // chord X holds, too: its slot is held, not only the key heard_ names.)
+    const bool held = hearingHeld() && heard_.lane < 0 && heard_.track == track && slot->track == track && slot->pitch == pitch && slot->until == kHeldOn;
     slot->track = track;
     slot->pitch = pitch;
     slot->until = held ? kHeldOn : now_ + kAuditionMs;
 }
 
-void Session::auditionHeld(int track, int pitch, float velocity, const void* owner) {
+void Session::auditionHeld(int track, int pitch, float velocity, const void* owner) { auditionHeld(track, &pitch, 1, velocity, owner); }
+
+void Session::auditionHeld(int track, const int* pitches, int count, float velocity, const void* owner) {
+    if (!pitches || count <= 0) return;
     letGoHeard();
-    audition(track, pitch, velocity);
-    for (Sounding& s : sounding_)
-        if (s.track == track && s.pitch == pitch) s.until = kHeldOn;
+    for (int i = 0; i < count; ++i) {
+        audition(track, pitches[i], velocity);
+        for (Sounding& s : sounding_) // held at once, so the chord's next key does not take this one's slot
+            if (s.track == track && s.pitch == pitches[i]) s.until = kHeldOn;
+    }
     heard_ = Heard();
     heard_.track = track;
-    heard_.pitch = pitch;
+    heard_.pitch = pitches[0];
     heard_.since = now_;
     heard_.owner = owner;
     heard_.held = true;
@@ -291,7 +297,7 @@ void Session::letGoHeard(Uint32 lasts) {
     heard_.ends = now_ > least ? now_ : least;
     if (heard_.lane < 0) {
         for (Sounding& s : sounding_)
-            if (s.track == heard_.track && s.pitch == heard_.pitch && s.until == kHeldOn) s.until = heard_.ends;
+            if (s.track == heard_.track && s.until == kHeldOn) s.until = heard_.ends; // (every key of a chord held)
     } else if (now_ < least && !project.tracks[heard_.track].laneSample[heard_.lane][0]) {
         heard_.ends = 0; // the built-in drum tapped: heard whole, as it always was (at most 1.8 s)
     } else {
@@ -335,7 +341,7 @@ void Session::stopHeard(const void* owner) {
         stopLane(heard_.track, heard_.lane);
     } else {
         for (Sounding& s : sounding_)
-            if (s.track == heard_.track && s.pitch == heard_.pitch) s.until = now_;
+            if (s.track == heard_.track && (s.pitch == heard_.pitch || s.until == kHeldOn)) s.until = now_; // (a chord's other keys held)
     }
     endHearing();
 }

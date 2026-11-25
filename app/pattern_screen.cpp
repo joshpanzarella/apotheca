@@ -825,10 +825,9 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (b == Button::A) {
-        if (event.down && !onTempo_ && !onBars_) {
-            if (step_ == kLaneName) audition(lane_, kNewHitLevel);
-            else if (!hitHere()) placeHit(1.f);
-        }
+        // On a lane's name A is silent (gesture audit G33: it sounded the drum each time A was held for the
+        // lane's volume); X hears it. On an empty step it places a hit.
+        if (event.down && !onTempo_ && !onBars_ && step_ != kLaneName && !hitHere()) placeHit(1.f);
         if (event.down && onTempo_) session_.tapTempo(whenPressed(event, lastMs_)); // TAP TEMPO: A in time, by the press's own time (held, with a direction, it still turns)
         shaping_ = event.down;
         axis_ = Axis::None; // a new hold is a new choice of job for the stick

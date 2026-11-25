@@ -134,6 +134,21 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     `effectPushes`; `pushed` in fx_screen.cpp). The twentieth keeps the arithmetic it always had (`kNotch`), so a
     value the D-pad reaches is the same to the bit. Only BAND's FREQ has its own: thirty (gesture audit G19,
     2026-11-24: engine.md's BAND rule). The sends stay twentieths.
+  - **Hold Y on BAND's FREQ, GAIN or Q moves the band two ways at once** (gesture audit G18, 2026-11-25; the
+    owner allowed "any of my decisions can be reversed if there is a more logical method", 2026-11-24, and took the
+    audit's hold-Y option): LEFT / RIGHT is FREQ, UP / DOWN GAIN, on the Q dial Q (`FxScreen::bandGrip`,
+    `kBandFreq` / `kBandGain` / `kBandQ`). **The stick and the D-pad do the same job on each axis**: the D-pad a
+    push (`pushed`, the row's own pushes: FREQ thirds of an octave, GAIN and Q twentieths), the stick both axes
+    together, squared, at A's turning pace (`kTurnPerSecond`), with no lock to one axis, as the SONG mixer (owner,
+    2026-11-14). The cursor stays. Not on SHAPE (a choice: Y held there leaves the D-pad the cursor's), not on
+    another effect (Y on a dial did nothing before and still does), not with A held (A's jobs stand: A + LEFT /
+    RIGHT is still the TYPE, owner 2026-11-14, untouched), not while trying or with X's MOD. Through
+    `setEffectParam`, so WRITE records both lanes. **The option not taken: hold A + the stick across = FREQ**:
+    on a FILTER dial A + D-pad LEFT / RIGHT is the TYPE, so the stick and the D-pad would have done two jobs on
+    one axis, which no other two-way grip (the mixer, a drum hit, a roll note) does. Y on the list (column 0)
+    still moves the line; a dial is column 1 and up, so the two never meet. The bar with Y up is full (it already
+    leaves HOLD X out), so "HOLD Y" is in the manual only; with Y held the bar says LEFT / RIGHT freq, UP / DOWN
+    gain (or q). `app_test --fx` `testHoldYMovesABandTwoWays`. **Not heard on the handheld.**
   - A choice has no bar: one piece for each choice, the one it is lit
     (`wideBar`). A value is drawn in the largest lettering that fits
     `kValueRoom` (`Fonts::fit`); `app_test` (`testFxTextsFit`) draws every

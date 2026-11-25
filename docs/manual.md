@@ -143,7 +143,7 @@ plays the recording as it was made; an octave up, twice as fast.
 | --- | --- | --- |
 | SOUND | **Tap A: the list of recordings.** Or hold A + up / down: one at a time | None |
 | PITCH, TUNE, START, END, ATTACK, RELEASE, LOOP, LEVEL | The stick turns it; the D-pad moves it by one | Its usual value |
-| PRESET | The preset after / before: the ends stop | Held a second, on one of your own: deletes its file (the track keeps its sound) |
+| PRESET | The preset after / before, **heard as it goes on** when the song is stopped (as a synth's preset and a kit are): the ends stop | Held a second, on one of your own: deletes its file (the track keeps its sound) |
 
 **PRESET is the sound kept as a preset of its own** (or "-"): the
 recording, its settings, CHOP and the whole sound around it, as a synth's
@@ -293,6 +293,7 @@ to the sound just now.
 | | Left | Back to the list, on the same line, from any setting. (Right does nothing here.) |
 | | **Hold A + left / right** | **The TYPE before / after** (COMP to DUCK), at once, in the same grip that turns the value: the cursor stays on its row. The first and the last type stop. |
 | | Hold A + up / down | The stick turns it. The D-pad moves it a twentieth, or to the next choice (BAND's FREQ: a third of an octave). |
+| | **Hold Y** on BAND's FREQ, GAIN or Q | **Moves the band two ways at once**: left / right is FREQ, up / down is GAIN (on the Q dial, Q). The stick does both together (push it on a slant); the D-pad moves each a push (FREQ a third of an octave, GAIN or Q a twentieth). The cursor stays. Not on SHAPE, and with A held A's jobs stand (left / right is still the TYPE). With WRITE on, both are recorded. The bar says it only while Y is held: it has no room before. |
 | | B | Its usual value. A send: nothing sent. |
 
 **A slot remembers each type's own settings.** Turn a COMP, switch to the
@@ -321,8 +322,10 @@ effect in that slot (and always on SENDS): hold A, turn, R1, turn, R1... turns
 one dial across the tracks in one grip. Another effect there, or none, lets A
 go; press it again. An effect being tried in the list is called off, as before.
 
-X hears the track and START plays, as everywhere (a recording, on lane 1 or
-the sampler, plays for as long as X is held). Y does nothing here.
+X hears the track and START plays, as everywhere: for as long as X is held (a
+tap: a moment), with the song playing too (it sounds over the song). On a drum
+track it is lane 1. Y does nothing here but on a line (moves it) and on BAND's
+first three dials (above).
 
 **The list of effects** is seven families, each with a TYPE:
 
@@ -418,7 +421,7 @@ song file calls each by the name it has always had.
 | PLATE | A plate reverb: a dense wash from its first moment, with no early echoes to pick out, bright and smooth, and an even fall. **Pre** (a gap before it answers: 0 to 100 ms), **decay** (how long the tail lasts, in seconds: 0.3 to 20, as HALL's), **tone** (low is dark; high is bright; at any setting the lowest notes die a little sooner than the rest), **mix**. Left and right go in together, as on a real plate, and come out wide. Turning PRE while it sounds bends its pitch for a moment. |
 | REVERB (the type ROOM) | The older, plainer reverb. Size, damping, mix |
 | CHORUS | Rate, depth, type, mix. Copies of the sound, a little late and wavering, which makes one sound into several and spreads it left and right. RATE is how fast they waver (0.1 to 8 times a second), DEPTH how far. Types: CHORUS (three copies a side), ENSEMBLE (three copies, each at its own speed: thicker, less regular), VIBRATO (the pitch itself wavers; at full mix there is no plain sound), FLANGE (one very short copy fed back into itself: the jet sweep). |
-| BAND (a FILTER type) | Freq, gain, Q, shape. **One band of an EQ, put anywhere**: for a bump or a cut exactly where you want it, or to take one ringing note right out. FREQ is where, 20 HZ to 20 KHZ; **the D-pad moves it a third of an octave a push** (50, 63, 80, 100 HZ ... 1.0 KHZ ...), so mains hum at 50 HZ and the 1.0 KHZ it starts on are each a push away (60 HZ is between two: the stick gets there). GAIN is how much, -12 to +12 DB. Q is how narrow: Q 0.3 is some three octaves wide, Q 30 a single note; it starts at 1.5. SHAPE: BELL (up or down around FREQ), NOTCH (FREQ taken right out, as narrow as Q; GAIN does nothing and reads "-"), LOW SHELF (everything under FREQ up or down alike) and HIGH SHELF (everything over it). A shelf's Q stops at 2 (past that it only rings) and reads so. It starts flat (0 DB), so adding it changes nothing until GAIN or SHAPE is turned. Changing SHAPE while it sounds fades from one to the other, with no click. Put two in a track's slots for two bands. |
+| BAND (a FILTER type) | Freq, gain, Q, shape. **One band of an EQ, put anywhere**: for a bump or a cut exactly where you want it, or to take one ringing note right out. FREQ is where, 20 HZ to 20 KHZ; **the D-pad moves it a third of an octave a push** (50, 63, 80, 100 HZ ... 1.0 KHZ ...), so mains hum at 50 HZ and the 1.0 KHZ it starts on are each a push away (60 HZ is between two: the stick gets there). GAIN is how much, -12 to +12 DB. Q is how narrow: Q 0.3 is some three octaves wide, Q 30 a single note; it starts at 1.5. SHAPE: BELL (up or down around FREQ), NOTCH (FREQ taken right out, as narrow as Q; GAIN does nothing and reads "-"), LOW SHELF (everything under FREQ up or down alike) and HIGH SHELF (everything over it). A shelf's Q stops at 2 (past that it only rings) and reads so. It starts flat (0 DB), so adding it changes nothing until GAIN or SHAPE is turned. Changing SHAPE while it sounds fades from one to the other, with no click. Put two in a track's slots for two bands. **Hold Y on FREQ, GAIN or Q to move it two ways at once**: across is FREQ, up / down GAIN (on Q, Q), so a bell is dragged across its own picture, or a notch swept and narrowed, in one grip. |
 | WAH (a FILTER type) | Sense, speed, resonance, mix. An auto-wah: **a filter that opens as you play.** A hit opens it and it closes as the sound dies away: the "quack" of a funk bass or a clavinet. Nothing turns it but the playing. SENSE is how far a sound opens it (low: only the loudest hits open it a little; high: a quiet one opens it all the way, 250 HZ shut to 3.5 KHZ open). SPEED is how fast it follows, read as two times: 2/60 MS (in fast, back fast: a quack on every note) to 30/600 MS (a slow swell). RESONANCE is how much it sings at the top of its sweep; it reads as FILTER's does, and stays where it was when TYPE changes from FILTER or VOWEL. MIX at 0 is the sound untouched. |
 | PITCH (a MOD type) | Pitch, fine, grain, mix. **The sound again, higher or lower**: an octave under a bass, a fifth over a lead. PITCH is -12 to +12 semitones (ST), one click each. FINE is -50 to +50 cents on top (a cent is a hundredth of a semitone): a few either way at half MIX thickens a sound, as two players a hair apart. GRAIN is how long each piece it reads is, 20 to 120 MS: short follows fast playing but buzzes on low notes; long is smooth but blurs fast playing. MIX at 0 is the sound untouched; at 100% only the shifted sound is left. At PITCH 0 and FINE 0 the shifted sound is the sound a GRAIN late, so with MIX part way it sounds hollow (a comb), as any shifter does. It starts an octave up at half MIX. |
 | COMP | Threshold, ratio, speed, mix. A compressor: it turns the loud parts down and then the whole up, so a sound is more even and sits forward. THRESHOLD is how loud "loud" is (-48 to 0 dB: lower catches more). RATIO is how hard (1.5:1, 2:1, 3:1, 4:1, 8:1, 20:1). **While sound passes, a thin line under the THRESHOLD bar shows how far it is turning the sound down**, and the heading says it in words (TURNING DOWN 7 DB): it grows from the right, and the whole width is 24 dB. No line: the sound is under the threshold and nothing is done to it. SPEED is how fast it acts and lets go, as one knob: it reads both, from 1/50 MS (it catches every hit) to 30/400 MS (hits get through, the whole is held together). MIX part way keeps the plain sound beside the squashed one. The level comes back up by itself. It does not listen below 60 Hz, so a kick's thump does not pull everything down. **On the master it glues a mix together.** |
@@ -863,7 +866,9 @@ Each button's chip in the bottom bar stands under the field it sets.
 | **Hold B** | Deletes the MOD (a second; the strip fills) |
 
 NOW, at the right, shows what the MOD is adding this moment. With the song
-stopped, holding X runs the MOD and holds the note, so you hear it. With
+stopped, holding X runs the MOD and holds the note, so you hear it. With the
+song playing, X holds the note over the song and the MOD runs as the song runs
+it (nothing extra is started). With
 both MODs in use on other knobs, the strip says **MODS FULL** and nothing is
 made. The knob, or its automation, is the middle the MOD moves around.
 WRITE records the knob, never the wobble. Undo (SELECT + B) takes a MOD
@@ -1780,8 +1785,8 @@ started on, or 90%). **Add R2 while R1 is held** and the brush paints
 random levels for as long as R2 is down. R2 by itself is "next screen", at
 once.
 
-The cursor can also sit on a lane's name, left of step 1: A plays the drum,
-hold A + stick is its volume, **hold X is its FEEL** (see "FEEL" below), and Y is the **lane dice** (hold Y + stick up
+The cursor can also sit on a lane's name, left of step 1: A by itself is
+silent there (X plays the drum), hold A + stick is its volume, **hold X is its FEEL** (see "FEEL" below), and Y is the **lane dice** (hold Y + stick up
 and hits arrive in a shuffled order that leans toward the beat; down and
 they leave; tap Y to reshuffle). **The dice work on every hit of the lane,
 yours too**: down takes any hit away, a tap rolls the lane's hits anew (as
@@ -1813,7 +1818,7 @@ A few things mean one thing everywhere:
 | A | Place, open, pick. Held: a direction shapes or turns what is under the cursor |
 | B | Delete, empty, go back |
 | **Hold B** | **Delete for good**: a track (2 s), a song (1 s), a recording in the list (1 s). The row fills as you hold; let go early and nothing happens |
-| X | Hear it. A recording plays **for as long as X is held** (a tap: a moment). Held on a drum hit: its step effects. Held on a knob: its MOD |
+| X | Hear it, **for as long as X is held** (a tap: a moment), and over the song while it plays. A drum hit plays whole, as the pattern plays it. Held on a drum hit: its step effects. Held on a knob: its MOD |
 | Hold R1 | On an empty step: paint as you drag. On a note: carry it. On SONG: copy a cell; R1 on another cell pastes it there |
 | L2 / R2 | The tabs |
 | **L3** (press the stick in) | **The SONG screen with MASTER under the cursor**: hold A + up / down is the output's level at once, whatever the handheld's own volume. L3 again (still on MASTER): back where you were |
@@ -2194,7 +2199,7 @@ is loud; holding A shapes it the way it is drawn.
 | Hold A, **D-pad** up / down | Length by whole steps: the end goes to the next step line, or the one before |
 | Hold A, **L2 / R2** | Nudge: the note a tenth of a step early (L2) or late (R2), up to half a step. It sits a little above or below its line. |
 | B | Delete the note under the cursor |
-| X | Hear the key (on a sampler track, on an empty place: for as long as X is held) |
+| X | Hear the key, the note or the chord **for as long as X is held** (a tap: a moment), and over the song while it plays |
 | Hold R1 and drag | Paint a note on every step crossed |
 | Hold B and drag | Delete every note (or chord) the cursor crosses |
 | **Hold X on a note**, left / right | **RATCHET**: the note played 2, 3 or 4 times inside its first step |
@@ -2389,7 +2394,7 @@ How the effects meet each other, and the edges:
 | HUMAN TIME and the next chord | A note that comes early can start up to 12 ms before the chord before it has ended |
 | THROW | The send is open from the chord's first note to the chord's end, strummed or not, however short LENGTHS leaves the notes |
 | GLIDE after the chord | A gliding note after it still slides from the chord's keys as written (which one: the track's GLIDE FROM; TOP is its top key), counted from the chord's own moment, as the roll draws it. A strum does not change that |
-| X (hear) | Plays the chord plain, all at once. The effects are heard when the song plays |
+| X (hear) | Plays the chord plain, all at once, for as long as X is held, over the song too. The effects are heard when the song plays |
 | Swap (hold Y) | The new chord keeps the effects |
 | Break into notes (hold Y, B) | The loose notes keep the ratchet and the THROW. **They keep nothing of the other five**: a strum belongs to a chord |
 | Move (hold R1), copy, NEXT SCENE, undo | The effects go with the chord |
@@ -2416,7 +2421,8 @@ the cursor; B puts a macro back in the middle. Each macro has a small picture
 of what it does and a colour for its kind (teal: the sound's colour; purple:
 movement and width; cream: time), and stays dim until it is turned. Macros bend the sound and
 leave the preset as it was made. A new preset is played at once when the
-song is stopped.
+song is stopped. **X plays the sound for as long as it is held**, on every
+stop and page (a tap: a moment), and over the song while it plays.
 
 Phazed's DETUNE tunes the sound's second line (oscillator) up to a semitone
 sharp or flat. A sound with only one line is given a copy of that line as

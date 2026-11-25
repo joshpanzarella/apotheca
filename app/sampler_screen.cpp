@@ -154,7 +154,9 @@ void SamplerScreen::stepPreset(int by) {
     const int now = session_.samplerPresetOf(project_.track);
     const int to = now < 0 ? (by > 0 ? 0 : count - 1) : now + by;
     if (to < 0 || to >= count) return; // the ends stop
-    session_.loadSamplerPreset(project_.track, to);
+    // Heard as it is put on, when the song is stopped, as a synth's preset and a kit are (gesture audit G22:
+    // stepping the sampler's was silent, so a preset had to be stepped to, then X'd).
+    if (session_.loadSamplerPreset(project_.track, to) && !project_.playing) hear();
 }
 
 void SamplerScreen::catchBar() {

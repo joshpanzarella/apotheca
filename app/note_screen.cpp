@@ -417,7 +417,8 @@ ChordEvent NoteScreen::inHand() const {
 
 void NoteScreen::hearChord(const ChordEvent& chord) {
     // While choosing a chord (Y held) it is always heard, playing or not: that is how it is chosen.
-    // Otherwise, with the song playing, the song will play it soon enough.
+    // Otherwise (a chord placed or moved), with the song playing, the song will play it soon enough. X on a
+    // chord is not this: it holds the chord as long as X is, over the song too (onButton, gesture audit G33).
     if (project_.playing && !picking_) return;
     int keys[kChordNotes];
     const int n = chord.pitches(keys);
@@ -867,9 +868,15 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         erasing_ = true;
         eraseHere();
     } else if (b == Button::X && !onBars_) {
-        if (const ChordEvent* chord = chordHere()) hearChord(*chord);
-        else if (!noteHere() && holdsRecording(project_.current().kind)) session_.auditionHeld(project_.track, pitch_, kNewLevel, this); // a recording: for as long as X is held
-        else session_.audition(project_.track, pitch_, noteHere() ? noteHere()->velocity : kNewLevel);
+        // Heard for as long as X is held (a tap a moment), a chord's keys together, and over the song while it
+        // plays (gesture audit G33: a chord was silent then, and a note or a key a fixed moment).
+        if (const ChordEvent* chord = chordHere()) {
+            int keys[kChordNotes];
+            const int count = chord->pitches(keys);
+            session_.auditionHeld(project_.track, keys, count, chord->velocity, this);
+        } else {
+            session_.auditionHeld(project_.track, pitch_, noteHere() ? noteHere()->velocity : kNewLevel, this);
+        }
         // On a note or a chord it is also a hold: the stick or D-pad then sets what it does besides play.
         fxHeld_ = (noteHere() || chordHere()) && !shaping_ && !painting_ && !picking_ && carrying_ == Carry::Nothing;
         fxSaved_ = 0.f;

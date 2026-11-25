@@ -14,8 +14,9 @@
 //                    (A types, Y deletes, B leaves without saving, START saves). It lands in
 //                    the USER folder with everything the page's SAVE AS PRESET keeps; under a
 //                    name taken, it replaces that one.
-//   X                hear the sound. Held on a macro: its MOD (mod_knob.hpp), its fields in LIVE
-//                    OUTPUT's place while X is held, and the note heard as long as X is.
+//   X                hear the sound, for as long as X is held (a tap for a moment), over the song
+//                    too. Held on a macro: its MOD (mod_knob.hpp), its fields in LIVE OUTPUT's
+//                    place while X is held (the MOD run only while stopped: call E).
 //   Y                PHYSIC and CLOUD (SynthSpec::roll): a new sound from the dice.
 //
 // A synth that plays the track's recording (CLOUD: SynthSpec::recording) shows its picture on MAIN,

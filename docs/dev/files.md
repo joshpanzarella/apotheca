@@ -201,6 +201,12 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   any other change, SAVE, `applyProject`, `addTrack`, `setTrackKind`, moved by
   `removeTrack`. One step of undo takes a pick back (`soundMark` sees it all). A new
   track starts plain on preset 1, whatever that one holds.
+- **A preset is heard as it is stepped to, with the song stopped: a synth's, a kit, and the sampler's** (the
+  sampler's since gesture audit G22, 2026-11-25: `SamplerScreen::stepPreset` was silent, so a preset had to be
+  stepped to and then X'd). Past an end nothing goes on and nothing is heard; playing, the song is heard
+  instead. The audit's other half (one save button, Y, on every preset stop) is NOT done: Y is CATCH on every
+  sampler stop and PHYSIC's dice on its MAIN page, so it needs a free button (the owner's call).
+  `app_test testSamplerPresetsOnDevice`.
 - **The built-ins past the engine's own are DATA, compiled in** (`app/presets/NAME.inc`,
   one raw string a synth; `readPresetData`, read once, `builtInData`): `new FOLDER /
   NAME` with `base`, `set`, `settings`, `macros`, FM-6's `op N` (an operator's 21 settings a line)

@@ -7066,14 +7066,29 @@ void testSamplerPresetsOnDevice() {
     rig.tap(A);
     rig.tap(START);
     CHECK(!screen.typing() && screen.said() == "SAVED AS C" && session.samplerPresets().size() == 2);
+    // Each is heard as it is stepped to, as a synth's preset and a kit are (gesture audit G22); past an end
+    // nothing is put on and nothing heard; playing, the song is heard instead.
+    int heard = screen.timesHeard();
     rig.key(A, true);
     rig.tap(DOWN);
     rig.key(A, false);
     CHECK(session.samplerPresetOf(1) == 0 && track.sampler[sampler::Level] == 33);
+    CHECK(screen.timesHeard() == heard + 1);
     rig.key(A, true);
     rig.tap(DOWN);
     rig.key(A, false);
     CHECK(session.samplerPresetOf(1) == 0); // (past the first: stops)
+    CHECK(screen.timesHeard() == heard + 1);
+    rig.project().playing = true; // as if playing
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(session.samplerPresetOf(1) == 1 && screen.timesHeard() == heard + 1);
+    rig.project().playing = false;
+    rig.key(A, true);
+    rig.tap(DOWN);
+    rig.key(A, false);
+    CHECK(session.samplerPresetOf(1) == 0 && screen.timesHeard() == heard + 2);
     // B held deletes the file; another button calls it off; the track keeps its sound.
     rig.key(B, true);
     rig.frames(30);
@@ -10497,6 +10512,140 @@ void testBandFreqStepsAThirdOfAnOctave() {
     rig.key(A, false);
 }
 
+// Y held on BAND's FREQ, GAIN or Q moves the bell two ways at once (gesture audit G18): LEFT / RIGHT is FREQ, UP /
+// DOWN GAIN (on the Q dial, Q), the D-pad a push as A gives, the stick both at once; the cursor stays. Not on
+// SHAPE, not on another effect, and with A held A's jobs stand (LEFT / RIGHT the TYPE). WRITE records both.
+void testHoldYMovesABandTwoWays() {
+    Rig rig;
+    Session& session = rig.app.session();
+    FxScreen& fx = rig.app.fx();
+    session.setEffect(0, 0, EffectKind::Band);
+    session.setEffect(0, 1, EffectKind::Filter);
+    session.view = View::Effects;
+    rig.project().track = 0;
+    CHECK(std::string(effectInfo(EffectKind::Band).paramNames[FxScreen::kBandFreq]) == "FREQ" &&
+          std::string(effectInfo(EffectKind::Band).paramNames[FxScreen::kBandGain]) == "GAIN" &&
+          std::string(effectInfo(EffectKind::Band).paramNames[FxScreen::kBandQ]) == "Q");
+    const auto p = [&](int slot, int i) { return session.effectData(0, slot).param[i]; };
+    const float q0 = p(0, 2), shape0 = p(0, 3);
+    const auto still = [&](int column) { return fx.cursorRow() == 0 && fx.cursorColumn() == column; };
+    // On FREQ: across FREQ (a third of an octave a push), up / down GAIN (a twentieth).
+    fx.goTo(0, 1);
+    rig.frames(1);
+    CHECK(fx.bandGrip() == -1);
+    rig.key(Y, true);
+    rig.frames(1);
+    CHECK(fx.bandGrip() == FxScreen::kBandGain);
+    rig.tap(RIGHT);
+    CHECK(p(0, 0) == 18.f / 30.f && p(0, 1) == 0.5f);
+    rig.tap(UP);
+    CHECK(p(0, 1) == 11.f * 0.05f && p(0, 0) == 18.f / 30.f);
+    rig.tap(LEFT, 2);
+    rig.tap(DOWN, 2);
+    CHECK(p(0, 0) == 16.f / 30.f && p(0, 1) == 9.f * 0.05f && p(0, 2) == q0 && still(1));
+    // On GAIN: the same.
+    rig.key(Y, false);
+    rig.tap(DOWN);
+    rig.key(Y, true);
+    CHECK(still(2) && fx.bandGrip() == FxScreen::kBandGain);
+    rig.tap(UP);
+    rig.tap(RIGHT);
+    CHECK(p(0, 1) == 10.f * 0.05f && p(0, 0) == 17.f / 30.f && still(2));
+    // On Q: up / down is Q.
+    rig.key(Y, false);
+    rig.tap(DOWN);
+    rig.key(Y, true);
+    CHECK(still(3) && fx.bandGrip() == FxScreen::kBandQ);
+    rig.tap(UP);
+    rig.tap(LEFT);
+    CHECK(p(0, 2) == 7.f * 0.05f && p(0, 1) == 10.f * 0.05f && p(0, 0) == 16.f / 30.f && still(3));
+    // The bar says it while Y is held there (on Q, "q"; on FREQ and GAIN, "gain").
+    {
+        Canvas canvas, scratch;
+        CHECK(canvas.ok && scratch.ok);
+        if (canvas.ok && scratch.ok) {
+            rig.frames(1);
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(ui::gHintsOver == 0.f && hintKeyed(canvas, scratch, "LEFT / RIGHT", "freq") && hintKeyed(canvas, scratch, "UP / DOWN", "q"));
+            rig.key(Y, false);
+            rig.frames(1);
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(!hintKeyed(canvas, scratch, "LEFT / RIGHT", "freq") && hintKeyed(canvas, scratch, "LEFT", "list"));
+            rig.tap(UP);
+            rig.key(Y, true);
+            rig.frames(1);
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(ui::gHintsOver == 0.f && hintKeyed(canvas, scratch, "UP / DOWN", "gain"));
+            rig.key(Y, false);
+            rig.tap(DOWN);
+            rig.key(Y, true);
+        }
+    }
+    // SHAPE, a choice, is no grip: Y held, the D-pad is the cursor's, and up is the Q dial again (then Q's).
+    rig.key(Y, false);
+    rig.tap(DOWN);
+    rig.key(Y, true);
+    CHECK(still(4) && fx.bandGrip() == -1);
+    rig.tap(UP);
+    CHECK(still(3) && p(0, 3) == shape0 && p(0, 2) == 7.f * 0.05f);
+    rig.key(Y, false);
+    // Another effect: Y held does what it always did on a dial (nothing): the D-pad moves the cursor.
+    fx.goTo(1, 1);
+    rig.frames(1);
+    const float cutoff = p(1, 0);
+    rig.key(Y, true);
+    CHECK(fx.bandGrip() == -1);
+    rig.tap(DOWN);
+    rig.tap(RIGHT);
+    CHECK(fx.cursorRow() == 1 && fx.cursorColumn() == 2 && p(1, 0) == cutoff);
+    rig.key(Y, false);
+    // The stick: across FREQ and up / down GAIN, both at once, squared as a turn with A held.
+    fx.goTo(0, 1);
+    rig.frames(1);
+    const float f1 = p(0, 0), g1 = p(0, 1);
+    rig.key(Y, true);
+    rig.key(STICK_RIGHT, true);
+    rig.key(STICK_UP, true);
+    rig.frames(10);
+    rig.key(STICK_RIGHT, false);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    CHECK(p(0, 0) > f1 + 0.1f && p(0, 0) < f1 + 0.2f && p(0, 1) > g1 + 0.1f && p(0, 1) < g1 + 0.2f && still(1));
+    const float f2 = p(0, 0), g2 = p(0, 1);
+    rig.key(STICK_LEFT, true);
+    rig.frames(10);
+    rig.key(STICK_LEFT, false);
+    rig.frames(1);
+    CHECK(p(0, 0) < f2 - 0.1f && p(0, 1) == g2 && still(1));
+    rig.key(Y, false);
+    // WRITE records both, on the step playing.
+    session.setWriting(true);
+    rig.tap(START);
+    rig.render(3 * kStep + kStep / 2);
+    rig.frames(1);
+    CHECK(rig.project().playStep == 3);
+    rig.key(Y, true);
+    rig.tap(RIGHT);
+    rig.tap(UP);
+    rig.key(Y, false);
+    const TrackData& track = rig.project().tracks[0];
+    CHECK(track.automation[0][autoLaneOfEffect(0, FxScreen::kBandFreq)][3] == p(0, 0) && track.automation[0][autoLaneOfEffect(0, FxScreen::kBandGain)][3] == p(0, 1));
+    rig.tap(START);
+    session.setWriting(false);
+    rig.frames(1);
+    // With A held too, A's jobs stand: A + LEFT is the TYPE, not FREQ.
+    rig.key(Y, true);
+    rig.key(A, true);
+    CHECK(fx.bandGrip() == -1);
+    rig.tap(LEFT);
+    rig.key(A, false);
+    rig.key(Y, false);
+    CHECK(session.effectData(0, 0).kind != static_cast<int>(EffectKind::Band));
+}
+
 // B held on a track: the hints bar says it cannot be undone while the head fills (the head has room for one word).
 void testDeletingATrackSaysItCannotBeUndone() {
     Canvas canvas, scratch;
@@ -11883,6 +12032,7 @@ int main(int argc, char** argv) {
         testFxStepsTheTrack();
         testFxHoldKeptAcrossTracks();
         testBandFreqStepsAThirdOfAnOctave();
+        testHoldYMovesABandTwoWays();
         testFxSwitchesType();
         testFxSwitchMends();
         testTheFxScreensList();
@@ -11999,6 +12149,7 @@ int main(int argc, char** argv) {
     testFxStepsTheTrack();
     testFxHoldKeptAcrossTracks();
     testBandFreqStepsAThirdOfAnOctave();
+    testHoldYMovesABandTwoWays();
     testFxSwitchesType();
     testFxSwitchMends();
     testEffectsThroughTheSession();
