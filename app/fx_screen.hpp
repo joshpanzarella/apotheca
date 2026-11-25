@@ -112,6 +112,9 @@ public:
     void goTo(int row, int column);
     int cursorRow() const { return row_; }
     int cursorColumn() const { return column_; }
+    // Where the cursor is, in words, for a late sound block's line (late_blocks.hpp): ", FX line 2 FILTER, dial 2
+    // CUTOFF" (track 1), ", FX line SENDS", ", A held" when it is.
+    void cursorWords(char* out, int size) const;
     // How many settings a line has (the sends line: two; an empty slot: none).
     int settings(int row) const { return sends(row) ? kBuses : effectInfo(static_cast<EffectKind>(data(row).kind)).params; }
     // The setting last used on a line: where RIGHT goes back to. 1 if none was.
@@ -264,6 +267,10 @@ public:
     // column (0 the list), how many types the family has, and which of them the slot is. Below the first setting
     // it is nullptr only for a family of one, and that is what sends LEFT back to the list from there.
     static const char* typeKeyFor(int column, int types, int at);
+    // With A up on a dial: the key the bar names for walking them (owner, 2026-11-25: LEFT / RIGHT walk the dials,
+    // LEFT from the first is the list, RIGHT on the last stops), only the ways that do something: "LEFT" on the last
+    // (and on a line of one dial), else "LEFT / RIGHT"; nullptr in the list. `last` is how many dials the line has.
+    static const char* walkKeyFor(int column, int last);
 
 private:
     static bool sends(int row) { return row == kSendsRow; }

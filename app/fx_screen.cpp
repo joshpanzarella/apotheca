@@ -408,6 +408,16 @@ void FxScreen::goTo(int row, int column) {
     if (column_ > 0) last_[row_] = column_;
 }
 
+void FxScreen::cursorWords(char* out, int size) const {
+    if (!out || size <= 0) return;
+    static const char* const tags[kRows] = {"1", "2", "3", "SENDS", "ECHO", "SPACE", "MASTER 1", "MASTER 2"};
+    const bool line = !sends(row_);
+    const EffectInfo& info = effectInfo(line ? static_cast<EffectKind>(data(row_).kind) : EffectKind::None);
+    const char* what = line ? (info.name ? info.name : "?") : "";
+    const char* dial = column_ < 1 ? "the list" : (line ? (column_ - 1 < info.params && info.paramNames[column_ - 1] ? info.paramNames[column_ - 1] : "?") : (column_ == 1 ? "ECHO" : "SPACE"));
+    std::snprintf(out, static_cast<std::size_t>(size), ", FX track %d line %s %s, dial %d %s%s", project_.track + 1, tags[row_], what, column_, dial, holding_ ? ", A held" : "");
+}
+
 float FxScreen::meterOf(int row) const {
     if (row < 0 || row >= kRows || sends(row)) return 0.f;
     return session_.engine.effectMeter(trackOf(row), slotOf(row));
@@ -479,12 +489,15 @@ void FxScreen::press(Button b) {
             if (b == Button::Down) goTo(row_ + 1, 0);
             if (b == Button::Right && settings(row_) > 0) goTo(row_, last_[row_]);
         } else {
-            // In the settings: up and down through them (the ends stop); left is back to the list, from any
-            // of them; right does nothing. The slot's TYPE is switched with A HELD (below): owner, 2026-11-14,
-            // LEFT doing two jobs (the type before, but the list from the first setting) was awkward.
-            if (b == Button::Up && column_ > 1) goTo(row_, column_ - 1);
-            if (b == Button::Down) goTo(row_, column_ + 1);
-            if (b == Button::Left) column_ = 0;
+            // In the settings, which sit side by side as dials: LEFT / RIGHT walk them (owner, 2026-11-25: "moving
+            // up and down to traverse the parameters is odd"). LEFT from the first is back to the list, on the same
+            // line; RIGHT on the last stops. UP / DOWN do nothing without A. The slot's TYPE stays on A HELD + LEFT /
+            // RIGHT (below; owner, 2026-11-14): plain LEFT is only ever the cursor.
+            if (b == Button::Right) goTo(row_, column_ + 1);
+            if (b == Button::Left) {
+                if (column_ > 1) goTo(row_, column_ - 1);
+                else column_ = 0;
+            }
         }
         // Y held, and this move came onto BAND's FREQ, GAIN or Q (from its line, or from SHAPE): the push that
         // brought the cursor here was a move, so it turns nothing (moved(): a fresh push does).
@@ -660,6 +673,11 @@ const char* FxScreen::typeKeyFor(int column, int types, int at) {
     if (column < 1) return nullptr; // the list. (A family of one: neither way is true, so no key.)
     const bool right = at + 1 < types, left = at > 0;
     return left && right ? "LEFT / RIGHT" : (right ? "RIGHT" : (left ? "LEFT" : nullptr));
+}
+
+const char* FxScreen::walkKeyFor(int column, int last) {
+    if (column < 1) return nullptr;
+    return column < last ? "LEFT / RIGHT" : "LEFT";
 }
 
 // With A held on a slot's setting: the direction(s) that switch its TYPE, or nullptr (not held, the list,
@@ -1148,10 +1166,13 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("L1 / R1", "track");
         if (!move) hint("START", project_.playing ? "stop" : "play");
     } else {
-        hint("LEFT", "list");
+        // The walk (owner, 2026-11-25): the ways that do something, as L1 / R1 "track" says the one before / after;
+        // on the first dial LEFT is the list too.
+        hint(walkKeyFor(column_, settings(row_)), column_ > 1 ? "dial" : settings(row_) > 1 ? "list, dial" : "list");
         hint("HOLD A", !onSends && effectTypes(kind) > 1 ? "turn, type" : "turn"); // (with A held the bar says which way)
         hint("B", onSends ? "none" : "default");
-        if (onSends) hint("HOLD X", "mod"); // (where the bar has room for it: a setting's has none; the help card says it)
+        // (No HOLD X: MOD, on a send either since the walk took its room, 2026-11-25: 43 pixels over on ECHO. The help
+        // card says it.)
         hint("L1 / R1", "track");
         hint("START", project_.playing ? "stop" : "play");
     }
