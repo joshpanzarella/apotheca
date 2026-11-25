@@ -466,13 +466,32 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   and right, in fast, back slowly) but its corner is aimed once a TICK from the level then and slid to
   (`Slide`), as VOWEL's; its low-pass is made up by `1/sqrt(Q)` so RESONANCE does not make it much
   louder. It sleeps after a tick with nothing in and the filters under kQuiet, the level with them, and
-  wakes with the level at zero. **PITCH is two heads half a GRAIN apart with triangle gains that add to
-  one** (no gain is lost or added at a splice); the speed is worked out once a TICK from where PITCH and
-  FINE are gliding to, in semitones, so a click of PITCH slides. Its line holds 0.12 s; it sleeps only
-  after 4 s of nothing AND once every place in the line has been written as zero, and wakes with the
-  write place and the heads at 0, so a render is the same however long the silence was. At 0 shift the
-  wet is the dry a GRAIN late: a comb against the dry, as any shifter. `testPitch` measures the new
-  pitch by band level against the input (a zero-crossing count is thrown by the splices).
+  wakes with the level at zero. **PITCH plays one head at a time; at a splice the next starts where its sound
+  matches** (2026-11-24, after 0.877 shipped two heads half a GRAIN apart with triangle fades: out of step on
+  some notes, 35 of 216 held notes dipped over 6 dB, 784 Hz an octave down 19.2; `testPitch` played only 440 Hz,
+  a lucky one). The next head starts a GRAIN on and up to 25 ms more (`kReachSeconds`), at the best correlation (rough
+  on sums of 8 over every 8th place, then fine within 4 at full rate, left and right added), and the two cross
+  in 5 ms. **The search is spread over ticks**: it starts 32 ticks before the splice and does a 32nd a tick,
+  three at most (in one go, 10.8 us on the desk); late, a head shifting down waits for it (and for its place to
+  be behind the newest sample: GRAIN turned shorter put it at the line's start, -6.8 dB), one shifting up takes
+  the best so far. The spreading changes no sample, so `testPitchMatched` holds it by the clock (the slowest
+  tick against the middle one). **Shifting up, the line is fed through a 4-pole low-pass** (wet only) whose
+  corner reaches the top of the band as the speed comes to 1, so it comes on with no step (at 0.45 of the rate
+  it read a corner 5 times the steady one). The speed is worked out once a TICK from where PITCH and FINE are
+  gliding to, in semitones, so a click of PITCH slides. Its line holds 0.17 s (8192 samples, as before); it
+  sleeps only after 4 s of nothing AND once every place in the line has been written as zero and the low-pass
+  is at rest, and wakes with the write place at 0 and the head half a GRAIN back, so a render is the same however
+  long the silence was. At 0 shift the wet is the dry half a GRAIN late: a comb against the dry, as any shifter.
+  `testPitch` measures the new pitch by band level against the input (a zero-crossing count is thrown by the
+  splices); `testPitchMatched` the held level, the fold-back, the house rules (PITCH had not been through
+  `holdsTheRules`). 10 mutants killed. **A search is kept only while its splice is near** (review, 2026-11-25):
+  sent more than twice as far off as a search starts (GRAIN turned longer, the speed slowed) it is dropped, and at
+  a stop (PITCH and FINE at 0) it is forgotten. Kept, a note played since crossed out of step at the next splice,
+  9.4 to 9.9 dB, and a search caught half done by the stop went on reading a line written over since, 11.8
+  (`testPitchStaleSearch`). The review's own test, one note held through the stop, could not see it: a place
+  found on a held note stays in step with it. A held setting renders the same to the bit as before. 4 of 5
+  mutants killed; dropping at once at 34 ticks (not twice that) lives: a search started again is paced to the
+  speed then, which only fell, so it still finishes in time; the two only saves the work.
 - **BAND (FILTER), 2026-11-24: one EQ band anywhere**, EQ's state-variable filter and Simper's sums per
   SHAPE (BELL with proportional Q, k = 1 / (Q A), so a cut is the lift upside down; NOTCH m1 = -k; the shelves
   with g over / times the root of A, so FREQ is the shelf's middle, half the gain there). **A shelf's Q is held
@@ -480,6 +499,14 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   change of SHAPE fades the numbers (g, k, m0..m2: each step between is a filter that holds) over 30 ticks, one
   fade at a time. At 0 dB a BELL or a shelf is the sound to the bit, so the generic "every setting does
   something" check exempts FREQ, Q and SHAPE (testBand moves each). 15 mutants killed.
+  **The BELL is matched** (Vicanek 2016, `bellOf`; 2026-11-24, after 0.883 shipped it plain). On g = tan(pi f /
+  rate) a bell's gain at 24 kHz is held at 1, so one set high was squeezed back to 0 dB there ("cramping": 16 kHz
+  Q 1.5 was 6.0 dB off the analogue up to 20 kHz, 20 kHz Q 4 7.0; now 0.8 and 1.0, the worst anywhere 2.1). Its
+  poles are the analogue's own and its gain the analogue's at 0 Hz, FREQ and 24 kHz, written in the same g, k,
+  m0..m2 (Slide and the SHAPE fade untouched); a cut is the matched lift upside down; 0 dB is the plain numbers to
+  the bit. **Double, on the tick only** (nothing at rest; Vicanek's own sums cancel in float). It keeps svfG's 0.45
+  ceiling (past half the rate a cut runs away). A song's BELL moves under 0.1 dB at 1 kHz and below (Q 0.7 up), up
+  to 7.7 dB at 20 kHz, toward the analogue curve the FX picture already drew. `testBandMatched`; 6 mutants killed.
   - **FREQ's D-pad push is a thirtieth of its range, and it starts on one** (gesture audit G19, 2026-11-25;
     `pushes` 30 in its row). FREQ is 20 * 1000^v, so a twentieth was 1000^0.05 = 1.41 times, HALF an octave,
     not the third the comment said: the points near hum were 39.9, 56.4 and 79.6 Hz, and the start, 0.5663,

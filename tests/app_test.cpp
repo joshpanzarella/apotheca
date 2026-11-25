@@ -5450,9 +5450,10 @@ void testTheFxPictureFollowsTheSettings() {
                         notchHole, yOfDb(-25.f), notchFar, shelfLow, shelfHigh, yOfDb(0.f));
     }
     // PITCH draws the shifted sound at its own speed (2026-11-24): along the middle of the waves, an octave up
-    // crosses it twice as often as no shift, an octave down half as often. Under them the heads' fades: at no shift
-    // they stand still, one at full (its line along the top of the strip); an octave up they turn twice as often as
-    // an octave down (once a GRAIN, against once in two).
+    // crosses it twice as often as no shift, an octave down half as often. Under them the heads: at no shift one
+    // stands still at full (its line along the top of the strip); otherwise one plays alone and the other takes over
+    // in 5 ms (the matched splices, 2026-11-24: the top of the strip is always inked but at a crossing, and each head
+    // is at full about half the time), an octave up twice as often as an octave down (a piece a GRAIN, against two).
     {
         const int px = F::kPaneX + 12, pw = F::kPaneW - 24, py = F::kPicY + 12, ph = F::kPicH - 24, wh = ph * 7 / 10;
         const int mid = py + wh - 1 - static_cast<int>(std::round(0.5f * static_cast<float>(wh - 1)));
@@ -5474,7 +5475,7 @@ void testTheFxPictureFollowsTheSettings() {
         };
         const Read same = read(0), up = read(12), down = read(-12);
         const bool crossings = same.crossings >= 4 && same.crossings <= 6 && up.crossings >= 8 && up.crossings <= 10 && down.crossings >= 2 && down.crossings <= 4;
-        const bool heads = same.full > pw * 9 / 10 && up.full < pw / 4 && up.peaks >= 9 && up.peaks <= 11 && down.peaks >= 4 && down.peaks <= 6;
+        const bool heads = same.full > pw * 9 / 10 && up.full > pw / 2 && up.full < pw * 2 / 3 && up.peaks == 5 && down.peaks == 3;
         CHECK(crossings && heads);
         if (!crossings || !heads)
             std::printf("    PITCH crosses %d / %d / %d times; the strip's top: %d / %d of %d inked, %d / %d peaks\n", same.crossings, up.crossings,

@@ -16,7 +16,9 @@
 // No MIX, as EQ: a BELL or a shelf at 0 dB is the sound untouched, to the bit (its numbers are exactly 1 and 0).
 // NOTCH always takes its frequency out.
 //
-// The filter is EQ's state-variable filter with the same sums for each shape (Andrew Simper's). FREQ, GAIN and Q
+// The filter is EQ's state-variable filter with the same sums for each shape (Andrew Simper's), but for the BELL's
+// numbers: those are matched to the analogue bell (Vicanek's way, bellOf below), so a bell set high keeps its shape
+// up to 20 kHz instead of being squeezed back to 0 dB at 24 kHz (2026-11-24). FREQ, GAIN and Q
 // glide for about 20 ms, setting off gently (Gentle), worked out on the TICK (svf.hpp), the numbers slid to sample by
 // sample. A change of SHAPE fades from the old shape's numbers to the new one's over 10 ms (corner, damping and the
 // three amounts the out is made of, each in a straight line: every step between is itself a filter that holds), one
@@ -55,17 +57,60 @@ struct Numbers {
 };
 // The Q a shape uses: a shelf's held at kShelfMostQ.
 float usedQ(int shape, float q) { return (shape == 2 || shape == 3) && q > kShelfMostQ ? kShelfMostQ : q; }
+
+// THE BELL, MATCHED (Martin Vicanek, "Matched Second Order Digital Filters", 2016). The analogue bell is
+// H(s) = (s^2 + s A/Q + 1) / (s^2 + s/(Q A) + 1), A = 10^(dB/40): narrower as it cuts, wider as it lifts, the same
+// width heard either way. Made from it the plain way (Simper's sums on g = tan(pi f / rate)) a bell "cramps" near
+// the top: that g puts the analogue's infinity at half the rate, where the gain is then held at exactly 1, so a
+// bell at 16 kHz was pulled back toward 0 dB by 24 kHz whatever Q asked (6.0 dB off the analogue at 16 kHz, Q 1.5;
+// 7.0 at 20 kHz, Q 4). Matched: the poles are the analogue's own (impulse invariance, e^(sT)), and the top is chosen
+// so the gain is the analogue's at 0 Hz (1), at FREQ (GAIN) and at half the rate (|H| there, no longer 1): 0.8 and
+// 1.0 dB off. On the unit circle g, k and m0..m2 are an analogue biquad in t = tan(w / 2), the filter's out
+//   (m0 s^2 + beta s + g^2) / (s^2 + g k s + g^2),  beta = g (m0 k + m1),  m0 + m2 = 1 (1 at 0 Hz)
+// so m0 is the gain at half the rate and beta is what puts the gain at GAIN at FREQ. Only a lift is matched; a cut
+// is that lift turned upside down (its poles the lift's zeros), so +x and -x dB still add to nothing everywhere.
+// At 0 dB, the plain bell's numbers to the bit: {g, 1/Q, 1, 0, 0}, the sound untouched.
+// Worked out in double, and only on a tick when a setting moves. (Vicanek's own sums, his B0..B2, cancel: worked in
+// float in a model they came out 17 dB wrong at 40 Hz, Q 30, 56 at 100 Hz. These do not cancel, within 0.0001 dB
+// of double in the same model; double is the belt and braces.)
+// beta^2 t^2 is never under 5% of its first term on the whole range (20 Hz to 20 kHz, Q 0.3 to 30, at 22.05 to
+// 96 kHz), so the cut's damping, beta / (g sqrt(m0)), is always over 0: every cut holds.
+Numbers bellOf(float hzIn, float db, float q, float sr) {
+    if (db == 0.f) return {svfG(hzIn, sr), 1.f / q, 1.f, 0.f, 0.f};
+    const double rate = sr, most = 0.45 * rate, hz = hzIn > most ? most : hzIn; // (svfG's ceiling)
+    const double a = std::pow(10.0, std::fabs(static_cast<double>(db)) / 40.0), qd = static_cast<double>(q) * a; // the lift's
+    const double w0 = 2.0 * 3.14159265358979323846 * hz / rate, zeta = 0.5 / qd, s = -zeta * w0;
+    // The poles' 1 + a1 + a2 and 1 - a1 + a2 (their z polynomial at z = 1 and -1), written so nothing cancels at
+    // 20 Hz: |1 - p|^2 and |1 + p|^2 for a pair p = e^(s +- j wd); two real poles when Q A is under 0.5.
+    double plus, minus;
+    if (zeta <= 1.0) {
+        const double e = std::exp(s), em = std::expm1(s), h = std::sin(0.5 * w0 * std::sqrt(1.0 - zeta * zeta)), turn = 4.0 * e * h * h;
+        plus = em * em + turn;
+        minus = (1.0 + e) * (1.0 + e) - turn;
+    } else {
+        const double wd = w0 * std::sqrt(zeta * zeta - 1.0);
+        plus = std::expm1(s + wd) * std::expm1(s - wd);
+        minus = (1.0 + std::exp(s + wd)) * (1.0 + std::exp(s - wd));
+    }
+    const double g2 = plus / minus, g = std::sqrt(g2), k = -2.0 * std::expm1(2.0 * s) / (g * minus);
+    const double over = 0.5 * rate / hz, x = 1.0 - over * over, top = a * a * over / qd, under = over / qd;
+    const double m0 = std::sqrt((x * x + top * top) / (x * x + under * under)); // the analogue's gain at half the rate
+    const double t = std::tan(0.5 * w0), t2 = t * t, peak2 = a * a * a * a, low = g2 - m0 * t2;
+    const double beta = std::sqrt(peak2 * ((g2 - t2) * (g2 - t2) + g2 * k * k * t2) - low * low) / t;
+    const auto f = [](double v) { return static_cast<float>(v); };
+    if (db > 0.f) return {f(g), f(k), f(m0), f(beta / g - m0 * k), f(1.0 - m0)};
+    const double root = std::sqrt(m0); // the cut: 1 / that, its poles g^2 / m0 and g k = beta / m0
+    return {f(g / root), f(beta / (g * root)), f(1.0 / m0), f((k - beta / (m0 * g)) / root), f(1.0 - 1.0 / m0)};
+}
+
 Numbers numbersOf(int shape, float hz, float db, float q, float sr) {
+    if (shape == kBell) return bellOf(hz, db, q, sr);
     q = usedQ(shape, q);
     const float a = std::pow(10.f, db / 40.f), g = svfG(hz, sr), k = 1.f / q;
     switch (shape) {
     case kNotch: return {g, k, 1.f, -k, 0.f};
     case kLowShelf: return {g / std::sqrt(a), k, 1.f, k * (a - 1.f), a * a - 1.f};
-    case kHighShelf: return {g * std::sqrt(a), k, a * a, k * (1.f - a) * a, 1.f - a * a};
-    default: {
-        const float bell = 1.f / (q * a); // narrower as it cuts, wider as it lifts: the same width heard either way
-        return {g, bell, 1.f, bell * (a * a - 1.f), 0.f};
-    }
+    default: return {g * std::sqrt(a), k, a * a, k * (1.f - a) * a, 1.f - a * a}; // HIGH SHELF
     }
 }
 

@@ -8362,6 +8362,140 @@ static void testBand() {
     }
 }
 
+// BAND's BELL IS MATCHED to the analogue bell (Vicanek's way, 2026-11-24: band.cpp, bellOf): sines through it come out
+// as the analogue bell's |H(jw)| says, up to 20 kHz, a lift and a cut alike. Made the plain way (g = tan(pi f / rate))
+// it was squeezed back to 0 dB at 24 kHz. The worst gap at these points (31 a third of an octave apart from 20 Hz,
+// every 1 kHz from 10 to 20 kHz, and FREQ), matched / the plain bell before:
+//   10 kHz Q 0.7 +-12 dB  0.71 / 4.47     16 kHz Q 1.5 +-12  0.83 / 6.05     20 kHz Q 4 +-12  1.03 / 7.04
+//   1 kHz Q 1.5 +-12      0.01 / 0.02      1 kHz Q 0.3 +-12  0.13 / 0.40
+//   4 kHz Q 0.3 +-6       0.36 / 1.64     10 kHz Q 0.3 +-6   0.36 / 2.88  (Q times A under 0.5: two real poles)
+//   40 Hz Q 30 +-12       0.01 / 0.01     (the narrowest, low: worked out in double; Vicanek's own sums worked in
+//                                          float, in a model, were 17 dB wrong here)
+// Over the whole range (every FREQ and Q, +3 to +12 dB) the matched bell's worst is 2.1 dB (20 kHz, Q 0.7); the plain
+// one's was 7.4 (20 kHz, Q 27).
+static void testBandMatched() {
+    const EffectKind band = EffectKind::Band;
+    const auto settings = [](double hz, double db, double q, int shape, float* s) {
+        s[0] = static_cast<float>(std::log(hz / 20.0) / std::log(1000.0));
+        s[1] = static_cast<float>((db / 12.0 + 1.0) / 2.0);
+        s[2] = static_cast<float>(std::log(q / 0.3) / std::log(100.0));
+        s[3] = (static_cast<float>(shape) + 0.5f) / 4.f;
+    };
+    // The analogue bell, in dB: (s^2 + s A/Q + 1) / (s^2 + s/(Q A) + 1), s = j f / FREQ.
+    const auto analogue = [](double hz, double db, double q, double f) {
+        const double a = std::pow(10.0, db / 40.0), w = f / hz, x = 1.0 - w * w, top = w * a / q, under = w / (q * a);
+        return 10.0 * std::log10((x * x + top * top) / (x * x + under * under));
+    };
+    std::vector<double> points;
+    for (int i = 0; i <= 30; ++i) points.push_back(20.0 * std::pow(1000.0, i / 30.0));
+    for (int k = 10; k <= 20; ++k) points.push_back(1000.0 * k);
+    struct Case { double hz, db, q, most; };
+    const Case cases[] = {{10000.0, 12.0, 0.7, 0.8}, {16000.0, 12.0, 1.5, 0.9}, {20000.0, 12.0, 4.0, 1.1}, {1000.0, 12.0, 1.5, 0.05},
+                          {1000.0, 12.0, 0.3, 0.2},  {4000.0, 6.0, 0.3, 0.45},  {10000.0, 6.0, 0.3, 0.45}, {40.0, 12.0, 30.0, 0.05}};
+    for (const Case& c : cases) {
+        // Long enough for the narrowest to settle (40 Hz at Q 30 rings for half a second), read over the last second.
+        const std::size_t frames = c.q > 10.0 ? 4 * 48000 : 48000;
+        for (double sign : {1.0, -1.0}) {
+            float s[4];
+            settings(c.hz, sign * c.db, c.q, 0, s);
+            double worst = 0.0, where = 0.0, atFreq = 0.0;
+            std::vector<double> at = points;
+            at.push_back(c.hz);
+            for (double f : at) {
+                const std::vector<float> in = sineOf(f, 0.25, frames), out = throughOne(band, s, in);
+                const double got = dB(rmsOf(out, frames - 48000) / rmsOf(in, frames - 48000)), gap = std::fabs(got - analogue(c.hz, sign * c.db, c.q, f));
+                if (gap > worst) worst = gap, where = f;
+                if (f == c.hz) atFreq = got;
+            }
+            SAY("band     matched BELL %5.0f Hz %+3.0f dB Q %4.1f: %+.2f dB at FREQ, the worst %.2f dB off the analogue (at %.0f Hz)\n", c.hz, sign * c.db, c.q, atFreq, worst, where);
+            CHECK(worst < c.most);
+            CHECK(std::fabs(atFreq - sign * c.db) < 0.05); // (matched there exactly)
+        }
+    }
+    // At 0 dB it is the plain numbers, to the bit, high up too: a click comes out a click and then exact zeros
+    // (worked out by the matched sums instead, m1 comes out a hair off 0 and the ring leaks into the zeros after it).
+    for (double hz : {16000.0, 20000.0, 1000.0}) {
+        for (double q : {0.3, 1.5, 30.0}) {
+            float s[4];
+            settings(hz, 0.0, q, 0, s);
+            std::vector<float> click(4800, 0.f);
+            click[100] = 0.9f, click[101] = -0.4f;
+            CHECK(throughOne(band, s, click) == click);
+        }
+    }
+    // A change of SHAPE from a bell at its furthest (its gain at 24 kHz far from 1, or its poles closest to the
+    // circle) to each other shape and back holds: every step of the fade is a filter (g and k over 0), noise in,
+    // nothing out much louder than the louder of the two ends.
+    {
+        const double bells[][3] = {{20000.0, 12.0, 0.3}, {20000.0, -12.0, 0.3}, {20.0, 12.0, 30.0}, {16000.0, -12.0, 30.0}};
+        double worstShare = 0.0;
+        for (const auto& b : bells) {
+            for (int other = 1; other < 4; ++other) {
+                std::unique_ptr<Effect> fx = makeEffect(band, 48000.f, 120.f);
+                float s[4];
+                settings(b[0], b[1], b[2], 0, s);
+                for (int i = 0; i < 4; ++i) fx->setParam(i, s[i]);
+                std::vector<float> left(4 * 9600), right;
+                Noise n(5u);
+                for (float& v : left) v = 0.25f * n.next();
+                right = left;
+                float loudest = 0.f;
+                for (int part = 0; part < 4; ++part) {
+                    if (part == 1) fx->setParam(3, (static_cast<float>(other) + 0.5f) / 4.f);
+                    if (part == 3) fx->setParam(3, 0.125f);
+                    fx->process(left.data() + part * 9600, right.data() + part * 9600, 9600);
+                }
+                for (float v : left) loudest = std::isfinite(v) ? std::fmax(loudest, std::fabs(v)) : 1e30f;
+                worstShare = std::fmax(worstShare, static_cast<double>(loudest) / 0.25);
+            }
+        }
+        SAY("band     a matched BELL's SHAPE faded to each other shape and back: the loudest out %.2f times the noise's loudest\n", worstShare);
+        CHECK(worstShare < 8.0);
+    }
+    // At a rate where 20 kHz is past half of it (the engine runs at 48 kHz; an effect can be made at any), a bell
+    // there is made at 0.45 of the rate, as svfG's corner: past half the rate a cut's damping goes under 0 and the
+    // filter runs away (at 32 kHz, Q 1.5: -3.5).
+    for (double db : {-12.0, 12.0}) {
+        for (double q : {0.3, 1.5, 30.0}) {
+            std::unique_ptr<Effect> fx = makeEffect(band, 32000.f, 120.f);
+            float s[4];
+            settings(20000.0, db, q, 0, s);
+            for (int i = 0; i < 4; ++i) fx->setParam(i, s[i]);
+            std::vector<float> left(16000), right;
+            Noise n(6u);
+            for (float& v : left) v = 0.25f * n.next();
+            right = left;
+            fx->process(left.data(), right.data(), 16000);
+            float loudest = 0.f;
+            for (float v : left) loudest = std::isfinite(v) ? std::fmax(loudest, std::fabs(v)) : 1e30f;
+            CHECK(loudest < 2.f);
+        }
+    }
+    // The matched sums are worked out on the TICK: the same to the bit however the sound is cut into blocks, with
+    // GAIN and FREQ turned while it sounds (every tick works them out), through a sleep and a waking.
+    {
+        std::vector<float> noise(48000);
+        Noise n(8u);
+        for (std::size_t i = 0; i < noise.size(); ++i) noise[i] = i >= 20000 && i < 30000 ? 0.f : 0.4f * n.next();
+        std::vector<float> whole;
+        for (int block : {256, 1, 7, 64}) {
+            std::unique_ptr<Effect> fx = makeEffect(band, 48000.f, 120.f);
+            float s[4];
+            settings(16000.0, 9.0, 2.0, 0, s);
+            for (int i = 0; i < 4; ++i) fx->setParam(i, s[i]);
+            std::vector<float> left = noise, right = noise;
+            const int ends[3] = {6000, 12000, 48000}; // turned at the same samples however it is cut
+            for (int part = 0, at = 0; part < 3; ++part) {
+                if (part == 1) fx->setParam(1, 0.1f);  // GAIN down to -9.6 dB
+                if (part == 2) fx->setParam(0, 0.95f); // FREQ up to 14 kHz
+                for (; at < ends[part]; at += std::min(block, ends[part] - at)) fx->process(left.data() + at, right.data() + at, std::min(block, ends[part] - at));
+            }
+            if (whole.empty()) whole = left;
+            CHECK(left == whole && left != noise);
+        }
+    }
+}
+
 // PITCH (2026-11-24): a pitch shifter, a TYPE of MOD. MIX full: a 440 Hz tone comes out an octave up (880), an octave
 // down (220), a fifth up (659), as near as the pitch can be read; PITCH is a choice of 25 (-12..+12) read in
 // semitones; MIX 0 is the sound untouched to the sample.
@@ -8394,6 +8528,334 @@ static void testPitch() {
     CHECK(std::fabs(dB(rmsOf(o, 24000) / rmsOf(in, 24000))) < 3.0);
     const float none[4] = {0.98f, 0.5f, 0.4f, 0.f};
     CHECK(throughOne(pitch, none, in) == in);
+}
+
+// A HELD NOTE THROUGH PITCH, MIX full: how far its level strays from steady, in dB against its median. A sine of
+// 0.5 is held 1.3 s; from 0.3 s on its size is read at every sample, from the sample and its two neighbours (a
+// sine's own: y^2 + ((y[n+1] - y[n-1]) / (2 sin w))^2, w the shifted pitch), as a mean over 1 ms, so a dip of a
+// few ms shows even on a 40 Hz note, whose own cycle is 25 ms. `level`: the median against the 0.5 that went in.
+struct HeldLevel {
+    double dip = 0.0, bump = 0.0, level = 0.0;
+};
+// The size of a sine of `hz` in `y`, read as above at every sample from `from` to `to`, against its median.
+static HeldLevel strayOf(const std::vector<float>& y, double hz, std::size_t from, std::size_t to) {
+    const std::size_t mean = 48;
+    const double d = 2.0 * std::sin(2.0 * kPi * hz / 48000.0);
+    std::vector<double> power(y.size(), 0.0), sizes;
+    for (std::size_t i = 1; i + 1 < y.size(); ++i) {
+        const double slope = (static_cast<double>(y[i + 1]) - y[i - 1]) / d;
+        power[i] = static_cast<double>(y[i]) * y[i] + slope * slope;
+    }
+    double sum = 0.0;
+    for (std::size_t i = from - mean; i < to; ++i) {
+        sum += power[i] - (i >= from ? power[i - mean] : 0.0);
+        if (i >= from) sizes.push_back(std::sqrt(std::fmax(sum, 0.0) / static_cast<double>(mean)));
+    }
+    std::sort(sizes.begin(), sizes.end());
+    const double median = sizes[sizes.size() / 2];
+    HeldLevel h;
+    h.dip = dB(sizes.front() / median);
+    h.bump = dB(sizes.back() / median);
+    h.level = dB(median / 0.5);
+    return h;
+}
+// `turning` 1: GRAIN turned all the while instead, every 64 samples, from 120 ms down to 20 in 50 steps and back at
+// once; 2: GRAIN 120 ms turned to 20 at once at 0.6 s.
+static HeldLevel heldThroughPitch(int semis, double hz, float grain = 0.4f, int turning = 0) {
+    const float s[4] = {(static_cast<float>(semis + 12) + 0.5f) / 25.f, 0.5f, grain, 1.f};
+    const std::size_t frames = 62400, from = 14400;
+    std::vector<float> y = throughOne(EffectKind::Pitch, s, sineOf(hz, 0.5, frames));
+    if (turning) {
+        std::unique_ptr<Effect> fx = fresh(EffectKind::Pitch, s[0], s[1], 1.f, s[3]);
+        std::vector<float> right = sineOf(hz, 0.5, frames);
+        y = right;
+        for (std::size_t at = 0; at < frames; at += 64) {
+            if (turning == 1) fx->setParam(2, 1.f - static_cast<float>(at / 64 % 50) / 50.f);
+            if (turning == 2 && at == 28800) fx->setParam(2, 0.f);
+            fx->process(y.data() + at, right.data() + at, static_cast<int>(std::min<std::size_t>(64, frames - at)));
+        }
+    }
+    return strayOf(y, hz * std::pow(2.0, semis / 12.0), from, frames - 1);
+}
+
+// A NEW NOTE AFTER THE HEAD WAS SENT OFF ITS SPLICE: a sine of `before` held at -12, GRAIN 20 ms, MIX full; at `turn`,
+// GRAIN turned to 120 ms, which sends the place the head splices at 100 ms further off. `stop`: PITCH turned to 0 with
+// it (the head stands still short of its splice), held 0.5 s, then to -5. A sine of `after` instead a little later
+// (10 ms on; stopping, 0.25 s). Its size from when the head reads the new note alone (175 ms on; stopping, 0.1 s
+// after -5) for 1.4 s, through the first splice after the turn and some after.
+static HeldLevel newNoteThroughPitch(double before, double after, std::size_t turn, bool stop) {
+    const auto semis = [](int st) { return (static_cast<float>(st + 12) + 0.5f) / 25.f; };
+    std::unique_ptr<Effect> fx = fresh(EffectKind::Pitch, semis(-12), 0.5f, 0.f, 1.f);
+    const std::size_t back = turn + 24000, change = stop ? turn + 12000 : turn + 480, from = stop ? back + 4800 : turn + 8400, to = from + 67200;
+    std::vector<float> y(to + 64), right;
+    double phase = 0.0;
+    for (std::size_t i = 0; i < y.size(); ++i) {
+        y[i] = static_cast<float>(0.5 * std::sin(phase));
+        phase += 2.0 * kPi * (i < change ? before : after) / 48000.0;
+    }
+    right = y;
+    for (std::size_t at = 0; at < y.size(); at += 64) {
+        if (at == turn) {
+            fx->setParam(2, 1.f);
+            if (stop) fx->setParam(0, semis(0));
+        }
+        if (stop && at == back) fx->setParam(0, semis(-5));
+        fx->process(y.data() + at, right.data() + at, static_cast<int>(std::min<std::size_t>(64, y.size() - at)));
+    }
+    return strayOf(y, after * std::pow(2.0, (stop ? -5 : -12) / 12.0), from, to);
+}
+
+// A SEARCH CAUGHT BY THE STOP: a sine of 220 Hz at -12, GRAIN 120 ms, MIX full; at 6400 samples PITCH turned to 0, so
+// the head stops short of its place, no search under way; at `shorter`, GRAIN turned to 20 ms, which brings the place
+// in behind the head and starts a search late (a share a tick: the head has all the time it likes). The speed lands on
+// 0 some 12300 samples after the turn; a search begun in the 32 ticks before it is caught half done. 0.4 s after the
+// turn a sine of 329.6 Hz instead; at 0.6 s FINE to -50 cents (PITCH still 0), and the head splices at once. The new
+// note's size from then for 1 s (read at -50 cents: while FINE glides there it reads up to 0.26 dB out).
+static HeldLevel caughtByTheStop(std::size_t shorter) {
+    std::unique_ptr<Effect> fx = fresh(EffectKind::Pitch, 0.5f / 25.f, 0.5f, 1.f, 1.f);
+    const std::size_t stop = 6400, change = stop + 19200, back = stop + 28800, to = back + 48000;
+    std::vector<float> y(to + 64), right;
+    double phase = 0.0;
+    for (std::size_t i = 0; i < y.size(); ++i) {
+        y[i] = static_cast<float>(0.5 * std::sin(phase));
+        phase += 2.0 * kPi * (i < change ? 220.0 : 329.6) / 48000.0;
+    }
+    right = y;
+    for (std::size_t at = 0; at < y.size(); at += 64) {
+        if (at == stop) fx->setParam(0, 12.5f / 25.f);
+        if (at == shorter) fx->setParam(2, 0.f);
+        if (at == back) fx->setParam(1, 0.f);
+        fx->process(y.data() + at, right.data() + at, static_cast<int>(std::min<std::size_t>(64, y.size() - at)));
+    }
+    return strayOf(y, 329.6 * std::pow(2.0, -0.5 / 12.0), back, to);
+}
+
+// THE FOLD-BACK OF A BRIGHT SOUND SHIFTED UP: a saw at `hz` with every harmonic up to 23 kHz (as a synth's), through
+// PITCH at `semis`, MIX full. What was over 24 kHz over the speed comes out over 24 kHz and folds back down between
+// the harmonics. The loudest fold-back landing under 16 kHz, in dB: what is within 60 Hz of where it lands, against
+// the same about the shifted first harmonic (in bands, as a grain shifter spreads every part a few hertz).
+static double foldBackOf(int hz, int semis) {
+    const std::size_t frames = 24000 + 65536;
+    std::vector<float> saw(frames, 0.f);
+    for (int k = 1; k * hz <= 23000; ++k) {
+        const double w = 2.0 * kPi * k * hz / 48000.0;
+        for (std::size_t i = 0; i < frames; ++i) saw[i] += static_cast<float>(0.3 / k * std::sin(w * static_cast<double>(i)));
+    }
+    const float s[4] = {(static_cast<float>(semis + 12) + 0.5f) / 25.f, 0.5f, 0.4f, 1.f};
+    const std::vector<float> out = throughOne(EffectKind::Pitch, s, saw);
+    const std::vector<double> size = spectrumOf(out.data() + 24000, 65536);
+    const double bin = 48000.0 / 65536.0, speed = std::pow(2.0, semis / 12.0);
+    const auto band = [&](double at) {
+        double p = 0.0;
+        for (std::size_t i = 0; i < size.size(); ++i)
+            if (std::fabs(static_cast<double>(i) * bin - at) <= 60.0) p += size[i] * size[i];
+        return p;
+    };
+    const double first = band(hz * speed);
+    double loudest = -600.0;
+    for (int k = 1; k * hz <= 23000; ++k) {
+        const double lands = 48000.0 - k * hz * speed;
+        if (k * hz * speed > 24000.0 && lands > 0.0 && lands < 16000.0) loudest = std::fmax(loudest, 10.0 * std::log10(band(lands) / first));
+    }
+    return loudest;
+}
+
+// PITCH'S MATCHED SPLICES AND ITS LOW-PASS (2026-11-24, after 0.877 shipped it with two heads half a GRAIN apart and
+// triangle fades). Each held note comes out at a steady level, at every shift: before, 35 of these 216 notes dipped
+// more than 6 dB, the worst 17.8 dB at 1016 Hz (the heads 30 ms apart there are half a cycle out), and 349 and 784 Hz
+// 16 to 19 dB (22 to 25 against the loudest: the scratch model that found them read 21 and 24). Now every one is
+// within 0.1 dB. Shifting up, what would fold back is low-passed
+// first. And the house rules, which PITCH had not been through.
+static void testPitchMatched() {
+    const EffectKind pitch = EffectKind::Pitch;
+    // HELD NOTES: 27 a shift, every whole tone from 80 Hz to 1.6 kHz, at eight shifts; the two the scratch model found
+    // worst; at the ends of GRAIN an octave up and down; and on up to 3.2 kHz, where a splice a sample out would show.
+    {
+        double worstDip = 0.0, worstBump = -600.0, lowest = 600.0, highest = -600.0;
+        int over6 = 0, notes = 0;
+        const auto hold = [&](int semis, double hz, float grain, int turning = 0) {
+            const HeldLevel h = heldThroughPitch(semis, hz, grain, turning);
+            worstDip = std::fmin(worstDip, h.dip), worstBump = std::fmax(worstBump, h.bump);
+            lowest = std::fmin(lowest, h.level), highest = std::fmax(highest, h.level);
+            over6 += h.dip < -6.0 ? 1 : 0;
+            ++notes;
+            return h;
+        };
+        for (int semis : {12, 7, 5, 3, -3, -5, -7, -12}) {
+            double dipHere = 0.0, hzThere = 0.0;
+            for (int k = 0; k <= 52; k += 2) {
+                const double hz = 80.0 * std::pow(2.0, k / 12.0);
+                const HeldLevel h = hold(semis, hz, 0.4f);
+                if (h.dip < dipHere) dipHere = h.dip, hzThere = hz;
+                if (gMeasure && (semis == 12 || semis == -12)) SAY("pitch    held %+3d at %6.1f Hz: dip %5.2f dB, bump %+5.2f, level %+5.2f\n", semis, hz, h.dip, h.bump, h.level);
+            }
+            SAY("pitch    held %+3d, 27 notes 80 Hz to 1.6 kHz: the deepest dip %.2f dB (at %.1f Hz)\n", semis, dipHere, hzThere);
+        }
+        for (int semis : {12, 7, -12})
+            for (double hz : {349.2, 784.0}) {
+                const HeldLevel h = hold(semis, hz, 0.4f);
+                SAY("pitch    held %+3d at %.1f Hz: dip %.2f dB, bump %+.2f\n", semis, hz, h.dip, h.bump);
+            }
+        for (float grain : {0.f, 1.f})
+            for (int semis : {12, -12})
+                for (double hz : {82.4, 110.0, 349.2, 784.0, 1318.5}) {
+                    const HeldLevel h = hold(semis, hz, grain);
+                    SAY("pitch    held %+3d at %6.1f Hz, GRAIN %3.0f ms: dip %.2f dB, bump %+.2f\n", semis, hz, 1000.0 * (0.02 + 0.1 * grain), h.dip, h.bump);
+                }
+        // GRAIN TURNED UNDER IT: shifting down, a GRAIN turned shorter brings the splice on early, so the head waits for
+        // its search and for the place it found to be behind the newest sample. Spliced at once: 7.5 dB at 220 Hz with
+        // GRAIN turned from 120 ms to 20 at once (a search a few ticks old: its best so far); turned all the while, the
+        // place found put at the line's start, out of step: 6.8 dB at 110 Hz.
+        for (int semis : {12, -5, -12})
+            for (double hz : {110.0, 174.6, 440.0, 1318.5}) {
+                const HeldLevel h = hold(semis, hz, 0.4f, 1);
+                SAY("pitch    held %+3d at %6.1f Hz, GRAIN turned all the while: dip %.2f dB, bump %+.2f\n", semis, hz, h.dip, h.bump);
+            }
+        for (int semis : {-5, -12})
+            for (double hz : {55.0, 65.4, 220.0}) {
+                const HeldLevel h = hold(semis, hz, 1.f, 2);
+                SAY("pitch    held %+3d at %6.1f Hz, GRAIN 120 ms turned to 20 at once: dip %.2f dB, bump %+.2f\n", semis, hz, h.dip, h.bump);
+            }
+        for (int semis : {12, 7, -12})
+            for (double hz : {1760.0, 2093.0, 2637.0, 3136.0}) {
+                const HeldLevel h = hold(semis, hz, 0.4f);
+                SAY("pitch    held %+3d at %.0f Hz: dip %.2f dB, bump %+.2f\n", semis, hz, h.dip, h.bump);
+            }
+        SAY("pitch    held: %d of %d dip more than 6 dB; the deepest dip %.2f dB, the highest bump %+.2f dB; the level %+.2f to %+.2f dB\n", over6, notes, worstDip, worstBump, lowest, highest);
+        CHECK(worstDip > -0.5 && worstBump < 0.5 && lowest > -0.5 && highest < 0.5);
+    }
+    // A CHORD, AND PARTS NOT IN TUNE WITH EACH OTHER (a bell's): what the splices spread off the shifted partials (more
+    // than 4 Hz from each), in dB of all of it. No place matches every part, so each splice moves some a little: before,
+    // the chord an octave up was -1.0 dB (most of it spread), the bell's -4.0; now -16.2 and -12.3. The fine pass is
+    // what does it for the bell (the rough pass alone, -6.1: its best is a sample or two out on every splice there).
+    {
+        const auto offParts = [&](int semis, std::initializer_list<double> parts) {
+            const std::size_t frames = 24000 + 65536;
+            std::vector<float> in(frames, 0.f);
+            for (double f : parts)
+                for (std::size_t i = 0; i < frames; ++i) in[i] += static_cast<float>(0.2 * std::sin(2.0 * kPi * f * static_cast<double>(i) / 48000.0));
+            const float s[4] = {(static_cast<float>(semis + 12) + 0.5f) / 25.f, 0.5f, 0.4f, 1.f};
+            const std::vector<float> out = throughOne(pitch, s, in);
+            const std::vector<double> size = spectrumOf(out.data() + 24000, 65536);
+            const double bin = 48000.0 / 65536.0, speed = std::pow(2.0, semis / 12.0);
+            double all = 0.0, on = 0.0;
+            for (std::size_t i = 1; i < size.size(); ++i) {
+                bool near = false;
+                for (double f : parts) near = near || std::fabs(static_cast<double>(i) * bin - f * speed) <= 4.0;
+                all += size[i] * size[i], on += near ? size[i] * size[i] : 0.0;
+            }
+            return 10.0 * std::log10((all - on) / all);
+        };
+        const double chord = offParts(12, {261.6, 329.6, 392.0, 493.9}), bell = offParts(12, {500.0, 1370.0, 2690.0, 4410.0});
+        SAY("pitch    an octave up, off the partials: C E G B %.1f dB; a bell's four %.1f dB\n", chord, bell);
+        CHECK(chord < -14.0 && bell < -10.0);
+    }
+    // THE FOLD-BACK: an octave-up saw. Its loudest fold-back under 16 kHz, today -24 to -33 dB (440, 660, 1300 Hz),
+    // now -52 to -57; a fifth up, under it too.
+    for (int hz : {440, 660, 1300}) {
+        const double up = foldBackOf(hz, 12);
+        SAY("pitch    a %d Hz saw an octave up: the loudest fold-back under 16 kHz %.1f dB\n", hz, up);
+        CHECK(up < -48.0);
+    }
+    {
+        const double fifth = foldBackOf(1300, 7);
+        SAY("pitch    a 1300 Hz saw a fifth up: the loudest fold-back under 16 kHz %.1f dB\n", fifth);
+        CHECK(fifth < -48.0);
+    }
+    // ...and the low-pass is on the line only shifting up, so the sound shifted down is as bright as it was: a
+    // 9 kHz sine an octave down comes out at 4.5 kHz as loud as an 800 Hz one does (at 400).
+    {
+        const float down[4] = {0.5f / 25.f, 0.5f, 0.4f, 1.f};
+        const std::vector<float> high = throughOne(pitch, down, sineOf(9000.0, 0.5, 72000)), low = throughOne(pitch, down, sineOf(800.0, 0.5, 72000));
+        const double h = partNear(high.data() + 24000, 48000, 4500.0), l = partNear(low.data() + 24000, 48000, 400.0);
+        SAY("pitch    an octave down: 9 kHz comes out %.2f dB against 800 Hz\n", dB(h / l));
+        CHECK(std::fabs(dB(h / l)) < 0.5);
+    }
+    // PITCH 0, FINE 0: the head stands still, half a GRAIN back from waking (and kLeast - 1): the sound 1442 samples
+    // late at GRAIN 60 ms, 2882 at 120 (within a hair: a GRAIN in float is not a whole number of samples).
+    for (float grain : {0.4f, 1.f}) {
+        const float still[4] = {12.5f / 25.f, 0.5f, grain, 1.f};
+        Noise noise(3u);
+        std::vector<float> in(48000);
+        for (float& v : in) v = 0.5f * noise.next();
+        const std::vector<float> out = throughOne(pitch, still, in);
+        const std::size_t late = static_cast<std::size_t>(std::lround(2.0 + 0.5 * (0.02 + 0.1 * grain) * 48000.0));
+        float apart = 0.f;
+        for (std::size_t i = 0; i < in.size(); ++i) apart = std::fmax(apart, std::fabs(out[i] - (i >= late ? in[i - late] : 0.f)));
+        SAY("pitch    PITCH 0, FINE 0, GRAIN %.0f ms: the sound %zu samples late, apart by %.1e at most\n", 1000.0 * (0.02 + 0.1 * grain), late, static_cast<double>(apart));
+        CHECK(apart < 1e-3f);
+    }
+    // THE SEARCH IS SPREAD OVER TICKS, by the clock (flush-to-zero off, as the tests run): noise through it in calls of
+    // one tick (16 samples), each tick's time the least of 7 runs (a busy machine only makes a run slower); the slowest
+    // tick against the middle one. +12 and 50 cents at GRAIN 20 ms splices most often; GRAIN turned all the while at -12
+    // keeps making the search late (it waits for it). Measured 2.2 and 4.7 times (done in one go, 11 and 16).
+    {
+        struct Way { float p[4]; bool turning; };
+        for (const Way& way : {Way{{24.5f / 25.f, 1.f, 0.f, 0.5f}, false}, Way{{0.5f / 25.f, 0.5f, 0.4f, 0.5f}, true}}) {
+            const int ticks = 1500;
+            std::vector<double> least(ticks, 1e30);
+            Noise noise(9u);
+            std::vector<float> in(ticks * 16);
+            for (float& v : in) v = 0.5f * noise.next();
+            for (int run = 0; run < 7; ++run) {
+                std::unique_ptr<Effect> e = fresh(pitch, way.p[0], way.p[1], way.p[2], way.p[3]);
+                float l[16], r[16];
+                for (int t = 0; t < ticks; ++t) {
+                    for (int i = 0; i < 16; ++i) l[i] = in[16 * t + i], r[i] = 0.5f * in[16 * t + i]; // (not -l: left and right added are matched)
+                    if (way.turning && t % 4 == 0) e->setParam(2, static_cast<float>(t / 4 % 50) / 50.f);
+                    const auto t0 = std::chrono::steady_clock::now();
+                    e->process(l, r, 16);
+                    least[t] = std::min(least[t], std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count());
+                }
+            }
+            std::vector<double> sorted(least.begin() + 100, least.end());
+            std::sort(sorted.begin(), sorted.end());
+            const double middle = sorted[sorted.size() / 2], slowest = sorted.back();
+            SAY("pitch    by the clock, %s: a tick %.2f us in the middle, %.2f at the slowest (%.1f times)\n", way.turning ? "-12, GRAIN turned all the while" : "+12 +50 cents, GRAIN 20 ms", middle, slowest, slowest / middle);
+            CHECK(slowest < 8.0 * middle);
+        }
+    }
+    // THE HOUSE RULES: an octave up (the low-pass on), and turned to an octave down and back across (the low-pass
+    // off and on again, the search started again the other way round).
+    const float set[4] = {24.5f / 25.f, 0.5f, 0.4f, 1.f}, other[4] = {0.5f / 25.f, 0.8f, 0.1f, 0.7f};
+    tickCountsAsleepAt(pitch, set, 1, 0.9f);
+    const RulesSeen seen = holdsTheRules(pitch, set, other, 4.5); // it sleeps four seconds after the last sound
+    SAY("pitch    +12: the last sample that is not zero %.2f s after a click\n", seen.lastAfterClick);
+    CHECK(seen.lastAfterClick < 0.2);
+    // Each setting turned end to end at once is no rougher than held still (today 0.93 to 1.09). PITCH turned up
+    // across 0 read a corner of 5.00 while the low-pass came on at 0.45 of the rate (a fraction of a sample late
+    // at once); its corner now rises to the top of the band as the speed comes down to 1.
+    for (int p = 0; p < 4; ++p) CHECK(seen.stepDown[p] < 1.2 && seen.cornerDown[p] < 1.2 && seen.stepUp[p] < 1.2 && seen.cornerUp[p] < 1.2);
+}
+
+// PITCH'S SEARCH GOES STALE (review of the matched splices, 2026-11-25). Shifting down, GRAIN turned longer sends the
+// place the head splices at further off (20 ms to 120: 0.2 s more at -12), and PITCH and FINE landing on 0 with it
+// stop the head short of it. The search for that splice was kept, and used whenever the head got there: matched to
+// the sound before, out of step with a note played since. 220 Hz at -12, GRAIN 20 ms, turned at each of 75 places 64
+// samples apart (a whole round of the head and more: a search is under way or done for its last 544 samples), then a
+// fifth up (newNoteThroughPitch). Before: a 9.4 dB dip at the next splice; stopped, 9.9. One note held through the
+// stop (the review's own case) was 0.02 either way: a place found on a held note is in step with it whenever found.
+// And a search caught half done by the stop was frozen, then went on reading a line written over since: 11.8 dB
+// (caughtByTheStop, GRAIN turned shorter at 41 places about where the speed lands on 0). Dropping a search sent far
+// off mends the first two (with only the stop mended, the first was still 9.4); forgetting it at the stop mends the
+// last (with only the dropping, still 11.8). Now 0.00, 0.00, 0.02, 0.01.
+static void testPitchStaleSearch() {
+    for (int way = 0; way < 4; ++way) {
+        // 0: GRAIN turned, the new note 10 ms on; 1: and PITCH to 0, the new note in the stop; 2: the same, one note;
+        // 3: caught by the stop.
+        const double before = 220.0, after = way == 2 ? 220.0 : 329.6;
+        const std::size_t first = way == 3 ? 6400 + 10880 : 28800, places = way == 3 ? 41 : 75;
+        double dip = 0.0, bump = -600.0;
+        std::size_t worstAt = 0;
+        for (std::size_t turn = first; turn < first + places * 64; turn += 64) {
+            const HeldLevel h = way == 3 ? caughtByTheStop(turn) : newNoteThroughPitch(before, after, turn, way > 0);
+            if (h.dip < dip) dip = h.dip, worstAt = turn;
+            bump = std::fmax(bump, h.bump);
+        }
+        static const char* const ways[4] = {"GRAIN 20 ms to 120 at -12, a new note", "...and PITCH to 0, held 0.5 s, then -5, a new note in the stop", "...the same, one note held", "a search caught half done by the stop, a new note"};
+        SAY("pitch    %s: the deepest dip %.2f dB (turned at %zu), the highest bump %+.2f\n", ways[way], dip, worstAt, bump);
+        CHECK(dip > -0.5 && bump < 0.5);
+    }
 }
 
 static void testVowel() {
@@ -11585,7 +12047,10 @@ int main(int argc, char** argv) {
         {"testShimmer", testShimmer},
         {"testWah", testWah},
         {"testBand", testBand},
+        {"testBandMatched", testBandMatched},
         {"testPitch", testPitch},
+        {"testPitchMatched", testPitchMatched},
+        {"testPitchStaleSearch", testPitchStaleSearch},
     };
     // `effects_test --part 1` and `--part 2`: ctest runs it as two tests, each about half the time,
     // so neither comes near its two minutes on a busy machine. Part 2 is everything from
