@@ -4,7 +4,7 @@
 // on to the last scene with anything in it, then comes round.
 //
 // The same rule as everywhere: the stick moves, A acts, hold A and the stick
-// turns the thing under the cursor, B removes.
+// turns the thing under the cursor, B deletes or empties.
 //
 //   on a cell          A opens it on the Pattern screen. B empties it (on its let go; held, it deletes the track).
 //                      Hold A + stick left / right: how long it is, 1, 2, 4
@@ -12,11 +12,13 @@
 //                      (the stick up / down: an octave; Session::transposeCell). The scene lasts as long as its longest
 //                      cell; a shorter one goes round under it, and is
 //                      drawn once with a LOOPS mark.
-//                      R1 copies it; R1 on another cell pastes it there (on its let go).
+//                      R1 copies it; R1 on another cell pastes it there (on its let go), and the
+//                      copy stays (brass) for the next; R1 on the copied cell clears it (G23).
 //   on a repeat count  (the column left of the tracks) hold A + stick up /
 //                      down: how many times the scene plays. Tap A: 1, 2, 4, 8.
-//                      R1 copies the whole scene; R1 on another row pastes it there (on its let go).
-//                      Hold B a second: empty the whole scene (one step of undo).
+//                      R1 copies the whole scene; R1 on another row pastes it there (on its let go),
+//                      and the copy stays, as a cell's. Hold B half a second (G29): empty the whole
+//                      scene (one step of undo).
 //   on + TRACK         A, then pick the instrument: drums, Phazed, JAX-EP...
 //   on a track's head  (up from the top scene) tap A: its instrument. R1, on its let go: its name.
 //                      Hold B: delete it.
@@ -29,11 +31,12 @@
 //                      There is no "save": the song is kept as you go.
 //     L1 in the list   files over WiFi, on or off. On, it shows an address to
 //                      open in a browser on the same network.
-//     X in the list    save a rev: the song as it is now, to come back to.
-//     Y on the open song   a new name for it (two words, rolled again each press)
+//     Y in the list    save a rev: the song as it is now, to come back to (X hears).
+//     NEW NAME         (the open song's revs, second row) A: a new name for it (two words, rolled
+//                      again each press)
 //     hold B on a song     delete it: hold for a second while the row fills.
 //                      It goes to a "deleted" folder on the card, not to nothing.
-//                      A tap of B only closes the list.
+//                      A tap of B only closes the list. START plays and stops with it open (G39).
 //     A on the open song   its revs. A on one goes back to it; where the
 //                      song was is kept as a rev first.
 

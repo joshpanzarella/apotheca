@@ -90,11 +90,11 @@ Hold a button and the stick shapes the thing under the cursor:
 | --- | --- |
 | Nothing | Moves the cursor |
 | A | Turns the value: it fills or drains |
-| Y | Chance, on the drum grid |
+| Y | Chance, on the drum grid. On FX: up / down moves the line under the cursor; on BAND's FREQ, GAIN or Q, across is FREQ and up / down GAIN (or Q) |
 
 **Hold MENU (the small button in the middle) and a help card comes up**: what the buttons do
 on every screen (X hears what is under the cursor, on SONG it solos the track; the stick and D-pad
-move, A, B, START, L2 / R2, what SELECT does with other buttons, how to
+move, A, B, START, L2 / R2, SELECT tapped and what SELECT does with other buttons, how to
 stop all sound), and the **battery**. Let go and it closes. On a handheld whose firmware keeps MENU for
 itself, holding SELECT by itself for a moment does it instead. Press another button with SELECT (SELECT
 + B to undo, the D-pad for the tempo...) and the card stays away until SELECT is let go, so what that
@@ -240,8 +240,8 @@ column. It opens in the folder of the recording that is on, on it.
 
 | Button | Does |
 | --- | --- |
-| Up / down | The next in the column. A recording goes on **at once**: with the song playing you hear it in the beat; stopped, **half of it plays** (from where it plays from: the sampler's START), and it stops as soon as the cursor moves on. Held: a steady pace, faster after a second and a half |
-| The stick | Big moves: up to fifteen rows a second pushed all the way. Going by that fast, the one you stop on goes on, not each one passed |
+| Up / down | The next in the column. A recording goes on **at once**: with the song playing you hear it in the beat; stopped, **half of it plays** (from where it plays from: the sampler's START), and it stops as soon as the cursor moves on. Held: a steady pace, faster after a second and a half, and faster again after three and a half |
+| The stick | Big moves: up to sixty rows a second pushed all the way (at STICK SPEED 75%; it scales with the setting). Going by that fast, the one you stop on goes on, not each one passed |
 | Left / right | Out to the folder this one is in / into the folder under the cursor |
 | **L1 / R1** | A page up / down. (With nothing at all on the card, R1 records: below) |
 | **Hold R1** | On a recording: **carry it**. Keep R1 down and steer (D-pad, stick, L1) to a folder, or into one; let go and it is there. The top line says where it would go. Let go on a row of SAMPLES that is no folder: out of every folder. **B with R1 held calls it off** |
@@ -714,7 +714,7 @@ designer".
   a list (SETUP).
 
 A song keeps the whole sound of each track, not only the preset's number,
-so a song still sounds right if a preset is later changed or removed.
+so a song still sounds right if a preset is later changed or deleted.
 
 ## Presets
 
@@ -866,7 +866,7 @@ another on the ECHO bus, at 40 BPM, would ring for about twelve minutes, since
 the first keeps the second fed. That bounce stops at eight minutes, faded.
 
 If the handheld loses power in the middle of a bounce, the half-written file
-is removed the next time Apotheca opens, or the next time a bounce starts.
+is deleted the next time Apotheca opens, or the next time a bounce starts.
 
 While it works the row says `WORKING 37%`: how much of the song's own playing
 is done. In a tail it says `TAIL 12 S` instead: how many seconds of tail so
@@ -1899,11 +1899,12 @@ A few things mean one thing everywhere:
 | | Means |
 | --- | --- |
 | A | Place, open, pick. Held: a direction shapes or turns what is under the cursor |
-| B | Delete, empty, go back |
+| B | Delete, empty, go back. On a setting: its usual value (a synth's pages: back to MAIN). With A still held after stepping sounds or trying effects (or Y on a chord): back to what was there when it went down |
 | **Hold B** | **Delete for good**: a track (2 s), a song (1 s), a recording in the list (1 s), one of your own presets or kits (1 s), an update sent over WiFi (1 s). The row fills as you hold; let go early and nothing happens. **What SELECT + B can bring back takes half a second**: an effect, a MOD, a scene emptied, EDIT's or VOICE's every box back (there the words say DELETING or empty, not CANNOT BE UNDONE) |
 | X | Hear it, **for as long as X is held** (a tap: a moment), and over the song while it plays. A drum hit plays whole, as the pattern plays it. Held on a drum hit: its step effects. Held on a knob: its MOD |
 | Hold R1 | On an empty step: paint as you drag. On a note: carry it. On SONG (a tap): copy a cell; R1 on another cell pastes it there, and the copy stays for the next |
-| L2 / R2 | The tabs |
+| Y | The screen's own job: chance, a chord, a mute, a catch, a roll of the dice. Held on one of FX's lines, up / down moves the effect |
+| L2 / R2 | The tabs, round the ends (L2 on SONG is SET) |
 | **L3** (press the stick in) | **The SONG screen with MASTER under the cursor**: hold A + up / down is the output's level at once, whatever the handheld's own volume. L3 again (still on MASTER): back where you were. Only where the controls setup learned it (it asks for it after the stick) |
 | SELECT + something | Things about the whole song: undo, tempo, volume, WRITE, the scene's length, the next scene |
 
@@ -2420,7 +2421,7 @@ different one.
 name. Chords never overlap in time.
 
 - Cursor on one of its notes: hold A to set the level and length of the
-  whole chord, B to remove it.
+  whole chord, B to delete it.
 - Cursor anywhere in its steps: hold Y to swap it for another chord in
   place. **B while Y is held puts it back as it was** when Y went down
   (its chord, inversion and length, and the pack), so chords can be tried

@@ -8,7 +8,8 @@
 # text promise BEST QUALITY: a bounce is the song as it plays (no synth has a
 # quality to turn up; the mend of batches 8a to 8c).
 # And the word is "delete" (the UI audit, 2026-11-11; gesture audit G10, 2026-11-24): no text of the
-# app says erase, remove or rub out (a cell is "emptied").
+# app says erase, remove or rub out (a cell is "emptied"). Nor do the manual and README.md, comments and
+# all: a player reads them (gesture audit C4-docs, 2026-11-25: the roll's chord said "B to remove it").
 # FM-6 (owner, 2026-11-15) is "after a classic 80s synth": no Yamaha, no DX7
 # either (the copied-in FM core under third_party/msfa is read with the rest).
 # The engine's texts are read for those names too (preset and folder names
@@ -156,8 +157,17 @@ engine() {
     done
 }
 
+# The word in what a player reads beside the program: delete, not erase, remove or rub out (as scan() holds
+# the app's texts to it). Every line of them, as makers() reads them.
+deleteWord() {
+    for f in "$1"/../README.md "$1"/../docs/manual.md; do
+        [ -f "$f" ] || continue
+        grep -n -i -E '(^|[^a-z])(eras(e|es|ed|ing)|remov(e|es|ed|ing)|rub(s|bed|bing)? out)([^a-z]|$)' "$f" | sed "s|^|$f: not the word (delete, or empty): |"
+    done
+}
+
 # Everything looked for, in the app's folder or in a plant's: the one list both are read by.
-faults() { scan "$1"; makers "$1"; engine "$1"; }
+faults() { scan "$1"; makers "$1"; deleteWord "$1"; engine "$1"; }
 
 bad=$(faults "$app")
 if [ -n "$bad" ]; then
@@ -303,6 +313,17 @@ plant a-remove x.cpp caught <<'PLANT'
 PLANT
 plant a-rub-out x.cpp caught <<'PLANT'
     const char* words = "B rubs out the last letter";
+PLANT
+plant a-remove-in-the-manual ../docs/manual.md caught <<'PLANT'
+- Cursor on one of its notes: hold A to set the level and length of the
+  whole chord, B to remove it.
+PLANT
+plant an-erase-in-the-readme ../README.md caught <<'PLANT'
+Hold B to erase a hit.
+PLANT
+plant what-the-manual-may-say ../docs/manual.md clean <<'PLANT'
+- Cursor on one of its notes: B to delete it. A cell is emptied.
+The ERASER, a REMOVAL van and a RUBBER stamp are no words for B.
 PLANT
 plant the-bass-boxs-model ../engine/src/acid.cpp caught <<'PLANT'
     {"Classic TB-303", "CLASSIC", {0}},

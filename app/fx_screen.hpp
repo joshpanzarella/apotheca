@@ -34,21 +34,21 @@
 //                    was, every setting and all its automation.
 //                    Hold B on an effect's line: a bar fills, and when it
 //                    is full (half a second, G29) the effect is deleted, with its
-//                    settings and its automation. It cannot be undone, and
-//                    the heading says so while the bar fills. Let go sooner
-//                    and nothing goes. (On SENDS a tap of B: nothing sent.)
+//                    settings and its automation. SEL + B brings it back (G10);
+//                    the heading says DELETING THIS EFFECT while the bar fills.
+//                    Let go sooner and nothing goes. (On SENDS a tap of B: nothing sent.)
 //                    Hold Y on one of the track's own lines: up / down moves
 //                    it there, settings, automation and MODs with it. The
 //                    cursor goes with it; the ends stop. One step of undo.
 //                    (The buses' and the master's never move.)
-//   in the settings  up / down: the next setting. Right: the slot's next TYPE (COMP to DUCK); left: the
-//                    type before, except on the first setting, where left is back to the list (and on
-//                    a family of one, or the sends, left is back to the list from any setting). The ends
-//                    stop. The cursor stays on its row. A type switched back to comes back with the
-//                    settings it was left with (switchEffectType).
+//   in the settings  up / down: the next setting. Left: back to the list, from any setting; right
+//                    does nothing (owner, 2026-11-14: LEFT doing two jobs was awkward).
+//                    Hold A + left / right: the slot's TYPE before / after (COMP to DUCK; stepType).
+//                    The ends stop. The cursor stays on its row. A type switched back to comes back
+//                    with the settings it was left with (switchEffectType).
 //                    Hold A + stick up / down turns it; the D-pad moves it a
-//                    twentieth, or to the next choice. B: its usual value
-//                    (a send: nothing sent).
+//                    twentieth (BAND's FREQ a thirtieth: a third of an octave),
+//                    or to the next choice. B: its usual value (a send: nothing sent).
 //                    Hold Y on BAND's FREQ, GAIN or Q: left / right is FREQ and
 //                    up / down GAIN (on Q, Q), the stick and the D-pad alike,
 //                    both at once on the stick (bandGrip). The cursor stays.

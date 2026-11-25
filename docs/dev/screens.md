@@ -13,6 +13,12 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
 - **The FX screen is two columns: a list of eight lines, always all in view,
   and the line picked drawn large** (owner, 2026-11-12; the EVERYTHING page
   was never found, so there is no second page and Y does nothing there).
+  **Y has had two jobs here since** (added beside the owner's note, not in it): hold Y + UP / DOWN on one
+  of the track's own three lines moves its effect there (`moveEffectSlot`, commit ff7080c, 2026-11-21, no
+  owner record; the bar says `HOLD Y move`), and hold Y on BAND's FREQ, GAIN or Q moves the band two ways
+  (gesture audit G18, below). Y does nothing anywhere else on FX. The move is a standard since G37
+  (2026-11-25): CLAUDE.md's "hold Y + a direction moves a line where R1 is taken" (below, "The buttons'
+  standards, as the gesture batches left them").
   The lines (`FxScreen::goTo(row, column)`): 0 to 2 the track's slots, 3 its
   SENDS (`kSendsRow`: not a slot, so `data(row)` is not for it), 4 and 5 the
   buses (`kBusRow`), 6 and 7 the master (`kMasterRow`). **Column 0 is the line
@@ -451,7 +457,30 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   roll's clicks go twice as fast (FEEL's six clicks end to end in about 0.8 s, held or with the stick
   at 75%). FX's list of effects ran at a bare 200 ms; it runs at the list's 110 (it reaches its end in
   less than a second held). **The list of recordings' faster paces are named in `ui.hpp` as the one
-  exception** (`kRecordings...`). CLAUDE.md's "two speeds" line is the owner's to change.
+  exception** (`kRecordings...`). CLAUDE.md's "two speeds" line is the owner's to change (changed in
+  C4-docs, next).
+- **The buttons' standards, as the gesture batches left them** (CLAUDE.md, gesture audit C4-docs,
+  2026-11-25, under the owner's "any of my decisions can be reversed if there is a more logical method",
+  2026-11-24). The standards are what a new screen copies, so they follow what the batches built; each
+  line's reasoning is in the batch's own note, named here.
+  - **"A held D-pad has two speeds, in `ui.hpp`: `kCursor...` for cursors, `kList...` for lists and
+    choices"** became three paces through `ui::Repeat` (Cursor, List, Click), the recordings list named
+    as the one exception, and the stick's climb on a cursor (G08, G32, G07 above). A new screen written
+    to "two speeds" would have hand-rolled its own repeat and clicked at a cursor's or a list's pace.
+  - **"Hold B deletes for good"** became "Hold B deletes", with the two lengths: since G29 the half-second
+    holds (an effect, a MOD, a scene emptied, EDIT's and VOICE's every box) are undone by SEL + B, so
+    "for good" was wrong for them, and the bar's length is what says which kind it is.
+  - **"Hold Y + a direction moves a line where R1 is taken"** is new (gesture audit G37). Carrying is hold
+    R1's job, but on FX R1 is the track key (owner, 2026-11-14, above), and the move there had been hold
+    Y + UP / DOWN since ff7080c with no standard: a new screen with R1 taken now has one gesture to reuse.
+    It says "where R1 is taken" because on the drum grid hold Y + a direction is already the exact chance,
+    a hit's slice and the lane dice (`PatternScreen::nudgeExact`), and the roll's hold Y is the chord.
+  - Brought in line, each from its own batch: L2 / R2 go round and a long list goes round on a press (G35);
+    SELECT's combos on every tab (G03); the copy stays after a paste, on SONG and the grids (G23); a stick
+    move is a use of L1 (G31); B during a held pick puts back what it found (G12, G26; the mixer's reset
+    stays, owner 2026-11-14); B on a setting is its usual value, a synth page's still goes back (G17);
+    one set of name keys with every button theirs (G01), Y held deleting on (G48); X heard as long as held,
+    over the song (G33).
 - **The list of instruments stands higher when it must** (`SongScreen::listTop`): six rows and what
   goes said under them (another instrument for a track) reached past the hints bar from `kListY`
   (70), so the box rises to end `kListBottom` (8 above the bar); adding a track it stands at 70 as

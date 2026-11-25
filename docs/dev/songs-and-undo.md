@@ -57,7 +57,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   scene, a step of undo; it said delete), and the help card's **UNDO the last change (20 deep)** (it
   said "to the patterns"). `app_test` `testHoldBDeletesAnEffect` takes the deleted effect back with SEL
   + B. `ctest -R words` fails a text that says erase, remove or rub out (the word is delete; a cell
-  is emptied).
+  is emptied), and since C4-docs (2026-11-25) the same words anywhere in the manual or README.md (the
+  roll's chord said "B to remove it"; the three are now "delete"), with plants of its own.
 - **A recording is a step of undo** (gesture audit G04, 2026-11-25): a drum lane's (with its FIT, cut
   and voice), a sampler's and a CLOUD's. So CATCH, B on SOUND, a pick, a take (R1) and a kit or preset
   put on are put back by SEL + B. Before, this file said "Tempo, mutes, names, **the kit's recordings**
