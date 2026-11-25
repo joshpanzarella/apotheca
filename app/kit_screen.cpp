@@ -32,10 +32,6 @@ int laneFitFor(float seconds, float tempo, int meter) {
 
 const char* laneChokeText(int group) { return group == kChokeNone ? "NONE" : group == 1 ? "1" : "2"; }
 
-namespace {
-constexpr float kStepsPerSecond = 8.f; // the stick with A held: slow enough to hear each sound
-}
-
 // X held: it sounds until X is let go, or to its end (a tap: Session::kAuditionMs). Otherwise (a
 // sound arrived on, by the list or A held) the whole of it, as a hit.
 void KitScreen::hear(bool held) {
@@ -412,31 +408,30 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
         saidUntil_ = nowMs + 3000;
     }
     if (!said_.empty() && nowMs >= saidUntil_) said_.clear();
-    // One move at once, then at a steady rate. With A held only up / down counts.
+    // One move at once, then at twice the held D-pad's pace however far it is pushed: the lanes and columns a
+    // cursor's, with A held (the sounds, FIT, CHOKE, the kits) a list's. With A held only up / down counts.
     if (stickWait_ && input.stickX() == 0.f && input.stickY() == 0.f) stickWait_ = false; // (back in the middle after a put-back)
     const float x = holding_ || stickWait_ ? 0.f : input.stickX(), y = stickWait_ ? 0.f : input.stickY();
     const bool sideways = std::fabs(x) > std::fabs(y);
     const float push = sideways ? x : y;
-    // The cursor climbs on a full push held (G07); with A held it is the list of sounds, slow enough to hear each.
-    const float climb = climb_.times(holding_ ? 0.f : push, nowMs);
+    const Pace runs = holding_ ? Pace::List : Pace::Cursor;
     if (push == 0.f) {
         saved_ = 0.f;
         stickWas_ = false;
     } else {
-        saved_ += stickWas_ ? std::fabs(push) * kStepsPerSecond * (holding_ ? 1.f : 2.f * climb) * dt : 1.f;
+        saved_ += stickWas_ ? stickPerSecond(runs) * dt : 1.f;
         stickWas_ = true;
         for (; saved_ >= 1.f; saved_ -= 1.f)
             press(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
     }
     // A held D-pad: the lanes and columns are a cursor (gesture audit G08: they ran at the list's pace); with A
     // held it steps the sounds, FIT and CHOKE (and on the KIT stop the kits) at the list's, to hear each.
-    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), holding_ ? Pace::List : Pace::Cursor)) press(repeating_);
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), runs)) press(repeating_);
 }
 
 // ---- EDIT ------------------------------------------------------------------------------
 
 namespace {
-constexpr float kEditMovesPerSecond = 14.f; // the stick among the boxes, as on the sampler's page
 // How far along its bar a box stands (below 0: no bar), and whether the bar grows from the middle.
 float editPart(const LaneEdit& e, int row) {
     const int v = laneEditValue(e, row);
@@ -556,13 +551,15 @@ void KitScreen::editUpdate(const Input& input, Uint32 nowMs, float dt) {
     const float x = input.stickX(), y = input.stickY();
     const float seconds = session_.laneSound(project_.track, lane_).sourceSeconds;
     if (holding_) {
-        // A box: the stick turns it through its whole range in about a second, by the square of the push.
+        // A box: the stick turns it through its whole range in about a second (times STICK SPEED), however far it is
+        // pushed (owner, 2026-11-25; it was by the square of the push).
         const LaneEdit& e = trk().laneEdit[lane_];
-        if (editRow_ == kEditReverse) { // a choice: once a push
-            if (std::fabs(y) > 0.5f && !reversePushed_) setEdit(laneEditWith(e, kEditReverse, y < 0.f ? 1 : 0));
-            reversePushed_ = std::fabs(y) > 0.5f;
+        if (editRow_ == kEditReverse) { // a choice, up ON and down OFF: once a push (not by a sideways one that drifts)
+            const float upDown = stickAxes(x, y).y;
+            if (upDown != 0.f && !reversePushed_) setEdit(laneEditWith(e, kEditReverse, upDown < 0.f ? 1 : 0));
+            reversePushed_ = upDown != 0.f;
         } else {
-            turned_ += -y * std::fabs(y) * static_cast<float>(laneEditRange(editRow_)) * dt;
+            turned_ += -stickWay(y) * static_cast<float>(laneEditRange(editRow_)) * dt;
             const int whole = static_cast<int>(turned_);
             if (whole != 0) {
                 turned_ -= static_cast<float>(whole);
@@ -578,14 +575,14 @@ void KitScreen::editUpdate(const Input& input, Uint32 nowMs, float dt) {
             if (y == 0.f) turned_ = 0.f;
         }
     } else {
+        // The boxes: one at once, then at twice the held D-pad's pace (the cursor's), however far it is pushed.
         const bool sideways = std::fabs(x) > std::fabs(y);
         const float push = sideways ? x : y;
-        const float climb = climb_.times(push, nowMs); // the cursor among the boxes: a full push held climbs (G07)
         if (push == 0.f) {
             saved_ = 0.f;
             stickWas_ = false;
         } else {
-            saved_ += stickWas_ ? std::fabs(push) * kEditMovesPerSecond * climb * dt : 1.f;
+            saved_ += stickWas_ ? stickPerSecond(Pace::Cursor) * dt : 1.f;
             stickWas_ = true;
             for (; saved_ >= 1.f; saved_ -= 1.f) {
                 deleting_ = bBack_ = false;
@@ -823,12 +820,22 @@ void KitScreen::voiceUpdate(const Input& input, Uint32 nowMs, float dt) {
     }
     const float x = input.stickX(), y = input.stickY();
     if (holding_) {
-        if (voicePlace_ == kVoiceModel) { // a choice: once a push
-            if (std::fabs(y) > 0.5f && !reversePushed_) voicePress(y < 0.f ? Button::Up : Button::Down);
-            reversePushed_ = std::fabs(y) > 0.5f;
+        if (voicePlace_ == kVoiceModel) {
+            // The models and the named voices, a list: one at once, then at twice the held D-pad's pace (the list's),
+            // however far it is pushed (owner, 2026-11-25; it was once a push), not by a sideways push that drifts.
+            const float upDown = stickAxes(x, y).y;
+            if (upDown == 0.f) {
+                saved_ = 0.f;
+                stickWas_ = false;
+            } else {
+                saved_ += stickWas_ ? stickPerSecond(Pace::List) * dt : 1.f;
+                stickWas_ = true;
+                for (; saved_ >= 1.f; saved_ -= 1.f) voicePress(upDown < 0.f ? Button::Up : Button::Down);
+            }
         } else {
-            // A knob: the stick turns it through its whole range in about a second, by the square of the push.
-            turnedVoice_ += -y * std::fabs(y) * static_cast<float>(drumsynth::kDialMost) * dt;
+            // A knob: the stick turns it through its whole range in about a second (times STICK SPEED), however far it
+            // is pushed (owner, 2026-11-25; it was by the square of the push).
+            turnedVoice_ += -stickWay(y) * static_cast<float>(drumsynth::kDialMost) * dt;
             const int whole = static_cast<int>(turnedVoice_);
             if (whole != 0) {
                 turnedVoice_ -= static_cast<float>(whole);
@@ -840,14 +847,14 @@ void KitScreen::voiceUpdate(const Input& input, Uint32 nowMs, float dt) {
             if (y == 0.f) turnedVoice_ = 0.f;
         }
     } else {
+        // The boxes: one at once, then at twice the held D-pad's pace (the cursor's), however far it is pushed.
         const bool sideways = std::fabs(x) > std::fabs(y);
         const float push = sideways ? x : y;
-        const float climb = climb_.times(push, nowMs); // the cursor among the boxes: a full push held climbs (G07)
         if (push == 0.f) {
             saved_ = 0.f;
             stickWas_ = false;
         } else {
-            saved_ += stickWas_ ? std::fabs(push) * kEditMovesPerSecond * climb * dt : 1.f;
+            saved_ += stickWas_ ? stickPerSecond(Pace::Cursor) * dt : 1.f;
             stickWas_ = true;
             for (; saved_ >= 1.f; saved_ -= 1.f) {
                 deleting_ = bBack_ = false;

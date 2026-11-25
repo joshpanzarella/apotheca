@@ -397,6 +397,13 @@ void testTheGestureOnAMacro() {
     rig.key(StickRight, false);
     rig.frames(1);
     CHECK(rig.mod(t, 0).rate == rate + 1 && screen.cursor() == SynthScreen::kFirstMacro);
+    // Held over: one at once, then twice a held D-pad's list pace (owner, 2026-11-25: 13.6 a second at STICK SPEED
+    // 75%; it was five times 75%): in 10 frames, 1 + 1.96.
+    rig.key(StickRight, true);
+    rig.frames(10);
+    rig.key(StickRight, false);
+    rig.frames(1);
+    CHECK(ui::gStickSpeed == 0.75f && rate + 3 < kModRateFree && rig.mod(t, 0).rate == rate + 3);
     // A held D-pad: DEPTH runs on, a percent at a time.
     const float runFrom = rig.mod(t, 0).depth;
     rig.key(SDLK_DOWN, true);

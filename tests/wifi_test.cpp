@@ -308,8 +308,8 @@ void testTheCalls() {
 
 // ---- the row -----------------------------------------------------------------------------------
 
-// The stick through the networks (A held) is a list, not a cursor: a full push held does not climb (gesture
-// audit G07). Seven a second at the stick's speed (75% here): five more after the first in a second.
+// The stick through the networks (A held) is a list, not a cursor: twice the held D-pad's list pace, times STICK
+// SPEED (owner, 2026-11-25: 13.6 a second at 75% here; it was seven times 75%): 13 more after the first in a second.
 void testTheStickOverTheNetworks() {
     Rig rig("wifistick");
     S& setup = rig.setup();
@@ -325,7 +325,7 @@ void testTheStickOverTheNetworks() {
     rig.key(SDLK_k, true); // the stick, down, all the way
     rig.frames(62);
     rig.key(SDLK_k, false);
-    CHECK(setup.picking() && setup.picked() == 5);
+    CHECK(setup.picking() && setup.picked() == 13);
     rig.tap(B); // (nothing joined)
     rig.key(A, false), rig.frames(1);
     rig.settle();

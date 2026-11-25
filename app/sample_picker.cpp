@@ -536,9 +536,8 @@ void SamplePicker::update(const Input& input, Uint32 nowMs, bool playing) {
         saved_ = 0.f;
         stickWas_ = false;
     } else {
-        // Big moves: by the square of the push, so a little push is slow enough to read each name
-        // and all the way is a long list's length in a few seconds.
-        saved_ += stickWas_ ? y * y * kStickRowsPerSecond * dt : 1.f;
+        // Big moves, however far it is pushed: a long list's length in a few seconds (the D-pad for the exact row).
+        saved_ += stickWas_ ? kStickRowsPerSecond * dt : 1.f;
         stickWas_ = true;
         for (; saved_ >= 1.f; saved_ -= 1.f) moveTo(cursor_ + (y > 0.f ? 1 : -1), playing, false);
     }

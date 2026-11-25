@@ -1839,7 +1839,7 @@ void testTheStickCarriesAsTheDpad() {
     // Held over, it runs on through the scale's keys and lands on no other.
     rig.key(STICK_RIGHT, true);
     int moves = 0, last = bar.notes[0].pitch;
-    for (int f = 0; f < 30; ++f) {
+    for (int f = 0; f < 7; ++f) {
         rig.frames(1);
         CHECK(inScale(2, kScaleMajor, bar.notes[0].pitch));
         moves += bar.notes[0].pitch != last ? 1 : 0;
@@ -1847,7 +1847,7 @@ void testTheStickCarriesAsTheDpad() {
     }
     rig.key(STICK_RIGHT, false);
     rig.frames(1);
-    CHECK(moves >= 3 && moves <= 8); // (at the carry's own pace, ten keys a second at full push)
+    CHECK(moves == 5 && last == 73); // one at once, then twice the held D-pad's (50 a second at STICK SPEED 75%): 4.8 in 6 frames
     // L1 held: an octave, ONCE a push, however long it is held over.
     const int from = bar.notes[0].pitch, octaves = session.octavesShown();
     rig.key(L1, true);
@@ -1997,17 +1997,18 @@ void testTheStickOnRepeats() {
     rig.key(STICK_DOWN, false);
     rig.frames(1);
     CHECK(rig.project().sceneTempo[0] < tempo && rig.project().sceneTempo[0] > tempo - 10.f);
-    // Sideways: the meter, a click at once and then slowly. One job a push: up as well turns no tempo.
+    // Sideways: the meter, a click at once and then at twice the held D-pad's pace (the cursor's: 50 a second at
+    // STICK SPEED 75%; it was three). One job a push: up as well turns no tempo.
     const float kept = rig.project().sceneTempo[0];
     rig.key(STICK_LEFT, true);
     rig.frames(1);
     CHECK(rig.project().meterOf(0) == kSteps - 1);
     rig.key(STICK_UP, true);
-    rig.frames(10); // 0.16 s at three a second: no second click yet
+    rig.frames(2); // 1.6: one more click
     rig.key(STICK_UP, false);
     rig.key(STICK_LEFT, false);
     rig.frames(1);
-    CHECK(rig.project().meterOf(0) == kSteps - 1 && rig.project().sceneTempo[0] == kept && rig.said() == "15 STEPS IN A BAR");
+    CHECK(rig.project().meterOf(0) == kSteps - 2 && rig.project().sceneTempo[0] == kept && rig.said() == "14 STEPS IN A BAR");
     rig.key(L1, false);
     rig.frames(1);
     session.setSceneMeter(0, kSteps);
@@ -2027,15 +2028,16 @@ void testTheStickOnRepeats() {
     rig.key(A, false);
     rig.frames(1);
     CHECK(rig.project().sceneSteps(0) == kSteps && rig.project().repeats[0] == repeats);
-    // ...and up and down still the repeat count.
+    // ...and up and down still the repeat count, at twice the held D-pad's pace (the cursor's: 0.8 a frame at STICK
+    // SPEED 75%), however far it is pushed.
     rig.key(A, true);
     rig.frames(1);
     rig.key(STICK_UP, true);
-    rig.frames(10);
+    rig.frames(9); // 7.2
     rig.key(STICK_UP, false);
     rig.key(A, false);
     rig.frames(1);
-    CHECK(rig.project().repeats[0] > repeats && rig.project().sceneSteps(0) == kSteps);
+    CHECK(rig.project().repeats[0] == repeats + 7 && rig.project().sceneSteps(0) == kSteps);
 }
 
 // G11: X held on a hit, B empties its effects: pitch, ratchet, reverse, cut and THROW. The hit stays,

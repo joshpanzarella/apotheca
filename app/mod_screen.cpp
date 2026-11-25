@@ -14,7 +14,7 @@ using namespace ui;
 
 namespace {
 
-constexpr float kMovesPerSecond = 14.f, kClicksPerSecond = 5.f, kTurnPerSecond = 1.8f; // (an amount here is -1..1 or 0..1)
+constexpr float kTurnPerSecond = 1.8f; // the stick turning, however far it is pushed (an amount here is -1..1 or 0..1)
 constexpr float kNotch = 0.05f;
 constexpr double kSpeedOctaves = 4.0; // the stick on a FREE LFO's SPEED: octaves a unit of turn (its 10 octaves in about 1.4 s, pushed full)
 
@@ -456,30 +456,30 @@ void ModScreen::update(const Input& input, Uint32 nowMs) {
         session_.hearMods(track(), mod(m).kind != kModOff ? 1u << m : 0u, this);
     }
 
+    // A held D-pad (and the stick, at twice it): the list of targets and a choice clicked with A held at the list's
+    // pace, after the cursor's wait they always had; the cursor and an amount at the cursor's.
+    const auto runs = [&](Button way) {
+        const bool click = holding_ && !amount() && (way == Button::Up || way == Button::Down);
+        return picking() || click ? Pace::List : Pace::Cursor;
+    };
     const float x = input.stickX(), y = input.stickY();
     if (holding_ && !picking() && amount()) {
-        turnSmooth(-y * std::fabs(y) * kTurnPerSecond * dt); // squared, so a small push is fine
+        turnSmooth(-stickWay(y) * kTurnPerSecond * dt); // however far it is pushed (the D-pad for exact steps)
     } else {
+        // One at once, then at twice the pace a held D-pad runs the same way, however far it is pushed.
         const bool sideways = std::fabs(x) > std::fabs(y);
         const float push = sideways ? x : y;
-        const float climb = climb_.times(holding_ ? 0.f : push, nowMs); // the cursor: a full push held climbs (G07)
+        const Button way = sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up);
         if (push == 0.f) {
             saved_ = 0.f;
             stickWas_ = false;
         } else {
-            saved_ += stickWas_ ? std::fabs(push) * (holding_ ? kClicksPerSecond : kMovesPerSecond * climb) * dt : 1.f;
+            saved_ += stickWas_ ? stickPerSecond(runs(way)) * dt : 1.f;
             stickWas_ = true;
-            for (; saved_ >= 1.f; saved_ -= 1.f)
-                press(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
+            for (; saved_ >= 1.f; saved_ -= 1.f) press(way);
         }
     }
-    // A held D-pad: the list of targets and a choice clicked with A held at the list's pace, after the cursor's
-    // wait they always had; the cursor and an amount at the cursor's.
-    const auto runs = [&] {
-        const bool click = holding_ && !amount() && (repeating_ == Button::Up || repeating_ == Button::Down);
-        return picking() || click ? Pace::List : Pace::Cursor;
-    };
-    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::Cursor, runs())) press(repeating_);
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::Cursor, runs(repeating_))) press(repeating_);
 }
 
 // ---- drawing -----------------------------------------------------------------------------------

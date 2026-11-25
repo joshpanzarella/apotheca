@@ -79,12 +79,13 @@ stand-in for testing at a desk: each key presses one handheld button, so the
 keyboard can do nothing the handheld cannot.
 
 **The handheld has one stick, and one rule for it.** With nothing held it
-moves the cursor (so does the D-pad; hold either and it runs). Pushed part of
-the way it moves at a steady pace, faster the further it goes; **pushed all the
-way and held, it speeds up**, to three times that pace over a second, for the
-long trips (scene 1 to scene 40, the top of SET to the bottom). Only a cursor
-speeds up: a value being turned, a list of sounds or presets, a choice, never.
-Hold a button and the stick shapes the thing under the cursor:
+moves the cursor (so does the D-pad; hold either and it runs). **The stick is
+the fast one: as soon as it is pushed it goes at its full speed, however far it
+is pushed, twice as fast as the D-pad held** (at STICK SPEED 75%, as it
+starts: fifty a second over cells where the held D-pad runs 33, fourteen
+through a list where it runs nine). The stick for the long trips (scene 1 to
+scene 40, the top of SET to the bottom), the D-pad for the exact place or
+value. Hold a button and the stick shapes the thing under the cursor:
 
 | Held | The stick |
 | --- | --- |
@@ -243,7 +244,7 @@ column. It opens in the folder of the recording that is on, on it.
 | Button | Does |
 | --- | --- |
 | Up / down | The next in the column. A recording goes on **at once**: with the song playing you hear it in the beat; stopped, **half of it plays** (from where it plays from: the sampler's START), and it stops as soon as the cursor moves on. Held: a steady pace, faster after a second and a half, and faster again after three and a half |
-| The stick | Big moves: up to sixty rows a second pushed all the way (at STICK SPEED 75%; it scales with the setting). Going by that fast, the one you stop on goes on, not each one passed |
+| The stick | Big moves: sixty rows a second as soon as it is pushed, however far (at STICK SPEED 75%; it scales with the setting). Going by that fast, the one you stop on goes on, not each one passed |
 | Left / right | Out to the folder this one is in / into the folder under the cursor |
 | **L1 / R1** | A page up / down. (With nothing at all on the card, R1 records: below) |
 | **Hold R1** | On a recording: **carry it**. Keep R1 down and steer (D-pad, stick, L1) to a folder, or into one; let go and it is there. The top line says where it would go. Let go on a row of SAMPLES that is no folder: out of every folder. **B with R1 held calls it off** |
@@ -517,7 +518,7 @@ track's name is typed L1 and R1 are the keys'.
 | STICK LIGHT | The light round the stick: OFF, ON (steady, in LIGHT COLOUR), BEAT (a flash on every beat while the song plays), STEPS (the ring goes round once a scene: its sixteen lights share the scene's length, the bar's first step in brass). **Only on Apotheca's own system** | |
 | LIGHT COLOUR | The ring's colour: THEME (a colour picked for each theme: BROWN's is BRASS, DRACULA purple, NORD frost blue, GRUVBOX orange, TOKYO indigo, MONOKAI lime, SOLARIZED cyan, GITHUB blue), TEAL, PURPLE, BRASS, RED, ORANGE, YELLOW, GREEN, BLUE, PINK, WHITE, TRACK (a colour for each track: the track you are on; while it is chosen each track's head on the SONG screen wears a thin bar of its colour along its foot, so the ring can be matched to a track), RAINBOW (each light its own colour, turning a light a beat while the song plays). **Only on Apotheca's own system** | |
 | RING LEVEL | The ring's own brightness, 10% to 100% in fives, apart from the screen's. **Only on Apotheca's own system** | |
-| STICK SPEED | 25% to 150%, kept for next time | |
+| STICK SPEED | How fast the stick goes, 25% to 150%, kept for next time. **At 50% it is the held D-pad's own pace**; at 75% (as it starts) half as fast again, at 100% twice | |
 | TEXT SIZE | SMALL, MEDIUM, LARGE or XL, kept for next time | |
 | THEME | The colours: BROWN, DRACULA, NORD, GRUVBOX, TOKYO, MONOKAI, SOLARIZED or GITHUB, kept for next time | |
 | PIANO ROLL SHOWS | 1, 2 or 3 octaves | |
@@ -804,7 +805,7 @@ Every scene plays at the song's tempo in 4/4 until it is given its own. On
 the scene's `x2` box on SONG, **hold L1: up / down is its tempo in BPM, left /
 right the steps in its bars** (a bar of 12 is 3/4, of 8 is 2/4), with the
 D-pad or the stick (the stick turns the tempo fast, and the steps a click at
-once, then slowly; one job a push). **B** puts
+once, then fast; one job a push). **B** puts
 both back (the tempo follows the song, 16 steps). A line says each as it is
 turned. Only the first steps of a pattern bar play in a short bar; the rest
 are shaded on the grids and kept, as past a cut. The metronome clicks the
@@ -1697,9 +1698,9 @@ remembered between starts. Catch takes the sound before the volume, so a
 quiet handheld still catches at full level.
 
 The stick's speed, for everything it moves and turns on every screen, is one
-setting: STICK SPEED on the SET tab (25% to 150%; 75%, a quarter slower than
-first built, until it is changed). The speeding up of a full push held is
-scaled by it too.
+setting: STICK SPEED on the SET tab (25% to 150%; 75% until it is changed).
+At 50% the stick goes at the held D-pad's own pace, at 75% half as fast again,
+at 150% three times. How far it is pushed never changes its speed.
 
 ## Files over WiFi
 
@@ -2213,7 +2214,8 @@ the edits make it, and eight boxes laid out as the sampler's.
 | REVERSE | The whole of the part played, end first | On / off |
 
 - **Hold A + up / down turns a box**; the stick turns it through its whole
-  range in about a second (gently with a little push). **A box turned is heard
+  range in about a second, however far it is pushed (the D-pad for the exact
+  value). **A box turned is heard
   once, when you let go of A** (and the new sound is made), with the song stopped. **X hears the lane as edited** (held: to its end).
 - **B gives a box its usual value; B on a box already there goes back to the
   kit. B straight after Y goes back to the kit too, keeping what Y set**

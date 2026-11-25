@@ -176,7 +176,8 @@ private:
     int cellW() const;
     void keepInView();
     void followTheNotes(); // FOLLOW showed a bar: the keys to its notes (follow_bar.hpp, keysToShow)
-    bool barsPushed_ = false; // the stick's push for the next bar more or fewer, on the BARS stop
+    bool barsPushed_ = false; // the stick is pushed for a bar more or fewer, on the BARS stop (A held)
+    float barsSaved_ = 0.f;   // ...and the part-steps of its run saved up
     bool onBars_ = false;     // BARS, above the grid: the bar shown, and the cell's count
     bool zooming_ = false, zoomUsed_ = false; // L1 is held; it did something (copied, pasted, moved)
     bool l1First_ = false; // L1 is held and went down with nothing else held: R1 let go unmoved copies the bar, A pastes it
@@ -231,7 +232,6 @@ private:
     BarFollow follow_; // the view follows the bar playing (follow_bar.hpp)
     float stickX_ = 0.f, stickY_ = 0.f;
     bool stickWasX_ = false, stickWasY_ = false;
-    ui::StickClimb climbX_, climbY_; // a full push held on the cursor climbs (G07)
 };
 
 } // namespace apotheca

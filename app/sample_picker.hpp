@@ -22,9 +22,11 @@
 //                  as the cursor moves on. Held: the list's pace
 //                  (ui::kListEveryMs), faster after kFasterAfterMs, and after
 //                  kFastestAfterMs as fast as kFastestEveryMs (a long list's end).
-//   the stick      big moves: up to kStickRowsPerSecond, by the SQUARE of how far it
-//                  is pushed (a little push is slow enough to read). Moving faster than
-//                  one row every kAtOnceMs, a recording goes on when the
+//   the stick      big moves: one row at once, then kStickRowsPerSecond (times STICK
+//                  SPEED), however far it is pushed (owner, 2026-11-25: the stick
+//                  for big moves, the D-pad for exact ones). Its own rate, not twice
+//                  the D-pad's: held, the D-pad goes on to 50 a second here. Moving
+//                  faster than one row every kAtOnceMs, a recording goes on when the
 //                  cursor rests, not each one passed (each is a file read).
 //   left / right   out to the folder this one is in / into the folder under
 //                  the cursor
@@ -123,7 +125,7 @@ public:
     // the one exception to its paces).
     static constexpr Uint32 kFasterAfterMs = ui::kRecordingsFasterAfterMs, kFasterEveryMs = ui::kRecordingsFasterEveryMs;
     static constexpr Uint32 kFastestAfterMs = ui::kRecordingsFastestAfterMs, kFastestEveryMs = ui::kRecordingsFastestEveryMs;
-    static constexpr float kStickRowsPerSecond = 80.f;                  // the stick pushed all the way (times ui::gStickSpeed); by the square of the push
+    static constexpr float kStickRowsPerSecond = 80.f;                  // the stick, however far it is pushed (times ui::gStickSpeed: 60 at its 75%)
     static constexpr Uint32 kHoldSaysMs = 400;                          // B held this long on a folder that is not empty: it says why not
     static constexpr Uint32 kTapMs = 250;                               // B let go sooner on a row it deletes (nothing else pressed) is a tap; later, nothing
     static constexpr Uint32 kAtOnceMs = 90;                             // rows arrived at closer together than this: the one rested on goes on

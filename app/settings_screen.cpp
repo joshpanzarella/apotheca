@@ -16,7 +16,6 @@ using namespace ui;
 namespace {
 constexpr Uint32 kRelearnHoldMs = 1000; // A held this long on CONTROLS
 constexpr Uint32 kTestQuietMs = 4000;   // the button test closes this long after the last press
-constexpr float kMovesPerSecond = 7.f, kChangesPerSecond = 9.f;
 }
 
 // The PASSWORD keys: three sets of forty. Every sign a WPA password may hold is on one of them.
@@ -415,14 +414,15 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
         return;
     }
     if (password_) {
-        // The stick moves over the keys, one at once and then steadily; a held D-pad direction runs.
+        // The stick moves over the keys, one at once and then at twice the held D-pad's pace (the list's), however
+        // far it is pushed; a held D-pad direction runs.
         const bool sideways = std::fabs(stickX_) > std::fabs(stickY_);
         const float push = sideways ? stickX_ : stickY_;
         if (push == 0.f) {
             saved_ = 0.f;
             stickWas_ = false;
         } else {
-            saved_ += stickWas_ ? std::fabs(push) * kMovesPerSecond * dt : 1.f;
+            saved_ += stickWas_ ? stickPerSecond(Pace::List) * dt : 1.f;
             stickWas_ = true;
             for (; saved_ >= 1.f; saved_ -= 1.f) moveKey(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
         }
@@ -445,16 +445,16 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
         }
         return;
     }
-    // The stick: up and down choose, sideways changes. One at once, then steadily.
+    // The stick: up and down choose, sideways changes. One at once, then at twice the held D-pad's pace (the
+    // list's, rows, values and NETWORK's list alike), however far it is pushed.
     const float x = stickX_, y = stickY_;
     const bool sideways = std::fabs(x) > std::fabs(y);
     const float push = sideways ? x : y;
-    const float climb = climb_.times(sideways || picking_ ? 0.f : push, nowMs); // the rows are a cursor: a full push held climbs (G07)
     if (push == 0.f) {
         saved_ = 0.f;
         stickWas_ = false;
     } else {
-        saved_ += stickWas_ ? std::fabs(push) * (sideways ? kChangesPerSecond : kMovesPerSecond * climb) * dt : 1.f;
+        saved_ += stickWas_ ? stickPerSecond(Pace::List) * dt : 1.f;
         stickWas_ = true;
         for (; saved_ >= 1.f; saved_ -= 1.f) {
             aTap_ = false; // (the stick moved something with A held: no tap of A, as a direction pressed)

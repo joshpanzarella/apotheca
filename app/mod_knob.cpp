@@ -11,8 +11,7 @@ using namespace ui;
 
 namespace {
 
-constexpr float kDepthPerSecond = 1.2f;  // the stick fully over: DEPTH from +25% to +100% in under a second
-constexpr float kRatesPerSecond = 5.f;   // the stick held over on RATE: as a choice is stepped
+constexpr float kDepthPerSecond = 1.2f;  // the stick, however far it is pushed: DEPTH from +25% to +100% in under a second
 constexpr float kDepthStep = 0.01f;      // the D-pad: 1%
 
 float held1(float v) { return v > 1.f ? 1.f : (v < -1.f ? -1.f : v); }
@@ -263,7 +262,8 @@ void ModKnob::update(const Input& input, Uint32 nowMs, float dt) {
     while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), repeating_ == Button::Up || repeating_ == Button::Down ? Pace::Cursor : Pace::List))
         press(repeating_, nowMs);
     // The stick: up / down turns DEPTH (the first push up on a knob with none makes one); left / right
-    // clicks RATE. One way a push, the way it went first.
+    // clicks RATE, at twice the held D-pad's pace (the list's). One way a push, the way it went first; how far
+    // it is pushed does not matter (owner, 2026-11-25).
     const float x = input.stickX(), y = input.stickY();
     if (x == 0.f && y == 0.f) {
         stickWait_ = false;
@@ -278,12 +278,12 @@ void ModKnob::update(const Input& input, Uint32 nowMs, float dt) {
                 if (!stickWas_ && push > 0.f) depthBy(kDepthStep); // a new one, at +25%
             } else if (push != 0.f) {
                 ModSettings s = session_.modData(track_, mod());
-                s.depth = held1(s.depth + push * std::fabs(push) * kDepthPerSecond * dt);
+                s.depth = held1(s.depth + stickWay(push) * kDepthPerSecond * dt);
                 set(s);
             }
             stickWas_ = true;
         } else if (x != 0.f) {
-            stickSaved_ += stickWas_ ? std::fabs(x) * kRatesPerSecond * dt : 1.f;
+            stickSaved_ += stickWas_ ? stickPerSecond(Pace::List) * dt : 1.f;
             stickWas_ = true;
             for (; stickSaved_ >= 1.f; stickSaved_ -= 1.f) rateBy(x > 0.f ? 1 : -1);
         }

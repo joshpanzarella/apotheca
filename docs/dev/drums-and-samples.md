@@ -377,7 +377,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - **The KIT page's fourth column is the sound's picture, EDIT** (`KitScreen::kEdit`); a tap of A
     opens the view (`editing()`, `openEdit`), laid out as the sampler's page (`kEdit...` in
     kit_screen.hpp), the file's picture drawn by `ui::wavePicture`, which the sampler shares. Hold A
-    + up / down turns a box, the stick by the square of its push (`laneEditRange` a second); B its
+    + up / down turns a box, the stick however far it is pushed (`laneEditRange` a second, times STICK SPEED;
+    by the square of its push until the owner's stick rule, 2026-11-25: screens.md); B its
     usual value, B on a box at its usual value back to the kit (on letting go); hold B half a second (G29),
     every edit to none (any other button or a move calls it off); Y on START / END trims, elsewhere
     normalizes; X hears. Stills `kit-edit`, `kit-edit-held`, `kit-edit-deleting`,
@@ -428,8 +429,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - **The KIT page**: hold A on SOUND, from the built-in drum UP the recordings (as before) and DOWN
     the twelve models (each at its usual); a synth lane reads its model and SYNTH. **A tap of A on a synth lane opens
     its VOICE view** (`KitScreen::voicing()`, the EDIT view's layout: MODEL on top, the eight places two
-    rows of four, an unused one an empty box the cursor passes by): hold A turns (the stick by the
-    square of its push), B default / back, hold B every knob to the usual, Y ROLL (`kRollLow` 25 to
+    rows of four, an unused one an empty box the cursor passes by): hold A turns (the stick however far
+    it is pushed; MODEL a list, one at once then 13.6 a second at 75%: the owner's stick rule, 2026-11-25), B default / back, hold B every knob to the usual, Y ROLL (`kRollLow` 25 to
     `kRollHigh` 75, by a hash of the voice and a count), L1 / R1 the synth lane before / after, X hears.
     **A turned box (VOICE and EDIT views) is heard ONCE, when the turn is done** (owner, 2026-11-17: heard at
     every step it "sounds odd and you can't really hear what has changed"; `KitScreen::hearWhenDone`): A let go,
@@ -586,8 +587,10 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - `tests/picker_test.cpp` (real files; the saved song and rev byte for byte; the list by
     itself with jobs that count), `textsize_test` (each state drawn, the bar's words).
   - **The review's mend (batch 3, 2026-11-15):**
-    - **Big moves.** The stick is `kStickRowsPerSecond` 80 times its setting, by the SQUARE of
-      the push (a little push reads each name). A held D-pad has a third pace
+    - **Big moves.** The stick is `kStickRowsPerSecond` 80 times its setting (60 a second at 75%), however
+      far it is pushed (owner, 2026-11-25: it was by the SQUARE of the push, a little push reading each
+      name; the D-pad is for that now). It keeps its own rate, not the other screens' twice the D-pad's: the
+      held D-pad here goes on to 50 a second (screens.md, the stick). A held D-pad has a third pace
       (`kFastestEveryMs` 20 after `kFastestAfterMs` 3.5 s), counted from when each row was due
       (several a frame; a stall makes no burst). (Gesture audit G32, 2026-11-25: its numbers now live
       in `ui.hpp` as the one named exception to the paces, `kRecordings...`, and it counts through

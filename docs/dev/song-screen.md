@@ -82,10 +82,13 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   card's X line reads "hear it (SONG: solo). Held: a step's effects, a knob's MOD" (joined with the MOD
   screens' line, 2026-11-15; it is held to the card's margin by `testTheHelpCardDrawsSel`). `app_test` `testMuteSoloAndNames`, still `song-head`.
 - **The stick on a scene's REPEATS does what the D-pad does there** (gesture audit G14, 2026-11-24;
-  `SongScreen::repeatStick`). **L1 held**: up / down the scene's own tempo, squared, a beat at a
-  time at up to `kSceneTempoPerSecond` (90, the drum grid's tempo row's), left / right its meter.
+  `SongScreen::repeatStick`). **L1 held**: up / down the scene's own tempo, a beat at a time at
+  `kSceneTempoPerSecond` (90, the drum grid's tempo row's), left / right its meter.
   **A held**: up / down the repeat count as before, left / right the scene's steps (16 or fewer).
-  Sideways is a click at once, then `kRepeatSidePerSecond` (3): they are counts. **One job a push**
+  Sideways is a click at once. Since the owner's stick rule (2026-11-25: screens.md) how far it is pushed
+  does not matter (the tempo and the count were squared), and what a held D-pad runs here runs at twice
+  its pace (the count, the meter: 50 a second at 75%); the scene's steps, which a held D-pad does not run,
+  keep their own 3 a second (`kSceneStepsPerSecond`; both were `kRepeatSidePerSecond`). **One job a push**
   (`repeatAxis_`, set afresh when A or L1 goes down). Before, L1 + the stick moved the cursor off the
   count (and so dropped `l1OnRepeat_`), and hold A read only the stick's y. `easy_test stick`.
 - **AT END: a song played as a song LOOPs (as it always did) or STOPs**

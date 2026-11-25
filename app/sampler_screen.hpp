@@ -129,8 +129,7 @@ private:
     float saved_ = 0.f, turned_ = 0.f;
     bool stickWas_ = false;
     bool stickWait_ = false; // B with A held put the sound back with the stick still pushed: it moves nothing until it comes back
-    int loopPush_ = 0; // LOOP with A held: which way the stick is pushed past half, 1 up, -1 down, 0 not (its click is spent)
-    ui::StickClimb climb_; // a full push held on the cursor climbs (G07)
+    int loopPush_ = 0; // LOOP with A held: which way the stick is pushed, 1 up, -1 down, 0 not (its click is spent)
     Button repeating_ = Button::None;
     ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
     Uint32 lastMs_ = 0;

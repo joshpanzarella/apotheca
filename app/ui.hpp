@@ -121,8 +121,9 @@ constexpr int kTopBarH = 26, kHintsH = 24;
 // How fast the stick moves and turns things, on every screen: 1 is as first
 // built; lower is slower. The owner asked for a quarter off (2026-11): the
 // default of the SET page's STICK SPEED (Session::setStickSpeed). A variable,
-// so the tests can measure the screens at their own speeds. (A full push held
-// on a cursor climbs past it: StickClimb, below.)
+// so the tests can measure the screens at their own speeds. Each screen puts it
+// in its stick's time once (`dt *= gStickSpeed`), so every rate the stick runs
+// at is times it, stickPerSecond's below included.
 constexpr float kStickSpeedAsBuilt = 0.75f; // STICK SPEED's usual (B on its SET row: G17)
 inline float gStickSpeed = kStickSpeedAsBuilt;
 
@@ -204,12 +205,10 @@ constexpr Uint32 kCursorDelayMs = 170, kCursorEveryMs = 30;
 constexpr Uint32 kListDelayMs = 200, kListEveryMs = 110;
 // A third speed, for CLICKS (gesture audit G32, 2026-11-25): what X held sets on a hit or a note (a hit's
 // pitch and ratchet, a lane's FEEL, a note's ratchet and glide) clicks from one to the next, slower than a
-// cursor runs so each click is heard, with the D-pad held and with the stick held fully over
-// (kStickClicksPerSecond, times STICK SPEED as the stick always is). It was three rates written in the screens
-// (8 and 4 a second on the drum grid, 220 ms on the roll); the fastest of them is the one kept, so none
-// clicks slower than it did.
+// cursor runs so each click is heard, with the D-pad held (and the stick: stickPerSecond(Pace::Click), below).
+// It was three rates written in the screens (8 and 4 a second on the drum grid, 220 ms on the roll); the
+// fastest of them is the one kept, so none clicks slower than it did.
 constexpr Uint32 kClickDelayMs = 170, kClickEveryMs = 125;
-constexpr float kStickClicksPerSecond = 1000.f / static_cast<float>(kClickEveryMs);
 // The one exception, named here (batch 3, 2026-11-15): the list of recordings (sample_picker.hpp) can be
 // hundreds of rows long, so a held D-pad there goes on from the list's pace to kRecordingsFasterEveryMs
 // after kRecordingsFasterAfterMs, and to kRecordingsFastestEveryMs after kRecordingsFastestAfterMs.
@@ -260,31 +259,37 @@ constexpr int listStep(int at, int by, int count, bool pressed) {
     return count <= 0 ? 0 : at + by < 0 ? (pressed ? count - 1 : 0) : at + by >= count ? (pressed ? 0 : count - 1) : at + by;
 }
 
-// The stick on a CURSOR (gesture audit G07, 2026-11-25): a push short of kStickFullPush moves at the
-// screen's own rate, as always; a FULL push held climbs from that rate to kStickClimbTo times it over
-// kStickClimbSeconds and stays there while it is held full. STICK SPEED scales the whole of it, as it
-// scales everything the stick does. Only a cursor climbs: a value turned, a list or a choice stepped
-// through does not (the kit's sounds with A held stay slow enough to hear each one).
-// A climb not asked about for kStickClimbGapMs (the screen was away, or the stick was doing something
-// else) starts again from the bottom.
-constexpr float kStickFullPush = 0.9f, kStickClimbTo = 3.f;
-constexpr Uint32 kStickClimbMs = 1000, kStickClimbGapMs = 100;
-struct StickClimb {
-    Uint32 fullSince = 0; // when the push became full (0: it is not)
-    Uint32 lastAt = 0;    // when it was last asked
-    // How many times the screen's own rate, this frame: 1 below a full push, up to kStickClimbTo.
-    float times(float push, Uint32 nowMs) {
-        const bool again = lastAt == 0 || nowMs < lastAt || nowMs - lastAt > kStickClimbGapMs;
-        lastAt = nowMs ? nowMs : 1;
-        if (push < kStickFullPush && push > -kStickFullPush) {
-            fullSince = 0;
-            return 1.f;
-        }
-        if (fullSince == 0 || again) fullSince = lastAt;
-        const Uint32 held = nowMs > fullSince ? nowMs - fullSince : 0;
-        return 1.f + (kStickClimbTo - 1.f) * static_cast<float>(held < kStickClimbMs ? held : kStickClimbMs) / static_cast<float>(kStickClimbMs);
-    }
-};
+// THE STICK, on every screen (owner, 2026-11-25: "I also wanted the stick to be fast in comparison to the
+// d-pad. As soon as you move it, it goes as fast as you set the speed to. Stick for macro moves and d-pad for
+// detailed ones."). It replaced gesture audit G07's climb (a part push at the screen's own rate, a full push
+// held climbing to three times it over a second).
+//  - How far it is pushed does not matter: past the dead zone (input.cpp) it runs at its full rate at once,
+//    for everything it moves, steps or turns. Only the way it is pushed is used (stickWay).
+//  - Its full rate, for anything a held D-pad also runs (a cursor, a list, a choice or a sound stepped, a
+//    click), is kStickTimesPace times the held D-pad's pace for the same thing: stickPerSecond(pace), the pace
+//    the screen's own `repeat_.due(..., Pace::...)` names. STICK SPEED is in the screen's dt, once
+//    (`dt *= gStickSpeed`): at its 75% a cursor runs 50 a second against the D-pad's 33, a list 13.6 against
+//    9.1, a click 12 against 8; at 50% the stick is the D-pad's own pace.
+//  - What a held D-pad does not run (A held on a SONG cell: its length, TRANSPOSE), the list of recordings
+//    (its held D-pad goes on to 50 a second: SamplePicker::kStickRowsPerSecond) and a value turned in units a
+//    second (a tempo, the mixer, MACRO, DEPTH, a fill bar, a setting turned) keep their own rates, times STICK
+//    SPEED as everything the stick does, at full at once.
+//  - On a screen that reads both axes, stickAxes says which count, so a slight drift off one axis does not
+//    run the other at full rate.
+//  - The first move is at once, on the frame the stick leaves the middle, as it always was.
+constexpr float kStickTimesPace = 2.f;
+constexpr float stickPerSecond(Pace pace) { return kStickTimesPace * 1000.f / static_cast<float>(paceEveryMs(pace)); }
+// The way a push goes: 1, -1, or 0 in the middle (the dead zone is already taken out).
+constexpr float stickWay(float push) { return push > 0.f ? 1.f : push < 0.f ? -1.f : 0.f; }
+// Which of the stick's axes count where a screen reads both (SONG's cells, the drum grid, the roll, a synth's
+// stops, the mixer, BAND's grip): the larger always; the smaller only when it is at least kStickDiagonal of
+// the larger (a real diagonal). What does not count comes back 0.
+constexpr float kStickDiagonal = 0.5f;
+struct StickAxes { float x, y; };
+constexpr float stickSize(float v) { return v < 0.f ? -v : v; }
+constexpr StickAxes stickAxes(float x, float y) {
+    return StickAxes{stickSize(x) >= kStickDiagonal * stickSize(y) ? x : 0.f, stickSize(y) >= kStickDiagonal * stickSize(x) ? y : 0.f};
+}
 
 // A button's name as it is written in a cream box. The four directions are
 // drawn as arrows, not spelled out ("UP / DOWN" is two small arrows): the same

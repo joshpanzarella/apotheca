@@ -139,11 +139,13 @@ namespace apotheca {
 
 // How fast the controls feel. One place, so it can become a setting later.
 // The owner's rule: faster is better; nobody has ever asked for slower.
-// (A held D-pad runs at ui.hpp's paces, as on every screen: ui::Repeat.)
+// (A held D-pad runs at ui.hpp's paces, as on every screen: ui::Repeat. The
+// stick's cursor, BARS and the dice run at twice them: ui::stickPerSecond.)
+// The stick's own rates, for what it turns, however far it is pushed (times
+// STICK SPEED):
 struct Feel {
-    float stickCellsPerSecond = 36.f; // stick held fully over, moving the cursor
-    float fillPerSecond = 3.f;    // stick fully over: empty to full in a third of a second
-    float tempoPerSecond = 90.f;  // stick fully over, in BPM
+    float fillPerSecond = 3.f;    // empty to full in a third of a second
+    float tempoPerSecond = 90.f;  // in BPM
 };
 
 class PatternScreen : public Screen {
@@ -305,7 +307,6 @@ private:
     BarFollow follow_; // the view follows the bar playing (follow_bar.hpp)
     float stickX_ = 0.f, stickY_ = 0.f; // cursor part-moves saved up
     bool stickWasX_ = false, stickWasY_ = false;
-    ui::StickClimb climbX_, climbY_; // a full push held climbs (G07)
 };
 
 } // namespace apotheca

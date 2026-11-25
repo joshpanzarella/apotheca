@@ -90,13 +90,13 @@ struct Rig {
         ButtonEvent press;
         if (input.handle(event, press)) app.onButton(press, input);
     }
-    // The stick pushed all the way: x right, y down (-1..1), or let go (0, 0).
-    void stick(int x, int y) {
+    // The stick: x right, y down (-1..1, before the dead zone; all the way is 1), or let go (0, 0).
+    void stick(float x, float y) {
         for (int axis = 0; axis < 2; ++axis) {
             SDL_Event event = {};
             event.type = SDL_CONTROLLERAXISMOTION;
             event.caxis.axis = static_cast<Uint8>(axis == 0 ? SDL_CONTROLLER_AXIS_LEFTX : SDL_CONTROLLER_AXIS_LEFTY);
-            event.caxis.value = static_cast<Sint16>((axis == 0 ? x : y) * 32767);
+            event.caxis.value = static_cast<Sint16>((axis == 0 ? x : y) * 32767.f);
             ButtonEvent press;
             if (input.handle(event, press)) app.onButton(press, input);
         }
@@ -331,20 +331,20 @@ void testTheGesture() {
     rig.key(X, false);
     rig.frames(1);
 
-    // The stick: a click at once, then the clicks' pace while it is held over, sideways and up / down
-    // alike (gesture audit G32: ui::kStickClicksPerSecond, eight a second times STICK SPEED's 75%: six. It was
-    // the ratchet's four, three at 75%, and the pitch's eight).
-    CHECK(ui::kStickClicksPerSecond == 8.f && ui::gStickSpeed == 0.75f);
+    // The stick: a click at once, then twice the held D-pad's pace for clicks while it is held over, sideways and
+    // up / down alike, however far it is pushed (owner, 2026-11-25: ui::stickPerSecond(Pace::Click), sixteen a
+    // second times STICK SPEED's 75%: twelve. It was the D-pad's eight, six at 75%; before G32 the ratchet's four).
+    CHECK(ui::stickPerSecond(ui::Pace::Click) == 16.f && ui::gStickSpeed == 0.75f);
     rig.app.session().setLaneFeel(0, kClickLane, 0, 0);
     rig.key(X, true);
     rig.frames(1);
     rig.stick(0, -1); // up
-    rig.frames(30);   // 0.48 s: the first click and two more (at the old four a second: one)
+    rig.frames(14);   // 0.22 s: the first click and two more (at the old six a second: one)
     CHECK(rig.kit().laneFeel[kClickLane].level == 50 && rig.kit().laneFeel[kClickLane].time == 0);
     rig.stick(0, 0);
     rig.frames(2);
-    rig.stick(1, 0); // right
-    rig.frames(30);
+    rig.stick(0.3f, 0); // right, just past the dead zone: as fast as all the way
+    rig.frames(14);
     CHECK(rig.kit().laneFeel[kClickLane].time == 50 && rig.kit().laneFeel[kClickLane].level == 50);
     rig.frames(90);  // 1.92 s in all: well past six clicks, and it stops at the end
     CHECK(rig.kit().laneFeel[kClickLane].time == 100);
