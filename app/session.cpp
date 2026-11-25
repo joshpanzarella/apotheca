@@ -1370,19 +1370,19 @@ void Session::endOwnUndoStep() {
 // ---- next scene -----------------------------------------------------------------------------
 
 // The scenes from `from` on are one place further down the song (by = 1) or back up it (-1).
-// The engine's playing goes with them, and so does what was read from it this frame and a
-// keyboard note that is still held and being recorded.
-namespace {
-// Where a scene is after the ones from `from` on have moved one place (as the engine works it out: never off the song).
-int movedScene(int scene, int from, int by) { return scene >= from && scene + by >= 0 && scene + by < kMaxScenes ? scene + by : scene; }
-} // namespace
-
+// The engine's playing goes with them, and so does what was read from it this frame, a
+// keyboard note that is still held and being recorded, and the scene copy's place (movedScene).
 void Session::scenesMoved(int from, int by) {
     lastMove_ = {from, by};
     ++sceneMoves_;
     project.playScene = movedScene(project.playScene, from, by); // (-1 when nothing is playing: no scene, and it stays so)
     for (Recording& rec : recordingNote_)
         if (rec.on) rec.scene = movedScene(rec.scene, from, by);
+    // The scene copy is a snapshot: only where it came from moves, and its brass mark and R1's "clear" with it
+    // (G23 review, 2026-11-25: they stayed on the number, so after a NEXT SCENE before it they sat on the wrong
+    // scene, and R1 on the real one pasted). Its scene fallen off the end, the copy goes: nothing could mark it.
+    if (sceneClip_->has && sceneFallsOff(sceneClip_->scene, from, by)) sceneClip_->has = false;
+    else if (sceneClip_->has) sceneClip_->scene = movedScene(sceneClip_->scene, from, by);
 }
 
 // The song itself: a copy of scene `from` put in after it (by = 1), or the scene before `from`

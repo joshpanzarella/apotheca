@@ -45,6 +45,18 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   2026-11-19, `docs/plans/easywins-plan.md`); CLAUDE.md and the manual said "hold R1 and drag" until
   G23. `copyscene_test` `testTheCopyStays`, `testTheGesture`, `testTheMarkAndHints`; `copybar_test`
   `testTheCopyStaysForAnotherPaste`.
+- **A copy moves with its scene when a NEXT SCENE goes in before it** (G23 review, 2026-11-25). The cell
+  copy went on any scene move (`SongScreen::scenesMoved`) and the scene copy kept its number
+  (`Session::scenesMoved` moved only the playing and a recording). Short-lived copies hid it; a kept copy
+  did not: copy a cell, NEXT SCENE, and R1 on the next scene copied where it should paste, and a scene's
+  brass mark and R1's `clear` sat on the scene before the copied one, where R1 on the real one pasted.
+  Now both follow `movedScene`, as the cursor and the playing do; SELECT + B / A taking the NEXT SCENE
+  back or putting it back moves them too (the same `scenesMoved`). The copy is a snapshot, so only its
+  mark's place moves. A copy whose scene falls off the end (the last, pushed off) goes
+  (`sceneFallsOff`): its scene is gone and no mark could show it. A paste waiting for R1's let go
+  (`cellPasteScene_`, `scenePaste_`) lands on the cell or scene R1 went down on, where it is now: before,
+  the copy going called the cell's off and the scene's landed on the old number. `copyscene_test`
+  `testTheCopyFollowsNextScene`, `testCellCopyCleared`.
 - **The owner's five of 2026-11-18** (`easy_test looks`). SONG's column word is REPEATS (`SongScreen::
   kRepeatsWord`, low in the heads' row, 10 above the first box; `kRepeatW` 38, it was 34, so the word
   fits at LARGE: the columns start 4 further right). **A lane's volume in its name's box is `kPanel2`,

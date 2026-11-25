@@ -176,9 +176,14 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   after it** (NEXT SCENE, SELECT + Y: `Session::nextScene`). Whatever holds a
   scene's number must follow: the engine's playing, its patterns and an
   arpeggio that is playing (`Command::ScenesMoved`, next rule),
-  `project.playScene`, a keyboard note being recorded (`Session::scenesMoved`
-  does those two and counts the move), and the player (`UndoStep::nextScene`
-  is how undo and redo know to move them). Its tests: `tests/nextscene_test.cpp`.
+  `project.playScene`, a keyboard note being recorded and the scene copy's
+  place (`Session::scenesMoved` does those three and counts the move), the
+  SONG screen's cursor, copied cell and a paste waiting for R1's let go
+  (`SongScreen::scenesMoved`, called by the App; G23 review, 2026-11-25), and
+  the player (`UndoStep::nextScene` is how undo and redo know to move them).
+  All of them move by one rule, `movedScene` (`session.hpp`). Its tests:
+  `tests/nextscene_test.cpp`; the copies `copyscene_test`
+  `testTheCopyFollowsNextScene`.
 - **NEXT SCENE (SELECT + Y) and the scene's length (SELECT + L2 / R2) are the App's, on every tab**
   (gesture audit G03, 2026-11-24). They were PATTERN's alone: "The gesture belongs to the grids. On the
   other screens SELECT + Y makes no scene" (`nextscene_test`, commit 211fd8e, 2026-11-12: Claude's

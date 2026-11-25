@@ -830,6 +830,8 @@ You have a loop going and want the next part of the song to start from it.
   does the screen's own Y (a mute, a catch, a new sound).
 - **A song that is playing does not miss a step.** The two scenes are the
   same, so it goes on from where it was, now in the new one.
+- **A cell or scene copied with R1 moves with its scene**: its brass mark
+  is still on what you copied, and R1 on another cell or row still pastes.
 - One press, nothing asked. **SELECT + B takes it back** (and puts you, and
   the playing, back on the scene you came from); SELECT + A does it again.
 - A song holds 64 scenes. With the 64th in use it says "NO ROOM: 64

@@ -146,7 +146,7 @@ public:
     bool listingRevs() const { return listing_ && revsOpen_; }
     int listCursor() const { return revsOpen_ ? revCursor_ : listCursor_; }
     const std::vector<std::string>& listedSongs() const { return songs_; }
-    void scenesMoved(int from, int by); // a scene put in or taken out (NEXT SCENE): the cursor stays on the scene it was on
+    void scenesMoved(int from, int by); // a scene put in or taken out (NEXT SCENE): the cursor, the copied cell and a paste on its way stay on the scene they were on
     // The scene the cursor is on: a cell's row or its REPEATS box (the song end's empty row too); -1 off the
     // scenes (a track's head, + TRACK, MASTER). SELECT + Y and SELECT + L2 / R2 act on it here (the App).
     int sceneUnderCursor() const { return onHead_ || onMaster_ || column_ == addColumn() ? -1 : scene_; }

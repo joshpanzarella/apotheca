@@ -100,8 +100,14 @@ bool SongScreen::movedToCell(int* track, int* scene) const {
 
 // The scenes from `from` on are one place further down the song (by = 1) or back up it (-1).
 void SongScreen::scenesMoved(int from, int by) {
-    cellCopied_ = false; // a scene put in or taken out: the copied cell moved, so the copy goes
-    cellCopy_.has = false;
+    // The copied cell goes with its scene, as the scene copy does (Session::scenesMoved): the copy is a snapshot,
+    // only its brass mark and R1's "clear" move (G23 review, 2026-11-25: the copy went, so a cell copied before
+    // a NEXT SCENE copied again where it should paste). Its scene fallen off the end, the copy goes.
+    if (cellCopied_ && sceneFallsOff(copyScene_, from, by)) cellCopied_ = false, cellCopy_.has = false;
+    copyScene_ = movedScene(copyScene_, from, by);
+    // A paste waiting for R1's let go lands on the cell or scene R1 went down on, where it is now.
+    cellPasteScene_ = movedScene(cellPasteScene_, from, by);
+    scenePaste_ = movedScene(scenePaste_, from, by);
     if (scene_ < from || scene_ + by < 0 || scene_ + by >= kMaxScenes) return;
     scene_ += by;
     if (scene_ < top_) top_ = scene_;

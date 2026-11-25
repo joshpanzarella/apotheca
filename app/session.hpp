@@ -87,6 +87,13 @@ struct AudioInput {
 // A hit's step effects, as the engine is told them (Command::SetStepFx).
 Command stepFxCommand(int track, int scene, int bar, int lane, int step, const StepFx& fx);
 
+// Where a scene is after the ones from `from` on have moved one place (a NEXT SCENE put in, by = 1;
+// taken back, -1), as the engine works it out: never off the song. Whatever holds a scene's number
+// follows it so (the playing, a recording, the copies and the SONG screen's cursor).
+inline int movedScene(int scene, int from, int by) { return scene >= from && scene + by >= 0 && scene + by < kMaxScenes ? scene + by : scene; }
+// ...and is it the one that falls off the end (the last, when one is put in)? A copy of it goes: its scene is gone.
+inline bool sceneFallsOff(int scene, int from, int by) { return scene >= from && (scene + by < 0 || scene + by >= kMaxScenes); }
+
 class Session {
 public:
     Session(Engine& engine, Project& project);
