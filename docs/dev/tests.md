@@ -49,6 +49,10 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   (an oscillator's aliasing: the loudest part that is not a harmonic, under
   a frequency). **A band-limited wave's zero crossings are not its pitch near
   the top** (its ringing crosses too): read it through `bandOf` first.
+  `ringOnOf` (2026-11-25, HALL) says how much a reverb's tail rings on the same
+  notes: the spectrum's fine structure, second after second. **The loudest note
+  against its neighbours in one window does not**: it reads 10 to 13 dB in any
+  tail, moving or not.
 - **A `bench` row that is the difference of two small figures times the two
   in turns** (many short rounds, each its best: `modsAlone`, `macroModsRun`).
   Timed one after the other, a busy desk moved the whole row more than the

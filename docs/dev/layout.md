@@ -59,7 +59,7 @@ Where effects are, in the engine:
 | `engine/src/fx/most.hpp` | `SlidingMost`: the most of the last N, in a fixed array (LIMITER's hold, SNAP's 14 ms window) |
 | `engine/include/apotheca/denormals.hpp` | flush-to-zero |
 | `tests/effects_test.cpp` | the pinned sound of the old five, and the tools that drive an effect |
-| `tests/measure.hpp` | the measuring tools every sound test shares: level, spectrum (`harmonicsIn`), pitch, checksum, no click |
+| `tests/measure.hpp` | the measuring tools every sound test shares: level, spectrum (`harmonicsIn`), pitch, checksum, no click, a tail ringing on the same notes (`ringOnOf`) |
 
 **Adding an effect**:
 1. an `EffectKind` at the **end** of the list in `effects.hpp`;

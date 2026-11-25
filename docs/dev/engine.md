@@ -386,8 +386,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   call, and its count of time left alone went up a block at a time; both
   made a bounce differ from live play. **TAPE's test cuts 150 s four ways**
   (`testTapeAlwaysEnds`); a new effect with a tail gets the same, through its
-  sleep and its waking (PING: 70 s, three settings, both sides, in `testPing`). **HALL does not pass it yet** (apart from 0.02 s in
-  blocks of 64 and of 48; as on `main`, not changed). PLATE does (`testPlate`:
+  sleep and its waking (PING: 70 s, three settings, both sides, in `testPing`). **HALL passes it since 2026-11-25**
+  (`testHall`: 150 s four ways, four rooms, one on a bus; until then it was apart from 0.02 s in blocks of 64 and of
+  48: its bend was worked out at each end of a call, and it fell asleep and woke at a call's edge). PLATE does (`testPlate`:
   its sleep, its waking and its bend are each on their own sample, as TAPE's).
 - **PING (`fx/ping.cpp`) is the plain pattern for a delay**: two lines, the
   sound in on the left one (both sides halved and added, so a mono sound
@@ -645,6 +646,105 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     left out of loudest() (lateDown follows it, as the dcOut note says), kept so the side is right by itself. One
     lived and its line was taken out: a flush of what comes into the clip as well as of the middle (the middle's alone
     holds every small-number case).
+- **HALL bends every line, 2026-11-25** (`docs/plans/effect-quality.md`; the owner approved the change to old songs
+  and presets that use it, and HALL is on the SPACE bus of every new song, so every song that sends there changes).
+  All eight lines are bent, not two: 0.4 ms either way as the two were, each at its own rate (`kBendHz`, 0.31 to 0.67
+  Hz, none a whole multiple of another) and from its own place on waking (an eighth of a turn apart), so no two move
+  together. The tank's way (`tank.hpp`): each bend is a turning pair, worked out every `kBendEvery` (8) samples counted
+  from waking, with the four weights of each line's read, held till the next.
+  - **What it does: a long tail no longer rings on the same notes.** A reverb that stands still is a set of notes (its
+    modes); the same few stand out of its spectrum second after second, and are heard ringing on. The usual measure,
+    the loudest note against its neighbours in one window, reads 10 to 13 dB in any tail, standing still or not (the
+    effects plan found that it says nothing). What does tell is `ringOnOf` (`tests/measure.hpp`, new): the spectrum's
+    fine structure (each 0.73 Hz bin against its neighbours within 40 Hz) in windows of a second at 1 to 5 s, and how
+    alike every two of them are (1: the same notes stand out a second or more later; 0: others do), and how far over
+    their neighbours the 20 that stood out most in one still stand in a later one. SIZE 60%, TONE 50%, a click:
+
+    | 200 Hz to 3 kHz (100 to 600 Hz) | DECAY 2 s | 5 s | 20 s |
+    | --- | --- | --- | --- |
+    | no line bent (a scratch copy of HALL) | 0.85 (0.89), 9.1 dB | 0.93 (0.94), 9.8 dB | 0.95 (0.95), 10.0 dB |
+    | two lines, until now (the old HALL in this test) | 0.26 (0.62), 3.6 dB | 0.29 (0.65), 4.0 dB | 0.30 (0.65), 4.4 dB |
+    | **all eight** | **0.06 (0.31), 1.0 dB** | **0.07 (0.32), 1.3 dB** | **0.07 (0.33), 1.8 dB** |
+
+    Unrelated windows read about 0 and 1.5 dB. It hardly depends on DECAY: it is how far the notes move, not how long
+    they last. `testHall` holds the new row (under 0.12, 0.45, 2.5 and 5 dB, which two lines fail every one of).
+  - **How deep: Claude's pick, 2026-11-25, open to the owner** (one number, `kBendMs`). Measured on a scratch copy at
+    every eight-line depth: 0.05 ms 0.51 to 0.54 alike, 0.1 ms 0.28 to 0.33, 0.2 ms 0.14 to 0.17, 0.3 ms 0.09 to 0.10,
+    0.4 ms 0.06 to 0.07 (the low notes 0.84 to 0.88, 0.75 to 0.78, 0.53 to 0.54, 0.38 to 0.40, 0.31 to 0.33). Two lines
+    bent 0.4 ms and the other six a little (0.03 to 0.1 ms) read 0.13 to 0.27: no better than eight at 0.2. 0.4 ms
+    (the two lines' depth, kept) is the one that halves the low notes' ringing, where a piano's and a pad's notes are.
+    **The price is the held sine's wander** (`kHallWander`): a held sine sits between the room's notes, and a room whose
+    notes move moves them past it, so its level there rises and falls. At the usual 2 s, 1 kHz, it was 4.86 dB (34
+    times up in 40 s) and is 30.6 dB (60 times). How far does not grow with the depth once the ringing goes: 0.12 ms
+    reads 31.7 dB, 0.2 ms 34.4, 0.4 ms 30.6 (at 440 Hz 6.6, 10.1 and 23 dB; at 220 Hz 12 dB at 0.4 ms). Under 4.86 at
+    2 s needs about 0.03 ms on all eight (0.05 ms already reads 6.7 dB), and 0.05 ms still reads 0.51 alike: twice
+    the ringing two lines had. For the eye: the old
+    HALL already wandered 26 to 39 dB at DECAY 7 to 20 s, BLOOM and SHIMMER (every line bent 0.12 ms) 13 dB at their
+    usual 2 s and 24 to 43 dB at long DECAY, PLATE 7 dB. The pitch: each line's bend moves at most 2.9 cents a trip
+    (0.67 Hz).
+  - **Every 8 samples, held: Claude's pick, 2026-11-25, open to the owner.** A held read moves in steps, and the steps
+    are a faint buzz either side of a held tone, at the rate they come (TONE 100%, 1 to 8 kHz, against the tone):
+    every 16 (the TICK, as the tank) 51 to 68 dB down, **every 8 56 to 74**, every 4 61 to 81; the weights slid sample
+    by sample (worked out at both ends of 16 on the same whole samples, the middle held where it crosses one) 85 to 95,
+    the measure's floor. Desk cost of HALL, the same runs (best of seven, `bench`'s way): before 0.177%, every 16
+    0.194%, **every 8 0.200%**, every 4 0.23%, slid 0.245 to 0.250% (laid out tap by tap no quicker), the bend worked out
+    every sample 0.312%. Slid was a quarter more again for 20 dB under a buzz already 56 dB down.
+  - **The same however it is cut into blocks, settings at rest** (the rule above): the bends count from waking (8 at a
+    time), and the room falls asleep and wakes on its own SAMPLE (a quarter of a second of nothing coming in and
+    nothing over kQuiet going round, counted a sample at a time; woken by the first sample worth the name). A call can
+    start part way through 8 (its weights are the effect's, not the call's). A setting turned still glides a call at a
+    time (the owner's call on HALL and eight others, above: not changed; an owner question whether HALL's should move
+    to the tick now its sound has changed anyway).
+  - **What else moved, all HALL's own** (`--measure`; `--print` the same before and after: the 40 pinned renders, the
+    maths line and the song line). Each line is read between samples now, which dulls the very top a hair each trip
+    (Lagrange's cubic: 0.2 dB at 8 kHz at worst, by where it reads), so the top of a long tail dies a little sooner:
+    TONE's table at 14 kHz 0.59 / 0.66 / 1.16 s became 0.52 / 0.58 / 0.94; at 8 kHz and under within 5%; at 8 kHz
+    against DECAY 0.23 to 0.46 as long (0.31 to 0.45), the smallest room at 20 s the most (it makes the most trips).
+    Held white noise comes out 0.3 to 0.7 dB quieter (2.1 to 4.4 dB under it, from 1.6 to 4.2). The 80 Hz RT60 of the
+    smallest room at 0.86 s reads 12% short (its band holds about seven notes, and bent they beat as they fall: the
+    check there is 13%). Echoes in the first 100 ms 640 to 1210 (650 to 1270). A held sine at 39 pitches, MIX 50%:
+    -10.5 to +2.3 dB (-15.9 to +2.9: the moving room evens its notches out). The 500 Hz fall strays 1.4 dB from a
+    straight line (0.6). The sweep row: DECAY 0.96 to 0.91, TONE 0.80 to 0.77, held still 0.69 to 0.67; the loudest
+    sample from full-scale noise 2.6 to 2.4.
+  - **Tests changed, and why.** The turn test (`kHallTurn`) now takes "steady" as the roughest of before, after, AND
+    the same room held all along where the setting was turned to: at DECAY 20 s a held 100 Hz sine's largest step
+    wanders 0.0018 to 0.0112 by itself, and DECAY turned up read 1.47 "of the steady one" from that alone (0.87 now).
+    SIZE LANDS is held against two rooms large all along with the same past (all four woke on the same sample, so
+    their bends are alike), for half a second, not against a fresh room up to the first bent line: it now covers
+    every line, 7.5e-9 apart.
+  - **Presets that change: 68 hold a HALL** (DECAY 2.0 to 8.6 s): CLOUD's Slow Swell; FM-6's Motor Vibes, Clang Ring,
+    Chime Cluster, Glass Pad, Vowel Choir, Harp Mirror, Laser Rain, Wind Organ, Descent Space, Backwards Garden, Church
+    Pipes, Section, String Drone, Pipe Drone; JAX-EP's Warm Pad, Velvet Fifths, Choir Of Saws, Tidal Pad, Dark Matter,
+    Sunrise Swell, Ensemble Strings, Tremolo Strings, Cinema Strings, Octave Strings, Distant Section, Soft Horns,
+    Fanfare Fifths, Low Brass, Swell Brass, Bell Keys, Reverse Pluck, Metal Bells, Sync Pad, Gong Metal, Night Wind,
+    Frozen Choir, Static Drift, Night Drive, Video Strings, Power Ballad, Swell And Fall, Slow Morph, Pipe Organ,
+    Church Organ, Metal Bell; MORPH's Slow Vowels, Glass Bell, Comb Drone; PHAZED's Night Flute, Choir Hall, Bell
+    Hall, Organ Drone, Wind Drone; PHYSIC's Tine Pad, Breath Choir, Ghost Harp, Gong Wash, Bonang, Gong Ageng, Ombak,
+    Slenthem Dub, Koto Rain, Backwards Chimes, Phaser Marimba, Warp Bells, Filter Tide, Glass Keys. **47 more send to
+    SPACE** (ACID 1, CLOUD 5, FM-6 16, JAX-EP 5, MORPH 4, PHAZED 6, PHYSIC 10): they change in any song whose SPACE
+    holds a HALL, as every new song's does.
+  - **Cost.** Desk, `bench`'s `effect()` copied into a scratch program linked against the engine, the old HALL and
+    the new in turns, best of seven: at its usual settings 0.175 to 0.181% of a core before, 0.197 to 0.204% after;
+    TONE above 50% 0.193 to 0.198%, 0.228 to 0.235%. `bench` itself, two runs each in turns on a desk at load 5 to 14:
+    HALL 0.29 / 0.18% before, 0.20 / 0.20% after; the whole-song rows moved more with the load than with HALL (the
+    busiest song on the audio thread alone 16.6 / 19.4% of a block before, 21.7 / 18.0% after; with 3 helpers 13.6 /
+    14.6%, 13.3 / 13.3%). **So instructions** (callgrind, `bench --profile NAME 1`, one second of sound, desk -O3):
+    the busiest song 1,404.9 M before, 1,437.3 M after (+2.3%), its six HALLs 168.1 M to 201.7 M (+20%); the typical
+    song 417.0 M to 422.4 M (+1.3%), its HALL 27.8 M to 33.3 M. **Not run on the handheld.** At 13 to 20 times the
+    desk, +0.02% of a desk core is +0.3 to 0.5% of a handheld core a HALL; by instructions, if the busiest song is the
+    plan's guessed 150% of a core at 1,405 M, +0.6% a HALL and +3.5% for the busiest song (the research guessed +0.3
+    to 1.3% and +2 to 8%). The memory is what it was (the lines' ring already held the bend).
+  - **Tests that fail on the old HALL** (linked into effects_test by hand): 18 checks: the ringing at all three
+    DECAYs, all four rooms cut four ways, the wander, the 14 kHz TONE pins, the turns, SIZE landing (6.2e-6 apart).
+    **Mutants**: 18. 17 killed: two lines bent, half the depth, one rate for all, all from one place, the bends not
+    started again on waking, a sound not starting the quiet count again (`testHall`'s click 100 samples before a
+    faint-woken room would sleep: it lived until that test was written), waking at the call's start, a step of the
+    bends at every call, a read a sample further, whole samples only, the count started again each stretch, the
+    asleep MIX-0 test turned over, no bend while SIZE glides, the bends every 16 samples (it lived until the buzz test
+    was written), and three in `ringOnOf` (the later window not read, the neighbours not taken out, only the windows
+    next to each other compared: it lived until the sliding notes). **One lives: the turning pairs never put back on
+    their circles.** A float pair turned for ever drifts off it: 0.97 to 1.01 of its depth after the tests' 150 s,
+    0.51 to 1.31 after an hour awake (computed by turning the eight pairs as HALL does). No test runs an hour.
 - **A per-sample loop works on locals** (WEAR's `stretch`: up to the tick's
   end, everything the samples change copied in, worked on, copied back).
   Written straight on the effect's own numbers WEAR cost 0.40% of a core; the
