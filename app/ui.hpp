@@ -119,10 +119,12 @@ constexpr int kScreenW = 640, kScreenH = 480;
 constexpr int kTopBarH = 26, kHintsH = 24;
 
 // How fast the stick moves and turns things, on every screen: 1 is as first
-// built; lower is slower. The owner asked for a quarter off (2026-11).
-// It is a variable so it can become a setting, and so the tests can measure
-// the screens at their own speeds.
-inline float gStickSpeed = 0.75f;
+// built; lower is slower. The owner asked for a quarter off (2026-11): the
+// default of the SET page's STICK SPEED (Session::setStickSpeed). A variable,
+// so the tests can measure the screens at their own speeds. (A full push held
+// on a cursor climbs past it: StickClimb, below.)
+constexpr float kStickSpeedAsBuilt = 0.75f; // STICK SPEED's usual (B on its SET row: G17)
+inline float gStickSpeed = kStickSpeedAsBuilt;
 
 // What the end of the hint bar says about the help card: "MENU: HELP", or
 // "HLD SEL: HELP" on a handheld whose MENU button the firmware keeps.
@@ -187,11 +189,102 @@ void wavePicture(SDL_Renderer* r, const std::vector<float>& peaks, int x, int y,
 // END's mark, inside a picture `w` wide.
 inline int waveEndMarkX(float end, int w) { const int x = static_cast<int>(end * w) - 2; return x < 0 ? 0 : (x > w - 2 ? w - 2 : x); }
 
+// How long B is held to delete, one length a kind (gesture audit G29, 2026-11-25; each screen had its own
+// 1000 ms). Where undo (SEL + B) brings it back: an effect, a MOD, EDIT's or VOICE's every box back, a scene
+// emptied. Where nothing can: a recording, a folder, a song, a preset or a kit of the player's own, a network
+// forgotten, a bounce stopped. A TRACK keeps its own (song_screen.hpp: two seconds, red only after a quiet half
+// second, so the B tap that empties a cell never flashes). The bars keep their own looks.
+constexpr Uint32 kHoldUndoneMs = 500;   // undo brings it back
+constexpr Uint32 kHoldForGoodMs = 1000; // it cannot be undone
+
 // How a held D-pad runs, the same on every screen. Two speeds: a cursor (grids, and a
 // cursor among boxes) runs fast; a list, or a choice being stepped through, runs slowly
-// enough to see or hear each one go by.
+// enough to see or hear each one go by. (A third, for clicks, and the one exception below.)
 constexpr Uint32 kCursorDelayMs = 170, kCursorEveryMs = 30;
 constexpr Uint32 kListDelayMs = 200, kListEveryMs = 110;
+// A third speed, for CLICKS (gesture audit G32, 2026-11-25): what X held sets on a hit or a note (a hit's
+// pitch and ratchet, a lane's FEEL, a note's ratchet and glide) clicks from one to the next, slower than a
+// cursor runs so each click is heard, with the D-pad held and with the stick held fully over
+// (kStickClicksPerSecond, times STICK SPEED as the stick always is). It was three rates written in the screens
+// (8 and 4 a second on the drum grid, 220 ms on the roll); the fastest of them is the one kept, so none
+// clicks slower than it did.
+constexpr Uint32 kClickDelayMs = 170, kClickEveryMs = 125;
+constexpr float kStickClicksPerSecond = 1000.f / static_cast<float>(kClickEveryMs);
+// The one exception, named here (batch 3, 2026-11-15): the list of recordings (sample_picker.hpp) can be
+// hundreds of rows long, so a held D-pad there goes on from the list's pace to kRecordingsFasterEveryMs
+// after kRecordingsFasterAfterMs, and to kRecordingsFastestEveryMs after kRecordingsFastestAfterMs.
+constexpr Uint32 kRecordingsFasterAfterMs = 1500, kRecordingsFasterEveryMs = 60;
+constexpr Uint32 kRecordingsFastestAfterMs = 3500, kRecordingsFastestEveryMs = 20;
+
+// Which of the speeds a held key runs at. Each screen names it: a cursor (grids, boxes, a value turned),
+// a list or a choice stepped through, or a click.
+enum class Pace { Cursor, List, Click };
+constexpr Uint32 paceDelayMs(Pace pace) { return pace == Pace::Cursor ? kCursorDelayMs : pace == Pace::List ? kListDelayMs : kClickDelayMs; }
+constexpr Uint32 paceEveryMs(Pace pace) { return pace == Pace::Cursor ? kCursorEveryMs : pace == Pace::List ? kListEveryMs : kClickEveryMs; }
+
+// A held key's repeats, on every screen (gesture audit G08, 2026-11-25). Each is counted from when the
+// one before was DUE, not from the frame that saw it: a 30 ms pace is 33 a second whatever the frames
+// (counted from the frame it was rounded up to two frames' time, about 28 to 31 a second), a pace faster than the
+// frames gives several in one frame, and the run stops at the let go (it is asked only while the key is
+// held). A frame held up more than kRepeatStallMs makes no burst to catch up: the count starts again
+// from that frame. As the list of recordings always counted.
+//   the key pressed:  repeat.restart()   (its first wait starts at the next due(), on the screen's clock)
+//   each frame:       while (key != Button::None && repeat.due(nowMs, input.held(key), pace)) move(key);
+constexpr Uint32 kRepeatStallMs = 100;
+struct Repeat {
+    Uint32 at = 0; // when the next one is due; 0: a key has just gone down
+    void restart() { at = 0; }
+    // True once for each repeat due by `nowMs` while `held`; the first call after restart() starts the
+    // wait (`delayMs`) and is false. `everyMs` is the gap after this one (above 0).
+    bool due(Uint32 nowMs, bool held, Uint32 delayMs, Uint32 everyMs) {
+        if (at == 0) {
+            at = nowMs + delayMs;
+            if (at == 0) at = 1;
+            return false;
+        }
+        if (!held || nowMs < at) return false;
+        if (nowMs - at > kRepeatStallMs) at = nowMs;
+        at += everyMs > 0 ? everyMs : 1;
+        return true;
+    }
+    bool due(Uint32 nowMs, bool held, Pace pace) { return due(nowMs, held, paceDelayMs(pace), paceEveryMs(pace)); }
+    // Waits as `waits` does, then runs as `runs`: the lists that always waited the cursor's 170 before
+    // running at the list's pace keep their wait (nothing held runs slower than it did).
+    bool due(Uint32 nowMs, bool held, Pace waits, Pace runs) { return due(nowMs, held, paceDelayMs(waits), paceEveryMs(runs)); }
+};
+
+// A long list's ends (gesture audit G35, 2026-11-25: SET's rows, the list of songs and its revs): a
+// PRESS of the D-pad at an end goes round to the other end; a held D-pad running on, or the stick,
+// stops there, so a run never carries past the end it was going to. `at` 0..count-1, `by` 1 or -1.
+constexpr int listStep(int at, int by, int count, bool pressed) {
+    return count <= 0 ? 0 : at + by < 0 ? (pressed ? count - 1 : 0) : at + by >= count ? (pressed ? 0 : count - 1) : at + by;
+}
+
+// The stick on a CURSOR (gesture audit G07, 2026-11-25): a push short of kStickFullPush moves at the
+// screen's own rate, as always; a FULL push held climbs from that rate to kStickClimbTo times it over
+// kStickClimbSeconds and stays there while it is held full. STICK SPEED scales the whole of it, as it
+// scales everything the stick does. Only a cursor climbs: a value turned, a list or a choice stepped
+// through does not (the kit's sounds with A held stay slow enough to hear each one).
+// A climb not asked about for kStickClimbGapMs (the screen was away, or the stick was doing something
+// else) starts again from the bottom.
+constexpr float kStickFullPush = 0.9f, kStickClimbTo = 3.f;
+constexpr Uint32 kStickClimbMs = 1000, kStickClimbGapMs = 100;
+struct StickClimb {
+    Uint32 fullSince = 0; // when the push became full (0: it is not)
+    Uint32 lastAt = 0;    // when it was last asked
+    // How many times the screen's own rate, this frame: 1 below a full push, up to kStickClimbTo.
+    float times(float push, Uint32 nowMs) {
+        const bool again = lastAt == 0 || nowMs < lastAt || nowMs - lastAt > kStickClimbGapMs;
+        lastAt = nowMs ? nowMs : 1;
+        if (push < kStickFullPush && push > -kStickFullPush) {
+            fullSince = 0;
+            return 1.f;
+        }
+        if (fullSince == 0 || again) fullSince = lastAt;
+        const Uint32 held = nowMs > fullSince ? nowMs - fullSince : 0;
+        return 1.f + (kStickClimbTo - 1.f) * static_cast<float>(held < kStickClimbMs ? held : kStickClimbMs) / static_cast<float>(kStickClimbMs);
+    }
+};
 
 // A button's name as it is written in a cream box. The four directions are
 // drawn as arrows, not spelled out ("UP / DOWN" is two small arrows): the same
@@ -230,8 +323,6 @@ constexpr float kHintUnderGap = 6.f;
 // is the field LEFT / RIGHT sets); the help gives way to them.
 float hintDiceEndX(const Fonts& fonts, const char* dice); // where the dice's chip starts, at the end
 void hintsUnder(SDL_Renderer* r, const Fonts& fonts, const char* dice, const HintUnder* list, int count, bool diceAtEnd = false);
-// For a few seconds at the start, in the hints bar's place: the way back into the controls
-// setup, with a line that fills (`part`, 0..1) as a button is held. A tight row: always at LARGE.
 
 // A box taller than kBoxUsualH (what the boxes were laid out at) keeps its name at the top and its
 // bar at the bottom, and its value goes down by half of the extra height, so it is not left at the

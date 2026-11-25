@@ -16,8 +16,30 @@ namespace apotheca {
 using namespace ui;
 
 namespace {
-constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs;
 constexpr float kMovesPerSecond = 14.f, kKindsPerSecond = 5.f, kTurnPerSecond = 0.9f, kNotch = 0.05f;
+static_assert(kEffectPushes == 20, "kNotch is a push of the usual twenty");
+
+// One push of the D-pad on an amount: to the next of its points, `pushes` across the range. The usual twenty keep
+// the arithmetic they always had (a value the D-pad reaches is the same to the bit); BAND's FREQ has thirty.
+float pushed(float now, int by, int pushes) {
+    if (pushes == kEffectPushes) {
+        const float notches = now / kNotch;
+        return (by > 0 ? std::floor(notches + 1.001f) : std::ceil(notches - 1.001f)) * kNotch;
+    }
+    const float points = now * static_cast<float>(pushes);
+    return (by > 0 ? std::floor(points + 1.001f) : std::ceil(points - 1.001f)) / static_cast<float>(pushes);
+}
+}
+
+int FxScreen::bandGrip() const {
+    if (!yHeld_ || holding_ || column_ < 1 || column_ > kBandQ + 1 || sends(row_) || tryRow_ >= 0 || modKnob_.held()) return -1;
+    if (static_cast<EffectKind>(data(row_).kind) != EffectKind::Band) return -1;
+    return column_ == kBandQ + 1 ? kBandQ : kBandGain;
+}
+
+void FxScreen::turnSetting(int index, float amount) {
+    if (amount == 0.f) return;
+    session_.setEffectParam(trackOf(row_), slotOf(row_), index, data(row_).param[index] + amount);
 }
 
 // Nothing here spells an effect out: its name, its family and type, its
@@ -410,7 +432,7 @@ void FxScreen::hear(bool held) {
     const TrackKind kind = project_.current().kind;
     if (held && kind == TrackKind::Drums) {
         session_.hearLaneHeld(project_.track, 0, kPlacedLevel, this);
-    } else if (held && holdsRecording(kind)) {
+    } else if (held && isSynth(kind)) { // (the sampler and CLOUD too) as long as X is held, over the song too (gesture audit G33)
         session_.auditionHeld(project_.track, 60, kPlacedLevel, this);
     } else if (kind == TrackKind::Drums) {
         Command c;
@@ -442,6 +464,14 @@ void FxScreen::press(Button b) {
         if (moveEffectSlot(session_, project_.track, row_, by)) goTo(row_ + by, 0);
         return;
     }
+    if (const int along = bandGrip(); along >= 0) {
+        // Y held on BAND's FREQ, GAIN or Q (gesture audit G18): LEFT / RIGHT is FREQ, UP / DOWN GAIN (on the Q
+        // dial, Q), a push each as A held gives the one under the cursor. The cursor stays.
+        const int index = upDown ? along : kBandFreq;
+        const int by = b == Button::Up || b == Button::Right ? 1 : -1;
+        session_.setEffectParam(trackOf(row_), slotOf(row_), index, pushed(data(row_).param[index], by, effectPushes(EffectKind::Band, index)));
+        return;
+    }
     if (!holding_) {
         if (column_ == 0) {
             // In the list: up and down through its lines; right into the line's settings, where it was last.
@@ -456,6 +486,9 @@ void FxScreen::press(Button b) {
             if (b == Button::Down) goTo(row_, column_ + 1);
             if (b == Button::Left) column_ = 0;
         }
+        // Y held, and this move came onto BAND's FREQ, GAIN or Q (from its line, or from SHAPE): the push that
+        // brought the cursor here was a move, so it turns nothing (moved(): a fresh push does).
+        if (bandGrip() >= 0) gripEntered_ = true;
         return;
     }
     if (column_ == 0) {
@@ -504,9 +537,7 @@ void FxScreen::press(Button b) {
         if (which < 0 || which >= count) return;
         session_.setEffectParam(trackOf(row_), slotOf(row_), index, (static_cast<float>(which) + 0.5f) / static_cast<float>(count));
     } else {
-        const float notches = now / kNotch;
-        const float to = (by > 0 ? std::floor(notches + 1.001f) : std::ceil(notches - 1.001f)) * kNotch;
-        session_.setEffectParam(trackOf(row_), slotOf(row_), index, to);
+        session_.setEffectParam(trackOf(row_), slotOf(row_), index, pushed(now, by, effectPushes(kind, index)));
     }
 }
 
@@ -528,6 +559,19 @@ int FxScreen::knobHere() const {
     return -1; // a bus's or the master's setting: nothing there is automated or modulated
 }
 
+// After a push of a direction (press): one that brought the cursor onto BAND's dials with Y held stops the held
+// D-pad's repeats, and the stick waits until it comes back to the middle (stickWait_), so neither goes on into
+// the grip and turns FREQ or Q (review of G18: a sideways slip of the stick while moving the line swept FREQ).
+// The roll's rule for X (note_screen.cpp, fxWait_): a direction that was already held is not a turn.
+void FxScreen::moved(const Input& input) {
+    if (!gripEntered_) return;
+    gripEntered_ = false;
+    repeating_ = Button::None;
+    saved_ = 0.f;
+    stickWas_ = false;
+    stickWait_ = input.stickX() != 0.f || input.stickY() != 0.f;
+}
+
 void FxScreen::endMod(const Input& input) {
     if (!modKnob_.held()) return;
     modKnob_.letGo();
@@ -547,8 +591,7 @@ void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         const bool knob = !holding_ && knobHere() >= 0 && modKnob_.hold(project_.track, knobHere(), input);
         if (knob) repeating_ = Button::None;
-        if (knob && isSynth(project_.current().kind) && !project_.playing) session_.auditionHeld(project_.track, 60, kPlacedLevel, this); // heard as long as X is
-        else hear(true);
+        hear(true); // as long as X is held, playing or not (a MOD held is heard only while stopped: call E)
         return;
     }
     if (modKnob_.held() && modKnob_.onButton(event, lastMs_)) return;
@@ -573,7 +616,8 @@ void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
     } else if (isDirection(b)) {
         press(b);
         repeating_ = b;
-        repeatAt_ = 0;
+        repeat_.restart();
+        moved(input);
     } else if (b == Button::B && holding_) {
         // B with A held calls it off: the slot is as it was, and A does nothing more until it is pressed again.
         if (tryRow_ >= 0) callOff(), holding_ = false;
@@ -627,13 +671,20 @@ const char* FxScreen::typeKey() const {
 }
 
 // L1 / R1: the track before / after, on the same line and setting. It stops at the first and the last, as the
-// SONG screen's columns do. An effect being tried is called off first (it is the old track's).
+// SONG screen's columns do. An effect being tried is called off first (it is the old track's). A held on a
+// setting is kept where the new track's line holds the same effect (gesture audit G44: one dial turned across
+// the tracks, a press each), so the stick and the D-pad turn the same setting there; another effect, or none,
+// lets A go: its setting under the cursor could be a choice, another job, or the list (an empty slot), where a
+// push would try effects. The sends are the same two on every track, and a bus's or the master's line is the
+// same whatever the track.
 void FxScreen::stepTrack(int by) {
+    const bool turning = holding_ && tryRow_ < 0 && column_ > 0;
+    const int was = sends(row_) ? -1 : data(row_).kind;
     callOff();
     holding_ = false;
     const int to = project_.track + by;
-    if (to < 0 || to >= project_.trackCount()) return;
-    project_.track = to; // (the line stays; a setting it no longer has: the nearest, in update())
+    if (to >= 0 && to < project_.trackCount()) project_.track = to; // (the line stays; a setting it no longer has: the nearest, in update())
+    holding_ = turning && (sends(row_) ? -1 : data(row_).kind) == was;
 }
 
 void FxScreen::update(const Input& input, Uint32 nowMs) {
@@ -644,7 +695,7 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
     // The RIGHT (D-pad or stick) that came in from the list is let go: RIGHT switches the TYPE from now.
     // Trying an effect with A held: A let go unseen, or the track changed under it: nothing goes in.
     if (tryRow_ >= 0 && (!holding_ || trackOf(tryRow_) != tryTrack_ || row_ != tryRow_)) callOff(), holding_ = false;
-    // B held on an effect's line: the bar fills for a second, then the effect is deleted. Let go,
+    // B held on an effect's line: the bar fills for half a second (G29), then the effect is deleted. Let go,
     // moved off the line, or A held: nothing is deleted.
     if (!input.held(Button::B) || holding_ || column_ != 0 || row_ != deleteRow_ || sends(row_)) deleting_ = false;
     if (!deleting_) deletePart_ = 0.f;
@@ -681,30 +732,45 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
     // from one choice to the next, a push at a time, with the stick as with the D-pad.
     const bool onSend = sends(row_);
     const bool choice = !onSend && column_ > 0 && effectChoices(static_cast<EffectKind>(data(row_).kind), column_ - 1) > 0;
-    if (holding_ && column_ > 0 && !choice) {
+    if (const int along = bandGrip(); along >= 0) {
+        // Y held on BAND's FREQ, GAIN or Q (gesture audit G18): the stick moves the bell both ways at once, as
+        // the mixer turns level and pan (no lock to one axis): across is FREQ, up / down GAIN (on the Q dial, Q),
+        // each squared and at the pace a turn with A held has.
+        turnSetting(kBandFreq, x * std::fabs(x) * kTurnPerSecond * dt);
+        turnSetting(along, -y * std::fabs(y) * kTurnPerSecond * dt);
+        saved_ = 0.f;
+        stickWas_ = false;
+    } else if (holding_ && column_ > 0 && !choice) {
         // A setting or a send: the stick turns it. Squared, so a small push is fine.
         turn(-y * std::fabs(y) * kTurnPerSecond * dt);
     } else {
         // Moving, or stepping through the effects or the types: one at once, then steadily.
         const bool sideways = (!holding_ || picking()) && std::fabs(x) > std::fabs(y);
         const float push = sideways ? x : y;
+        const bool kinds = holding_ || (sideways && typeKey() != nullptr); // (a TYPE from the settings: at the list's pace)
+        const float climb = climb_.times(kinds ? 0.f : push, nowMs);       // the cursor: a full push held climbs (G07)
         if (push == 0.f) {
             saved_ = 0.f;
             stickWas_ = false;
         } else {
-            const bool kinds = holding_ || (sideways && typeKey() != nullptr); // (a TYPE from the settings: at the list's pace)
-            saved_ += stickWas_ ? std::fabs(push) * (kinds ? kKindsPerSecond : kMovesPerSecond) * dt : 1.f;
+            saved_ += stickWas_ ? std::fabs(push) * (kinds ? kKindsPerSecond : kMovesPerSecond * climb) * dt : 1.f;
             stickWas_ = true;
-            for (; saved_ >= 1.f; saved_ -= 1.f)
+            for (; saved_ >= 1.f; saved_ -= 1.f) {
                 press(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
+                if (gripEntered_) break; // (onto BAND's dials with Y held: moved() below)
+            }
+            moved(input);
         }
     }
-    if (repeating_ != Button::None && repeatAt_ == 0) {
-        repeatAt_ = nowMs + kRepeatDelayMs;
-    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
+    // A held D-pad: the list of effects and a TYPE (a choice) at the list's pace, after the cursor's wait they
+    // always had (G32: the list ran at a bare 200 ms); the cursor, a setting and a send at the cursor's.
+    const auto runs = [&] {
         const bool types = typeKey() != nullptr && (repeating_ == Button::Left || repeating_ == Button::Right); // a TYPE: a choice
-        repeatAt_ = nowMs + (picking() ? 200u : (types ? ui::kListEveryMs : kRepeatEveryMs));
+        return picking() || types ? Pace::List : Pace::Cursor;
+    };
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::Cursor, runs())) {
         press(repeating_);
+        moved(input);
     }
 }
 
@@ -1057,6 +1123,9 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         } else {
             hint("LET GO", "then RIGHT");
         }
+    } else if (const int along = bandGrip(); along >= 0) {
+        hint("LEFT / RIGHT", "freq"); // (Y held: the bar has room for these; "HOLD Y" before it has none, so the manual says it)
+        hint("UP / DOWN", along == kBandQ ? "q" : "gain");
     } else if (yHeld_ && column_ == 0 && row_ < kTrackSlots) {
         hint("UP / DOWN", "move it");
     } else if (column_ == 0) {

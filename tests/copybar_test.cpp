@@ -39,6 +39,7 @@ namespace {
 
 const SDL_Keycode A = SDLK_x, B = SDLK_z, X = SDLK_s, L1 = SDLK_q, R1 = SDLK_w, L2 = SDLK_1, R2 = SDLK_2, UP = SDLK_UP, RIGHT = SDLK_RIGHT, LEFT = SDLK_LEFT, DOWN = SDLK_DOWN,
                   SELECT = SDLK_BACKSPACE;
+const SDL_Keycode STICK_DOWN = SDLK_k, STICK_RIGHT = SDLK_l, Y = SDLK_a;
 const int kStep = 6000; // 120 BPM at 48 kHz
 
 struct Rig {
@@ -199,7 +200,7 @@ void testDrums() {
     rig.frames(1);
     CHECK(rig.said() == "PASTED ON BAR 2");
     CHECK(sameDrums(rig.track(0).drums[0][1], rig.track(0).drums[0][0]));
-    CHECK(!rig.session().barClip().has); // spent: a paste clears the copy
+    CHECK(rig.session().barClip().has); // kept for another paste (G23, 2026-11-25: a paste spent it)
     CHECK(drums.level(4, 2) == 0.f);
     // A's hold is not A's: the D-pad does not nudge or level anything while it is down.
     const float level = drums.level(0, 8);
@@ -221,7 +222,7 @@ void testDrums() {
     rig.redo();
     CHECK(sameDrums(rig.track(0).drums[0][1], rig.track(0).drums[0][0]) && rig.track(0).automation[0][20][kSteps + 3] == 0.7f);
     rig.settle();
-    // Pasted again on the same: nothing changes, no step of undo (a fresh copy: the paste spent it).
+    // Pasted again on the same: nothing changes, no step of undo (a fresh copy of bar 1).
     rig.project().bar = 0;
     rig.frames(1);
     rig.withL1(R1);
@@ -250,7 +251,7 @@ void testDrums() {
     rig.settle();
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // again: the paste spent it
+    rig.withL1(R1); // a fresh copy, of the bar as it is now
     rig.project().bar = 1;
     rig.frames(1);
     rig.withL1(A);
@@ -288,7 +289,7 @@ void testDrums() {
     // A paste and an edit straight after are two steps, not one burst.
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // again: the paste spent it
+    rig.withL1(R1); // a fresh copy, of the bar as it is now
     rig.project().bar = 1;
     rig.frames(1);
     drums.setStep(0, 0, 0.f);
@@ -306,7 +307,7 @@ void testDrums() {
     // An edit and a paste straight after it (no still moment between): two steps too.
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // again: the paste spent it
+    rig.withL1(R1); // a fresh copy, of the bar as it is now
     rig.project().bar = 1;
     rig.frames(1);
     const int beforeBoth = rig.session().undoSteps();
@@ -335,7 +336,7 @@ void testDrums() {
     // Another scene, another drum track: the hits; automation only on the same track.
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // again: the paste spent it
+    rig.withL1(R1); // a fresh copy, of the bar as it is now
     rig.project().scene = 1;
     rig.project().bar = 0;
     rig.frames(1);
@@ -344,7 +345,7 @@ void testDrums() {
     rig.project().track = 0;
     rig.project().scene = 0;
     rig.frames(1);
-    rig.withL1(R1); // again: the paste spent it
+    rig.withL1(R1); // a fresh copy, of the bar as it is now
     CHECK(rig.session().addTrack(TrackKind::Drums));
     rig.project().track = 1;
     rig.project().scene = 0;
@@ -355,7 +356,7 @@ void testDrums() {
     // Onto a synth track: refused, nothing placed.
     rig.project().track = 0;
     rig.frames(1);
-    rig.withL1(R1); // again: the paste spent it (the refusal keeps it)
+    rig.withL1(R1); // a fresh copy (the refusal kept the copy too)
     CHECK(rig.session().addTrack(TrackKind::Phazed));
     rig.project().track = 2;
     rig.frames(1);
@@ -370,6 +371,29 @@ void testDrums() {
     rig.session().newSong();
     rig.frames(4);
     CHECK(rig.session().barClip().has);
+}
+
+// A bar's copy stays after a paste (gesture audit G23, 2026-11-25: a paste spent it): one copy goes on
+// bar after bar, each paste its own step of undo; a new copy replaces it.
+void testTheCopyStaysForAnotherPaste() {
+    Rig rig;
+    writeDrumBar(rig);
+    Session& session = rig.session();
+    rig.settle();
+    CHECK(session.copyBar(0, 0, 0) == Session::BarCopy::Done);
+    const int steps = session.undoSteps();
+    for (int scene = 1; scene <= 3; ++scene) {
+        CHECK(session.pasteBar(0, scene, 0) == Session::BarCopy::Done && session.barClip().has);
+        CHECK(sameDrums(rig.track(0).drums[scene][0], rig.track(0).drums[0][0]));
+        rig.settle();
+    }
+    CHECK(session.undoSteps() == steps + 3);
+    // Through the grid: hold L1, A on bar 2 of scene 1 pastes the same copy, with no R1 between.
+    rig.project().scene = 0;
+    rig.project().bar = 1;
+    rig.frames(1);
+    rig.withL1(A);
+    CHECK(rig.said() == "PASTED ON BAR 2" && sameDrums(rig.track(0).drums[0][1], rig.track(0).drums[0][0]) && session.barClip().has);
 }
 
 // ---- notes -------------------------------------------------------------------------------------
@@ -465,7 +489,7 @@ void testNotes() {
     // Another synth track, a cell of four bars: the long note keeps its length. No automation.
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // again: the paste spent it
+    rig.withL1(R1); // a fresh copy, of the bar as it is now
     CHECK(rig.session().addTrack(TrackKind::Jx3p));
     rig.session().setCellBars(2, 0, 4);
     rig.project().track = 2;
@@ -477,7 +501,7 @@ void testNotes() {
     rig.project().track = 1;
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // again: the paste spent it
+    rig.withL1(R1); // a fresh copy, of the bar as it is now
     CHECK(rig.session().addTrack(TrackKind::Sampler));
     rig.project().track = 3;
     rig.frames(1);
@@ -487,7 +511,7 @@ void testNotes() {
     rig.project().track = 1;
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // again: the paste spent it (the refusal keeps it)
+    rig.withL1(R1); // a fresh copy (the refusal kept the copy too)
     rig.project().track = 0;
     rig.frames(1);
     rig.withL1(A);
@@ -923,6 +947,23 @@ void testDrumBarsLength() {
     CHECK(rig.project().bar == 3); // round the start
     rig.tap(RIGHT);
     CHECK(rig.project().bar == 0); // ...and back round the end
+    // Held, with A or Y held too, it runs on as the press did (gesture audit G21: the press turned the bar and
+    // the held repeat did nothing). 13 frames: the press, and one repeat after the cursor's 170 wait.
+    for (SDL_Keycode with : {A, Y}) {
+        rig.project().bar = 0;
+        rig.key(with, true);
+        rig.frames(1);
+        rig.key(RIGHT, true);
+        rig.frames(13);
+        rig.key(RIGHT, false);
+        CHECK(rig.project().bar == 2);
+        rig.key(LEFT, true);
+        rig.frames(15); // the press and two repeats: round the start
+        rig.key(LEFT, false);
+        rig.key(with, false);
+        rig.frames(1);
+        CHECK(rig.project().bar == 3 && rig.track(0).bars[0] == 4 && grid.cursorOnBars());
+    }
     // Down from BARS is back through the tempo to the lanes; up from BARS rounds to the bottom.
     rig.tap(DOWN);
     CHECK(!grid.cursorOnBars() && grid.cursorOnTempo());
@@ -962,6 +1003,59 @@ void testBarCopyTracksItsTrack() {
     CHECK(rig.track(2).automation[1][lane][2] == 0.5f);
 }
 
+// The gesture audit's G31 (2026-11-24): a stick move with L1 held is a use of L1, as a button press is.
+// Its let go then opens no slices on the drum grid and zooms nothing on the roll; a plain tap still does.
+void testAStickMoveIsAUseOfL1() {
+    const std::string folder = tempFolder("copybar-stick");
+    CHECK(writeWav(folder + "/break.wav", std::vector<float>(48000, 0.25f), 48000));
+    Rig rig(folder);
+    Session& session = rig.session();
+    session.setLaneSample(0, 2, "break");
+    rig.frames(2);
+    PatternScreen& drums = rig.app.drums();
+    drums.moveCursorTo(2, 3);
+    CHECK(drums.canSlice(2));
+    const auto stickWithL1 = [&](SDL_Keycode way) {
+        rig.key(L1, true);
+        rig.frames(1);
+        rig.key(way, true);
+        rig.frames(1);
+        rig.key(way, false);
+        rig.frames(1);
+        rig.key(L1, false);
+        rig.frames(1);
+    };
+    stickWithL1(STICK_RIGHT);
+    CHECK(drums.cursorStep() == 4 && !drums.slicing()); // the stick moved the cursor, and that was L1's hold
+    rig.key(L1, true);
+    rig.frames(1);
+    rig.key(L1, false);
+    rig.frames(1);
+    CHECK(drums.slicing()); // a plain tap still opens them
+    stickWithL1(STICK_DOWN);
+    CHECK(drums.slicing()); // ...and with them open, a stick move under L1 does not shut them
+    rig.key(L1, true);
+    rig.key(L1, false);
+    rig.frames(1);
+    CHECK(!drums.slicing());
+    // The roll: the same for its zoom.
+    CHECK(session.addTrack(TrackKind::Phazed));
+    rig.project().track = 1;
+    rig.frames(2);
+    NoteScreen& roll = rig.app.notes();
+    roll.moveCursorTo(60, 4);
+    const int octaves = session.octavesShown();
+    stickWithL1(STICK_DOWN);
+    CHECK(roll.cursorStep() == 5 && session.octavesShown() == octaves);
+    stickWithL1(STICK_RIGHT);
+    CHECK(roll.cursorPitch() == 61 && session.octavesShown() == octaves);
+    rig.key(L1, true);
+    rig.frames(1);
+    rig.key(L1, false);
+    rig.frames(1);
+    CHECK(session.octavesShown() != octaves); // a plain tap still zooms
+}
+
 // A paste is its own step even with an unmarked change in flight: the drift keeps its own step.
 void testPasteSeparatesUnmarkedDrift() {
     Rig rig;
@@ -988,6 +1082,7 @@ int main(int argc, char** argv) {
         {"testDrums", testDrums}, {"testNotes", testNotes}, {"testTheSlicesAndL1", testTheSlicesAndL1}, {"testTheEngineHearsIt", testTheEngineHearsIt}, {"testTheWordsFit", testTheWordsFit},
         {"testRollBarsLength", testRollBarsLength}, {"testDrumBarsLength", testDrumBarsLength},
         {"testBarCopyTracksItsTrack", testBarCopyTracksItsTrack}, {"testPasteSeparatesUnmarkedDrift", testPasteSeparatesUnmarkedDrift},
+        {"testAStickMoveIsAUseOfL1", testAStickMoveIsAUseOfL1}, {"testTheCopyStaysForAnotherPaste", testTheCopyStaysForAnotherPaste},
     };
     for (const Test& test : tests) {
         bool wanted = argc < 2;

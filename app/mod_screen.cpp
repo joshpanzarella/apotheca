@@ -14,7 +14,6 @@ using namespace ui;
 
 namespace {
 
-constexpr Uint32 kRepeatDelayMs = kCursorDelayMs, kRepeatEveryMs = kCursorEveryMs;
 constexpr float kMovesPerSecond = 14.f, kClicksPerSecond = 5.f, kTurnPerSecond = 1.8f; // (an amount here is -1..1 or 0..1)
 constexpr float kNotch = 0.05f;
 constexpr double kSpeedOctaves = 4.0; // the stick on a FREE LFO's SPEED: octaves a unit of turn (its 10 octaves in about 1.4 s, pushed full)
@@ -260,12 +259,20 @@ void ModScreen::dice(Uint32 nowMs) {
     }
 }
 
+// L1 / R1: the track before / after (the ends stop). A list of targets open is called off. A held on a setting is
+// kept where the new track's MOD on the line is the same kind (gesture audit G44, as on FX): an LFO and an LFO, a
+// STEPPER and a STEPPER; on a MOD's fifth setting, the same job too (a FREE LFO's SPEED is not another's PHASE).
+// Anything else lets A go.
 void ModScreen::stepTrack(int by) {
+    const bool turning = holding_ && !picking() && column_ > 0;
+    const ModSettings was = mod(modOf(row_));
     pickRow_ = -1;
     holding_ = false;
     const int to = project_.track + by;
-    if (to < 0 || to >= project_.trackCount()) return;
-    project_.track = to;
+    if (to >= 0 && to < project_.trackCount()) project_.track = to;
+    const ModSettings& now = mod(modOf(row_));
+    const bool sameJob = stepsLine(row_) || column_ != kMore || std::strcmp(ModKnob::moreName(now), ModKnob::moreName(was)) == 0;
+    holding_ = turning && modKind(now.kind) == modKind(was.kind) && sameJob; // (an OFF MOD is never turned: A on its TARGET is the list)
 }
 
 // ---- the list of targets -----------------------------------------------------------------------
@@ -331,8 +338,10 @@ void ModScreen::hear(bool held) {
     const TrackKind kind = project_.current().kind;
     if (kind == TrackKind::Drums) {
         session_.hearLaneHeld(track(), 0, kPlacedLevel, this);
-    } else if (held && !project_.playing && (isSynth(kind) || kind == TrackKind::Sampler)) {
-        session_.auditionHeld(track(), 60, kPlacedLevel, this); // (heard as long as X is: a MOD that runs is heard moving)
+    } else if (held && isSynth(kind)) { // (the sampler too)
+        // Heard as long as X is, over the song too (gesture audit G33): stopped, a MOD that runs is heard moving
+        // on it; playing, the song's MODs run (call E).
+        session_.auditionHeld(track(), 60, kPlacedLevel, this);
     } else if (isSynth(kind)) {
         session_.audition(track(), 60, kPlacedLevel);
     }
@@ -398,7 +407,7 @@ void ModScreen::onButton(const ButtonEvent& event, const Input& input) {
     } else if (isDirection(b)) {
         press(b);
         repeating_ = b;
-        repeatAt_ = 0;
+        repeat_.restart();
     } else if (b == Button::B && holding_) {
         if (picking()) pickRow_ = -1, holding_ = false; // as it was: A does nothing more until it is pressed again
     } else if (b == Button::B) {
@@ -422,7 +431,7 @@ void ModScreen::update(const Input& input, Uint32 nowMs) {
     if (!input.held(Button::A)) holding_ = false;
     if (picking() && (!holding_ || pickTrack_ != track())) pickRow_ = -1, holding_ = false; // A let go unseen, or another track: nothing goes in
     if (!input.held(Button::X)) xHeld_ = false;
-    // B held on a MOD's line: the bar fills for a second, then the MOD is deleted (undo brings it back).
+    // B held on a MOD's line: the bar fills for half a second (G29), then the MOD is deleted (undo brings it back).
     if (!input.held(Button::B) || holding_ || column_ != 0 || row_ != deleteRow_) deleting_ = false;
     if (!deleting_) {
         deletePart_ = 0.f;
@@ -453,23 +462,24 @@ void ModScreen::update(const Input& input, Uint32 nowMs) {
     } else {
         const bool sideways = std::fabs(x) > std::fabs(y);
         const float push = sideways ? x : y;
+        const float climb = climb_.times(holding_ ? 0.f : push, nowMs); // the cursor: a full push held climbs (G07)
         if (push == 0.f) {
             saved_ = 0.f;
             stickWas_ = false;
         } else {
-            saved_ += stickWas_ ? std::fabs(push) * (holding_ ? kClicksPerSecond : kMovesPerSecond) * dt : 1.f;
+            saved_ += stickWas_ ? std::fabs(push) * (holding_ ? kClicksPerSecond : kMovesPerSecond * climb) * dt : 1.f;
             stickWas_ = true;
             for (; saved_ >= 1.f; saved_ -= 1.f)
                 press(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
         }
     }
-    if (repeating_ != Button::None && repeatAt_ == 0) {
-        repeatAt_ = nowMs + kRepeatDelayMs;
-    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
+    // A held D-pad: the list of targets and a choice clicked with A held at the list's pace, after the cursor's
+    // wait they always had; the cursor and an amount at the cursor's.
+    const auto runs = [&] {
         const bool click = holding_ && !amount() && (repeating_ == Button::Up || repeating_ == Button::Down);
-        repeatAt_ = nowMs + (picking() || click ? kListEveryMs : kRepeatEveryMs);
-        press(repeating_);
-    }
+        return picking() || click ? Pace::List : Pace::Cursor;
+    };
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::Cursor, runs())) press(repeating_);
 }
 
 // ---- drawing -----------------------------------------------------------------------------------

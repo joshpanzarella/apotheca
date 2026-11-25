@@ -157,6 +157,26 @@ void testTheStillsFlag(const std::string& program, const std::string& folder) {
     if (without) SDL_FreeSurface(without);
 }
 
+// Presses that come while the program rests between passes are read (gesture audit G06; review of B1-latency). The
+// rest (pass_wait.hpp) takes them off SDL's queue, so main.cpp must read its events from the PassWait: polling SDL's
+// queue there, every press the rest took would be lost, and controls_test, idle_test and the other stills (their
+// keys pushed before the first pass) would never see it. "rest-presses" pushes SEL and eight taps of UP from a timer,
+// 7 ms apart, once the passes are going: most land in a rest, and the top bar reads 108 BPM (from 100) only if all
+// eight were read.
+void testPressesInTheRest(const std::string& program, const std::string& folder) {
+    const std::string texts = folder + "/rest";
+    const std::string command = "SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy '" + program + "' --demo --view rest-presses --still-ms 600 --texts '" + texts + "' > /dev/null 2>&1";
+    CHECK(std::system(command.c_str()) == 0);
+    textfit::Frame frames[4];
+    CHECK(textfit::readFrames(texts.c_str(), frames) == 4);
+    std::string tempo; // the number furthest right in the top bar, just before BPM (a scene's "1" is further left)
+    float tempoX = 0.f;
+    for (const textfit::Text& t : frames[kTextLarge].texts)
+        if (t.y < ui::kTopBarH && t.x > tempoX && !t.words.empty() && t.words.find_first_not_of("0123456789") == std::string::npos) tempo = t.words, tempoX = t.x;
+    CHECK(tempo == "108");
+    if (tempo != "108") std::printf("    the top bar read %s BPM, not 108: a press that came in a rest was lost\n", tempo.c_str());
+}
+
 int runViews(const char* program, const char* only) {
     testEveryViewIsListed();
     const std::string folder = tempFolder("textviews"), samples = folder + "/samples";
@@ -184,7 +204,7 @@ int runViews(const char* program, const char* only) {
     for (const char* name : {"grand piano/Grand C3 pp", "grand piano/Grand C3 mf", "grand piano/Grand C3 ff", "grand piano/Grand C4 pp", "grand piano/Grand C4 mf", "grand piano/Grand C4 ff"})
         wav(name, 0.3f, 262.f);
 
-    if (!only) testTheStillsFlag(program, folder);
+    if (!only) testTheStillsFlag(program, folder), testPressesInTheRest(program, folder);
     std::vector<std::vector<std::string>> faults(static_cast<std::size_t>(kViewCount));
     std::vector<char> ran(static_cast<std::size_t>(kViewCount), 0);
     std::atomic<int> next{0};
@@ -667,6 +687,7 @@ void testTheSettingIsKept() {
         // Every size is kept as its number, with the other settings, as soon as it is set.
         for (int size : {kTextXl, kTextSmall, kTextMedium, kTextLarge, kTextXl}) {
             session.setTextSize(size);
+            session.keepSettingsNow(); // (written once it has stood still a second: kKeepRestMs)
             CHECK(session.textSize() == size);
             CHECK(readTextFile(file, kept) && kept == "stick " + std::to_string(static_cast<int>(std::round(ui::gStickSpeed * 100.f))) + "\noctaves 2\nmidirec 0\ntext " + std::to_string(size) + "\ntheme 0\nbrightness 70\nlight 1\nclick 0\ncountin 0\n");
         }
@@ -675,10 +696,12 @@ void testTheSettingIsKept() {
         CHECK(session.textSize() == kTextXl);
         session.setTextSize(-5);
         CHECK(session.textSize() == kTextSmall);
+        session.keepSettingsNow();
         CHECK(readTextFile(file, kept) && kept.find("text 0\n") != std::string::npos);
         // Another setting changed keeps the size too.
         session.setTextSize(kTextXl);
         session.setOctavesShown(3);
+        session.keepSettingsNow();
         CHECK(readTextFile(file, kept) && kept.find("octaves 3\n") != std::string::npos && kept.find("text 3\n") != std::string::npos);
     }
     {
@@ -750,9 +773,13 @@ void testTheRow() {
     CHECK(session.textSize() == kTextSmall);
     rig.tap(LEFT, 3);
     CHECK(session.textSize() == kTextSmall);
-    // A, B, X and Y do nothing to it.
-    for (SDL_Keycode other : {A, B, X, Y}) rig.tap(other);
+    // A, X and Y do nothing to it; B gives it its usual, LARGE (gesture audit G17: it did nothing).
+    for (SDL_Keycode other : {A, X, Y}) rig.tap(other);
     CHECK(session.textSize() == kTextSmall && setup.cursorRow() == S::kTextSize && !setup.typing() && !setup.testing());
+    rig.tap(B);
+    CHECK(session.textSize() == kTextLarge && setup.cursorRow() == S::kTextSize);
+    rig.tap(LEFT, 2);
+    CHECK(session.textSize() == kTextSmall);
     // A held D-pad goes at the speed of a list (one seen at a time), not a cursor's.
     rig.key(RIGHT, true);
     rig.frames(1);
@@ -1271,6 +1298,52 @@ void testTheOtherScreens() {
     }
     CHECK(pagesSeen == 10 + 6 + 9 + 6 + 3 + 4 + 6);
 
+    // A synth's own preset (gesture audit G01, G30): the name keys at their longest, saying save and then replace;
+    // what is said in the top bar after, a long own name on MAIN, and the bar while B deletes it.
+    {
+        for (int t = 0; t < kNumTracks; ++t)
+            if (project.tracks[t].kind == TrackKind::Phazed) project.track = t;
+        SynthScreen& phazed = rig.app.phazed();
+        session.usePresetFolder(tempFolder("textsize-presets"));
+        const std::string longest(SynthScreen::kPresetNameLength, 'W');
+        phazed.goTo(0, SynthScreen::kPreset);
+        rig.frames(1);
+        rig.tap(R1);
+        CHECK(phazed.typing() && phazed.typed().empty());
+        holds(rig, "a synth's preset keys, nothing typed");
+        CHECK(drew("(empty: name it to save)") && drew("leave"));
+        rig.tap(DOWN, 2);
+        rig.tap(RIGHT, 2); // (W, the widest letter)
+        rig.tap(A, SynthScreen::kPresetNameLength + 2);
+        CHECK(phazed.typed() == longest);
+        holds(rig, "a synth's preset keys, a name at its longest");
+        CHECK(drew("24 OF 24") && drew("save"));
+        rig.tap(B);
+        CHECK(!phazed.typing() && phazed.said() == "SAVED AS " + longest);
+        holds(rig, "a synth, SAVED AS a long name");
+        rig.tap(R1);
+        CHECK(phazed.typed() == longest);
+        holds(rig, "a synth's preset keys, B replacing");
+        CHECK(drew("replace") && !drew("save"));
+        CHECK(drew(SynthScreen::kPresetReplacingWords) && capAtXl(SynthScreen::kPresetReplacingWords) > 0.f); // (whole at XL: not cut)
+        rig.tap(B);
+        CHECK(phazed.said() == "REPLACED " + longest);
+        holds(rig, "a synth, REPLACED a long name");
+        rig.frames(200);
+        holds(rig, "a synth on its own preset, a long name");
+        CHECK(drew("delete this preset"));
+        rig.key(B, true);
+        rig.frames(30);
+        holds(rig, "a synth's own preset being deleted");
+        CHECK(drew(SynthScreen::kPresetDeletingWords) && phazed.presetDeletePart() > 0.f);
+        rig.frames(50);
+        rig.key(B, false);
+        rig.frames(1);
+        CHECK(userPresets(TrackKind::Phazed).empty() && phazed.said() == longest + " DELETED. THE TRACK KEEPS ITS SOUND");
+        holds(rig, "a synth, a long name DELETED");
+        session.usePresetFolder(tempFolder("textsize-presets-clean")); // (the registry is global)
+    }
+
     // JAX-EP (jx3p-plan.md, batch 6b): every setting of every page with the cursor on it, at the bottom of what
     // it reads and, with A held, at the top (a knob: 0.0 and 10.0; a choice: its first and its last word).
     {
@@ -1558,6 +1631,44 @@ void testTheOtherScreens() {
         rig.frames(1);
         holds(rig, "the sampler, each setting");
     }
+    // Its own preset (gesture audit G01, G10): the name keys at their longest, saying save and then replace; what
+    // is said after, a long own name on PRESET, and the bar while B deletes it, which says it cannot be undone.
+    {
+        SamplerScreen& screen = rig.app.sampler();
+        session.usePresetFolder(tempFolder("textsize-sampler-presets"));
+        const std::string longest(SamplerScreen::kPresetNameLength, 'W');
+        screen.goTo(SamplerScreen::kPresetStop);
+        rig.frames(1);
+        rig.tap(R1);
+        CHECK(screen.typing() && screen.typed().empty());
+        rig.tap(DOWN, 2);
+        rig.tap(RIGHT, 2);
+        rig.tap(A, SamplerScreen::kPresetNameLength);
+        CHECK(screen.typed() == longest);
+        holds(rig, "the sampler's preset keys, a name at its longest");
+        rig.tap(B);
+        CHECK(!screen.typing() && screen.said() == "SAVED AS " + longest);
+        holds(rig, "the sampler, SAVED AS a long name");
+        rig.tap(R1);
+        holds(rig, "the sampler's preset keys, B replacing");
+        CHECK(drew("replace") && drew(SamplerScreen::kPresetReplacingWords) && capAtXl(SamplerScreen::kPresetReplacingWords) > 0.f);
+        rig.tap(B);
+        CHECK(screen.said() == "REPLACED " + longest);
+        holds(rig, "the sampler, REPLACED a long name");
+        rig.frames(200);
+        holds(rig, "the sampler on its own preset, a long name");
+        CHECK(drew("delete this preset"));
+        rig.key(B, true);
+        rig.frames(30);
+        holds(rig, "the sampler's own preset being deleted");
+        CHECK(drew(SamplerScreen::kPresetDeletingWords) && screen.presetDeletePart() > 0.f);
+        rig.frames(50);
+        rig.key(B, false);
+        rig.frames(1);
+        CHECK(session.samplerPresets().empty() && screen.said() == longest + " DELETED. THE TRACK KEEPS ITS SOUND");
+        holds(rig, "the sampler, a long name DELETED");
+        session.usePresetFolder(tempFolder("textsize-sampler-presets-clean"));
+    }
     session.setTrackSample(project.track, "not there");
     rig.frames(2);
     holds(rig, "the sampler, its recording gone");
@@ -1825,6 +1936,7 @@ void testTheOtherScreens() {
     rig.key(MENU, true);
     rig.frames(2);
     holds(rig, "the help card", 0, true);
+    CHECK(drew("UNDO the last change (20 deep)")); // (it was "...to the patterns": undo covers the sounds and effects too, gesture audit G10)
     rig.key(MENU, false);
     rig.frames(2);
     for (SDL_Keycode shoulder : {L1, R1, L2, R2}) rig.key(shoulder, true);
@@ -1871,6 +1983,17 @@ void testTheOtherScreens() {
     session.pretendBounce(1.f, 123.4f);
     rig.frames(1);
     holds(rig, "a bounce in its tail");
+    CHECK(drew("stop it"));
+    rig.key(B, true); // B held on it: its bar fills, and the row says nothing is kept
+    rig.frames(20);
+    CHECK(setup.stopPart() > 0.f);
+    holds(rig, "a bounce being stopped");
+    rig.frames(50); // ...held its second: told to stop, not waited for. Until it has (a pretended one never does),
+    CHECK(rig.session().bounceStopping() && setup.stopPart() == 0.f); // the row still says so, and B's hint is gone
+    holds(rig, "a bounce stopping");
+    CHECK(drew(SettingsScreen::kStoppingWords) && !drew("stop it") && !drew("stopping"));
+    rig.key(B, false);
+    rig.frames(1);
     CHECK(std::system(("rm -rf '" + folder + "'").c_str()) == 0);
 }
 
@@ -1896,6 +2019,38 @@ void testTheControlsSetup() {
     for (Uint32 pixel : alone) lit += pixel != Canvas::colour(ui::kBg) ? 1 : 0;
     CHECK(lit > 2000); // (something was drawn)
     for (int size = 0; size < kTextSizes; ++size) CHECK(seen[size] == alone);
+    // Every step's words fit its box (the screen less 40 a side, at LARGE), L3's and R3's the longest;
+    // the lines above and below fit the screen. Each step answered by a key of its own (the stick's by an axis).
+    const Fonts& large = s.canvas.fonts->fixed();
+    const float box = ui::kScreenW - 80.f - 16.f, line = ui::kScreenW - 80.f;
+    ControlLearner walk;
+    walk.update(1000);
+    walk.update(2000);
+    for (int step = 0; !walk.done() && step < 40; ++step) {
+        const float w = large.large.width(walk.asking());
+        if (w > box) std::printf("    \"%s\" is %.0f wide: the box has %.0f\n", walk.asking(), static_cast<double>(w), static_cast<double>(box));
+        CHECK(w <= box);
+        SDL_Event e = {};
+        if (std::string(walk.asking()).find("THE STICK,") == 0) {
+            e.type = SDL_JOYAXISMOTION;
+            e.jaxis.axis = static_cast<Uint8>(std::string(walk.asking()).find("RIGHT") != std::string::npos ? 0 : 1);
+            e.jaxis.value = 30000;
+            walk.handle(e);
+            e.jaxis.value = 0;
+            walk.handle(e);
+        } else {
+            e.type = SDL_KEYDOWN;
+            e.key.keysym.sym = SDLK_a + step;
+            walk.handle(e);
+            e.type = SDL_KEYUP;
+            walk.handle(e);
+        }
+    }
+    CHECK(walk.done());
+    for (const char* words : {"One button is new since this handheld was set up. Once only.", "Once only. Apotheca learns what each of this handheld's buttons sends.",
+                              "To do this again later: the SET tab, CONTROLS row, hold A for a second.",
+                              "If this handheld has none, or nothing happens: wait 8 seconds and it is left out."})
+        CHECK(large.small.width(words) <= line);
 }
 
 // The notices that only an update over WiFi brings up are not drawn here: their lines are measured.
@@ -1910,7 +2065,7 @@ void testTheUpdateNotice() {
         {&Fonts::small, "The one running now is kept. If the new one does not"}, {&Fonts::small, "start, Apotheca goes back to this one by itself."},
         {&Fonts::large, "COULD NOT KEEP THE UPDATE"}, {&Fonts::medium, "Nothing was changed. Is the card full?"},
         {&Fonts::large, "AN UPDATE HAS ARRIVED"}, {&Fonts::medium, "A new Apotheca was sent over WiFi (39.9 MB)."},
-        {&Fonts::small, "Only accept it if you sent it yourself."}, {&Fonts::small, "HOLD A for a second to accept.    B to throw it away."},
+        {&Fonts::small, "Only accept it if you sent it yourself."}, {&Fonts::small, App::kUpdateWords}, {&Fonts::small, App::kUpdateDeletingWords},
     };
     for (const Line& line : lines)
         for (int size = 0; size < kTextSizes; ++size) {

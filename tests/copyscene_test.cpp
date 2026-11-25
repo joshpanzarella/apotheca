@@ -3,7 +3,8 @@
 // cells (bars, drum hits with every field, notes and chords, automation), the repeats and the
 // steps; a track whose instrument changed since is skipped; the same scene twice is no step of
 // undo; one step otherwise. The gesture through the real screen: tap to copy, tap to paste (the
-// paste on R1's let go, so a panic on the way pastes nothing), the same scene again only copies,
+// paste on R1's let go, so a panic on the way pastes nothing), the copy kept after a paste and
+// cleared by R1 on the copied scene (G23), the copies moved with their scenes by a NEXT SCENE,
 // the AT END row appends, the cell brush as it was, the copied row brass-marked, the hints, and
 // the engine hears the pasted scene: the song played beside the scene it came from.
 
@@ -262,11 +263,11 @@ void testTheSameIsNoStep() {
     rig.settle();
     makeScene(rig, 0);
     CHECK(session.copyScene(0) == Session::SceneCopy::Done && session.pasteScene(1) == Session::SceneCopy::Done);
-    CHECK(session.copiedScene() < 0); // spent: a paste clears the copy
+    CHECK(session.copiedScene() == 0); // kept for another paste (G23, 2026-11-25: a paste spent it)
     // An edit, then a paste that changes nothing: undo takes the edit back, not the paste.
     session.setAutomation(0, 5, 0, 0, 0.5f);
     rig.settle();
-    CHECK(session.copyScene(0) == Session::SceneCopy::Done); // again: the paste before spent it
+    CHECK(session.copyScene(0) == Session::SceneCopy::Done); // (a fresh copy: the same, so far)
     CHECK(session.pasteScene(1) == Session::SceneCopy::Same);
     CHECK(session.pasteScene(0) == Session::SceneCopy::Same); // onto itself, too
     rig.undo();
@@ -330,10 +331,12 @@ void testTheGesture() {
     rig.key(R1, false);
     rig.frames(1);
     CHECK(rig.track(0).drums[1][0].level[0][0] == 0.9f && rig.said() == "PASTED ON SCENE 2");
-    CHECK(session.copiedScene() < 0); // spent: a paste clears the copy
-    // The same scene again: copied, not pasted over itself.
+    CHECK(session.copiedScene() == 0); // kept for another paste (G23, 2026-11-25: a paste spent it)
+    // The copied scene again: the copy is cleared, not pasted over itself (G23: it copied it again).
     song.moveCursorTo(0, -1);
     rig.tap(R1);
+    CHECK(session.copiedScene() < 0 && rig.said() == "COPY CLEARED");
+    rig.tap(R1); // ...and R1 again copies it afresh
     CHECK(session.copiedScene() == 0 && rig.said() == "SCENE 1 COPIED");
     // The AT END row pastes too: the copy becomes the song's new last scene.
     song.moveCursorTo(song.songEndRow(), -1);
@@ -341,10 +344,7 @@ void testTheGesture() {
     rig.tap(R1);
     CHECK(rig.track(0).drums[2][0].level[0][0] == 0.9f && rig.said() == "PASTED ON SCENE 3");
     CHECK(song.songEndRow() == 3);
-    // A fresh scene copy, so the cell work below proves the scene clipboard untouched.
-    song.moveCursorTo(0, -1);
-    rig.tap(R1);
-    CHECK(session.copiedScene() == 0 && rig.said() == "SCENE 1 COPIED");
+    CHECK(session.copiedScene() == 0); // (still there: the cell work below proves the scene clipboard untouched)
     // R1 on a cell copies it, as R1 on a repeat box copies its scene; R1 on
     // another cell pastes there, on its let go. The scene clipboard is untouched.
     song.moveCursorTo(0, 0);
@@ -358,21 +358,15 @@ void testTheGesture() {
     rig.frames(1);
     CHECK(rig.track(0).drums[3][0].level[0][0] == 0.9f && rig.said() == "CELL PASTED");
     CHECK(session.copiedScene() == 0);
-    // Pasted, the copy is cleared: R1 on the source copies it again (nothing to clear).
-    song.moveCursorTo(0, 0);
-    rig.tap(R1);
-    CHECK(rig.said() == "CELL COPIED");
-    // R1 on another cell pastes there, on its let go.
+    // Pasted, the copy stays (G23): R1 on another cell pastes there again, on its let go.
     song.moveCursorTo(4, 0);
     rig.key(R1, true);
     rig.frames(1);
     rig.key(R1, false);
     rig.frames(1);
     CHECK(rig.track(0).drums[4][0].level[0][0] == 0.9f && rig.said() == "CELL PASTED");
-    // ...so R1 on the source copies it yet again, and tapping it once more clears.
+    // ...and R1 on the source clears it.
     song.moveCursorTo(0, 0);
-    rig.tap(R1);
-    CHECK(rig.said() == "CELL COPIED");
     rig.tap(R1);
     CHECK(rig.said() == "COPY CLEARED");
     // Each paste is a step of undo of its own: one takes back the latest paste, another the one before.
@@ -646,7 +640,8 @@ void testCellCopyCleared() {
     song.moveCursorTo(1, 0);
     rig.tap(R1);
     CHECK(rig.said() == "CELL COPIED"); // copies: nothing pastes from the old song
-    // A scene put in or taken out clears it too: its cells moved.
+    // A scene put in or taken out keeps it, its place moved with its scene (G23 review, 2026-11-25: it went,
+    // so R1 copied where it should paste). testTheCopyFollowsNextScene does it through SELECT + Y.
     Rig moved;
     SongScreen& scrolled = moved.app.song();
     moved.track(0).drums[0][0].level[0][0] = 0.9f;
@@ -656,7 +651,10 @@ void testCellCopyCleared() {
     scrolled.scenesMoved(0, 1);
     scrolled.moveCursorTo(2, 0);
     moved.tap(R1);
-    CHECK(moved.said() == "CELL COPIED");
+    CHECK(moved.said() == "CELL PASTED");
+    scrolled.moveCursorTo(1, 0); // where it came from now
+    moved.tap(R1);
+    CHECK(moved.said() == "COPY CLEARED");
 }
 
 void testCellCopyRefusals() {
@@ -691,7 +689,7 @@ void testCellCopyAcrossSynths() {
     note.length = 2.f;
     note.velocity = 0.8f;
     rig.track(1).notes[0][0].notes[3] = note;
-    // A piano roll pastes on another synth: its notes go with it, and the copy is spent.
+    // A piano roll pastes on another synth: its notes go with it.
     song.moveCursorTo(0, 1);
     rig.tap(R1);
     CHECK(rig.said() == "CELL COPIED");
@@ -701,9 +699,9 @@ void testCellCopyAcrossSynths() {
     rig.key(R1, false);
     rig.frames(1);
     CHECK(rig.track(2).notes[0][0].notes[3].pitch == 64 && rig.said() == "CELL PASTED");
-    // ...so R1 there copies that cell instead of pasting again.
+    // The copy stays (G23): R1 there again pastes again, and does not copy that cell.
     rig.tap(R1);
-    CHECK(rig.said() == "CELL COPIED");
+    CHECK(rig.said() == "CELL PASTED");
     // A synth cell does not paste on drums either, and the copy is kept.
     song.moveCursorTo(0, 0);
     rig.tap(R1);
@@ -711,9 +709,14 @@ void testCellCopyAcrossSynths() {
     song.moveCursorTo(1, 1);
     rig.tap(R1);
     CHECK(rig.track(1).notes[1][0].notes[3].pitch == 64 && rig.said() == "CELL PASTED");
-    // A panic begun with R1 held for a paste: let go, nothing pastes.
+    // A panic begun with R1 held for a paste: let go, nothing pastes. (The synth cell's copy is cleared
+    // on its own cell first, and the drum cell copied.)
+    song.moveCursorTo(0, 1);
+    rig.tap(R1);
+    CHECK(rig.said() == "COPY CLEARED");
     song.moveCursorTo(0, 0);
     rig.tap(R1);
+    CHECK(rig.said() == "CELL COPIED");
     song.moveCursorTo(2, 0);
     rig.key(R1, true);
     rig.frames(1);
@@ -775,15 +778,219 @@ void testTheMarkAndHints() {
     };
     song.moveCursorTo(0, -1);
     CHECK(draw() && hintKeyed(canvas, scratch, "R1", "copy"));
-    CHECK(hintKeyed(canvas, scratch, "HOLD B", "delete"));
+    CHECK(hintKeyed(canvas, scratch, "HOLD B", "empty")); // (the scene is emptied, one step of undo: G10)
     rig.tap(R1);
-    CHECK(draw() && hintKeyed(canvas, scratch, "R1", "paste"));
+    CHECK(draw() && hintKeyed(canvas, scratch, "R1", "clear")); // on the copied scene, R1 clears it (G23)
     song.moveCursorTo(1, -1);
-    CHECK(draw());
+    CHECK(draw() && hintKeyed(canvas, scratch, "R1", "paste"));
     const SDL_Rect box = song.repeatBox(0);
     CHECK(box.w > 0 && canvas.is(box.x + 1, box.y + 1, ui::kBrass)); // the copied row, brass-marked
     const SDL_Rect other = song.repeatBox(1);
     CHECK(canvas.is(other.x + 1, other.y + 1, ui::kBg)); // the rest, not
+}
+
+// A copy stays after a paste (gesture audit G23, 2026-11-25; commit e7b847d's "a copy clears on paste" is
+// reversed): a cell or a scene goes on to the next with one R1 each, its brass mark stays on where it came
+// from, and R1 THERE clears it ("clear" in the bar). A bar's copy stays the same way (copybar_test).
+void testTheCopyStays() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    Rig rig;
+    Session& session = rig.session();
+    SongScreen& song = rig.app.song();
+    rig.track(0).drums[0][0].level[0][0] = 0.9f;
+    const auto draw = [&] {
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        return ui::gHintsOver == 0.f;
+    };
+    // A cell into the next three scenes: one R1 to copy, then one R1 each.
+    song.moveCursorTo(0, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL COPIED");
+    CHECK(draw() && hintKeyed(canvas, scratch, "R1", "clear"));
+    for (int scene = 1; scene <= 3; ++scene) {
+        song.moveCursorTo(scene, 0);
+        CHECK(draw() && hintKeyed(canvas, scratch, "R1", "paste"));
+        rig.tap(R1);
+        CHECK(rig.track(0).drums[scene][0].level[0][0] == 0.9f && rig.said() == "CELL PASTED");
+    }
+    CHECK(draw());
+    const SDL_Rect cell = song.cellBox(0, 0);
+    CHECK(cell.w > 0 && canvas.is(cell.x + 1, cell.y + 1, ui::kBrass)); // still marked: still copied
+    // R1 on the copied cell clears it: no mark, and R1 elsewhere copies again.
+    song.moveCursorTo(0, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "COPY CLEARED");
+    song.moveCursorTo(4, 0);
+    CHECK(draw() && hintKeyed(canvas, scratch, "R1", "copy") && !canvas.is(cell.x + 1, cell.y + 1, ui::kBrass));
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL COPIED" && rig.track(0).drums[4][0].empty());
+    rig.tap(R1);
+    CHECK(rig.said() == "COPY CLEARED");
+    // A scene the same: copied once, pasted twice, the mark stays; R1 on it clears.
+    song.moveCursorTo(0, -1);
+    rig.tap(R1);
+    CHECK(session.copiedScene() == 0);
+    for (int scene = 5; scene <= 6; ++scene) {
+        song.moveCursorTo(scene, -1);
+        rig.tap(R1);
+        CHECK(rig.track(0).drums[scene][0].level[0][0] == 0.9f && session.copiedScene() == 0);
+    }
+    CHECK(draw());
+    const SDL_Rect row = song.repeatBox(0);
+    CHECK(row.w > 0 && canvas.is(row.x + 1, row.y + 1, ui::kBrass));
+    song.moveCursorTo(0, -1);
+    rig.tap(R1);
+    CHECK(session.copiedScene() < 0 && rig.said() == "COPY CLEARED");
+    song.moveCursorTo(1, -1);
+    CHECK(draw() && hintKeyed(canvas, scratch, "R1", "copy") && !canvas.is(row.x + 1, row.y + 1, ui::kBrass));
+    // A panic begun with R1 on the copied scene: the copy is put back (a clear on the way is not meant).
+    song.moveCursorTo(0, -1);
+    rig.tap(R1);
+    CHECK(session.copiedScene() == 0);
+    rig.key(R1, true);
+    rig.frames(1);
+    CHECK(session.copiedScene() < 0); // (cleared on the press)
+    rig.key(L1, true);
+    rig.frames(1);
+    rig.key(L2, true);
+    rig.frames(1);
+    rig.key(R2, true);
+    rig.frames(2);
+    rig.key(R1, false);
+    rig.key(L1, false);
+    rig.key(L2, false);
+    rig.key(R2, false);
+    rig.frames(2);
+    CHECK(session.copiedScene() == 0);
+}
+
+// A NEXT SCENE (SELECT + Y) put in before a copied cell and scene moves the copies with their scenes, and
+// SELECT + B taking it back moves them back (G23 review, 2026-11-25). Before, the cell's copy went (R1
+// copied again where it should paste) and the scene's stayed on its number: its brass mark and R1's
+// "clear" sat on the wrong scene, and R1 on the real one pasted. A paste waiting for R1's let go lands
+// on the cell or scene R1 went down on, and a copy whose scene falls off the end goes.
+void testTheCopyFollowsNextScene() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    const SDL_Keycode Y = SDLK_a;
+    Rig rig;
+    Session& session = rig.session();
+    SongScreen& song = rig.app.song();
+    rig.track(0).drums[0][0].level[0][0] = 0.9f; // scene 1
+    rig.track(0).drums[1][0].level[1][0] = 0.7f; // scene 2, another
+    session.sendDrumPattern(0, 0);
+    session.sendDrumPattern(0, 1);
+    rig.settle();
+    const auto draw = [&] {
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        return ui::gHintsOver == 0.f;
+    };
+    const auto marked = [&](const SDL_Rect& box) { return box.w > 0 && canvas.is(box.x + 1, box.y + 1, ui::kBrass); };
+    const auto nextScene = [&] {
+        rig.key(SELECT, true);
+        rig.tap(Y);
+        rig.key(SELECT, false);
+        rig.frames(1);
+    };
+    // Scene 2 copied, and its cell.
+    song.moveCursorTo(1, -1);
+    rig.tap(R1);
+    CHECK(session.copiedScene() == 1);
+    song.moveCursorTo(1, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL COPIED");
+    // NEXT SCENE of scene 1, before them: scene 2 is scene 3 now, and so are both copies.
+    song.moveCursorTo(0, 0);
+    nextScene();
+    CHECK(rig.said() == "SCENE 2: COPY OF 1" && rig.track(0).drums[2][0].level[1][0] == 0.7f);
+    CHECK(session.copiedScene() == 2);
+    song.moveCursorTo(5, -1); // (the cursor off them)
+    CHECK(draw() && marked(song.repeatBox(2)) && !marked(song.repeatBox(1)));
+    CHECK(marked(song.cellBox(0, 2)) && !marked(song.cellBox(0, 1)));
+    song.moveCursorTo(2, -1);
+    CHECK(draw() && hintKeyed(canvas, scratch, "R1", "clear"));
+    song.moveCursorTo(1, -1);
+    CHECK(draw() && hintKeyed(canvas, scratch, "R1", "paste"));
+    song.moveCursorTo(2, 0);
+    CHECK(draw() && hintKeyed(canvas, scratch, "R1", "clear"));
+    song.moveCursorTo(1, 0);
+    CHECK(draw() && hintKeyed(canvas, scratch, "R1", "paste"));
+    // SELECT + B takes the NEXT SCENE back: the copies are on scene 2 again. SELECT + A: on 3 again.
+    rig.undo();
+    CHECK(rig.track(0).drums[1][0].level[1][0] == 0.7f && session.copiedScene() == 1);
+    song.moveCursorTo(5, -1);
+    CHECK(draw() && marked(song.repeatBox(1)) && !marked(song.repeatBox(2)));
+    CHECK(marked(song.cellBox(0, 1)) && !marked(song.cellBox(0, 2)));
+    rig.redo();
+    CHECK(rig.track(0).drums[2][0].level[1][0] == 0.7f && session.copiedScene() == 2);
+    song.moveCursorTo(5, -1);
+    CHECK(draw() && marked(song.cellBox(0, 2)) && !marked(song.cellBox(0, 1)));
+    // Both paste from there...
+    song.moveCursorTo(3, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL PASTED" && rig.track(0).drums[3][0].level[1][0] == 0.7f);
+    song.moveCursorTo(4, -1);
+    rig.tap(R1);
+    CHECK(rig.said() == "PASTED ON SCENE 5" && rig.track(0).drums[4][0].level[1][0] == 0.7f);
+    // ...and R1 where they are now clears them.
+    song.moveCursorTo(2, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "COPY CLEARED");
+    song.moveCursorTo(2, -1);
+    rig.tap(R1);
+    CHECK(session.copiedScene() < 0 && rig.said() == "COPY CLEARED");
+    // A cell's paste waiting for R1's let go when the NEXT SCENE comes: on the cell R1 went down on, where it is now.
+    song.moveCursorTo(0, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL COPIED");
+    song.moveCursorTo(6, 0);
+    rig.key(R1, true);
+    rig.frames(1);
+    nextScene(); // (the cursor goes to 7 with its scene; the copy made is 6)
+    rig.key(R1, false);
+    rig.frames(1);
+    CHECK(rig.said() == "CELL PASTED");
+    CHECK(rig.track(0).drums[7][0].level[0][0] == 0.9f && rig.track(0).drums[6][0].level[0][0] == 0.f);
+    song.moveCursorTo(0, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "COPY CLEARED");
+    // ...and a scene's the same.
+    song.moveCursorTo(0, -1);
+    rig.tap(R1);
+    CHECK(session.copiedScene() == 0);
+    song.moveCursorTo(9, -1);
+    rig.key(R1, true);
+    rig.frames(1);
+    nextScene();
+    rig.key(R1, false);
+    rig.frames(1);
+    CHECK(rig.said() == "PASTED ON SCENE 11");
+    CHECK(rig.track(0).drums[10][0].level[0][0] == 0.9f && rig.track(0).drums[9][0].level[0][0] == 0.f);
+    // A copy whose scene falls off the end goes: the last scene is pushed off by a NEXT SCENE.
+    Rig last;
+    SongScreen& end = last.app.song();
+    end.moveCursorTo(kMaxScenes - 1, -1);
+    last.tap(R1);
+    CHECK(last.session().copiedScene() == kMaxScenes - 1);
+    end.moveCursorTo(kMaxScenes - 1, 0);
+    last.tap(R1);
+    CHECK(last.said() == "CELL COPIED");
+    end.moveCursorTo(0, 0);
+    last.key(SELECT, true);
+    last.tap(Y);
+    last.key(SELECT, false);
+    last.frames(1);
+    CHECK(last.said() == "SCENE 2: COPY OF 1" && last.session().copiedScene() < 0);
+    end.moveCursorTo(kMaxScenes - 1, 0);
+    last.tap(R1);
+    CHECK(last.said() == "CELL COPIED"); // (no copy left: it copies, it does not clear)
 }
 
 void testEmptyCellBars() {
@@ -874,10 +1081,12 @@ void testClearGesture() {
     session.addTrack(TrackKind::Phazed);
     rig.settle();
     makeScene(rig, 0);
-    // Hold B on its box: red fills it, and at the second it empties, said.
+    // Hold B on its box: red fills it, and at half a second it empties, said (G29: undo brings a scene back,
+    // so it is the shorter hold; it was a second).
+    CHECK(SongScreen::kSceneHoldMs == 500);
     song.moveCursorTo(0, -1);
     rig.key(B, true);
-    rig.frames(40);
+    rig.frames(20);
     {
         Canvas canvas;
         CHECK(canvas.ok);
@@ -926,7 +1135,7 @@ int main(int argc, char** argv) {
     const Test tests[] = {
         {"testCopyPasteScene", testCopyPasteScene}, {"testTheEngineHearsIt", testTheEngineHearsIt}, {"testOneUndoStep", testOneUndoStep},
         {"testTheSameIsNoStep", testTheSameIsNoStep}, {"testRefusals", testRefusals}, {"testScenePasteAcrossChangedSynths", testScenePasteAcrossChangedSynths}, {"testTheGesture", testTheGesture},
-        {"testTheGesturePanic", testTheGesturePanic}, {"testTheMarkAndHints", testTheMarkAndHints}, {"testEmptyCellBars", testEmptyCellBars}, {"testTheWordsFit", testTheWordsFit},
+        {"testTheGesturePanic", testTheGesturePanic}, {"testTheMarkAndHints", testTheMarkAndHints}, {"testTheCopyStays", testTheCopyStays}, {"testTheCopyFollowsNextScene", testTheCopyFollowsNextScene}, {"testEmptyCellBars", testEmptyCellBars}, {"testTheWordsFit", testTheWordsFit},
         {"testClearScene", testClearScene}, {"testClearAlreadyEmpty", testClearAlreadyEmpty}, {"testClearGesture", testClearGesture},
         {"testCellCopyRefusals", testCellCopyRefusals},
         {"testCellCopyAcrossSynths", testCellCopyAcrossSynths},

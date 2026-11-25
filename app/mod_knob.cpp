@@ -229,7 +229,7 @@ bool ModKnob::onButton(const ButtonEvent& event, Uint32 nowMs) {
     if (isDirection(b)) {
         press(b, nowMs);
         repeating_ = b;
-        repeatAt_ = 0; // (the wait before it repeats is counted from the next frame, as the screens' own)
+        repeat_.restart(); // (the wait before it repeats is counted from the next frame, as the screens' own)
     } else if (b == Button::A) {
         nextShape();
     } else if (b == Button::Y) {
@@ -246,7 +246,7 @@ bool ModKnob::onButton(const ButtonEvent& event, Uint32 nowMs) {
 
 void ModKnob::update(const Input& input, Uint32 nowMs, float dt) {
     if (!held()) return;
-    // B held: the bar fills for a second, then the MOD is deleted (undo brings it back).
+    // B held: the bar fills for half a second (G29), then the MOD is deleted (undo brings it back).
     if (!input.held(Button::B)) deleting_ = false;
     if (!deleting_) {
         deletePart_ = 0.f;
@@ -260,12 +260,8 @@ void ModKnob::update(const Input& input, Uint32 nowMs, float dt) {
         }
     }
     // A held D-pad: DEPTH at the cursor's pace (1% a time), RATE at a list's (each one seen).
-    if (repeating_ != Button::None && repeatAt_ == 0) {
-        repeatAt_ = nowMs + (repeating_ == Button::Up || repeating_ == Button::Down ? kCursorDelayMs : kListDelayMs);
-    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-        repeatAt_ = nowMs + (repeating_ == Button::Up || repeating_ == Button::Down ? kCursorEveryMs : kListEveryMs);
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), repeating_ == Button::Up || repeating_ == Button::Down ? Pace::Cursor : Pace::List))
         press(repeating_, nowMs);
-    }
     // The stick: up / down turns DEPTH (the first push up on a knob with none makes one); left / right
     // clicks RATE. One way a push, the way it went first.
     const float x = input.stickX(), y = input.stickY();

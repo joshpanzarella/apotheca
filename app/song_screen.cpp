@@ -14,13 +14,14 @@ namespace apotheca {
 using namespace ui;
 
 namespace {
-constexpr Uint32 kDeleteHoldMs = 1000; // B held this long on a song deletes it
+constexpr Uint32 kDeleteHoldMs = ui::kHoldForGoodMs; // B held this long on a song deletes it
 
 constexpr int kGridTop = 34, kHeadH = 40, kRowH = 44, kRowsTop = kGridTop + kHeadH + 6;
 constexpr int kNumberW = 26, kRepeatW = 38, kColumnsLeft = 8 + kNumberW + kRepeatW; // (kRepeatW was 34: the column's word, REPEATS, is 67 wide at LARGE)
-constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs;
 constexpr float kStickCellsPerSecond = 24.f;
 constexpr float kRepeatsPerSecond = 20.f;
+constexpr float kSceneTempoPerSecond = 90.f; // L1 held on a repeat count, the stick fully over: BPM a second (the drum grid's tempo row's)
+constexpr float kRepeatSidePerSecond = 3.f;  // ...sideways, after the first click: the scene's steps (A) or its meter (L1)
 constexpr float kMixDbPerSecond = 24.f, kMixPanPerSecond = 60.f; // the stick, with A held on a head, at full push
 
 
@@ -77,6 +78,7 @@ void SongScreen::mixStep(Button direction) {
 }
 
 void SongScreen::moveCursorTo(int scene, int column) {
+    movedThisVisit_ = true;
     onHead_ = onMaster_ = addFromHeads_ = false;
     scene_ = scene < 0 ? 0 : (scene >= kMaxScenes ? kMaxScenes - 1 : scene);
     column_ = column < kRepeatColumn ? kRepeatColumn : (column > lastColumn() ? lastColumn() : column);
@@ -84,10 +86,28 @@ void SongScreen::moveCursorTo(int scene, int column) {
     if (scene_ >= top_ + kVisibleRows) top_ = scene_ - kVisibleRows + 1;
 }
 
+void SongScreen::openOnWorkingCell() {
+    moveCursorTo(project_.scene, project_.track);
+    movedThisVisit_ = false;
+}
+
+bool SongScreen::movedToCell(int* track, int* scene) const {
+    if (!movedThisVisit_ || !onCell() || onHead_) return false;
+    *track = column_;
+    *scene = scene_;
+    return true;
+}
+
 // The scenes from `from` on are one place further down the song (by = 1) or back up it (-1).
 void SongScreen::scenesMoved(int from, int by) {
-    cellCopied_ = false; // a scene put in or taken out: the copied cell moved, so the copy goes
-    cellCopy_.has = false;
+    // The copied cell goes with its scene, as the scene copy does (Session::scenesMoved): the copy is a snapshot,
+    // only its brass mark and R1's "clear" move (G23 review, 2026-11-25: the copy went, so a cell copied before
+    // a NEXT SCENE copied again where it should paste). Its scene fallen off the end, the copy goes.
+    if (cellCopied_ && sceneFallsOff(copyScene_, from, by)) cellCopied_ = false, cellCopy_.has = false;
+    copyScene_ = movedScene(copyScene_, from, by);
+    // A paste waiting for R1's let go lands on the cell or scene R1 went down on, where it is now.
+    cellPasteScene_ = movedScene(cellPasteScene_, from, by);
+    scenePaste_ = movedScene(scenePaste_, from, by);
     if (scene_ < from || scene_ + by < 0 || scene_ + by >= kMaxScenes) return;
     scene_ += by;
     if (scene_ < top_) top_ = scene_;
@@ -96,17 +116,19 @@ void SongScreen::scenesMoved(int from, int by) {
 
 void SongScreen::moveCursor(Button direction, bool pressed) {
     if (listing_) {
+        // A press of the D-pad at either end goes round to the other; a run (held, or the stick) stops there (G35).
         int& cursor = revsOpen_ ? revCursor_ : listCursor_;
         const int last = static_cast<int>(revsOpen_ ? revs_.size() + kRevsFirst - 1 : songs_.size());
-        if (direction == Button::Up && cursor > 0) --cursor;
-        if (direction == Button::Down && cursor < last) ++cursor;
+        if (direction == Button::Up || direction == Button::Down) cursor = ui::listStep(cursor, direction == Button::Down ? 1 : -1, last + 1, pressed);
         return;
     }
     if (choosing_) {
+        // Round the ends on every move, a press, a held run (G08) or the stick (G35 left this list going round).
         if (direction == Button::Up) choice_ = (choice_ + kInstrumentCount - 1) % kInstrumentCount;
         if (direction == Button::Down) choice_ = (choice_ + 1) % kInstrumentCount;
         return;
     }
+    movedThisVisit_ = true; // (G46: a tab off SONG takes the cell it is on now)
     // MASTER, the head at the right-hand end: back left to + TRACK, or the last track's head.
     if (onMaster_) {
         if (direction == Button::Left) {
@@ -202,6 +224,43 @@ void SongScreen::stepSceneMeter(int scene, int by) {
     session_.say(text);
 }
 
+// A or L1 held on a repeat count: the stick does what the D-pad does there (gesture audit G14, 2026-11-24),
+// one job a push. A: up / down the repeat count (squared, as it always was), left / right the scene's
+// steps. L1: up / down the scene's own tempo (squared, a beat at a time, as fast as the drum grid's
+// tempo row), left / right the steps in its bars. Sideways is a click at once, then slowly: they are counts.
+void SongScreen::repeatStick(float x, float y, float dt) {
+    if (x == 0.f && y == 0.f) repeatAxis_ = RepeatAxis::None;
+    else if (repeatAxis_ == RepeatAxis::None) repeatAxis_ = std::fabs(y) >= std::fabs(x) ? RepeatAxis::UpDown : RepeatAxis::Sideways;
+    const bool tempo = !holding_; // (L1 held, not A)
+    if (repeatAxis_ == RepeatAxis::UpDown) {
+        const float push = -y;
+        saved_ += push * std::fabs(push) * (tempo ? kSceneTempoPerSecond : kRepeatsPerSecond) * dt;
+        for (; saved_ >= 1.f; saved_ -= 1.f) {
+            if (tempo) stepSceneTempo(scene_, 1);
+            else setRepeats(project_.repeats[scene_] + 1), turned_ = true;
+        }
+        for (; saved_ <= -1.f; saved_ += 1.f) {
+            if (tempo) stepSceneTempo(scene_, -1);
+            else setRepeats(project_.repeats[scene_] - 1), turned_ = true;
+        }
+    } else {
+        saved_ = 0.f;
+    }
+    if (repeatAxis_ != RepeatAxis::Sideways || x == 0.f) {
+        repeatSideSaved_ = 0.f, repeatSideWas_ = false;
+    } else {
+        repeatSideSaved_ += repeatSideWas_ ? std::fabs(x) * kRepeatSidePerSecond * dt : 1.f;
+        repeatSideWas_ = true;
+        for (; repeatSideSaved_ >= 1.f; repeatSideSaved_ -= 1.f) {
+            const int by = x > 0.f ? 1 : -1;
+            if (tempo) stepSceneMeter(scene_, by);
+            else session_.setSceneSteps(scene_, project_.sceneSteps(scene_) + by), turned_ = true;
+        }
+    }
+    stickX_ = stickY_ = 0.f;
+    stickWasX_ = stickWasY_ = false;
+}
+
 void SongScreen::setRepeats(int count) {
     count = count < 1 ? 1 : (count > kMaxRepeats ? kMaxRepeats : count);
     if (count == project_.repeats[scene_]) return;
@@ -269,9 +328,7 @@ void SongScreen::pasteCellHere(int toTrack, int toScene) {
     }
     session_.beginOwnUndoStep();
     copyCell(cellCopy_, toTrack, toScene);
-    cellCopied_ = false; // spent: a paste clears the copy
-    cellCopy_.has = false;
-    session_.endOwnUndoStep();
+    session_.endOwnUndoStep(); // the copy stays, brass-marked, for another paste (G23); R1 on its cell clears it
     session_.say("CELL PASTED");
 }
 
@@ -281,8 +338,30 @@ void SongScreen::openRevList() {
     revCursor_ = 0;
 }
 
+void SongScreen::armTrackHold() {
+    trackHold_ = true;
+    trackHoldTimed_ = false;
+    trackHoldPart_ = 0.f;
+    trackHoldColumn_ = column_;
+    trackHoldScene_ = scene_;
+    trackHoldOnHead_ = onHead_;
+}
+
+void SongScreen::dropTrackHold(bool tap) {
+    // B's quiet half second is a tap of B, however it ends: B let go, the cursor moved (the D-pad, the stick),
+    // any other press (B, DOWN, B, DOWN down a column with two thumbs: the next press comes before B's let go).
+    // Not A: A pressed while B is down calls the delete off and keeps the cell (owner, 2026-11-14). Once the
+    // bar shows, giving up changes nothing.
+    if (trackHold_ && tap && trackHoldPart_ <= 0.f && !trackHoldOnHead_ && trackHoldColumn_ < project_.trackCount())
+        clearCell(trackHoldColumn_, trackHoldScene_);
+    trackHold_ = false, trackHoldPart_ = 0.f;
+}
+
 void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
+    // B kept held on a track: any other press calls its delete off, as on FX (and A's is then no tap: below).
+    const bool deleteCalledOff = event.down && b != Button::B && trackHold_ && input.held(Button::B);
+    if (event.down && b != Button::B) dropTrackHold(b != Button::A); // (before the bar, a tap of B: the cell is emptied first)
 
     // SELECT, pressed and let go with nothing else in between, opens and
     // closes the list of songs. (SELECT with START is "quit", elsewhere.)
@@ -314,10 +393,14 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             return;
         }
         bHeld_ = false; // any other press calls a held B off
+        if (b == Button::Start && !input.held(Button::Select)) { // play / stop with the list open, as everywhere (SEL + START quits)
+            playFromCursor();
+            return;
+        }
         if (isDirection(b)) {
-            moveCursor(b);
+            moveCursor(b, true); // (a press: round the ends)
             repeating_ = b;
-            repeatAt_ = 0;
+            repeat_.restart();
         }
         if (b == Button::L1) {
             session_.toggleTransfer(lastMs_ * 2654435761u + 12345u); // files over WiFi, on or off
@@ -378,8 +461,17 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
 
     if (choosing_) {
-        if (!event.down) return;
-        if (isDirection(b)) moveCursor(b);
+        if (!event.down) {
+            if (b == repeating_) repeating_ = Button::None;
+            return;
+        }
+        if (b == Button::Start && !input.held(Button::Select)) playFromCursor(); // as everywhere (SEL + START quits)
+        if (isDirection(b)) {
+            moveCursor(b, true); // (a press: round the ends)
+            repeating_ = b; // held, it runs on at the list's pace (update())
+            repeat_.restart();
+        }
+        if (b == Button::A || b == Button::B) repeating_ = Button::None; // (the list closes: a direction still held does not run on over the cells)
         if (b == Button::B) choosing_ = false;
         if (b == Button::A) {
             choosing_ = false;
@@ -398,7 +490,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     if ((onHead_ || onMaster_) && b == Button::A) {
         if (event.down) {
             mixing_ = true;
-            mixTurned_ = trackHold_ && input.held(Button::B); // A pressed while B was deleting the track calls the delete off (update()), and is no tap
+            mixTurned_ = deleteCalledOff; // A pressed while B was deleting the track calls the delete off (above), and is no tap
             mixSavedDb_ = mixSavedPan_ = 0.f;
             mixShown_ = mixTimed_ = false;
         } else {
@@ -416,7 +508,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down) {
             mixStep(b);
             repeating_ = b;
-            repeatAt_ = 0;
+            repeat_.restart();
         } else if (b == repeating_) {
             repeating_ = Button::None;
         }
@@ -435,6 +527,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (b == Button::L1 && !mixing_) {
         l1OnHead_ = event.down && onHead_;
         l1OnRepeat_ = event.down && column_ == kRepeatColumn && !onSongEnd();
+        if (l1OnRepeat_) saved_ = 0.f, repeatAxis_ = RepeatAxis::None; // a new hold: a new choice of job for the stick
         if (!event.down) dupArmed_ = false;
         return;
     }
@@ -458,11 +551,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
     if (onHead_ && (b == Button::B || b == Button::R1)) {
         // On a track's head: B held deletes the track, as it does on a cell; a tap of it empties nothing here.
-        if (b == Button::B && event.down && !input.held(Button::A)) {
-            trackHold_ = true;
-            trackHoldTimed_ = false;
-            trackHoldPart_ = 0.f;
-        }
+        if (b == Button::B && event.down && !input.held(Button::A)) armTrackHold();
         // R1: its name. It happens when R1 is LET GO (as DUPLICATE A TRACK's: on the way to a
         // panic nothing is named), if the cursor never left the heads meanwhile. The keyboard is on
         // the SET tab; it comes back here.
@@ -483,7 +572,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
                 // Held, the stick sets how many bars long it is. Let go
                 // without doing that, and it opens. (Pressed while B was deleting the track, it calls the delete off and opens nothing.)
                 holding_ = true;
-                turned_ = trackHold_ && input.held(Button::B);
+                turned_ = deleteCalledOff;
                 saved_ = 0.f;
                 savedY_ = 0.f, stickWasYHeld_ = false;
                 transposed_ = 0;
@@ -497,6 +586,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
                 holding_ = true;
                 turned_ = false;
                 saved_ = 0.f;
+                repeatAxis_ = RepeatAxis::None; // a new hold: a new choice of job for the stick
             }
         } else {
             if (holding_ && !turned_ && onCell()) {
@@ -553,11 +643,16 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             cellPasteTrack_ = column_;
             cellPasteScene_ = scene_;
         } else if (event.down && column_ == kRepeatColumn) {
-            // COPY A SCENE: nothing copied, or this one already, and it copies now (the AT END row
-            // too: it is an empty scene like any). Else the paste waits for R1's let go (as DUPLICATE
-            // A TRACK's: on the way to a panic nothing pastes).
-            if (session_.copiedScene() < 0 || session_.copiedScene() == scene_) session_.copySceneHere(scene_);
-            else {
+            // COPY A SCENE: nothing copied, and it copies now (the AT END row too: it is an empty scene
+            // like any). The copied scene again: the copy is cleared, as a cell's (G23, 2026-11-25: it
+            // copied it again; a paste no longer spends a copy, so this is the way to put one down).
+            // Else the paste waits for R1's let go (as DUPLICATE A TRACK's: on the way to a panic
+            // nothing pastes).
+            if (session_.copiedScene() < 0) session_.copySceneHere(scene_);
+            else if (session_.copiedScene() == scene_) {
+                session_.clearSceneCopy();
+                session_.say("COPY CLEARED");
+            } else {
                 scenePasteArmed_ = true;
                 scenePaste_ = scene_;
             }
@@ -570,8 +665,15 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         return;
     }
+    // B let go on a cell before its bar began to fill: a tap, and the cell B went down on is emptied (the
+    // cursor may have left it this frame, even for the REPEATS box: so this comes first). Let go later:
+    // nothing, so a delete given up changes nothing.
+    if (b == Button::B && !event.down && trackHold_) {
+        dropTrackHold(true);
+        return;
+    }
     if (b == Button::B && !input.held(Button::A) && column_ == kRepeatColumn && !onSongEnd()) {
-        // On a repeat count: the press arms the hold (update() empties the scene at the second),
+        // On a repeat count: the press arms the hold (update() empties the scene at half a second, G29),
         // and letting go first is a tap back to 1. Above the early return for a let go, as R1's paste.
         // With L1 held it puts the scene's own tempo back to the song's instead.
         if (event.down && l1OnRepeat_) {
@@ -620,21 +722,23 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             moveCursor(b, true);
         }
         repeating_ = b;
-        repeatAt_ = 0;
+        repeat_.restart();
         return;
     }
     if (b == Button::B && !input.held(Button::A)) {
-        // A tap empties the cell. Kept held on a track, it goes on to delete the whole track (update()).
-        trackHold_ = onCell();
-        trackHoldTimed_ = false;
-        trackHoldPart_ = 0.f;
-        if (onCell()) clearCell(column_, scene_);
+        // On a cell the press arms the hold: kept held, it deletes the whole track (update()); let go
+        // before the bar begins, it is a tap and empties the cell (above).
+        if (onCell()) armTrackHold();
         else if (onSongEnd()) session_.setSongEnd(kSongLoop); // back to the usual
         // (A repeat count returns earlier, above: a tap back to 1, a hold the whole scene.)
     } else if (b == Button::Start && !input.held(Button::Select)) {
-        project_.scene = scene_;
-        session_.togglePlay(true); // the song, from this scene
+        playFromCursor();
     }
+}
+
+void SongScreen::playFromCursor() {
+    project_.scene = scene_;
+    session_.togglePlay(true); // the song, from this scene
 }
 
 void SongScreen::update(const Input& input, Uint32 nowMs) {
@@ -660,8 +764,11 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
         tracksSeen_ = project_.trackCount();
     }
     // B kept held on a track: after a moment a bar begins to fill on its head, and when it is full the track is deleted.
-    // A pressed while it fills calls it off, as any other button does on the FX screen.
-    if (!input.held(Button::B) || input.held(Button::A) || !onCell() || listing_ || choosing_) trackHold_ = false, trackHoldPart_ = 0.f;
+    // It is the track where B went down: the cursor leaving that place (the D-pad, the stick; off a head too) calls
+    // it off, as A or any other press does (onButton), as on the FX screen. Left before the bar began, B was a tap.
+    const bool leftHold = !onCell() || !atTrackHold();
+    if (!input.held(Button::B) || input.held(Button::A) || leftHold || listing_ || choosing_)
+        dropTrackHold(leftHold && input.held(Button::B) && !input.held(Button::A) && !listing_ && !choosing_);
     if (trackHold_) {
         if (!trackHoldTimed_) trackHoldTimed_ = true, trackHoldSince_ = nowMs;
         const Uint32 held = nowMs - trackHoldSince_;
@@ -672,7 +779,7 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
             if (session_.removeTrack(column_)) moveCursorTo(scene_, column_ >= project_.trackCount() ? project_.trackCount() - 1 : column_);
         }
     }
-    // B kept held on a repeat count: the box fills red, and at the second the whole scene is emptied.
+    // B kept held on a repeat count: the box fills red, and at half a second (G29) the whole scene is emptied.
     if (!input.held(Button::B) || input.held(Button::A) || column_ != kRepeatColumn || scene_ != sceneHoldScene_ || listing_ || choosing_) sceneHold_ = false, sceneHoldPart_ = 0.f;
     if (sceneHold_) {
         if (!sceneHoldTimed_) sceneHoldTimed_ = true, sceneHoldSince_ = nowMs;
@@ -734,33 +841,32 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
         }
         stickX_ = stickY_ = 0.f;
         stickWasY_ = false;
-    } else if (holding_) {
-        // The stick turns the repeat count.
-        const float push = -y;
-        saved_ += push * std::fabs(push) * kRepeatsPerSecond * dt;
-        while (saved_ >= 1.f) { saved_ -= 1.f; setRepeats(project_.repeats[scene_] + 1); turned_ = true; }
-        while (saved_ <= -1.f) { saved_ += 1.f; setRepeats(project_.repeats[scene_] - 1); turned_ = true; }
-        stickX_ = stickY_ = 0.f;
-        stickWasX_ = stickWasY_ = false;
+    } else if (holding_ || (l1OnRepeat_ && column_ == kRepeatColumn && !onSongEnd())) {
+        // A held on a repeat count: the stick turns the count, and sideways the scene's steps. L1 held
+        // there: its own tempo, and sideways its meter. (L1's stick moved the cursor off the count.)
+        repeatStick(x, y, dt);
     } else {
+        // The cells are a cursor: a full push held climbs (G07). The lists (songs, instruments) do not.
+        const bool cells = !listing_ && !choosing_;
+        const float climbX = climbX_.times(cells ? x : 0.f, nowMs), climbY = climbY_.times(cells ? y : 0.f, nowMs);
         if (x == 0.f) stickX_ = 0.f, stickWasX_ = false;
         else {
-            stickX_ += stickWasX_ ? std::fabs(x) * kStickCellsPerSecond * dt : 1.f;
+            stickX_ += stickWasX_ ? std::fabs(x) * kStickCellsPerSecond * climbX * dt : 1.f;
             stickWasX_ = true;
             for (; stickX_ >= 1.f; stickX_ -= 1.f) moveCursor(x > 0.f ? Button::Right : Button::Left);
         }
         if (y == 0.f) stickY_ = 0.f, stickWasY_ = false;
         else {
-            stickY_ += stickWasY_ ? std::fabs(y) * kStickCellsPerSecond * dt : 1.f;
+            stickY_ += stickWasY_ ? std::fabs(y) * kStickCellsPerSecond * climbY * dt : 1.f;
             stickWasY_ = true;
             for (; stickY_ >= 1.f; stickY_ -= 1.f) moveCursor(y > 0.f ? Button::Down : Button::Up);
         }
     }
 
-    if (repeating_ != Button::None && repeatAt_ == 0) {
-        repeatAt_ = nowMs + kRepeatDelayMs;
-    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-        repeatAt_ = nowMs + kRepeatEveryMs;
+    // A held D-pad: the cursor's pace; the list of instruments at the list's (gesture audit G08: it did not run at
+    // all). The list of songs keeps the cursor's: the standard would put it at the list's, but no held run was
+    // made slower than it was.
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), choosing_ ? Pace::List : Pace::Cursor)) {
         if (mixing_) {
             mixStep(repeating_);
         } else if (holding_ && onCell()) {
@@ -1264,8 +1370,8 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             hint("HOLD A", "repeats");
             hint("TAP A", "1 > 2 > 4 > 8");
         }
-        hint("R1", session_.copiedScene() < 0 ? "copy" : "paste"); // (which scene: its brass mark)
-        if (!onSongEnd()) hint("HOLD B", "delete"); // (no START: with it the bar runs over, as on a cell)
+        hint("R1", session_.copiedScene() < 0 ? "copy" : session_.copiedScene() == scene_ ? "clear" : "paste"); // (which scene: its brass mark)
+        if (!onSongEnd()) hint("HOLD B", "empty"); // the scene's cells are emptied, one step of undo (no START: with it the bar runs over, as on a cell)
     } else if (column_ == addColumn()) {
         hint("A", "add a track");
         hint("START", project_.playing ? "stop" : "play song");
@@ -1275,7 +1381,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("A", "open");
         hint("B", "empty");
         hint("HOLD B", "delete track");
-        hint("R1", cellCopied_ ? "paste" : "copy"); // (which cell: its brass mark)
+        hint("R1", !cellCopied_ ? "copy" : copyTrack_ == column_ && copyScene_ == scene_ ? "clear" : "paste"); // (which cell: its brass mark)
         hint("SELECT", "songs");
     }
     hints(r, fonts, list, count);

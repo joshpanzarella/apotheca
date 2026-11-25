@@ -1,4 +1,4 @@
-// NEXT SCENE (SELECT + Y on the drum grid and the piano roll): the scene being
+// NEXT SCENE (SELECT + Y, on every tab; on SONG the scene under the cursor): the scene being
 // worked on is copied into a new one put in right after it, the player is put
 // there, and a song that is playing does not miss a step.
 //
@@ -403,18 +403,105 @@ void testTheSceneIsCopied() {
     CHECK(sameScene(p, 1, *middle, 1) && sameScene(p, 2, *middle, 2) && sameScene(p, 3, *middle, 2) && sameScene(p, 4, *middle, 3));
 }
 
-// The gesture belongs to the grids. On the other screens SELECT + Y makes no scene.
-void testOnlyOnTheGrids() {
+// The gesture is the App's, on every tab (gesture audit G03, 2026-11-24; it was the grids' alone, a
+// choice of Claude's, and elsewhere the screen's own Y ran: a mute, CATCH, a sound rolled). No screen is
+// handed a SELECT-held Y. On SONG it copies the scene under the cursor; SELECT + L2 / R2 go the same way.
+void testOnEveryTab() {
+    const SDL_Keycode UP = SDLK_UP;
     Rig rig;
     fill(rig);
     Project& p = rig.project();
-    for (View view : {View::Song, View::Device, View::Effects, View::Settings}) {
+    // DEVICE, FX, MOD, SET: a copy of the scene being worked on, the player on it, the tab as it was.
+    int scenes = 3;
+    for (View view : {View::Device, View::Effects, View::Mods, View::Settings}) {
         rig.session().view = view;
         rig.frames(1);
+        const int from = p.scene;
         rig.nextScene();
         rig.frames(1);
-        CHECK(p.sceneCount() == 3 && p.scene == 0 && rig.said().empty());
+        ++scenes;
+        CHECK(p.sceneCount() == scenes && p.scene == from + 1 && rig.session().view == view);
+        CHECK(rig.said() == "SCENE " + std::to_string(from + 2) + ": COPY OF " + std::to_string(from + 1));
     }
+    rig.undo(), rig.undo(), rig.undo(), rig.undo();
+    CHECK(p.sceneCount() == 3 && p.scene == 0);
+
+    // SONG: the scene under the cursor (here scene 2, the player on scene 1's second bar), and the cursor goes
+    // onto the copy with the player, on a bar the copy has. The cell's own Y (mute) is not done, and
+    // SELECT let go is not its tap (no list of songs). One step of undo, as anywhere.
+    rig.session().view = View::Pattern;
+    p.bar = 1;
+    rig.frames(1);
+    rig.settle();
+    rig.session().view = View::Song;
+    SongScreen& song = rig.app.song();
+    song.moveCursorTo(1, 1);
+    rig.frames(1);
+    const std::unique_ptr<Project> was = copyOf(p);
+    const int steps = rig.session().undoSteps();
+    rig.nextScene();
+    CHECK(rig.said() == "SCENE 3: COPY OF 2" && p.sceneCount() == 4 && p.scene == 2 && p.track == 0 && p.bar == 0);
+    CHECK(song.cursorScene() == 2 && song.cursorColumn() == 1 && rig.session().view == View::Song && !song.listingSongs());
+    CHECK(!p.tracks[1].muted && songText(p) == songText(*withCopyAfter(*was, 1)));
+    rig.settle();
+    CHECK(rig.session().undoSteps() == steps + 1);
+    rig.undo();
+    CHECK(p.sceneCount() == 3 && p.scene == 1 && song.cursorScene() == 1 && songText(p) == songText(*was));
+    // Y by itself still mutes the track (owner, 2026-11-15: "Y for mute is just a one tap").
+    rig.key(Y, true), rig.key(Y, false);
+    CHECK(p.tracks[1].muted);
+    rig.key(Y, true), rig.key(Y, false);
+    CHECK(!p.tracks[1].muted);
+    // On a REPEATS box: that scene.
+    song.moveCursorTo(0, -1);
+    rig.nextScene();
+    CHECK(rig.said() == "SCENE 2: COPY OF 1" && p.scene == 1 && song.cursorScene() == 1 && song.cursorColumn() == -1);
+    rig.undo();
+    // Off the scenes (a track's head, + TRACK): the scene being worked on, as on the other tabs.
+    rig.session().view = View::Pattern;
+    p.scene = 2;
+    rig.frames(1);
+    rig.settle();
+    rig.session().view = View::Song;
+    song.moveCursorTo(0, 1);
+    rig.key(UP, true), rig.key(UP, false);
+    CHECK(song.cursorOnHead());
+    rig.nextScene();
+    CHECK(rig.said() == "SCENE 4: COPY OF 3" && p.scene == 3 && song.cursorOnHead() && song.cursorScene() == 0);
+    rig.undo();
+    song.moveCursorTo(1, p.trackCount()); // + TRACK, come to from scene 2's row
+    CHECK(song.cursorColumn() == p.trackCount() && !song.cursorOnHead());
+    rig.nextScene();
+    CHECK(rig.said() == "SCENE 4: COPY OF 3" && p.scene == 3);
+    rig.undo();
+    CHECK(p.sceneCount() == 3 && p.scene == 2);
+    // No room: nothing changes, the player neither.
+    song.moveCursorTo(kMaxScenes - 1, 0);
+    rig.nextScene();
+    CHECK(rig.said() == "NO ROOM: " + std::to_string(kMaxScenes) + " SCENES" && p.scene == 2 && p.sceneCount() == 3);
+
+    // SELECT + L2 / R2: the scene's length, on SONG the cursor's scene's, and no tab turns.
+    song.moveCursorTo(1, 0);
+    rig.with(SELECT, L2);
+    CHECK(rig.session().view == View::Song && p.sceneSteps(1) == 15 && p.sceneSteps(0) == 23 && p.sceneSteps(2) == 13 && !song.listingSongs());
+    CHECK(rig.said() == "SCENE 2: 15 STEPS OF 16");
+    rig.with(SELECT, R2);
+    CHECK(rig.session().view == View::Song && p.sceneSteps(1) == 16 && rig.said() == "SCENE 2: ALL 16 STEPS");
+    rig.with(SELECT, L2);
+    song.moveCursorTo(0, 1);
+    rig.key(UP, true), rig.key(UP, false); // a head: the scene being worked on
+    rig.with(SELECT, L2);
+    CHECK(rig.session().view == View::Song && p.sceneSteps(2) == 12 && p.sceneSteps(1) == 15 && p.sceneSteps(0) == 23);
+    rig.session().view = View::Effects;
+    rig.with(SELECT, R2);
+    CHECK(rig.session().view == View::Effects && p.sceneSteps(2) == 13 && rig.said() == "SCENE 3: 13 STEPS OF 16");
+}
+
+// On the grids, Y's own jobs are not done as well as NEXT SCENE.
+void testNotTheGridsOwnY() {
+    Rig rig;
+    fill(rig);
+    Project& p = rig.project();
     rig.session().view = View::Pattern;
     rig.settle();
 
@@ -2672,7 +2759,7 @@ int main(int argc, char** argv) {
     }
     struct Test { const char* name; void (*run)(); bool sound; }; // sound: its proof is of the sound, and is made again on three helper threads
     const Test kTests[] = {
-        {"testTheSceneIsCopied", testTheSceneIsCopied, false}, {"testOnlyOnTheGrids", testOnlyOnTheGrids, false}, {"testNoRoom", testNoRoom, false}, {"testAMoveMakesNothingNew", testAMoveMakesNothingNew, false}, {"testUndo", testUndo, false},
+        {"testTheSceneIsCopied", testTheSceneIsCopied, false}, {"testOnEveryTab", testOnEveryTab, false}, {"testNotTheGridsOwnY", testNotTheGridsOwnY, false}, {"testNoRoom", testNoRoom, false}, {"testAMoveMakesNothingNew", testAMoveMakesNothingNew, false}, {"testUndo", testUndo, false},
         {"testUndoPutsThePlayerOnABarThatIsThere", testUndoPutsThePlayerOnABarThatIsThere, false}, {"testUndoIsOneStep", testUndoIsOneStep, false}, {"testTheChordTrackIsHeard", testTheChordTrackIsHeard, false},
         {"testPlayingGoesOnUnbroken", testPlayingGoesOnUnbroken, true}, {"testTheSongGoesOnUnbroken", testTheSongGoesOnUnbroken, true}, {"testAnotherSceneIsPlaying", testAnotherSceneIsPlaying, false},
         {"testUndoWhileTheFirstOfTheTwoPlays", testUndoWhileTheFirstOfTheTwoPlays, false}, {"testTheLastSceneIsPlaying", testTheLastSceneIsPlaying, false},

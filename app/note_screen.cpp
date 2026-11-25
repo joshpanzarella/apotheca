@@ -25,7 +25,6 @@ constexpr int kCellH = kRowH - 2;
 constexpr int kOctaveTop = 33, kOctaveH = 11, kKeysTop = 45;
 constexpr int kStripGap = 4; // from the grid down to the strip
 constexpr float kNewLevel = kPlacedLevel, kMinLevel = 0.05f; // a note or a chord placed (project.hpp)
-constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs, kPickRepeatEveryMs = ui::kListEveryMs;
 constexpr float kStickKeysPerSecond = 36.f, kStickStepsPerSecond = 24.f, kFillPerSecond = 3.f, kLengthStepsPerSecond = 10.f;
 constexpr float kShortestLength = 0.1f; // of a step
 constexpr float kMostNudge = 0.5f;      // half a step early or late
@@ -417,7 +416,8 @@ ChordEvent NoteScreen::inHand() const {
 
 void NoteScreen::hearChord(const ChordEvent& chord) {
     // While choosing a chord (Y held) it is always heard, playing or not: that is how it is chosen.
-    // Otherwise, with the song playing, the song will play it soon enough.
+    // Otherwise (a chord placed or moved), with the song playing, the song will play it soon enough. X on a
+    // chord is not this: it holds the chord as long as X is, over the song too (onButton, gesture audit G33).
     if (project_.playing && !picking_) return;
     int keys[kChordNotes];
     const int n = chord.pitches(keys);
@@ -440,6 +440,11 @@ void NoteScreen::showChord(const ChordEvent& chord) {
 void NoteScreen::beginPick() {
     picking_ = true;
     editing_ = pat().chordAt(step_);
+    // As it all was when Y went down: B puts it back (G26).
+    pickWas_.packIndex = session_.packIndex();
+    pickWas_.hand = hand_, pickWas_.inversion = inversion_;
+    pickWas_.handLength = handLength_;
+    if (editing_ >= 0) pickWas_.chord = pat().chords[editing_];
     const int count = static_cast<int>(pack().chords.size());
     hand_ = ((hand_ % count) + count) % count;
     if (editing_ >= 0) {
@@ -490,6 +495,67 @@ void NoteScreen::endPick() {
     pat().chords[slot] = c;
     resend();
     moveCursorTo(pitch_, step_ + static_cast<int>(std::ceil(c.length))); // on to where the next one goes
+}
+
+// With Y held, L2 / R2 (gesture audit G27, 2026-11-24): the chord in hand half or twice as long, along
+// 1, 2, 4, 8 and 16 steps. A length between two (the stick sets any) goes to the next one that way; the
+// ends stop. A new chord: the length it and the ones after it take (handLength_, as hold A sets it), held
+// to the room where it lands as ever (inHand). A chord being swapped: its own length, held to the end of
+// the cell and the next chord as hold A holds it (setLength), and the next chord placed takes it too. The
+// box above the bar says what lands.
+void NoteScreen::doubleHand(int way) {
+    static const float ladder[] = {1.f, 2.f, 4.f, 8.f, 16.f};
+    constexpr int rungs = static_cast<int>(sizeof ladder / sizeof ladder[0]);
+    const float now = editing_ >= 0 ? pat().chords[editing_].length : handLength_;
+    float to = -1.f;
+    if (way > 0) {
+        for (int i = 0; i < rungs && to < 0.f; ++i)
+            if (ladder[i] > now + 0.001f) to = ladder[i];
+    } else {
+        for (int i = rungs - 1; i >= 0 && to < 0.f; --i)
+            if (ladder[i] < now - 0.001f) to = ladder[i];
+    }
+    if (to < 0.f) return;
+    float lands = to;
+    if (editing_ >= 0) {
+        ChordEvent& c = pat().chords[editing_];
+        float room = static_cast<float>((cellBars() - project_.bar) * kSteps - c.step); // to the end of the cell
+        for (const ChordEvent& other : pat().chords)
+            if (other.velocity > 0.f && other.step > c.step && static_cast<float>(other.step - c.step) < room) room = static_cast<float>(other.step - c.step);
+        lands = to > room ? room : to;
+        if (lands == c.length) return; // (it fills its room already)
+        c.length = lands;
+        handLength_ = lands;
+        const int last = c.step + static_cast<int>(std::ceil(lands)) - 1; // the cursor stays inside it
+        if (step_ > last) step_ = last < c.step ? c.step : last;
+        resend();
+    } else {
+        handLength_ = to;
+        lands = inHand().length;
+    }
+    char text[48];
+    const int whole = static_cast<int>(std::lround(to)), here = static_cast<int>(std::lround(lands));
+    // (Short: "CHORD 16 STEPS, 15 FIT HERE" ran past the box's room, 248 pixels, even held at LARGE.)
+    if (here < whole) std::snprintf(text, sizeof text, "CHORD %d STEPS: %d FIT", whole, here);
+    else std::snprintf(text, sizeof text, whole == 1 ? "CHORD %d STEP" : "CHORD %d STEPS", whole);
+    session_.say(text);
+}
+
+// B while Y is held on a chord (gesture audit G26, 2026-11-25): the chord as it was when Y went down, its
+// shape, inversion and length, and the pack and the chord in hand with it, as B with A held puts back what
+// the KIT stop, the list of effects and a MOD's target were stepped through. It broke the chord into
+// loose notes; that is Y held + A now.
+// (A new chord's B only calls it off, as before: nothing landed, and the pack and chord stepped to stay
+// in hand for the next tap of Y.)
+void NoteScreen::putPickBack() {
+    if (editing_ < 0) return;
+    if (session_.packIndex() != pickWas_.packIndex) session_.choosePack(pickWas_.packIndex);
+    hand_ = pickWas_.hand, inversion_ = pickWas_.inversion;
+    handLength_ = pickWas_.handLength;
+    ChordEvent& c = pat().chords[editing_];
+    if (std::memcmp(&c, &pickWas_.chord, sizeof c) == 0) return; // nothing was changed
+    c = pickWas_.chord;
+    resend();
 }
 
 void NoteScreen::breakUp(int chord) {
@@ -568,6 +634,38 @@ void NoteScreen::fxFrom(int by) {
     const int to = glideFromKind(project_.current().glideFrom) + by;
     if (to < 0 || to >= kGlideFroms) return;
     session_.setGlideFrom(project_.track, to);
+}
+
+// With X held on a note or a chord, B empties what X shows (gesture audit G11, 2026-11-24): a note's
+// RATCHET, GLIDE and THROW; a chord's six effects and its THROW. The note or the chord stays, its level,
+// length and nudge as they were (plain B still deletes it, once X is let go). One step of undo of its
+// own; with nothing to empty, nothing happens and there is no step. GLIDE FROM is the track's: it stays.
+void NoteScreen::fxEmpty() {
+    const int slot = pat().at(pitch_, step_), chord = chordSlotHere();
+    if (slot < 0 && chord < 0) return;
+    if (slot >= 0) {
+        const NoteEvent& n = pat().notes[slot];
+        if (n.ratchet == 0 && n.glide == 0 && n.throwTo == 0) return;
+    } else {
+        const ChordEvent& c = pat().chords[chord];
+        if (c.ratchet == 0 && c.throwTo == 0 && c.play.atRest() && c.play.order == kOrderUp) return;
+    }
+    session_.beginOwnUndoStep();
+    if (slot >= 0) {
+        NoteEvent& n = pat().notes[slot];
+        n.ratchet = 0;
+        n.glide = 0;
+        n.throwTo = 0;
+    } else {
+        ChordEvent& c = pat().chords[chord];
+        c.ratchet = 0;
+        c.throwTo = 0;
+        c.play.strum = kStrumOff;
+        c.play.order = kOrderUp;
+        c.play.time = c.play.level = c.play.lengths = 0;
+    }
+    session_.sendNoteBar(project_.track, project_.scene, project_.bar);
+    session_.endOwnUndoStep();
 }
 
 // With X held on a note or a chord, Y rolls the dice for it: a ratchet, a glide of some length
@@ -656,6 +754,10 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down) fxFrom(b == Button::R1 ? 1 : -1); // GLIDE FROM, a click. (Zoom and carry wait until X is let go.)
         return;
     }
+    if (fxHeld_ && b == Button::B) {
+        if (event.down) fxEmpty(); // what X shows, emptied. (B's own delete waits until X is let go.)
+        return;
+    }
     if (b == Button::Y) {
         if (event.down && !shaping_ && !painting_ && !onBars_) beginPick();
         else if (!event.down) endPick();
@@ -668,15 +770,25 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         } else if (isDirection(b)) {
             press(b);
             repeating_ = b;
-            repeatAt_ = 0;
+            repeat_.restart();
         } else if (b == Button::L1 || b == Button::R1) {
             session_.choosePack(session_.packIndex() + (b == Button::R1 ? 1 : -1));
             hand_ = 0;
             pickChanged();
+        } else if (b == Button::L2 || b == Button::R2) {
+            doubleHand(b == Button::R2 ? 1 : -1); // (the App sends them here while Y is held on the roll)
         } else if (b == Button::X) {
-            hearChord(editing_ >= 0 ? pat().chords[editing_] : inHand());
+            // Heard for as long as X is held (a tap: a moment), over the song too, as X on a chord placed (review
+            // of G33: it was hearChord's fixed moment a key).
+            const ChordEvent chord = editing_ >= 0 ? pat().chords[editing_] : inHand();
+            int keys[kChordNotes];
+            const int count = chord.pitches(keys);
+            session_.auditionHeld(project_.track, keys, count, chord.velocity, this);
         } else if (b == Button::B) {
-            if (editing_ >= 0) breakUp(editing_);
+            putPickBack(); // as it was when Y went down (G26: it broke the chord up)
+            picking_ = false;
+        } else if (b == Button::A && editing_ >= 0) {
+            breakUp(editing_); // Y held + A: into loose notes, as the chord is now (G26: it was B)
             picking_ = false;
         }
         return;
@@ -743,6 +855,7 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down && !shaping_ && !erasing_ && !onBars_ && (slot >= 0 || chord >= 0)) {
             carrying_ = slot >= 0 ? Carry::Note : Carry::Chord;
             carried_ = slot >= 0 ? slot : chord;
+            axis_ = Axis::None; // a new hold is a new choice of job for the stick
             if (barTap) {
                 copyBarArmed_ = true;
                 copyBarPitch_ = pitch_;
@@ -765,6 +878,9 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (!event.down) {
         if (b == repeating_) repeating_ = Button::None;
         if (b == Button::B) erasing_ = false;
+        // X let go with the stick still pushed for what it does: the stick moves nothing until it has come
+        // back, as on FX and DEVICE (gesture audit G14), so the cursor does not jump off the note.
+        if (b == Button::X && fxHeld_) stickWait_ = input.stickX() != 0.f || input.stickY() != 0.f;
         if (b == Button::X) fxHeld_ = false;
         return;
     }
@@ -774,7 +890,7 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (zooming_ && l1First_ && !shaping_ && !painting_ && !erasing_ && !picking_ && !fxHeld_ && carrying_ == Carry::Nothing && !input.held(Button::R1)) zoomUsed_ = true;
         press(b);
         repeating_ = b;
-        repeatAt_ = 0;
+        repeat_.restart();
         return;
     }
     if (b == Button::B && !input.held(Button::A) && !onBars_) {
@@ -782,9 +898,15 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         erasing_ = true;
         eraseHere();
     } else if (b == Button::X && !onBars_) {
-        if (const ChordEvent* chord = chordHere()) hearChord(*chord);
-        else if (!noteHere() && holdsRecording(project_.current().kind)) session_.auditionHeld(project_.track, pitch_, kNewLevel, this); // a recording: for as long as X is held
-        else session_.audition(project_.track, pitch_, noteHere() ? noteHere()->velocity : kNewLevel);
+        // Heard for as long as X is held (a tap a moment), a chord's keys together, and over the song while it
+        // plays (gesture audit G33: a chord was silent then, and a note or a key a fixed moment).
+        if (const ChordEvent* chord = chordHere()) {
+            int keys[kChordNotes];
+            const int count = chord->pitches(keys);
+            session_.auditionHeld(project_.track, keys, count, chord->velocity, this);
+        } else {
+            session_.auditionHeld(project_.track, pitch_, noteHere() ? noteHere()->velocity : kNewLevel, this);
+        }
         // On a note or a chord it is also a hold: the stick or D-pad then sets what it does besides play.
         fxHeld_ = (noteHere() || chordHere()) && !shaping_ && !painting_ && !picking_ && carrying_ == Carry::Nothing;
         fxSaved_ = 0.f;
@@ -815,7 +937,7 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
     dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number
     lastMs_ = nowMs;
     if (project_.bar >= cellBars()) project_.bar = 0; // the cell was shortened, or it is another cell
-    const float x = input.stickX(), y = input.stickY();
+    float x = input.stickX(), y = input.stickY();
     {
         // The view follows the bar playing, unless the player is at the controls (follow_bar.hpp).
         const int bars = cellBars();
@@ -826,6 +948,13 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
             followTheNotes();
         }
     }
+    // The note went from under X (an undo) with the stick pushed for it: the same wait as X let go (onButton).
+    if (fxLastFrame_ && !fxHeld_ && input.held(Button::X) && (x != 0.f || y != 0.f)) stickWait_ = true;
+    fxLastFrame_ = fxHeld_;
+    if (stickWait_ && x == 0.f && y == 0.f) stickWait_ = false;
+    if (stickWait_) x = y = 0.f;
+    // A stick move with L1 held is a use of L1, as a button is: its let go zooms nothing (gesture audit G31).
+    if (zooming_ && (x != 0.f || y != 0.f)) zoomUsed_ = true;
     // A key played on a USB keyboard: the cursor goes to it, so A places there.
     if (const int key = session_.takeMidiKey(); key >= 0 && !shaping_ && !picking_ && !painting_) moveCursorTo(key, step_);
     keepInView(); // the zoom can be changed from SETUP too
@@ -841,7 +970,7 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
             if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
             const float push = axis_ == Axis::UpDown ? -y : x;
             if (push != 0.f) {
-                fxSaved_ += fxWas_ ? std::fabs(push) * 4.f * dt : 1.f;
+                fxSaved_ += fxWas_ ? std::fabs(push) * ui::kStickClicksPerSecond * dt : 1.f; // (G32: the clicks' pace)
                 fxWas_ = true;
                 for (; fxSaved_ >= 1.f; fxSaved_ -= 1.f)
                     fxTurn(axis_ == Axis::UpDown ? (push > 0.f ? Button::Up : Button::Down) : (push > 0.f ? Button::Right : Button::Left));
@@ -849,12 +978,7 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
         }
         stickX_ = stickY_ = 0.f;
         stickWasX_ = stickWasY_ = false;
-        if (repeating_ != Button::None && repeatAt_ == 0) {
-            repeatAt_ = nowMs + ui::kListDelayMs;
-        } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-            repeatAt_ = nowMs + 2 * ui::kListEveryMs; // clicks, not a run
-            fxTurn(repeating_);
-        }
+        while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::Click)) fxTurn(repeating_); // clicks, not a run
         return;
     }
     if (picking_) {
@@ -893,41 +1017,45 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
         stickX_ = stickY_ = 0.f;
         stickWasX_ = stickWasY_ = false;
     } else if (carrying_ != Carry::Nothing) {
-        // X has hold of a note. Sideways it goes key by key (a key is a key);
-        // up and down it slides freely in time. Squared: a small push is a fine move.
-        axis_ = Axis::None;
-        if (x == 0.f) stickX_ = 0.f, stickWasX_ = false;
-        else {
+        // R1 has hold of a note or a chord. One job per push, as with A held: whichever way the stick
+        // leaves the centre is the job until it comes back. Sideways it goes as the D-pad does
+        // (carry(): a SCALE's next key; with L1 held an octave, once a push: at the stick's pace an
+        // octave would fly); up and down it slides freely in time, squared, so a small push is a fine move.
+        if (x == 0.f && y == 0.f) axis_ = Axis::None;
+        else if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
+        if (axis_ != Axis::Sideways || x == 0.f) {
+            stickX_ = 0.f, stickWasX_ = false;
+        } else if (zooming_) {
+            if (!stickWasX_) carry(x > 0.f ? Button::Right : Button::Left);
+            stickX_ = 0.f, stickWasX_ = true;
+        } else {
             stickX_ += stickWasX_ ? std::fabs(x) * kCarryKeysPerSecond * dt : 1.f;
             stickWasX_ = true;
-            for (; stickX_ >= 1.f; stickX_ -= 1.f) carryBy(x > 0.f ? 1 : -1, 0);
+            for (; stickX_ >= 1.f; stickX_ -= 1.f) carry(x > 0.f ? Button::Right : Button::Left);
         }
-        if (std::fabs(y) > std::fabs(x)) carryFree(y * std::fabs(y) * kCarryStepsPerSecond * dt);
+        if (axis_ == Axis::UpDown) carryFree(y * std::fabs(y) * kCarryStepsPerSecond * dt);
         stickY_ = 0.f;
         stickWasY_ = false;
     } else {
         axis_ = Axis::None;
+        const float climbX = climbX_.times(x, nowMs), climbY = climbY_.times(y, nowMs); // a full push held climbs (G07)
         if (x == 0.f) stickX_ = 0.f, stickWasX_ = false;
         else {
-            stickX_ += stickWasX_ ? std::fabs(x) * kStickKeysPerSecond * dt : 1.f;
+            stickX_ += stickWasX_ ? std::fabs(x) * kStickKeysPerSecond * climbX * dt : 1.f;
             stickWasX_ = true;
             for (; stickX_ >= 1.f; stickX_ -= 1.f) moveCursor(x > 0.f ? Button::Right : Button::Left);
         }
         if (y == 0.f) stickY_ = 0.f, stickWasY_ = false;
         else {
-            stickY_ += stickWasY_ ? std::fabs(y) * kStickStepsPerSecond * dt : 1.f;
+            stickY_ += stickWasY_ ? std::fabs(y) * kStickStepsPerSecond * climbY * dt : 1.f;
             stickWasY_ = true;
             for (; stickY_ >= 1.f; stickY_ -= 1.f) moveCursor(y > 0.f ? Button::Down : Button::Up);
         }
     }
 
-    if (repeating_ != Button::None && repeatAt_ == 0) {
-        repeatAt_ = nowMs + kRepeatDelayMs;
-    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-        repeatAt_ = nowMs + kRepeatEveryMs;
-        if (picking_) repeatAt_ = nowMs + kPickRepeatEveryMs; // chords are for hearing one at a time
-        press(repeating_);
-    }
+    // A held D-pad: the cursor's pace (BARS with A held too); the chords and their inversions with Y held at the
+    // list's, after the cursor's wait they always had: chords are for hearing one at a time.
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::Cursor, picking_ ? Pace::List : Pace::Cursor)) press(repeating_);
 }
 
 // Is this note written where something else on the same key is already sounding: one of a
@@ -1436,9 +1564,13 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char brushText[40];
     if (picking_) {
         hint("LEFT / RIGHT", "chord");
-        hint("UP / DOWN", "inversion");
+        hint("UP / DOWN", "invert"); // (G26: "inversion" with A's chip added ran 13 pixels over at XL)
         hint("L1 R1", "pack");
-        hint("B", editing_ >= 0 ? "break into notes" : "cancel");
+        // On a swap the row is full: with A's and B's longer words, L2 R2 ran 11 pixels over with "HLD SEL: HELP",
+        // so it is shown on a new chord, and the manual says it does the same on a swap (G27 review).
+        if (editing_ < 0) hint("L2 R2", "length");
+        if (editing_ >= 0) hint("A", "notes"); // into loose notes
+        hint("B", editing_ >= 0 ? "as it was" : "cancel");
     } else if (fxHeld_ && !under && chordUnder) {
         // Each button under what it changes, with no word: LEFT / RIGHT sets the one picked, under
         // its large value at the left (right whichever of the six is picked); UP / DOWN picks one,

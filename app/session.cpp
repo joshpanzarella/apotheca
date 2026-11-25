@@ -114,6 +114,7 @@ bool Session::removeTrack(int track) {
         else if (recTrack_ > track) --recTrack_;
     }
     for (int t = track; t + 1 < kNumTracks; ++t) project.tracks[t] = project.tracks[t + 1];
+    kept_.track = -1; // (what B with A held puts back was for a track by its number)
     for (int t = track; t < kNumTracks; ++t) { // the types each slot remembers move with their tracks, and what a preset found
         for (int s = 0; s < kTrackSlots; ++s) typeMemory_[t * kTrackSlots + s] = t + 1 < kNumTracks ? typeMemory_[(t + 1) * kTrackSlots + s] : TypeMemory();
         presetSounds_[t] = t + 1 < kNumTracks ? presetSounds_[t + 1] : PresetSoundMemory();
@@ -151,6 +152,7 @@ int Session::duplicateTrack(int track) {
     const int count = project.trackCount();
     if (track < 0 || track >= count || count >= kNumTracks) return -1;
     if ((rec_ == Rec::Waiting || rec_ == Rec::Recording) && recTrack_ > track) ++recTrack_;
+    kept_.track = -1; // (what B with A held puts back was for a track by its number)
     for (int t = count; t > track + 1; --t) { // the tracks after it, a place down (from the end)
         project.tracks[t] = project.tracks[t - 1];
         for (int s = 0; s < kTrackSlots; ++s) typeMemory_[t * kTrackSlots + s] = typeMemory_[(t - 1) * kTrackSlots + s];
@@ -235,6 +237,7 @@ void Session::audition(int track, int pitch, float velocity) {
     Command c;
     c.track = slot->track;
     c.a = slot->pitch;
+    c.e = 1; // an audition's: the song's own note on the key plays on, and the song's note-off leaves it (engine)
     c.type = Command::NoteOff;
     if (slot->track >= 0) engine.send(c);
     c.type = Command::NoteOn;
@@ -242,21 +245,27 @@ void Session::audition(int track, int pitch, float velocity) {
     c.a = pitch;
     c.value = velocity;
     engine.send(c);
-    // (A setting turned while X holds this very key is heard on the held note: it stays held.)
-    const bool held = hearingHeld() && heard_.lane < 0 && heard_.track == track && heard_.pitch == pitch;
+    // (A setting turned while X holds this very key is heard on the held note: it stays held. A key of a
+    // chord X holds, too: its slot is held, not only the key heard_ names.)
+    const bool held = hearingHeld() && heard_.lane < 0 && heard_.track == track && slot->track == track && slot->pitch == pitch && slot->until == kHeldOn;
     slot->track = track;
     slot->pitch = pitch;
     slot->until = held ? kHeldOn : now_ + kAuditionMs;
 }
 
-void Session::auditionHeld(int track, int pitch, float velocity, const void* owner) {
+void Session::auditionHeld(int track, int pitch, float velocity, const void* owner) { auditionHeld(track, &pitch, 1, velocity, owner); }
+
+void Session::auditionHeld(int track, const int* pitches, int count, float velocity, const void* owner) {
+    if (!pitches || count <= 0) return;
     letGoHeard();
-    audition(track, pitch, velocity);
-    for (Sounding& s : sounding_)
-        if (s.track == track && s.pitch == pitch) s.until = kHeldOn;
+    for (int i = 0; i < count; ++i) {
+        audition(track, pitches[i], velocity);
+        for (Sounding& s : sounding_) // held at once, so the chord's next key does not take this one's slot
+            if (s.track == track && s.pitch == pitches[i]) s.until = kHeldOn;
+    }
     heard_ = Heard();
     heard_.track = track;
-    heard_.pitch = pitch;
+    heard_.pitch = pitches[0];
     heard_.since = now_;
     heard_.owner = owner;
     heard_.held = true;
@@ -291,7 +300,7 @@ void Session::letGoHeard(Uint32 lasts) {
     heard_.ends = now_ > least ? now_ : least;
     if (heard_.lane < 0) {
         for (Sounding& s : sounding_)
-            if (s.track == heard_.track && s.pitch == heard_.pitch && s.until == kHeldOn) s.until = heard_.ends;
+            if (s.track == heard_.track && s.until == kHeldOn) s.until = heard_.ends; // (every key of a chord held)
     } else if (now_ < least && !project.tracks[heard_.track].laneSample[heard_.lane][0]) {
         heard_.ends = 0; // the built-in drum tapped: heard whole, as it always was (at most 1.8 s)
     } else {
@@ -335,7 +344,7 @@ void Session::stopHeard(const void* owner) {
         stopLane(heard_.track, heard_.lane);
     } else {
         for (Sounding& s : sounding_)
-            if (s.track == heard_.track && s.pitch == heard_.pitch) s.until = now_;
+            if (s.track == heard_.track && (s.pitch == heard_.pitch || s.until == kHeldOn)) s.until = now_; // (a chord's other keys held)
     }
     endHearing();
 }
@@ -371,6 +380,7 @@ void Session::endHearing() {
         c.type = Command::NoteOff;
         c.track = s.track;
         c.a = s.pitch;
+        c.e = 1; // (an audition's)
         engine.send(c);
         s.track = -1;
     }
@@ -442,11 +452,13 @@ void Session::update(Uint32 nowMs) {
         cellMark_ = mark;
         noteEdit();
     }
-    if (const std::uint64_t mark = soundMark(); mark != soundMark_) {
+    // A list of recordings open: what it puts on is looked at when it closes, and a burst of edits it
+    // was opened in goes on till then (browsingRecordings).
+    if (const std::uint64_t mark = soundMark(); !browsing_ && mark != soundMark_) {
         soundMark_ = mark;
         noteEdit();
     }
-    if (editing_ && nowMs - editedAt_ >= 700) {
+    if (editing_ && !browsing_ && nowMs - editedAt_ >= 700) {
         editing_ = false;
         settled_ = patternsNow();
     }
@@ -475,11 +487,15 @@ void Session::update(Uint32 nowMs) {
     const std::vector<Transfer::Change> changes = transfer_.takeChanges();
     if (!changes.empty()) {
         ++sampleFiles_;
-        std::vector<std::pair<std::string, std::string>> renames;
+        std::vector<std::pair<std::string, std::string>> renames, moved;
         for (const Transfer::Change& change : changes) {
-            recordingChanged(change.from, change.to);
+            recordingChanged(change.from, change.to, false);
             renames.push_back({change.from, change.to}); // one sent or deleted has no name on one side, and is passed over there
+            if (!change.from.empty() && !change.to.empty() && sampleNameOk(change.from) && sampleNameOk(change.to)) moved.push_back(renames.back());
         }
+        // Every step of undo follows the frame's renames in one pass over its text, in order (a folder sent
+        // whole is many: a pass for each was twenty-one songs' texts gone through again each time).
+        undoFollows(moved);
         followLater(renames); // a few files a frame, below (it was all at once: a freeze)
         // The open song is written now, not at the next autosave: its revs will have the new
         // name, and a flat battery in between would leave the song itself with the old one.
@@ -517,6 +533,7 @@ void Session::update(Uint32 nowMs) {
         nextSaveAt_ = nowMs + kSaveEveryMs;
         saveNow();
     }
+    if (settingsOwed() && nowMs - keepAfter_ >= kKeepRestMs) keepSettingsNow(); // (stood still a second: G43)
     endHearing();
     syncSong();
 }
@@ -645,7 +662,7 @@ Session::BarCopy Session::pasteBar(int track, int scene, int bar) {
             for (int step = 0; step < kSteps; ++step) t.automation[scene][lane][bar * kSteps + step] = clip_.automation[lane][step];
     sendTrackImage(track); // every bar of it, in one piece (as setCellBars)
     endOwnUndoStep();
-    clip_.has = false; // spent: a paste clears the copy (a Same, or a refusal, keeps it)
+    // The copy stays for another paste (gesture audit G23, 2026-11-25: a paste spent it); a new copy replaces it.
     return BarCopy::Done;
 }
 
@@ -746,8 +763,15 @@ Session::SceneCopy Session::pasteScene(int scene) {
     engine.send(c);
     if (scene == project.scene) project.bar = 0;
     endOwnUndoStep();
-    sceneClip_->has = false; // spent: a paste clears the copy (a Same, or a refusal, keeps it)
+    // The copy stays for another paste, its brass mark on the scene it came from (gesture audit G23,
+    // 2026-11-25: a paste spent it); R1 on that scene clears it (clearSceneCopy).
     return SceneCopy::Done;
+}
+
+void Session::clearSceneCopy() {
+    if (!sceneClip_->has) return;
+    sceneClip_->has = false;
+    ++sceneCopies_; // (the clipboard changed: a panic begun with this R1 puts it back, as it does a copy)
 }
 
 Session::SceneCopy Session::copySceneHere(int scene) {
@@ -1017,7 +1041,9 @@ void Session::setVolume(float volume) {
     c.type = Command::SetVolume;
     c.value = volume_ * volume_; // squared: even steps to the ear
     engine.send(c);
-    if (!programFolder_.empty()) writeTextFile(programFolder_ + "/volume.txt", std::to_string(static_cast<int>(std::round(volume_ * 100.f))) + "\n");
+    if (programFolder_.empty()) return;
+    volumeOwed_ = volumeText() != volumeKept_; // (written once it has stood still: update)
+    if (volumeOwed_) keepAfter_ = now_;
 }
 
 // ---- automation ---------------------------------------------------------------------------
@@ -1141,6 +1167,11 @@ std::uint64_t Session::soundMark() const {
         mix(&track.glideFrom, sizeof track.glideFrom);
         mix(track.mods, sizeof track.mods);
         if (track.kind == TrackKind::Drums) mix(track.laneFeel, sizeof track.laneFeel), mix(track.laneSwing, sizeof track.laneSwing), mix(track.laneChoke, sizeof track.laneChoke), mix(track.laneEdit, sizeof track.laneEdit), mix(track.laneSynth, sizeof track.laneSynth), mix(track.laneLevel, sizeof track.laneLevel), mix(track.laneFit, sizeof track.laneFit), mix(track.laneOneSlice, sizeof track.laneOneSlice);
+        // A recording's name, to its end (what lies past it is whatever a longer name left there): a lane's
+        // with its FIT, cut and voice above, and a sampler's or a CLOUD's (gesture audit G04).
+        if (track.kind == TrackKind::Drums)
+            for (const char* name : track.laneSample) mix(name, std::strlen(name) + 1);
+        if (holdsRecording(track.kind)) mix(track.sample, std::strlen(track.sample) + 1);
         if (const SynthSpec* spec = specFor(track.kind)) {
             mix(&track.preset, sizeof track.preset);
             mix(spec->values(const_cast<TrackData&>(track)), sizeof(int) * static_cast<std::size_t>(settingCount(track.kind)));
@@ -1259,19 +1290,21 @@ void Session::restoreSounds(const StepRead& was, const bool same[kNumTracks]) {
                 if (now.laneChoke[lane] != then.laneChoke[lane]) setLaneChoke(t, lane, then.laneChoke[lane]);
         if (now.kind == TrackKind::Drums)
             for (int lane = 0; lane < kDrumLanes; ++lane) {
-                if (std::strcmp(now.laneSample[lane], then.laneSample[lane]) != 0) setLaneSample(t, lane, then.laneSample[lane]);
+                // The sound first, as a kit is put on (putKit): a voice, or a recording or the built-in drum
+                // (which takes a voice off). Another sound puts START and END back to the whole, so the
+                // step's EDIT goes in after it: the sound and its cut come back together. A recording
+                // is read from its file again, as a pick reads it (one deleted since is missing, as in a
+                // song opened); a step keeps only its name.
+                if (then.laneSynth[lane].on()) {
+                    if (now.laneSynth[lane] != then.laneSynth[lane]) setLaneSynth(t, lane, then.laneSynth[lane]);
+                } else if (now.laneSynth[lane].on() || std::strcmp(now.laneSample[lane], then.laneSample[lane]) != 0) {
+                    setLaneSample(t, lane, then.laneSample[lane]);
+                }
                 if (now.laneEdit[lane] != then.laneEdit[lane]) setLaneEdit(t, lane, then.laneEdit[lane]);
                 if (!sameAsText(now.laneLevel[lane], then.laneLevel[lane])) setLaneLevel(t, lane, then.laneLevel[lane]);
                 if (now.laneFit[lane] != then.laneFit[lane]) setLaneFit(t, lane, then.laneFit[lane]);
                 if (now.laneOneSlice[lane] != then.laneOneSlice[lane]) setLaneOneSlice(t, lane, then.laneOneSlice[lane]);
             }
-        if (now.kind == TrackKind::Drums)
-            for (int lane = 0; lane < kDrumLanes; ++lane)
-                if (now.laneSynth[lane] != then.laneSynth[lane]) {
-                    const LaneEdit edit = then.laneEdit[lane];
-                    setLaneSynth(t, lane, then.laneSynth[lane]);
-                    setLaneEdit(t, lane, edit); // (another model put START and END back to the whole: the step's are put back)
-                }
         // (After the slots: the step's MODs fit the step's effects. Compared as the file writes them.)
         for (int m = 0; m < kModsPerTrack; ++m) {
             if (modText(now.mods[m], m) == modText(then.mods[m], m)) continue;
@@ -1291,6 +1324,8 @@ void Session::restoreSounds(const StepRead& was, const bool same[kNumTracks]) {
                 sendSynthPatch(t); // every setting and macro: the engine's sound is the step's, whatever preset it was on
             }
         }
+        // A sampler's or a CLOUD's recording, read again from its file (gesture audit G04).
+        if (holdsRecording(now.kind) && std::strcmp(now.sample, then.sample) != 0) setTrackSample(t, then.sample);
         if (now.kind == TrackKind::Sampler) {
             for (int id = 0; id < sampler::kSettings; ++id)
                 if (now.sampler[id] != then.sampler[id]) setSamplerSetting(t, id, then.sampler[id]);
@@ -1335,19 +1370,19 @@ void Session::endOwnUndoStep() {
 // ---- next scene -----------------------------------------------------------------------------
 
 // The scenes from `from` on are one place further down the song (by = 1) or back up it (-1).
-// The engine's playing goes with them, and so does what was read from it this frame and a
-// keyboard note that is still held and being recorded.
-namespace {
-// Where a scene is after the ones from `from` on have moved one place (as the engine works it out: never off the song).
-int movedScene(int scene, int from, int by) { return scene >= from && scene + by >= 0 && scene + by < kMaxScenes ? scene + by : scene; }
-} // namespace
-
+// The engine's playing goes with them, and so does what was read from it this frame, a
+// keyboard note that is still held and being recorded, and the scene copy's place (movedScene).
 void Session::scenesMoved(int from, int by) {
     lastMove_ = {from, by};
     ++sceneMoves_;
     project.playScene = movedScene(project.playScene, from, by); // (-1 when nothing is playing: no scene, and it stays so)
     for (Recording& rec : recordingNote_)
         if (rec.on) rec.scene = movedScene(rec.scene, from, by);
+    // The scene copy is a snapshot: only where it came from moves, and its brass mark and R1's "clear" with it
+    // (G23 review, 2026-11-25: they stayed on the number, so after a NEXT SCENE before it they sat on the wrong
+    // scene, and R1 on the real one pasted). Its scene fallen off the end, the copy goes: nothing could mark it.
+    if (sceneClip_->has && sceneFallsOff(sceneClip_->scene, from, by)) sceneClip_->has = false;
+    else if (sceneClip_->has) sceneClip_->scene = movedScene(sceneClip_->scene, from, by);
 }
 
 // The song itself: a copy of scene `from` put in after it (by = 1), or the scene before `from`
@@ -1434,11 +1469,11 @@ int Session::playScene() const {
     return scene;
 }
 
-int Session::nextScene() {
-    const int from = project.scene, to = from + 1;
+int Session::nextScene(int scene) {
+    const int from = scene, to = from + 1;
     if (from < 0 || to >= kMaxScenes || project.sceneCount() >= kMaxScenes) return -1; // no room: the last scene would fall off the end
     // A step of undo of its own. Whatever was being edited just before is a step already; it ends here.
-    if (undoReady_ && cellMark() != cellMark_) noteEdit(); // a hit placed this very frame: its own step, not part of this one
+    if (undoReady_ && cellMark() != cellMark_) noteEdit(); // a hit placed this very frame: its own step, not part of this one (on the cell worked on until now)
     if (editing_ || !undoReady_) settled_ = patternsNow(); // (not ready: before the first frame of a song just opened)
     editing_ = false;
     undo_.push_back({settled_, from});
@@ -1446,7 +1481,8 @@ int Session::nextScene() {
     redo_.clear();
 
     moveScenesHere(from, 1, nullptr);
-    project.scene = to; // the same track and bar: the cell there is as long as the one left
+    project.scene = to; // the same track and bar: the cell there is as long as the one left...
+    if (project.bar >= project.current().bars[to]) project.bar = 0; // ...where it is the one left (another, from SONG: a bar it has)
     tellScenesMoved(from, 1);
     scenesMoved(from, 1);
 
@@ -2026,6 +2062,7 @@ void Session::setSend(int track, int bus, float value) {
 // ---- recordings on drum lanes -------------------------------------------------------
 
 Session::~Session() {
+    keepSettingsNow(); // (main.cpp has written them already; a Session that goes another way keeps them too)
     cancelBounce();
     if (input_ && rec_ != Rec::Idle && rec_ != Rec::NoInput) input_->stop();
     if (job_ && job_->thread.joinable()) job_->thread.join();
@@ -2146,6 +2183,7 @@ void Session::applyProject() {
     // Another song: nothing of the last one to go back to.
     for (TypeMemory& m : typeMemory_) m = TypeMemory();
     for (PresetSoundMemory& m : presetSounds_) m = PresetSoundMemory();
+    kept_.track = -1;
     undo_.clear();
     redo_.clear();
     editing_ = false;

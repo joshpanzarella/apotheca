@@ -66,12 +66,17 @@ bool Session::deleteSample(const std::string& name) {
     bool gone = std::remove((sampleFolder_ + "/" + name + ".wav").c_str()) == 0;
     gone = std::remove((sampleFolder_ + "/" + name + ".WAV").c_str()) == 0 || gone;
     if (!gone) return false;
+    // The lanes and tracks that played it go back to their drum, and that is no step of undo: undo
+    // would only put back a name whose file is gone (it is deleted for good). Steps that name it
+    // find it missing, as a song opened would.
+    const bool unmarked = undoReady_ && soundMark() == soundMark_;
     for (int t = 0; t < kNumTracks; ++t) {
         TrackData& track = project.tracks[t];
         for (int lane = 0; lane < kDrumLanes; ++lane)
             if (track.kind == TrackKind::Drums && name == track.laneSample[lane]) setLaneSample(t, lane, "");
         if (holdsRecording(track.kind) && name == track.sample) setTrackSample(t, "");
     }
+    if (unmarked) soundMark_ = soundMark();
     return true;
 }
 
@@ -170,8 +175,27 @@ Session::FileJob Session::deleteSampleFolder(const std::string& name) {
     return errno == ENOTEMPTY || errno == EEXIST ? FileJob::NotEmpty : FileJob::Failed;
 }
 
-void Session::recordingChanged(const std::string& from, const std::string& to) {
+// Undo follows a recording renamed or moved (gesture audit G04): every step's text, the redo steps'
+// and the one undo goes back to next (settled_) name it where it is now, as the saved songs do
+// (renameRecordings). A step that named the old place would put back a name whose file is gone.
+// Only a text that has the name in it is gone through (a plain search first, as followFile).
+void Session::undoFollows(const std::vector<std::pair<std::string, std::string>>& renames) {
+    if (renames.empty()) return;
+    const auto follow = [&](std::string& text) {
+        bool named = false;
+        for (const auto& rename : renames) named = named || text.find(rename.first) != std::string::npos;
+        if (named) renameRecordings(text, renames);
+    };
+    for (UndoStep& step : undo_) follow(step.text);
+    for (UndoStep& step : redo_) follow(step.text);
+    follow(settled_);
+}
+
+void Session::recordingChanged(const std::string& from, const std::string& to, bool stepsFollow) {
     if ((from.empty() && to.empty()) || (!from.empty() && !sampleNameOk(from)) || (!to.empty() && !sampleNameOk(to))) return;
+    // The new name is no step of undo (nothing was done to the song), and the steps follow it.
+    const bool unmarked = undoReady_ && soundMark() == soundMark_;
+    if (stepsFollow && !from.empty() && !to.empty()) undoFollows({{from, to}});
     for (int t = 0; t < kNumTracks; ++t) {
         TrackData& track = project.tracks[t];
         const bool sampler = holdsRecording(track.kind); // (a sampler or a CLOUD: one recording)
@@ -192,6 +216,7 @@ void Session::recordingChanged(const std::string& from, const std::string& to) {
         }
     }
     if (!to.empty()) findMissing(sampleLabel(to)); // or one of its base name, in another folder
+    if (unmarked) soundMark_ = soundMark();
 }
 
 int Session::findMissing(const std::string& label) {
@@ -210,6 +235,9 @@ int Session::findMissing(const std::string& label) {
     ++lookups_;
     const std::vector<std::string> have = wavNames(sampleFolder_); // once, however many are missing
     int found = 0;
+    // A recording found is no step of undo (the song names where it is now), and the steps follow it.
+    const bool unmarked = undoReady_ && soundMark() == soundMark_;
+    std::vector<std::pair<std::string, std::string>> renames;
     for (const Lost& one : lost) {
         const bool sampler = holdsRecording(project.tracks[one.track].kind);
         char* name = sampler ? project.tracks[one.track].sample : project.tracks[one.track].laneSample[one.lane];
@@ -227,11 +255,14 @@ int Session::findMissing(const std::string& label) {
         read();
         if (!sounds_[one.track][one.lane].missing) {
             ++found;
+            renames.push_back({was, at});
             continue;
         }
         std::snprintf(name, kSampleNameRoom, "%s", was.c_str()); // it would not read: as it was
         read();
     }
+    undoFollows(renames);
+    if (unmarked) soundMark_ = soundMark();
     return found;
 }
 
@@ -353,16 +384,13 @@ void Session::setLaneSample(int track, int lane, const std::string& name) {
     TrackData& t = project.tracks[track];
     std::snprintf(t.laneSample[lane], sizeof t.laneSample[lane], "%s", name.c_str());
     // Another sound: START and END were parts of the last one, and go back to the whole. The rest of
-    // the lane's edits stay. Not a step of undo by itself (as the sound is not): undo would put the
-    // old cut on the new sound. A synth voice goes with it (a recording or the drum in its place).
+    // the lane's edits stay. A synth voice goes with it (a recording or the drum in its place). All of
+    // it is one step of undo with the name (soundMark sees the name: gesture audit G04), so undo puts
+    // the old sound back with its own cut and voice, never the old cut on the new sound.
     LaneEdit& edit = t.laneEdit[lane];
-    if (edit.start != 0 || edit.end != kEditUnits || t.laneSynth[lane].on()) {
-        const bool unmarked = undoReady_ && soundMark() == soundMark_;
-        edit.start = 0;
-        edit.end = kEditUnits;
-        t.laneSynth[lane] = drumsynth::Voice();
-        if (unmarked) soundMark_ = soundMark();
-    }
+    edit.start = 0;
+    edit.end = kEditUnits;
+    t.laneSynth[lane] = drumsynth::Voice();
     loadLane(track, lane);
 }
 
@@ -476,6 +504,8 @@ bool Session::setHotspot(bool on, unsigned seed) {
 // ---- updating Apotheca over WiFi ---------------------------------------------------------
 
 void Session::useProgramFolder(const std::string& folder) {
+    keepSettingsNow(); // (what is owed to the folder before)
+    settingsKept_.clear(), volumeKept_.clear(); // what this one has is not known yet (loadSettings, loadVolume)
     programFolder_ = folder;
     transfer_.setProgramFolder(folder);
     // One that was sent but never answered, last time: it does not linger.
@@ -517,6 +547,13 @@ Session::Rec Session::toggleRecording(int track, int lane) {
     recLane_ = lane;
     recorder_.arm(kSampleRate);
     return rec_ = Rec::Waiting;
+}
+
+std::string Session::recordingLine() const {
+    char text[64] = {};
+    if (rec_ == Rec::Waiting) std::snprintf(text, sizeof text, "WAITING FOR SOUND...  R1 TO CANCEL");
+    else if (rec_ == Rec::Recording) std::snprintf(text, sizeof text, "RECORDING  %.1f S OF %d  R1 TO STOP", static_cast<double>(recordSeconds()), static_cast<int>(Recorder::kMaxSeconds));
+    return text;
 }
 
 void Session::finishRecording() {

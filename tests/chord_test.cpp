@@ -652,11 +652,13 @@ void testPickingWithTheDPadAndTheStick() {
     CHECK(rig.notes().handInversion() == 2 && rig.notes().handIndex() == hand);
     rig.key(STICK_UP, false);
     rig.frames(1);
-    // A held D-pad repeats, but slowly enough to hear each chord.
+    // A held D-pad repeats, but slowly enough to hear each chord: the cursor's wait, then the list's pace,
+    // each counted from when the one before was due (ui::Repeat): the press and eight more in 60 frames.
     rig.key(SDLK_RIGHT, true);
     rig.frames(60); // about a second
     rig.key(SDLK_RIGHT, false);
-    CHECK(rig.notes().handIndex() - hand >= 5 && rig.notes().handIndex() - hand <= 8);
+    const int chords = static_cast<int>(builtInPack().chords.size()); // (the hand goes round the pack)
+    CHECK((rig.notes().handIndex() - hand + chords) % chords == (1 + 1 + static_cast<int>((60 * 16 - 16 - ui::kCursorDelayMs) / ui::kListEveryMs)) % chords);
     CHECK(rig.notes().cursorStep() == 0); // the cursor has not moved through any of it
     // What lands is what was chosen.
     const int chosen = rig.notes().handIndex();
@@ -732,7 +734,7 @@ void testBreakingAChordIntoNotes() {
         rig->notes().moveCursorTo(60, 1);
     }
     broken.key(Y, true);
-    broken.tap(B);
+    broken.tap(SDLK_x); // A (G26: it was B)
     broken.key(Y, false);
     CHECK(broken.notes().chordCount() == 0 && broken.notes().noteCount() == 4 && broken.pat().used() == 4);
     CHECK(whole.notes().chordCount() == 1 && whole.notes().noteCount() == 0 && whole.pat().used() == 4);

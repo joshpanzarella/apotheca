@@ -97,16 +97,19 @@ void testCursorMovesAndWraps() {
     CHECK(rig.screen.cursorOnBars());
     rig.tap(SDLK_UP);
     CHECK(!rig.screen.cursorOnBars() && !rig.screen.cursorOnTempo() && rig.screen.cursorLane() == kDrumLanes - 1 && rig.screen.cursorStep() == 0);
+    // Down from the bottom lane is BARS, as up from the top is the tempo (G35: it skipped both, to the top lane).
     rig.tap(SDLK_DOWN);
-    CHECK(rig.screen.cursorLane() == 0);
-    rig.tap(SDLK_UP);
-    CHECK(rig.screen.cursorOnTempo());
-    rig.tap(SDLK_UP);
-    CHECK(rig.screen.cursorOnBars());
+    CHECK(rig.screen.cursorOnBars() && !rig.screen.cursorOnTempo() && rig.screen.cursorStep() == 0);
     rig.tap(SDLK_DOWN); // down from BARS is the tempo
     CHECK(!rig.screen.cursorOnBars() && rig.screen.cursorOnTempo());
     rig.tap(SDLK_DOWN); // down from the tempo is the top lane
     CHECK(!rig.screen.cursorOnTempo() && rig.screen.cursorLane() == 0);
+    rig.tap(SDLK_UP);
+    CHECK(rig.screen.cursorOnTempo());
+    rig.tap(SDLK_UP);
+    CHECK(rig.screen.cursorOnBars());
+    rig.tap(SDLK_UP); // ...and round the other way: up from BARS is the bottom lane
+    CHECK(!rig.screen.cursorOnBars() && rig.screen.cursorLane() == kDrumLanes - 1);
 }
 
 void testHeldDirectionRunsFast() {
@@ -129,7 +132,7 @@ void testStickRunsTheCursor() {
     rig.key(STICK_RIGHT, true);
     rig.frames(1);
     CHECK(rig.screen.cursorStep() == 1); // no wait at all
-    rig.frames(25); // 0.4 s at 36 a second
+    rig.frames(16); // a quarter of a second at 36 a second, climbing (a full push, G07: steady, it reached 10)
     CHECK(rig.screen.cursorStep() >= 12);
     rig.key(STICK_RIGHT, false);
     const int stopped = rig.screen.cursorStep();
@@ -363,10 +366,14 @@ void testLaneNameIsTheDrumsVolume() {
     CHECK(rig.screen.cursorStep() == -1);
     CHECK(rig.screen.laneLevel(1) == 1.f);
 
-    // A plays the drum and places nothing.
-    rig.key(A, true);
+    // X plays the drum. A is silent there and places nothing (gesture audit G33: A sounded the drum on every
+    // press, so every hold of A for its volume was heard).
+    rig.tap(X);
     const float full = rig.listen();
     CHECK(full > 0.2f);
+    rig.listen(40000);
+    rig.key(A, true);
+    CHECK(rig.listen() == 0.f);
     for (int step = 0; step < kSteps; ++step) CHECK(rig.screen.level(1, step) == 0.f);
 
     // Hold A + stick down: the drum's volume drains, all the way to silent.
@@ -818,11 +825,11 @@ void testPaintingRunsWithTheStick() {
     Rig rig;
     rig.key(R1, true);
     rig.key(STICK_RIGHT, true);
-    rig.frames(26); // under half a second
+    rig.frames(18); // under a third of a second (a full push climbs, G07: steady, it reached 11)
     rig.key(STICK_RIGHT, false);
     rig.key(R1, false);
     const int reached = rig.screen.cursorStep();
-    CHECK(reached >= 12); // most of the row
+    CHECK(reached >= 12 && reached < kSteps); // most of the row
     for (int step = 0; step <= reached; ++step) CHECK(near(rig.screen.level(0, step), 0.9f)); // and no step skipped
     // A held D-pad paints as it repeats.
     rig.screen.moveCursorTo(4, 0);

@@ -10,12 +10,16 @@
 //                    A new sound is played at once when the song is stopped.
 //   a macro          hold A + stick up / down. B puts it back in the middle.
 //   ADVANCED         A opens the pages.
-//   R1 on PRESET     save the sound as a preset of its own: the keys come up to name it
-//                    (A types, Y deletes, B leaves without saving, START saves). It lands in
-//                    the USER folder with everything the page's SAVE AS PRESET keeps; under a
-//                    name taken, it replaces that one.
-//   X                hear the sound. Held on a macro: its MOD (mod_knob.hpp), its fields in LIVE
-//                    OUTPUT's place while X is held, and the note heard as long as X is.
+//   R1 on PRESET     save the sound as a preset of its own: the name keys come up (name_keys.hpp:
+//                    A types, Y deletes, B or START saves; with nothing typed B leaves). On one of
+//                    the player's own its name is typed in already, so R1 then B saves over it. It
+//                    lands in the USER folder with everything the page's SAVE AS PRESET keeps;
+//                    under a name taken, it replaces that one (and says REPLACED).
+//   hold B on PRESET on one of the player's own: a second, and its file is deleted (CANNOT BE UNDONE);
+//                    the track keeps its sound.
+//   X                hear the sound, for as long as X is held (a tap for a moment), over the song
+//                    too. Held on a macro: its MOD (mod_knob.hpp), its fields in LIVE OUTPUT's
+//                    place while X is held (the MOD run only while stopped: call E).
 //   Y                PHYSIC and CLOUD (SynthSpec::roll): a new sound from the dice.
 //
 // A synth that plays the track's recording (CLOUD: SynthSpec::recording) shows its picture on MAIN,
@@ -23,13 +27,15 @@
 // a tick at its place), and its first page's first stop is RECORDING: a tap of A the list of
 // recordings (the sampler's, with its preview), hold A + up / down the next one, R1 there RECORD
 // (elsewhere R1 is the next page), Y anywhere on that page CATCH (the last bar the song played).
+// While a take waits or runs, R1 on any page and stop stops it (before SAVE and a page turned).
 //
 // ADVANCED is every setting. For Phazed that is nine pages: the sound as a
 // whole, each of the two lines, and each line's three eight-step envelopes
 // drawn out. For JAX-EP, five. For FM-6, eight: the voice and its LFO, one a
 // operator (its ON and all 21 of its settings), and the pitch envelope. For
-// PHYSIC, four: SOUND, RING, PLAY, DICE. L1 and R1 turn the pages; B goes back
-// to MAIN.
+// PHYSIC, four: SOUND, RING, PLAY, DICE. L1 and R1 turn the pages, the cursor
+// keeping its place; B goes back to MAIN, and A on ADVANCED comes back to the
+// page and stop the track was last on (turnPage, firstStop).
 
 #include "redraw.hpp"
 #include "screen.hpp"
@@ -40,6 +46,7 @@
 
 #include "input.hpp"
 #include "mod_knob.hpp"
+#include "name_keys.hpp"
 #include "sample_picker.hpp"
 #include "session.hpp"
 #include "synth_spec.hpp"
@@ -141,15 +148,34 @@ public:
     // CLOUD's RECORDING stop: the first of its first page (not a setting: its id is kRecordingId).
     static constexpr int kRecordingId = -1;
     bool onRecording() const { return spec_.recording && page_ == 1 && cursor_ == 0; }
+    // Where ADVANCED opens, and where a page turn puts the cursor (gesture audit G13). Each track keeps
+    // the page and stop it was last on, in memory only (as FX's last_): A on ADVANCED opens there, and the
+    // first time on page 1 at firstStop. L1 / R1 keep the cursor's row and column where the next page
+    // has them (FM-6: the same knob of the next operator), else the nearest. Neither lands on CLOUD's
+    // RECORDING (where R1 records): firstStop is the stop after it, and a page turn that would land on
+    // it lands there. A place remembered ON it opens on it.
+    int firstStop(int page) const { return spec_.recording && page == 1 ? 1 : 0; }
+    void turnPage(int to);
     SamplePicker& picker() { return picker_; }
     const SamplePicker& picker() const { return picker_; }
     const std::string& said() const { return said_; }
 
-    // Naming a preset to save (R1 on PRESET): the keys, as a track's name is typed.
-    bool typing() const { return typing_; }
-    const std::string& typed() const { return typed_; }
-    int keyAt() const { return key_; }
-    static constexpr int kTypeColumns = 10, kPresetNameLength = 24; // the grid, and a name's most (the page's too)
+    // Naming a preset to save (R1 on PRESET): the name keys, as a track's name is typed.
+    bool typing() const { return keys_.isOpen(); }
+    const std::string& typed() const { return keys_.typed(); }
+    int keyAt() const { return keys_.keyAt(); }
+    void closeKeys(); // closed, nothing kept (the panic: keys R1 opened on its way)
+    static constexpr int kTypeColumns = NameKeys::kColumns, kPresetNameLength = 24; // the grid, and a name's most (the page's too)
+    // Hold B on PRESET, on one of the player's own: its file is deleted when the bar is full (as a kit's).
+    static constexpr Uint32 kPresetDeleteMs = ui::kHoldForGoodMs;
+    static constexpr const char* kPresetDeletingWords = "DELETING THE PRESET: CANNOT BE UNDONE";
+    // The keys' title while what is typed names one of the player's own: B (or START) writes over its file.
+    static constexpr const char* kPresetReplacingWords = "B REPLACES THE PRESET: CANNOT BE UNDONE";
+    // A hold of B that never saw its let go (L2 / R2 turned the tab, SELECT went to SONG): called off, so the
+    // bar does not come back full (App::update, for every screen not shown).
+    void callOffDelete();
+    float presetDeletePart() const { return presetDeletePart_; }
+    bool onOwnPreset() const; // the track is on one of the player's own presets (USER)
 
     // Cursor stops on MAIN.
     enum { kFolder, kPreset, kFirstMacro, kAdvanced = kFirstMacro + kSynthMacros, kMainStops };
@@ -183,6 +209,13 @@ private:
     const SynthSpec& spec_;
     int page_ = 0;
     int cursor_ = kPreset;
+    int placePage_[kNumTracks] = {}, placeStop_[kNumTracks] = {}; // each track's ADVANCED place (page 0: none yet)
+    void keepPlace(); // the page and stop shown, as the track's place (on an advanced page)
+    // The track the page and stop shown are for. Two tracks of one synth share this screen, and it stays on its
+    // page when another is picked (on SONG): followTrack then opens the arriving track's own place (or page 1
+    // at firstStop), so keepPlace never writes one track's place under another's number. goTo sets it.
+    int shownTrack_ = -1;
+    void followTrack();
     static constexpr int kChoiceRange = 12; // a setting with this many steps or fewer is a choice, not a range
     bool isChoice(int id) const;
     bool choicePushed_ = false; // the stick is over, and has already clicked a choice once
@@ -191,10 +224,11 @@ private:
     float saved_ = 0.f;    // part-steps saved up while the stick turns
 
     Button repeating_ = Button::None;
-    Uint32 repeatAt_ = 0;
+    ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
     Uint32 lastMs_ = 0;
     float stickX_ = 0.f, stickY_ = 0.f;
     bool stickWasX_ = false, stickWasY_ = false;
+    ui::StickClimb climbX_, climbY_; // a full push held on the cursor climbs (G07)
     ModKnob modKnob_;
     bool stickWait_ = false; // X let go off a MOD with the stick still pushed: it moves nothing until it comes back
     void endMod(const Input& input);
@@ -208,16 +242,21 @@ private:
     std::vector<std::string> names_; // the recordings, read as A goes down on RECORDING
     unsigned namesSeen_ = 0;        // sampleFiles() names_ was read at: behind, the next step reads it again
     void openPicker();
+    void catchBar(); // Y on CLOUD's first page: the last bar the song played, as its recording (the empty list of recordings asks too)
+    void record();   // R1 on CLOUD's RECORDING: record from the input, or stop
     void stepRecording(int by);
     void hearFromList(SamplePicker::Hear how);
 
     // Naming a preset to save.
     void typeButton(Button b);
-    void moveTypeKey(Button direction);
     void drawTyping(SDL_Renderer* r, const Fonts& fonts) const;
-    bool typing_ = false;
-    std::string typed_;
-    int key_ = 0; // which character of the grid the cursor is on
+    bool nameTaken() const; // what is typed names one of the player's own presets already: B or START replaces it
+    NameKeys keys_;
+    // Deleting one's own preset: B held a second on PRESET.
+    bool presetDeleting_ = false, presetDeleteTimed_ = false;
+    Uint32 presetDeleteSince_ = 0;
+    float presetDeletePart_ = 0.f;
+    int presetDeleteTrack_ = -1; // the track B went down on (two tracks of one synth share this screen)
     void say(const std::string& words, Uint32 ms);
     void drawPicture(SDL_Renderer* r, const Fonts& fonts) const;
     void drawTablePicture(SDL_Renderer* r, const Fonts& fonts) const;

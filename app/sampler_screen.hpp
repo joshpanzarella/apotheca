@@ -9,9 +9,10 @@
 //              B: its usual value.
 //   PRESET     the sound kept as a preset of its own, or "-". Hold A + up /
 //              down: the preset after / before (ends stop). R1 saves it: the
-//              keys come up to name it (A types, Y deletes, B leaves without
-//              saving, START saves). Hold B a second on one of your own:
-//              deletes its file (the track keeps its sound).
+//              name keys come up (name_keys.hpp: A types, Y deletes, B or START
+//              saves; with nothing typed B leaves), on one of your own with its
+//              name typed in. Hold B a second on one of your own: deletes its
+//              file, CANNOT BE UNDONE (the track keeps its sound).
 //                PITCH    semitones up or down: up is higher. (Kept in the song
 //                         as the old "root key": middle C less the pitch.)
 //                TUNE     cents
@@ -27,7 +28,8 @@
 //              (PITCH moves every slice together). START, END and LOOP work within a
 //              slice. Not with a multisample: its zones win.
 //   R1         RECORD from a USB microphone or interface: once to start (it
-//              waits for sound), again to stop. Ten seconds at most.
+//              waits for sound), again to stop. Twenty seconds at most. While a
+//              take waits or runs, R1 on any stop stops it (PRESET too: no SAVE).
 //   X          hear it, at middle C (its own pitch, until ROOT or TUNE is moved),
 //              for as long as X is held, to the recording's end; let go, its
 //              RELEASE runs. A tap is heard for a moment, as before.
@@ -42,6 +44,7 @@
 #include <vector>
 
 #include "input.hpp"
+#include "name_keys.hpp"
 #include "sample_picker.hpp"
 #include "session.hpp"
 #include "ui.hpp"
@@ -80,11 +83,18 @@ public:
     static int endMarkX(float end, int w) { return ui::waveEndMarkX(end, w); } // END's mark, inside the picture
     void goTo(int stop) { stop_ = stop < 0 ? 0 : (stop > kPresetStop ? kPresetStop : stop); }
     int cursor() const { return stop_; }
-    bool typing() const { return typing_; }
-    const std::string& typed() const { return typed_; }
-    int keyAt() const { return key_; }
+    bool typing() const { return keys_.isOpen(); }
+    const std::string& typed() const { return keys_.typed(); }
+    int keyAt() const { return keys_.keyAt(); }
+    void closeKeys(); // closed, nothing kept (the panic: keys R1 opened on its way)
     float presetDeletePart() const { return presetDeletePart_; }
-    static constexpr int kTypeColumns = 10, kPresetNameLength = 24; // the grid, and a name's most (the synth's too)
+    static constexpr const char* kPresetDeletingWords = "DELETING THE PRESET: CANNOT BE UNDONE"; // the bar while B is held (as the kit's)
+    // The keys' title while what is typed names a preset already: B (or START) writes over its file.
+    static constexpr const char* kPresetReplacingWords = "B REPLACES THE PRESET: CANNOT BE UNDONE";
+    // A hold of B that never saw its let go (L2 / R2 turned the tab, SELECT went to SONG): called off, so the
+    // bar does not come back full (App::update, for every screen not shown).
+    void callOffDelete();
+    static constexpr int kTypeColumns = NameKeys::kColumns, kPresetNameLength = 24; // the grid, and a name's most (the synth's too)
     const ui::Playhead& playhead() const { return head_; }
     int timesHeard() const { return timesHeard_; } // how often it has been played from this screen (for tests)
     const std::string& said() const { return said_; }
@@ -108,6 +118,8 @@ private:
     bool stepped_ = false; // A was used to change something: letting go is not a tap
     SamplePicker picker_;
     void openPicker();
+    void catchBar(); // Y: the last bar the song played, as the recording (the list of recordings with nothing in it asks too)
+    void record();   // R1: record from the input, or stop
     unsigned sampleFilesSeen_ = 0; // sampleFiles() the picker's lists were read at: behind, it reads them again
     std::vector<std::string> names_;
     unsigned namesSeen_ = 0; // sampleFiles() names_ was read at: behind, the next step reads it again
@@ -116,22 +128,24 @@ private:
     bool wasRecording_ = false;
     float saved_ = 0.f, turned_ = 0.f;
     bool stickWas_ = false;
+    bool stickWait_ = false; // B with A held put the sound back with the stick still pushed: it moves nothing until it comes back
+    int loopPush_ = 0; // LOOP with A held: which way the stick is pushed past half, 1 up, -1 down, 0 not (its click is spent)
+    ui::StickClimb climb_; // a full push held on the cursor climbs (G07)
     Button repeating_ = Button::None;
-    Uint32 repeatAt_ = 0, lastMs_ = 0;
+    ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
+    Uint32 lastMs_ = 0;
     Uint32 heardAt_ = 0; // when a changed setting was last heard
     ui::Playhead head_;  // where the recording has got to while it is heard
     bool headHeld_ = false; // head_ runs for as long as X holds the sound
     float release_ = 0.f;   // seconds the held sound's RELEASE runs once X is let go
     int timesHeard_ = 0;
-    // Naming a preset to save (R1 on PRESET): the keys, as a track's name is typed.
+    // Naming a preset to save (R1 on PRESET): the name keys, as a track's name is typed.
     void typeButton(Button b);
-    void moveTypeKey(Button direction);
     void drawTyping(SDL_Renderer* r, const Fonts& fonts) const;
-    bool typing_ = false;
-    std::string typed_;
-    int key_ = 0; // which character of the grid the cursor is on
+    bool nameTaken() const; // what is typed names one of the presets already: B or START replaces it
+    NameKeys keys_;
     // Deleting one's own preset: B held a second on it (as a kit's).
-    static constexpr Uint32 kPresetDeleteMs = 1000;
+    static constexpr Uint32 kPresetDeleteMs = ui::kHoldForGoodMs;
     bool presetDeleting_ = false, presetDeleteTimed_ = false;
     Uint32 presetDeleteSince_ = 0;
     float presetDeletePart_ = 0.f;

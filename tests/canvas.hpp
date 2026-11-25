@@ -78,4 +78,13 @@ inline bool inked(const Canvas& canvas, Canvas& scratch, int size, float x, floa
     return body >= 6;
 }
 
+// Are `words` written in the hints bar (drawn at LARGE, in the hints' colour), anywhere along it? (Which key's
+// chip is before them is copyscene_test's hintKeyed.)
+inline bool barSays(const Canvas& canvas, Canvas& scratch, const char* words) {
+    const float textY = ui::kScreenH - ui::kHintsH + (ui::kHintsH - canvas.fonts->small.capHeight()) / 2.f + 1.f;
+    for (float x = 4.f; x < ui::kScreenW - 20.f; x += 0.0625f)
+        if (inked(canvas, scratch, 0, x, textY, words, ui::kDim)) return true;
+    return false;
+}
+
 } // namespace apotheca

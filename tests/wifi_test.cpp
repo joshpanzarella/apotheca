@@ -308,6 +308,30 @@ void testTheCalls() {
 
 // ---- the row -----------------------------------------------------------------------------------
 
+// The stick through the networks (A held) is a list, not a cursor: a full push held does not climb (gesture
+// audit G07). Seven a second at the stick's speed (75% here): five more after the first in a second.
+void testTheStickOverTheNetworks() {
+    Rig rig("wifistick");
+    S& setup = rig.setup();
+    std::string scan;
+    for (int i = 0; i < 16; ++i) scan += "-" + std::to_string(40 + i) + " open Net" + std::to_string(i) + "\n";
+    rig.say("scan", scan);
+    rig.on();
+    rig.tap(DOWN);
+    rig.settle();
+    CHECK(setup.cursorRow() == S::kNetwork && rig.wifi().now().networks.size() == 16);
+    rig.key(A, true), rig.frames(1);
+    CHECK(setup.picking() && setup.picked() == -1);
+    rig.key(SDLK_k, true); // the stick, down, all the way
+    rig.frames(62);
+    rig.key(SDLK_k, false);
+    CHECK(setup.picking() && setup.picked() == 5);
+    rig.tap(B); // (nothing joined)
+    rig.key(A, false), rig.frames(1);
+    rig.settle();
+    CHECK(rig.log().find("join") == std::string::npos);
+}
+
 void testTheRow() {
     {
         // No program (the port): no row, and nothing runs.
@@ -625,7 +649,21 @@ void testThePassword() {
     open();
     for (int i = 0; i < 70; ++i) rig.tap(A);
     CHECK(static_cast<int>(setup.typed().size()) == 63);
-    rig.tap(Y, 63);
+    // Y held deletes on at a list's pace, as on the name keys (gesture audit G48): one at once, the next
+    // after 200 ms, then one each 110 ms; let go, it stops. Held on, all sixty-three go in one hold.
+    rig.key(Y, true);
+    CHECK(static_cast<int>(setup.typed().size()) == 62);
+    rig.frames(13); // 208 ms
+    CHECK(static_cast<int>(setup.typed().size()) == 62);
+    rig.frames(17); // 480 ms
+    rig.key(Y, false);
+    CHECK(static_cast<int>(setup.typed().size()) == 59);
+    rig.frames(30);
+    CHECK(static_cast<int>(setup.typed().size()) == 59 && setup.typingPassword());
+    rig.key(Y, true);
+    rig.frames(420); // 6.7 s: the rest
+    rig.key(Y, false);
+    CHECK(setup.typed().empty() && setup.typingPassword());
     rig.tap(B);
     CHECK(!setup.typing());
     // A draft is this network's: back to it, it is still there; another network starts empty.
@@ -814,7 +852,7 @@ struct Section {
 int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     const Section sections[] = {
-        {"lines", [] { testTheLines(); }}, {"calls", [] { testTheCalls(); }}, {"row", [] { testTheRow(); }},
+        {"lines", [] { testTheLines(); }}, {"calls", [] { testTheCalls(); }}, {"row", [] { testTheRow(); testTheStickOverTheNetworks(); }},
         {"password", [] { testThePassword(); }}, {"drawn", [] { testDrawn(); }},
     };
     for (const Section& s : sections) {

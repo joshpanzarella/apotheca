@@ -316,9 +316,9 @@ void testThePianoRoll() {
     rig.tap(RIGHT);
     rig.key(Y, false);
     CHECK(p.chords[0].velocity > 0.f && p.chords[0].throwTo == 3);
-    // ...and broken into notes (hold Y, B), each note is.
+    // ...and broken into notes (hold Y, A; G26: it was B), each note is.
     rig.key(Y, true);
-    rig.tap(B);
+    rig.tap(A);
     rig.key(Y, false);
     CHECK(p.chords[0].velocity == 0.f && p.used() >= 3);
     for (const NoteEvent& n : p.notes)
@@ -500,11 +500,12 @@ void testCopiedToAnotherScene() {
     session.sendNotePattern(1, 0);
     session.view = View::Song;
     for (int track = 0; track < 2; ++track) {
-        // (The paste consumes the copy, so the drums copy is already gone for track 1.)
         rig.app.song().moveCursorTo(0, track);
         rig.tap(R1); // copy
         rig.app.song().moveCursorTo(1, track);
         rig.tap(R1); // paste
+        rig.app.song().moveCursorTo(0, track);
+        rig.tap(R1); // the copy cleared (a paste keeps it: G23)
     }
     CHECK(rig.project().tracks[0].drums[1][0].fx[1][4].throwTo == 2 && rig.project().tracks[0].drums[1][0].level[1][4] > 0.f);
     CHECK(rig.project().tracks[1].notes[1][0].notes[0].throwTo == 1);

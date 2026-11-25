@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -1425,15 +1426,36 @@ bool dropTrackText(std::string& text, int track) {
     return true;
 }
 
+// The first word of the line at `at` (to `end`) is one of the three a recording's name is found by. A plain
+// look at the bytes, as `in >> word` would read them (white space first): most of a song's lines are a
+// pattern's, and a stream made for each of them made a rename's every step of undo cost a whole read of the
+// song (review of G04, 2026-11-25).
+static bool namesARecording(const std::string& text, std::size_t at, std::size_t end) {
+    while (at < end && std::isspace(static_cast<unsigned char>(text[at]))) ++at;
+    for (const char* word : {"track", "sample", "sound"}) {
+        const std::size_t length = std::strlen(word);
+        if (end - at >= length && text.compare(at, length, word) == 0 && (end - at == length || std::isspace(static_cast<unsigned char>(text[at + length]))))
+            return true;
+    }
+    return false;
+}
+
 bool renameRecordings(std::string& text, const std::vector<std::pair<std::string, std::string>>& renames) {
     if (!hasHead(text, "apotheca-song")) return false;
     std::string out;
+    out.reserve(text.size());
     bool changed = false;
     TrackKind kind = TrackKind::None; // of the track the line belongs to, told the way parseSong tells it
     int count = 0;
     for (std::size_t at = 0; at < text.size();) {
         std::size_t end = text.find('\n', at);
         if (end == std::string::npos) end = text.size();
+        if (!namesARecording(text, at, end)) { // (as it is, the '\r' of a Windows line too)
+            out.append(text, at, end - at);
+            if (end < text.size()) out += '\n';
+            at = end + 1;
+            continue;
+        }
         std::string line = text.substr(at, end - at);
         const bool windows = !line.empty() && line.back() == '\r'; // read without it, as parseSong reads; written back with it
         if (windows) line.pop_back();

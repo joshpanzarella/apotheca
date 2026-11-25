@@ -33,29 +33,32 @@
 //                    the track, and the effect that was there is back as it
 //                    was, every setting and all its automation.
 //                    Hold B on an effect's line: a bar fills, and when it
-//                    is full (a second) the effect is deleted, with its
-//                    settings and its automation. It cannot be undone, and
-//                    the heading says so while the bar fills. Let go sooner
-//                    and nothing goes. (On SENDS a tap of B: nothing sent.)
+//                    is full (half a second, G29) the effect is deleted, with its
+//                    settings and its automation. SEL + B brings it back (G10);
+//                    the heading says DELETING THIS EFFECT while the bar fills.
+//                    Let go sooner and nothing goes. (On SENDS a tap of B: nothing sent.)
 //                    Hold Y on one of the track's own lines: up / down moves
 //                    it there, settings, automation and MODs with it. The
 //                    cursor goes with it; the ends stop. One step of undo.
 //                    (The buses' and the master's never move.)
-//   in the settings  up / down: the next setting. Right: the slot's next TYPE (COMP to DUCK); left: the
-//                    type before, except on the first setting, where left is back to the list (and on
-//                    a family of one, or the sends, left is back to the list from any setting). The ends
-//                    stop. The cursor stays on its row. A type switched back to comes back with the
-//                    settings it was left with (switchEffectType).
+//   in the settings  up / down: the next setting. Left: back to the list, from any setting; right
+//                    does nothing (owner, 2026-11-14: LEFT doing two jobs was awkward).
+//                    Hold A + left / right: the slot's TYPE before / after (COMP to DUCK; stepType).
+//                    The ends stop. The cursor stays on its row. A type switched back to comes back
+//                    with the settings it was left with (switchEffectType).
 //                    Hold A + stick up / down turns it; the D-pad moves it a
-//                    twentieth, or to the next choice. B: its usual value
-//                    (a send: nothing sent).
+//                    twentieth (BAND's FREQ a thirtieth: a third of an octave),
+//                    or to the next choice. B: its usual value (a send: nothing sent).
+//                    Hold Y on BAND's FREQ, GAIN or Q: left / right is FREQ and
+//                    up / down GAIN (on Q, Q), the stick and the D-pad alike,
+//                    both at once on the stick (bandGrip). The cursor stays.
 //   L1 / R1          the track before / after (it stops at the first and the
 //                    last, as the SONG screen's columns do); the cursor stays
-//   X                hear the track (a recording on it, on lane 1 or the sampler:
-//                    for as long as X is held; a tap for a moment). Held on a track's slot
-//                    setting or a send: its MOD (mod_knob.hpp), its fields in the heading's
-//                    place (on SENDS, in the other send's row) while X is held; a synth's
-//                    note is heard as long as X is
+//   X                hear the track (lane 1 on drums; a synth or the sampler: middle C),
+//                    for as long as X is held, over the song too; a tap for a moment. Held
+//                    on a track's slot setting or a send: its MOD (mod_knob.hpp), its fields
+//                    in the heading's place (on SENDS, in the other send's row) while X is
+//                    held
 //   START            play / stop
 
 #include "fx_picture.hpp"
@@ -115,6 +118,11 @@ public:
     int remembered(int row) const { return row < 0 || row >= kRows ? 1 : last_[row]; }
     // A is held on a slot's line: the list of effects is open on the right.
     bool picking() const { return holding_ && column_ == 0 && !sends(row_); }
+    // Y held on one of BAND's FREQ, GAIN or Q dials (A not held; gesture audit G18) moves the bell two ways at
+    // once: LEFT / RIGHT (the stick across) FREQ, UP / DOWN GAIN, or Q on the Q dial. The setting up / down
+    // turns (kBandGain or kBandQ), or -1 where Y is not that grip.
+    static constexpr int kBandFreq = 0, kBandGain = 1, kBandQ = 2; // BAND's settings (its row in the effect table)
+    int bandGrip() const;
     // With A held there, what the slot is TRYING (heard, drawn on the right and lit in the list) while the
     // project keeps what it had: `trying()` is true once the engine has been sent another effect than the
     // project's. What the slot holds in the project is data(row) only when nothing is being tried there.
@@ -125,8 +133,10 @@ public:
     // another track). The App calls it whenever this is not the screen up.
     void callOff();
     // B held on an effect's line: how far the bar has filled, 0..1. Full, the effect is deleted.
-    static constexpr Uint32 kDeleteHoldMs = 1000;
-    static constexpr const char* kDeletingWords = "DELETING: CANNOT BE UNDONE"; // in the heading while the bar fills
+    static constexpr Uint32 kDeleteHoldMs = ui::kHoldUndoneMs; // (undo brings an effect back: G29)
+    // In the heading while the bar fills. Effects are in undo (since 2026-11-14: Session::soundMark), so
+    // SEL + B brings one back: the MOD screen's words, not CANNOT BE UNDONE (gesture audit G10).
+    static constexpr const char* kDeletingWords = "DELETING THIS EFFECT";
     float deletePart() const { return deletePart_; }
     // What the effect on a line is showing just now (COMP: the dB it is turning
     // the sound down), from the engine; 0 for a line with nothing to show. And
@@ -275,6 +285,7 @@ private:
     float send(int bus) const { return project_.current().send[bus]; }
     void press(Button direction);
     void turn(float amount);
+    void turnSetting(int index, float amount); // a slot's setting `index` (not the cursor's), by `amount`
     void hear(bool held = false); // held: X is down; a recording (a drum lane, the sampler) sounds until it is let go
     void emptySend(int bus);
     void drawList(SDL_Renderer* r, const Fonts& fonts) const;
@@ -299,11 +310,17 @@ private:
     float deletePart_ = 0.f;
     float saved_ = 0.f;
     bool stickWas_ = false;
+    ui::StickClimb climb_; // a full push held on the cursor climbs (G07)
     Button repeating_ = Button::None;
-    Uint32 repeatAt_ = 0, lastMs_ = 0;
+    ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
+    Uint32 lastMs_ = 0;
     ModKnob modKnob_;
     bool stickWait_ = false; // X let go off a MOD with the stick still pushed: it moves nothing until it comes back
     void endMod(const Input& input);
+    // A direction moved the cursor onto BAND's dials with Y held (press). It was a move, not a turn (review of G18,
+    // as the roll's X): the held D-pad stops and the stick waits until it has come back (moved()).
+    bool gripEntered_ = false;
+    void moved(const Input& input);
     void drawModPanel(SDL_Renderer* r, const Fonts& fonts) const;
 };
 

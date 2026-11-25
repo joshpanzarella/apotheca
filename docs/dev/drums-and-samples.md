@@ -24,6 +24,34 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   audition chokes the hit before it anyway, joined or not). On a hit, X held stays the step
   effects' hold. The line over the picture stops with it (`heardEnds`).
   `tests/hear_test.cpp`. The SONG screen's X solos the track (it heard it until 2026-11-15).
+- **X sounds for as long as it is held wherever it plays something, and over the song while it plays**
+  (gesture audit G33, 2026-11-25; the owner: "any of my decisions can be reversed if there is a more logical
+  method", 2026-11-24). Before, on a synth: DEVICE off a macro (FOLDER, PRESET, every ADVANCED page) played a
+  fixed `kAuditionMs` note and **nothing while playing** (`SynthScreen::hear`, "if (!project_.playing)"); a
+  macro, FX's settings and the MOD tab held the note **only while stopped**; FX's list gave a synth the short
+  note; the roll's note and key a fixed moment, **its chord nothing while playing** ("the song will play it
+  soon enough", `NoteScreen::hearChord`). Now every X there is `Session::auditionHeld`, playing or not: one
+  rule ("X hears; held, as long as held") instead of four, and a preset, note or chord is heard against the
+  song in one press instead of stop, X, start (the loop restarts). A note over the song can clash: that is
+  what the player asked to hear. **A tap is still `kAuditionMs`, and a drum hit still plays whole** (as the
+  pattern plays it; a tapped built-in drum whole: `letGoHeard`). **What stays: a MOD held is run only while
+  stopped** (call E, 2026-11-15, kept: `Session::hearMods` sends nothing while playing, where the song's
+  MODs run). Stepping a preset or moving a note or chord with A held stays silent while playing (not X).
+  **X's key and the song's are one key of the synth** (review of G33, 2026-11-25): `Command::NoteOn` / `NoteOff`
+  play by pitch, and the song's own note ending let every voice on that key go, X's too, so X held on a note
+  the song plays went quiet when the song's copy ended; letting X go cut the song's note. An audition's commands
+  now carry `e = 1` (as a drum audition's Trigger does) and the engine keeps the keys it holds
+  (`Track::auditioned`): `fireNoteOffs` passes a key X holds by, and an audition's NoteOff leaves a key the song
+  still plays (`offIn` below `kNoNote`) for the song's own note-off. Play, Stop, panic and a track taken away
+  clear them (so a NoteOff lost to a full queue cannot hold a key for ever). Nothing changes in a song with no
+  audition (the same to the bit). **What stays: ACID plays one note at a time**, so the song's next note on its
+  track takes the voice from X (the manual says so). Choosing a chord (Y held), X now holds the chord in hand
+  as well (it was `hearChord`'s fixed moment a key). `hear_test` `testXHeldOverTheSongsOwnKey`.
+  A chord's keys are held as one: `Session::auditionHeld(track, pitches, count, ...)`; every key X holds is
+  at `kHeldOn` (only what X holds now ever is), so `letGoHeard` and `stopHeard` let every key go, and a held
+  key struck again (a setting turned) stays held. **A on a drum lane's name is silent** (it sounded the drum
+  on every press, so every hold of A for the lane's volume was heard); X hears it there, held.
+  `hear_test testXHoldsWhatItPlays`. **Not heard on the handheld.**
 - **A hit, a note or a chord placed starts at `kPlacedLevel` (0.9, `project.hpp`; owner,
   2026-11-15: it was 0.8), the brushes too, and every screen's X or A hears at it** (the KIT,
   SAMPLER, synth, FX and MOD pages, the designer page's keys): what is heard is what is placed. A
@@ -42,6 +70,22 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
 - **A recording is 20 s at most** (owner, 2026-11-18: it was 10): `kMaxSampleSeconds` for a file read
   (a longer one is cut there and faded) and `Recorder::kMaxSeconds` for RECORD; `sample_test` holds both
   (15 s kept whole). **Catch is not tied to it**: the engine remembers `kCatchFrames`, ten seconds.
+- **While a take waits or runs, R1 stops it from any stop of a screen that records** (gesture audit
+  G34, 2026-11-25; `Session::recordingNow`, checked first in each screen's `onButton`): the kit's lanes,
+  every column and the KIT stop (where R1 did nothing), the sampler's every stop (on PRESET R1 opened
+  the name keys and the take ran on) and CLOUD's every page (`instruments.md`; not while X holds a
+  macro's MOD there: R1 is the MOD's), A held or not. Not the
+  kit's EDIT and VOICE views, where the recording line is not shown (VOICE's R1 is the next synth
+  lane). **The line is one function, `Session::recordingLine`**, and says the limit from
+  `Recorder::kMaxSeconds`: all three copies said OF 10 after the limit went to 20. The R1 hint says
+  `stop` meanwhile where it named R1's other job. `sample_test` `testR1StopsATakeFromAnyStop`.
+- **A panic calls off a recording that R1 began on the way** (gesture audit G25, 2026-11-25;
+  `App::recBeforeShoulders_`, noted at the first shoulder, as the copies are): R1 first on a kit lane, the
+  sampler or CLOUD's RECORDING starts one, which would have replaced the sound when it ended, outside undo.
+  `Session::dropRecording` (public now) stops the input and keeps nothing. **Not covered: a recording
+  already running when R1 went down first**: that R1 ends it, and its take is written and put on at once
+  (`finishRecording`), which a panic cannot take back. `sample_test`
+  `testThePanicCallsOffARecordingBegunOnTheWay`.
 - **A multisample is found from the names, every time it is read** (`Session::multisampleOf`,
   `session_samples.cpp`): the song names only the file picked. Files beside it that spell a note
   (`sampleNote`) are its notes; **VELOCITY LAYERS** (owner, 2026-11-24: picked over round robin, an
@@ -66,12 +110,27 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   drawn by `pattern_slices.cpp`), not a screen of its own, so every grid
   gesture works in it unchanged. A hit's slice is its `start`; there is no
   separate slice data. A lane has 16 slices, or its FIT in steps if longer.
+- **On the slice view's lane name, UP sets ONE SLICE and DOWN sets RUNS ON** (gesture audit G09,
+  2026-11-25; `PatternScreen::sliceUpDown`). Either key flipped it (Claude's slice view, commit 966202f,
+  no owner tag), and a held key or the stick runs on (up to 33 and 18 flips a second), so where it
+  stopped was luck. Set, a run sets the same again; one that is so already sends the engine nothing
+  (`Session::setLaneOneSlice` still sends on every call; the check is in the screen, the one place a
+  run calls it, so the Session's other callers, a kit loaded and undo, are as they were). The hint already read `UP / DOWN one slice / runs on`, in that order. `sample_test`
+  (`caughtUp` for nothing sent; held for 0 to 4 repeats each way).
+- **On the drum grid's BARS stop a held LEFT / RIGHT runs on with A or Y held too** (gesture audit G21,
+  2026-11-25; `PatternScreen::direction`, one function for a press of the D-pad and its held repeats).
+  The press turned the bar, and the repeat went to `nudgeExact`, which on BARS takes only up / down, so
+  it stopped dead. The repeat used to test `input.held(Y)` and `input.held(A)` without `ySpent_` and
+  `aSpent_`, so after a feel or a THROW it could do what the press would not; now it does what the press
+  does. `copybar_test testDrumBarsLength`.
 - **COPY A BAR: hold L1, R1 copies the bar shown, A pastes over it** (owner, 2026-11-17: "copying
   steps 1-16 to paste on 17-32"; `Session::copyBar` / `pasteBar` / `BarClip`, `copyBarHere` /
   `pasteBarHere` for the screens; `tests/copybar_test.cpp`). The drum grid, its slice view and the roll.
   - **The clipboard is memory only**, never in the song file; a new song keeps it. It holds a drum
     bar (`DrumPattern`, every field) or a note bar (`NotePattern`, chords and their effects), the bar's
     16 steps of every automation lane, and where it came from.
+  - **The copy stays after a paste** (gesture audit G23, 2026-11-25: a paste spent it; reasons in
+    `song-screen.md`), so one bar goes on bar after bar with L1 + A each; L1 + R1 copies afresh.
   - **A paste REPLACES the bar** and is **one step of undo of its own** (as NEXT SCENE: the burst
     before it ends, and `settled_` is taken after it, so an edit straight after is a step too). Onto a
     bar that is already the same (compared field by field; automation too on the same track): nothing,
@@ -81,19 +140,30 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     the cell it lands in** (as the roll's `room`). **Automation only onto the SAME track** (another
     track's lanes are other knobs; its own are left).
   - **The gesture**: L1 must go down FIRST, with nothing else held (`l1First_`; not with X held: X's
-    L1 / R1 are the step effects, GLIDE FROM, the feel). R1 then copies (no brush, no carry), A pastes
+    L1 / R1 are the step effects, GLIDE FROM, the feel). R1 then copies (on the drums at once, no
+    brush; on the roll R1 on a note still carries, and only its let go where it went down copies), A pastes
     (no hit or note placed; on the grid `aSpent_`, so A's hold nudges nothing). **L1's own tap acts on
     its let go**: the drum grid's slices (`l1Used_`: any other button pressed while L1 was held cancels
-    it) and the roll's zoom (`zoomUsed_`, set by a copy or a paste). The App tells both screens when
+    it) and the roll's zoom (`zoomUsed_`, set by a copy or a paste). **A stick move with L1 held
+    cancels it too** (gesture audit G31, 2026-11-24: it moved the cursor and the let go still opened
+    the slices or zoomed; `copybar_test testAStickMoveIsAUseOfL1`). The App tells both screens when
     another shoulder goes down with L1 held (`shouldersPressed`), so a panic's let go of L1 opens no
     slices; **a panic begun L1, R1 puts the copy back** (`clipBeforeShoulders_`, `barCopies`).
   - What was done is said in the App's box above the bar (`Session::say`, taken by
     `App::takeSessionSaid`): BAR 1 COPIED, PASTED ON BAR 2, BAR 2 IS THE SAME ALREADY, NOTHING
     COPIED YET, DRUMS GO ON A DRUM TRACK, NOTES GO ON A NOTE TRACK. Each fits the box at LARGE
     (`testTheWordsFit`).
-  - **The hints are in the bar only while L1 is held** (R1 copy bar, A paste bar; the roll also
-    UP / DOWN zoom): the plain bars of the drum grid and the roll have no room. Not on the help card
-    (full). Stills `copy-bar`, `copy-bar-notes`, `copy-bar-refused`.
+  - **The hints are in the bar only while L1 is held** (UP / DOWN change bar, LEFT / RIGHT bar count,
+    R1 copy bar, A paste bar, the same on both grids): the plain bars of the drum grid and the roll have
+    no room. Not on the help card (full). Stills `copy-bar`, `copy-bar-notes`, `copy-bar-refused`.
+  - **Hold L1 + UP / DOWN is the bar before or after, round the ends; hold L1 + LEFT / RIGHT the cell's
+    count** (1, 2, 4, 8), on both grids (commit 5e2ae67, 2026-11-22, under the owner's own git name:
+    "Hold L1 with up / down turns to the bar before or after on the piano roll and the drums, from
+    anywhere; hold L1 with left / right sets the cell's count"). This line said the roll's L1 bar read
+    UP / DOWN zoom, and `pattern_screen.hpp`'s header gave the two the other way round (gesture audit
+    G21, 2026-11-25: both put right, the keys unchanged). **Which way they should go is the owner's
+    question** (G21's options: the count always with LEFT / RIGHT, BARS too; or the drum grid's L1
+    turning bars sideways as its time runs), not changed here.
   - Mutants: every one tried in `copybar_test` dies but the App's two `shouldersPressed` calls (the
     panic's, and "another shoulder with L1 held"): each is the other's belt, and the two taken out
     together die (`testTheSlicesAndL1`, the panic begun L1, L2, R2, R1).
@@ -104,6 +174,11 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   pitch, ratchet, reverse, cut. Hold X on a hit sets them. In a song file they
   are `stepfx` lines (`fx` is an effect in a slot: the first try clashed).
   A ratchet waits in one `Pending` slot that re-arms itself.
+  - **X held + B empties them** (gesture audit G11, 2026-11-24; `PatternScreen::fxEmpty`): pitch,
+    ratchet, reverse, cut and THROW. The hit stays, its level, nudge, chance and start as they were,
+    and is heard plain at once (stopped). It deleted the hit and all of it before (B was blocked only
+    by A or Y); a hit is no longer lost to a B pressed while setting its effects. **A step of undo of
+    its own**; nothing to empty, nothing and no step. Plain B deletes once X is let go.
 - **FEEL is two amounts on each drum LANE, and it is live** (owner, 2026-11-14; built on branch
   `feel`, 2026-11-15; `engine/include/apotheca/feel_rule.hpp`, `LaneFeel`): HUMAN TIME and
   HUMAN LEVEL, 0..100, a chord's six clicks (`kAmountAt`) and a chord's two "mosts"
@@ -181,6 +256,14 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     `ySpent_`, until the button comes up; a hit's THROW and dice too): with A still down the
     D-pad turned the lane's volume, with Y it rolled the lane's hits (review, 2026-11-15;
     `testXLetGoFirst`). The directions move the cursor meanwhile.
+  - **X + B puts this lane's FEEL and SWING back to OFF** (gesture audit G11, 2026-11-24;
+    `PatternScreen::fxEmpty`): HUMAN TIME, HUMAN LEVEL and SWING, that lane only (X + A from a lane
+    at OFF still does every lane). **A step of undo of its own** (`beginOwnUndoStep`, the turns of
+    the hold before it a step by themselves); a lane already plain: nothing, no step. No chip (the
+    strip's chips stand under their fields; an "all off" has none): the help card and the manual.
+    `easy_test xempty`.
+  - **X let go with the stick pushed: the cursor waits for it to come back** (gesture audit G14, a
+    hit or a lane's name; see `notes-and-mods.md`).
   - **The name's one-line summary gives way to what is said on its row** (`said()`: why L1 opened
     no slices on a built-in drum): the two were drawn one over the other.
   - The strip's fields and their chips share `kFeelTimeX`, `kFeelLevelX`, `kFeelAllX`
@@ -274,9 +357,11 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     fit's is. Until it lands the lane plays what it had (freshly read, the file), its level made at
     once; the view says MAKING IT..., the kit MAKING. Anything that waits for fits
     (`finishStretching`, a bounce) waits for it too.
-  - **Another recording puts START and END back to the whole of it, the rest stay**, and that is no
-    step of undo (`setLaneSample` takes the mark again: undo would put the old cut on the new
-    file). `loadLane` (a song opened, a file sent over WiFi, a rename) keeps every edit.
+  - **Another recording puts START and END back to the whole of it, the rest stay**, in ONE step of
+    undo with the name (gesture audit G04, 2026-11-25; songs-and-undo.md): undo puts the old
+    recording back with its own cut. (It was "no step of undo (`setLaneSample` takes the mark again:
+    undo would put the old cut on the new file)"; with the name in the step that cannot happen.)
+    `loadLane` (a song opened, a file sent over WiFi, a rename) keeps every edit.
     NORMALIZE (`normalizeLane`: the GAIN that puts what is played, fitted if it is, at -1 dB or
     just under) and TRIM SILENCE (`trimLaneSilence`: 40 dB under the file's loudest, START 1 ms
     ahead) only set the boxes.
@@ -288,10 +373,23 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     opens the view (`editing()`, `openEdit`), laid out as the sampler's page (`kEdit...` in
     kit_screen.hpp), the file's picture drawn by `ui::wavePicture`, which the sampler shares. Hold A
     + up / down turns a box, the stick by the square of its push (`laneEditRange` a second); B its
-    usual value, B on a box at its usual value back to the kit (on letting go); hold B a second,
+    usual value, B on a box at its usual value back to the kit (on letting go); hold B half a second (G29),
     every edit to none (any other button or a move calls it off); Y on START / END trims, elsewhere
     normalizes; X hears. Stills `kit-edit`, `kit-edit-held`, `kit-edit-deleting`,
     `kit-edit-column`; `textsize` holds the view at its widest; `idle_test` has a part.
+  - **A B straight after Y goes back to the kit and keeps what Y set, in EDIT and VOICE** (gesture
+    audit G16, 2026-11-25, under the owner's "any of my decisions can be reversed if there is a more
+    logical method", 2026-11-24). The rule above ("B its usual value, B on a box at its usual value
+    back to the kit"; no owner mark) left Y's box under the cursor: TRIM SILENCE leaves it on START,
+    NORMALIZE on GAIN, ROLL on a knob, so the B meant to leave put START back to 0 or GAIN to 0 dB,
+    half undoing Y, and leaving took a move to an untouched box and B (3 presses). The exit the audit
+    proposed first, LEFT from a row's first box, is the one the owner turned down on FX ("LEFT doing
+    two jobs was awkward", 2026-11-14), so B carries it: `yJust_` / `yBox_` (`bLeavesAfterY`), set by
+    Y on its box and cleared by ANY press (a move, X, L1 / R1) or by opening the view; the stick
+    moves no button, so the box is checked too (on another box B is that box's own). That B sets
+    `bBack_` and puts nothing back. Held, it still deletes every
+    edit at the bar's end. The bar says `B back` while it is so. `laneedit_test testBAfterYKeepsIt`,
+    `drumsynthapp_test testBAfterARollKeepsIt`.
   - Tests: `tests/laneedit_test.cpp` (each step against a sound made by hand, the engine beside a
     second engine handed the hand-made sound, blocks, FIT, slices in order as one hit, the built-in
     drums, the helper thread, the file's bytes, the song file, undo, the gestures and their hints).
@@ -314,9 +412,10 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     0 under `kTiny` and the filters are fed steady noise (the envelope after them), so flush-to-zero
     changes no bit (`drumsynth_test` makes each both ways). A new recipe keeps all of it.
   - **A lane is a recording, the built-in drum or a voice, one at a time**: `setLaneSample` takes a
-    voice off (no step of undo, as a recording is not), `setLaneSynth` empties the name; another model
+    voice off (a step of undo with the name since G04: B on SOUND no longer loses a tuned voice),
+    `setLaneSynth` empties the name; another model
     puts START and END back to the whole (EDIT's rule), a knob turned keeps them. A voice is a step of
-    undo (`soundMark` / `restoreSounds`, which puts the step's EDIT back after it).
+    undo (`soundMark` / `restoreSounds`, which puts the sound back first, as `putKit`, then the step's EDIT).
   - In a song file `lanesynth LANE WORD v1..v8` (the model by its word, the dials in place order),
     **left out when the lane has none**; a word nobody knows skips the line, a number that will not read
     ends it (the rest the model's usual), each held as a double first; of a `sample` and a `lanesynth`
@@ -360,6 +459,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   ended by itself before its stop is not playing). The built-in drum is heard whole, as a tap of
   it always is. `Session::stopHeard` stops only what that screen began. `hear_test`
   (`testThePages`, `testTheSampler`, `testThePreviewStopsWhenTheCursorMovesOn`).
+  **A visit to the list is one step of undo, or none** (G04, 2026-11-25: `Session::browsingRecordings`;
+  songs-and-undo.md): what it puts on as the cursor goes is not twenty steps.
   `rowsAt(depth, folder)` is the one place a column's rows are made (0 SAMPLES: the first row,
   UNSORTED if anything is loose, the folders; with no folders at all, the recordings
   themselves: `flat()`). **A D-pad press puts the recording on at once; rows going by faster
@@ -371,6 +472,27 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   `testThePickersPace`) and `textsize_test` (every place it can be, the hints at 0 over).
   **The still `picker-deleting` holds B over a real file**: main.cpp takes its picture at
   600 ms, before the second is up (`picker-folder-deleting` the same, over a real FOLDER).
+  - **Where holding B deletes, its let-go is a tap only when it is quick and alone** (gesture audit
+    G42, 2026-11-25: `SamplePicker::kTapMs` 250, timed by the presses' own times, `whenPressed`;
+    `bHolds_`). Before, letting go of a delete before the bar was full counted as a tap: the list
+    closed and the old recording went back on, against "let go early and nothing happens" (hold B's
+    rule on every screen). The bar starts the moment B goes down on a recording, so "a B that started a
+    bar is no tap" would have taken away the tap that leaves the list from the row the cursor is nearly
+    always on: hence a time. On a recording or a folder (a bar fills, or a folder not empty says why
+    not), a let-go after kTapMs does nothing, and so does one after another button went down meanwhile
+    (it called the bar off: the house's "a tap acts on its let-go, if nothing else was pressed", as
+    L1's on the grids). kHoldSaysMs is longer than kTapMs, so a folder's refusal is covered. **Where
+    holding B does nothing (the first row, + NEW FOLDER, an empty folder's no row) B is still the tap
+    however it is let go**, as `sample_test` held it before: no delete can be called off there, and B
+    there only ever goes back.
+  - **With nothing at all on the card, Y catches and R1 records** (G42): the empty list's words said
+    "catch a bar with Y, or record with R1", but Y did nothing there and R1 paged. `Jobs::catchBar` and
+    `Jobs::record` are the opening screen's own Y and R1 (`catchBar()` / `record()` on the kit, the
+    sampler and CLOUD); the list closes as B's tap does first (`putBack`), so what the screen says next
+    is seen. "Nothing" is no recording and no folder, exactly when the words are drawn; with anything
+    on the card Y and R1 are as they were. The bar says Y catch and R1 record there in place of the page.
+    `picker_test` `testBIsATapAndTheEmptyList`, `testTheEmptyListCatchesAndRecords` (the kit's, the sampler's
+    and CLOUD's lists: the bar and what each screen says, review of B4).
   - **It changes the card too** (batch 2, 2026-11-15): `Session::moveSample`,
     `makeSampleFolder`, `deleteSampleFolder`, each a `Session::FileJob` (Done, Same, TooLong,
     Taken, NotEmpty, Failed), reached through the list's `Jobs`. The list never touches a file.
@@ -396,16 +518,58 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - **Typing a name: A types, Y deletes the last letter, B keeps what is typed and leaves, START
     keeps it too** (owner, 2026-11-15: "I find myself pressing B to back out of the track naming"; it
     was B delete, Y or START keep). With nothing typed B leaves and changes nothing (the track's name
-    stays, no folder is made), and START gives a track its instrument's own name. The two places a
-    name is typed, `SettingsScreen::typeButton` (a track's name, from SET or a SONG head) and
-    `SamplePicker::typeButton` (a new folder), keep the same keys; a new one does too. A folder
-    refused (taken, too long) keeps the keys up, whichever of B or START asked. Y does not repeat
-    (B never did). The still `typing` showed the SET page, not the keys, until then: the demo's START
-    kept the name.
+    stays, no folder is made), and START gives a track its instrument's own name. A folder
+    refused (taken, too long) keeps the keys up, whichever of B or START asked. The still `typing`
+    showed the SET page, not the keys, until then: the demo's START kept the name.
+  - **Y held deletes on, at a list's pace, wherever a name or a password is typed** (gesture audit G48,
+    2026-11-25, under the owner's "any of my decisions can be reversed if there is a more logical
+    method", 2026-11-24). It was "Y does not repeat (B never did)", written in the rule above; that
+    recorded how the old key behaved, the owner's ask was about B. An old name opens typed (SET, a
+    SONG head, R1 on an own preset), so clearing it cost a Y a letter: ten for a track, up to 24 for
+    a preset, 63 for a password. Held, the first letter goes at once and the rest one each
+    `kListEveryMs` after `kListDelayMs` (200 + 9 x 110 = about 1.2 s for ten), slow enough to let
+    go on the letter wanted; a tap is still one. Y is NOT a "hold deletes for good": nothing typed
+    is kept until B or START. `NameKeys` (`repeating_` is the held direction or Y) and the PASSWORD
+    keys (`SettingsScreen::passwordButton`, its own keys) both. `app_test` `testAHeldYDeletesOn`
+    (the track's name and both preset keys), `picker_test` `testMakingAFolder`, `wifi_test`
+    `password`.
+  - **One set of name keys, `NameKeys` (`app/name_keys.hpp`), in all four places** (gesture audit G01,
+    2026-11-24): a track's name (`SettingsScreen`, from SET or a SONG head), a new folder
+    (`SamplePicker`), a synth's preset and the sampler's (R1 on PRESET). The preset keys came in on
+    2026-11-21 (e7b847d) as two more copies, after the rule above said "a new one does too", and broke
+    it: **B left and threw the name away** ("PAD 2" is 29 presses), they ran at a cursor's pace (170 /
+    30 ms), and the tabs, SELECT's tap, undo and tempo acted under them. The keys own what is typed,
+    the cursor, the stick and **a held D-pad at a list's pace (`ui::kList...`)**, and draw the box, the
+    grid and the bar; `press()` answers `Keep` (B) or `Start`, and the screen does the keeping and
+    closes them. A preset typed: B or START saves it; under a name of the player's own already it is
+    **REPLACED** (said after, and the bar says B replace before; SAVED AS for a new one: START replaced
+    without a word before). **R1 on one of the player's own opens with its name typed in**, so a sound
+    turned since is kept in two presses (R1, B). The sampler's PRESET is worked out from the sound
+    (`samplerPresetOf`), so a sampler sound turned since shows "-" and R1 opens empty there: only a
+    synth (whose `preset` is kept) gets the two presses after a turn. START is not said on the
+    preset keys (it does what B does) and still does nothing with nothing typed. **While the name typed is
+    taken the title says B REPLACES THE PRESET: CANNOT BE UNDONE** (review of A3, 2026-11-25:
+    `kPresetReplacingWords`; songs-and-undo.md).
+    `app_test` `testSavePresetOnDevice`, `testSamplerPresetsOnDevice`,
+    `testTheNameKeysRunAtAListsPace`, `testDeletingAPresetSaysItCannotBeUndone` (the bar's words);
+    `textsize` holds each at its longest (24 W's), SAVED AS and REPLACED too (the sampler's said line
+    is held at LARGE where a long name runs past the box at XL).
+  - **While a name is typed every button is the keys'** (`App::typingAName`, it was `typingAFolder`):
+    the kit's, the sampler's and CLOUD's list of recordings, a synth's and the sampler's preset keys.
+    The tabs, SELECT's tap, SELECT + anything, L3 and the help card (`busy`) do nothing there; SELECT +
+    B is the keys' B. Only the four shoulders' panic still acts (it is before the keys in
+    `App::onButton`), and the keys are still up after it. SET's keys are SET's own case there (the
+    button test with them). `app_test` `testThePresetKeysHaveEveryButton`. **Keys that R1 opened on the
+    way to a panic are closed by it** (review of A3, 2026-11-25; `App::typingBeforeShoulders_`, noted at
+    the first shoulder as the copies and a recording are, then `closePresetKeys` on every synth screen
+    and the sampler, since R2 first may have turned to DEVICE and the panic turned back): R1 first on
+    PRESET opened them, on one of the player's own with its name typed in, and after the panic the bar
+    said B replace, so the second B wrote over the file (the first put the notice away). Nothing is
+    kept; keys up before the panic stay up. `app_test` `testAPanicClosesTheKeysItOpened`. The bar
+    offers no help card there (`screens.md`).
   - **+ NEW FOLDER is a row** (`Kind::NewFolder`: the last of SAMPLES and of a first-level
     folder; not in UNSORTED, not two levels down; only when `Jobs::makeFolder` is given). A
-    opens the keys a track's name is typed with (the list's own copy: `typeButton`,
-    `drawTyping`; SettingsScreen's was not touched), twelve letters, made in SMALL letters,
+    opens the name keys (`NameKeys`, the one set: above), twelve letters, made in SMALL letters,
     a space at the end dropped. **While typing every button is the list's, START too**
     (`picker_.typing()` in the kit's and the sampler's `onButton`); the still `picker-typing`
     is therefore not given the demo's START, which would make the folder.
@@ -420,7 +584,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     - **Big moves.** The stick is `kStickRowsPerSecond` 80 times its setting, by the SQUARE of
       the push (a little push reads each name). A held D-pad has a third pace
       (`kFastestEveryMs` 20 after `kFastestAfterMs` 3.5 s), counted from when each row was due
-      (several a frame; a stall makes no burst). **L1 held pages on, and R1 where it does not
+      (several a frame; a stall makes no burst). (Gesture audit G32, 2026-11-25: its numbers now live
+      in `ui.hpp` as the one named exception to the paces, `kRecordings...`, and it counts through
+      `ui::Repeat` as every screen does; the picker's names are kept for the tests.) **L1 held pages on, and R1 where it does not
       carry.** 500 rows: the stick 8.3 s, DOWN held 12.6, L1 held 5.5 (each was 33 or more).
     - **Hold R1 carries only where there is a folder to carry to** (`carries()`: not `flat()`).
       Let go where it was: LEFT WHERE IT WAS.
@@ -434,7 +600,7 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
       (`index()` counts each folder once; `side()` keeps the two columns beside the cursor's;
       `rowsMade()` is the tests' count). Whatever changes `all_` or `dirs_` calls `index()`.
     - **While a folder's name is typed L2 / R2 and MENU's help are the list's too**
-      (`App::typingAFolder`).
+      (`App::typingAName`: every name typed, since gesture audit G01).
     - **`wavNames` lists only what `sampleNameOk` takes** (a file of 64 letters or more is not
       offered: resting on it put a cut name on the lane).
     - **On the WiFi page a file in a folder may be as long as a loose one** (60 with its ending;
@@ -446,7 +612,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
       none after one is written. Measured on the desk, 40 songs with 10 revs each (one of them the
       bench's 32 KB song): every one naming the recording, all at once was 450 to 740 ms (about 2
       to 4 s on the handheld); a few a frame, the let-go is 1 ms and the longest frame 12 to 16 ms
-      (one card write), 440 frames. None naming it: 2 to 3 ms all at once. `moveSample` answers
+      (one card write), 440 frames. (Since G04 the let-go also has every step of undo follow: 0.6 to 0.9
+      ms more with twenty steps in the bench's song, 17 to 20 in a 2.2 MB one, after `renameRecordings`
+      learnt to pass a line over at a glance: songs-and-undo.md, measured.md. The 1 ms was not timed again.) None naming it: 2 to 3 ms all at once. `moveSample` answers
       `Moving` and the list says MOVING TO X... until `following()` is false, then MOVED TO X,
       or MOVED, BUT A SONG COULD NOT BE SAVED... (`followFailures` went up). **Safe against a
       switch-off**: before any file is touched what is owed is written (`kOwedFile`,
@@ -480,5 +648,74 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   the list's), so a song file has no word for it and a changed kit reads YOUR OWN. The built-in kits
   are recipes of DRUM SYNTH's named voices BY NAME (`kRecipes`): a voice renamed or taken out fails
   `easy_test kits` (`builtInKitProblems`). A kit put on goes through the lanes' own setters, so it is a
-  step of undo as they are (a recording is not put back). A player's own are `kit N.kit` in the preset
+  step of undo as they are (its recordings too, since G04). A player's own are `kit N.kit` in the preset
   folder. Stills `kit-preset`, `-held`, `-own`. **Nobody has heard the kits.**
+- **B with A held puts the sound back wherever hold A steps through sounds** (gesture audit G12,
+  2026-11-25; `Session::keepSound` / `putSoundBack`, one function with the KIT stop's, whose own
+  `kitBefore_` copy is gone). The KIT stop, a lane's SOUND, the sampler's SOUND and PRESET, a synth's
+  FOLDER and PRESET and CLOUD's RECORDING (`instruments.md`) keep the track's whole sound as A goes down;
+  B with A still held puts it back, **heard** with the song stopped (the KIT stop too, new), and **A is
+  spent** (`holding_` false, as FX's and MOD's call-off: the D-pad and stick are the cursor's again, and
+  letting go is no tap, so no list or VOICE view opens; on the kit's other columns B with A held does
+  nothing but make the let go no tap, so FIT's tap below does not follow it). Before, B with A held did nothing there; a burst of undo
+  ends after 0.7 s, so each sound stopped on was its own step (ten heard: ten undos, past 20 the start
+  gone), and a recording or a lane's sound picked is no step of undo at all. **What is kept**
+  (`Session::KeptSound`): the track's fields copied whole (`fieldsFrom`, no patterns: one `TrackData` on
+  the heap, made once) and `PresetSoundMemory` as it was (files.md). **What is put back**, each only
+  where it differs: the kit's lanes (`putKit`, only when `kitText` differs: sound, EDIT, FIT, one slice,
+  level, FEEL, SWING, CHOKE), the recording (`setTrackSample`), the sampler's settings and CHOP, the
+  preset, settings (`settingCount`) and macros (`sendSynthPatch`, as undo puts a synth back), the track
+  sound (`putTrackSound`: effects, sends, GLIDE FROM, MODs), and the memory last, so a plain preset
+  picked next puts back what it would have without the trip. **The effects' automation and remembered
+  TYPEs too** (review of A4, 2026-11-25; `KeptSound::lanes` and `types`, `putEffectLanesBack`): they are
+  in the patterns and the slot memory, not the fields, and a whole preset passed over that put another
+  effect in a slot cleared its lanes in every scene and forgot its TYPEs (`setEffect`), so the slot came
+  back bare though the manual said "as they were". Each slot holding its kept effect again gets its lanes
+  as kept (the steps no more, no less) and its TYPEs; when nothing differs (most often) nothing is done,
+  else written into the song and the track sent once, whole (`sendTrackImage`, as FX's line move: a
+  command a step could fill the engine's queue). **A stick still pushed then waits for the middle** on
+  all three screens (`stickWait_`, as a MOD let go): it was stepping the sounds, and the next frame moved
+  the cursor off the stop (the synth's at once, the kit's and the sampler's a moment later), where a held
+  D-pad was already stopped. Not the mixer, the name, mute or solo. One kept at a time
+  (one A), in memory only; forgotten by `removeTrack`, `duplicateTrack` and `applyProject` (a number
+  then names another track) and never put on another instrument. The put-back is a change like any
+  other: a step of undo (a recording, as ever, is not). **The mixer's B with A held is not this** (owner,
+  2026-11-14, song-screen.md): it is 0 dB and the middle, a reset, and stays so. `sample_test`
+  `testBWithAHeldPutsTheSoundBack` (also: B with A held on FIT with no step first is no tap, the lanes and
+  TYPEs, the stick's wait), `testAKeptSoundIsForgotten`; `easy_test` `testTheKitStop`; `app_test`
+  `testAPutBackSoundIsTheEngines` (the engine plays the sound put back, to the sample).
+- **A tap of A on FIT sets the bars the recording fills** (gesture audit G45, 2026-11-25;
+  `laneFitFor`, `KitScreen::fitToItsBars`): FIT started at OFF, so the usual 1 BAR was the fifth click.
+  The length is what the lane plays unfitted (`LaneSound::seconds`: the cut, turned round and pitched
+  shape, which is what FIT stretches; the review's note said `sourceSeconds`, the whole file, which a
+  trimmed loop would get wrong), the steps it fills at the tempo (a step is 15 / tempo seconds),
+  rounded to FIT's stops **in the scene's meter**: 1, 2, 4 or 8 steps (those under a bar), or 1, 2 or
+  4 bars of `meterOf` (12 a bar in 3/4, as CATCH sets; FIT's most is 4 bars, so not 8 as first proposed). The
+  nearest by ratio, since a stretch is one: 24 steps in 4/4 are 2 bars, not 1. **Nothing on a
+  built-in drum, a DRUM SYNTH voice or a file not found** (a hit, not a loop; `fitsByTap`), where the
+  bar keeps HOLD A fit to steps; on a recording it says A fit to its bars. Hold A + up / down stays
+  exact, **from a count between FIT's stops too** (review of A4, 2026-11-25: `stepFit` took 24 as the stop
+  below it, 16, so DOWN went to 8 and 24 and 48 could not be stepped back to; now DOWN lands on the stop
+  below, UP on the one above; CATCH's 12 in 3/4 had the same fault). One step of undo, as FIT is (`laneFit` is in `soundMark`). **Left as it was**: FIT's box reads
+  16-step bars (`laneFitText`), so a tap's 48 steps in 3/4 (four of its bars) reads 3 BARS and 12 reads
+  12 STEPS, as CATCH's 12 always has; a question for the owner, not changed here. `sample_test`
+  `testATapOnFitFitsItsBars`.
+- **Hold B deletes one of the player's own presets the same way everywhere** (gesture audit G10, G30,
+  2026-11-24): a kit (`kKitDeletingWords`), a sampler preset (`SamplerScreen::kPresetDeletingWords`:
+  it said nothing, a 2-pixel line only, though the file is gone for good) and a synth's
+  (`SynthScreen::kPresetDeletingWords`, new: no way but the SD card before; the WiFi page's folders hold
+  no presets). A second, a bar that fills, and the bar at the bottom says **CANNOT BE UNDONE** while
+  it does; any other button, A held or the cursor off PRESET calls it off (on a synth, another track
+  of it up too: two tracks of one synth share the screen). The track keeps its sound;
+  with an own preset on PRESET the bar's START yields to HOLD B delete this preset (PHYSIC's dice made
+  it 32 pixels over). A synth's: `Session::deleteSynthPreset` (the file by `UserPreset::file`, as
+  read), then every track of that synth past it a place earlier, and a track on it named by the
+  preset before (its sound its own now: `presetSounds_` reset, as `savePreset` does); not a step of
+  undo. Undo's older steps still hold the old numbers (as after a `savePreset` that sorts in before
+  others): a step taken back after a delete can name the next preset. `app_test`
+  `testDeletingOwnSynthPresets`. **A tab turned with B still held calls it off** (review of A3,
+  2026-11-25; each screen's `callOffDelete`, from `App::update` for every screen not shown, beside SONG's):
+  L2 / R2 and SELECT's tap never reach the screen, and it is not updated while away, so back with B still
+  held the bar's clock had run and the file went at once, the bar never seen. The same for the kit's
+  EDIT and VOICE holds and a list of recordings' (`SamplePicker::callOffDelete`). `app_test`
+  `testATabCallsOffAHoldOfB`, `sample_test` `testATabCallsOffARecordingsDelete`.

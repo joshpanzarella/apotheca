@@ -16,12 +16,8 @@ using namespace ui;
 namespace {
 constexpr Uint32 kRelearnHoldMs = 1000; // A held this long on CONTROLS
 constexpr Uint32 kTestQuietMs = 4000;   // the button test closes this long after the last press
-constexpr Uint32 kRepeatDelayMs = ui::kListDelayMs, kRepeatEveryMs = ui::kListEveryMs;
 constexpr float kMovesPerSecond = 7.f, kChangesPerSecond = 9.f;
 }
-
-// Four rows of ten: the letters, the digits, and the three marks a name may have. '_' at the end; the space is the wide one.
-const char* const SettingsScreen::kKeys = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_ ";
 
 // The PASSWORD keys: three sets of forty. Every sign a WPA password may hold is on one of them.
 const char* const SettingsScreen::kPasswordKeys[3] = {
@@ -35,12 +31,14 @@ void SettingsScreen::passwordButton(Button b) {
     if (isDirection(b)) {
         moveKey(b);
         repeating_ = b;
-        repeatAt_ = 0;
+        repeat_.restart();
     } else if (b == Button::A) {
         const char c = kPasswordKeys[keySet_][key_];
         if (c != '\x01' && static_cast<int>(typed_.size()) < kWifiPasswordMost) typed_ += c;
     } else if (b == Button::Y) {
         if (!typed_.empty()) typed_.pop_back();
+        repeating_ = b; // held, it deletes on at a list's pace, as the name keys do (G48)
+        repeat_.restart();
     } else if (b == Button::X) {
         keySet_ = (keySet_ + 1) % 3;
     } else if (b == Button::B || b == Button::Start) {
@@ -48,14 +46,14 @@ void SettingsScreen::passwordButton(Button b) {
         // joins, as START does. START with fewer says how many it takes.
         const bool short_ = static_cast<int>(typed_.size()) < kWifiPasswordLeast;
         if (b == Button::B && short_) {
-            typing_ = false;
+            password_ = false;
             saved_ = 0.f;
             stickWas_ = false;
         } else if (!short_) {
             session_.wifi().join(passwordFor_, typed_);
             std::fill(typed_.begin(), typed_.end(), '\0'); // (it goes no further than the program's stdin)
             typed_.clear();
-            typing_ = false, password_ = false, saved_ = 0.f, stickWas_ = false;
+            password_ = false, saved_ = 0.f, stickWas_ = false;
         } else if (!typed_.empty()) {
             networkSaid_ = "8 AT LEAST";
             networkSaidUntil_ = lastMs_ + 2500;
@@ -81,7 +79,7 @@ void SettingsScreen::joinPicked() {
     const WifiNetwork& net = nets_[static_cast<std::size_t>(pick_)];
     if (net.needsPassword()) {
         if (passwordFor_ != net.name) typed_.clear(); // another network: no draft of it
-        typing_ = true, password_ = true, fromSong_ = false;
+        password_ = true, fromSong_ = false;
         passwordFor_ = net.name;
         key_ = 0, keySet_ = 0;
     } else {
@@ -99,33 +97,24 @@ void SettingsScreen::moveKey(Button direction) {
     key_ = row * columns + col;
 }
 
+void SettingsScreen::openName(bool fromSong) {
+    row_ = kTrackName;
+    password_ = false;
+    fromSong_ = fromSong;
+    keys_.open(project_.current().name, kNameLength);
+}
+
 void SettingsScreen::typeButton(Button b) {
-    if (isDirection(b)) {
-        moveKey(b);
-        repeating_ = b;
-        repeatAt_ = 0;
-    } else if (b == Button::A) {
-        const char c = kKeys[key_];
-        // No space first, and not two together; ten at most.
-        const bool space = c == ' ';
-        if (static_cast<int>(typed_.size()) < kNameLength && !(space && (typed_.empty() || typed_.back() == ' '))) typed_ += c;
-    } else if (b == Button::Y) {
-        if (!typed_.empty()) typed_.pop_back(); // the last letter goes
-    } else if (b == Button::B) {
-        // Leaves, keeping what is typed (owner, 2026-11-15: B is pressed to back out). Nothing typed: the
-        // name stays as it was.
-        if (!typed_.empty()) session_.setTrackName(project_.track, typed_);
-        typing_ = false;
-        saved_ = 0.f;
-        stickWas_ = false; // the keys' stick is not the rows': the next push starts over
-    } else if (b == Button::Start) {
-        session_.setTrackName(project_.track, typed_); // (nothing typed: the instrument's own name)
-        typing_ = false;
-        saved_ = 0.f;
-        stickWas_ = false;
-    }
+    const NameKeys::Asked asked = keys_.press(b);
+    if (asked == NameKeys::Asked::Nothing) return;
+    // B leaves, keeping what is typed (owner, 2026-11-15: B is pressed to back out); nothing typed: the name
+    // stays as it was. START keeps it too; nothing typed: the instrument's own name.
+    if (asked == NameKeys::Asked::Start || !keys_.typed().empty()) session_.setTrackName(project_.track, keys_.typed());
+    keys_.close();
+    saved_ = 0.f;
+    stickWas_ = false; // the keys' stick is not the rows': the next push starts over
     // Opened from the SONG screen: back to it when the typing is over.
-    if (!typing_ && fromSong_) {
+    if (fromSong_) {
         fromSong_ = false;
         session_.view = View::Song;
     }
@@ -173,11 +162,19 @@ void SettingsScreen::goTo(int row) {
     if (to >= kRows)
         for (to = row; to > 0 && !here(to); --to) {}
     row_ = to;
-    session_.wifiLooking = row_ == kNetwork && !typing_; // (at once: Session::update asks before this screen's update)
+    session_.wifiLooking = row_ == kNetwork && !typing(); // (at once: Session::update asks before this screen's update)
     const int place = placeOf(row_);
     if (place < first_) first_ = place;
     while (first_ < place && !fits(place, first_)) ++first_;
     while (first_ > 0 && fits(places() - 1, first_ - 1)) --first_; // (the last row in view: no room left empty under it)
+}
+
+// L1 / R1 on the rows (gesture audit G28, 2026-11-25): the first row of the group before / after the
+// cursor's, round the ends. A group's first row is always here (a heading stands on it).
+void SettingsScreen::jumpGroup(int by) {
+    const int group = ((groupOf(row_) + by) % kGroups + kGroups) % kGroups;
+    for (int r = 0; r < kRows; ++r)
+        if (here(r) && groupOf(r) == group) return goTo(r);
 }
 
 void SettingsScreen::change(int by) {
@@ -213,6 +210,30 @@ void SettingsScreen::change(int by) {
     }
 }
 
+// B on a setting's row (PLAYING, LOOK, HANDHELD): its usual value, as B gives one on an effect's dial, a
+// sampler setting or a MOD (gesture audit G17, 2026-11-25: B did nothing here). The SONG rows are the song's,
+// not settings: B does nothing there (BOUNCE's B is its stop).
+bool SettingsScreen::hasUsual(int row) { return row >= kClick && row < kWifi; }
+
+void SettingsScreen::usual() {
+    switch (row_) {
+    case kClick: session_.setClick(Session::kClickOff); break;
+    case kCountIn: session_.setCountIn(false); break;
+    case kMutes: session_.setMutes(Session::kMutesAtOnce); break;
+    case kMidi: session_.setMidiRecording(false); break;
+    case kTextSize: session_.setTextSize(Session::kTextSizeAsBuilt); break;
+    case kTheme: session_.setTheme(Session::kThemeAsBuilt); break;
+    case kOctaves: session_.setOctavesShown(Session::kOctavesAsBuilt); break;
+    case kVolume: session_.setVolume(Session::kVolumeAsBuilt); break;
+    case kBrightness: session_.setBrightness(kBrightUsual); break;
+    case kLight: session_.setStickLight(kRingOn); break;
+    case kLightColour: session_.setLightColour(kLightTheme); break;
+    case kRingLevel: session_.setRingLevel(kBrightUsual); break;
+    case kStick: session_.setStickSpeed(ui::kStickSpeedAsBuilt); break;
+    default: break;
+    }
+}
+
 void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
     if (testing_) {
@@ -220,12 +241,23 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down) lastPressed_ = b, testTimed_ = false;
         return;
     }
-    if (typing_) {
-        if (event.down) password_ ? passwordButton(b) : typeButton(b);
+    if (password_) {
+        if (event.down) passwordButton(b);
         else if (b == repeating_) repeating_ = Button::None;
         return;
     }
-    if (event.down && b != Button::B) forgetting_ = false; // (any other button calls a forgetting off)
+    if (keys_.isOpen()) {
+        if (event.down) typeButton(b);
+        else keys_.letGo(b);
+        return;
+    }
+    if (event.down && b != Button::B) forgetting_ = false, stopping_ = false; // (any other button calls a forgetting or a stop off)
+    if (event.down && b != Button::A) aTap_ = false; // (a direction, or anything else, with A held: no tap of A)
+    // BOUNCE while one is under way: hold B a second stops it, nothing kept (a bar fills, as NETWORK's forget).
+    if (row_ == kBounce && b == Button::B) {
+        stopping_ = event.down && session_.bouncing(), stopTimed_ = false; // (one stopping already: update() calls it off)
+        return;
+    }
     if (row_ == kNetwork && session_.wifiHere()) {
         // NETWORK: hold A + up / down picks, let go joins; hold B forgets the one joined.
         if (b == Button::A) {
@@ -253,22 +285,38 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
             if (event.down && (b == Button::Up || b == Button::Down)) {
                 pickStep(b == Button::Down ? 1 : -1);
                 repeating_ = b;
-                repeatAt_ = 0;
+                repeat_.restart();
             } else if (!event.down && b == repeating_) {
                 repeating_ = Button::None;
             }
             return;
         }
     }
+    // L1 / R1: the heading before / after (G28). A press, never a run; off CONTROLS a hold of A lets go, as a move does.
+    if (b == Button::L1 || b == Button::R1) {
+        if (event.down) {
+            jumpGroup(b == Button::R1 ? 1 : -1);
+            holding_ = false;
+            holdPart_ = 0.f;
+        }
+        return;
+    }
     if (b == Button::A) {
         holding_ = event.down && row_ == kControls;
         holdTimed_ = false;
         holdPart_ = 0.f;
-        if (!event.down) return;
-        if (row_ == kBounce && !session_.bouncing())
-            session_.startBounce(bounceWhat_ == 0 ? Session::Bounce::Song : bounceWhat_ == 1 ? Session::Bounce::EachTrack : bounceWhat_ == 2 ? Session::Bounce::ThisTrack : Session::Bounce::MidiFile);
-        if (row_ == kTempo) session_.tapTempo(lastMs_); // TAP TEMPO: A in time
-        if (row_ == kTrackName) typing_ = true, password_ = false, typed_ = project_.current().name, key_ = 0;
+        // BOUNCE and TRACK NAME act on A's let go, and only if nothing else went down while it was held:
+        // hold A + a direction turns a value everywhere else, and here that habit started a bounce (G15).
+        if (!event.down) {
+            const bool tap = aTap_ && aRow_ == row_;
+            aTap_ = false;
+            if (tap && row_ == kBounce && !session_.bouncing())
+                session_.startBounce(bounceWhat_ == 0 ? Session::Bounce::Song : bounceWhat_ == 1 ? Session::Bounce::EachTrack : bounceWhat_ == 2 ? Session::Bounce::ThisTrack : Session::Bounce::MidiFile);
+            if (tap && row_ == kTrackName) openName(false);
+            return;
+        }
+        aTap_ = row_ == kBounce || row_ == kTrackName, aRow_ = row_;
+        if (row_ == kTempo) session_.tapTempo(whenPressed(event, lastMs_)); // TAP TEMPO: A in time, by the press's own time
         if (row_ == kWifi) session_.toggleTransfer(lastMs_ * 2654435761u + 977u);
         if (row_ == kHotspot) session_.setHotspot(session_.wifi().now().status.state != WifiState::Hotspot, lastMs_ * 2654435761u + 977u);
         if (row_ == kTest) testing_ = true, testTimed_ = false, lastPressed_ = Button::None;
@@ -279,14 +327,18 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (isDirection(b)) {
-        if (b == Button::Up) step(-1);
-        if (b == Button::Down) step(1);
+        if (b == Button::Up) step(-1, true); // (a press: round the ends; the run below stops at them)
+        if (b == Button::Down) step(1, true);
         if (b == Button::Left) change(-1);
         if (b == Button::Right) change(1);
         holding_ = false; // moving off lets go
         holdPart_ = 0.f;
         repeating_ = b;
-        repeatAt_ = 0;
+        repeat_.restart();
+    } else if (b == Button::B && hasUsual(row_)) {
+        usual();
+        holding_ = false;
+        holdPart_ = 0.f;
     } else if (b == Button::Start && !input.held(Button::Select)) {
         session_.togglePlay(false);
     }
@@ -298,9 +350,21 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
     if (!input.held(Button::A)) holding_ = false, holdPart_ = 0.f;
     if (!input.held(Button::A) || row_ != kNetwork) picking_ = false; // (a let go this screen never saw joins nothing)
     if (!input.held(Button::B) || row_ != kNetwork) forgetting_ = false;
+    if (!input.held(Button::A)) aTap_ = false; // (a let go this screen never saw is no tap)
+    if (!input.held(Button::B) || row_ != kBounce || !session_.bouncing() || session_.bounceStopping()) stopping_ = false; // (ended by itself meanwhile, or stopping: nothing to stop)
     if (!networkSaid_.empty() && nowMs >= networkSaidUntil_) networkSaid_.clear();
     // Our firmware's WiFi: its status asked for now and then, and a scan while the NETWORK row is up.
-    session_.wifiLooking = row_ == kNetwork && !typing_; // (Session::update asks; the status is asked for on every screen)
+    session_.wifiLooking = row_ == kNetwork && !typing(); // (Session::update asks; the status is asked for on every screen)
+    stopPart_ = 0.f;
+    if (stopping_) {
+        if (!stopTimed_) stopTimed_ = true, stopSince_ = nowMs;
+        stopPart_ = static_cast<float>(nowMs - stopSince_) / static_cast<float>(kStopHoldMs);
+        if (nowMs - stopSince_ >= kStopHoldMs) {
+            stopping_ = false, stopPart_ = 0.f;
+            session_.stopBounce(); // (not waited for: the row says so until it has stopped)
+            session_.say(kBounceStoppedWords);
+        }
+    }
     forgetPart_ = 0.f;
     if (forgetting_) {
         if (!forgetTimed_) forgetTimed_ = true, forgetSince_ = nowMs;
@@ -318,12 +382,7 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
     // The SONG screen asked for the keyboard, for the track its cursor is on.
     if (session_.wantTrackName) {
         session_.wantTrackName = false;
-        row_ = kTrackName;
-        typing_ = true;
-        password_ = false;
-        fromSong_ = true;
-        typed_ = project_.current().name;
-        key_ = 0;
+        openName(true);
     }
 
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
@@ -351,7 +410,11 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
         repeating_ = Button::None;
         return;
     }
-    if (typing_) {
+    if (keys_.isOpen()) {
+        keys_.update(input, nowMs, dt);
+        return;
+    }
+    if (password_) {
         // The stick moves over the keys, one at once and then steadily; a held D-pad direction runs.
         const bool sideways = std::fabs(stickX_) > std::fabs(stickY_);
         const float push = sideways ? stickX_ : stickY_;
@@ -363,11 +426,12 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
             stickWas_ = true;
             for (; saved_ >= 1.f; saved_ -= 1.f) moveKey(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
         }
-        if (repeating_ != Button::None && repeatAt_ == 0) {
-            repeatAt_ = nowMs + kRepeatDelayMs;
-        } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-            repeatAt_ = nowMs + kRepeatEveryMs;
-            moveKey(repeating_);
+        while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::List)) {
+            if (repeating_ == Button::Y) {
+                if (!typed_.empty()) typed_.pop_back(); // a held Y deletes on (G48)
+            } else {
+                moveKey(repeating_);
+            }
         }
         return;
     }
@@ -385,13 +449,15 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
     const float x = stickX_, y = stickY_;
     const bool sideways = std::fabs(x) > std::fabs(y);
     const float push = sideways ? x : y;
+    const float climb = climb_.times(sideways || picking_ ? 0.f : push, nowMs); // the rows are a cursor: a full push held climbs (G07)
     if (push == 0.f) {
         saved_ = 0.f;
         stickWas_ = false;
     } else {
-        saved_ += stickWas_ ? std::fabs(push) * (sideways ? kChangesPerSecond : kMovesPerSecond) * dt : 1.f;
+        saved_ += stickWas_ ? std::fabs(push) * (sideways ? kChangesPerSecond : kMovesPerSecond * climb) * dt : 1.f;
         stickWas_ = true;
         for (; saved_ >= 1.f; saved_ -= 1.f) {
+            aTap_ = false; // (the stick moved something with A held: no tap of A, as a direction pressed)
             if (picking_) {
                 if (!sideways) pickStep(push > 0.f ? 1 : -1);
             } else if (sideways) {
@@ -401,13 +467,11 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
             }
         }
     }
-    if (repeating_ != Button::None && repeatAt_ == 0) {
-        repeatAt_ = nowMs + kRepeatDelayMs;
-    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-        repeatAt_ = nowMs + kRepeatEveryMs;
+    // SET's rows, its values and NETWORK's list: a list's pace.
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::List)) {
         if (picking_) {
             pickStep(repeating_ == Button::Down ? 1 : repeating_ == Button::Up ? -1 : 0);
-            return;
+            continue;
         }
         if (repeating_ == Button::Up) step(-1);
         if (repeating_ == Button::Down) step(1);
@@ -420,7 +484,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     topBar(r, fonts, View::Settings, "", project_);
     char text[96];
 
-    if (typing_ && password_) {
+    if (password_) {
         // A network's password: the keys in three sets. What is typed is shown (the handheld is in
         // your hand, and a wrong letter costs a minute); its end where it is too long for the box.
         const std::string title = "PASSWORD FOR " + passwordFor_;
@@ -459,31 +523,11 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hints(r, fonts, list, 5);
         return;
     }
-    if (typing_) {
+    if (keys_.isOpen()) {
         char title[48];
         std::snprintf(title, sizeof title, "TRACK %d: ITS NAME", project_.track + 1);
-        fonts.small.draw(r, 40.f, 46.f, title, kDim);
-        // What has been typed, with a mark where the next letter goes.
-        box(r, 40, 66, kScreenW - 80, 52, kPanel2, kTeal);
-        const float tx = 56.f, ty = 66.f + (52.f - fonts.large.capHeight()) / 2.f;
-        fonts.large.draw(r, tx, ty, typed_.c_str(), kText);
-        if (static_cast<int>(typed_.size()) < kNameLength) fill(r, static_cast<int>(tx + fonts.large.width(typed_.c_str()) + (typed_.empty() ? 0 : 3)), 66 + 14, 2, 24, kTeal);
-        std::snprintf(text, sizeof text, "%d OF %d", static_cast<int>(typed_.size()), kNameLength);
-        fonts.small.drawRight(r, kScreenW - 56.f, 66.f + (52.f - fonts.small.capHeight()) / 2.f, text, kDim);
-        if (typed_.empty()) fonts.small.draw(r, tx + 12.f, 66.f + (52.f - fonts.small.capHeight()) / 2.f, "(empty: its instrument's own name)", kDim);
-        const int kw = 52, kh = 52, gx = (kScreenW - kKeyColumns * kw) / 2, gy = 140;
-        for (int i = 0; i < 40; ++i) {
-            const int x = gx + (i % kKeyColumns) * kw, y = gy + (i / kKeyColumns) * kh;
-            const bool here = i == key_;
-            box(r, x + 2, y + 2, kw - 4, kh - 4, here ? kTeal : kPanel, here ? kTeal : kLine);
-            char one[8];
-            std::snprintf(one, sizeof one, "%s", kKeys[i] == ' ' ? "SPACE" : std::string(1, kKeys[i]).c_str());
-            const Font& font = kKeys[i] == ' ' ? fonts.within(&Fonts::small, one, kw - 4 - 6.f) : fonts.large; // ("SPACE" at XL is wider than its key: held at LARGE)
-            font.drawCentered(r, x + kw / 2.f, y + (kh - font.capHeight()) / 2.f, one, here ? kBg : kText);
-        }
-        const bool none = typed_.empty();
-        const Hint list[] = {{"A", "type"}, {"Y", none ? nullptr : "delete"}, {"B", none ? "leave" : "keep"}, {"START", none ? "its own name" : nullptr}};
-        hints(r, fonts, list, 4);
+        const bool none = keys_.typed().empty();
+        keys_.draw(r, fonts, title, kDim, "(empty: its instrument's own name)", none ? "leave" : "keep", none ? "its own name" : nullptr);
         return;
     }
     if (testing_) {
@@ -569,7 +613,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 if (tail >= 0.f) std::snprintf(text, sizeof text, "TAIL  %d S", static_cast<int>(tail));
                 else std::snprintf(text, sizeof text, "WORKING  %d%%", static_cast<int>(session_.bounceProgress() * 100.f));
                 part = session_.bounceProgress();
-                note = tail >= 0.f ? "until the echoes have died away" : "you can carry on meanwhile";
+                note = stopPart_ > 0.f || session_.bounceStopping() ? kStoppingWords : tail >= 0.f ? "until the echoes have died away" : "you can carry on meanwhile";
             } else {
                 std::snprintf(text, sizeof text, "%s", what[bounceWhat_]);
                 if (session_.bounceFiles() > 0) std::snprintf(bounced_, sizeof bounced_, "done: %d file%s, on the WiFi page", session_.bounceFiles(), session_.bounceFiles() == 1 ? "" : "s");
@@ -738,6 +782,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             outline(r, lx + 2, ly, kLockW - 4, 7, kBrass);
         }
         if (row == kNetwork && here && forgetPart_ > 0.f) fill(r, 16, y + rowH - 10, static_cast<int>(w * (forgetPart_ > 1.f ? 1.f : forgetPart_)), 4, kStop);
+        if (row == kBounce && here && stopPart_ > 0.f) fill(r, 16, y + rowH - 10, static_cast<int>(w * (stopPart_ > 1.f ? 1.f : stopPart_)), 4, kStop);
         if (note[0]) noteFont.drawRight(r, kNoteRight, y + (rowH - 6 - noteFont.capHeight()) / 2.f, note, kDim);
         if (part >= 0.f) {
             // The bar, between the value and what is said: at 250 as it always was, or further right where
@@ -756,12 +801,16 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         drawKey(r, fonts, 16.f + fonts.small.width(lastHeading) + 6.f + (both ? kArrowsApart : 0.f), lastHeadingY, "DOWN", kDim);
     }
 
-    Hint list[5];
+    Hint list[6];
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     hint("UP / DOWN", "choose");
     if (row_ < kWifi) hint("LEFT / RIGHT", "change");
-    if (row_ == kBounce) hint("A", session_.bouncing() ? "(working)" : "bounce");
+    if (hasUsual(row_)) hint("B", "default");
+    if (row_ == kBounce) {
+        if (!session_.bouncing()) hint("A", "bounce");
+        else if (!session_.bounceStopping()) hint("HOLD B", stopPart_ > 0.f ? "stopping" : "stop it"); // (stopping: B has nothing left to do)
+    }
     if (row_ == kTempo) hint("A", "tap it");
     if (row_ == kTrackName) hint("A", "type a name");
     if (row_ == kWifi) hint("A", session_.transferOn() ? "turn off" : "turn on");
@@ -783,6 +832,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (row_ == kHotspot) hint("A", session_.wifi().now().status.state == WifiState::Hotspot ? "turn off" : "turn on");
     if (row_ == kTest) hint("A", "open the test");
     if (row_ == kControls) hint("HOLD A", "set up again");
+    if (!picking_ && forgetPart_ <= 0.f) hint("L1 / R1", "page"); // (G28: the heading before / after; "page" as in the list of recordings, where L1 / R1 is a page)
     hint("SELECT", "to SONG");
     hints(r, fonts, list, count);
 }

@@ -365,8 +365,11 @@ void testTheSetPage() {
     }
     // The last row in view with HANDHELD's six and SETUP's three, and no room left empty under it.
     CHECK(setup.cursorRow() == S::kControls && setup.shown(S::kVolume) && setup.shown(S::kLightColour) && !setup.fits(setup.places() - 1, setup.firstShown() - 1));
-    rig.tap(DOWN);
-    CHECK(setup.cursorRow() == S::kControls);
+    const int lastPage = setup.firstShown();
+    rig.tap(DOWN); // a press at the end goes round to the top, the page with it (G35)...
+    CHECK(setup.cursorRow() == S::kTempo && setup.firstShown() == 0);
+    rig.tap(UP); // ...and back
+    CHECK(setup.cursorRow() == S::kControls && setup.firstShown() == lastPage);
     for (int place = setup.firstShown(); place < setup.places(); ++place) {
         const int row = setup.rowAt(place);
         CHECK(setup.fits(place, setup.firstShown()));
@@ -408,6 +411,7 @@ void testKept() {
         rig.session().setBrightness(-5);
         CHECK(rig.session().brightness() == kBrightLeast);
         rig.session().setBrightness(40);
+        rig.session().keepSettingsNow(); // (written once it has stood still a second: kKeepRestMs)
         const std::string text = got(folder + "/settings.txt");
         CHECK(text.find("\nbrightness 40\n") != std::string::npos && text.find("\nlight 2\n") != std::string::npos);
         CHECK(text.find("\nringlevel 40\n") != std::string::npos);
@@ -644,9 +648,11 @@ void testScenesAndColours() {
         }
         CHECK(seen >= 33); // round the scene and on into its next time
         rig.session().togglePlay(false);
+        rig.session().keepSettingsNow();
         const std::string text = got(folder + "/settings.txt");
         CHECK(text.find("\nlightcolour 4\n") != std::string::npos);
         rig.session().setLightColour(kLightTheme);
+        rig.session().keepSettingsNow();
         CHECK(got(folder + "/settings.txt").find("lightcolour") == std::string::npos); // (left out at THEME)
         rig.session().setLightColour(kLightRainbow);
     }

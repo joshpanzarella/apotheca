@@ -29,6 +29,12 @@ struct RawControl {
 struct ControlMap {
     RawControl button[static_cast<int>(Button::Count)];
     RawControl stickRight, stickDown; // the stick's two axes, and which way is right and down
+    // controls.txt's first line says which setup made it. 2: the setup that asks for L3 and R3 (the
+    // stick pressed in). A map from before was never asked them: with no L3 it is asked for L3 alone,
+    // once (neverAskedL3), and written again as a 2, whatever the answer.
+    static constexpr int kVersion = 2;
+    int version = kVersion;
+    bool neverAskedL3() const { return version < 2 && button[static_cast<int>(Button::L3)].kind == RawControl::None; }
 
     std::string text() const;            // as kept in controls.txt
     bool parse(const std::string& text); // false if it is not one, or has no way to move or act
@@ -38,28 +44,38 @@ struct ControlMap {
 class ControlLearner {
 public:
     ControlLearner();
+    // Ask for this one button alone, onto a map already learned (an old map with no L3: main.cpp).
+    // The axes' rests already told are kept.
+    void askOnlyFor(const ControlMap& kept, Button button);
     // Feed every SDL event here. `nowMs` is for the steps that can be skipped by waiting.
     void handle(const SDL_Event& event);
     void update(Uint32 nowMs);
     // Where an axis sits untouched, if the device can say (SDL can for most).
     void setAxisRest(int axis, int value);
-    bool done() const { return step_ >= kSteps; }
+    bool done() const { return step_ >= count_; }
     const ControlMap& map() const { return map_; }
 
     // For the screen.
     const char* asking() const;        // "A", "THE STICK, TO THE RIGHT"...
-    bool canSkip() const;              // this one may be missing on the device
+    bool canSkip() const;              // this one may be missing on the device (MENU, the stick, L3, R3)
     float skipIn() const;              // seconds left before it is skipped
     const char* complaint() const { return complaint_; } // why the last press was not taken
     const std::string& saw() const { return saw_; }      // what the device last sent, in its own terms
     int step() const { return step_; }
-    static constexpr int kSteps = 17; // fifteen buttons, then the stick twice
+    int steps() const { return count_; } // kSteps, or 1 (askOnlyFor)
+    // Fifteen buttons, the stick twice, then the stick pressed in (L3, and R3 for a second stick).
+    static constexpr int kSteps = 19;
     void draw(SDL_Renderer* renderer, const struct Fonts& fonts) const;
 
 private:
+    // What a step asks for: a Button, or the stick's two ways.
+    enum { kAskStickRight = -1, kAskStickDown = -2 };
+    int ask() const { return step_ < count_ ? asks_[step_] : 0; }
     bool pressedNow(const SDL_Event& event, RawControl& out);
     RawControl* target();
     ControlMap map_;
+    int asks_[kSteps];
+    int count_ = kSteps;
     int step_ = 0;
     bool waitingForRelease_ = false;
     int axisRest_[32];

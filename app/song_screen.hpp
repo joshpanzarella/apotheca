@@ -4,19 +4,21 @@
 // on to the last scene with anything in it, then comes round.
 //
 // The same rule as everywhere: the stick moves, A acts, hold A and the stick
-// turns the thing under the cursor, B removes.
+// turns the thing under the cursor, B deletes or empties.
 //
-//   on a cell          A opens it on the Pattern screen. B empties it.
+//   on a cell          A opens it on the Pattern screen. B empties it (on its let go; held, it deletes the track).
 //                      Hold A + stick left / right: how long it is, 1, 2, 4
 //                      or 8 bars. Hold A + UP / DOWN: TRANSPOSE its notes a semitone
 //                      (the stick up / down: an octave; Session::transposeCell). The scene lasts as long as its longest
 //                      cell; a shorter one goes round under it, and is
 //                      drawn once with a LOOPS mark.
-//                      R1 copies it; R1 on another cell pastes it there (on its let go).
+//                      R1 copies it; R1 on another cell pastes it there (on its let go), and the
+//                      copy stays (brass) for the next; R1 on the copied cell clears it (G23).
 //   on a repeat count  (the column left of the tracks) hold A + stick up /
 //                      down: how many times the scene plays. Tap A: 1, 2, 4, 8.
-//                      R1 copies the whole scene; R1 on another row pastes it there (on its let go).
-//                      Hold B a second: empty the whole scene (one step of undo).
+//                      R1 copies the whole scene; R1 on another row pastes it there (on its let go),
+//                      and the copy stays, as a cell's. Hold B half a second (G29): empty the whole
+//                      scene (one step of undo).
 //   on + TRACK         A, then pick the instrument: drums, Phazed, JAX-EP...
 //   on a track's head  (up from the top scene) tap A: its instrument. R1, on its let go: its name.
 //                      Hold B: delete it.
@@ -29,11 +31,12 @@
 //                      There is no "save": the song is kept as you go.
 //     L1 in the list   files over WiFi, on or off. On, it shows an address to
 //                      open in a browser on the same network.
-//     X in the list    save a rev: the song as it is now, to come back to.
-//     Y on the open song   a new name for it (two words, rolled again each press)
+//     Y in the list    save a rev: the song as it is now, to come back to (X hears).
+//     NEW NAME         (the open song's revs, second row) A: a new name for it (two words, rolled
+//                      again each press)
 //     hold B on a song     delete it: hold for a second while the row fills.
 //                      It goes to a "deleted" folder on the card, not to nothing.
-//                      A tap of B only closes the list.
+//                      A tap of B only closes the list. START plays and stops with it open (G39).
 //     A on the open song   its revs. A on one goes back to it; where the
 //                      song was is kept as a rev first.
 
@@ -70,7 +73,7 @@ public:
     static constexpr int kHueMarkH = 2, kHueMarkFoot = 1, kHueMarkInset = 3;
     // B held this long on a track deletes it; the warning bar starts after the wait.
     static constexpr Uint32 kTrackHoldWaitMs = 500, kTrackHoldMs = 2000;
-    static constexpr Uint32 kSceneHoldMs = 1000; // B held this long on a repeat count empties the whole scene
+    static constexpr Uint32 kSceneHoldMs = ui::kHoldUndoneMs; // B held this long on a repeat count empties the whole scene (one step of undo: G29)
     // A held this long on a head is the mixer, not a tap: its card comes up, and letting go then never
     // taps, turned or not (owner, 2026-11-14: a look at the level must not tap).
     static constexpr Uint32 kMixCardMs = 300;
@@ -122,6 +125,17 @@ public:
     void showMixCardForStill() { mixShown_ = mixTimed_ = true; } // (a still is taken before kMixCardMs has gone by)
     bool mixCardUp() const { return mixing_ && (mixShown_ || mixTurned_); } // ...and its card is drawn: held kMixCardMs, or something turned
     void moveToMaster() { onHead_ = false, onMaster_ = true; }
+    // The tabs (G46, the App): SONG opens with the cursor on the cell being worked on (project track and
+    // scene). movedToCell: the cell the cursor is on, if the cursor was moved on this visit (a direction,
+    // the stick, or moveCursorTo) and is on a cell (not a head, + TRACK, MASTER or REPEATS). (L3 opens on
+    // MASTER: a cell is reached from there only by a move, so it needs nothing of its own.)
+    void openOnWorkingCell();
+    bool movedToCell(int* track, int* scene) const;
+    // Where the cursor is and whether it moved: the App keeps it at a panic's first shoulder, whose L2 / R2 on
+    // the way may open SONG (and move its cursor), and puts it back with the tab.
+    struct Visit { int scene, column, top; bool onHead, onMaster, moved; };
+    Visit visit() const { return {scene_, column_, top_, onHead_, onMaster_, movedThisVisit_}; }
+    void putBack(const Visit& p) { scene_ = p.scene, column_ = p.column, top_ = p.top, onHead_ = p.onHead, onMaster_ = p.onMaster, movedThisVisit_ = p.moved; }
     // The mixer card while A is held on a head: placed under the head (for the tests to read).
     static constexpr int kMixCardW = 136, kMixCardH = 62;
     struct Place { int x, y; };
@@ -132,8 +146,12 @@ public:
     bool listingRevs() const { return listing_ && revsOpen_; }
     int listCursor() const { return revsOpen_ ? revCursor_ : listCursor_; }
     const std::vector<std::string>& listedSongs() const { return songs_; }
-    void scenesMoved(int from, int by); // a scene put in or taken out (NEXT SCENE): the cursor stays on the scene it was on
+    void scenesMoved(int from, int by); // a scene put in or taken out (NEXT SCENE): the cursor, the copied cell and a paste on its way stay on the scene they were on
+    // The scene the cursor is on: a cell's row or its REPEATS box (the song end's empty row too); -1 off the
+    // scenes (a track's head, + TRACK, MASTER). SELECT + Y and SELECT + L2 / R2 act on it here (the App).
+    int sceneUnderCursor() const { return onHead_ || onMaster_ || column_ == addColumn() ? -1 : scene_; }
     void selectWasUsed() { cancelSelectTap(); } // SELECT did something else: letting go is not a tap
+    void callOffDelete() { dropTrackHold(true); } // (the App, while another screen is up: B held through a tab and back deletes nothing; a quick tap then a tab is a tap)
     // AT END: the REPEATS box of the first empty row, just past the song's last scene, is where the
     // song ends. It shows a loop (LOOP) or a stop square (STOP), and A there switches them.
     int songEndRow() const { return project_.sceneCount() < kMaxScenes ? project_.sceneCount() : -1; } // -1: every row is a scene
@@ -156,6 +174,7 @@ private:
     void mixStep(Button direction); // A held on a head: a dB up or down, a step of pan left or right
     void moveCursor(Button direction, bool pressed = false); // pressed: a press of the D-pad itself, not a run of it or the stick
     void setRepeats(int count);
+    void playFromCursor(); // START: the song from the cursor's scene, or stop it
     void stepBars(int by);
     void stepSceneTempo(int scene, int by);
     void stepSceneMeter(int scene, int by);
@@ -185,12 +204,19 @@ private:
     int scene_ = 0;
     int column_ = 0;
     int top_ = 0; // first scene shown
+    bool movedThisVisit_ = false; // the cursor was moved since SONG was opened on the cell worked on (G46)
     bool choosing_ = false; // the instrument list is open
     int choice_ = 0;        // its place in kInstruments
 
     bool holding_ = false;  // A is held on a repeat count
     bool turned_ = false;   // ...and the stick or D-pad changed it, so letting go is not a tap
     float saved_ = 0.f;     // part-steps of the repeat count saved up
+    // The stick on a repeat count, A or L1 held (gesture audit G14): one job a push, as on the grids.
+    enum class RepeatAxis { None, UpDown, Sideways };
+    RepeatAxis repeatAxis_ = RepeatAxis::None;
+    float repeatSideSaved_ = 0.f; // part-steps of the scene's steps (A) or its meter (L1) saved up
+    bool repeatSideWas_ = false;  // ...and the stick was over last frame
+    void repeatStick(float x, float y, float dt); // A or L1 held on a repeat count: the stick does what the D-pad does
     // TRANSPOSE (easywins batch 3): A held on a cell, UP / DOWN a semitone, the stick up / down an octave.
     int transposed_ = 0;    // how far this hold has moved the cell, for what is said
     float savedY_ = 0.f;
@@ -214,6 +240,13 @@ private:
 
     bool trackHold_ = false, trackHoldTimed_ = false; // B is being kept held on a track
     Uint32 trackHoldSince_ = 0;
+    int trackHoldColumn_ = 0, trackHoldScene_ = 0; // ...where it went down: the stick leaving it calls it off, as the scene's
+    bool trackHoldOnHead_ = false;                 // ...on the track's head or on its cell (the stick's DOWN leaves a head with no press)
+    void armTrackHold();
+    bool atTrackHold() const { return column_ == trackHoldColumn_ && scene_ == trackHoldScene_ && onHead_ == trackHoldOnHead_; }
+    // The hold ends. `tap`: what ended it (B let go, a move, any other press but A) came while the bar had not
+    // begun, so it was a tap of B, and a tap on a cell empties the cell B went down on (on a head, nothing).
+    void dropTrackHold(bool tap);
     bool sceneHold_ = false, sceneHoldTimed_ = false; // B is being kept held on a repeat count
     Uint32 sceneHoldSince_ = 0;
     float sceneHoldPart_ = 0.f;
@@ -235,10 +268,11 @@ private:
     int copyTrack_ = 0, copyScene_ = 0;
 
     Button repeating_ = Button::None;
-    Uint32 repeatAt_ = 0;
+    ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
     Uint32 lastMs_ = 0;
     float stickX_ = 0.f, stickY_ = 0.f;
     bool stickWasX_ = false, stickWasY_ = false;
+    ui::StickClimb climbX_, climbY_; // a full push held climbs (G07)
 };
 
 } // namespace apotheca

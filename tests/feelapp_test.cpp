@@ -331,26 +331,28 @@ void testTheGesture() {
     rig.key(X, false);
     rig.frames(1);
 
-    // The stick: a click at once, then four a second while it is held over, sideways and up / down
-    // alike (six clicks end to end: the ratchet's pace, not the pitch's eight a second).
+    // The stick: a click at once, then the clicks' pace while it is held over, sideways and up / down
+    // alike (gesture audit G32: ui::kStickClicksPerSecond, eight a second times STICK SPEED's 75%: six. It was
+    // the ratchet's four, three at 75%, and the pitch's eight).
+    CHECK(ui::kStickClicksPerSecond == 8.f && ui::gStickSpeed == 0.75f);
     rig.app.session().setLaneFeel(0, kClickLane, 0, 0);
     rig.key(X, true);
     rig.frames(1);
     rig.stick(0, -1); // up
-    rig.frames(30);   // 0.48 s: the first click and one more (at eight a second: four)
-    CHECK(rig.kit().laneFeel[kClickLane].level == 25 && rig.kit().laneFeel[kClickLane].time == 0);
+    rig.frames(30);   // 0.48 s: the first click and two more (at the old four a second: one)
+    CHECK(rig.kit().laneFeel[kClickLane].level == 50 && rig.kit().laneFeel[kClickLane].time == 0);
     rig.stick(0, 0);
     rig.frames(2);
     rig.stick(1, 0); // right
     rig.frames(30);
-    CHECK(rig.kit().laneFeel[kClickLane].time == 25 && rig.kit().laneFeel[kClickLane].level == 25);
-    rig.frames(90);  // 1.92 s in all: 1 + 7 clicks, and it stops at the end
+    CHECK(rig.kit().laneFeel[kClickLane].time == 50 && rig.kit().laneFeel[kClickLane].level == 50);
+    rig.frames(90);  // 1.92 s in all: well past six clicks, and it stops at the end
     CHECK(rig.kit().laneFeel[kClickLane].time == 100);
     rig.stick(0, 0);
     rig.frames(2);
     rig.stick(0, 1); // down: one click back
     rig.frames(3);
-    CHECK(rig.kit().laneFeel[kClickLane].level == 10);
+    CHECK(rig.kit().laneFeel[kClickLane].level == 25);
     rig.stick(0, 0);
     rig.key(X, false);
     rig.frames(2);

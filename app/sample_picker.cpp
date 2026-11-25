@@ -146,7 +146,7 @@ void SamplePicker::open(std::vector<std::string> names, std::vector<std::string>
     deletePart_ = 0.f;
     r1Down_ = false;
     carried_.clear();
-    typing_ = false;
+    keys_.close();
     said_.clear();
     open_ = true;
 }
@@ -208,9 +208,6 @@ void SamplePicker::out() {
         if (rows_[i].kind == Kind::Folder && rows_[i].name == was) cursor_ = static_cast<int>(i);
     waiting_ = false; // on a folder: the lane keeps what it had
 }
-
-// Four rows of ten, as a track's name is typed on the SET page.
-const char* const SamplePicker::kKeys = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_ ";
 
 // The rows again, after the card changed. The cursor stays on the row it was on (or goes to the row
 // of key `onto`), else where it was in the column.
@@ -288,24 +285,14 @@ void SamplePicker::moved(const std::string& from, const std::string& to, const s
     }
 }
 
-void SamplePicker::moveKey(Button direction) {
-    const int rows = kKeyCount / kKeyColumns;
-    int col = key_ % kKeyColumns, row = key_ / kKeyColumns;
-    if (direction == Button::Left) col = (col + kKeyColumns - 1) % kKeyColumns;
-    if (direction == Button::Right) col = (col + 1) % kKeyColumns;
-    if (direction == Button::Up) row = (row + rows - 1) % rows;
-    if (direction == Button::Down) row = (row + 1) % rows;
-    key_ = row * kKeyColumns + col;
-}
-
 // The name typed is kept: the folder is made (in small letters, as the folders the program makes
 // are; every name is shown in capitals), and the cursor goes onto it.
 void SamplePicker::keepFolder() {
-    std::string name = typed_;
+    std::string name = keys_.typed();
     while (!name.empty() && name.back() == ' ') name.pop_back();
     for (char& c : name) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c);
     if (name.empty()) {
-        typing_ = false;
+        keys_.close();
         saved_ = 0.f;
         stickWas_ = false; // the keys' stick is not the rows': the next push starts over
         return;
@@ -316,7 +303,7 @@ void SamplePicker::keepFolder() {
         dirs_.push_back(whole);
         std::sort(dirs_.begin(), dirs_.end());
         index();
-        typing_ = false;
+        keys_.close();
         saved_ = 0.f;
         stickWas_ = false;
         refresh(rowKey({Kind::Folder, whole, 0}));
@@ -327,20 +314,20 @@ void SamplePicker::keepFolder() {
 }
 
 void SamplePicker::typeButton(Button b) {
-    if (isDirection(b)) {
-        moveKey(b);
-        repeating_ = b;
-        repeatAt_ = 0;
-    } else if (b == Button::A) {
-        const char c = kKeys[key_];
-        // No space first, and not two together.
-        const bool space = c == ' ';
-        if (static_cast<int>(typed_.size()) < kFolderNameLength && !(space && (typed_.empty() || typed_.back() == ' '))) typed_ += c;
-    } else if (b == Button::Y) {
-        if (!typed_.empty()) typed_.pop_back(); // the last letter goes
-    } else if (b == Button::B || b == Button::Start) {
-        keepFolder(); // B leaves keeping what is typed, as on the SET page; nothing typed: no folder is made
-    }
+    // B leaves keeping what is typed, as everywhere a name is typed; nothing typed: no folder is made.
+    if (keys_.press(b) != NameKeys::Asked::Nothing) keepFolder();
+}
+
+// As it was when the list opened (nothing to do if what is on is what was on), and the list closes.
+void SamplePicker::putBack() {
+    bDown_ = false;
+    deleting_ = refusing_ = false;
+    deletePart_ = 0.f;
+    waiting_ = false;
+    quiet();
+    if (on_ != original_ && jobs_.use) jobs_.use(original_);
+    if (jobs_.putBack) jobs_.putBack(original_); // (on the one it had too: put on again on the way, it was given the whole)
+    open_ = false;
 }
 
 int SamplePicker::step(Button b) const { return b == Button::Up ? -1 : b == Button::Down ? 1 : b == Button::L1 ? -kPage : b == Button::R1 ? kPage : 0; }
@@ -349,9 +336,18 @@ void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
     if (!open_) return;
     const Button b = event.button;
     const Row* row = under();
-    if (typing_) { // a name is being typed: every button is its
+    if (keys_.isOpen()) { // a name is being typed: every button is its
         if (event.down) typeButton(b);
-        else if (b == repeating_) repeating_ = Button::None;
+        else keys_.letGo(b);
+        return;
+    }
+    if (event.down && b != Button::B && bHolds_) bDown_ = false; // another button while B is held to delete: its let-go is no tap
+    // Nothing on the card: the list's words say Y catches a bar and R1 records. The list closes as B's tap
+    // closes it, and the screen that opened it does that.
+    if (event.down && nothing() && !r1Down_ && ((b == Button::Y && jobs_.catchBar) || (b == Button::R1 && jobs_.record))) {
+        const std::function<void()> job = b == Button::Y ? jobs_.catchBar : jobs_.record;
+        putBack();
+        job();
         return;
     }
     if (b == Button::R1) {
@@ -367,7 +363,7 @@ void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
             deletePart_ = 0.f;
             moveTo(cursor_ + kPage, playing, true);
             repeating_ = b; // held: page after page
-            repeatAt_ = 0;
+            repeat_.restart();
         } else if (r1Down_) {
             r1Down_ = false;
             if (carried_.empty()) moveTo(cursor_ + kPage, playing, true);
@@ -394,22 +390,22 @@ void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
     }
     if (b == Button::B) {
         // Held for a second on a recording: it is deleted, for good (hold B deletes for good on every
-        // screen). Let go sooner: a tap, which puts back what was there before the list was opened.
+        // screen). A tap puts back what was there before the list was opened; held there past kTapMs and
+        // let go sooner than the second, nothing happens. Where holding does nothing, B is always the tap.
         if (event.down) {
             bDown_ = true;
+            bSince_ = whenPressed(event, lastMs_);
             deleting_ = row && (row->kind == Kind::Recording || emptyFolder(*row));
             refusing_ = row && row->kind == Kind::Folder && !deleting_; // not empty: held, it says so (update)
+            bHolds_ = deleting_ || refusing_;
             deleteTimed_ = false;
             deletePart_ = 0.f;
-        } else if (bDown_) {
-            bDown_ = false;
+        } else if (bDown_ && (!bHolds_ || whenPressed(event, lastMs_) - bSince_ < kTapMs)) {
+            putBack(); // a tap (or a row where holding B does nothing): as it was
+        } else {
+            bDown_ = false; // held to delete, and let go before the bar was full: nothing happens (hold B's rule on every screen)
             deleting_ = refusing_ = false;
             deletePart_ = 0.f;
-            waiting_ = false;
-            // As it was. (Nothing to do if what is on is what was on.)
-            quiet();
-            if (on_ != original_ && jobs_.use) jobs_.use(original_);
-            open_ = false;
         }
         return;
     }
@@ -422,11 +418,11 @@ void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
     if (b == Button::Up || b == Button::Down) {
         moveTo(cursor_ + step(b), playing, true);
         repeating_ = b;
-        repeatAt_ = 0;
+        repeat_.restart();
     } else if (b == Button::L1) {
         moveTo(cursor_ + step(b), playing, true);
         repeating_ = b; // held: page after page
-        repeatAt_ = 0;
+        repeat_.restart();
     } else if (b == Button::Left) {
         out();
     } else if (b == Button::Right) {
@@ -435,9 +431,7 @@ void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
         if (row && row->kind == Kind::Folder) {
             into(playing);
         } else if (row && row->kind == Kind::NewFolder) {
-            typing_ = true;
-            typed_.clear();
-            key_ = 0;
+            keys_.open("", kFolderNameLength);
             typingIn_ = depth_ == 0 ? "" : here_;
             repeating_ = Button::None;
         } else if (row) {
@@ -476,25 +470,8 @@ void SamplePicker::update(const Input& input, Uint32 nowMs, bool playing) {
         }
     }
     if (!said_.empty() && nowMs >= saidUntil_) said_.clear();
-    if (typing_) {
-        // The stick moves over the keys, one at once and then steadily; a held D-pad direction runs.
-        const float sx = input.stickX(), sy = input.stickY();
-        const bool sideways = std::fabs(sx) > std::fabs(sy);
-        const float push = sideways ? sx : sy;
-        if (push == 0.f) {
-            saved_ = 0.f;
-            stickWas_ = false;
-        } else {
-            saved_ += stickWas_ ? std::fabs(push) * kKeysPerSecond * dt : 1.f;
-            stickWas_ = true;
-            for (; saved_ >= 1.f; saved_ -= 1.f) moveKey(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
-        }
-        if (repeating_ != Button::None && repeatAt_ == 0) {
-            repeatAt_ = nowMs + kListDelayMs;
-        } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-            repeatAt_ = nowMs + kListEveryMs;
-            moveKey(repeating_);
-        }
+    if (keys_.isOpen()) {
+        keys_.update(input, nowMs, dt);
         return;
     }
     // R1 held on a recording: after a moment it is carried. (Let go unseen: called off, nothing moves.)
@@ -565,21 +542,15 @@ void SamplePicker::update(const Input& input, Uint32 nowMs, bool playing) {
         stickWas_ = true;
         for (; saved_ >= 1.f; saved_ -= 1.f) moveTo(cursor_ + (y > 0.f ? 1 : -1), playing, false);
     }
-    if (repeating_ != Button::None && repeatAt_ == 0) {
-        repeatAt_ = nowMs + kListDelayMs;
-        repeatSince_ = nowMs;
-    } else if (repeating_ != Button::None && input.held(repeating_)) {
-        // The D-pad: the list's pace, then faster, then fastest. A shoulder: a page at the list's pace.
-        // Counted from when each was due, not from this frame: a pace faster than the frames is kept
-        // (several rows a frame), and one a little slower is not rounded up to a whole frame more.
+    // The D-pad: the list's pace, then faster, then fastest (ui.hpp's one exception). A shoulder: a page at the
+    // list's pace. Counted from when each was due, as every held key is (ui::Repeat).
+    if (repeating_ != Button::None && repeat_.at == 0) repeatSince_ = nowMs;
+    const auto every = [&] {
         const bool page = repeating_ == Button::L1 || repeating_ == Button::R1;
-        if (nowMs > repeatAt_ + 100) repeatAt_ = nowMs; // (the program was held up: no burst to catch up)
-        while (nowMs >= repeatAt_) {
-            const Uint32 held = repeatAt_ - repeatSince_;
-            repeatAt_ += page || held < kFasterAfterMs ? kListEveryMs : held < kFastestAfterMs ? kFasterEveryMs : kFastestEveryMs;
-            moveTo(cursor_ + step(repeating_), playing, false);
-        }
-    }
+        const Uint32 held = repeat_.at > repeatSince_ ? repeat_.at - repeatSince_ : 0;
+        return page || held < kFasterAfterMs ? kListEveryMs : held < kFastestAfterMs ? kFasterEveryMs : kFastestEveryMs;
+    };
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), kListDelayMs, every())) moveTo(cursor_ + step(repeating_), playing, false);
 }
 
 // One column's rows, from row `first`. `lit` is the row picked out (-1: none); `cursor`: this is
@@ -623,7 +594,7 @@ void SamplePicker::draw(SDL_Renderer* r, const Fonts& fonts) const {
     fill(r, 0, kTopBarH + 1, kScreenW, kScreenH - kTopBarH - kHintsH - 1, faded(kBg, 215));
     box(r, kX, kY, kW, kH, kPanel, kLine);
     char text[64];
-    if (typing_) {
+    if (keys_.isOpen()) {
         drawTyping(r, fonts);
         return;
     }
@@ -707,11 +678,13 @@ void SamplePicker::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hints(r, fonts, list, 3);
         return;
     }
-    // (On a recording L1 / R1's page gives its place to HOLD R1: the bar holds five.)
-    const bool carries = this->carries(row);
+    // (On a recording L1 / R1's page gives its place to HOLD R1: the bar holds five. With nothing on the card there
+    // is nothing to page through: Y and R1 are what the list's words say.)
+    const bool carries = this->carries(row), none = nothing();
     const Hint list[] = {{"A", !row ? nullptr : folder ? "open" : fresh ? "name it" : "keep it"}, {"B", "as it was"}, {flat() ? nullptr : row ? "LEFT / RIGHT" : "LEFT", row ? "out, in" : "out"},
-                         {row && !carries ? "L1 / R1" : nullptr, "page"}, {"HOLD R1", carries ? "carry" : nullptr}, {"HOLD B", recording || (folder && emptyFolder(*row)) ? "delete it" : nullptr}};
-    hints(r, fonts, list, 6);
+                         {row && !carries && !(none && jobs_.record) ? "L1 / R1" : nullptr, "page"}, {none && jobs_.catchBar ? "Y" : nullptr, "catch"}, {none && jobs_.record ? "R1" : nullptr, "record"},
+                         {"HOLD R1", carries ? "carry" : nullptr}, {"HOLD B", recording || (folder && emptyFolder(*row)) ? "delete it" : nullptr}};
+    hints(r, fonts, list, 8);
 }
 
 // The third column: what is on, its picture, how long it is and where the line has got to while it
@@ -758,31 +731,8 @@ void SamplePicker::drawPreview(SDL_Renderer* r, const Fonts& fonts, const Row* r
 
 // A new folder's name being typed: the keys a track's name is typed with, in the list's own panel.
 void SamplePicker::drawTyping(SDL_Renderer* r, const Fonts& fonts) const {
-    char text[32];
-    std::string title = said_.empty() ? "NEW FOLDER IN " + placeName(typingIn_.empty() ? 0 : 1, typingIn_) + ": ITS NAME" : said_;
-    const Font& head = fonts.within(&Fonts::small, title.c_str(), kScreenW - 80.f);
-    while (!title.empty() && head.width(title.c_str()) > kScreenW - 80.f) title.pop_back();
-    head.draw(r, 40.f, 46.f, title.c_str(), said_.empty() ? kDim : kText);
-    // What has been typed, with a mark where the next letter goes.
-    box(r, 40, 66, kScreenW - 80, 52, kPanel2, kTeal);
-    const float tx = 56.f, ty = 66.f + (52.f - fonts.large.capHeight()) / 2.f;
-    fonts.large.draw(r, tx, ty, typed_.c_str(), kText);
-    if (static_cast<int>(typed_.size()) < kFolderNameLength) fill(r, static_cast<int>(tx + fonts.large.width(typed_.c_str()) + (typed_.empty() ? 0 : 3)), 66 + 14, 2, 24, kTeal);
-    std::snprintf(text, sizeof text, "%d OF %d", static_cast<int>(typed_.size()), kFolderNameLength);
-    fonts.small.drawRight(r, kScreenW - 56.f, 66.f + (52.f - fonts.small.capHeight()) / 2.f, text, kDim);
-    const int kw = 52, kh = 52, gx = (kScreenW - kKeyColumns * kw) / 2, gy = 140;
-    for (int i = 0; i < kKeyCount; ++i) {
-        const int x = gx + (i % kKeyColumns) * kw, y = gy + (i / kKeyColumns) * kh;
-        const bool here = i == key_;
-        box(r, x + 2, y + 2, kw - 4, kh - 4, here ? kTeal : kPanel, here ? kTeal : kLine);
-        char one[8];
-        std::snprintf(one, sizeof one, "%s", kKeys[i] == ' ' ? "SPACE" : std::string(1, kKeys[i]).c_str());
-        const Font& font = kKeys[i] == ' ' ? fonts.within(&Fonts::small, one, kw - 4 - 6.f) : fonts.large; // ("SPACE" at XL is wider than its key: held at LARGE)
-        font.drawCentered(r, x + kw / 2.f, y + (kh - font.capHeight()) / 2.f, one, here ? kBg : kText);
-    }
-    const bool none = typed_.empty();
-    const Hint list[] = {{"A", "type"}, {"Y", none ? nullptr : "delete"}, {"B", none ? "leave" : "make it"}};
-    hints(r, fonts, list, 3);
+    const std::string title = said_.empty() ? "NEW FOLDER IN " + placeName(typingIn_.empty() ? 0 : 1, typingIn_) + ": ITS NAME" : said_;
+    keys_.draw(r, fonts, title, said_.empty() ? kDim : kText, nullptr, keys_.typed().empty() ? "leave" : "make it", nullptr);
 }
 
 } // namespace apotheca

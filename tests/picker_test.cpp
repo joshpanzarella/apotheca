@@ -196,7 +196,13 @@ void testMakingAFolder() {
         CHECK(list.typed().empty() && list.typing());
         rig.type("ABCDEFGHIJKLMNOP", &at);
         CHECK(list.typed() == "ABCDEFGHIJKL" && SamplePicker::kFolderNameLength == 12);
-        rig.tap(Y, 12);
+        // Y held deletes on at a list's pace, as wherever a name is typed (gesture audit G48): one at
+        // once, the rest in one hold.
+        rig.key(Y, true);
+        CHECK(list.typed() == "ABCDEFGHIJK");
+        rig.frames(90);
+        rig.key(Y, false);
+        CHECK(list.typed().empty() && list.typing());
         // The keys go round at their edges; the stick moves over them, and a held direction runs.
         rig.tap(B); // (leave, and come back: the first key again)
         rig.tap(A);
@@ -598,6 +604,215 @@ void testTheListByItself() {
     key(R1, false);
 }
 
+// B is a TAP only where holding it deletes (gesture audit G42): let go within kTapMs with nothing pressed meanwhile, the
+// list closes and what was on before goes back on. Held longer (a delete called off by letting go early), or with
+// another button pressed meanwhile, nothing happens: the list stays, on its row, with what is on. Where holding B does
+// nothing (the first row), B is the tap however it is let go, as it was. With nothing at all on the card, Y and
+// R1 close the list as the tap does, and catch a bar / record, as its words say; anywhere else they are as they were.
+void testBIsATapAndTheEmptyList() {
+    SamplePicker list;
+    Input input;
+    std::vector<std::string> used;
+    int removed = 0, caught = 0, recorded = 0;
+    SamplePicker::Jobs jobs;
+    jobs.use = [&](const std::string& name) { used.push_back(name); };
+    jobs.remove = [&](const std::string&) { ++removed; return true; };
+    jobs.catchBar = [&] { ++caught; };
+    jobs.record = [&] { ++recorded; };
+    Uint32 clock = 1000;
+    const auto key = [&](SDL_Keycode code, bool down) {
+        SDL_Event event = {};
+        event.type = down ? SDL_KEYDOWN : SDL_KEYUP;
+        event.key.keysym.sym = code;
+        ButtonEvent press;
+        if (input.handle(event, press)) list.onButton(press, true);
+    };
+    const auto frames = [&](int count) { for (int i = 0; i < count; ++i) list.update(input, clock += 16, true); };
+    const std::vector<std::string> names = {"take 1", "take 2", "take 3"}; // (no folders: one column)
+    const auto openOnTake2 = [&] {
+        list.open(names, {}, "take 1", "TITLE", "FIRST", jobs);
+        frames(1);
+        key(DOWN, true), key(DOWN, false);
+        frames(1);
+        CHECK(list.isOpen() && list.under() && list.under()->name == "take 2" && !used.empty() && used.back() == "take 2");
+        used.clear();
+    };
+    // A quick tap: what was on goes back on, and the list closes.
+    openOnTake2();
+    key(B, true);
+    frames(10);
+    key(B, false);
+    CHECK(!list.isOpen() && used.size() == 1 && used[0] == "take 1");
+    // Held past kTapMs, let go before the bar is full: nothing is deleted, nothing put back, the list stays on its row.
+    openOnTake2();
+    key(B, true);
+    frames(20);
+    CHECK(list.deletePart() > 0.2f);
+    key(B, false);
+    CHECK(list.isOpen() && used.empty() && list.deletePart() == 0.f && list.under()->name == "take 2");
+    frames(80);
+    CHECK(list.isOpen() && removed == 0 && list.count() == 4);
+    // The edge, by the clock: kTapMs after the press is no tap; a moment before it, a tap.
+    key(B, true);
+    list.update(input, clock += SamplePicker::kTapMs, true);
+    key(B, false);
+    CHECK(list.isOpen() && used.empty());
+    key(B, true);
+    list.update(input, clock += SamplePicker::kTapMs - 1, true);
+    key(B, false);
+    CHECK(!list.isOpen() && used.size() == 1 && used[0] == "take 1");
+    // Another button while B is down: its let-go is no tap, however quick (the bar was called off by it).
+    openOnTake2();
+    key(B, true);
+    key(UP, true), key(UP, false);
+    key(B, false);
+    CHECK(list.isOpen() && list.under()->name == "take 1" && removed == 0);
+    used.clear();
+    key(B, true);
+    key(X, true), key(X, false);
+    key(B, false);
+    CHECK(list.isOpen() && used.empty());
+    // ...and the next B, alone and quick, is a tap again.
+    key(B, true), key(B, false);
+    CHECK(!list.isOpen());
+    // On the first row holding B does nothing, so B is the tap however long, and with another button between.
+    openOnTake2();
+    key(UP, true), key(UP, false);
+    key(UP, true), key(UP, false);
+    CHECK(list.under() && list.under()->kind == Kind::First && !used.empty() && used.back().empty());
+    key(B, true);
+    frames(30);
+    key(B, false);
+    CHECK(!list.isOpen() && used.back() == "take 1");
+    openOnTake2();
+    key(UP, true), key(UP, false);
+    key(UP, true), key(UP, false);
+    key(B, true);
+    key(X, true), key(X, false);
+    key(B, false);
+    CHECK(!list.isOpen() && used.back() == "take 1");
+    // A hold that deleted: its let-go is no tap either (as it was).
+    openOnTake2();
+    key(B, true);
+    frames(70);
+    CHECK(removed == 1);
+    key(B, false);
+    CHECK(list.isOpen());
+
+    // Nothing on the card: Y closes the list as the tap does, then catches; R1 the same, then records.
+    used.clear();
+    caught = recorded = 0;
+    jobs.makeFolder = [&](const std::string&) { return Job::Done; }; // (+ NEW FOLDER: a second row to move to)
+    list.open({}, {}, "gone", "TITLE", "FIRST", jobs);
+    frames(1);
+    CHECK(list.count() == 2);
+    key(DOWN, true), key(DOWN, false);
+    key(UP, true), key(UP, false); // the first row goes on: "" is on, not "gone"
+    CHECK(!used.empty() && used.back().empty());
+    key(Y, true);
+    CHECK(!list.isOpen() && caught == 1 && recorded == 0 && used.back() == "gone"); // put back, then caught
+    key(Y, false);
+    list.open({}, {}, "", "TITLE", "FIRST", jobs);
+    frames(1);
+    key(R1, true);
+    CHECK(!list.isOpen() && recorded == 1 && caught == 1);
+    key(R1, false);
+    // Anything on the card, a recording or only a folder: Y does nothing and R1 pages, as before.
+    list.open(names, {}, "take 1", "TITLE", "FIRST", jobs);
+    frames(1);
+    key(Y, true), key(Y, false);
+    key(R1, true), key(R1, false);
+    CHECK(list.isOpen() && caught == 1 && recorded == 1 && list.cursor() == list.count() - 1);
+    list.open({}, {"kicks"}, "", "TITLE", "FIRST", jobs);
+    frames(1);
+    key(Y, true), key(Y, false);
+    key(R1, true), key(R1, false);
+    CHECK(list.isOpen() && caught == 1 && recorded == 1);
+    // A list given no way to catch or record: Y nothing, R1 a page, though the card is empty.
+    jobs.catchBar = nullptr;
+    jobs.record = nullptr;
+    list.open({}, {}, "", "TITLE", "FIRST", jobs);
+    frames(1);
+    key(Y, true), key(Y, false);
+    key(R1, true), key(R1, false);
+    CHECK(list.isOpen() && list.cursor() == 1 && caught == 1 && recorded == 1);
+}
+
+// The kit's list with nothing on the card: its hints say Y catch and R1 record, and they do what the lane's Y and R1
+// do (nothing played: NOTHING TO CATCH; no input here: NO INPUT FOUND), the list closed. Anywhere else, the page.
+void testTheEmptyListCatchesAndRecords() {
+    Card card;
+    Rig rig(card);
+    Canvas canvas, want;
+    CHECK(canvas.ok && want.ok);
+    if (!canvas.ok || !want.ok) return;
+    const auto barIs = [&](const ui::Hint* hints, int count) {
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        want.clear();
+        ui::hints(want.r, *want.fonts, hints, count);
+        const int y = ui::kScreenH - ui::kHintsH;
+        return canvas.part(0, y, ui::kScreenW, ui::kHintsH) == want.part(0, y, ui::kScreenW, ui::kHintsH);
+    };
+    rig.tap(A);
+    CHECK(rig.list().isOpen() && rig.on(Kind::First, ""));
+    const ui::Hint empty[] = {{"A", "keep it"}, {"B", "as it was"}, {"Y", "catch"}, {"R1", "record"}};
+    CHECK(barIs(empty, 4) && rig.hintsFit(canvas));
+    rig.tap(Y);
+    rig.frames(1);
+    CHECK(!rig.list().isOpen() && rig.app.kit().said() == "NOTHING TO CATCH: PLAY SOMETHING FIRST");
+    rig.tap(A);
+    CHECK(rig.list().isOpen());
+    rig.tap(R1);
+    rig.frames(1);
+    CHECK(!rig.list().isOpen() && rig.app.kit().said().find("NO INPUT FOUND") == 0);
+    // The sampler's list (A on SOUND) and CLOUD's (A on RECORDING): the same, each with its own screen's words.
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Sampler) && session.addTrack(TrackKind::Cloud));
+    rig.app.project().track = 1;
+    rig.frames(2);
+    rig.app.sampler().goTo(0);
+    rig.tap(A);
+    SamplePicker& sampled = rig.app.sampler().picker();
+    CHECK(sampled.isOpen() && barIs(empty, 4));
+    rig.tap(Y);
+    rig.frames(1);
+    CHECK(!sampled.isOpen() && rig.app.sampler().said() == "NOTHING TO CATCH: PLAY SOMETHING FIRST");
+    rig.tap(A);
+    CHECK(sampled.isOpen());
+    rig.tap(R1);
+    rig.frames(1);
+    CHECK(!sampled.isOpen() && rig.app.sampler().said().find("NO INPUT FOUND") == 0);
+    rig.app.project().track = 2;
+    rig.frames(2);
+    rig.app.cloud().goTo(1, 0);
+    rig.tap(A);
+    SamplePicker& clouded = rig.app.cloud().picker();
+    CHECK(clouded.isOpen() && barIs(empty, 4));
+    rig.tap(Y);
+    rig.frames(1);
+    CHECK(!clouded.isOpen() && rig.app.cloud().said() == "NOTHING TO CATCH: PLAY SOMETHING FIRST");
+    rig.tap(A);
+    CHECK(clouded.isOpen());
+    rig.tap(R1);
+    rig.frames(1);
+    CHECK(!clouded.isOpen() && rig.app.cloud().said().find("NO INPUT FOUND") == 0);
+    // A recording on the card: the page, as before.
+    card.wav("one", 2000);
+    Rig full(card);
+    full.tap(A);
+    const ui::Hint some[] = {{"A", "keep it"}, {"B", "as it was"}, {"L1 / R1", "page"}};
+    CHECK(full.list().isOpen() && full.on(Kind::First, ""));
+    canvas.clear();
+    full.app.draw(canvas.r, *canvas.fonts);
+    want.clear();
+    ui::hints(want.r, *want.fonts, some, 3);
+    const int y = ui::kScreenH - ui::kHintsH;
+    CHECK(canvas.part(0, y, ui::kScreenW, ui::kHintsH) == want.part(0, y, ui::kScreenW, ui::kHintsH));
+    full.tap(Y);
+    CHECK(full.list().isOpen() && full.app.kit().said().empty());
+}
+
 // Hold B on an EMPTY folder deletes it. Nothing else of a folder is ever deleted.
 void testDeletingAnEmptyFolder() {
     Card card;
@@ -615,15 +830,19 @@ void testDeletingAnEmptyFolder() {
         rig.frames(frames);
     };
     // A folder with a recording in it, one with a folder in it, and UNSORTED: nothing fills. A tap is B's tap.
-    // Held (kHoldSaysMs): the top line says why nothing is deleted, and letting go is then no tap: the list stays.
+    // Held past kTapMs, letting go is no tap: the list stays (gesture audit G42; it was a tap until kHoldSaysMs).
+    // Held (kHoldSaysMs): the top line says why nothing is deleted.
     for (const char* name : {"kicks", "drums", ""}) {
         CHECK(rig.goTo(Kind::Folder, name));
-        hold(20);
+        hold(10);
         CHECK(list.isOpen() && list.deletePart() == 0.f && list.said().empty() && SamplePicker::kHoldSaysMs == 400);
         rig.key(B, false);
         CHECK(!list.isOpen() && session.sampleFolders().size() == 5);
         rig.tap(A);
         CHECK(rig.goTo(Kind::Folder, name));
+        hold(20);
+        rig.key(B, false);
+        CHECK(list.isOpen() && list.said().empty() && rig.on(Kind::Folder, name, name[0] == 'd' ? 0 : 1));
         hold(24);
         CHECK(list.said().empty());
         rig.frames(56);
@@ -632,14 +851,14 @@ void testDeletingAnEmptyFolder() {
         CHECK(list.isOpen() && session.sampleFolders().size() == 5 && rig.on(Kind::Folder, name, name[0] == 'd' ? 0 : 1));
         rig.frames(SamplePicker::kSaidMs / 16 + 2); // the words go
         CHECK(list.said().empty());
-        // Another button, or the stick, before it has said so calls it off: nothing is said, and B let go is the tap it would have been.
+        // Another button, or the stick, before it has said so calls it off: nothing is said, and B let go is no tap
+        // (G42: it was the tap it would have been).
         hold(10);
         rig.tap(X); // (one that does not move the cursor)
         rig.frames(60);
         CHECK(list.said().empty());
         rig.key(B, false);
-        CHECK(!list.isOpen());
-        rig.tap(A);
+        CHECK(list.isOpen());
         CHECK(rig.goTo(Kind::Folder, name));
         hold(10);
         rig.key(STICK_DOWN, true);
@@ -649,16 +868,15 @@ void testDeletingAnEmptyFolder() {
         rig.frames(60);
         CHECK(list.said().empty());
         rig.key(B, false);
-        CHECK(!list.isOpen());
-        rig.tap(A);
+        CHECK(list.isOpen() && list.depth() == 0);
     }
-    // The empty one: the bar fills. Let go before the second is up: a tap, and it is still there.
+    // The empty one: the bar fills. Let go before the second is up: nothing happens (G42: it was a tap), it is still
+    // there and the list stays on it.
     CHECK(rig.goTo(Kind::Folder, "void"));
     hold(30);
     CHECK(list.isOpen() && list.deletePart() > 0.3f && list.deletePart() < 0.6f);
     rig.key(B, false);
-    CHECK(!list.isOpen() && exists(card.samples + "/void"));
-    rig.tap(A);
+    CHECK(list.isOpen() && exists(card.samples + "/void") && rig.on(Kind::Folder, "void") && list.deletePart() == 0.f);
     // Another button calls it off.
     CHECK(rig.goTo(Kind::Folder, "void"));
     hold(30);
@@ -666,7 +884,7 @@ void testDeletingAnEmptyFolder() {
     rig.frames(60);
     CHECK(list.deletePart() == 0.f && exists(card.samples + "/void") && rig.on(Kind::Folder, "kicks", 1));
     rig.key(B, false);
-    rig.tap(A);
+    CHECK(list.isOpen());
     // Held for the second: it is gone, from the card and the list; letting go is no tap. The cursor is on the row that took its place.
     CHECK(rig.goTo(Kind::Folder, "void"));
     hold(62);
@@ -908,7 +1126,7 @@ void testTheGuards() {
     key(B, false, false);
     frames(90);
     CHECK(removed == 0 && list.deletePart() == 0.f && list.count() == 6);
-    key(B, true, false); // (and its let-go, seen, with no press the list saw before the hold ended... it saw the first: a tap)
+    key(B, true, false); // (and its let-go, seen: long after the press the list saw, so no tap; the list is opened again below)
     key(B, false);
     // R1 pressed while B's bar fills calls the delete off: the recording is carried, never deleted.
     list.open(names, {"kicks", "void"}, "kicks/808", "TITLE", "FIRST", jobs);
@@ -1448,6 +1666,8 @@ int main(int argc, char** argv) {
     testTheHintsFit();
     testBigMoves();
     testTheGuards();
+    testBIsATapAndTheEmptyList();
+    testTheEmptyListCatchesAndRecords();
     testAMoveThatCouldNotBeSaved();
     testSpreadOverFrames();
     testTheRest();

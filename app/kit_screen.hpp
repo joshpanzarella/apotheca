@@ -12,9 +12,10 @@
 //           quickly; on a lane with a synth voice, its VOICE view (below). Or
 //           hold A + up / down: from the built-in drum UP each recording, one at
 //           a time, and DOWN the twelve synth models (KICK ... NOISE, each at its
-//           usual knobs). B: the drum back.
+//           usual knobs). B: the drum back. B with A still held: the lane as it was when A went down
+//           (Session::keepSound, as the KIT stop's), heard; A then does nothing more until pressed again.
 //   FIT     hold A + up / down: OFF, 1, 2, 4, 8, 16 (one bar), 32, 64 steps.
-//           B: off.
+//           A tap of A on a recording: the bars it fills at the tempo (laneFitFor). B: off.
 //   CHOKE   hold A + up / down: NONE, 1, 2. A hit on a lane in a group cuts
 //           the other lanes of that group (the closed hat cuts the open one:
 //           a new kit has its two hats in 1). B: none.
@@ -22,13 +23,15 @@
 //   KIT     up from lane 1 (easywins batch 7, kit presets): the kit's own stop, where SOUND's heading
 //           stands. It names the kit the track's is (a built-in, one of your own, or YOUR OWN).
 //           hold A + up / down: the kit after / before in the list (the built-in kits, then your
-//           own), put on at once; B with A still held: the kit as it was when A went down.
+//           own), put on at once; B with A still held: the kit as it was when A went down, heard.
 //           Y: SAVE the kit as it is now as KIT 1, KIT 2... Hold B a second on one of your own:
 //           delete its file (the track keeps its sound).
 //   Y       CATCH: the last bar the song played, all of it as it was
 //           heard, becomes a recording on this lane, fitted to one bar.
 //   R1      RECORD from a USB microphone or interface onto this lane: once
-//           to start (it waits for sound), again to stop. Ten seconds at most.
+//           to start (it waits for sound), again to stop. Twenty seconds at most.
+//           While a take waits or runs, R1 on any lane or column stops it, and on the KIT stop
+//           (not in the EDIT and VOICE views, where the recording line is not shown).
 //   L1      SLICES: the PATTERN tab, zoomed into this lane's recording cut
 //           into slices, for chopping a break (pattern_screen.hpp)
 //   X       hear the lane, for as long as X is held (to the recording's end);
@@ -41,7 +44,7 @@
 //   the stick or D-pad moves among the boxes
 //   hold A + up / down: turns the box (the stick through its range in about a second, by the square
 //           of the push; the D-pad a millisecond of the file, half a dB, a fade's stop, a semitone, a cent)
-//   B       the box back to its usual value; on a box already there, back to the kit.
+//   B       the box back to its usual value; on a box already there, or straight after Y, back to the kit (G16).
 //           HELD: every edit of the lane back to none, as the bar fills (undo brings them back)
 //   Y       on START or END: TRIM SILENCE (START and END at the first and last sound). Elsewhere
 //           NORMALIZE: GAIN so the part played peaks at -1 dB
@@ -55,7 +58,7 @@
 //           the square of its push). On MODEL: the model before / after, at its usual knobs.
 //           Hold A + left / right on MODEL: the model's named voice before / after (drum_voices.hpp:
 //           CLASSIC, then the built-in data's), written in brass after the model while the dials are its
-//   B       the box to its usual value; on a box already there, or on MODEL, back to the kit.
+//   B       the box to its usual value; on a box already there, on MODEL, or straight after Y, back to the kit.
 //           HELD: every knob to the model's usual, as the bar fills (undo brings them back)
 //   Y       ROLL: the knobs shown rolled, each inside the middle of its range (25 to 75); the model stays
 //   L1 / R1 the synth lane before / after (the ends stop)
@@ -80,6 +83,11 @@ namespace apotheca {
 constexpr int kLaneFits[] = {0, 1, 2, 4, 8, 16, 32, 64};
 constexpr int kLaneFitCount = sizeof kLaneFits / sizeof kLaneFits[0];
 void laneFitText(int steps, char* text, std::size_t size); // "OFF", "4 STEPS", "1 BAR", "2 BARS"
+// A tap of A on FIT (gesture audit G45): the steps a sound `seconds` long fills at `tempo` (a step is
+// 15 / tempo seconds), rounded to FIT's stops in a meter of `meter` steps a bar: 1, 2, 4 or 8 steps
+// (those under a bar), or 1, 2 or 4 bars; the nearest by ratio, since a stretch is one (24 steps in
+// 4/4 are 2 bars, not 1). 0 where any of the three is not above 0.
+int laneFitFor(float seconds, float tempo, int meter);
 const char* laneChokeText(int group);                      // "NONE", "1", "2"
 
 class KitScreen : public Screen {
@@ -97,6 +105,7 @@ public:
     void goTo(int lane, int column) { lane_ = lane; column_ = column; }
     int cursorLane() const { return lane_; }
     int cursorColumn() const { return column_; }
+    bool fitsByTap() const; // a recording on the lane, found: a tap of A on FIT fits it to its bars (G45)
     const std::string& said() const { return said_; }
     const ui::Playhead& playhead() const { return head_; }
     enum { kSound, kFit, kChoke, kEdit, kColumns }; // (kEdit: the sound's picture)
@@ -111,13 +120,13 @@ public:
     // The EDIT view. Laid out as the sampler's page: the sound's box at the top (its picture as tall
     // as the box allows), then two rows of four boxes down to the SIGNAL strip.
     bool editing() const { return editing_; }
-    void openEdit(int row = 0) { session_.readyLane(project_.track, lane_); editing_ = true; editRow_ = row < 0 ? 0 : (row >= kEditRows ? kEditRows - 1 : row); }
+    void openEdit(int row = 0) { session_.readyLane(project_.track, lane_); editing_ = true, yJust_ = false; editRow_ = row < 0 ? 0 : (row >= kEditRows ? kEditRows - 1 : row); }
     int editRow() const { return editRow_; }
     float deletePart() const { return deletePart_; } // the hold-B bar, 0..1
     static constexpr int kEditY = 36, kEditH = 136, kEditWaveY = kEditY + 48, kEditWaveH = kEditH - 56;
     static constexpr int kEditRowY = kEditY + kEditH + 10, kEditRowGap = 6, kEditRowH = (ui::kAboveScope - kEditRowY - kEditRowGap) / 2;
     static constexpr int kEditBoxX = 8, kEditBoxStep = 157, kEditBoxW = 153;
-    static constexpr Uint32 kDeleteHoldMs = 1000;
+    static constexpr Uint32 kDeleteHoldMs = ui::kHoldUndoneMs; // EDIT's and VOICE's every box back: undo brings them back (G29)
     static constexpr const char* kDeletingWords = "PUTTING EVERY EDIT BACK TO NONE"; // in the heading while the bar fills
     // A box turned is heard ONCE, when the turning is done (owner, 2026-11-17: heard at every step it
     // "sounds odd and you can't really hear what has changed"): A let go, the D-pad and the stick at
@@ -138,8 +147,12 @@ public:
     bool onKit() const { return onKit_; }
     void goToKit() { onKit_ = true, lane_ = 0; }
     float kitDeletePart() const { return kitDeletePart_; }
-    static constexpr Uint32 kKitDeleteMs = 1000;
+    static constexpr Uint32 kKitDeleteMs = ui::kHoldForGoodMs; // (a kit's file: for good)
     static constexpr const char* kKitDeletingWords = "DELETING THE KIT: CANNOT BE UNDONE";
+    // A hold of B that never saw its let go (L2 / R2 turned the tab, SELECT went to SONG): called off, so the
+    // bar does not come back full (App::update, while another screen is up): the kit's, EDIT's and VOICE's
+    // and the list of recordings'.
+    void callOffDelete();
 
 private:
     TrackData& trk() { return project_.current(); }
@@ -166,15 +179,19 @@ private:
     int lane_ = 0, column_ = kSound;
     // The KIT stop (up from lane 1).
     bool onKit_ = false;
-    std::unique_ptr<TrackData> kitBefore_; // the kit as it was when A went down on the stop
     bool kitDeleting_ = false, kitDeleteTimed_ = false;
     Uint32 kitDeleteSince_ = 0;
     float kitDeletePart_ = 0.f;
     void stepKit(int by);
     bool holding_ = false; // A is held
     bool stepped_ = false; // ...and something was changed with it, so letting go is not a tap
+    void putBack(const Input& input); // B with A held on SOUND or the KIT stop: the sound as A went down (G12)
+    bool stickWait_ = false; // ...the stick still pushed then: it moves nothing until it comes back to the middle
+    void fitToItsBars();
     SamplePicker picker_;
     void openPicker();
+    void catchBar(); // Y: the last bar the song played, onto this lane (the list of recordings with nothing in it asks too)
+    void record();   // R1: record from the input onto this lane, or stop
     unsigned sampleFilesSeen_ = 0; // sampleFiles() the picker's lists were read at: behind, it reads them again
     std::vector<std::string> names_; // the recordings there were when A went down
     unsigned namesSeen_ = 0;         // sampleFiles() names_ was read at: behind, the next step reads it again
@@ -186,13 +203,20 @@ private:
     bool wasRecording_ = false;
     float saved_ = 0.f;
     bool stickWas_ = false;
+    ui::StickClimb climb_; // a full push held on the cursor climbs (G07)
     Button repeating_ = Button::None;
-    Uint32 repeatAt_ = 0, lastMs_ = 0;
+    ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
+    Uint32 lastMs_ = 0;
     bool editing_ = false;
     int editRow_ = 0;
     float turned_ = 0.f;        // the stick's part-turned box
     bool reversePushed_ = false; // the stick is pushed on REVERSE: it clicks once a push
     bool deleting_ = false, deleteTimed_ = false, bBack_ = false; // B held; bBack_: its tap goes back to the kit
+    // Y (EDIT's trim or normalize, VOICE's roll) was the last press, on this box: a B straight after it goes back
+    // to the kit and keeps what Y set (gesture audit G16, 2026-11-25: it put the box under the cursor back).
+    bool yJust_ = false;
+    int yBox_ = 0;
+    bool bLeavesAfterY(int box) const { return yJust_ && yBox_ == box; }
     Uint32 deleteSince_ = 0, changedAt_ = 0;
     bool hearOwed_ = false; // a box was turned and its sound is not heard yet
     int hears_ = 0;

@@ -24,7 +24,6 @@ constexpr int kFirstRoll = 4;         // hits a tap of Y gives an empty lane
 constexpr int kFullRoll = 8;          // ...and a full one (half the steps)
 constexpr float kDiceHitsPerSecond = 24.f; // stick fully over
 constexpr Uint32 kHearStartEveryMs = 90;  // a sliding start is played this often
-constexpr float kPitchClicksPerSecond = 8.f, kRatchetClicksPerSecond = 4.f; // X held, the stick or D-pad held over
 
 
 float clampTo(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
@@ -157,6 +156,29 @@ void PatternScreen::feelToAll() {
         session_.setLaneFeel(project_.track, lane, feel.time, feel.level);
         session_.setLaneSwing(project_.track, lane, swing);
     }
+}
+
+// With X held, B empties what X shows (gesture audit G11, 2026-11-24). On a hit: its pitch, ratchet,
+// reverse, cut and THROW. The hit stays, its level, nudge, chance and start as they were (plain B still
+// deletes it, once X is let go), and it is heard plain. On a lane's name: its HUMAN TIME, HUMAN LEVEL and
+// SWING back to OFF, that lane only (X + A from a lane at OFF does every lane). One step of undo of its
+// own; with nothing to empty, nothing happens and there is no step.
+void PatternScreen::fxEmpty() {
+    if (feelHeld_) {
+        if (onTempo_ || onBars_ || step_ != kLaneName) return;
+        const LaneFeel feel = trk().laneFeel[lane_];
+        if (feel.time == 0 && feel.level == 0 && trk().laneSwing[lane_] == 0) return;
+        session_.beginOwnUndoStep();
+        session_.setLaneFeel(project_.track, lane_, 0, 0);
+        session_.setLaneSwing(project_.track, lane_, 0);
+        session_.endOwnUndoStep();
+        return;
+    }
+    if (!hitHere() || !pat().fx[lane_][step_].any()) return;
+    session_.beginOwnUndoStep();
+    setFx(lane_, step_, StepFx());
+    session_.endOwnUndoStep();
+    if (!project_.playing) hearHit();
 }
 
 // ...L1 and R1: one click of its SWING, less and more, through the six amounts; it stops at each end.
@@ -331,11 +353,14 @@ int PatternScreen::sliceOf(int step) const {
 }
 
 // Up and down in the slice view. On a hit: the next slice, or the one before,
-// round and round, heard as it goes. On the lane's name: whether a hit plays
-// one slice and stops, or runs on.
+// round and round, heard as it goes. On the lane's name: UP sets ONE SLICE (a hit plays
+// its slice and stops), DOWN sets RUNS ON (gesture audit G09: either flipped it, so a
+// held key or the stick, which run on, left it where luck had it). Set, not flipped, a
+// run sets it again and changes nothing; already so, nothing is sent.
 void PatternScreen::sliceUpDown(int by) {
     if (step_ == kLaneName) {
-        session_.setLaneOneSlice(project_.track, lane_, !trk().laneOneSlice[lane_]);
+        const bool one = by > 0;
+        if (trk().laneOneSlice[lane_] != one) session_.setLaneOneSlice(project_.track, lane_, one);
         return;
     }
     if (!hitHere()) return;
@@ -538,7 +563,7 @@ void PatternScreen::moveCursor(Button direction) {
         return;
     }
     if (onBars_) {
-        // BARS sits above the tempo; down goes back to it, up comes round to the bottom.
+        // BARS sits above the tempo, and round below the bottom lane: down goes to the tempo, up to the bottom lane.
         // Left and right show the bar before or after, round the ends.
         if (direction == Button::Down) onBars_ = false, onTempo_ = true;
         if (direction == Button::Up) onBars_ = false, lane_ = kDrumLanes - 1;
@@ -551,11 +576,16 @@ void PatternScreen::moveCursor(Button direction) {
         if (direction == Button::Up) onTempo_ = false, onBars_ = true;
         return;
     }
+    // Up from the top lane is the tempo, then BARS; down from the bottom lane is BARS, then the tempo (G35:
+    // it skipped them, so the column was a ring one way only).
     if (direction == Button::Up) {
         if (lane_ == 0) onTempo_ = true;
         else --lane_;
     }
-    if (direction == Button::Down) moveCursorTo(lane_ + 1, step_);
+    if (direction == Button::Down) {
+        if (lane_ == kDrumLanes - 1) onBars_ = true;
+        else ++lane_;
+    }
     // Sideways: the lane's name, then the bar's sixteen steps. Off the right
     // of step 16 is the next bar of the cell; after the last bar, the name
     // again. The name is always one left of step 1, whichever bar is showing.
@@ -727,6 +757,10 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         return;
     }
+    if ((fxHeld_ || feelHeld_) && b == Button::B) {
+        if (event.down) fxEmpty(); // what X shows, emptied. (B's own delete waits until X is let go.)
+        return;
+    }
     if (feelHeld_ && b == Button::A) {
         // This lane's feel onto every lane. (A's own jobs wait until X is let go, and this press of A
         // does none of them even then: `aSpent_`. It was pressed for the feel.)
@@ -762,6 +796,9 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
     }
     if (b == Button::X) {
+        // X let go with the stick still pushed for the effects or the feel: the stick moves nothing until it
+        // has come back, as on FX and DEVICE (gesture audit G14), so the cursor does not jump off.
+        if (!event.down && (fxHeld_ || feelHeld_)) stickWait_ = input.stickX() != 0.f || input.stickY() != 0.f;
         // Hears what is under the cursor, as everywhere. On a hit it is also a hold: the stick then sets its step effects.
         fxHeld_ = event.down && hitHere() && !shaping_ && !dicing_ && paint_ == Paint::None;
         // On a lane's name it is the same hold for the lane's FEEL, and the drum is heard as ever
@@ -795,11 +832,10 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (b == Button::A) {
-        if (event.down && !onTempo_ && !onBars_) {
-            if (step_ == kLaneName) audition(lane_, kNewHitLevel);
-            else if (!hitHere()) placeHit(1.f);
-        }
-        if (event.down && onTempo_) session_.tapTempo(lastMs_); // TAP TEMPO: A in time (held, with a direction, it still turns)
+        // On a lane's name A is silent (gesture audit G33: it sounded the drum each time A was held for the
+        // lane's volume); X hears it. On an empty step it places a hit.
+        if (event.down && !onTempo_ && !onBars_ && step_ != kLaneName && !hitHere()) placeHit(1.f);
+        if (event.down && onTempo_) session_.tapTempo(whenPressed(event, lastMs_)); // TAP TEMPO: A in time, by the press's own time (held, with a direction, it still turns)
         shaping_ = event.down;
         axis_ = Axis::None; // a new hold is a new choice of job for the stick
         if (!event.down && !dicing_) turning_ = Turning::Nothing;
@@ -844,14 +880,9 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
 
     if (isDirection(b)) {
-        if (onBars_ && (b == Button::Left || b == Button::Right)) moveBar(b == Button::Right ? 1 : -1);
-        else if (feelHeld_) feelTurn(b);
-        else if (fxHeld_) fxTurn(b);
-        else if (input.held(Button::Y) && !ySpent_) nudgeExact(b, true);
-        else if (input.held(Button::A) && !aSpent_) nudgeExact(b, false);
-        else dragCursor(b);
+        direction(b, input);
         repeating_ = b;
-        repeatAt_ = 0; // update() starts the wait, on its own clock
+        repeat_.restart(); // update() starts the wait, on its own clock
         return;
     }
 
@@ -883,7 +914,7 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
     dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number // a stalled frame must not fling anything
     lastMs_ = nowMs;
 
-    const float x = input.stickX(), y = input.stickY();
+    float x = input.stickX(), y = input.stickY();
     if (project_.bar >= trk().bars[project_.scene]) project_.bar = 0; // the cell was shortened, or it is another cell
     {
         // The view follows the bar playing, unless the player is at the controls (follow_bar.hpp).
@@ -892,6 +923,13 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
         const int at = follow_.step(here, here ? project_.playBar % bars : -1, input.anyHeld() || x != 0.f || y != 0.f, nowMs);
         if (at >= 0) project_.bar = at;
     }
+    // The hit went from under X (an undo) with the stick pushed for it: the same wait as X let go (onButton).
+    if (fxLastFrame_ && !fxHeld_ && !feelHeld_ && input.held(Button::X) && (x != 0.f || y != 0.f)) stickWait_ = true;
+    fxLastFrame_ = fxHeld_ || feelHeld_;
+    if (stickWait_ && x == 0.f && y == 0.f) stickWait_ = false;
+    if (stickWait_) x = y = 0.f;
+    // A stick move with L1 held first is a use of L1, as a button is: its let go opens no slices (gesture audit G31).
+    if (l1First_ && (x != 0.f || y != 0.f)) l1Used_ = true;
     // Another screen (the kit's) asked for a lane's slices.
     if (session_.wantSlices >= 0) {
         moveCursorTo(session_.wantSlices, step_ < 0 ? 0 : step_);
@@ -906,7 +944,7 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
         // X is held on a hit: the stick clicks its step effects. One way per push (up / down is the
         // pitch, sideways the ratchet); a click at once, then a steady run while it is held over.
         // On a lane's name it clicks the lane's feel the same way (sideways HUMAN TIME, up / down
-        // HUMAN LEVEL), at the ratchet's pace: six clicks end to end.
+        // HUMAN LEVEL): six clicks end to end. All at ui::kStickClicksPerSecond (gesture audit G32).
         if (x == 0.f && y == 0.f) {
             axis_ = Axis::None;
             fxSaved_ = 0.f;
@@ -916,7 +954,7 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
             if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
             const float push = axis_ == Axis::UpDown ? -y : x;
             if (push != 0.f) {
-                fxSaved_ += fxWas_ ? std::fabs(push) * (axis_ == Axis::UpDown && !feelHeld_ ? kPitchClicksPerSecond : kRatchetClicksPerSecond) * dt : 1.f;
+                fxSaved_ += fxWas_ ? std::fabs(push) * ui::kStickClicksPerSecond * dt : 1.f; // (G32: the clicks' pace, every way)
                 fxWas_ = true;
                 for (; fxSaved_ >= 1.f; fxSaved_ -= 1.f) {
                     const Button way = axis_ == Axis::UpDown ? (push > 0.f ? Button::Up : Button::Down) : (push > 0.f ? Button::Right : Button::Left);
@@ -951,37 +989,36 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
         axis_ = Axis::None;
         // Nothing held: the stick runs the cursor. One move at once, then at
         // a speed set by how far it is pushed.
+        // A full push held climbs (G07).
+        const float climbX = climbX_.times(x, nowMs), climbY = climbY_.times(y, nowMs);
         if (x == 0.f) stickX_ = 0.f, stickWasX_ = false;
         else {
-            stickX_ += stickWasX_ ? std::fabs(x) * feel.stickCellsPerSecond * dt : 1.f;
+            stickX_ += stickWasX_ ? std::fabs(x) * feel.stickCellsPerSecond * climbX * dt : 1.f;
             stickWasX_ = true;
             for (; stickX_ >= 1.f; stickX_ -= 1.f) dragCursor(x > 0.f ? Button::Right : Button::Left);
         }
         if (y == 0.f) stickY_ = 0.f, stickWasY_ = false;
         else {
-            stickY_ += stickWasY_ ? std::fabs(y) * feel.stickCellsPerSecond * 0.5f * dt : 1.f; // eight lanes: half speed is plenty
+            stickY_ += stickWasY_ ? std::fabs(y) * feel.stickCellsPerSecond * 0.5f * climbY * dt : 1.f; // eight lanes: half speed is plenty
             stickWasY_ = true;
             for (; stickY_ >= 1.f; stickY_ -= 1.f) dragCursor(y > 0.f ? Button::Down : Button::Up);
         }
     }
 
-    // A held D-pad direction repeats.
-    if (repeating_ != Button::None && repeatAt_ == 0) {
-        repeatAt_ = nowMs + feel.repeatDelayMs;
-    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-        repeatAt_ = nowMs + feel.repeatEveryMs;
-        if (feelHeld_) {
-            repeatAt_ = nowMs + static_cast<Uint32>(1000.f / kRatchetClicksPerSecond);
-            feelTurn(repeating_);
-        } else if (fxHeld_) {
-            // Clicks, not a slide: slower than the cursor runs.
-            const bool vertical = repeating_ == Button::Up || repeating_ == Button::Down;
-            repeatAt_ = nowMs + static_cast<Uint32>(1000.f / (vertical ? kPitchClicksPerSecond : kRatchetClicksPerSecond));
-            fxTurn(repeating_);
-        } else if (input.held(Button::Y)) nudgeExact(repeating_, true);
-        else if (input.held(Button::A)) nudgeExact(repeating_, false);
-        else dragCursor(repeating_);
-    }
+    // A held D-pad direction repeats what its press did: the cursor's pace, and with X held the clicks' (clicks,
+    // not a slide: slower than the cursor runs).
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), feelHeld_ || fxHeld_ ? Pace::Click : Pace::Cursor)) direction(repeating_, input);
+}
+
+// A press of the D-pad, and each of its held repeats: the same job (gesture audit G21: on BARS, A or Y held +
+// LEFT / RIGHT moved the bar on the press, and the repeat went to nudgeExact, which on BARS takes only up / down).
+void PatternScreen::direction(Button b, const Input& input) {
+    if (onBars_ && (b == Button::Left || b == Button::Right)) moveBar(b == Button::Right ? 1 : -1);
+    else if (feelHeld_) feelTurn(b);
+    else if (fxHeld_) fxTurn(b);
+    else if (input.held(Button::Y) && !ySpent_) nudgeExact(b, true);
+    else if (input.held(Button::A) && !aSpent_) nudgeExact(b, false);
+    else dragCursor(b);
 }
 
 // ---- drawing ---------------------------------------------------------------------

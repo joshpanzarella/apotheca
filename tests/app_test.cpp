@@ -11,6 +11,7 @@
 #include <stdlib.h>
 
 #include <cmath>
+#include <functional>
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -80,6 +81,17 @@ struct Rig {
     }
     Project& project() { return app.project(); }
     View view() { return app.session().view; }
+    // The stick pushed part of the way (-1..1 as the handheld sends it, before the dead zone), as a gamepad does.
+    void stick(float x, float y) {
+        for (int axis = 0; axis < 2; ++axis) {
+            SDL_Event event = {};
+            event.type = SDL_CONTROLLERAXISMOTION;
+            event.caxis.axis = static_cast<Uint8>(axis == 0 ? SDL_CONTROLLER_AXIS_LEFTX : SDL_CONTROLLER_AXIS_LEFTY);
+            event.caxis.value = static_cast<Sint16>((axis == 0 ? x : y) * 32767.f);
+            ButtonEvent press;
+            if (input.handle(event, press)) app.onButton(press, input);
+        }
+    }
 };
 
 // Keyboard stand-ins (see app/input.cpp).
@@ -114,7 +126,9 @@ void testTabs() {
     rig.tap(L2);
     CHECK(rig.view() == View::Song);
     rig.tap(L2);
-    CHECK(rig.view() == View::Song); // the row of tabs has ends
+    CHECK(rig.view() == View::Settings); // the row of tabs goes round (G35): SONG and SET are one press apart
+    rig.tap(R2);
+    CHECK(rig.view() == View::Song); // ...both ways
     rig.tap(R2, 2);
     CHECK(rig.view() == View::Device);
     rig.tap(R2);
@@ -124,6 +138,8 @@ void testTabs() {
     rig.tap(R2);
     CHECK(rig.view() == View::Settings);
     rig.tap(R2);
+    CHECK(rig.view() == View::Song);
+    rig.tap(L2);
     CHECK(rig.view() == View::Settings);
     // Not while shaping something: a slip of the finger must not change screens.
     rig.tap(L2, 4);
@@ -356,13 +372,9 @@ void testCopyingABar() {
     rig.app.song().moveCursorTo(0, 0);
     rig.tap(R1); // copy
     rig.app.song().moveCursorTo(1, 0);
-    rig.tap(R1); // paste: the copy is spent
-    rig.app.song().moveCursorTo(0, 0);
-    rig.tap(R1); // copy again
+    rig.tap(R1); // paste: the copy stays (G23)
     rig.app.song().moveCursorTo(2, 0);
-    rig.tap(R1); // paste
-    rig.app.song().moveCursorTo(0, 0);
-    rig.tap(R1); // copy the drum cell again
+    rig.tap(R1); // paste again, with no copy between
     rig.app.song().moveCursorTo(2, 1);
     rig.tap(R1); // onto the synth: a drum bar cannot go there
     CHECK(!rig.project().tracks[1].notes[2][0].empty()); // and it did not wipe the synth's bar
@@ -429,9 +441,7 @@ void testTheCellCopyStaysPut() {
     rig.tap(DOWN, 3); // moving on pastes nothing more
     CHECK(!rig.project().tracks[0].drums[1][0].empty());
     for (int scene = 2; scene <= 4; ++scene) CHECK(rig.project().tracks[0].drums[scene][0].empty());
-    // R1 on a repeat count or on + TRACK leaves the cell copy alone.
-    rig.app.song().moveCursorTo(0, 0);
-    rig.tap(R1); // copy again: the paste before spent it
+    // R1 on a repeat count or on + TRACK leaves the cell copy alone (the paste before kept it: G23).
     rig.app.song().moveCursorTo(0, -1);
     rig.tap(R1); // that copies the scene, another clipboard
     rig.tap(RIGHT, 2); // onto + TRACK
@@ -1582,6 +1592,260 @@ void testDeletingATrack() {
     CHECK(rig.listen(4000) > 0.01f);
 }
 
+// Hold B on a track deletes THAT track, the one where B went down (gesture audit G02: it deleted whichever
+// the cursor was on when the bar filled, and the cursor still moved). A move (the D-pad, the stick) or any
+// other press calls the delete off, as on FX. A tap of B empties the cell on its LET GO, so a delete called
+// off or let go of once its bar shows changes nothing at all. Before the bar shows, B was a tap however
+// it ends (its let go, a move, another press; not A), so a quick B overlapping the next press still empties.
+void testTheTrackHoldStaysOnItsTrack() {
+    Rig rig;
+    Session& session = rig.app.session();
+    SongScreen& song = rig.app.song();
+    rig.app.drums().setStep(0, 0, 1.f);
+    session.addTrack(TrackKind::Phazed);
+    session.addTrack(TrackKind::Jx3p);
+    for (int t = 1; t <= 2; ++t) rig.project().tracks[t].notes[0][0].notes[0] = NoteEvent{0, 60, 1.f, 0.f, 0.8f};
+    const auto full = [&](int t) { return t == 0 ? !rig.project().tracks[0].drums[0][0].empty() : rig.project().tracks[t].notes[0][0].notes[0].velocity > 0.f; };
+    const auto allThere = [&] { return rig.project().trackCount() == 3 && full(0) && full(1) && full(2); };
+    session.view = View::Song;
+    rig.frames(2);
+    CHECK(allThere());
+
+    // Held on track 1, RIGHT pressed with the bar nearly full: called off, and track 2 is not deleted in its
+    // place however long B stays down.
+    song.moveCursorTo(0, 0);
+    rig.key(B, true);
+    rig.frames(112);
+    CHECK(song.trackDeletePart() > 0.8f && allThere());
+    rig.tap(RIGHT);
+    CHECK(song.trackDeletePart() == 0.f && song.cursorColumn() == 1);
+    rig.frames(160);
+    CHECK(allThere() && song.trackDeletePart() == 0.f);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(allThere()); // ...and letting go empties nothing
+    // The stick, the same: it moves the cursor with no press.
+    rig.key(B, true);
+    rig.frames(60);
+    CHECK(song.trackDeletePart() > 0.f);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(160);
+    CHECK(allThere() && song.cursorColumn() == 2 && song.trackDeletePart() == 0.f);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(allThere());
+    // ...down the track's own column too: it is the place B went down on, not only the track.
+    song.moveCursorTo(0, 2);
+    rig.key(B, true);
+    rig.frames(60);
+    rig.key(STICK_DOWN, true);
+    rig.frames(1);
+    rig.key(STICK_DOWN, false);
+    rig.frames(160);
+    CHECK(allThere() && song.cursorColumn() == 2 && song.cursorScene() == 1);
+    rig.key(B, false);
+    rig.frames(1);
+    // ...and along the heads.
+    song.moveCursorTo(0, 1);
+    rig.tap(UP);
+    rig.key(B, true);
+    rig.frames(60);
+    rig.key(STICK_LEFT, true);
+    rig.frames(1);
+    rig.key(STICK_LEFT, false);
+    rig.frames(160);
+    CHECK(allThere() && song.cursorOnHead() && song.cursorColumn() == 0);
+    rig.key(B, false);
+    rig.frames(1);
+    // A tapped on a head while B is held: called off too, and that A is no tap (no list of instruments).
+    rig.key(B, true);
+    rig.frames(40);
+    rig.tap(A);
+    rig.frames(160);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(allThere() && !song.choosing());
+    // Any other press: L1 (which does nothing on a track), START.
+    for (SDL_Keycode other : {L1, START}) {
+        song.moveCursorTo(0, 2);
+        rig.key(B, true);
+        rig.frames(60);
+        rig.tap(other);
+        CHECK(song.trackDeletePart() == 0.f);
+        rig.frames(160);
+        rig.key(B, false);
+        rig.frames(1);
+        CHECK(allThere());
+    }
+    CHECK(rig.project().playing);
+    rig.tap(START);
+    // Moved off and let go before the screen's next frame: B was a tap, so the cell left is emptied, and only
+    // that one (review of G02: a quick B overlapping the next move lost its empty).
+    song.moveCursorTo(0, 0);
+    rig.key(B, true);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, false);
+    rig.key(B, false);
+    CHECK(song.cursorColumn() == 1 && !full(0) && full(1) && full(2) && rig.project().trackCount() == 3);
+    rig.frames(1);
+    CHECK(session.undo() && allThere()); // (one step of undo, as a tap's)
+    // ...and off the first track onto its scene's REPEATS box (column -1), whose own B is read on the let go too.
+    song.moveCursorTo(0, 0);
+    rig.key(B, true);
+    rig.key(STICK_LEFT, true);
+    rig.frames(1);
+    rig.key(STICK_LEFT, false);
+    rig.key(B, false);
+    CHECK(song.cursorColumn() == -1 && !full(0) && full(1) && rig.project().repeats[0] == 1);
+    rig.frames(1);
+    CHECK(session.undo() && allThere());
+    // B, DOWN, B, DOWN down a column with two thumbs: the D-pad goes down before B comes up. The cell B went
+    // down on is emptied on that press, the cell come to is kept.
+    song.moveCursorTo(0, 1);
+    rig.key(B, true);
+    rig.frames(5);
+    rig.key(RIGHT, true);
+    CHECK(song.cursorColumn() == 2 && !full(1) && full(0) && full(2));
+    rig.key(B, false);
+    rig.key(RIGHT, false);
+    rig.frames(1);
+    CHECK(!full(1) && full(0) && full(2) && rig.project().trackCount() == 3);
+    CHECK(session.undo() && allThere());
+    // ...the stick, the same, B kept down: the move is seen a frame later, and the cell is emptied then.
+    song.moveCursorTo(0, 1);
+    rig.key(B, true);
+    rig.frames(5);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(2);
+    CHECK(song.cursorColumn() == 2 && !full(1) && full(0) && full(2) && song.trackDeletePart() == 0.f);
+    rig.frames(160);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(!full(1) && full(2) && rig.project().trackCount() == 3);
+    CHECK(session.undo() && allThere());
+    // ...and another press (L1 does nothing on a cell).
+    song.moveCursorTo(0, 1);
+    rig.key(B, true);
+    rig.frames(5);
+    rig.tap(L1);
+    CHECK(!full(1) && full(0) && full(2));
+    rig.frames(160);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(rig.project().trackCount() == 3);
+    CHECK(session.undo() && allThere());
+    // ...and a tab turned (a press the screen never sees) and turned back.
+    song.moveCursorTo(0, 1);
+    rig.key(B, true);
+    rig.frames(5);
+    rig.tap(R2);
+    rig.frames(2);
+    rig.key(B, false);
+    rig.tap(L2);
+    rig.frames(2);
+    CHECK(rig.view() == View::Song && !full(1) && full(0) && full(2) && rig.project().trackCount() == 3);
+    CHECK(session.undo() && allThere());
+    // On a head a tap of B empties nothing: B down on track 2's head, the stick DOWN off it (no press), B let
+    // go before half a second. The cell under the head is kept.
+    song.moveCursorTo(0, 1);
+    rig.tap(UP);
+    CHECK(song.cursorOnHead());
+    rig.key(B, true);
+    rig.key(STICK_DOWN, true);
+    rig.frames(1);
+    rig.key(STICK_DOWN, false);
+    CHECK(!song.cursorOnHead() && song.cursorColumn() == 1 && song.cursorScene() == 0);
+    rig.key(B, false); // (before the screen's next frame: the let go itself must know it went down on a head)
+    rig.frames(1);
+    CHECK(allThere());
+    // ...and kept held, the stick off a head calls the delete off: the track stays.
+    song.moveCursorTo(0, 1);
+    rig.tap(UP);
+    rig.key(B, true);
+    rig.key(STICK_DOWN, true);
+    rig.frames(1);
+    rig.key(STICK_DOWN, false);
+    rig.frames(160);
+    CHECK(allThere() && song.trackDeletePart() == 0.f && !song.cursorOnHead());
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(allThere());
+    // Held past the half second the bar waits, then let go: nothing, the cell neither.
+    song.moveCursorTo(0, 2);
+    rig.key(B, true);
+    rig.frames(40);
+    CHECK(song.trackDeletePart() > 0.f);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(allThere());
+    // A tap: the press alone changes nothing, the let go empties the cell, and only that.
+    song.moveCursorTo(0, 1);
+    rig.key(B, true);
+    CHECK(allThere());
+    rig.frames(5);
+    rig.key(B, false);
+    CHECK(!full(1) && full(0) && full(2) && rig.project().trackCount() == 3);
+    // B held and left alone still deletes the track it went down on.
+    song.moveCursorTo(0, 2);
+    rig.key(B, true);
+    rig.frames(130);
+    rig.key(B, false);
+    CHECK(rig.project().trackCount() == 2 && full(0) && rig.project().tracks[1].kind == TrackKind::Phazed);
+    // A tab turned and turned back with B held: the tabs are a press the screen never sees, and the delete
+    // is called off while another screen is up. Coming back, nothing is deleted.
+    song.moveCursorTo(0, 1);
+    rig.key(B, true);
+    rig.frames(60);
+    rig.tap(R2);
+    rig.frames(200);
+    rig.tap(L2);
+    rig.frames(200);
+    CHECK(rig.view() == View::Song && rig.project().trackCount() == 2 && song.trackDeletePart() == 0.f);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(rig.project().trackCount() == 2 && full(0));
+}
+
+// START plays and stops with SONG's lists open too, as on every screen (gesture audit G39; the list of
+// recordings already did). With SELECT held it does not: SELECT + START quits.
+void testStartWithTheSongListsOpen() {
+    Rig rig;
+    markScenes(rig, 3);
+    SongScreen& song = rig.app.song();
+    rig.tap(L2);
+    rig.tap(DOWN); // scene 2
+    rig.tap(SELECT); // the list of songs
+    CHECK(song.listingSongs());
+    rig.tap(START);
+    CHECK(rig.project().playing && song.listingSongs() && sceneHeard(rig) == 1); // the song, from the cursor's scene
+    rig.tap(START);
+    CHECK(!rig.project().playing && song.listingSongs());
+    rig.key(SELECT, true);
+    rig.tap(START);
+    rig.key(SELECT, false);
+    CHECK(!rig.project().playing && song.listingSongs());
+    rig.tap(B);
+    CHECK(!song.listingSongs());
+    // The list of instruments (A on + TRACK).
+    rig.listen(20000);
+    song.moveCursorTo(2, rig.project().trackCount());
+    rig.tap(A);
+    CHECK(song.choosing());
+    rig.tap(START);
+    CHECK(rig.project().playing && song.choosing() && sceneHeard(rig) == 2);
+    rig.tap(START);
+    CHECK(!rig.project().playing && song.choosing());
+    rig.key(SELECT, true);
+    rig.tap(START);
+    rig.key(SELECT, false);
+    CHECK(!rig.project().playing && song.choosing() && rig.project().trackCount() == 1);
+}
+
 void testStepsInAScene() {
     Rig rig;
     Session& session = rig.app.session();
@@ -1881,6 +2145,18 @@ void testBouncing() {
     CHECK(!session.bouncing() && wavsIn().size() == before);
     for (const std::string& n : wavsIn()) CHECK(read(n).left.size() >= body + kAfter); // every file there is whole
     CHECK(wavsIn().size() <= before + 1 && filesEnding(folder, ".wav.part").empty());
+    // An EACH TRACK cut short, its first track whole and the second under way: nothing of it is kept,
+    // the whole one neither (it was a part of the stems, never padded to their one length).
+    {
+        const std::size_t had = wavsIn().size();
+        sleep(1);
+        CHECK(session.startBounce(Session::Bounce::EachTrack));
+        while (session.bouncing() && session.bounceProgress() <= 0.55f) usleep(200);
+        CHECK(session.bouncing() && session.bounceProgress() > 0.5f);
+        session.cancelBounce();
+        CHECK(!session.bouncing() && session.bounceFiles() == 0 && session.bounceLast().empty());
+        CHECK(wavsIn().size() == had && filesEnding(folder, ".wav.part").empty());
+    }
     // Whole files are never taken for half-written ones: every bounce made is still there after one more starts.
     const std::size_t whole = wavsIn().size();
     rig.project().repeats[0] = 1;
@@ -2482,7 +2758,8 @@ void testTheHelpCardDrawsSel() {
         return canvas.part(190, top - 3, 408, 17) == plain.part(190, top - 3, 408, 17);
     };
     CHECK(says(0, "hear it (SONG: solo). Held: a step's effects, a knob's MOD")); // (SONG: owner, 2026-11-15)
-    CHECK(says(3, "delete, empty, or go back") && !says(0, "delete, empty, or go back")); // (the check can tell)
+    CHECK(says(3, "delete, empty, or go back. X held: empty the effects") && !says(0, "delete, empty, or go back. X held: empty the effects")); // (the check can tell)
+    CHECK(!says(3, "delete, empty, or go back")); // (X held + B: on the card, as no strip has room for its chip)
     for (int top : tops)
         for (Uint32 px : canvas.part(583, top - 3, 15, 17)) CHECK(px == Canvas::colour(ui::kPanel));
 }
@@ -2688,7 +2965,43 @@ void testTheHelpCard() {
     CHECK(!other.app.helpShowing() && other.view() == View::Device); // having shown it, letting go is not a tap
     other.tap(SELECT); // a quick tap still is
     CHECK(other.view() == View::Song);
-    rig.frames(1); // back to a handheld with MENU, for the tests after this one
+    // SELECT held with another button is a combo, not the card (G38): SEL + B, B, B undoing shows each
+    // UNDONE in the box the card would cover, however long SELECT stays down.
+    other.app.session().view = View::Device;
+    other.frames(1);
+    other.key(SELECT, true);
+    other.frames(5);
+    other.tap(B);
+    CHECK(std::string(other.app.undoSaid()).find("UNDO") != std::string::npos);
+    other.frames(60);
+    CHECK(!other.app.helpShowing());
+    other.tap(B);
+    other.frames(60);
+    CHECK(!other.app.helpShowing() && std::string(other.app.undoSaid()).find("UNDO") != std::string::npos);
+    other.key(SELECT, false);
+    other.frames(1);
+    CHECK(!other.app.helpShowing() && other.view() == View::Device); // (used: no tap either)
+    // Held by itself, the card; another button then puts it away until SELECT is let go.
+    other.key(SELECT, true);
+    other.frames(27);
+    CHECK(other.app.helpShowing());
+    other.tap(UP); // SEL + UP: a beat a minute faster, and the card goes so the screen is seen
+    other.frames(1);
+    CHECK(!other.app.helpShowing() && other.project().tempo == 121.f);
+    other.frames(60);
+    CHECK(!other.app.helpShowing());
+    other.key(SELECT, false);
+    other.frames(1);
+    other.key(SELECT, true); // a new hold: the card again
+    other.frames(27);
+    CHECK(other.app.helpShowing());
+    other.key(SELECT, false);
+    other.frames(1);
+    CHECK(!other.app.helpShowing() && other.view() == View::Device);
+    rig.frames(1); // back to a handheld with MENU, for the tests after this one; but it is in the button test,
+    CHECK(rig.app.settings().testing() && ui::gHelpHint[0] == 0); // ...where the card does not come up, so the bar does not offer it
+    rig.app.session().view = View::Pattern;
+    rig.frames(1);
     CHECK(std::string(ui::gHelpHint) == "MENU: HELP");
 }
 
@@ -3154,6 +3467,138 @@ void testAQmodSongOpensOnFm6() {
     CHECK(again.find("track fm6") != std::string::npos && again.find("qmod") == std::string::npos);
 }
 
+// SET acts on A's let go on BOUNCE and TRACK NAME, and only if nothing else went down while A was held
+// (G15: hold A + RIGHT, the habit of every other screen, started a bounce on the press). Hold B a second
+// on a bounce under way stops it, nothing kept.
+void testSetActsOnTheLetGo() {
+    const std::string folder = tempFolder("setbounce");
+    const auto wavs = [&] { return filesEnding(folder, ".wav").size() + filesEnding(folder, ".mid").size(); };
+    Rig rig;
+    Session& session = rig.app.session();
+    session.useBounceFolder(folder);
+    // A long song: 24 scenes of a 16-times bar at the slowest tempo, a kick on each beat (about 38 minutes).
+    for (int step = 0; step < kSteps; step += 4) rig.app.drums().setStep(0, step, 1.f);
+    rig.project().repeats[0] = kMaxRepeats;
+    for (int i = 0; i < 23; ++i) CHECK(session.nextScene(i) == i + 1);
+    for (int i = 0; i < 24; ++i) rig.project().repeats[i] = kMaxRepeats;
+    session.setTempo(kMinTempo);
+    session.view = View::Settings;
+    SettingsScreen& setup = rig.app.settings();
+    setup.goTo(SettingsScreen::kBounce);
+    rig.frames(2);
+    // Hold A + RIGHT: RIGHT picks EACH TRACK, and the let go starts nothing.
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    rig.frames(3);
+    rig.key(A, false);
+    rig.frames(2);
+    CHECK(!session.bouncing() && wavs() == 0);
+    // Hold A and the stick sideways: the same.
+    rig.key(A, true);
+    rig.key(STICK_LEFT, true);
+    rig.frames(1);
+    rig.key(STICK_LEFT, false);
+    rig.frames(1);
+    rig.key(A, false);
+    rig.frames(2);
+    CHECK(!session.bouncing() && wavs() == 0);
+    // Hold A, any other button (B, X): no tap either.
+    rig.key(A, true);
+    rig.tap(X);
+    rig.key(A, false);
+    CHECK(!session.bouncing());
+    // A down here, carried to another row and let go there: nothing.
+    rig.key(A, true);
+    setup.goTo(SettingsScreen::kTrackName);
+    rig.key(A, false);
+    CHECK(!session.bouncing() && !setup.typing());
+    setup.goTo(SettingsScreen::kBounce);
+    // A tapped: the song, on the let go.
+    rig.key(A, true);
+    rig.frames(3);
+    CHECK(!session.bouncing());
+    rig.key(A, false);
+    CHECK(session.bouncing());
+    // Hold B a second: stopped, nothing kept. Most of a second, or another button with it, is not enough.
+    rig.key(B, true);
+    rig.frames(50);
+    CHECK(session.bouncing() && setup.stopPart() > 0.7f);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(session.bouncing() && setup.stopPart() == 0.f);
+    rig.key(B, true);
+    rig.frames(30);
+    rig.tap(X); // any other press calls it off
+    rig.frames(40);
+    CHECK(session.bouncing() && setup.stopPart() == 0.f);
+    rig.key(B, false);
+    rig.key(B, true);
+    rig.frames(30);
+    rig.tap(DOWN); // ...and the cursor off the row
+    rig.frames(40);
+    CHECK(session.bouncing() && setup.stopPart() == 0.f && setup.cursorRow() == SettingsScreen::kClick);
+    rig.key(B, false);
+    setup.goTo(SettingsScreen::kBounce);
+    {
+        Canvas canvas; // its hint says how
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(ui::gHintsOver == 0.f);
+    }
+    rig.key(B, true);
+    rig.frames(61);
+    CHECK(session.bouncing());
+    rig.frames(4);
+    // Told to stop and not waited for (review of G15: the screen joined the bounce's thread, and froze while it
+    // loaded the song); it stops within a block, nothing kept.
+    CHECK(session.bounceStopping() || !session.bouncing());
+    CHECK(std::string(rig.app.undoSaid()) == SettingsScreen::kBounceStoppedWords);
+    session.finishBounce();
+    CHECK(!session.bouncing() && !session.bounceStopping() && session.bounceFiles() == 0 && wavs() == 0 && filesEnding(folder, ".wav.part").empty());
+    rig.key(B, false);
+    rig.frames(2);
+    // Until it has stopped it is still under way (pretended here: no thread, so it never ends by itself). A starts
+    // nothing, B has nothing more to stop, and closing Apotheca (cancelBounce) waits for it and ends it.
+    session.pretendBounce(0.37f, -1.f);
+    rig.key(B, true);
+    rig.frames(65);
+    CHECK(session.bouncing() && session.bounceStopping() && setup.stopPart() == 0.f);
+    rig.key(B, false);
+    rig.frames(1);
+    rig.key(B, true);
+    rig.frames(30);
+    CHECK(setup.stopPart() == 0.f && session.bounceStopping());
+    rig.key(B, false);
+    rig.tap(A);
+    rig.frames(2);
+    CHECK(session.bounceStopping() && wavs() == 0);
+    session.cancelBounce();
+    CHECK(!session.bouncing() && !session.bounceStopping() && session.bounceFiles() == 0);
+    // B with no bounce under way does nothing.
+    rig.tap(B);
+    CHECK(!session.bouncing() && rig.view() == View::Settings);
+
+    // TRACK NAME: hold A + RIGHT is the next name from the list, and no keys.
+    setup.goTo(SettingsScreen::kTrackName);
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    rig.key(A, false);
+    CHECK(!setup.typing() && std::string(rig.project().tracks[0].name) == kTrackNames[1]);
+    rig.key(A, true);
+    CHECK(!setup.typing()); // (not on the press)
+    rig.key(A, false);
+    CHECK(setup.typing() && setup.typed() == kTrackNames[1]);
+    rig.tap(B);
+    CHECK(!setup.typing());
+    // TEMPO keeps its press: tap tempo is A in time.
+    setup.goTo(SettingsScreen::kTempo);
+    rig.frames(120);
+    rig.tap(A);
+    rig.frames(30);
+    rig.key(A, true);
+    CHECK(std::string(rig.app.undoSaid()).find("TAPPED") == 0); // the second tap's tempo, on its press
+    rig.key(A, false);
+}
+
 void testTypingATrackName() {
     Rig rig;
     rig.app.session().view = View::Settings;
@@ -3485,6 +3930,82 @@ void testSelectGoesToTheSongScreen() {
     CHECK(rig.view() == View::Device);
 }
 
+// settings.txt and volume.txt (G43): never written for a value that is what the card has (a held RIGHT
+// at an end of THEME wrote a file and two fsyncs nine times a second), and otherwise once what they
+// would say has stood still a second, and on the way out (keepSettingsNow; the Session's end too).
+void testSettingsWaitToStandStill() {
+    const std::string folder = tempFolder("keep");
+    const std::string settings = folder + "/settings.txt", volume = folder + "/volume.txt";
+    const auto there = [](const std::string& path) { struct stat st; return stat(path.c_str(), &st) == 0; };
+    std::string kept;
+    {
+        Rig rig;
+        Session& session = rig.app.session();
+        session.useProgramFolder(folder);
+        session.loadVolume(0.4f);
+        session.loadSettings();
+        rig.frames(2);
+        // What it is already: nothing written, however often.
+        for (int i = 0; i < 20; ++i) {
+            session.setTheme(session.theme());
+            session.setVolume(0.4f);
+            CHECK(!session.settingsOwed()); // (nothing owed: no file, and no waiting either)
+            rig.frames(7);
+        }
+        rig.frames(100);
+        CHECK(!there(settings) && !there(volume) && !session.settingsOwed());
+        // A held run (THEME, nine a second): nothing on the card until it has stood still a second.
+        session.view = View::Settings;
+        rig.app.settings().goTo(SettingsScreen::kTheme);
+        rig.key(RIGHT, true);
+        rig.frames(60); // (about five steps, and on to the end)
+        CHECK(!there(settings) && session.settingsOwed());
+        rig.key(RIGHT, false);
+        // The last repeat (at the end, still a change asked for) was due 200 + 6 x 110 ms after the first frame,
+        // and came on the frame 880 ms after the press: a second after it is 920 ms after the let go.
+        rig.frames(57);
+        CHECK(!there(settings));
+        rig.frames(8);
+        CHECK(readTextFile(settings, kept) && kept.find("theme " + std::to_string(session.theme()) + "\n") != std::string::npos && !session.settingsOwed());
+        // Held on at the end: what the card has already. Nothing more is written.
+        std::remove(settings.c_str());
+        rig.key(RIGHT, true);
+        rig.frames(60);
+        rig.key(RIGHT, false);
+        rig.frames(100);
+        CHECK(!there(settings) && !session.settingsOwed());
+        // Changed, and back again before it was written: nothing.
+        session.setTheme(0);
+        rig.frames(10);
+        session.setTheme(Session::kThemeCount - 1);
+        rig.frames(100);
+        CHECK(!there(settings));
+        // The volume the same way (SEL + R1, louder).
+        rig.key(SELECT, true);
+        rig.tap(R1);
+        rig.tap(R1);
+        rig.key(SELECT, false);
+        rig.frames(30);
+        CHECK(!there(volume) && near(session.volume(), 0.6f));
+        rig.frames(40);
+        CHECK(readTextFile(volume, kept) && kept == "60\n");
+        std::remove(volume.c_str());
+        rig.key(SELECT, true);
+        rig.tap(R1);
+        rig.tap(L1); // (back to 60: what the card had)
+        rig.key(SELECT, false);
+        rig.frames(100);
+        CHECK(!there(volume));
+        // On the way out: written at once (main.cpp), and by the Session's end too.
+        session.setVolume(0.9f);
+        session.keepSettingsNow();
+        CHECK(readTextFile(volume, kept) && kept == "90\n");
+        session.setOctavesShown(3);
+        CHECK(!there(settings));
+    }
+    CHECK(readTextFile(settings, kept) && kept.find("octaves 3\n") != std::string::npos);
+}
+
 void testTheSetupScreen() {
     const std::string folder = tempFolder("setup");
     const float stickBefore = ui::gStickSpeed;
@@ -3494,16 +4015,20 @@ void testTheSetupScreen() {
         session.useProgramFolder(folder);
         session.loadSettings(); // nothing kept yet: as built
         CHECK(session.octavesShown() == 2 && near(session.stickSpeed(), stickBefore));
-        // The last tab, one past MOD; the row of tabs still has an end.
+        // The last tab, one past MOD; R2 there goes round to SONG (G35), L2 back.
         session.view = View::Mods;
         rig.tap(R2);
         CHECK(rig.view() == View::Settings);
         rig.tap(R2);
+        CHECK(rig.view() == View::Song);
+        rig.tap(L2);
         CHECK(rig.view() == View::Settings);
         SettingsScreen& setup = rig.app.settings();
         CHECK(setup.cursorRow() == SettingsScreen::kTempo);
         rig.tap(UP);
-        CHECK(setup.cursorRow() == SettingsScreen::kTempo); // the list has ends too
+        CHECK(setup.cursorRow() == SettingsScreen::kControls); // a press at an end goes round (G35)...
+        rig.tap(DOWN);
+        CHECK(setup.cursorRow() == SettingsScreen::kTempo); // ...both ways
         // TEMPO
         rig.tap(RIGHT, 3);
         rig.tap(LEFT);
@@ -3866,6 +4391,89 @@ void testThePianoRollZooms() {
     CHECK(session.octavesShown() == 3);
 }
 
+// B on a setting's row on SET gives its usual value (gesture audit G17, 2026-11-25: B did nothing there), as B
+// does on an effect's dial or a MOD. The SONG rows are the song's: B leaves them (BOUNCE's B is its stop). The bar
+// says "B default" on a setting's row, and fits at XL.
+void testBOnASettingIsItsUsual() {
+    const float stickWas = ui::gStickSpeed;
+    ui::gStickSpeed = ui::kStickSpeedAsBuilt; // (the tests before set it as they need)
+    Rig rig;
+    Session& session = rig.app.session();
+    SettingsScreen& set = rig.app.settings();
+    session.view = View::Settings;
+    rig.frames(1);
+    struct Row { int row; std::function<int()> now; int usual; };
+    const std::vector<Row> rows = {
+        {SettingsScreen::kClick, [&] { return session.click(); }, Session::kClickOff},
+        {SettingsScreen::kCountIn, [&] { return session.countIn() ? 1 : 0; }, 0},
+        {SettingsScreen::kMutes, [&] { return session.mutes(); }, Session::kMutesAtOnce},
+        {SettingsScreen::kMidi, [&] { return session.midiRecording() ? 1 : 0; }, 0},
+        {SettingsScreen::kTextSize, [&] { return session.textSize(); }, Session::kTextSizeAsBuilt},
+        {SettingsScreen::kTheme, [&] { return session.theme(); }, Session::kThemeAsBuilt},
+        {SettingsScreen::kOctaves, [&] { return session.octavesShown(); }, Session::kOctavesAsBuilt},
+        {SettingsScreen::kVolume, [&] { return static_cast<int>(std::lround(session.volume() * 100.f)); }, 100},
+        {SettingsScreen::kBrightness, [&] { return session.brightness(); }, kBrightUsual},
+        {SettingsScreen::kLight, [&] { return session.stickLight(); }, kRingOn},
+        {SettingsScreen::kLightColour, [&] { return session.lightColour(); }, kLightTheme},
+        {SettingsScreen::kRingLevel, [&] { return session.ringLevel(); }, kBrightUsual},
+        {SettingsScreen::kStick, [&] { return static_cast<int>(std::lround(session.stickSpeed() * 100.f)); }, 75},
+    };
+    int tried = 0;
+    for (const Row& r : rows) {
+        if (!set.here(r.row)) continue; // (the lights' rows only where the handheld has them)
+        ++tried;
+        set.goTo(r.row);
+        rig.frames(1);
+        CHECK(r.now() == r.usual);
+        rig.tap(RIGHT, 2);
+        if (r.now() == r.usual) rig.tap(LEFT, 4); // (at the top end already: the other way)
+        CHECK(r.now() != r.usual);
+        rig.tap(B);
+        CHECK(r.now() == r.usual);
+        if (r.now() != r.usual) std::printf("    row %d: B left %d, its usual is %d\n", r.row, r.now(), r.usual);
+        CHECK(set.cursorRow() == r.row); // (B moves nothing)
+    }
+    CHECK(tried >= 9);
+    // The SONG rows keep what they are.
+    set.goTo(SettingsScreen::kTempo);
+    rig.tap(RIGHT, 3);
+    const float tempo = rig.project().tempo;
+    rig.tap(B);
+    CHECK(rig.project().tempo == tempo && tempo != 120.f);
+    set.goTo(SettingsScreen::kScale);
+    rig.tap(RIGHT);
+    const int scale = rig.project().scaleKind;
+    rig.tap(B);
+    CHECK(rig.project().scaleKind == scale && scale != 0);
+    // The bar: "B default" on a setting's row (fitting at XL), not on a song's.
+    Canvas canvas, scratch;
+    if (canvas.ok && scratch.ok) {
+        set.goTo(SettingsScreen::kVolume);
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(barSays(canvas, scratch, "default"));
+        const std::vector<unsigned char> ttf = loadFontFile();
+        Fonts xl;
+        xl.fixedSet = canvas.fonts.get();
+        CHECK(xl.load(canvas.r, ttf, kTextXl));
+        for (int row = SettingsScreen::kClick; row < SettingsScreen::kWifi; ++row) {
+            if (!set.here(row)) continue;
+            set.goTo(row);
+            rig.frames(1);
+            canvas.clear();
+            rig.app.draw(canvas.r, xl);
+            CHECK(ui::gHintsOver == 0.f);
+        }
+        set.goTo(SettingsScreen::kTempo);
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(!barSays(canvas, scratch, "default"));
+    }
+    ui::gStickSpeed = stickWas;
+}
+
 void testTheStickSpeedAndTheVolume() {
     // ---- one number slows everything the stick does -----------------------------------
     const auto travel = [](float speed) {
@@ -3878,10 +4486,11 @@ void testTheStickSpeedAndTheVolume() {
         ui::gStickSpeed = 1.f;
         return rig.app.song().cursorScene();
     };
+    // (A full push held climbs, G07: 10 cells at a steady 24 a second became 14. The climb is scaled the same.)
     const int full = travel(1.f), slower = travel(0.75f), half = travel(0.5f);
-    CHECK(full >= 9 && full <= 11);
-    CHECK(slower >= 7 && slower <= 8);   // a quarter off
-    CHECK(half >= 5 && half <= 6);
+    CHECK(full >= 13 && full <= 15);
+    CHECK(slower >= 10 && slower <= 12); // a quarter off
+    CHECK(half >= 7 && half <= 8);
     // ...and what it turns with a button held, the same.
     const auto turned = [](float speed) {
         ui::gStickSpeed = speed;
@@ -4841,9 +5450,10 @@ void testTheFxPictureFollowsTheSettings() {
                         notchHole, yOfDb(-25.f), notchFar, shelfLow, shelfHigh, yOfDb(0.f));
     }
     // PITCH draws the shifted sound at its own speed (2026-11-24): along the middle of the waves, an octave up
-    // crosses it twice as often as no shift, an octave down half as often. Under them the heads' fades: at no shift
-    // they stand still, one at full (its line along the top of the strip); an octave up they turn twice as often as
-    // an octave down (once a GRAIN, against once in two).
+    // crosses it twice as often as no shift, an octave down half as often. Under them the heads: at no shift one
+    // stands still at full (its line along the top of the strip); otherwise one plays alone and the other takes over
+    // in 5 ms (the matched splices, 2026-11-24: the top of the strip is always inked but at a crossing, and each head
+    // is at full about half the time), an octave up twice as often as an octave down (a piece a GRAIN, against two).
     {
         const int px = F::kPaneX + 12, pw = F::kPaneW - 24, py = F::kPicY + 12, ph = F::kPicH - 24, wh = ph * 7 / 10;
         const int mid = py + wh - 1 - static_cast<int>(std::round(0.5f * static_cast<float>(wh - 1)));
@@ -4865,7 +5475,7 @@ void testTheFxPictureFollowsTheSettings() {
         };
         const Read same = read(0), up = read(12), down = read(-12);
         const bool crossings = same.crossings >= 4 && same.crossings <= 6 && up.crossings >= 8 && up.crossings <= 10 && down.crossings >= 2 && down.crossings <= 4;
-        const bool heads = same.full > pw * 9 / 10 && up.full < pw / 4 && up.peaks >= 9 && up.peaks <= 11 && down.peaks >= 4 && down.peaks <= 6;
+        const bool heads = same.full > pw * 9 / 10 && up.full > pw / 2 && up.full < pw * 2 / 3 && up.peaks == 5 && down.peaks == 3;
         CHECK(crossings && heads);
         if (!crossings || !heads)
             std::printf("    PITCH crosses %d / %d / %d times; the strip's top: %d / %d of %d inked, %d / %d peaks\n", same.crossings, up.crossings,
@@ -5615,14 +6225,15 @@ void testTheFxScreensList() {
     CHECK(kindNow() == EffectKind::Limiter && fx.onLine(0).param[0] == effectDefault(EffectKind::Limiter, 0)); // (nothing shared with COMP: its usual values)
     rig.tap(LEFT, 2);
     CHECK(kindNow() == EffectKind::Comp && fx.onLine(0).param[0] == effectDefault(EffectKind::Comp, 0));
-    // A held D-pad steps through the list slowly enough to see each one: five a second.
+    // A held D-pad steps through the list slowly enough to see each one: the list's pace (gesture audit G32: it was
+    // a bare 200 ms, five a second), after the cursor's wait it always had, each counted from when it was due.
     rig.tap(UP, familyListSize());
     CHECK(kindNow() == EffectKind::None);
     rig.key(DOWN, true);
     rig.frames(1);
     CHECK(familyPlace(kindNow()) == 1);
-    rig.frames(60); // a second: the wait, then one every fifth of a second
-    CHECK(familyPlace(kindNow()) >= 4 && familyPlace(kindNow()) <= 6);
+    rig.frames(40); // two thirds of a second: the wait, then one every 110 ms (short of the list's end)
+    CHECK(familyPlace(kindNow()) == static_cast<int>(1 + 1 + (41 * 16 - 16 - ui::kCursorDelayMs) / ui::kListEveryMs) && familyPlace(kindNow()) < familyListSize() - 1);
     rig.key(DOWN, false);
     rig.key(A, false);
     // On a setting, left and right with A held switch the slot's TYPE (testFxSwitchesType), the cursor kept;
@@ -6940,7 +7551,8 @@ void testSavePresetOnDevice() {
     TrackData& track = rig->project().tracks[1];
     const std::string folder = tempFolder("savepreset");
     session.usePresetFolder(folder);
-    // R1 on PRESET opens the keys; A types, Y deletes, B leaves without saving.
+    // R1 on PRESET opens the name keys, on a built-in with nothing typed; A types, Y deletes. With nothing
+    // typed B leaves, and nothing is saved.
     CHECK(screen.cursor() == SynthScreen::kPreset);
     rig->tap(R1);
     CHECK(screen.typing() && screen.typed().empty());
@@ -6951,35 +7563,48 @@ void testSavePresetOnDevice() {
     CHECK(screen.typed() == "AB");
     rig->tap(Y);
     CHECK(screen.typed() == "A");
+    rig->tap(Y);
     rig->tap(B);
-    CHECK(!screen.typing() && userPresets(TrackKind::Phazed).empty());
-    // Again, kept with START: the file, the list, the track on it.
+    CHECK(!screen.typing() && userPresets(TrackKind::Phazed).empty() && screen.said().empty());
+    // B keeps what is typed (owner, 2026-11-15, "a new one does too"; gesture audit G01): the file, the list, the track on it.
     rig->tap(R1);
     rig->tap(A);
     rig->tap(RIGHT);
     rig->tap(A);
     CHECK(screen.typed() == "AB");
-    rig->tap(START);
+    rig->tap(B);
     CHECK(!screen.typing() && screen.said() == "SAVED AS AB");
     std::string file;
     CHECK(readTextFile(folder + "/AB.phazed", file));
     CHECK(userPresets(TrackKind::Phazed).size() == 1 && track.preset == builtInPresets(TrackKind::Phazed));
-    // Under a name taken, it replaces that one.
+    // On one of the player's own, R1 opens with its name typed in: R1 then B saves over it, and says REPLACED.
     const std::string before = file;
     session.setSynthSetting(1, phazed::Level, track.patch.value[phazed::Level] == 3 ? 4 : 3);
     rig->tap(R1);
-    rig->tap(A);
-    rig->tap(RIGHT);
-    rig->tap(A);
-    rig->tap(START);
-    CHECK(userPresets(TrackKind::Phazed).size() == 1);
+    CHECK(screen.typing() && screen.typed() == "AB" && screen.keyAt() == 0);
+    rig->tap(B);
+    CHECK(!screen.typing() && screen.said() == "REPLACED AB" && userPresets(TrackKind::Phazed).size() == 1);
     CHECK(readTextFile(folder + "/AB.phazed", file) && file != before);
+    // START keeps too (and does not play): a new name is SAVED AS, a name taken REPLACED.
+    rig->tap(R1);
+    rig->tap(A);
+    CHECK(screen.typed() == "ABA");
+    rig->tap(START);
+    CHECK(!screen.typing() && screen.said() == "SAVED AS ABA" && userPresets(TrackKind::Phazed).size() == 2 && !rig->project().playing);
+    CHECK(track.preset == builtInPresets(TrackKind::Phazed) + 1);
+    rig->tap(R1);
+    CHECK(screen.typed() == "ABA");
+    rig->tap(Y);
+    rig->tap(START);
+    CHECK(!screen.typing() && screen.said() == "REPLACED AB" && userPresets(TrackKind::Phazed).size() == 2 && track.preset == builtInPresets(TrackKind::Phazed));
     // Empty: START does nothing, B leaves.
     rig->tap(R1);
+    rig->tap(Y, 2);
+    CHECK(screen.typed().empty());
     rig->tap(START);
-    CHECK(screen.typing() && userPresets(TrackKind::Phazed).size() == 1);
+    CHECK(screen.typing() && userPresets(TrackKind::Phazed).size() == 2);
     rig->tap(B);
-    CHECK(!screen.typing());
+    CHECK(!screen.typing() && userPresets(TrackKind::Phazed).size() == 2);
     // Every synth keeps presets the same way.
     for (TrackKind kind : {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Physic, TrackKind::Acid, TrackKind::Cloud, TrackKind::Morph}) {
         if (track.kind != kind) CHECK(session.setTrackKind(1, kind));
@@ -7016,7 +7641,7 @@ void testSamplerPresetsOnDevice() {
     rig.tap(UP);
     CHECK(screen.cursor() == 7);
     screen.goTo(SamplerScreen::kPresetStop);
-    // R1 on PRESET opens the keys; A types, Y deletes, B leaves without saving.
+    // R1 on PRESET opens the name keys; A types, Y deletes. With nothing typed B leaves, and nothing is saved.
     rig.tap(R1);
     CHECK(screen.typing() && screen.typed().empty());
     rig.tap(A);
@@ -7026,14 +7651,15 @@ void testSamplerPresetsOnDevice() {
     CHECK(screen.typed() == "AB");
     rig.tap(Y);
     CHECK(screen.typed() == "A");
+    rig.tap(Y);
     rig.tap(B);
     CHECK(!screen.typing() && session.samplerPresets().empty());
-    // Again, kept with START: the file, the list, the track on it.
+    // B keeps what is typed (gesture audit G01): the file, the list, the track on it.
     rig.tap(R1);
     rig.tap(A);
     rig.tap(RIGHT);
     rig.tap(A);
-    rig.tap(START);
+    rig.tap(B);
     CHECK(!screen.typing() && screen.said() == "SAVED AS AB");
     rig.frames(200);
     CHECK(screen.said().empty()); // the line clears: not only recording synths say things
@@ -7045,15 +7671,22 @@ void testSamplerPresetsOnDevice() {
     CHECK(session.samplerPresetOf(1) == -1);
     const std::string before = file;
     rig.tap(R1);
+    CHECK(screen.typed().empty()); // (on none: nothing typed in)
     rig.tap(A);
     rig.tap(RIGHT);
     rig.tap(A);
     rig.tap(START);
-    CHECK(session.samplerPresets().size() == 1);
+    CHECK(session.samplerPresets().size() == 1 && screen.said() == "REPLACED AB");
     CHECK(readTextFile(folder + "/presets/AB.sampler", file) && file != before);
     CHECK(session.samplerPresetOf(1) == 0);
+    // On one of the player's own, R1 opens with its name typed in: R1 then B saves over it.
+    rig.tap(R1);
+    CHECK(screen.typing() && screen.typed() == "AB" && screen.keyAt() == 0);
+    rig.tap(B);
+    CHECK(!screen.typing() && screen.said() == "REPLACED AB" && session.samplerPresets().size() == 1 && session.samplerPresetOf(1) == 0);
     // Empty: START does nothing, B leaves.
     rig.tap(R1);
+    rig.tap(Y, 2);
     rig.tap(START);
     CHECK(screen.typing() && session.samplerPresets().size() == 1);
     rig.tap(B);
@@ -7065,15 +7698,31 @@ void testSamplerPresetsOnDevice() {
     rig.tap(A);
     rig.tap(START);
     CHECK(!screen.typing() && screen.said() == "SAVED AS C" && session.samplerPresets().size() == 2);
+    // Each is heard as it is stepped to, as a synth's preset and a kit are (gesture audit G22); past an end
+    // nothing is put on and nothing heard; playing, the song is heard instead.
+    int heard = screen.timesHeard();
     rig.key(A, true);
     rig.tap(DOWN);
     rig.key(A, false);
     CHECK(session.samplerPresetOf(1) == 0 && track.sampler[sampler::Level] == 33);
+    CHECK(screen.timesHeard() == heard + 1);
     rig.key(A, true);
     rig.tap(DOWN);
     rig.key(A, false);
     CHECK(session.samplerPresetOf(1) == 0); // (past the first: stops)
-    // B held deletes the file; another button calls it off; the track keeps its sound.
+    CHECK(screen.timesHeard() == heard + 1);
+    rig.project().playing = true; // as if playing
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(session.samplerPresetOf(1) == 1 && screen.timesHeard() == heard + 1);
+    rig.project().playing = false;
+    rig.key(A, true);
+    rig.tap(DOWN);
+    rig.key(A, false);
+    CHECK(session.samplerPresetOf(1) == 0 && screen.timesHeard() == heard + 2);
+    // B held deletes the file (the bar says CANNOT BE UNDONE: testDeletingAPresetSaysItCannotBeUndone); another
+    // button calls it off; the track keeps its sound.
     rig.key(B, true);
     rig.frames(30);
     CHECK(screen.presetDeletePart() > 0.3f && screen.presetDeletePart() < 0.7f);
@@ -7107,6 +7756,353 @@ void testSamplerPresetsOnDevice() {
     rig.frames(1);
     CHECK(screen.cursor() == 7); // moved at once, not after the keys' leftover
     rig.key(STICK_UP, false);
+}
+
+// Hold B on one of the player's own synth presets: a second, and its file is deleted (gesture audit G30: only
+// the SD card could). The track keeps its sound; every track of that synth stays on its own preset (the numbers
+// past it move up one); it is not a step of undo (a file, as a kit's or a sampler preset's).
+void testDeletingOwnSynthPresets() {
+    std::unique_ptr<Rig> rig(onPhazed());
+    Session& session = rig->app.session();
+    SynthScreen& screen = rig->app.phazed();
+    TrackData& track = rig->project().tracks[1];
+    const std::string folder = tempFolder("deletepreset");
+    session.usePresetFolder(folder);
+    const int first = builtInPresets(TrackKind::Phazed);
+    // On a built-in, hold B does nothing.
+    CHECK(screen.cursor() == SynthScreen::kPreset && !screen.onOwnPreset());
+    rig->key(B, true);
+    rig->frames(80);
+    rig->key(B, false);
+    rig->frames(1);
+    CHECK(screen.presetDeletePart() == 0.f && track.preset == 0 && screen.said().empty());
+    // Three of the player's own, AA, BB and CC; a second PHAZED track on CC, this one on BB.
+    for (int i = 0; i < 3; ++i) {
+        session.setSynthSetting(1, phazed::Level, 3 + i);
+        CHECK(session.savePreset(1, std::string(2, static_cast<char>('A' + i))));
+    }
+    CHECK(session.addTrack(TrackKind::Phazed)); // track 2
+    session.chooseSynthPreset(2, first + 2);
+    session.chooseSynthPreset(1, first + 1);
+    rig->project().track = 1;
+    rig->frames(2);
+    CHECK(track.preset == first + 1 && track.patch.value[phazed::Level] == 4 && screen.onOwnPreset());
+    const PhazedPatch sound = track.patch;
+    // Held: the bar fills. Any other button calls it off; let go before it is full, it stays.
+    rig->key(B, true);
+    rig->frames(30);
+    CHECK(screen.presetDeletePart() > 0.3f && screen.presetDeletePart() < 0.7f);
+    rig->tap(Y);
+    rig->frames(1);
+    CHECK(screen.presetDeletePart() == 0.f);
+    rig->frames(60);
+    rig->key(B, false);
+    rig->frames(1);
+    rig->key(B, true);
+    rig->frames(40);
+    rig->key(B, false);
+    rig->frames(40);
+    CHECK(userPresets(TrackKind::Phazed).size() == 3 && screen.presetDeletePart() == 0.f);
+    // Another track of this synth up with B still held (the two share this screen): called off, CC stays.
+    rig->key(B, true);
+    rig->frames(30);
+    rig->project().track = 2;
+    rig->frames(60);
+    rig->key(B, false);
+    rig->frames(1);
+    CHECK(userPresets(TrackKind::Phazed).size() == 3 && screen.said().empty());
+    rig->project().track = 1;
+    // Off PRESET (a macro), B held is the macro's and deletes nothing.
+    rig->tap(DOWN);
+    rig->key(B, true);
+    rig->frames(70);
+    rig->key(B, false);
+    rig->tap(UP);
+    CHECK(screen.cursor() == SynthScreen::kPreset && userPresets(TrackKind::Phazed).size() == 3);
+    // L2 / R2 turn the tab without this screen seeing a press, and it is not looked at while away: with B still
+    // held, back on it, the bar must start again, not come back full (the file went at once).
+    rig->key(B, true);
+    rig->frames(30);
+    rig->tap(R2);
+    rig->frames(70);
+    rig->tap(L2);
+    rig->frames(10);
+    CHECK(rig->app.session().view == View::Device && screen.presetDeletePart() == 0.f);
+    rig->key(B, false);
+    rig->frames(1);
+    CHECK(userPresets(TrackKind::Phazed).size() == 3 && screen.said().empty());
+    rig->frames(2);
+    const int steps = session.undoSteps();
+    // Held the whole second: BB's file goes, and the screen says so. The track keeps its sound, named by the
+    // preset before it (AA); track 2 stays on CC, a place earlier now.
+    rig->key(B, true);
+    rig->frames(70);
+    rig->key(B, false);
+    rig->frames(2);
+    std::string file;
+    CHECK(!readTextFile(folder + "/BB.phazed", file) && readTextFile(folder + "/AA.phazed", file) && readTextFile(folder + "/CC.phazed", file));
+    CHECK(userPresets(TrackKind::Phazed).size() == 2 && screen.said() == "BB DELETED. THE TRACK KEEPS ITS SOUND");
+    CHECK(track.preset == first && std::memcmp(track.patch.value, sound.value, sizeof sound.value) == 0);
+    CHECK(rig->project().tracks[2].preset == first + 1 && std::string(phazedSpec().presetName(first + 1)) == "CC");
+    CHECK(session.undoSteps() == steps); // (no step of undo: a file went, the song did not change)
+    // On the first of the player's own, the preset before is the last built-in.
+    rig->key(B, true);
+    rig->frames(70);
+    rig->key(B, false);
+    rig->frames(2);
+    CHECK(userPresets(TrackKind::Phazed).size() == 1 && screen.said() == "AA DELETED. THE TRACK KEEPS ITS SOUND");
+    CHECK(track.preset == first - 1 && !screen.onOwnPreset() && rig->project().tracks[2].preset == first);
+    // Its file gone by other means (WiFi, the card): NOT DELETED, and nothing moves.
+    session.chooseSynthPreset(1, first);
+    CHECK(std::remove((folder + "/CC.phazed").c_str()) == 0);
+    rig->key(B, true);
+    rig->frames(70);
+    rig->key(B, false);
+    rig->frames(2);
+    CHECK(screen.said() == "NOT DELETED" && track.preset == first && rig->project().tracks[2].preset == first);
+    session.usePresetFolder(tempFolder("deletepreset-clean")); // the registry is global: leave it empty for later tests
+}
+
+// While a preset's name is typed every button is the keys' (gesture audit G01), as on SET and in the list of
+// recordings: no tab turns, no SONG screen, no L3, no undo, WRITE, NEXT SCENE, scene length or tempo, no
+// help card. The four shoulders' panic still works, and the keys are still up after it.
+void testThePresetKeysHaveEveryButton() {
+    const SDL_Keycode MENU = SDLK_TAB, L3 = SDLK_3;
+    for (int sampler = 0; sampler < 2; ++sampler) {
+        Rig rig;
+        Session& session = rig.app.session();
+        Project& project = rig.project();
+        CHECK(session.addTrack(sampler ? TrackKind::Sampler : TrackKind::Phazed)); // track 1
+        project.track = 1;
+        session.view = View::Device;
+        if (sampler) rig.app.sampler().goTo(SamplerScreen::kPresetStop);
+        else rig.app.phazed().goTo(0, SynthScreen::kPreset);
+        rig.frames(2);
+        // A change for undo to take back.
+        TrackData& track = project.tracks[1];
+        if (sampler) session.setSamplerSetting(1, sampler::Level, track.sampler[sampler::Level] == 33 ? 34 : 33);
+        else session.setSynthSetting(1, phazed::Level, track.patch.value[phazed::Level] == 3 ? 4 : 3);
+        rig.frames(2);
+        if (session.undoSteps() == 0) std::printf("    %s: no step of undo for the change\n", sampler ? "sampler" : "phazed");
+        const int steps = session.undoSteps(), scenes = project.sceneCount(), sceneSteps = project.sceneSteps(0);
+        const float tempo = project.tempo;
+        const bool writing = session.writing();
+        CHECK(steps > 0);
+        const auto typing = [&] { return sampler ? rig.app.sampler().typing() : rig.app.phazed().typing(); };
+        const auto typed = [&] { return sampler ? rig.app.sampler().typed() : rig.app.phazed().typed(); };
+        rig.tap(R1);
+        rig.tap(A);
+        CHECK(typing() && typed() == "A");
+        rig.tap(L2);
+        rig.tap(R2);
+        rig.tap(L3);
+        rig.tap(SELECT);
+        rig.frames(2);
+        CHECK(session.view == View::Device && typing());
+        rig.key(SELECT, true);
+        rig.tap(UP); // (the keys' cursor, not the tempo)
+        rig.tap(X);
+        rig.tap(Y);  // (the keys' Y: the last letter goes, no NEXT SCENE)
+        rig.tap(L2);
+        rig.key(SELECT, false);
+        rig.frames(2);
+        CHECK(project.tempo == tempo && session.writing() == writing && project.sceneCount() == scenes && project.sceneSteps(0) == sceneSteps);
+        CHECK(session.view == View::Device && typing() && typed().empty() && (sampler ? rig.app.sampler().keyAt() : rig.app.phazed().keyAt()) == 30);
+        rig.tap(A);
+        CHECK(typed() == "4");
+        // No help card over the keys (MENU held, or SELECT held by itself).
+        rig.key(MENU, true);
+        rig.frames(5);
+        CHECK(!rig.app.helpShowing());
+        rig.key(MENU, false);
+        rig.frames(1);
+        // The panic: silence, the note, and the keys still up with what was typed.
+        for (SDL_Keycode k : {L1, R1, L2, R2}) rig.key(k, true), rig.frames(1);
+        CHECK(rig.app.panicNoteShowing() && session.view == View::Device && typing());
+        for (SDL_Keycode k : {L1, R1, L2, R2}) rig.key(k, false);
+        rig.frames(1);
+        rig.tap(Y); // (puts the note away, and does nothing else)
+        CHECK(!rig.app.panicNoteShowing() && typing() && typed() == "4");
+        // SELECT + B is the keys' B: it keeps the name and leaves; nothing is undone.
+        rig.key(SELECT, true);
+        rig.tap(B);
+        rig.key(SELECT, false);
+        rig.frames(2);
+        CHECK(!typing() && session.undoSteps() == steps && session.view == View::Device);
+    }
+}
+
+// The four shoulders' panic begun with R1 on PRESET (R1, then L1, L2, R2): R1 opens the name keys on its way, on
+// one of the player's own with its name typed in, and the next B would replace its file. The panic closes keys
+// it opened, wherever (R2 first turned the tab to DEVICE, and the panic turned it back); keys that were up
+// before it stay up (testThePresetKeysHaveEveryButton).
+void testAPanicClosesTheKeysItOpened() {
+    for (int sampler = 0; sampler < 2; ++sampler) {
+        Rig rig;
+        Session& session = rig.app.session();
+        const std::string folder = tempFolder("panickeys");
+        session.usePresetFolder(folder);
+        CHECK(session.addTrack(sampler ? TrackKind::Sampler : TrackKind::Phazed)); // track 1
+        rig.project().track = 1;
+        session.view = View::Device;
+        const auto typing = [&] { return sampler ? rig.app.sampler().typing() : rig.app.phazed().typing(); };
+        const auto said = [&] { return sampler ? rig.app.sampler().said() : rig.app.phazed().said(); };
+        // One of the player's own, the track on it (a synth turned since: B would write the turn over the file).
+        std::string before, file;
+        if (sampler) {
+            CHECK(session.saveSamplerPreset(1, "AA") && session.samplerPresetOf(1) == 0);
+            rig.app.sampler().goTo(SamplerScreen::kPresetStop);
+            CHECK(readTextFile(folder + "/AA.sampler", before));
+        } else {
+            CHECK(session.savePreset(1, "AA"));
+            session.setSynthSetting(1, phazed::Level, rig.project().tracks[1].patch.value[phazed::Level] == 3 ? 4 : 3);
+            rig.app.phazed().goTo(0, SynthScreen::kPreset);
+            CHECK(readTextFile(folder + "/AA.phazed", before));
+        }
+        rig.frames(2);
+        for (int first = 0; first < 2; ++first) {
+            // R1 first on DEVICE; then R2 first, from the roll's tab to DEVICE, where R1 comes next.
+            if (first == 1) session.view = View::Pattern, rig.frames(2);
+            const std::vector<SDL_Keycode> order = first == 0 ? std::vector<SDL_Keycode>{R1, L1, L2, R2} : std::vector<SDL_Keycode>{R2, R1, L1, L2};
+            for (SDL_Keycode k : order) rig.key(k, true), rig.frames(1);
+            CHECK(rig.app.panicNoteShowing() && session.view == (first == 0 ? View::Device : View::Pattern));
+            for (SDL_Keycode k : order) rig.key(k, false);
+            rig.frames(1);
+            rig.tap(B); // (puts the note away)
+            session.view = View::Device;
+            rig.frames(2);
+            CHECK(!typing());
+            rig.tap(B); // (on PRESET, the keys shut: a tap of B, nothing written)
+            rig.frames(2);
+            CHECK(!typing() && said().empty() && readTextFile(folder + (sampler ? "/AA.sampler" : "/AA.phazed"), file) && file == before);
+        }
+        session.usePresetFolder(tempFolder("panickeys-clean")); // the registry is global: leave it empty for later tests
+    }
+}
+
+// A hold of B on one of the player's own (the sampler's preset, a kit on the KIT stop) is called off by a tab turned
+// with B still held, as a synth's is (testDeletingOwnSynthPresets): back on the screen, the bar starts again.
+void testATabCallsOffAHoldOfB() {
+    for (int place = 0; place < 2; ++place) {
+        Rig rig;
+        Session& session = rig.app.session();
+        session.usePresetFolder(tempFolder("tabcallsoff"));
+        session.view = View::Device;
+        std::size_t was = 0;
+        const auto count = [&] { return place == 0 ? session.samplerPresets().size() : session.kits().size(); };
+        if (place == 0) {
+            CHECK(session.addTrack(TrackKind::Sampler));
+            rig.project().track = 1;
+            CHECK(session.saveSamplerPreset(1, "AA"));
+            rig.app.sampler().goTo(SamplerScreen::kPresetStop);
+        } else {
+            rig.project().track = 0;
+            CHECK(rig.project().tracks[0].kind == TrackKind::Drums && !session.saveKit(0).empty());
+            rig.app.kit().goToKit();
+        }
+        was = count();
+        rig.frames(2);
+        const auto part = [&] { return place == 0 ? rig.app.sampler().presetDeletePart() : rig.app.kit().kitDeletePart(); };
+        rig.key(B, true);
+        rig.frames(30);
+        CHECK(part() > 0.3f);
+        rig.tap(R2);
+        rig.frames(70);
+        rig.tap(L2);
+        rig.frames(10);
+        CHECK(session.view == View::Device && part() == 0.f && count() == was);
+        rig.key(B, false);
+        rig.frames(2);
+        CHECK(count() == was);
+        session.usePresetFolder(tempFolder("tabcallsoff-clean")); // the registry is global: leave it empty for later tests
+    }
+}
+
+// The name keys run at a list's pace wherever a name is typed (gesture audit G01: the preset keys ran at a
+// cursor's, 170 then every 30 ms): RIGHT held 30 frames (480 ms) is one key at once and three more.
+void testTheNameKeysRunAtAListsPace() {
+    for (int place = 0; place < 3; ++place) {
+        Rig rig;
+        Session& session = rig.app.session();
+        if (place == 0) {
+            session.view = View::Settings;
+            rig.app.settings().goTo(SettingsScreen::kTrackName);
+            rig.tap(A);
+        } else {
+            CHECK(session.addTrack(place == 1 ? TrackKind::Phazed : TrackKind::Sampler));
+            rig.project().track = 1;
+            session.view = View::Device;
+            if (place == 1) rig.app.phazed().goTo(0, SynthScreen::kPreset);
+            else rig.app.sampler().goTo(SamplerScreen::kPresetStop);
+            rig.frames(1);
+            rig.tap(R1);
+        }
+        const auto keyAt = [&] { return place == 0 ? rig.app.settings().keyAt() : place == 1 ? rig.app.phazed().keyAt() : rig.app.sampler().keyAt(); };
+        const bool typing = place == 0 ? rig.app.settings().typing() : place == 1 ? rig.app.phazed().typing() : rig.app.sampler().typing();
+        CHECK(typing && keyAt() == 0);
+        rig.key(RIGHT, true);
+        rig.frames(13); // 208 ms: still the first (a cursor's pace, 170 ms, had gone on)
+        CHECK(keyAt() == 1);
+        rig.frames(17);
+        rig.key(RIGHT, false);
+        CHECK(keyAt() == 4);
+        if (keyAt() != 4) std::printf("    place %d: RIGHT held 480 ms went %d keys\n", place, keyAt());
+        rig.frames(30);
+        CHECK(keyAt() == 4); // (let go: it stops)
+    }
+}
+
+// Y held on the name keys deletes on at a list's pace (gesture audit G48, 2026-11-25): one letter at once,
+// then one each kListEveryMs after kListDelayMs, so an old name goes in one hold. A tap is still one. The
+// track's name and both preset keys (the folder's is picker_test's, the password's wifi_test's).
+void testAHeldYDeletesOn() {
+    for (int place = 0; place < 3; ++place) {
+        Rig rig;
+        Session& session = rig.app.session();
+        if (place == 0) {
+            session.view = View::Settings;
+            rig.app.settings().goTo(SettingsScreen::kTrackName);
+            rig.tap(A);
+        } else {
+            CHECK(session.addTrack(place == 1 ? TrackKind::Phazed : TrackKind::Sampler));
+            rig.project().track = 1;
+            session.view = View::Device;
+            if (place == 1) rig.app.phazed().goTo(0, SynthScreen::kPreset);
+            else rig.app.sampler().goTo(SamplerScreen::kPresetStop);
+            rig.frames(1);
+            rig.tap(R1);
+        }
+        const auto typed = [&]() -> std::string { return place == 0 ? rig.app.settings().typed() : place == 1 ? rig.app.phazed().typed() : rig.app.sampler().typed(); };
+        rig.tap(Y, 12); // (the track's own name, if any)
+        rig.tap(A, 10);
+        CHECK(typed() == "AAAAAAAAAA");
+        rig.tap(Y);
+        CHECK(typed() == "AAAAAAAAA"); // a tap: one
+        rig.key(Y, true);
+        CHECK(typed().size() == 8u); // one at once
+        rig.frames(13); // 208 ms: still that one
+        CHECK(typed().size() == 8u);
+        rig.frames(17); // 480 ms in all: three more at the list's pace
+        rig.key(Y, false);
+        CHECK(typed().size() == 5u);
+        if (typed().size() != 5u) std::printf("    place %d: Y held 480 ms left %d letters\n", place, static_cast<int>(typed().size()));
+        rig.frames(30);
+        CHECK(typed().size() == 5u); // (let go: it stops)
+        rig.key(Y, true);
+        rig.frames(60); // held on: every letter goes, and nothing more happens at none
+        rig.key(Y, false);
+        CHECK(typed().empty());
+        const bool typing = place == 0 ? rig.app.settings().typing() : place == 1 ? rig.app.phazed().typing() : rig.app.sampler().typing();
+        CHECK(typing); // (still typing: a held Y never leaves)
+        // A held direction, then Y: Y's run, not the direction's.
+        rig.tap(A, 3);
+        rig.key(RIGHT, true);
+        rig.key(Y, true);
+        rig.frames(20);
+        rig.key(Y, false);
+        rig.key(RIGHT, false);
+        CHECK(typed().size() == 1u);
+    }
 }
 
 // Hold A on SOUND and step while WiFi deletes a recording: the step goes through what is there
@@ -7241,6 +8237,147 @@ void testTheEngineHearsMacrosAndSettings() {
     CHECK(edited->project().tracks[1].patch.value[phazed::Level] == level - 12);
     const float ratio = Rig::peak(noteNow(*edited)) / Rig::peak(base);
     CHECK(std::fabs(ratio - 0.251f) < 0.03f);
+}
+
+// B with A held puts the sound back in the engine too (gesture audit G12): after stepping through presets,
+// a macro turned before A went down, the note is the one an engine never moved off that sound plays.
+void testAPutBackSoundIsTheEngines() {
+    std::unique_ptr<Rig> still(onPhazed()), back(onPhazed());
+    still->app.session().setSynthMacro(1, phazed::MacroOctave, 0.8f);
+    back->app.session().setSynthMacro(1, phazed::MacroOctave, 0.8f);
+    const std::vector<float> wanted = noteNow(*still);
+    back->project().playing = true; // (as if the song ran: the steps are not heard)
+    SynthScreen& screen = back->app.phazed();
+    screen.goTo(0, SynthScreen::kPreset);
+    back->key(A, true);
+    back->tap(UP, 5);
+    CHECK(back->project().tracks[1].preset == 5);
+    back->tap(B);
+    back->key(A, false);
+    back->project().playing = false;
+    CHECK(back->project().tracks[1].preset == 0 && back->project().tracks[1].macro[phazed::MacroOctave] == 0.8f);
+    CHECK(noteNow(*back) == wanted);
+}
+
+// ADVANCED keeps its place (gesture audit G13): each track comes back to the page and stop it was last on
+// (in memory, as FX's last_), and L1 / R1 keep the cursor's row and column, so on FM-6 the same knob of the
+// next operator is under it. Where the next page has no such place, the nearest.
+void testAdvancedKeepsItsPlace() {
+    Rig rig;
+    Session& session = rig.app.session();
+    CHECK(session.addTrack(TrackKind::Fm6) && session.addTrack(TrackKind::Fm6)); // tracks 2 and 3
+    rig.project().track = 1;
+    session.view = View::Device;
+    rig.frames(2);
+    SynthScreen& screen = rig.app.fm6();
+    // The first time: page 1, its first stop.
+    screen.goTo(0, SynthScreen::kAdvanced);
+    rig.tap(A);
+    CHECK(screen.page() == 1 && screen.cursor() == 0);
+    // OPERATOR 1's OUTPUT LEVEL (its second box); R1: OPERATOR 2's, R1 again OPERATOR 3's, L1 back.
+    rig.tap(R1);
+    rig.tap(RIGHT);
+    CHECK(screen.page() == 2 && screen.settingHere() == fm6::opSetting(1, fm6::OpLevel));
+    rig.tap(R1);
+    CHECK(screen.page() == 3 && screen.cursor() == 1 && screen.settingHere() == fm6::opSetting(2, fm6::OpLevel));
+    rig.tap(R1);
+    CHECK(screen.page() == 4 && screen.settingHere() == fm6::opSetting(3, fm6::OpLevel));
+    rig.tap(L1);
+    CHECK(screen.page() == 3 && screen.settingHere() == fm6::opSetting(2, fm6::OpLevel));
+    // Down a row: the place is a row and a column, kept the same way.
+    rig.tap(DOWN, 2);
+    const int deep = screen.cursor();
+    CHECK(deep == 9);
+    rig.tap(R1);
+    CHECK(screen.page() == 4 && screen.cursor() == deep);
+    // B to MAIN, A on ADVANCED: back on page 4 at that stop, not page 1.
+    rig.tap(B);
+    CHECK(screen.page() == 0 && screen.cursor() == SynthScreen::kAdvanced);
+    rig.tap(A);
+    CHECK(screen.page() == 4 && screen.cursor() == deep);
+    rig.tap(B);
+    // Another track of FM-6: its own place (none yet: page 1); then the first track's is still its own.
+    rig.project().track = 2;
+    rig.frames(2);
+    rig.tap(A);
+    CHECK(screen.page() == 1 && screen.cursor() == 0);
+    rig.tap(R1, 6); // (OPERATOR 6)
+    CHECK(screen.page() == 7);
+    rig.tap(B);
+    rig.project().track = 1;
+    rig.frames(2);
+    rig.tap(A);
+    CHECK(screen.page() == 4 && screen.cursor() == deep);
+    rig.tap(B);
+    rig.project().track = 2;
+    rig.frames(2);
+    rig.tap(A);
+    CHECK(screen.page() == 7 && screen.cursor() == 0);
+    // A place the next page has not: the nearest. The last box of an operator page (its 22nd), L1 to the
+    // voice's page: its last stop.
+    screen.goTo(3, 21);
+    rig.frames(1);
+    const int voiceStops = [&] { screen.goTo(1, 99); return screen.cursor() + 1; }();
+    screen.goTo(3, 21);
+    CHECK(voiceStops < 22);
+    rig.tap(L1);
+    CHECK(screen.page() == 2 && screen.cursor() == 21);
+    rig.tap(L1);
+    CHECK(screen.page() == 1 && screen.cursor() == voiceStops - 1);
+    // Left by another track rather than B (picked on SONG, the screen on page 5): the place is still the track's,
+    // and the other track, up on it now, shows ITS own place (page 1, its last stop there), which it keeps. (It
+    // was shown page 5, and its own place was written over with it.)
+    rig.project().track = 1;
+    rig.frames(1);
+    screen.goTo(5, 2);
+    rig.frames(1);
+    rig.project().track = 2;
+    rig.frames(1);
+    CHECK(screen.page() == 1 && screen.cursor() == voiceStops - 1);
+    rig.tap(B);
+    rig.project().track = 1;
+    rig.frames(1);
+    rig.tap(A);
+    CHECK(screen.page() == 5 && screen.cursor() == 2);
+    rig.project().track = 2; // (on page 5 for track 1: track 2's own place again)
+    rig.frames(1);
+    CHECK(screen.page() == 1 && screen.cursor() == voiceStops - 1);
+    rig.tap(B);
+    rig.project().track = 1;
+    rig.frames(1);
+    CHECK(screen.page() == 0); // (B left it on MAIN: MAIN is every track's, and stays)
+    rig.tap(A);
+    CHECK(screen.page() == 5 && screen.cursor() == 2);
+    rig.tap(B);
+    // From an envelope (eight to a row) to a page of four: a column past the fourth is the row's fourth.
+    CHECK(session.addTrack(TrackKind::Phazed));
+    rig.project().track = 3;
+    rig.frames(1);
+    SynthScreen& phazed = rig.app.phazed();
+    phazed.goTo(4, 6);
+    rig.tap(L1);
+    CHECK(phazed.page() == 3 && phazed.cursor() == 3);
+    rig.tap(R1);
+    CHECK(phazed.page() == 4 && phazed.cursor() == 3);
+    // ...and on the second row, from the last envelope round to SOUND (thirteen boxes): the row's fourth
+    // (7), not a sixth column it has not (9, a row further on).
+    phazed.goTo(9, 13);
+    rig.tap(R1);
+    CHECK(phazed.page() == 1 && phazed.cursor() == 7);
+    // A track that has not opened the pages arrives on page 1 at its first stop; on CLOUD that is not RECORDING
+    // (where R1 records), but the stop after it.
+    for (TrackKind kind : {TrackKind::Fm6, TrackKind::Cloud}) {
+        CHECK(session.addTrack(kind) && session.addTrack(kind));
+        const int a = rig.project().trackCount() - 2, b = a + 1;
+        SynthScreen& s = kind == TrackKind::Cloud ? rig.app.cloud() : rig.app.fm6();
+        rig.project().track = a;
+        rig.frames(1);
+        s.goTo(3, 2);
+        rig.frames(1);
+        rig.project().track = b;
+        rig.frames(1);
+        CHECK(s.page() == 1 && s.cursor() == s.firstStop(1) && (kind != TrackKind::Cloud || (s.cursor() == 1 && !s.onRecording())));
+    }
 }
 
 void testAdvancedPages() {
@@ -7992,17 +9129,18 @@ void testStepEffects() {
     CHECK(drums.cursorStep() == 5 && !drums.fx(0, 4).any());
     rig.tap(LEFT);
 
-    // Held over, the D-pad runs: clicks, some eight a second up and down, four sideways. Not the cursor's 33.
+    // Held over, the D-pad runs: clicks, eight a second every way (ui::kClickEveryMs; gesture audit G32: sideways
+    // was four). Not the cursor's 33.
     rig.key(X, true);
     rig.key(UP, true);
-    rig.frames(62); // a second
+    rig.frames(62); // a second: the press, then a click each 125 ms after the 170 wait, counted from when due
     rig.key(UP, false);
-    CHECK(drums.fx(0, 4).pitch >= 5 && drums.fx(0, 4).pitch <= 9);
+    CHECK(drums.fx(0, 4).pitch == static_cast<int>(1 + 1 + (62 * 16 - 16 - ui::kClickDelayMs) / ui::kClickEveryMs));
     rig.tap(DOWN, 12);
     rig.key(RIGHT, true);
-    rig.frames(20); // a third of a second: the press, and one more after the wait
+    rig.frames(20); // a third of a second: the press, and two more after the wait (at four a second: one)
     rig.key(RIGHT, false);
-    CHECK(drums.fx(0, 4).hits() == 3);
+    CHECK(drums.fx(0, 4).hits() == 4);
     rig.tap(LEFT, 4);
     // The stick: a click at once, and then it runs. One way per push.
     drums.setFx(0, 4, StepFx());
@@ -8228,10 +9366,14 @@ void testStepEffects() {
     }
     drums.setStep(0, 4, 0.8f);
     drums.setFx(0, 4, StepFx());
-    // If the hit goes while X is held (deleted), the hold is over.
+    // B with X held empties the hit's effects and keeps the hit (gesture audit G11: easy_test xempty).
     rig.key(X, true);
     CHECK(drums.effecting());
     rig.tap(B);
+    rig.frames(1);
+    CHECK(drums.effecting() && drums.level(0, 4) == 0.8f);
+    // If the hit goes while X is held (deleted, here from outside), the hold is over.
+    drums.setStep(0, 4, 0.f);
     rig.frames(1);
     CHECK(!drums.effecting() && drums.level(0, 4) == 0.f);
     rig.key(X, false);
@@ -8500,13 +9642,14 @@ void testASceneOfAnyLength() {
     // Without SELECT they are the tabs, as ever.
     rig.tap(R2);
     CHECK(rig.view() == View::Device && rig.project().sceneSteps(0) == 23);
-    rig.tap(L2);
-    // On other tabs SELECT + L2 / R2 leaves the length alone.
-    rig.tap(L2);
+    // On every other tab too, and the tab does not turn (gesture audit G03: it was PATTERN's alone, and
+    // elsewhere turned the tab). On SONG it is the scene under the cursor: nextscene_test.
     rig.key(SELECT, true);
     rig.tap(R2);
+    CHECK(rig.view() == View::Device && rig.project().sceneSteps(0) == 24);
+    rig.tap(L2);
     rig.key(SELECT, false);
-    CHECK(rig.project().sceneSteps(0) == 23);
+    CHECK(rig.view() == View::Device && rig.project().sceneSteps(0) == 23);
     session.view = View::Pattern;
     // It plays 23 steps: a kick on step 1 comes round every 23.
     rig.app.drums().setStep(0, 0, 1.f);
@@ -8719,12 +9862,12 @@ void testNoteEffectsHoldUp() {
     rig.key(Y, false);
     rig.frames(2);
     CHECK(nameWas != p.chords[0].name && p.chords[0].ratchet == 3 && p.chords[0].nudge == 0.2f);
-    // 3. Broken into notes, each note plays as the chord did: the ratchet and the nudge go with them.
+    // 3. Broken into notes (hold Y, A; G26: it was B), each note plays as the chord did: the ratchet and the nudge go with them.
     int keys[kChordNotes];
     const int count = p.chords[0].pitches(keys);
     rig.key(Y, true);
     rig.frames(2);
-    rig.tap(B);
+    rig.tap(A);
     rig.key(Y, false);
     rig.frames(2);
     CHECK(p.chords[0].velocity <= 0.f && count >= 3);
@@ -9491,7 +10634,37 @@ bool hintedOn(const Canvas& canvas, Canvas& scratch, const char* words) {
     return false;
 }
 
-// HOLD B deletes an effect for good, with a bar that fills and says it cannot be undone. A tap does nothing.
+// HOLD B deletes an effect, with a bar that fills and says DELETING THIS EFFECT. A tap does nothing. Effects are
+// in undo (since 2026-11-14), so SEL + B brings it back, settings and automation too: the words do not say
+// CANNOT BE UNDONE (gesture audit G10; they did).
+// One hold length a kind (gesture audit G29, 2026-11-25; each screen had its own second): half a second where
+// undo brings it back (an effect, a MOD, EDIT's and VOICE's every box back, a scene emptied), a second where it
+// cannot (a recording or folder, a song, an own preset or kit, a network forgotten, a bounce stopped). A track
+// keeps its two seconds, red only after a quiet half second. An effect held 400 ms stays; at 560 ms it is gone.
+void testTheHoldLengths() {
+    CHECK(ui::kHoldUndoneMs == 500 && ui::kHoldForGoodMs == 1000);
+    CHECK(FxScreen::kDeleteHoldMs == ui::kHoldUndoneMs && ModScreen::kDeleteHoldMs == ui::kHoldUndoneMs && ModKnob::kDeleteHoldMs == ui::kHoldUndoneMs);
+    CHECK(KitScreen::kDeleteHoldMs == ui::kHoldUndoneMs && SongScreen::kSceneHoldMs == ui::kHoldUndoneMs);
+    CHECK(SamplePicker::kDeleteHoldMs == ui::kHoldForGoodMs && KitScreen::kKitDeleteMs == ui::kHoldForGoodMs);
+    CHECK(SynthScreen::kPresetDeleteMs == ui::kHoldForGoodMs); // (the sampler's is private: the same constant)
+    CHECK(SettingsScreen::kForgetHoldMs == ui::kHoldForGoodMs && SettingsScreen::kStopHoldMs == ui::kHoldForGoodMs);
+    CHECK(SongScreen::kTrackHoldWaitMs == 500 && SongScreen::kTrackHoldMs == 2000);
+    Rig rig;
+    Session& session = rig.app.session();
+    session.view = View::Effects;
+    session.setEffect(0, 0, EffectKind::Tape);
+    rig.app.fx().goTo(0, 0);
+    rig.frames(1);
+    const EffectData& first = rig.project().tracks[0].effects[0];
+    rig.key(B, true);
+    rig.frames(26); // 400 ms (its clock starts on the frame after the press)
+    CHECK(first.kind == static_cast<int>(EffectKind::Tape));
+    rig.frames(10); // 560 ms
+    CHECK(first.kind == 0);
+    rig.key(B, false);
+    rig.frames(1);
+}
+
 void testHoldBDeletesAnEffect() {
     Canvas canvas, scratch;
     CHECK(canvas.ok && scratch.ok);
@@ -9519,9 +10692,10 @@ void testHoldBDeletesAnEffect() {
     rig.tap(B);
     rig.frames(100);
     CHECK(first.kind == static_cast<int>(EffectKind::Tape) && near(first.param[1], 0.9f) && fx.deletePart() == 0.f);
-    // Held: the bar fills, and the heading says it cannot be undone; let go before it is full and it stays.
+    // Held: the bar fills, and the heading says so; let go before it is full and it stays.
+    CHECK(std::string(F::kDeletingWords) == "DELETING THIS EFFECT");
     rig.key(B, true);
-    rig.frames(40);
+    rig.frames(20); // 320 ms of the half second (G29: undo brings an effect back; it was a second)
     CHECK(fx.deletePart() > 0.5f && fx.deletePart() < 1.f && first.kind == static_cast<int>(EffectKind::Tape));
     draw();
     CHECK(inked(canvas, scratch, 0, F::kPaneX + 12.f, F::kPaneY + 10.f, F::kDeletingWords, ui::kText));
@@ -9533,14 +10707,14 @@ void testHoldBDeletesAnEffect() {
     CHECK(!inked(canvas, scratch, 0, F::kPaneX + 12.f, F::kPaneY + 10.f, F::kDeletingWords, ui::kText) && canvas.is(F::kListX + 4, F::lineY(0) + F::kLineH / 2, ui::kPanel2));
     // Held and moved off the line, by the D-pad or by the stick: nothing goes.
     rig.key(B, true);
-    rig.frames(30);
+    rig.frames(15);
     rig.tap(DOWN);
     rig.frames(60);
     rig.key(B, false);
     rig.tap(UP);
     CHECK(first.kind == static_cast<int>(EffectKind::Tape) && fx.cursorRow() == 0);
     rig.key(B, true);
-    rig.frames(30);
+    rig.frames(15);
     rig.key(STICK_DOWN, true);
     rig.frames(1);
     rig.key(STICK_DOWN, false);
@@ -9551,16 +10725,28 @@ void testHoldBDeletesAnEffect() {
     CHECK(first.kind == static_cast<int>(EffectKind::Tape) && fx.cursorRow() == 0);
     // Any other button pressed while it fills calls it off (X: heard, not deleted).
     rig.key(B, true);
-    rig.frames(30);
+    rig.frames(15);
     rig.tap(X);
     rig.frames(60);
     CHECK(first.kind == static_cast<int>(EffectKind::Tape) && fx.deletePart() == 0.f);
     rig.key(B, false);
-    // Held the whole second: the effect, its settings and its automation go.
+    // Held the whole half second: the effect, its settings and its automation go.
     rig.key(B, true);
     rig.frames(70);
     rig.key(B, false);
     rig.frames(1);
+    CHECK(first.kind == 0 && !session.hasAutomation(0, 2, autoLaneOfEffect(0, 1)));
+    // SEL + B brings it back, its settings and its automation with it; SEL + A deletes it again.
+    rig.frames(2);
+    rig.key(SELECT, true);
+    rig.tap(B);
+    rig.key(SELECT, false);
+    rig.frames(2);
+    CHECK(first.kind == static_cast<int>(EffectKind::Tape) && near(first.param[1], 0.9f) && session.hasAutomation(0, 2, autoLaneOfEffect(0, 1)));
+    rig.key(SELECT, true);
+    rig.tap(A);
+    rig.key(SELECT, false);
+    rig.frames(2);
     CHECK(first.kind == 0 && !session.hasAutomation(0, 2, autoLaneOfEffect(0, 1)));
     // An empty line says nothing of B, and holding it there does nothing.
     draw();
@@ -9730,7 +10916,7 @@ void testTheHintsFitAndSayWhatTheyDo() {
         rig.app.song().moveCursorTo(0, rig.project().trackCount());
         CHECK(draw());
         rig.app.song().moveCursorTo(0, -1);
-        CHECK(draw());
+        CHECK(draw() && hintKeyed(canvas, scratch, "HOLD B", "empty") && !hintKeyed(canvas, scratch, "HOLD B", "delete")); // (it empties the scene: one step of undo)
         // ...on the PLAYS box where the song ends (AT END): what it does there, LOOP or STOP.
         rig.app.song().moveCursorTo(rig.app.song().songEndRow(), -1);
         CHECK(rig.app.song().onSongEnd() && draw() && hintKeyed(canvas, scratch, "A", "song end: loop"));
@@ -10344,6 +11530,328 @@ void testFxStepsTheTrack() {
     }
 }
 
+// L1 / R1 with A held on a setting (gesture audit G44): A is kept where the new track's slot holds the same effect, so
+// one dial is turned across the tracks in one grip. Another effect there (even another type with a FEEDBACK of its
+// own), or none, lets A go: nothing is turned there, and on an empty slot a push tries no effect. The sends are the
+// same two on every track. At the first or the last track nothing changes, and A stays held.
+void testFxHoldKeptAcrossTracks() {
+    Rig rig;
+    Session& session = rig.app.session();
+    FxScreen& fx = rig.app.fx();
+    addPhazed(rig);
+    addPhazed(rig);
+    addPhazed(rig);
+    CHECK(rig.project().trackCount() == 4);
+    session.setEffect(0, 1, EffectKind::Tape);
+    session.setEffect(1, 1, EffectKind::Tape);
+    session.setEffect(2, 1, EffectKind::Delay); // CLEAN: the same family, a FEEDBACK in the same place
+    session.setEffect(3, 1, EffectKind::Tape);
+    session.view = View::Effects;
+    rig.project().track = 0;
+    fx.goTo(1, 2); // TAPE's FEEDBACK
+    rig.frames(1);
+    const auto feedback = [&](int track) { return session.effectData(track, 1).param[1]; };
+    const float usual = effectDefault(EffectKind::Tape, 1);
+    rig.key(A, true);
+    rig.tap(L1); // the first: nothing changes, A is still held
+    rig.frames(1);
+    rig.tap(UP);
+    CHECK(rig.project().track == 0 && fx.cursorColumn() == 2 && feedback(0) > usual);
+    rig.tap(R1);
+    rig.frames(1);
+    rig.tap(UP);
+    CHECK(rig.project().track == 1 && fx.cursorColumn() == 2 && feedback(1) > usual);
+    // The stick too, in the same grip.
+    const float pushed = feedback(1);
+    rig.key(STICK_UP, true);
+    rig.frames(10);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    CHECK(feedback(1) > pushed && fx.cursorColumn() == 2);
+    // Another type on the next track: A is let go. UP moves the cursor; CLEAN's FEEDBACK is not turned.
+    const EffectData clean = session.effectData(2, 1);
+    rig.tap(R1);
+    rig.frames(1);
+    rig.tap(UP);
+    CHECK(rig.project().track == 2 && fx.cursorColumn() == 1 && session.effectData(2, 1).param[1] == clean.param[1] && session.effectData(2, 1).param[0] == clean.param[0]);
+    // ...and it stays let go, back on a TAPE, until A is pressed again.
+    fx.goTo(1, 2);
+    rig.tap(R1);
+    rig.frames(1);
+    rig.tap(UP);
+    CHECK(rig.project().track == 3 && fx.cursorColumn() == 1 && feedback(3) == usual);
+    rig.key(A, false);
+    // An empty slot on the next track: A is let go, the cursor comes back to the list, and DOWN tries nothing.
+    session.setEffect(2, 1, EffectKind::None);
+    fx.goTo(1, 2);
+    rig.frames(1);
+    rig.key(A, true);
+    rig.tap(L1);
+    rig.frames(1);
+    CHECK(rig.project().track == 2 && fx.cursorColumn() == 0 && !fx.picking() && !fx.trying());
+    rig.tap(DOWN);
+    rig.frames(1);
+    CHECK(!fx.trying() && fx.cursorRow() == 2);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(session.effectData(2, 1).kind == static_cast<int>(EffectKind::None) && session.effectData(2, 2).kind == static_cast<int>(EffectKind::None));
+    // The sends: the same two on every track, so A is kept. At the last track nothing changes either.
+    rig.project().track = 2;
+    fx.goTo(FxScreen::kSendsRow, 1);
+    rig.frames(1);
+    rig.key(A, true);
+    rig.tap(R1);
+    rig.frames(1);
+    rig.tap(UP);
+    CHECK(rig.project().track == 3 && rig.project().tracks[3].send[0] > 0.f);
+    const float sent = rig.project().tracks[3].send[0];
+    rig.tap(R1);
+    rig.frames(1);
+    rig.tap(UP);
+    CHECK(rig.project().track == 3 && rig.project().tracks[3].send[0] > sent && fx.cursorColumn() == 1);
+    rig.key(A, false);
+    rig.frames(1);
+}
+
+// BAND's FREQ (gesture audit G19): a D-pad push is a thirtieth of the range, a third of an octave, so 50 Hz is a
+// push and the start (1.0 KHZ) is one: the D-pad comes back to it to the bit, and B's usual value is the same number.
+// GAIN beside it, and FILTER's CUTOFF, still move a twentieth (effects_test holds every other row to twenty).
+void testBandFreqStepsAThirdOfAnOctave() {
+    Rig rig;
+    Session& session = rig.app.session();
+    FxScreen& fx = rig.app.fx();
+    session.setEffect(0, 1, EffectKind::Band);
+    session.setEffect(0, 2, EffectKind::Filter);
+    session.view = View::Effects;
+    rig.project().track = 0;
+    fx.goTo(1, 1);
+    rig.frames(1);
+    const auto freq = [&] { return session.effectData(0, 1).param[0]; };
+    const auto reads = [&](float v) {
+        char text[32];
+        effectParamText(EffectKind::Band, 0, v, text, sizeof text);
+        return std::string(text);
+    };
+    const float start = freq();
+    CHECK(start == 17.f / 30.f && start == effectDefault(EffectKind::Band, 0) && reads(start) == "1.0 KHZ");
+    rig.key(A, true);
+    rig.tap(DOWN);
+    CHECK(freq() == 16.f / 30.f);
+    rig.tap(DOWN, 12);
+    CHECK(freq() == 4.f / 30.f && reads(freq()) == "50 HZ");
+    rig.tap(UP);
+    CHECK(reads(freq()) == "63 HZ");
+    rig.tap(UP, 12);
+    CHECK(freq() == start); // back on the start, to the bit
+    rig.tap(UP);
+    CHECK(freq() == 18.f / 30.f);
+    // From between two points (the stick put it there), a push goes to the next one.
+    session.setEffectParam(0, 1, 0, 0.51f);
+    rig.tap(UP);
+    CHECK(freq() == 16.f / 30.f);
+    session.setEffectParam(0, 1, 0, 0.51f);
+    rig.tap(DOWN);
+    CHECK(freq() == 15.f / 30.f);
+    rig.tap(DOWN, 40);
+    CHECK(freq() == 0.f);
+    rig.tap(UP, 40);
+    CHECK(freq() == 1.f);
+    rig.key(A, false);
+    rig.tap(B);
+    CHECK(freq() == start);
+    // GAIN: a twentieth, 1.2 dB.
+    rig.tap(DOWN);
+    CHECK(fx.cursorColumn() == 2);
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(session.effectData(0, 1).param[1] == 11.f * 0.05f);
+    rig.key(A, false);
+    // FILTER's CUTOFF: a twentieth, as it always was.
+    session.setEffectParam(0, 2, 0, 0.5f);
+    fx.goTo(2, 1);
+    rig.frames(1);
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(session.effectData(0, 2).param[0] == 11.f * 0.05f);
+    rig.tap(DOWN, 2);
+    CHECK(session.effectData(0, 2).param[0] == 9.f * 0.05f);
+    rig.key(A, false);
+}
+
+// Y held on BAND's FREQ, GAIN or Q moves the bell two ways at once (gesture audit G18): LEFT / RIGHT is FREQ, UP /
+// DOWN GAIN (on the Q dial, Q), the D-pad a push as A gives, the stick both at once; the cursor stays. Not on
+// SHAPE, not on another effect, and with A held A's jobs stand (LEFT / RIGHT the TYPE). WRITE records both.
+void testHoldYMovesABandTwoWays() {
+    Rig rig;
+    Session& session = rig.app.session();
+    FxScreen& fx = rig.app.fx();
+    session.setEffect(0, 0, EffectKind::Band);
+    session.setEffect(0, 1, EffectKind::Filter);
+    session.view = View::Effects;
+    rig.project().track = 0;
+    CHECK(std::string(effectInfo(EffectKind::Band).paramNames[FxScreen::kBandFreq]) == "FREQ" &&
+          std::string(effectInfo(EffectKind::Band).paramNames[FxScreen::kBandGain]) == "GAIN" &&
+          std::string(effectInfo(EffectKind::Band).paramNames[FxScreen::kBandQ]) == "Q");
+    const auto p = [&](int slot, int i) { return session.effectData(0, slot).param[i]; };
+    const float q0 = p(0, 2), shape0 = p(0, 3);
+    const auto still = [&](int column) { return fx.cursorRow() == 0 && fx.cursorColumn() == column; };
+    // On FREQ: across FREQ (a third of an octave a push), up / down GAIN (a twentieth).
+    fx.goTo(0, 1);
+    rig.frames(1);
+    CHECK(fx.bandGrip() == -1);
+    rig.key(Y, true);
+    rig.frames(1);
+    CHECK(fx.bandGrip() == FxScreen::kBandGain);
+    rig.tap(RIGHT);
+    CHECK(p(0, 0) == 18.f / 30.f && p(0, 1) == 0.5f);
+    rig.tap(UP);
+    CHECK(p(0, 1) == 11.f * 0.05f && p(0, 0) == 18.f / 30.f);
+    rig.tap(LEFT, 2);
+    rig.tap(DOWN, 2);
+    CHECK(p(0, 0) == 16.f / 30.f && p(0, 1) == 9.f * 0.05f && p(0, 2) == q0 && still(1));
+    // On GAIN: the same.
+    rig.key(Y, false);
+    rig.tap(DOWN);
+    rig.key(Y, true);
+    CHECK(still(2) && fx.bandGrip() == FxScreen::kBandGain);
+    rig.tap(UP);
+    rig.tap(RIGHT);
+    CHECK(p(0, 1) == 10.f * 0.05f && p(0, 0) == 17.f / 30.f && still(2));
+    // On Q: up / down is Q.
+    rig.key(Y, false);
+    rig.tap(DOWN);
+    rig.key(Y, true);
+    CHECK(still(3) && fx.bandGrip() == FxScreen::kBandQ);
+    rig.tap(UP);
+    rig.tap(LEFT);
+    CHECK(p(0, 2) == 7.f * 0.05f && p(0, 1) == 10.f * 0.05f && p(0, 0) == 16.f / 30.f && still(3));
+    // The bar says it while Y is held there (on Q, "q"; on FREQ and GAIN, "gain").
+    {
+        Canvas canvas, scratch;
+        CHECK(canvas.ok && scratch.ok);
+        if (canvas.ok && scratch.ok) {
+            rig.frames(1);
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(ui::gHintsOver == 0.f && hintKeyed(canvas, scratch, "LEFT / RIGHT", "freq") && hintKeyed(canvas, scratch, "UP / DOWN", "q"));
+            rig.key(Y, false);
+            rig.frames(1);
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(!hintKeyed(canvas, scratch, "LEFT / RIGHT", "freq") && hintKeyed(canvas, scratch, "LEFT", "list"));
+            rig.tap(UP);
+            rig.key(Y, true);
+            rig.frames(1);
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+            CHECK(ui::gHintsOver == 0.f && hintKeyed(canvas, scratch, "UP / DOWN", "gain"));
+            rig.key(Y, false);
+            rig.tap(DOWN);
+            rig.key(Y, true);
+        }
+    }
+    // SHAPE, a choice, is no grip: Y held, the D-pad is the cursor's, and up is the Q dial again (then Q's).
+    rig.key(Y, false);
+    rig.tap(DOWN);
+    rig.key(Y, true);
+    CHECK(still(4) && fx.bandGrip() == -1);
+    rig.tap(UP);
+    CHECK(still(3) && p(0, 3) == shape0 && p(0, 2) == 7.f * 0.05f);
+    rig.key(Y, false);
+    // Another effect: Y held does what it always did on a dial (nothing): the D-pad moves the cursor.
+    fx.goTo(1, 1);
+    rig.frames(1);
+    const float cutoff = p(1, 0);
+    rig.key(Y, true);
+    CHECK(fx.bandGrip() == -1);
+    rig.tap(DOWN);
+    rig.tap(RIGHT);
+    CHECK(fx.cursorRow() == 1 && fx.cursorColumn() == 2 && p(1, 0) == cutoff);
+    rig.key(Y, false);
+    // The stick: across FREQ and up / down GAIN, both at once, squared as a turn with A held.
+    fx.goTo(0, 1);
+    rig.frames(1);
+    const float f1 = p(0, 0), g1 = p(0, 1);
+    rig.key(Y, true);
+    rig.key(STICK_RIGHT, true);
+    rig.key(STICK_UP, true);
+    rig.frames(10);
+    rig.key(STICK_RIGHT, false);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    CHECK(p(0, 0) > f1 + 0.1f && p(0, 0) < f1 + 0.2f && p(0, 1) > g1 + 0.1f && p(0, 1) < g1 + 0.2f && still(1));
+    const float f2 = p(0, 0), g2 = p(0, 1);
+    rig.key(STICK_LEFT, true);
+    rig.frames(10);
+    rig.key(STICK_LEFT, false);
+    rig.frames(1);
+    CHECK(p(0, 0) < f2 - 0.1f && p(0, 1) == g2 && still(1));
+    rig.key(Y, false);
+    // A direction that brought the cursor onto the dials with Y held is a move, not a turn (review of G18, as the
+    // roll's X): from BAND's line, RIGHT held past the repeat's wait, or the stick pushed across, leaves FREQ as it
+    // was until a fresh push; so does UP held from SHAPE onto Q.
+    rig.tap(LEFT);
+    CHECK(still(0));
+    const float f3 = p(0, 0), g3 = p(0, 1), q3 = p(0, 2);
+    rig.key(Y, true);
+    rig.key(RIGHT, true);
+    rig.frames(30); // 0.48 s: the cursor's repeats would have come since 0.17
+    rig.key(RIGHT, false);
+    rig.frames(1);
+    CHECK(still(1) && p(0, 0) == f3 && p(0, 1) == g3);
+    rig.tap(RIGHT);
+    const float f4 = p(0, 0);
+    CHECK(still(1) && f4 > f3);
+    rig.key(Y, false);
+    rig.tap(LEFT);
+    rig.key(Y, true);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(10);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(still(1) && p(0, 0) == f4 && p(0, 1) == g3);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(5);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(still(1) && p(0, 0) > f4);
+    rig.key(Y, false);
+    fx.goTo(0, 4);
+    rig.frames(1);
+    rig.key(Y, true);
+    rig.key(UP, true);
+    rig.frames(30);
+    rig.key(UP, false);
+    rig.frames(1);
+    CHECK(still(3) && p(0, 2) == q3);
+    rig.key(Y, false);
+    fx.goTo(0, 1);
+    rig.frames(1);
+    // WRITE records both, on the step playing.
+    session.setWriting(true);
+    rig.tap(START);
+    rig.render(3 * kStep + kStep / 2);
+    rig.frames(1);
+    CHECK(rig.project().playStep == 3);
+    rig.key(Y, true);
+    rig.tap(RIGHT);
+    rig.tap(UP);
+    rig.key(Y, false);
+    const TrackData& track = rig.project().tracks[0];
+    CHECK(track.automation[0][autoLaneOfEffect(0, FxScreen::kBandFreq)][3] == p(0, 0) && track.automation[0][autoLaneOfEffect(0, FxScreen::kBandGain)][3] == p(0, 1));
+    rig.tap(START);
+    session.setWriting(false);
+    rig.frames(1);
+    // With A held too, A's jobs stand: A + LEFT is the TYPE, not FREQ.
+    rig.key(Y, true);
+    rig.key(A, true);
+    CHECK(fx.bandGrip() == -1);
+    rig.tap(LEFT);
+    rig.key(A, false);
+    rig.key(Y, false);
+    CHECK(session.effectData(0, 0).kind != static_cast<int>(EffectKind::Band));
+}
+
 // B held on a track: the hints bar says it cannot be undone while the head fills (the head has room for one word).
 void testDeletingATrackSaysItCannotBeUndone() {
     Canvas canvas, scratch;
@@ -10373,6 +11881,69 @@ void testDeletingATrackSaysItCannotBeUndone() {
         rig.frames(1);
         CHECK(rig.project().trackCount() == 2 && draw() && !hintedOn(canvas, scratch, SongScreen::kTrackDeletingWords));
         if (head) rig.tap(DOWN);
+    }
+}
+
+// The preset keys say what B does (gesture audit G01): leave with nothing typed, save, or replace where the
+// name is one of the player's own already; START is not said (it does what B does). On one of the player's own
+// the bar says HOLD B delete this preset, and while B is held that it CANNOT BE UNDONE (a file: G10 for the
+// sampler, which said nothing, G30 for the synths), as the kit's. Every bar fits, PHYSIC's dice and all.
+void testDeletingAPresetSaysItCannotBeUndone() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    for (TrackKind kind : {TrackKind::Phazed, TrackKind::Physic, TrackKind::Sampler}) {
+        Rig rig;
+        Session& session = rig.app.session();
+        session.usePresetFolder(tempFolder("presetwords"));
+        CHECK(session.addTrack(kind)); // track 1
+        rig.project().track = 1;
+        session.view = View::Device;
+        const bool sampler = kind == TrackKind::Sampler;
+        SynthScreen& synth = kind == TrackKind::Phazed ? rig.app.phazed() : rig.app.physic();
+        if (sampler) rig.app.sampler().goTo(SamplerScreen::kPresetStop);
+        else synth.goTo(0, SynthScreen::kPreset);
+        const char* deleting = sampler ? SamplerScreen::kPresetDeletingWords : SynthScreen::kPresetDeletingWords;
+        const auto draw = [&] {
+            rig.frames(1);
+            canvas.clear();
+            rig.app.draw(canvas.r, fonts);
+            if (ui::gHintsOver != 0.f) std::printf("    the hints are %.0f pixels over\n", static_cast<double>(ui::gHintsOver));
+            return ui::gHintsOver == 0.f;
+        };
+        // The keys' title: what they do, and where B (or START) would write over a file, that it cannot be undone.
+        const char* replacing = sampler ? SamplerScreen::kPresetReplacingWords : SynthScreen::kPresetReplacingWords;
+        CHECK(std::string(SynthScreen::kPresetReplacingWords) == SamplerScreen::kPresetReplacingWords);
+        const auto title = [&](const char* words, SDL_Color colour) { return inked(canvas, scratch, 0, 40.f, 46.f, words, colour); };
+        CHECK(draw() && !hintKeyed(canvas, scratch, "HOLD B", "delete this preset"));
+        CHECK(ui::gHelpHint[0] != 0); // (the help card can be had here: the bar offers it)
+        rig.tap(R1);
+        CHECK(draw() && hintKeyed(canvas, scratch, "B", "leave") && !hintedOn(canvas, scratch, "save") && !hintKeyed(canvas, scratch, "Y", "delete"));
+        CHECK(title("SAVE AS PRESET", ui::kDim) && !title(replacing, ui::kBrass));
+        CHECK(ui::gHelpHint[0] == 0); // (every button is the keys': no help card, so the bar does not offer one)
+        rig.tap(A, 2);
+        CHECK(draw() && hintKeyed(canvas, scratch, "B", "save") && hintKeyed(canvas, scratch, "Y", "delete") && !hintedOn(canvas, scratch, "replace") && !hintKeyed(canvas, scratch, "START", "save"));
+        rig.tap(B); // saved as AA: the track is on it
+        rig.frames(1);
+        CHECK(ui::gHelpHint[0] != 0);
+        rig.tap(R1); // ...so its name is typed in: B would replace it
+        CHECK(draw() && hintKeyed(canvas, scratch, "B", "replace") && !hintedOn(canvas, scratch, "save"));
+        CHECK(title(replacing, ui::kBrass) && !title("SAVE AS PRESET", ui::kDim));
+        rig.tap(Y);
+        CHECK(draw() && hintKeyed(canvas, scratch, "B", "save") && title("SAVE AS PRESET", ui::kDim));
+        rig.tap(Y);
+        rig.tap(B);
+        CHECK(sampler ? !rig.app.sampler().typing() : !synth.typing());
+        // On it: HOLD B delete this preset; held, the bar says it cannot be undone; let go, it does not.
+        CHECK(draw() && hintKeyed(canvas, scratch, "HOLD B", "delete this preset") && !hintedOn(canvas, scratch, deleting));
+        rig.key(B, true);
+        rig.frames(30);
+        CHECK((sampler ? rig.app.sampler().presetDeletePart() : synth.presetDeletePart()) > 0.f);
+        CHECK(draw() && hintKeyed(canvas, scratch, "HOLD B", deleting));
+        rig.key(B, false);
+        CHECK(draw() && !hintedOn(canvas, scratch, deleting));
+        session.usePresetFolder(tempFolder("presetwords-clean")); // the registry is global: leave it empty for later tests
     }
 }
 
@@ -10561,8 +12132,10 @@ void testPhysicOnATrack() {
     CHECK(screen.page() == 5 && screen.settingHere() == physic::Pair);
     rig.tap(RIGHT);
     CHECK(screen.settingHere() == physic::Motor);
-    rig.tap(L1);
-    CHECK(screen.page() == 4 && screen.settingHere() == physic::Dice);
+    rig.tap(L1); // (the cursor keeps its place: the second box, G13)
+    CHECK(screen.page() == 4 && screen.cursor() == 1);
+    rig.tap(LEFT);
+    CHECK(screen.settingHere() == physic::Dice);
     // Every setting is on one page, once; MAIN has none; the names are as the plan's.
     const SynthSpec& spec = physicSpec();
     int seen[physic::kSettings] = {};
@@ -11008,13 +12581,16 @@ void testCloudOnATrack() {
     session.recordingChanged("drone", "hum");
     CHECK(session.deleteSample("hum") && !track.sample[0] && session.sampleUses("hum") == 0);
 
-    // The device screen: MAIN, then SOURCE (RECORDING first), GRAINS, PLAY.
+    // The device screen: MAIN, then SOURCE (RECORDING first), GRAINS, PLAY. The first visit opens on
+    // POSITION, not RECORDING (where R1 records: G13); LEFT is RECORDING.
     session.view = View::Device;
     rig.frames(2);
     SynthScreen& screen = rig.app.cloud();
     screen.goTo(0, SynthScreen::kAdvanced);
     rig.tap(A);
-    CHECK(screen.page() == 1 && screen.pageCount() == 4 && screen.onRecording() && screen.settingHere() == SynthScreen::kRecordingId);
+    CHECK(screen.page() == 1 && screen.pageCount() == 4 && !screen.onRecording() && screen.settingHere() == cloud::Position);
+    rig.tap(LEFT);
+    CHECK(screen.onRecording() && screen.settingHere() == SynthScreen::kRecordingId);
     // Hold A + up: the next recording ("buzz", the one left), heard; down: none again.
     rig.key(A, true);
     rig.tap(UP);
@@ -11040,12 +12616,16 @@ void testCloudOnATrack() {
     // RIGHT: POSITION; R1 there turns the page (on RECORDING it records: no input here, said so).
     rig.tap(RIGHT);
     CHECK(screen.settingHere() == cloud::Position);
-    rig.tap(R1);
-    CHECK(screen.page() == 2 && screen.settingHere() == cloud::Size);
+    rig.tap(R1); // (the cursor keeps its place: the second box, G13)
+    CHECK(screen.page() == 2 && screen.settingHere() == cloud::Density);
+    rig.tap(LEFT);
+    CHECK(screen.settingHere() == cloud::Size);
     rig.tap(R1);
     CHECK(screen.page() == 3 && screen.settingHere() == cloud::PitchSpray);
+    // Round to SOURCE from the first box: the place after RECORDING, never RECORDING itself (G13).
     rig.tap(R1);
-    CHECK(screen.page() == 1 && screen.onRecording());
+    CHECK(screen.page() == 1 && !screen.onRecording() && screen.settingHere() == cloud::Position);
+    rig.tap(LEFT);
     rig.tap(R1);
     CHECK(screen.page() == 1 && screen.said().find("NO INPUT FOUND") == 0);
     rig.frames(200);
@@ -11664,6 +13244,553 @@ void testAnAcidLine() {
     CHECK(acid->ties() - ties == 4 && acid->strikes() - strikes == 12);
 }
 
+// ---- gesture audit, batch A5: going round, the headings, the stick's climb, SONG's cell ------------------
+
+// G35: SET's rows go round on a PRESS of the D-pad at either end; a held D-pad or the stick stops there.
+void testTheEndsOfSetsRows() {
+    using S = SettingsScreen;
+    Rig rig;
+    S& setup = rig.app.settings();
+    rig.app.session().view = View::Settings;
+    setup.goTo(S::kTempo);
+    rig.tap(UP);
+    CHECK(setup.cursorRow() == S::kControls && setup.shown(S::kControls));
+    rig.tap(DOWN);
+    CHECK(setup.cursorRow() == S::kTempo && setup.firstShown() == 0);
+    // A held D-pad runs at the list's pace and stops at the end, however long it is held.
+    rig.key(DOWN, true);
+    rig.frames(300);
+    rig.key(DOWN, false);
+    CHECK(setup.cursorRow() == S::kControls);
+    rig.key(UP, true);
+    rig.frames(300);
+    rig.key(UP, false);
+    CHECK(setup.cursorRow() == S::kTempo);
+    // The stick is a run too: it never goes round.
+    rig.key(STICK_UP, true);
+    rig.frames(30);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    CHECK(setup.cursorRow() == S::kTempo);
+    setup.goTo(S::kControls);
+    rig.key(STICK_DOWN, true);
+    rig.frames(30);
+    rig.key(STICK_DOWN, false);
+    rig.frames(1);
+    CHECK(setup.cursorRow() == S::kControls);
+}
+
+// G28: on SET, L1 / R1 go to the first row of the heading before / after, round the ends. Typing a name
+// keeps them; a hold of A on CONTROLS lets go; the panic puts the row back; the bar says so and fits.
+void testSetJumpsHeadings() {
+    using S = SettingsScreen;
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    Rig rig;
+    S& setup = rig.app.settings();
+    rig.app.session().view = View::Settings;
+    const int firsts[S::kGroups] = {S::kTempo, S::kClick, S::kTextSize, S::kVolume, S::kWifi};
+    for (int i = 1; i <= S::kGroups; ++i) {
+        rig.tap(R1);
+        CHECK(setup.cursorRow() == firsts[i % S::kGroups] && setup.shown(setup.cursorRow()));
+    }
+    // L1: the heading BEFORE the cursor's, from anywhere in its group; round the start.
+    setup.goTo(S::kTheme);
+    rig.tap(L1);
+    CHECK(setup.cursorRow() == S::kClick);
+    rig.tap(L1);
+    CHECK(setup.cursorRow() == S::kTempo);
+    rig.tap(L1);
+    CHECK(setup.cursorRow() == S::kWifi && setup.shown(S::kWifi));
+    setup.goTo(S::kStick); // the last of HANDHELD: R1 is SETUP's first, not a row down
+    rig.tap(R1);
+    CHECK(setup.cursorRow() == S::kWifi);
+    rig.tap(R1);
+    CHECK(setup.cursorRow() == S::kTempo && setup.firstShown() == 0);
+    // The manual's example: THEME is three presses from TEMPO (R1, R1, DOWN; eleven DOWNs before), CONTROLS one (UP).
+    rig.tap(R1, 2);
+    rig.tap(DOWN);
+    CHECK(setup.cursorRow() == S::kTheme);
+    setup.goTo(S::kTempo);
+    rig.tap(UP);
+    CHECK(setup.cursorRow() == S::kControls);
+    // A held on CONTROLS sets the controls up again at a second: R1 on the way lets go of it, as a move does.
+    setup.goTo(S::kControls);
+    rig.key(A, true);
+    rig.frames(20);
+    rig.tap(R1);
+    rig.frames(60);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(!setup.takeRelearn() && setup.cursorRow() == S::kTempo);
+    // Typing a track's name: every button is the keys', L1 / R1 too.
+    setup.goTo(S::kTrackName);
+    rig.tap(A);
+    CHECK(setup.typing());
+    rig.tap(R1);
+    rig.tap(L1);
+    CHECK(setup.typing() && setup.cursorRow() == S::kTrackName);
+    rig.tap(B);
+    CHECK(!setup.typing());
+    // The panic: L1 first jumped a heading; all four shoulders put the row back (and the tab).
+    setup.goTo(S::kKey);
+    rig.key(L1, true);
+    CHECK(setup.cursorRow() == S::kWifi);
+    rig.key(L2, true);
+    rig.key(R1, true);
+    rig.key(R2, true);
+    CHECK(rig.view() == View::Settings && setup.cursorRow() == S::kKey);
+    for (SDL_Keycode k : {L1, L2, R1, R2}) rig.key(k, false);
+    rig.frames(1);
+    rig.tap(X); // (the first press puts the panic's notice away)
+    // Every row's bar says L1 / R1 and holds all of its hints.
+    if (!canvas.ok || !scratch.ok) return;
+    for (int row = 0; row < S::kRows; ++row) {
+        if (!setup.here(row)) continue;
+        setup.goTo(row);
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        if (ui::gHintsOver != 0.f) std::printf("FAIL SET's row %d: the hints are %.1f over\n", row, static_cast<double>(ui::gHintsOver));
+        CHECK(ui::gHintsOver == 0.f && hintKeyed(canvas, scratch, "L1 / R1", "page"));
+    }
+}
+
+// G07: on a cursor, a FULL push of the stick held climbs to three times the screen's own rate over a
+// second; a part push moves as it always did; a value turned, a list or the kit's sounds do not climb.
+void testTheStickClimbsOnACursor() {
+    using S = SettingsScreen;
+    // The rule.
+    {
+        ui::StickClimb climb;
+        Uint32 t = 1000;
+        CHECK(climb.times(0.8f, t) == 1.f);
+        CHECK(climb.times(1.f, t += 16) == 1.f); // full from here: the screen's own rate first
+        for (int i = 0; i < 31; ++i) climb.times(1.f, t += 16);
+        CHECK(near(climb.times(1.f, t += 16), 1.f + 2.f * 0.512f)); // half a second on: about twice
+        for (int i = 0; i < 40; ++i) climb.times(-1.f, t += 16);    // (either way)
+        CHECK(climb.times(-1.f, t += 16) == 3.f && climb.times(1.f, t += 16) == 3.f); // a second on: three times, and no more
+        CHECK(climb.times(0.85f, t += 16) == 1.f && climb.times(1.f, t += 16) == 1.f); // short of full: back to the bottom
+        climb.times(1.f, t += 16);
+        CHECK(climb.times(1.f, t += 16) > 1.f);
+        CHECK(climb.times(1.f, t += 500) == 1.f); // not asked for half a second (another screen): from the bottom
+    }
+    // SET's rows (7 a second at STICK SPEED 1): a part push as before, a full push held climbing, scaled by STICK SPEED.
+    const auto rows = [](float raw, int frames, float speed) {
+        ui::gStickSpeed = speed;
+        Rig rig;
+        S& setup = rig.app.settings();
+        rig.app.session().view = View::Settings;
+        setup.goTo(S::kTempo);
+        rig.frames(2);
+        rig.stick(0.f, raw);
+        rig.frames(frames);
+        rig.stick(0.f, 0.f);
+        ui::gStickSpeed = 1.f;
+        return setup.placeOf(setup.cursorRow());
+    };
+    const int part = rows(0.84f, 62, 1.f), full = rows(1.f, 62, 1.f), slow = rows(1.f, 62, 0.5f);
+    std::printf("  the stick on SET's rows for a second: part push %d rows, full %d, full at 50%% %d\n", part, full, slow);
+    CHECK(part == 6);              // 1 at once, then 0.8 x 7 a second: as before G07
+    CHECK(full >= 13 && full <= 15); // steady, it was 7
+    CHECK(slow >= 6 && slow <= 8);   // ...half that at STICK SPEED 50% (steady, it was 4)
+    // The roll's keys (36 a second): 23 keys in 40 frames steady, about 37 climbing.
+    {
+        Rig rig;
+        addPhazed(rig);
+        rig.project().track = 1;
+        rig.app.session().view = View::Pattern;
+        rig.app.notes().moveCursorTo(24, 0);
+        rig.frames(2);
+        rig.key(STICK_RIGHT, true);
+        rig.frames(40);
+        rig.key(STICK_RIGHT, false);
+        const int keys = rig.app.notes().cursorPitch() - 24;
+        CHECK(keys >= 35 && keys <= 39);
+    }
+    // A value turned does not climb: TEMPO sideways, 9 a second.
+    {
+        Rig rig;
+        rig.app.session().view = View::Settings;
+        rig.app.settings().goTo(S::kTempo);
+        const float tempo = rig.project().tempo;
+        rig.frames(2);
+        rig.key(STICK_RIGHT, true);
+        rig.frames(62);
+        rig.key(STICK_RIGHT, false);
+        CHECK(rig.project().tempo == tempo + 9.f);
+    }
+    // The kit's sounds with A held stay slow enough to hear each one (8 a second): 7 in 50 frames, not the 12 of a climb.
+    {
+        Rig rig;
+        rig.app.session().view = View::Device;
+        rig.app.kit().goTo(0, KitScreen::kSound);
+        rig.frames(2);
+        rig.key(A, true);
+        rig.key(STICK_DOWN, true);
+        rig.frames(50);
+        rig.key(STICK_DOWN, false);
+        rig.key(A, false);
+        CHECK(rig.project().tracks[0].laneSynth[0].on() && rig.project().tracks[0].laneSynth[0].model == 7);
+    }
+    // SONG's list of instruments is a list: 8 in 20 frames at 24 a second, not the 10 of a climb.
+    {
+        Rig rig;
+        rig.app.session().view = View::Song;
+        rig.app.song().moveCursorTo(0, 1); // + TRACK
+        rig.tap(A);
+        CHECK(rig.app.song().choosing());
+        rig.key(STICK_DOWN, true);
+        rig.frames(20);
+        rig.key(STICK_DOWN, false);
+        rig.frames(1);
+        rig.tap(A);
+        CHECK(rig.project().trackCount() == 2 && rig.project().tracks[1].kind == kInstruments[(1 + 8) % kInstrumentCount].kind);
+    }
+    // Every other screen's cursor climbs too, each from its own call: FX, MOD, the sampler, a synth's stops (across
+    // and down), the kit's lanes and its EDIT and VOICE boxes. At STICK SPEED 25%, so a short row is not used up: a
+    // full push (raw 1.0) against one just short of full (raw 0.9: 0.875 past the dead zone, under kStickFullPush)
+    // from the same stop. The moves are counted a frame at a time, round a row that goes round.
+    struct Climber {
+        const char* name;
+        std::function<void(Rig&)> open; // the screen, the cursor on its first stop
+        std::function<int(Rig&)> where; // the cursor's place along the way it is pushed
+        int ring;                       // the row goes round after this many (0: its ends stop)
+        bool sideways;
+        int frames, more; // how long the push is held, and how many more stops the full push makes at least
+    };
+    const auto device = [](Rig& rig, int track) {
+        rig.project().track = track;
+        rig.app.session().view = View::Device;
+    };
+    const auto synthRow = [](int c) { return c < SynthScreen::kFirstMacro ? 0 : c == SynthScreen::kAdvanced ? 3 : 1 + (c - SynthScreen::kFirstMacro) / 4; };
+    const Climber climbers[] = {
+        {"FX's lines", [](Rig& rig) { rig.app.session().view = View::Effects; rig.app.fx().goTo(0, 0); },
+         [](Rig& rig) { return rig.app.fx().cursorRow(); }, FxScreen::kRows, false, 62, 2},
+        {"MOD's lines", [](Rig& rig) { rig.app.session().view = View::Mods; rig.app.mods().goTo(0, 0); },
+         [](Rig& rig) { return rig.app.mods().cursorRow(); }, ModScreen::kRows, false, 62, 2},
+        {"the sampler's stops", [&](Rig& rig) { rig.app.session().addTrack(TrackKind::Sampler); device(rig, 1); rig.app.sampler().goTo(0); },
+         [](Rig& rig) { return rig.app.sampler().cursor(); }, 0, true, 62, 2},
+        {"a synth's macros, across", [&](Rig& rig) { addPhazed(rig); device(rig, 1); rig.app.phazed().goTo(0, SynthScreen::kFirstMacro); },
+         [](Rig& rig) { return rig.app.phazed().cursor() - SynthScreen::kFirstMacro; }, 4, true, 62, 2},
+        {"a synth's MAIN, down", [&](Rig& rig) { addPhazed(rig); device(rig, 1); rig.app.phazed().goTo(0, SynthScreen::kFirstMacro); },
+         [&](Rig& rig) { return synthRow(rig.app.phazed().cursor()); }, 4, false, 62, 2},
+        {"the kit's lanes", [&](Rig& rig) { device(rig, 0); rig.app.kit().goTo(0, KitScreen::kSound); },
+         [](Rig& rig) { return rig.app.kit().cursorLane(); }, kDrumLanes, false, 62, 2},
+        // EDIT's and VOICE's rows are four boxes: the full push reaches the end in 32 frames, the part push (and a
+        // full one at the screen's own rate) two boxes along.
+        {"EDIT's boxes", [&](Rig& rig) { device(rig, 0); rig.app.kit().goTo(0, KitScreen::kEdit); rig.app.kit().openEdit(0); },
+         [](Rig& rig) { return rig.app.kit().editRow(); }, 0, true, 32, 1},
+        {"VOICE's boxes", [&](Rig& rig) { device(rig, 0); rig.project().tracks[0].laneSynth[0].model = drumsynth::kKick; rig.app.kit().goTo(0, KitScreen::kSound); rig.app.kit().openVoice(drumsynth::kTune); },
+         [](Rig& rig) { return rig.app.kit().voicePlace(); }, 0, true, 32, 1},
+    };
+    const auto climbed = [](const Climber& c, float raw) {
+        ui::gStickSpeed = 0.25f;
+        Rig rig;
+        c.open(rig);
+        rig.frames(2);
+        int was = c.where(rig), moves = 0;
+        rig.stick(c.sideways ? raw : 0.f, c.sideways ? 0.f : raw);
+        for (int f = 0; f < c.frames; ++f) {
+            rig.frames(1);
+            const int now = c.where(rig);
+            const int by = c.ring > 0 ? ((now - was) % c.ring + c.ring) % c.ring : now - was;
+            moves += by;
+            was = now;
+        }
+        rig.stick(0.f, 0.f);
+        ui::gStickSpeed = 1.f;
+        return moves;
+    };
+    for (const Climber& c : climbers) {
+        const int full = climbed(c, 1.f), part = climbed(c, 0.9f);
+        std::printf("  the stick at 25%% on %s for %d frames: full %d, just short of full %d\n", c.name, c.frames, full, part);
+        if (full < part + c.more) std::printf("FAIL %s: a full push held did not climb\n", c.name);
+        CHECK(full >= part + c.more && part >= 2);
+    }
+}
+
+// Held keys (gesture audit G08, G32, 2026-11-25): one repeat for every screen, ui::Repeat, each counted from when
+// the one before was DUE; each screen names its pace (a cursor, a list, a click).
+void testHeldKeysRunAtTheirPace() {
+    using ui::Pace;
+    // The rule.
+    {
+        ui::Repeat repeat;
+        Uint32 t = 1000;
+        CHECK(!repeat.due(t, true, Pace::Cursor)); // the first ask starts the wait
+        CHECK(!repeat.due(t + ui::kCursorDelayMs - 1, true, Pace::Cursor) && repeat.due(t + ui::kCursorDelayMs, true, Pace::Cursor));
+        // A second of 16 ms frames at the cursor's pace: 27 after the wait, one each 30 ms. Counted from the frame
+        // that saw each, a repeat waited two frames (32 ms): 26.
+        repeat.restart();
+        int runs = 0;
+        for (int frame = 0; frame < 62; ++frame) {
+            t += 16;
+            while (repeat.due(t, true, Pace::Cursor)) ++runs;
+        }
+        CHECK(runs == 1 + static_cast<int>((61 * 16 - ui::kCursorDelayMs) / ui::kCursorEveryMs) && runs == 27);
+        // Let go: nothing, however long.
+        CHECK(!repeat.due(t + 500, false, Pace::Cursor));
+        // A frame held up (here 400 ms): one repeat, not the dozen it missed.
+        t += 400;
+        runs = 0;
+        while (repeat.due(t, true, Pace::Cursor)) ++runs;
+        CHECK(runs == 1);
+        t += 16;
+        CHECK(!repeat.due(t, true, Pace::Cursor)); // ...and the next 30 ms on, from that frame
+        CHECK(repeat.due(t + 14, true, Pace::Cursor));
+        // A pace faster than the frames: several in one frame (the list of recordings' 20 ms, the far end).
+        repeat.restart();
+        CHECK(!repeat.due(t, true, 0, 5));
+        runs = 0;
+        while (repeat.due(t + 16, true, 0, 5)) ++runs;
+        CHECK(runs == 4);
+        // The paces, and the third for clicks: none slower than it was (8 a second, after the cursor's wait).
+        CHECK(ui::paceDelayMs(Pace::Cursor) == 170 && ui::paceEveryMs(Pace::Cursor) == 30 && ui::paceDelayMs(Pace::List) == 200 && ui::paceEveryMs(Pace::List) == 110);
+        CHECK(ui::paceDelayMs(Pace::Click) == 170 && ui::paceEveryMs(Pace::Click) == 125 && ui::kStickClicksPerSecond == 8.f);
+        // Waits as one, runs as another.
+        repeat.restart();
+        CHECK(!repeat.due(t, true, Pace::Cursor, Pace::List) && repeat.due(t + 170, true, Pace::Cursor, Pace::List));
+        CHECK(!repeat.due(t + 279, true, Pace::Cursor, Pace::List) && repeat.due(t + 280, true, Pace::Cursor, Pace::List));
+    }
+    // The roll's keys held a second: the press and 27 (it was 25 and the press).
+    {
+        Rig rig;
+        addPhazed(rig);
+        rig.project().track = 1;
+        rig.app.session().view = View::Pattern;
+        rig.app.notes().moveCursorTo(24, 0);
+        rig.frames(2);
+        rig.key(RIGHT, true);
+        rig.frames(62);
+        rig.key(RIGHT, false);
+        CHECK(rig.app.notes().cursorPitch() == 24 + 1 + 27);
+    }
+    // The roll with X held on a note: the ratchet clicks at the clicks' pace (G32: it was 220 ms, after 200).
+    {
+        Rig rig;
+        rig.app.session().addTrack(TrackKind::Fm6);
+        rig.project().track = 1;
+        rig.frames(2);
+        NoteScreen& roll = rig.app.notes();
+        NotePattern& p = rig.project().tracks[1].notes[0][0];
+        roll.moveCursorTo(60, 4);
+        rig.tap(A);
+        const int slot = p.at(60, 4);
+        rig.key(X, true);
+        rig.frames(1);
+        rig.key(RIGHT, true);
+        rig.frames(20); // 320 ms: the press, and two clicks after the 170 wait (at 220 after 200: one)
+        rig.key(RIGHT, false);
+        CHECK(slot >= 0 && p.notes[slot].ratchet == 4 && roll.cursorPitch() == 60);
+        // The stick the same (it was four a second): a click at once, then eight a second (STICK SPEED 100% here).
+        rig.key(STICK_UP, true);
+        rig.frames(20); // the click at once, and 19 frames at 8 a second: two more (at four: one)
+        rig.key(STICK_UP, false);
+        rig.key(X, false);
+        rig.frames(1);
+        CHECK(slot >= 0 && p.notes[slot].glide == glideAt(3) && roll.cursorPitch() == 60);
+    }
+    // SONG's list of instruments runs when held, at the list's pace (it did not run at all): 20 frames is the press
+    // and one more.
+    {
+        Rig rig;
+        rig.app.session().view = View::Song;
+        rig.app.song().moveCursorTo(0, 1); // + TRACK: the list opens on PHAZED, the second
+        rig.tap(A);
+        CHECK(rig.app.song().choosing());
+        rig.key(DOWN, true);
+        rig.frames(20);
+        rig.key(DOWN, false);
+        rig.frames(10);
+        rig.tap(A);
+        CHECK(rig.project().trackCount() == 2 && rig.project().tracks[1].kind == kInstruments[(1 + 2) % kInstrumentCount].kind);
+        // A or B with the D-pad still held closes the list, and the run stops there: it does not go on over the cells.
+        for (SDL_Keycode closer : {A, B}) {
+            const int tracks = rig.project().trackCount();
+            rig.app.song().moveCursorTo(0, tracks); // + TRACK
+            rig.tap(A);
+            CHECK(rig.app.song().choosing());
+            rig.key(DOWN, true);
+            rig.tap(closer);
+            rig.frames(30);
+            rig.key(DOWN, false);
+            CHECK(!rig.app.song().choosing() && rig.project().trackCount() == tracks + (closer == A ? 1 : 0) && rig.app.song().cursorScene() == 0);
+        }
+    }
+    // The sampler's LOOP with A held clicks once a push of the stick: up ON, down OFF (it was turned as a range of
+    // one: 1.3 s of push to flip it).
+    {
+        Rig rig;
+        rig.app.session().addTrack(TrackKind::Sampler);
+        rig.project().track = 1;
+        rig.app.session().view = View::Device;
+        int loopStop = -1;
+        for (int place = 0; place < sampler::kSettings; ++place)
+            if (SamplerScreen::settingAt(place) == sampler::Loop) loopStop = place + 1;
+        rig.app.sampler().goTo(loopStop);
+        rig.frames(2);
+        const auto loop = [&] { return rig.project().tracks[1].sampler[sampler::Loop]; };
+        const int was = loop();
+        rig.key(A, true);
+        rig.frames(1);
+        rig.stick(0.f, was ? 0.7f : -0.7f); // a push past half (0.62 past the dead zone), away from what it is: it clicks at once
+        rig.frames(1);
+        CHECK(loop() == (was ? 0 : 1));
+        rig.frames(60); // held there: nothing more
+        CHECK(loop() == (was ? 0 : 1));
+        rig.stick(0.f, was ? -1.f : 1.f); // straight across the middle the other way: a push, a click
+        rig.frames(1);
+        CHECK(loop() == was);
+        rig.stick(0.f, 0.5f); // short of half (0.37 past the dead zone): nothing
+        rig.frames(30);
+        rig.stick(0.f, -0.5f);
+        rig.frames(30);
+        CHECK(loop() == was);
+        rig.stick(0.f, 0.f);
+        rig.key(A, false);
+        rig.frames(1);
+        CHECK(rig.app.sampler().cursor() == loopStop); // the cursor did not move
+    }
+}
+
+// G46: SONG opens with its cursor on the cell being worked on; a tab off SONG takes the cell the cursor was
+// moved to on this visit (bar 1), and nothing else: a glance, the same cell (its bar kept), a head.
+void testSongOpensOnTheCellWorkedOn() {
+    Rig rig;
+    Session& session = rig.app.session();
+    SongScreen& song = rig.app.song();
+    Project& p = rig.project();
+    CHECK(session.addTrack(TrackKind::Phazed) && session.addTrack(TrackKind::Phazed));
+    for (int t = 0; t < 3; ++t)
+        for (int s = 0; s < 3; ++s) p.tracks[t].bars[s] = 2;
+    p.track = 2, p.scene = 1, p.bar = 1;
+    rig.tap(L2);
+    CHECK(rig.view() == View::Song && song.cursorScene() == 1 && song.cursorColumn() == 2 && !song.cursorOnHead() && !song.cursorOnMaster());
+    rig.tap(R2); // a glance: nothing changes, the bar kept
+    CHECK(rig.view() == View::Pattern && p.track == 2 && p.scene == 1 && p.bar == 1);
+    rig.tap(L2);
+    rig.tap(LEFT);
+    rig.tap(DOWN);
+    rig.tap(R2); // moved: that cell, from its first bar
+    CHECK(rig.view() == View::Pattern && p.track == 1 && p.scene == 2 && p.bar == 0);
+    // Along the heads and down is a move too (no cell was passed on the way).
+    p.track = 1, p.scene = 0;
+    rig.tap(L2);
+    rig.tap(UP);
+    CHECK(song.cursorOnHead() && song.cursorColumn() == 1);
+    rig.tap(LEFT);
+    rig.tap(DOWN);
+    CHECK(!song.cursorOnHead() && song.cursorColumn() == 0 && song.cursorScene() == 0);
+    rig.tap(R2);
+    CHECK(p.track == 0 && p.scene == 0 && p.bar == 0);
+    p.track = 1, p.scene = 2;
+    p.bar = 1;
+    rig.tap(L2);
+    CHECK(song.cursorScene() == 2 && song.cursorColumn() == 1);
+    rig.tap(RIGHT);
+    rig.tap(LEFT);
+    rig.tap(R2); // away and back to the same cell: its bar kept
+    CHECK(p.track == 1 && p.scene == 2 && p.bar == 1);
+    // START on another scene's cell plays from there and makes it the scene worked on; the cursor brought
+    // back to the cell it opened on is still a move this visit, and R2 opens that cell (a bar 1: it changed).
+    rig.tap(L2);
+    rig.tap(UP);
+    rig.tap(START);
+    CHECK(p.playing && p.scene == 1);
+    rig.tap(DOWN);
+    rig.tap(R2);
+    CHECK(p.track == 1 && p.scene == 2 && p.bar == 0);
+    session.togglePlay(false);
+    rig.frames(1);
+    p.bar = 1;
+    // Not moved, the cursor takes nothing, even where the work moved elsewhere meanwhile (here by hand).
+    rig.tap(L2);
+    p.track = 0, p.scene = 0;
+    rig.tap(R2);
+    CHECK(p.track == 0 && p.scene == 0 && p.bar == 1);
+    p.track = 1, p.scene = 2;
+    // A trip to a head to mute: nothing is taken (nor on REPEATS).
+    rig.tap(L2);
+    rig.tap(UP, 3);
+    CHECK(song.cursorOnHead() && song.cursorColumn() == 1);
+    rig.tap(Y);
+    rig.tap(R2);
+    CHECK(p.tracks[1].muted && p.track == 1 && p.scene == 2 && p.bar == 1);
+    rig.tap(L2);
+    song.moveCursorTo(0, -1);
+    rig.tap(R2);
+    CHECK(p.track == 1 && p.scene == 2 && p.bar == 1);
+    // L2 off SONG goes round to SET, and takes the cell too (its TRACK NAME is that track's).
+    rig.tap(L2);
+    song.moveCursorTo(0, 0);
+    rig.tap(L2);
+    CHECK(rig.view() == View::Settings && p.track == 0 && p.scene == 0 && p.bar == 0);
+    // FX steps the track (L1 / R1): a look at SONG and back keeps that track.
+    session.view = View::Effects;
+    rig.tap(R1);
+    CHECK(p.track == 1);
+    rig.tap(L2, 3);
+    CHECK(rig.view() == View::Song && song.cursorColumn() == 1 && song.cursorScene() == 0);
+    rig.tap(R2, 3);
+    CHECK(rig.view() == View::Effects && p.track == 1 && p.scene == 0);
+    // SELECT's tap from another tab opens SONG on the cell too.
+    song.moveCursorTo(5, 2);
+    session.view = View::Device;
+    rig.tap(SELECT);
+    CHECK(rig.view() == View::Song && song.cursorScene() == 0 && song.cursorColumn() == 1);
+    rig.tap(R2);
+    CHECK(p.track == 1 && p.scene == 0);
+    // L3 opens SONG on MASTER: any cell reached from there is a move.
+    rig.tap(L2);
+    song.moveCursorTo(2, 2);
+    rig.tap(R2);
+    CHECK(p.track == 2 && p.scene == 2);
+    p.track = 0, p.scene = 0;
+    rig.tap(SDLK_3); // L3
+    CHECK(rig.view() == View::Song && song.cursorOnMaster());
+    song.moveCursorTo(2, 2);
+    rig.tap(R2);
+    CHECK(p.track == 2 && p.scene == 2 && p.bar == 0);
+    // The panic: R2 first took a moved cell (and L2 on the way opened SONG again); all four put it all back.
+    p.bar = 1;
+    rig.tap(L2);
+    song.moveCursorTo(0, 0);
+    rig.key(R2, true);
+    CHECK(rig.view() == View::Pattern && p.track == 0 && p.scene == 0);
+    rig.key(L1, true);
+    rig.key(L2, true);
+    rig.key(R1, true);
+    CHECK(rig.view() == View::Song && p.track == 2 && p.scene == 2 && p.bar == 1 && song.cursorScene() == 0 && song.cursorColumn() == 0);
+    for (SDL_Keycode k : {L1, L2, R1, R2}) rig.key(k, false);
+    rig.frames(1);
+    rig.tap(R2); // the cursor is still where it was moved to on that visit: R2 takes it, as it would have
+    CHECK(rig.view() == View::Pattern && p.track == 0 && p.scene == 0 && p.bar == 0);
+    // The panic puts SONG's cursor back where SONG reopening on the way moved it from: L2 first (to SET, nothing
+    // taken off a head, REPEATS or MASTER), R2 (SONG again, on the cell worked on), L1, R1. On a track's head...
+    const auto panicFromSong = [&] {
+        for (SDL_Keycode k : {L2, R2, L1, R1}) rig.key(k, true);
+        const bool back = rig.view() == View::Song && p.track == 0 && p.scene == 0;
+        for (SDL_Keycode k : {L2, R2, L1, R1}) rig.key(k, false);
+        rig.frames(1);
+        rig.tap(X); // (the first press puts the panic's notice away)
+        return back;
+    };
+    rig.tap(X); // (the panic above left its notice up: the first press puts it away)
+    rig.tap(L2);
+    rig.tap(RIGHT);
+    rig.tap(UP); // up from the top scene: track 2's head
+    CHECK(song.cursorOnHead() && song.cursorColumn() == 1);
+    CHECK(panicFromSong() && song.cursorOnHead() && song.cursorColumn() == 1);
+    // ...on REPEATS a page down (the scenes shown from the 14th)...
+    song.moveCursorTo(20, -1);
+    CHECK(song.topScene() == 13);
+    CHECK(panicFromSong() && song.cursorScene() == 20 && song.cursorColumn() == -1 && song.topScene() == 13 && !song.cursorOnHead());
+    // ...and on MASTER.
+    song.moveToMaster();
+    CHECK(panicFromSong() && song.cursorOnMaster());
+}
+
 int main(int argc, char** argv) {
     // The engine's own presets only: the tests here are of their tables. The presets the app's data
     // adds (and any track sound it gives a built-in) are presets_test's.
@@ -11728,6 +13855,9 @@ int main(int argc, char** argv) {
         testTheEffectsScreen();
         testTryingAnEffectKeepsIt();
         testFxStepsTheTrack();
+        testFxHoldKeptAcrossTracks();
+        testBandFreqStepsAThirdOfAnOctave();
+        testHoldYMovesABandTwoWays();
         testFxSwitchesType();
         testFxSwitchMends();
         testTheFxScreensList();
@@ -11752,6 +13882,80 @@ int main(int argc, char** argv) {
         if (failures == 0) std::printf("app tests passed (keys only)\n");
         return failures == 0 ? 0 : 1;
     }
+    if (argc > 1 && std::string(argv[1]) == "--gestures") { // just SONG's gestures of the gesture audit (for trying a change)
+        testDeletingATrack();
+        testTheTrackHoldStaysOnItsTrack();
+        testStartWithTheSongListsOpen();
+        testASceneOfAnyLength();
+        testTheHelpCardDrawsSel();
+        if (failures == 0) std::printf("app tests passed (gestures only)\n");
+        return failures == 0 ? 0 : 1;
+    }
+    if (argc > 1 && std::string(argv[1]) == "--setup") { // just the gesture audit's batch A2: the help card, SET's let go, the setup screen
+        testSettingsWaitToStandStill();
+        testTheHelpCard();
+        testSetActsOnTheLetGo();
+        testTheSetupScreen();
+        testTypingATrackName();
+        testBouncing();
+        if (failures == 0) std::printf("app tests passed (setup only)\n");
+        return failures == 0 ? 0 : 1;
+    }
+    if (argc > 1 && std::string(argv[1]) == "--naming") { // just the gesture audit's batch A3: the name keys, deleting presets, the words
+        testTypingATrackName();
+        testNamingATrackFromTheSongScreen();
+        testSavePresetOnDevice();
+        testSamplerPresetsOnDevice();
+        testDeletingOwnSynthPresets();
+        testThePresetKeysHaveEveryButton();
+        testAPanicClosesTheKeysItOpened();
+        testATabCallsOffAHoldOfB();
+        testTheNameKeysRunAtAListsPace();
+        testAHeldYDeletesOn();
+        testDeletingAPresetSaysItCannotBeUndone();
+        testHoldBDeletesAnEffect();
+        testTheHintsFitAndSayWhatTheyDo();
+        testTheHelpCard();
+        if (failures == 0) std::printf("app tests passed (naming only)\n");
+        return failures == 0 ? 0 : 1;
+    }
+    if (argc > 1 && std::string(argv[1]) == "--pages") { // just the gesture audit's batch A4 here: ADVANCED's place, the sound put back
+        testAdvancedKeepsItsPlace();
+        testAdvancedPages();
+        testAPutBackSoundIsTheEngines();
+        if (failures == 0) std::printf("app tests passed (pages only)\n");
+        return failures == 0 ? 0 : 1;
+    }
+    if (argc > 1 && std::string(argv[1]) == "--navigation") { // just the gesture audit's batch A5: going round, headings, the climb, SONG's cell
+        testTabs();
+        testTheEndsOfSetsRows();
+        testSetJumpsHeadings();
+        testTheStickClimbsOnACursor();
+        testSongOpensOnTheCellWorkedOn();
+        testTheSetupScreen();
+        testTheStickSpeedAndTheVolume();
+        testBOnASettingIsItsUsual();
+        if (failures == 0) std::printf("app tests passed (navigation only)\n");
+        return failures == 0 ? 0 : 1;
+    }
+    if (argc > 1 && std::string(argv[1]) == "--held") { // just the gesture audit's batch C1: held keys' paces
+        testHeldKeysRunAtTheirPace();
+        testTheFxScreensList();
+        testStepEffects();
+        testSettingsWaitToStandStill();
+        if (failures == 0) std::printf("app tests passed (held keys only)\n");
+        return failures == 0 ? 0 : 1;
+    }
+    if (argc > 1 && std::string(argv[1]) == "--holds") { // just the gesture audit's batch C3: held Y, B on SET, the hold lengths, the copy kept
+        testAHeldYDeletesOn();
+        testBOnASettingIsItsUsual();
+        testTheHoldLengths();
+        testHoldBDeletesAnEffect();
+        testCopyingABar();
+        testTheCellCopyStaysPut();
+        if (failures == 0) std::printf("app tests passed (holds only)\n");
+        return failures == 0 ? 0 : 1;
+    }
     if (argc > 1 && std::string(argv[1]) == "--hands") { // just the button standards of the pit stop
         testHoldBDeletesAnEffect();
         testTheHintsFitAndSayWhatTheyDo();
@@ -11771,6 +13975,7 @@ int main(int argc, char** argv) {
     testUndoLeavesWhatTheTextRounds();
     testUndoCoversABusAndASampler();
     testHoldBDeletesAnEffect();
+    testTheHoldLengths();
     testHoldYMovesAnEffect();
     testTheHintsFitAndSayWhatTheyDo();
     testDeletingATrackSaysItCannotBeUndone();
@@ -11813,6 +14018,8 @@ int main(int argc, char** argv) {
     testHoldBAndDragErases();
     testNothingStaysHeld();
     testDeletingATrack();
+    testTheTrackHoldStaysOnItsTrack();
+    testStartWithTheSongListsOpen();
     testStepsInAScene();
     testTheBattery();
     testBatteryLog();
@@ -11822,6 +14029,8 @@ int main(int argc, char** argv) {
     testRecordingAutomation();
     testChoicesClick();
     testTheHelpCard();
+    testSetActsOnTheLetGo();
+    testSettingsWaitToStandStill();
     testTheHelpCardDrawsSel();
     testTheHelpCardSaysTheLoad();
     testQuittingTurnsTheHandheldOff();
@@ -11838,10 +14047,19 @@ int main(int argc, char** argv) {
     testThePianoRollZooms();
     testTheRollsZoomIsATapOnly();
     testTheStickSpeedAndTheVolume();
+    testBOnASettingIsItsUsual();
+    testTheEndsOfSetsRows();
+    testSetJumpsHeadings();
+    testTheStickClimbsOnACursor();
+    testHeldKeysRunAtTheirPace();
+    testSongOpensOnTheCellWorkedOn();
     testTheTempoFromAnyScreen();
     testTheEffectsScreen();
     testTryingAnEffectKeepsIt();
     testFxStepsTheTrack();
+    testFxHoldKeptAcrossTracks();
+    testBandFreqStepsAThirdOfAnOctave();
+    testHoldYMovesABandTwoWays();
     testFxSwitchesType();
     testFxSwitchMends();
     testEffectsThroughTheSession();
@@ -11869,11 +14087,20 @@ int main(int argc, char** argv) {
     testPresetsAndFolders();
     testSavePresetOnDevice();
     testSamplerPresetsOnDevice();
+    testDeletingOwnSynthPresets();
+    testThePresetKeysHaveEveryButton();
+    testAPanicClosesTheKeysItOpened();
+    testATabCallsOffAHoldOfB();
+    testTheNameKeysRunAtAListsPace();
+    testAHeldYDeletesOn();
+    testDeletingAPresetSaysItCannotBeUndone();
     testHeldAStepsThroughLiveSamples();
     testABuiltInPresetRestsTheMacrosWhereTheyShow();
     testMacros();
     testTheEngineHearsMacrosAndSettings();
     testAdvancedPages();
+    testAdvancedKeepsItsPlace();
+    testAPutBackSoundIsTheEngines();
     testEveryPatchSettingIsOnSomePage();
     testAddingJaxep();
     testJaxepsDeviceScreen();

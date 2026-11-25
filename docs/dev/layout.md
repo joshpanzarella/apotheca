@@ -27,10 +27,11 @@ Where things are in the app:
 | `session_songs.cpp` | songs on disk, revisions, settings files |
 | `session_synth.cpp` | sounds, presets, the designer page, USB keyboard |
 | `session_samples.cpp` | recordings, fitting to tempo, the WiFi page, updates |
+| `name_keys.hpp/.cpp` | **the one set of keys a name is typed with**: a track's, a new folder's, a preset's (`NameKeys`) |
 
 **Adding an instrument**: a `TrackKind` (project.hpp), a row in
 `instruments.cpp`, a `SynthKind` and class in the engine, a `SynthSpec` if it
-has presets and macros, and its DEVICE screen in `App::screenNow()`. Then the
+has presets and macros, and its DEVICE screen in `App::screenNow()` and `App::typingAName()`. Then the
 places that list the synths by name: `userList`, `builtInPresets`,
 `settingCount`, `specFor` (synth_spec.cpp), `macroIsChoice` (mods.hpp, for a
 threshold macro), its stills in `main.cpp` and `kViews`, and the tests'

@@ -135,6 +135,7 @@ struct PlaceBits {
     std::uint64_t word[kWords] = {};
     void set(int i) { word[i >> 6] |= std::uint64_t(1) << (i & 63); }
     void clear(int i) { word[i >> 6] &= ~(std::uint64_t(1) << (i & 63)); }
+    bool has(int i) const { return (word[i >> 6] >> (i & 63)) & 1u; }
     void clearAll() {
         for (std::uint64_t& w : word) w = 0;
     }
@@ -193,8 +194,8 @@ struct Command {
         SetStepNudge,   // move a hit off the grid:   track, scene, a = lane, b = step, value = -0.5..0.5 of a step
         SetStepChance,  // how likely a hit plays:    track, scene, a = lane, b = step, value = 0..1
         SetStepStart,   // where in the sound a hit starts: track, scene, a = lane, b = step, value = 0..1 of its length
-        NoteOn,         // a synth track plays a note now: track, a = MIDI note, value = velocity 0..1
-        NoteOff,        //                                 track, a = MIDI note
+        NoteOn,         // a synth track plays a note now: track, a = MIDI note, value = velocity 0..1; e = 1: an audition (held till its NoteOff)
+        NoteOff,        //                                 track, a = MIDI note; e = 1: an audition's (the song's note on the key plays on)
         SelectPreset,   // a synth track's sound:     track, a = preset number
         SetNote,        // write one note of a synth pattern: track, scene, a = slot (0..63),
                         //   b = step, c = MIDI note, d = length in whole steps, extra = and this much of a
@@ -741,6 +742,9 @@ private:
         PendingNote pendingNotes[kMaxNotes * kMaxRatchet];
         PlaceBits<kMaxNotes * kMaxRatchet> notesWaiting; // which of them may be in use
         PlaceBits<128> keysHeld;                          // which keys may be sounding (offIn below kNoNote)
+        // The keys an audition holds (NoteOn with e = 1: X held): the song's own note on one ending does not let it
+        // go, and its NoteOff (e = 1) does not cut the song's note on it (review of gesture audit G33).
+        PlaceBits<128> auditioned;
         // An arpeggio (a chord whose STRUM is a length in steps): one note at a time, round the
         // chord's keys until the chord ends. One clock for the whole chord. Three, because at the most
         // one is still playing (nudged late), the next chord's waits for its own nudge and the

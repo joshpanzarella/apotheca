@@ -496,7 +496,7 @@ void testHoldBDeletes() {
     rig.tap(B);
     rig.frames(80);
     CHECK(rig.mod(t, 1).kind == kModStepper);
-    rig.key(B, true), rig.frames(30);
+    rig.key(B, true), rig.frames(15); // 240 ms of the half second (G29)
     CHECK(tab.deletePart() > 0.2f && tab.deletePart() < 0.8f);
     rig.tap(Y);
     rig.frames(50);
@@ -747,15 +747,86 @@ void testAHeldOnAStepsLine() {
     CHECK(!hinted(tab, "Y", nullptr));
 }
 
-// Hold B deletes at a second, not sooner.
+// L1 / R1 with A held on a setting (gesture audit G44, as on FX): A is kept where the new track's MOD on that line is
+// the same kind, so one DEPTH is turned across the tracks in one grip. A STEPPER there, an OFF MOD, or a fifth setting
+// with another job (a FREE LFO's SPEED against PHASE) lets A go. On STEPS a step is a step, whatever the RATE. At the
+// first or the last track nothing changes, and A stays held.
+void testAHeldThroughTheTracks() {
+    Rig rig;
+    const int a = 0, p = rig.phazed, f = rig.fm6;
+    CHECK(rig.project().trackCount() == 3 && a != p && p != f && f == 2);
+    rig.session().setMod(a, 0, lfo(kModFirstSend, 0.5f));
+    rig.session().setMod(p, 0, lfo(kModFirstSend, 0.2f));
+    rig.session().setMod(f, 0, stepper(kModFirstSend));
+    ModScreen& tab = rig.at(a, 0, S::kDepth);
+    rig.key(A, true), rig.frames(1);
+    rig.tap(L1); // the first: nothing changes
+    rig.tap(UP);
+    CHECK(rig.project().track == a && tab.cursorColumn() == S::kDepth && std::fabs(rig.mod(a, 0).depth - 0.51f) < 1e-5f);
+    rig.tap(R1);
+    rig.tap(UP);
+    CHECK(rig.project().track == p && tab.cursorColumn() == S::kDepth && std::fabs(rig.mod(p, 0).depth - 0.21f) < 1e-5f);
+    // A STEPPER on the next: A is let go. UP moves the cursor; nothing of the STEPPER is turned.
+    const ModSettings stepping = rig.mod(f, 0);
+    rig.tap(R1);
+    rig.tap(UP);
+    CHECK(rig.project().track == f && tab.cursorColumn() == S::kShape && same(stepping, rig.mod(f, 0)));
+    rig.key(A, false), rig.frames(1);
+    // An OFF MOD on the next: let go (the cursor comes back to its TARGET, and stays let go back on an LFO).
+    rig.session().setMod(f, 0, ModSettings());
+    rig.at(p, 0, S::kDepth);
+    rig.key(A, true), rig.frames(1);
+    rig.tap(R1);
+    CHECK(rig.project().track == f && tab.cursorColumn() == S::kTarget && !tab.picking());
+    rig.tap(L1);
+    rig.tap(DOWN);
+    CHECK(rig.project().track == p && tab.cursorColumn() == S::kShape);
+    rig.key(A, false), rig.frames(1);
+    // The fifth setting: PHASE and PHASE, kept; PHASE and a FREE LFO's SPEED, let go.
+    rig.at(a, 0, S::kMore);
+    rig.key(A, true), rig.frames(1);
+    rig.tap(R1);
+    rig.tap(UP);
+    CHECK(rig.project().track == p && tab.cursorColumn() == S::kMore && rig.mod(p, 0).phase == 1);
+    rig.key(A, false), rig.frames(1);
+    ModSettings free = rig.mod(p, 0);
+    free.rate = kModRateFree;
+    rig.session().setMod(p, 0, free);
+    rig.at(a, 0, S::kMore);
+    rig.key(A, true), rig.frames(1);
+    rig.tap(R1);
+    rig.tap(UP);
+    CHECK(rig.project().track == p && tab.cursorColumn() == S::kRate && same(free, rig.mod(p, 0)));
+    rig.key(A, false), rig.frames(1);
+    // ...but DEPTH is DEPTH, free or not: kept.
+    rig.at(a, 0, S::kDepth);
+    rig.key(A, true), rig.frames(1);
+    rig.tap(R1);
+    rig.tap(UP);
+    CHECK(rig.project().track == p && tab.cursorColumn() == S::kDepth && std::fabs(rig.mod(p, 0).depth - 0.22f) < 1e-5f);
+    rig.key(A, false), rig.frames(1);
+    // STEPS: the fifth step, from an LFO's row to a FREE LFO's: kept.
+    const int fifth = S::kFirstStep + 4;
+    rig.at(a, 1, fifth);
+    rig.key(A, true), rig.frames(1);
+    rig.tap(UP);
+    rig.tap(R1);
+    rig.tap(UP);
+    CHECK(rig.project().track == p && tab.cursorColumn() == fifth && std::fabs(rig.mod(a, 0).steps[4] - 0.05f) < 1e-5f && std::fabs(rig.mod(p, 0).steps[4] - 0.05f) < 1e-5f);
+    rig.key(A, false), rig.frames(1);
+}
+
+// Hold B deletes at half a second, not sooner (gesture audit G29, 2026-11-25: undo brings a MOD back, so it is
+// the shorter hold; it was a second).
 void testHoldBTakesASecond() {
     Rig rig;
     const int t = rig.phazed;
     rig.session().setMod(t, 0, lfo(kModFirstMacro));
     ModScreen& tab = rig.at(t, 0, 0);
-    rig.key(B, true), rig.frames(50); // 800 ms
+    CHECK(ModScreen::kDeleteHoldMs == 500);
+    rig.key(B, true), rig.frames(26); // 400 ms (the clock starts on the frame after the press)
     CHECK(rig.mod(t, 0).kind == kModLfo && tab.deletePart() > 0.7f && tab.deletePart() < 0.95f);
-    rig.frames(15);
+    rig.frames(8);
     CHECK(rig.mod(t, 0).kind == kModOff);
     rig.key(B, false), rig.frames(1);
 }
@@ -1074,6 +1145,7 @@ int main(int argc, char** argv) {
     testTheDiceAndUndo();
     testHoldBDeletes();
     testL1R1AndX();
+    testAHeldThroughTheTracks();
     testTheHintsFit();
     testTheDotAndTheStepPlaying();
     testTheListRowAsThePane();

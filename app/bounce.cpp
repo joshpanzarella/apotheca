@@ -506,6 +506,7 @@ bool Session::startBounce(Bounce what) {
             if (!job->sampleFolder.empty()) offline.useSampleFolder(job->sampleFolder);
             offline.applyProject();
             offline.finishStretching();
+            if (job->cancel.load()) break; // stopped while the song was loaded: no file is begun
             // A moment of nothing first, thrown away: the engine takes everything in (mutes fade
             // over a few milliseconds, and must have finished before the first note).
             {
@@ -570,6 +571,13 @@ bool Session::startBounce(Bounce what) {
         long long longest = 0;
         for (long long length : lengths) longest = length > longest ? length : longest;
         for (std::size_t i = 0; i < paths.size() && !job->cancel.load(); ++i) padWav(paths[i], lengths[i], longest, static_cast<int>(rate));
+        // Stopped (hold B on BOUNCE, or Apotheca closed): nothing of it is kept, the tracks already whole
+        // too (an EACH TRACK cut short was a part of its stems, never padded to one length).
+        if (job->cancel.load()) {
+            for (const std::string& path : paths) std::remove(path.c_str());
+            made = 0;
+            job->last.clear();
+        }
         job->files = made;
         job->progress.store(1.f);
         job->done.store(true);
@@ -582,13 +590,19 @@ void Session::finishBounce() {
     if (bounce_->thread.joinable()) bounce_->thread.join();
 }
 
+void Session::stopBounce() {
+    if (bounce_) bounce_->cancel.store(true); // (the thread looks once a block, and after loading each track)
+}
+
 void Session::cancelBounce() {
     if (!bounce_) return;
-    bounce_->cancel.store(true);
+    stopBounce();
     finishBounce();
+    bounce_->done.store(true); // (one pretended for a still has no thread to say so)
 }
 
 bool Session::bouncing() const { return bounce_ && !bounce_->done.load(); }
+bool Session::bounceStopping() const { return bouncing() && bounce_->cancel.load(); }
 float Session::bounceProgress() const { return bounce_ ? bounce_->progress.load() : 0.f; }
 float Session::bounceTail() const { return bounce_ ? bounce_->tail.load() : -1.f; }
 void Session::pretendBounce(float progress, float tailSeconds) {

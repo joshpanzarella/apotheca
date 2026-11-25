@@ -40,6 +40,25 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   fsynced, renamed over `NAME`, and the folder fsynced (a flat battery left
   an empty song). `save_test` checks the order on Linux. Its cost on the
   handheld's card is not measured.
+- **settings.txt and volume.txt are written once what they would say has stood still a second**
+  (gesture audit G43, 2026-11-25; `Session::keepSettings`, `kKeepRestMs`): every setter wrote at once,
+  two fsyncs, nine times a second with RIGHT held on a SET row, and at an end of THEME for nothing. Now
+  **never when the text is what the card has** (`settingsKept_`, `volumeKept_`: what was read, or
+  written, or what stands for no file), a change back before the second is up writes nothing, and
+  `Session::update` writes what is owed a second after the last change. **On the way out
+  `keepSettingsNow`** (main.cpp, after `saveNow`, before the power-off mark; `~Session` too). Every way
+  the program ends that is known goes through there: SEL + START, the idle rule, SDL_QUIT (SDL turns TERM
+  and INT into it), and on our firmware every way off sends TERM first (`S95apotheca`). **Not covered: a
+  power cut (the power key held 10 s, a battery pulled), a crash, a KILL**, which lose the song's last two
+  seconds too. **On the stock firmware, how its own power key ends the program is not known** (a TERM is
+  covered; a KILL or a cut loses a setting changed in the last second). The batch's own words ("every
+  way the program ends reaches it") were wrong there. **The wait was kept on the stock port all the
+  same** (review of G43, 2026-11-25; the other way offered was to write at once wherever
+  `PowerOff::turnsOff()` is false): the song is saved only every two seconds (`kSaveEveryMs`), so
+  whatever that key does already costs the song's last two seconds, and a setting's last second lies
+  inside them; writing at once there would bring back the held-RIGHT writes on the handheld most players
+  have. Not tried on a stock handheld; the owner was told.
+  `app_test` `testSettingsWaitToStandStill`; the tests that read a file at once call `keepSettingsNow`.
 - **A deleted song goes to `deleted/` under a name nothing there has** (song
   or rev: "ash well", else "ash well 2"), through `binSong`, which the
   Session and the WiFi page share. Renamed over, the first one's revs paired
@@ -199,8 +218,17 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   turned since: `PresetSoundMemory`, compared as text) **puts back what the track had
   before it**, so browsing past a whole preset leaves no effects behind; forgotten by
   any other change, SAVE, `applyProject`, `addTrack`, `setTrackKind`, moved by
-  `removeTrack`. One step of undo takes a pick back (`soundMark` sees it all). A new
+  `removeTrack`. One step of undo takes a pick back (`soundMark` sees it all). **B with A held
+  puts back the whole sound A went down on, this memory with it** (gesture audit G12,
+  `Session::keepSound` / `putSoundBack`: drums-and-samples.md), so a plain preset picked after the
+  trip does what it would have done without it. A new
   track starts plain on preset 1, whatever that one holds.
+- **A preset is heard as it is stepped to, with the song stopped: a synth's, a kit, and the sampler's** (the
+  sampler's since gesture audit G22, 2026-11-25: `SamplerScreen::stepPreset` was silent, so a preset had to be
+  stepped to and then X'd). Past an end nothing goes on and nothing is heard; playing, the song is heard
+  instead. The audit's other half (one save button, Y, on every preset stop) is NOT done: Y is CATCH on every
+  sampler stop and PHYSIC's dice on its MAIN page, so it needs a free button (the owner's call).
+  `app_test testSamplerPresetsOnDevice`.
 - **The built-ins past the engine's own are DATA, compiled in** (`app/presets/NAME.inc`,
   one raw string a synth; `readPresetData`, read once, `builtInData`): `new FOLDER /
   NAME` with `base`, `set`, `settings`, `macros`, FM-6's `op N` (an operator's 21 settings a line)

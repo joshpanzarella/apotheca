@@ -58,8 +58,8 @@
 // The grid shows one bar; running the cursor off the right of step 16 goes on to the next
 // bar, and the top bar says which (BAR 2 OF 4).
 //
-// The cursor can also sit on a lane's name (A plays the drum, hold A + stick
-// is that drum's volume), on the tempo (up from the top lane; hold A + stick),
+// The cursor can also sit on a lane's name (A alone is silent there, X plays
+// the drum; hold A + stick is that drum's volume), on the tempo (up from the top lane; hold A + stick),
 // and on BARS (up from the tempo; left / right the bar before or after, round the ends,
 // hold A + up / down the cell's count, more or fewer). With A or Y held, the D-pad
 // nudges the same values in exact steps.
@@ -74,6 +74,7 @@
 //   hold X, left / right     RATCHET  the hit played 2, 3 or 4 times inside its step
 //   hold X, L1               REVERSE  backwards, on and off
 //   hold X, R1               CUT      stopped after a step, half a step, a quarter; off
+//   hold X, B                all of them (and THROW) emptied: the hit stays, plain. One step of undo
 //
 // They combine, and each hit has its own. Marks on the block: slits for a
 // ratchet, an arrow for backwards, a red edge for a cut, and a dash beside
@@ -88,6 +89,7 @@
 //   hold X, up / down        HUMAN LEVEL  each hit up to 15% louder or quieter
 //   hold X, Y                the dice: a small feel (10 or 25%)
 //   hold X, A                this lane's feel onto every lane of the kit
+//   hold X, B                this lane's feel and SWING back to OFF
 //
 // A lane with a feel wears a purple mark at the left of its name.
 //
@@ -104,8 +106,8 @@
 //                       crossed, each on its own slice
 //   ...and R2 as well   each on a RANDOM slice: the break, shuffled
 //   X                   hears one slice: the hit's, or the step's own
-//   on the lane's name  up / down: whether a hit plays ONE SLICE and stops, or
-//                       RUNS ON through the recording until the next hit.
+//   on the lane's name  up: a hit plays ONE SLICE and stops; down: it RUNS ON
+//                       through the recording until the next hit.
 //                       Hold Y + right rolls every hit's slice; left puts
 //                       them back in order.
 //
@@ -117,8 +119,8 @@
 //   R1                  copy the bar on screen, every lane and every hit with all it is
 //   A                   paste it over the bar on screen (another bar, cell, scene or drum track).
 //                       One step of undo; on the same track its automation goes with it
-//   left / right        the bar before or after, round the ends
-//   up / down           BARS: the cell's, more or fewer (1, 2, 4 or 8, as the
+//   up / down           the bar before or after, round the ends (as on the roll)
+//   left / right        BARS: the cell's, more or fewer (1, 2, 4 or 8, as the
 //                       Song screen's hold A). One step of undo
 
 #include "redraw.hpp"
@@ -137,9 +139,8 @@ namespace apotheca {
 
 // How fast the controls feel. One place, so it can become a setting later.
 // The owner's rule: faster is better; nobody has ever asked for slower.
+// (A held D-pad runs at ui.hpp's paces, as on every screen: ui::Repeat.)
 struct Feel {
-    Uint32 repeatDelayMs = ui::kCursorDelayMs; // hold the D-pad this long before it runs
-    Uint32 repeatEveryMs = ui::kCursorEveryMs; // then one move this often (33 a second)
     float stickCellsPerSecond = 36.f; // stick held fully over, moving the cursor
     float fillPerSecond = 3.f;    // stick fully over: empty to full in a third of a second
     float tempoPerSecond = 90.f;  // stick fully over, in BPM
@@ -217,6 +218,7 @@ private:
     const TrackData& trk() const { return project_.current(); }
     void moveCursor(Button direction);
     void dragCursor(Button direction); // a move the player made: it paints if a brush is down
+    void direction(Button b, const Input& input); // a press of the D-pad, or its held repeat: the same job
     void placeHit(float chance);
     void paintHere();
     void diceOrder(int lane, int order[kSteps]) const;
@@ -242,6 +244,7 @@ private:
     void fxTurn(Button direction);   // with X held: one click of pitch (up / down) or ratchet (left / right)
     void fxRoll();                   // with X held, Y: the dice set the hit's step effects
     void fxThrow();                  // with X held, A: its THROW a step round (off, ECHO, SPACE, both)
+    void fxEmpty();                  // with X held, B: what X shows emptied (a hit's effects; a lane's FEEL and SWING), the hit kept
     void hearHit();                  // the hit under the cursor, as the pattern would play it
     void feelTurn(Button direction); // with X held on a lane's name: one click of HUMAN TIME (left / right) or HUMAN LEVEL (up / down)
     void feelRoll();                 // ...Y: the dice set the lane's feel, small amounts
@@ -283,6 +286,8 @@ private:
     float fxSaved_ = 0.f;  // part-clicks saved up while the stick is held over
     bool fxWas_ = false;
     bool fxWait_ = false; // the stick was already over when X went down: it does nothing until it has been let go
+    bool fxLastFrame_ = false; // X was held on a hit or a lane's name last frame (its hit can go from under it)
+    bool stickWait_ = false;   // X let go with the stick still pushed: the stick does nothing until it comes back (as FX and DEVICE)
     bool slicing_ = false; // the slice view is showing
     char said_[96] = "";   // a line said for a moment (why a lane cannot be sliced)
     Uint32 saidUntil_ = 0;
@@ -295,11 +300,12 @@ private:
     std::uint32_t dice_ = 0x9E3779B9u; // for R2's random levels
 
     Button repeating_ = Button::None; // D-pad direction being held
-    Uint32 repeatAt_ = 0;
+    ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
     Uint32 lastMs_ = 0;
     BarFollow follow_; // the view follows the bar playing (follow_bar.hpp)
     float stickX_ = 0.f, stickY_ = 0.f; // cursor part-moves saved up
     bool stickWasX_ = false, stickWasY_ = false;
+    ui::StickClimb climbX_, climbY_; // a full push held climbs (G07)
 };
 
 } // namespace apotheca

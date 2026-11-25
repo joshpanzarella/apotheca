@@ -47,6 +47,21 @@ void tapKey(SDL_Keycode key, int times = 1) {
     }
 }
 
+// "rest-presses": SEL held, eight taps of UP, SEL let go, pushed from SDL's timer thread 7 ms apart (SDL_PushEvent may be
+// called from any thread). They come while main.cpp works or rests, and the rest (pass_wait.hpp) takes most of them
+// off SDL's queue: the tempo goes up 8 only if main.cpp reads them from its PassWait (textviews).
+Uint32 pushRestPress(Uint32, void* param) {
+    int& tick = *static_cast<int*>(param);
+    if (tick > 8) {
+        pushKey(SDLK_BACKSPACE, false);
+        return 0; // (the last: the timer stops)
+    }
+    if (tick == 0) pushKey(SDLK_BACKSPACE, true); // SEL, held
+    else tapKey(SDLK_UP);                         // SEL + UP: the tempo a beat up
+    ++tick;
+    return 7;
+}
+
 } // namespace
 
 void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap& controlMap, int& stillMs) {
@@ -160,7 +175,7 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         if (std::strcmp(view, "kit-voice-held") == 0) pushKey(SDLK_x, true); // A held
         if (std::strcmp(view, "kit-voice-deleting") == 0) {
             pushKey(SDLK_z, true); // B held
-            if (stillMs > 600) stillMs = 600; // (the picture is taken before the second is up)
+            if (stillMs > 300) stillMs = 300; // (the picture is taken before the half second is up: undo brings it back, G29)
         }
     } else if (std::strncmp(view, "kit-edit", 8) == 0) {
         // EDIT on a lane: with --samples the first recording on lane 6, else lane 1's built-in kick; cut
@@ -185,7 +200,7 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         if (std::strcmp(view, "kit-edit-held") == 0) pushKey(SDLK_x, true); // A held
         if (std::strcmp(view, "kit-edit-deleting") == 0) {
             pushKey(SDLK_z, true); // B held
-            if (stillMs > 600) stillMs = 600; // (the picture is taken before the second is up)
+            if (stillMs > 300) stillMs = 300; // (the picture is taken before the half second is up: G29)
         }
     } else if (std::strncmp(view, "chordfx", 7) == 0) {
         // Chord effects on the piano roll. chordfx: four chords, the cursor on a strummed one.
@@ -536,9 +551,10 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
             else fx.goTo(0, 2);
             if (std::strcmp(view, "fx-modded") != 0) pushKey(SDLK_s, true); // X held
         } else if (std::strcmp(view, "fx-deleting") == 0) {
-            // B held on the TAPE's line: its bar filling (it is deleted at a second; stills are taken sooner).
+            // B held on the TAPE's line: its bar filling (it is deleted at half a second, G29; the still is taken sooner).
             fx.goTo(0, 0);
             pushKey(SDLK_z, true);
+            if (stillMs > 300) stillMs = 300;
         } else fx.goTo(0, 0);
     } else if (std::strcmp(view, "bounce") == 0 || std::strcmp(view, "bounce-tail") == 0 || std::strcmp(view, "bounce-ready") == 0) {
         // The BOUNCE row while one is under way: part-way through the song, or 12 seconds into its tail.
@@ -717,7 +733,7 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         } else if (std::strcmp(view, "mod-deleting") == 0) {
             mods.goTo(0, 0);
             pushKey(SDLK_z, true); // B held
-            if (stillMs > 600) stillMs = 600; // (the picture is taken before the second is up)
+            if (stillMs > 300) stillMs = 300; // (the picture is taken before the half second is up: G29)
         } else {
             mods.goTo(0, 0);
         }
@@ -753,7 +769,7 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         if (std::strcmp(view, "device-modded") != 0) pushKey(SDLK_s, true); // X held
         if (std::strcmp(view, "device-mod-deleting") == 0) {
             pushKey(SDLK_z, true); // B held
-            if (stillMs > 600) stillMs = 600;
+            if (stillMs > 300) stillMs = 300; // (before the half second: G29)
         }
     } else if (std::strncmp(view, "page", 4) == 0) {
         app.project().track = 1;
@@ -1217,6 +1233,15 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         if (std::strcmp(view, "help-nomenu") == 0) pushKey(SDLK_BACKSPACE, true); // SELECT, held
     } else if (std::strcmp(view, "kit-old") == 0) {
         app.session().view = View::Device;
+    } else if (std::strcmp(view, "rest-presses") == 0) {
+        // Presses that come while the program rests between passes (gesture audit G06): the drum grid at 100 BPM,
+        // and SEL + UP eight times from a timer once the passes are going. The top bar reads 108 when every one
+        // was read (textsize_test testPressesInTheRest).
+        app.session().view = View::Pattern;
+        app.session().setTempo(100.f);
+        static int ticks = 0;
+        ticks = 0;
+        if (SDL_AddTimer(60, pushRestPress, &ticks) == 0) std::fprintf(stderr, "rest-presses: no timer: %s\n", SDL_GetError());
     }
 
     if (smoke) {

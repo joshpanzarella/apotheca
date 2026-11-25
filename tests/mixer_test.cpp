@@ -514,8 +514,10 @@ void testOtherButtonsWithA() {
     rig.key(B, false);
     rig.key(A, false);
     rig.frames(1);
-    CHECK(session.view == View::Song && rig.project().trackCount() == 2);
-    // The same on a cell: A calls the delete off (B's tap has emptied the cell, as before), and opens nothing.
+    CHECK(session.view == View::Song && rig.project().trackCount() == 2 && !song.choosing()); // (a tap of A there: the instruments)
+    // The same on a cell: A calls the delete off, and opens nothing. The cell is kept (gesture audit G02: B's
+    // tap empties it on the let go, so a delete given up changes nothing; it was emptied on the press).
+    rig.project().tracks[1].notes[0][0].notes[0] = NoteEvent{0, 60, 1.f, 0.f, 0.8f};
     song.moveCursorTo(0, 1);
     rig.key(B, true);
     rig.frames(20);
@@ -525,7 +527,7 @@ void testOtherButtonsWithA() {
     rig.key(B, false);
     rig.key(A, false);
     rig.frames(1);
-    CHECK(session.view == View::Song && rig.project().trackCount() == 2);
+    CHECK(session.view == View::Song && rig.project().trackCount() == 2 && rig.project().tracks[1].notes[0][0].notes[0].velocity > 0.f);
     // B held alone still deletes (the check above is not just a delete that never comes).
     session.addTrack(TrackKind::Phazed);
     rig.frames(1);

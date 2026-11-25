@@ -97,6 +97,7 @@ struct UserPreset {
     std::string folder;        // a built-in's folder; empty for the player's own (USER)
     TrackSound sound;          // the track's sound past its synth (`whole` if the preset holds it)
     std::string recording;     // CLOUD's: the track's recording when the player saved it ("" none). A built-in never names one
+    std::string file;          // the player's own: its file in the preset folder ("PAD 2.phazed"); empty for a built-in
 };
 void setUserPresets(TrackKind kind, std::vector<UserPreset> presets);
 const std::vector<UserPreset>& userPresets(TrackKind kind);

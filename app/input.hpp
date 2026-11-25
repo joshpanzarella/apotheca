@@ -26,7 +26,13 @@ inline bool isDirection(Button b) { return b == Button::Up || b == Button::Down 
 struct ButtonEvent {
     Button button = Button::None;
     bool down = false;
+    // When it came: the SDL event's own time (SDL_GetTicks's clock, stamped as SDL queued it; main.cpp
+    // pumps every 4 ms, pass_wait.hpp), or 0 for one made up (a let-go for a gamepad gone, a test's).
+    // TAP TEMPO times a tap by it (gesture audit G06): the pass's clock is up to a whole pass out.
+    Uint32 ms = 0;
 };
+// When a press came: its own time, or the pass's clock `passMs` for one that has none.
+inline Uint32 whenPressed(const ButtonEvent& event, Uint32 passMs) { return event.ms ? event.ms : passMs; }
 
 class Input {
 public:
@@ -68,6 +74,7 @@ private:
 
     bool handleMapped(const SDL_Event& event, ButtonEvent& out);
     const struct ControlMap* map_ = nullptr;
+    Uint32 eventMs_ = 0; // the time of the event read last: what it moved (and pending()'s rest of a hat) came then
     int hat_[8] = {};
     bool held_[static_cast<int>(Button::Count)] = {};
     float axes_[4] = {};

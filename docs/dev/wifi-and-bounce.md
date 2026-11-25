@@ -4,7 +4,11 @@ The PIN, transfers, the designer page, missing recordings, renames, bounces.
 Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lines); CLAUDE.md is the index.
 
 - **The WiFi page is PIN-gated and checks every file.** A program update must
-  be accepted on the device (hold A). **Five wrong numbers lock it for a
+  be accepted on the device (hold A). **Refusing it is hold B a second too** (gesture audit G40,
+  2026-11-25; `App::updateDeleting_`): a tap of B deleted the program sent, the one for-good delete that was
+  not a hold, and a stray B meant sending it again from the desk. The bar fills red, and the line reads
+  `kUpdateDeletingWords` (CANNOT BE UNDONE) while B is held. Of A and B the one pressed last fills; any
+  other press calls B's off (A's is as it was). `transfer_test`. **Five wrong numbers lock it for a
   minute** (`Transfer::kWrongMost`, `lockoutMs`), counted for the whole server,
   every request refused with 429 meanwhile, the right number too. Only a path
   whose first part is all digits is a try (a browser asks for `/favicon.ico`
@@ -86,7 +90,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   recording goes on a list (`Transfer::takeChanges`), put there BEFORE
   `received()` goes up; `Session::update` reads it and calls
   `recordingChanged`. A rename changes the name only: reading the file again
-  would cut the sound. A recording SENT (no old name) is read again on every
+  would cut the sound. It is no step of undo, and every step of undo follows
+  it (`undoFollows`; songs-and-undo.md), as does a recording `findMissing` finds. A recording SENT (no old name) is read again on every
   lane and sampler track that names it, so a replaced file is heard at once.
 - **A missing recording is looked for by base name, and taken only if there
   is exactly one** (`Session::findMissing`, run after a song or a rev opens,
@@ -108,7 +113,17 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   `kLongestTailSeconds` in the engine; both are checked.
 - **A bounce is written as it goes**, to `NAME.wav.part`, and renamed when it
   is whole: a tail of minutes never sits in memory, and a cancelled bounce
-  leaves nothing. One that is KILLED (power, a crash) leaves its `.wav.part`:
+  leaves nothing: **an EACH TRACK cut short deletes the tracks it had finished** (2026-11-25, with hold B
+  on SET's BOUNCE, G15: they were a part of the stems, never padded to one length). **Hold B's stop is
+  `stopBounce`, which only sets the cancel** (review of G15, 2026-11-25): it called `cancelBounce`, which
+  joins the thread on the app thread, and the thread cannot leave loading a track half-way (a new
+  Engine, `applyProject` reading the samples from the card, `finishStretching` stretching every FIT
+  lane; `padWav` too), so a stray bounce stopped at once froze the screen and the buttons until the load
+  ended (this line said it "waits for that block": wrong). Now `bouncing()` stays true until the thread
+  sets `done`, `bounceStopping()` meanwhile: the row's note says STOPPING IT: NOTHING IS KEPT, B's hint
+  goes, and A starts nothing. The thread looks at the cancel once a block (256 frames) and after
+  loading each track, before its file is begun. `cancelBounce` (closing down, `~Session`; a still) still
+  stops and joins, and marks the job done (a pretended one has no thread to). One that is KILLED (power, a crash) leaves its `.wav.part`:
   `removeHalfBounces` takes those away when the program opens
   (`useBounceFolder`) and when a bounce starts, never while one is under way. The tracks of an EACH TRACK bounce are padded with silence
   to the longest. Its percentage counts the song's own playing only; in a

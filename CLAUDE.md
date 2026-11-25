@@ -38,14 +38,18 @@ never "rub out".
 New screens and gestures keep these; do not invent a variant.
 
 - **A** places, opens, picks. **Hold A + a direction** shapes or turns what is under the cursor.
-- **B** deletes, empties, goes back. **Hold B deletes for good** (with a bar that fills): never another button. Typing a name, B keeps it and leaves; Y deletes a letter.
-- **X** hears (on SONG it solos the track: owner, 2026-11-15). **Hold X** is "what it does": step effects on a drum hit, ratchet and glide on a note.
-- **Hold R1** drags: paint from an empty step, carry from a note, copy on SONG. R1 tapped on a scene's REPEATS box copies the whole scene; tapped on another row, it pastes.
-- **Hold L1 on the grids** (drum grid, slices, roll) is the bar key: **+ R1 copies the bar, + A pastes it**.
-  So L1's own tap (the slices, the roll's zoom) acts on its LET GO, and only if nothing else was pressed meanwhile.
+- **B** deletes, empties, goes back; on a setting it is the usual value (a synth page's B goes back to MAIN; SET's song rows do nothing). **Hold B deletes**, with a bar that fills (`ui::kHoldUndoneMs`, half a second, where SEL + B brings it back; `ui::kHoldForGoodMs`, a second, where nothing can; a track two): never another button.
+- **B during a held pick puts back what the press found**: A stepping sounds (`Session::putSoundBack`) or trying effects, Y swapping a chord. The mixer's A + B is a reset (owner, 2026-11-14).
+- **Typing a name** (`NameKeys`, every place; the password keys alike): A types, Y deletes a letter (held, on), B or START keeps it and leaves. Every button is the keys' meanwhile; only the four-shoulder panic acts.
+- **X** hears, as long as it is held, over the song too (on SONG it solos the track: owner, 2026-11-15). **Hold X** is "what it does": step effects on a drum hit, ratchet and glide on a note.
+- **Hold R1** drags: paint from an empty step, carry from a note. **On SONG R1 is a tap**: on a cell or a scene's REPEATS box it copies; on another it pastes, and the copy stays (brass) until R1 on it clears it.
+- **Hold L1 on the grids** (drum grid, slices, roll) is the bar key: **+ R1 copies the bar, + A pastes it** (the copy stays for the next paste).
+  So L1's own tap (the slices, the roll's zoom) acts on its LET GO, and only if nothing else was pressed meanwhile (a stick move included).
 - **Y** is the screen's special (chance, chord, mute, catch, roll).
-- **SELECT + something** is for whole-song things. **L2 / R2** are the tabs.
-- **A held D-pad has two speeds**, in `ui.hpp`: `kCursor...` for cursors, `kList...` for lists and choices.
+- **Hold Y + a direction moves a line where R1 is taken** (FX's effects: R1 is its track key). Not on the drum grid, where hold Y + a direction sets chance, a hit's slice and the lane dice.
+- **SELECT + something** is for whole-song things, on every tab; no screen sees a SELECT-held Y but the open song list's (a rev). **L2 / R2** are the tabs, and go round.
+- **A long list goes round on a press**; a held run and the stick stop at its end (`ui::listStep`). Tracks and FX's TYPE stop at the ends (owner, 2026-11-14).
+- **A held key runs at one of three paces** (`ui::Pace` through `ui::Repeat`, in `ui.hpp`): Cursor for cursors and values turned, List for lists and choices, Click for what hold X clicks. The list of recordings is the one named exception. **A full push of the stick held climbs on a cursor** (`ui::StickClimb`), nowhere else.
 - **One word: "delete".** Not erase, remove or rub out. A cell is "emptied".
 - **What cannot be undone says so** where it is confirmed.
 
@@ -110,7 +114,7 @@ file gets only a new hard rule.**
 - **Anything below zero is not a track** (-1 master, -2 and -3 the buses): test `track >= 0`. (`screens.md`)
 - **A colour goes through the theme's ten names**; a new mark is checked on a light theme; **text is checked at XL**;
   tight rows use `fonts.fixed()`. (`screens.md`)
-- **The device writes SEL, never SELECT; no maker's or model's name where a player reads** (`ctest -R words`).
+- **The device writes SEL, never SELECT; no maker's or model's name where a player reads; never erase, remove or rub out** (`ctest -R words`).
 - **A thing that moves by itself says so to the redraw** and gets a part in `idle_test`. (`screens.md`)
 - **Hints must fit** (`ui::gHintsOver`); shorten the words. (`screens.md`)
 - **Every setting has an icon** (`app/icons.cpp`, by its words; `testEverySettingHasAnIcon`).

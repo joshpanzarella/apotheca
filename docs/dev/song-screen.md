@@ -28,8 +28,35 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   copy puts both back to what the one was; the copy itself is not undone. **It is done on R1's LET GO
   with L1 still held**, and the App tells the screen when all four shoulders are down
   (`SongScreen::shouldersPressed`): a panic begun L1, R1 on a head copies nothing. A let go the SONG
-  screen never saw copies nothing either (`update`). A cell is emptied by B and copied by HOLD R1 and
-  drag, as before: nothing was added there.
+  screen never saw copies nothing either (`update`). A cell is emptied by B and copied by a TAP of R1
+  (below): nothing was added there.
+- **A copy stays after a paste: a cell, a scene and a bar** (gesture audit G23, 2026-11-25, under the
+  owner's "any of my decisions can be reversed if there is a more logical method", 2026-11-24). It was
+  "A copy clears on paste (scene, cell, bar)", an item of the owner's feature queue in commit e7b847d
+  (2026-11-21). One part into the next scenes cost a copy before every paste (R1 copy, move, R1 paste:
+  3 presses a scene, or copying the cell just pasted); with the copy kept it is move, R1 (2). The
+  brass mark stays on the copied cell or REPEATS box, so a copy still armed is seen, and each paste is
+  its own step of undo. **R1 on the copied cell or scene clears it** ("COPY CLEARED"; the bar's R1
+  says `clear` there, `paste` elsewhere). A scene gained this: R1 on the copied scene used to copy it
+  again (a fresh snapshot); now that is R1 twice (clear, copy). `Session::clearSceneCopy` counts in
+  `sceneCopies()`, so a panic begun with that R1 puts the copy back, as it does a copy. A bar's copy
+  (hold L1 + R1 / A) stays too; it has no mark on the grids (it never had one, and the look is
+  settled), and L1 + R1 copies afresh. **SONG's copy is a TAP of R1, not a drag** (the drag went on
+  2026-11-19, `docs/plans/easywins-plan.md`); CLAUDE.md and the manual said "hold R1 and drag" until
+  G23. `copyscene_test` `testTheCopyStays`, `testTheGesture`, `testTheMarkAndHints`; `copybar_test`
+  `testTheCopyStaysForAnotherPaste`.
+- **A copy moves with its scene when a NEXT SCENE goes in before it** (G23 review, 2026-11-25). The cell
+  copy went on any scene move (`SongScreen::scenesMoved`) and the scene copy kept its number
+  (`Session::scenesMoved` moved only the playing and a recording). Short-lived copies hid it; a kept copy
+  did not: copy a cell, NEXT SCENE, and R1 on the next scene copied where it should paste, and a scene's
+  brass mark and R1's `clear` sat on the scene before the copied one, where R1 on the real one pasted.
+  Now both follow `movedScene`, as the cursor and the playing do; SELECT + B / A taking the NEXT SCENE
+  back or putting it back moves them too (the same `scenesMoved`). The copy is a snapshot, so only its
+  mark's place moves. A copy whose scene falls off the end (the last, pushed off) goes
+  (`sceneFallsOff`): its scene is gone and no mark could show it. A paste waiting for R1's let go
+  (`cellPasteScene_`, `scenePaste_`) lands on the cell or scene R1 went down on, where it is now: before,
+  the copy going called the cell's off and the scene's landed on the old number. `copyscene_test`
+  `testTheCopyFollowsNextScene`, `testCellCopyCleared`.
 - **The owner's five of 2026-11-18** (`easy_test looks`). SONG's column word is REPEATS (`SongScreen::
   kRepeatsWord`, low in the heads' row, 10 above the first box; `kRepeatW` 38, it was 34, so the word
   fits at LARGE: the columns start 4 further right). **A lane's volume in its name's box is `kPanel2`,
@@ -44,6 +71,13 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   the cell's bar has no room for `X solo` (20 pixels over): mute and solo are said on the head. The help
   card's X line reads "hear it (SONG: solo). Held: a step's effects, a knob's MOD" (joined with the MOD
   screens' line, 2026-11-15; it is held to the card's margin by `testTheHelpCardDrawsSel`). `app_test` `testMuteSoloAndNames`, still `song-head`.
+- **The stick on a scene's REPEATS does what the D-pad does there** (gesture audit G14, 2026-11-24;
+  `SongScreen::repeatStick`). **L1 held**: up / down the scene's own tempo, squared, a beat at a
+  time at up to `kSceneTempoPerSecond` (90, the drum grid's tempo row's), left / right its meter.
+  **A held**: up / down the repeat count as before, left / right the scene's steps (16 or fewer).
+  Sideways is a click at once, then `kRepeatSidePerSecond` (3): they are counts. **One job a push**
+  (`repeatAxis_`, set afresh when A or L1 goes down). Before, L1 + the stick moved the cursor off the
+  count (and so dropped `l1OnRepeat_`), and hold A read only the stick's y. `easy_test stick`.
 - **AT END: a song played as a song LOOPs (as it always did) or STOPs**
   (owner, 2026-11-14; `Project::songEnd`, `kSongLoop` / `kSongStop`). In a
   song file `songend 1` among the song's own lines (`cutSong` knows it),
@@ -109,3 +143,72 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   42 px, their numbers held at LARGE, and DRUMS reads DRUM. Tests:
   `tests/mixer_test.cpp`; stills `song-mixer`, `song-mixer-master`, each also
   `-12`.
+- **Hold B on a track deletes the track B went down on** (gesture audit G02, 2026-11-24). It was tied to
+  nothing: the D-pad and the stick still moved the cursor, and `removeTrack(column_)` took whichever
+  track the cursor was on when the bar filled (hold on track 3, RIGHT at 1.9 s, track 4 went, for good).
+  Now `armTrackHold()` keeps the place (`trackHoldColumn_`, `trackHoldScene_`, as the scene hold keeps
+  `sceneHoldScene_`); `update()` calls it off when the cursor leaves it (`atTrackHold`: the stick moves
+  with no press), and **any other press calls it off at the top of `onButton`**, as on FX (A's press
+  included: `deleteCalledOff` is what makes that A no tap, on a head and on a cell; it was
+  `trackHold_ && input.held(B)` read after `update()` had cancelled). **The place includes the head**
+  (`trackHoldOnHead_`, review of G02, 2026-11-25): the stick's DOWN leaves a head with no press and
+  changes neither column nor scene, so a hold armed on a head was kept, and a quick let go then emptied
+  the cell under it (a tap on a head empties nothing). **A tap of B now empties the cell on its LET
+  GO**, and only if the bar never began to fill (`trackHoldPart_` still 0): once the bar shows, a hold
+  let go of or called off changes nothing, the cell neither (it was emptied on the press, a step of undo
+  even when the delete was given up). **Before the bar shows, B was a tap however the hold ends**
+  (`dropTrackHold(tap)`, review of G02, 2026-11-25): its let go, the cursor leaving (the D-pad, the
+  stick), any other press, a tab (`callOffDelete`) each empty the cell B went down on first. Calling it
+  off with nothing done dropped fast taps: B, DOWN, B, DOWN down a column with two thumbs puts the next
+  press down before B comes up, and every empty was lost without a sign. B's let go is read before the
+  REPEATS box's, so the stick's LEFT off the first track in the same frame keeps the tap. **A is the exception**: A
+  pressed in the quiet half second calls the delete off and keeps the cell (`mixer_test` pins it; the
+  owner's "A pressed while B's delete is filling calls the delete off", 2026-11-14). House precedent: the KIT EDIT box's B acts on its let go because hold
+  B is live there too (`drums-and-samples.md`). The 2 s length with its quiet 0.5 s is unchanged (the
+  audit's optional 1.5 s was not part of this batch). The REPEATS hold was left alone: its tap already
+  acts on the let go and it has no quiet wait to tell a tap from a hold. **A tab turned and turned
+  back with B held** (L2 / R2 are a press the screen never sees) resumed the timer, and the track went
+  the moment SONG was back: the App now calls `callOffDelete()` every frame another screen is up, as it
+  calls `FxScreen::callOff()`. FX's own hold B has the same gap and was left (not this batch).
+  Tests: `app_test` `testTheTrackHoldStaysOnItsTrack`, `mixer_test` `testOtherButtonsWithA`.
+- **START plays and stops with SONG's lists open** (the list of songs and the list of instruments;
+  gesture audit G39, 2026-11-24): both returned before START's handler, though the help card lists
+  START under ON EVERY SCREEN and the recordings lists already passed it. `playFromCursor()`, guarded by
+  SELECT not held (SEL + START quits, in `main.cpp`). In the song list it comes after `bHeld_ = false`,
+  so it calls a song's delete off, as any press does. The update notice stays modal on purpose
+  (`manual.md`: "Nothing else responds until it is answered"). Tests: `app_test`
+  `testStartWithTheSongListsOpen`, `save_test`.
+- **SELECT + Y on SONG is NEXT SCENE of the scene under the cursor** (gesture audit G03, 2026-11-24;
+  `songs-and-undo.md` has the rest): a cell's row or its REPEATS box (`sceneUnderCursor`); off the scenes
+  (a head, + TRACK, MASTER) the scene being worked on, as on the other tabs. The cursor goes onto the
+  copy (`scenesMoved`). It used to fall through to the screen's Y and mute the track. **Y alone still
+  mutes** (owner, 2026-11-15: "Y for mute is just a one tap"). In the open song list SELECT + Y is still
+  the list's (save a rev): the App leaves that one to the screen. SELECT + L2 / R2 here is the length of
+  the same scene. The App calls `selectWasUsed()`, or SELECT let go would open the song list.
+- **SONG opens on the cell being worked on; a tab off SONG takes the cell its cursor was moved to** (gesture
+  audit G46, 2026-11-25; `App::showTab`, `SongScreen::openOnWorkingCell`, `movedToCell`). The tabs only changed
+  `session.view`, and nothing ever put SONG's cursor on `project.track` / `scene`, so R2 x 3 with the cursor on
+  track 5 showed track 2's effects. Now every way the PLAYER opens SONG (L2 / R2, SELECT's tap) puts the cursor
+  on that cell, not moved (`movedThisVisit_`; L3 opens on MASTER, from where a cell is reached only by a move,
+  so it needs nothing of its own).
+  A direction or the stick on the grid (`moveCursor`) or `moveCursorTo` (a track added, copied or deleted; the
+  tests) is a move. A tab off SONG (L2 to SET too, since the tabs go round: SET's TRACK NAME is that track's)
+  takes the cursor's cell if the cursor was moved this visit and is on a CELL (not a head, REPEATS, + TRACK or
+  MASTER): track, scene and bar 1, as a tap of A; where that is the cell worked on already (away and back) its
+  bar is kept. **A flag, not "is it where it opened"**: START on another scene's cell makes that scene the one
+  worked on (`playFromCursor`), and the cursor brought back to where it opened must still take its cell (a first
+  try compared places and showed START's scene). Other ways off SONG are their own: A on a cell, R1 on a head
+  (TRACK NAME, and back), L3 back, the panic.
+  - **Kept**: FX and MOD's L1 / R1 step the track (owner, 2026-11-14): a look at SONG and back keeps the track
+    stepped to, since SONG opens on it. **Solo is a tap of X** (owner, 2026-11-15) and Y mutes: on a track's
+    HEAD neither moves the edit; **on a CELL of another track the trip is a move**, and R2 then opens that
+    track. That is the audit's named trade-off, accepted with the brief; the bar's mute and solo are said on the
+    head, so the head is the usual place.
+  - **The panic puts all of it back**: the scene and the bar besides the track (`App::sceneBeforeShoulders_`,
+    `barBeforeShoulders_`: R2 first may have taken a cell), and SONG's cursor and where it opened
+    (`SongScreen::Visit`, `visit()` / `putBack`: L2 or R2 on the way may have opened SONG and moved it). Tests:
+    `app_test` `testSongOpensOnTheCellWorkedOn`. Its first panic case (R2 first) reopens SONG on the very cell
+    the cursor was on, so only the `moved` flag was pinned; since the A5 review (2026-11-25) three more start
+    where reopening moves the cursor (L2 to SET, R2 back to SONG on the cell worked on, L1, R1): from a track's
+    head, from REPEATS a page down (the scene, the column and the first scene shown) and from MASTER. Each of
+    `putBack`'s five places is now pinned by one of them.

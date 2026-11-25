@@ -25,6 +25,9 @@
 
 #include "apotheca/engine.hpp"
 #include "app.hpp"
+#include "chords.hpp"
+#include "mod_knob.hpp"
+#include "mods.hpp"
 #include "samples.hpp"
 #include "temp_folder.hpp"
 
@@ -752,6 +755,208 @@ void testTheBuiltInDrumTapped() {
     tapped("fx (the kick, 0.6 s)", 0);
 }
 
+// X sounds for as long as it is held wherever it plays something, and over the song while it plays (gesture audit
+// G33): the synth's DEVICE stops (a fixed moment before, and nothing while playing), FX and the MOD tab on a synth,
+// the roll's note and chord (a chord was silent while playing; its keys are now held together). A tap is still a
+// moment. A MOD held is still run only while stopped (call E, 2026-11-15). A on a drum lane's name is silent.
+void testXHoldsWhatItPlays() {
+    Rig rig(tempFolder("hear"));
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Phazed)); // track 1
+    rig.project().track = 1;
+    const auto x = [&](bool down) { rig.key(X, down); };
+    // X held a second: still held, that many keys, and heard; let go: gone. A tap: it ends a moment after.
+    const auto heldFor = [&](const char* where, int keys) {
+        std::printf("  %s%s\n", where, rig.project().playing ? ", playing" : "");
+        rig.run(400);
+        rig.heard.clear();
+        x(true);
+        rig.run(1008);
+        CHECK(session.hearingHeld() && session.keysHeld() == keys);
+        CHECK(peakIn(rig.heard, 800, 1000) > 0.01f);
+        x(false);
+        rig.run(16);
+        CHECK(!session.hearingHeld() && session.keysHeld() == 0);
+        const Uint32 at = rig.clock;
+        x(true);
+        x(false);
+        rig.run(16);
+        CHECK(!session.hearingHeld() && session.heardEnds() == at + Session::kAuditionMs);
+        rig.run(400);
+    };
+    const auto both = [&](const char* where, int keys) {
+        heldFor(where, keys);
+        session.togglePlay(false);
+        rig.run(16);
+        CHECK(rig.project().playing);
+        heldFor(where, keys);
+        session.togglePlay(false);
+        rig.run(16);
+        CHECK(!rig.project().playing);
+    };
+    // DEVICE: FOLDER, PRESET, a page.
+    session.view = View::Device;
+    rig.app.phazed().goTo(0, SynthScreen::kFolder);
+    both("device, folder", 1);
+    rig.app.phazed().goTo(0, SynthScreen::kPreset);
+    both("device, preset", 1);
+    rig.app.phazed().goTo(1, 0);
+    both("device, a page", 1);
+    // A macro with a MOD: held over the song too, but the MOD is run only while stopped.
+    CHECK(session.setMod(1, 0, ModKnob::fresh(kModFirstMacro)));
+    rig.app.phazed().goTo(0, SynthScreen::kFirstMacro);
+    x(true);
+    rig.run(32);
+    CHECK(session.hearingHeld() && session.modsHeard(1) == 1u);
+    x(false);
+    rig.run(16);
+    session.togglePlay(false);
+    rig.run(16);
+    x(true);
+    rig.run(32);
+    CHECK(session.hearingHeld() && session.keysHeld() == 1 && session.modsHeard(1) == 0);
+    x(false);
+    session.togglePlay(false);
+    rig.run(16);
+    session.setMod(1, 0, ModSettings());
+    // FX: on the list, and on a slot's setting (a knob: X held there is also its MOD).
+    session.setEffect(1, 0, EffectKind::Filter);
+    session.view = View::Effects;
+    rig.app.fx().goTo(0, 0);
+    both("fx, the list", 1);
+    rig.app.fx().goTo(0, 1);
+    both("fx, a setting", 1);
+    // The MOD tab.
+    session.view = View::Mods;
+    both("mod tab", 1);
+    // The roll: an empty place, a note, a chord (its three keys).
+    session.view = View::Pattern;
+    rig.app.notes().moveCursorTo(64, 8);
+    both("roll, an empty place", 1);
+    NotePattern& cell = rig.project().tracks[1].notes[0][0];
+    cell.notes[0].step = 8, cell.notes[0].pitch = 64, cell.notes[0].length = 2.f, cell.notes[0].velocity = 0.7f;
+    session.sendNoteBar(1, 0, 0);
+    rig.app.notes().moveCursorTo(64, 8);
+    both("roll, a note", 1);
+    cell.chords[0] = makeChord(builtInPack().chords[0], 60, 0, 4.f, 0.7f, 0);
+    session.sendNoteBar(1, 0, 0);
+    rig.app.notes().moveCursorTo(60, 0);
+    int keys[kChordNotes];
+    const int count = cell.chords[0].pitches(keys);
+    CHECK(count == 3);
+    both("roll, a chord", count);
+    // Choosing a chord (Y held): X holds the chord in hand for as long as X is, playing or not, as X on a chord
+    // placed (review of G33: it was hearChord's fixed moment a key). Its keys are none of the song's.
+    {
+        const SDL_Keycode Y = SDLK_a, B = SDLK_z;
+        rig.app.notes().moveCursorTo(48, 12);
+        rig.key(Y, true);
+        for (int playing = 0; playing < 2; ++playing) {
+            std::printf("  roll, choosing a chord%s\n", rig.project().playing ? ", playing" : "");
+            rig.run(400);
+            rig.heard.clear();
+            x(true);
+            rig.run(1008);
+            CHECK(session.hearingHeld() && session.keysHeld() >= 3 && peakIn(rig.heard, 800, 1000) > 0.01f);
+            x(false);
+            rig.run(16);
+            CHECK(!session.hearingHeld() && session.keysHeld() == 0);
+            session.togglePlay(false);
+            rig.run(16);
+        }
+        CHECK(!rig.project().playing);
+        rig.key(B, true); // nothing lands
+        rig.key(B, false);
+        rig.key(Y, false);
+        rig.run(400);
+    }
+
+    // The Session, no frame between: a key of a chord X holds, struck again (as a setting turned strikes a held
+    // key), stays held; stopHeard lets every key of it go, not only the first.
+    const int held3[3] = {60, 64, 67};
+    session.auditionHeld(1, held3, 3, 0.7f, &rig);
+    CHECK(session.keysHeld() == 3);
+    session.audition(1, 67, 0.7f);
+    CHECK(session.keysHeld() == 3 && session.hearingHeld());
+    session.stopHeard(&rig);
+    CHECK(session.keysHeld() == 0 && !session.hearingHeld());
+    rig.run(400);
+
+    // A on a drum lane's name is silent (it is held there for the lane's volume); X hears it.
+    rig.project().track = 0;
+    rig.app.drums().moveCursorTo(7, -1);
+    rig.listen();
+    rig.key(A, true);
+    rig.run(500);
+    rig.key(A, false);
+    rig.run(1000);
+    CHECK(rig.heardMs() < 0);
+    rig.listen();
+    x(true);
+    rig.run(500);
+    x(false);
+    rig.run(500);
+    CHECK(near(rig.heardMs(), 500, 40));
+}
+
+// X held on a key the song plays too (review of G33). The two share the synth's keys, and the song's note ending let
+// every voice on its key go, X's too; letting X go cut the song's note. The engine keeps a key an audition holds
+// (Track::auditioned) until the audition's own NoteOff, and that NoteOff leaves a key the song still plays.
+void testXHeldOverTheSongsOwnKey() {
+    // The patch dies away by itself, so what is heard is held beside the song's note alone (no X): `alone`.
+    float alone = 0.f;
+    for (int part = 0; part < 4; ++part) {
+        Rig rig(tempFolder("hear"));
+        Session& session = rig.session();
+        CHECK(session.addTrack(TrackKind::Phazed));
+        rig.project().track = 1;
+        NotePattern& cell = rig.project().tracks[1].notes[0][0];
+        cell.notes[0].step = 0, cell.notes[0].pitch = 72, cell.notes[0].length = part == 0 || part == 3 ? 1.f : 8.f, cell.notes[0].velocity = 0.7f;
+        session.sendNoteBar(1, 0, 0);
+        session.view = View::Pattern;
+        rig.app.notes().moveCursorTo(72, 0);
+        rig.run(100);
+        if (part == 3) { // an audition's key whose NoteOff never came (a full queue): Play lets it go for good
+            Command c;
+            c.type = Command::NoteOn, c.track = 1, c.a = 72, c.value = 0.7f, c.e = 1;
+            CHECK(session.engine.send(c));
+            rig.run(100);
+        }
+        session.togglePlay(false);
+        rig.listen();
+        rig.run(48);
+        if (part == 1) {
+            rig.run(1500);
+            alone = peakIn(rig.heard, 800, 950);
+            CHECK(alone > 1e-3f);
+        } else if (part == 3) {
+            std::printf("  an audition's key never let go, then Play\n");
+            rig.run(1500);
+            CHECK(peakIn(rig.heard, 300, 600) < 1e-3f); // (the song's note ended at 125 ms, and died away: the key is not held)
+        } else if (part == 0) {
+            // The song's note is an eighth of a second: X held on to 1.5 s is heard all the while.
+            std::printf("  held past the song's note\n");
+            rig.key(X, true);
+            rig.run(1500);
+            CHECK(session.hearingHeld() && peakIn(rig.heard, 1000, 1500) > 0.01f);
+            rig.key(X, false);
+            rig.run(1000);
+            CHECK(peakIn(rig.heard, 2200, 2500) < peakIn(rig.heard, 1000, 1500)); // (let go, it ends)
+        } else {
+            // The song's note is a second: X let go at half a second, the song's note plays on to its end, as
+            // loud as with no X at all at the least.
+            std::printf("  let go during the song's note\n");
+            rig.key(X, true);
+            rig.run(500);
+            rig.key(X, false);
+            rig.run(1000);
+            CHECK(!session.hearingHeld() && peakIn(rig.heard, 800, 950) > 0.9f * alone);
+        }
+        session.togglePlay(false);
+        rig.run(100);
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -777,6 +982,8 @@ int main(int argc, char** argv) {
     RUN(testTheSampler);
     RUN(testTheFxScreenOnDrums);
     RUN(testTheBuiltInDrumTapped);
+    RUN(testXHoldsWhatItPlays);
+    RUN(testXHeldOverTheSongsOwnKey);
     if (failures) {
         std::printf("%d failure(s)\n", failures);
         return 1;

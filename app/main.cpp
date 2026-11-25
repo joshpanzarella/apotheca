@@ -15,7 +15,7 @@
 //   --view NAME    with --demo, open on: song, drums, notes, phazed, kit,
 //                  add-track, change-instrument, song-deleting, song-head, song-mixer, song-mixer-master
 //                  (A held on a head: the mixer; with -12 on the end, twelve tracks), fx-deleting (B held: take
-//                  the still before a second, --still-ms 500), page1 .. page9 (Phazed's advanced pages), or
+//                  the still before half a second, --still-ms 300), page1 .. page9 (Phazed's advanced pages), or
 //                  jaxep, jaxep0 .. jaxep5 (JAX-EP's main panel, a macro lit; and its pages, MAIN first),
 //                  jaxep-bank (MAIN on B7, in BANK B: the longest of the 32 names), jaxep-held (a knob, A held, turned)
 //                  fm6, fm6-1 .. fm6-8 (FM-6's main panel, a macro lit; and its pages), fm6-long (MAIN on the
@@ -34,7 +34,8 @@
 //                  volume (the SET page, on VOLUME), setup-lights, setup-light (on our own firmware: BRIGHTNESS,
 //                  STICK LIGHT on STEPS), brightness (MENU + a volume key's box, on the drum grid), update-ready, update-ready-drums,
 //                  update-accepted (an update accepted: the bar, and the notice), nomenu and help-nomenu
-//                  (a handheld with no MENU button: its hint, and its help card)
+//                  (a handheld with no MENU button: its hint, and its help card), rest-presses (SEL + UP eight
+//                  times from a timer while the passes rest: 108 BPM when main.cpp read them all, textviews)
 //                  picker, picker-in, picker-deep, picker-deleting, picker-new, picker-typing, picker-carrying, picker-folder-deleting, sampler-picker (with --samples: the list
 //                  of recordings in its columns: on SAMPLES, in a folder, two folders down, B held, the sampler's)
 //                  kit-edit, kit-edit-held, kit-edit-deleting, kit-edit-column (a lane's EDIT view: with --samples
@@ -80,6 +81,7 @@
 #include "drum_voices.hpp"
 #include "power_off.hpp"
 #include "redraw.hpp"
+#include "pass_wait.hpp"
 #include "bench_run.hpp"
 #include "controls.hpp"
 #include "input.hpp"
@@ -395,7 +397,11 @@ int main(int argc, char** argv) {
     static ControlMap controlMap;
     std::string savedControls;
     const bool mapped = !smoke && !shot && !learn && readTextFile(controlsFile, savedControls) && controlMap.parse(savedControls);
-    bool learning = !mapped && !smoke && (!shot || learn) && (joysticks > 0 || learn || handheld);
+    // A map from a setup that never asked for L3 (the stick pressed in: MASTER from any screen), and
+    // with none in it: L3 alone, once. Answered or let go by, the map is written again and not asked again.
+    const bool askL3 = mapped && controlMap.neverAskedL3() && (joysticks > 0 || handheld);
+    if (askL3) learner.askOnlyFor(controlMap, Button::L3);
+    bool learning = askL3 || (!mapped && !smoke && (!shot || learn) && (joysticks > 0 || learn || handheld));
     SDL_GameController*& pad = sticks.pad;
     sticks.raw = mapped || learning;
     if (!mapped && !learning) {
@@ -405,7 +411,8 @@ int main(int argc, char** argv) {
             if (SDL_IsGameController(i)) pad = SDL_GameControllerOpen(i);
         }
     }
-    std::printf("controls: %s\n", mapped ? "as learned (controls.txt)" : learning ? "not learned yet: asking for each button"
+    std::printf("controls: %s\n", askL3 ? "as learned (controls.txt), but L3 was never asked for: asking for it alone"
+                                   : mapped ? "as learned (controls.txt)" : learning ? "not learned yet: asking for each button"
                                                                         : pad ? SDL_GameControllerName(pad) : "no gamepad found, keyboard stand-in only");
 
     // List what the device can record from, so a log from the handheld shows
@@ -571,10 +578,12 @@ int main(int argc, char** argv) {
     const char* offWhy = nullptr; // set: the program ends to turn the handheld off ("quit", "idle")
     powerOff.busy(SDL_GetTicks());
     Uint32 audioTriedAt = 0; // the sound card gone: when it was last tried again
+    // The rest between passes: 16 ms with nothing pressed, cut short by a press (pass_wait.hpp).
+    PassWait wait;
     while (running) {
         SDL_Event event;
         bool stirred = false; // a button, or anything of the window, this pass (a stick's motion counts by where it is)
-        while (SDL_PollEvent(&event)) {
+        while (wait.next(event)) { // (what came during the rest first, then SDL's own)
             if (event.type != SDL_JOYAXISMOTION && event.type != SDL_CONTROLLERAXISMOTION) stirred = true;
             if (event.type == SDL_QUIT) running = false;
             // Desk testing only: the handheld has no Escape key.
@@ -743,10 +752,11 @@ int main(int argc, char** argv) {
             keepPicture(frame);
         }
         if (draw) SDL_RenderPresent(renderer);
-        SDL_Delay(16);
+        wait.rest(input); // 16 ms in four naps, and a button pressed meanwhile ends it: the next pass reads it at once
     }
 
     app.session().saveNow(); // the last couple of seconds of changes
+    app.session().keepSettingsNow(); // ...and a setting or the volume changed in the last second (they wait to stand still)
     // Saved: now the system may turn the handheld off (its supervisor reads the mark once we have gone).
     if (offWhy && powerOff.turnsOff()) {
         if (powerOff.writeMark(offWhy)) std::printf("turning the handheld off (%s)\n", offWhy);

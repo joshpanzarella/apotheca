@@ -190,7 +190,7 @@ void filterPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
     }
     case EffectKind::Band: {
         // band.cpp's shapes as the textbook curves they are (H(s) = (b2 s^2 + b1 s + b0) / (a2 s^2 + a1 s + a0)).
-        const float f0 = freqAt(s("FREQ", 0.5663f)), db = (2.f * s("GAIN", 0.5f) - 1.f) * 12.f;
+        const float f0 = freqAt(s("FREQ", s.info.defaults[0])), db = (2.f * s("GAIN", 0.5f) - 1.f) * 12.f;
         const float q = 0.3f * std::pow(100.f, s("Q", 0.3495f)), a = std::pow(10.f, db / 40.f), r = std::sqrt(a);
         const int shape = s.choice("SHAPE");
         float b2 = 1.f, b1 = a / q, b0 = 1.f, a2 = 1.f, a1 = 1.f / (a * q), a0 = 1.f; // BELL
@@ -202,7 +202,7 @@ void filterPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
             const float top = (b0 - b2 * w2) * (b0 - b2 * w2) + (b1 * w) * (b1 * w), under = (a0 - a2 * w2) * (a0 - a2 * w2) + (a1 * w) * (a1 * w);
             return dbToV(10.f * std::log10(std::fmax(top, 1e-12f) / std::fmax(under, 1e-12f)));
         };
-        markT = s("FREQ", 0.5663f);
+        markT = s("FREQ", s.info.defaults[0]);
         break;
     }
     case EffectKind::Comb: {
@@ -333,9 +333,9 @@ void wavePicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
     curve(r, p, [&](float t) { return 0.5f + 0.45f * (mix * bent(t) + (1.f - mix) * plain(t)); }, kText);
 }
 
-// ---- PITCH: the sound (faint) and the sound shifted, over two of its cycles; under them the two heads' fades
-// over a third of a second, as pitch.cpp turns them: each rises and falls once in GRAIN / |1 - speed|, half a turn
-// apart, so the two add to one (at no shift they stand still, one at full) ----
+// ---- PITCH: the sound (faint) and the sound shifted, over two of its cycles; under them the two heads over a
+// third of a second, as pitch.cpp turns them: one plays a piece of GRAIN / |1 - speed| alone, then the other takes
+// over in 5 ms, the two adding to one (at no shift one stands still, at full) ----
 void pitchPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
     grid(r, p, 0.f);
     const float semis = static_cast<float>(s.choice("PITCH") - 12) + (s("FINE", 0.5f) - 0.5f);
@@ -346,12 +346,13 @@ void pitchPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
     curve(r, waves, [&](float t) { return 0.5f + 0.47f * loud * (0.3f + 0.7f * (1.f - mix)) * std::sin(2.f * kPi * 2.f * t); }, kLine);
     curve(r, waves, [&](float t) { return 0.5f + 0.47f * loud * (0.3f + 0.7f * mix) * std::sin(2.f * kPi * 2.f * speed * t); }, kText);
     const Plot fades{p.x, p.y + p.h * 4 / 5, p.w, p.h - p.h * 4 / 5};
-    const float turns = turn < 1e-4f ? 0.f : 0.3f * turn / grain; // a head's rise and fall across the picture
+    const float pieces = turn < 1e-4f ? 0.f : 0.3f * turn / grain, cross = 0.005f / 0.3f; // across the picture, and a crossing
     for (int head = 1; head >= 0; --head) {
         curve(r, fades, [&](float t) {
-            float ph = turns * t + 0.5f * static_cast<float>(head);
-            ph -= std::floor(ph);
-            return 1.f - std::fabs(2.f * ph - 1.f);
+            const float at = pieces * t, k = std::floor(at); // in pieces
+            const float into = pieces > 0.f ? (at - k) / pieces : 1.f, u = k > 0.f && into < cross ? into / cross : 1.f;
+            const float in = u * u * (3.f - 2.f * u);                      // the one coming in (the first piece: head 1's)
+            return (static_cast<int>(k) % 2 == 1 - head) ? in : 1.f - in; // (the other going out)
         }, head == 0 ? kText : kDim);
     }
 }

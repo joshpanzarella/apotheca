@@ -37,14 +37,20 @@
 //                  it would go. Nothing goes on the lane meanwhile. B with R1 held calls it off.
 //                  Every saved song and rev that names it follows (Session::moveSample).
 //   A              on a recording: keep it. On a folder: into it. On + NEW FOLDER (the last row
-//                  of SAMPLES and of a first-level folder): the keys for its name, as a track's
-//                  name is typed (A types, B deletes or leaves, Y or START keeps it).
-//   B              a tap: put back what was there before the list was opened
+//                  of SAMPLES and of a first-level folder): the name keys (name_keys.hpp: A types,
+//                  Y deletes, B or START makes it; nothing typed, B leaves).
+//   B              a tap: put back what was there before the list was opened. Where holding B does
+//                  something (a recording, a folder), only a TAP: let go after kTapMs, or after
+//                  another button meanwhile, and nothing happens (gesture audit G42: a delete let go
+//                  early closed the list). Elsewhere (the first row, + NEW FOLDER) B always goes back
 //   hold B         for a second: DELETE the recording under the cursor from the
 //                  handheld, for good (a bad catch, a take not wanted), or an
 //                  EMPTY folder (nothing at all in it). Not the first row. Hold B is "delete for good" on
 //                  every screen. Held on a folder that is NOT empty: after kHoldSaysMs the top line
-//                  says so, and letting go is then no tap.
+//                  says so.
+//   Y, R1          with no recordings and no folders at all: the list closes (as B's tap) and Y
+//                  catches the last bar, R1 records, as the words in the list say (Jobs::catchBar,
+//                  Jobs::record)
 //   X              while the preview plays: it plays on to its end (owner,
 //                  2026-11-15). Nothing playing: heard again, for as long as X
 //                  is held (to its end); a tap is heard for a moment
@@ -66,6 +72,7 @@
 
 #include "redraw.hpp"
 #include "input.hpp"
+#include "name_keys.hpp"
 #include "session.hpp"
 #include "ui.hpp"
 
@@ -95,6 +102,14 @@ public:
         std::function<int()> followFailures;               // Session::followFailures; may be empty
         std::function<bool()> copying;                     // a carry is being copied (Session::carryCopying); may be empty
         std::function<Session::FileJob()> copied;          // how the copy's whole move went, once it is not copying (Session::carryResult)
+        // With nothing on the card, the list says where recordings come from: Y and R1 there close it (as B's tap)
+        // and do these, as Y and R1 do on the screen that opened it. May be empty.
+        std::function<void()> catchBar;                    // Y: the last bar the song played, caught as a recording
+        std::function<void()> record;                      // R1: record from the input (again: stop)
+        // B's tap, after use() has put back the recording that was on (where another is on now): what a pick takes
+        // off besides the name goes back too (a lane's cut: each recording put on gives its lane the whole, the
+        // one it had as well). Given that recording's name as it is now ("": deleted meanwhile). May be empty.
+        std::function<void(const std::string&)> putBack;
     };
     // A row of a column.
     enum class Kind { First, Folder, Recording, NewFolder };
@@ -104,18 +119,19 @@ public:
         int count;        // a folder: the recordings in it, those of the folders inside it too
     };
     static constexpr int kRows = 11, kPage = kRows - 1;
-    static constexpr Uint32 kFasterAfterMs = 1500, kFasterEveryMs = 60; // a held D-pad: the list's pace first, then this
-    static constexpr Uint32 kFastestAfterMs = 3500, kFastestEveryMs = 20; // ...and held this long, this: the far end of a long list
+    // A held D-pad: the list's pace first, then this; held longer, this: the far end of a long list (named in ui.hpp,
+    // the one exception to its paces).
+    static constexpr Uint32 kFasterAfterMs = ui::kRecordingsFasterAfterMs, kFasterEveryMs = ui::kRecordingsFasterEveryMs;
+    static constexpr Uint32 kFastestAfterMs = ui::kRecordingsFastestAfterMs, kFastestEveryMs = ui::kRecordingsFastestEveryMs;
     static constexpr float kStickRowsPerSecond = 80.f;                  // the stick pushed all the way (times ui::gStickSpeed); by the square of the push
     static constexpr Uint32 kHoldSaysMs = 400;                          // B held this long on a folder that is not empty: it says why not
+    static constexpr Uint32 kTapMs = 250;                               // B let go sooner on a row it deletes (nothing else pressed) is a tap; later, nothing
     static constexpr Uint32 kAtOnceMs = 90;                             // rows arrived at closer together than this: the one rested on goes on
-    static constexpr Uint32 kDeleteHoldMs = 1000;
+    static constexpr Uint32 kDeleteHoldMs = ui::kHoldForGoodMs; // (a recording or a folder on the card: for good)
     static constexpr Uint32 kCarryHoldMs = 300;  // R1 held this long on a recording carries it; let go sooner, it is a page
     static constexpr Uint32 kSaidMs = 2500;      // how long the top line says what was done, or why not
     static constexpr int kFolderNameLength = 12; // the longest a folder's name is typed
-    static const char* const kKeys;              // the keys a name is typed with, row after row (the SET page's)
-    static constexpr int kKeyColumns = 10, kKeyCount = 40;
-    static constexpr float kKeysPerSecond = 7.f;  // the stick over the keys
+    static constexpr const char* kKeys = NameKeys::kKeys; // the keys a name is typed with (name_keys.hpp: the one set)
 
     // `folders`: the folders there are (Session::sampleFolders), the empty ones too. `first` names
     // the row before everything ("THE BUILT-IN DRUM").
@@ -136,10 +152,13 @@ public:
     const Row* under() const { return cursor_ >= 0 && cursor_ < count() ? &rows_[static_cast<std::size_t>(cursor_)] : nullptr; }
     bool flat() const { return dirs_.empty(); }                     // no folders at all: one list
     float deletePart() const { return deletePart_; }
+    // B held on a recording or a folder, its let go never seen (L2 / R2 turned the tab): called off, so the bar
+    // does not come back full (the screen's callOffDelete, from App::update).
+    void callOffDelete() { deleting_ = refusing_ = false, deletePart_ = 0.f; }
     const std::string& carried() const { return carried_; }         // the recording being carried ("": none)
     std::string carryTo() const;                                    // the folder it would go to if R1 were let go now ("": out of every folder)
-    bool typing() const { return typing_; }                         // a new folder's name is being typed: every button is its
-    const std::string& typed() const { return typed_; }
+    bool typing() const { return keys_.isOpen(); }                  // a new folder's name is being typed: every button is its
+    const std::string& typed() const { return keys_.typed(); }
     const std::string& said() const { return said_; }               // what the top line says just now ("": the title)
     bool moving() const { return moving_; }                         // a move's saved songs are following: the top line says MOVING TO
     bool copying() const { return copying_; }                       // a move is being copied (a card that will not rename): MOVING TO too
@@ -169,9 +188,10 @@ private:
     void drop(bool playing);                 // R1 let go while carrying
     void moved(const std::string& from, const std::string& to, const std::string& folder, Session::FileJob did, int failuresBefore); // a move's end
     void typeButton(Button b);
-    void moveKey(Button direction);
     void keepFolder();
     void say(const std::string& words) { said_ = words; saidUntil_ = lastMs_ + kSaidMs; }
+    void putBack();                          // B's tap: what was on before goes back on, and the list closes
+    bool nothing() const { return all_.empty() && dirs_.empty(); } // no recording and no folder on the card
     void quiet() { if (jobs_.hear) jobs_.hear(Hear::Quiet); } // what the list started stops (the cursor moved on)
     void drawPreview(SDL_Renderer* r, const Fonts& fonts, const Row* row) const; // the third column: a recording's picture
     bool emptyFolder(const Row& row) const;  // a folder hold B deletes
@@ -202,8 +222,11 @@ private:
     float saved_ = 0.f;
     bool stickWas_ = false;
     Button repeating_ = Button::None;
-    Uint32 repeatAt_ = 0, repeatSince_ = 0, lastMs_ = 0;
-    bool bDown_ = false;                          // B went down while the list was open (so its let-go is the list's)
+    ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
+    Uint32 repeatSince_ = 0, lastMs_ = 0;
+    bool bDown_ = false;                          // B went down while the list was open (so its let-go is the list's), and is still a tap
+    bool bHolds_ = false;                         // ...on a row where holding it does something (a bar fills, or a folder says why not)
+    Uint32 bSince_ = 0;                           // when it went down
     bool deleting_ = false, deleteTimed_ = false; // B is held on a recording
     bool refusing_ = false;                       // B is held on a folder that is not empty
     Uint32 deleteSince_ = 0;
@@ -211,9 +234,8 @@ private:
     bool r1Down_ = false, r1Timed_ = false;       // R1 went down on a recording: a page when let go, a carry if held
     Uint32 r1Since_ = 0;
     std::string carried_;
-    bool typing_ = false;
-    std::string typed_, typingIn_;                // the name so far, and the folder it will be in ("": SAMPLES)
-    int key_ = 0;
+    NameKeys keys_;                               // a new folder's name being typed
+    std::string typingIn_;                        // the folder it will be in ("": SAMPLES)
     std::string said_;
     Uint32 saidUntil_ = 0;
     std::string movingTo_;           // a move whose saved songs are still following: said MOVING until they are

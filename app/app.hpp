@@ -17,6 +17,7 @@
 
 #include <SDL.h>
 
+#include <initializer_list>
 #include <memory>
 #include <string>
 
@@ -98,9 +99,11 @@ public:
     bool brightnessShowing() const { return now_ < volumeShownUntil_ && boxIsBrightness_; }
     bool volumeShowing() const { return now_ < volumeShownUntil_; }
     // MENU held: a card of what the buttons do everywhere. It goes when MENU is let go.
-    // (With no MENU button on the device: SELECT, held for a moment.)
+    // (With no MENU button on the device: SELECT, held by itself for a moment; another button pressed
+    // with it is a combo, and the card stays away until SELECT is let go.)
     bool helpShowing() const { return help_; }
-    // SELECT + B takes back the last change to the patterns; SELECT + A puts it forward again.
+    // SELECT + B takes back the last change (the patterns, and since 2026-11-14 the sounds and effects:
+    // Session::soundMark); SELECT + A puts it forward again.
     // What it said about that, for a moment: "UNDONE", "NOTHING TO UNDO"...
     const char* undoSaid() const { return now_ < undoSaidUntil_ ? undoSaid_ : ""; }
     // The notice that says a panic happened. It stays while the buttons are
@@ -108,13 +111,29 @@ public:
     // nothing else) or four seconds have gone by.
     bool panicNoteShowing() const { return panicNote_; }
     int updateSaid() const { return updateSaid_; } // 0 nothing, 1 "accepted", 2 "could not"
+    // The update notice's line of what to do, and what it says while B is held (it cannot be undone).
+    static constexpr const char* kUpdateWords = "HOLD A for a second to accept.    HOLD B to delete it.";
+    static constexpr const char* kUpdateDeletingWords = "DELETING IT: CANNOT BE UNDONE";
+    bool updateDeleting() const { return updateDeleting_; } // B is held on the update notice, its bar filling
     void sayUpdateAcceptedForStill() { updateSaid_ = 1, updateSaidUntil_ = ~0u; } // (--view update-accepted)
 
 private:
     Screen& screenNow();
-    bool typingAFolder() const { // the list of recordings is up, with a new folder's name being typed
+    // A name is being typed (name_keys.hpp) on the screen up: a new folder in the list of recordings, or a
+    // synth's or the sampler's preset. Every button is the keys' then, the tabs, SELECT and L3 too; only the
+    // four shoulders' panic still acts. (SET's keys, a track's name or a password, are the SET page's own
+    // case in onButton: the button test is there too.)
+    bool typingAName() const {
         const Screen* now = &screenNow();
-        return (now == &kit_ && kit_.picker().typing()) || (now == &sampler_ && sampler_.picker().typing()) || (now == &cloud_ && cloud_.picker().typing());
+        if (now == &kit_) return kit_.picker().typing();
+        if (now == &sampler_) return sampler_.typing() || sampler_.picker().typing();
+        for (const SynthScreen* synth : {&phazed_, &jaxep_, &fm6_, &physic_, &acid_, &cloud_, &morph_})
+            if (now == synth) return synth->typing() || synth->picker().typing();
+        return false;
+    }
+    bool browsingRecordings() const { // the list of recordings is up on the screen shown (Session::browsingRecordings)
+        const Screen* now = &screenNow();
+        return (now == &kit_ && kit_.picker().isOpen()) || (now == &sampler_ && sampler_.picker().isOpen()) || (now == &cloud_ && cloud_.picker().isOpen());
     }
     const Screen& screenNow() const { return const_cast<App*>(this)->screenNow(); }
     std::unique_ptr<Project> project_; // large, so not on the stack
@@ -126,7 +145,8 @@ private:
     bool boxIsBrightness_ = false; // the volume's box says the BRIGHTNESS
     bool menuUsed_ = false;        // MENU held for a volume key: no help card until it is let go
     bool updateHeld_ = false;   // A is down on the update notice
-    Uint32 updateSince_ = 0, updateSaidUntil_ = 0;
+    bool updateDeleting_ = false; // ...or B, deleting it
+    Uint32 updateSince_ = 0, updateSaidUntil_ = 0, deleteSince_ = 0;
     int updateSaid_ = 0;        // 1: accepted, 2: could not; shown for a few seconds
     bool panicNote_ = false; // the notice is up
     Uint32 panicNoteUntil_ = 0, now_ = 0;
@@ -135,13 +155,23 @@ private:
     bool cameByL3_ = false;          // the SONG screen's MASTER was reached by L3 (and nothing has moved since)
     bool slicingBeforeShoulders_ = false;
     int trackBeforeShoulders_ = 0;
+    int sceneBeforeShoulders_ = 0, barBeforeShoulders_ = 0; // ...or R2 off SONG takes the cursor's cell (G46)
+    int setRowBeforeShoulders_ = 0;                         // ...or, on SET, L1 / R1 jump a heading (G28)
+    SongScreen::Visit songBeforeShoulders_{};               // ...or L2 / R2 open SONG, its cursor on the cell worked on (G46)
     // ...and the copied bar: L1 then R1 on the way to all four is a copy (hold L1, R1), which a panic puts back.
     Session::BarClip clipBeforeShoulders_;
     unsigned copiesBeforeShoulders_ = 0;
     std::unique_ptr<Session::SceneClip> sceneClipBeforeShoulders_;
     unsigned sceneCopiesBeforeShoulders_ = 0;
+    Session::Rec recBeforeShoulders_ = Session::Rec::Idle; // ...and a recording: R1 first on a lane or the sampler begins one
+    bool typingBeforeShoulders_ = false; // ...and the name keys: R1 first on a synth's or the sampler's PRESET opens them
+    void closePresetKeys(); // the name keys of every synth's and the sampler's PRESET, wherever they were opened
     unsigned saidSeen_ = 0; // Session::saidCount() when its line was last taken
     void takeSessionSaid(); // what the Session asked to be said (a bar copied or pasted) into this box
+    int sceneOfSelect() const; // the scene SELECT + Y and SELECT + L2 / R2 act on (on SONG: the cursor's)
+    // To another tab by the player (L2 / R2, SELECT's tap): SONG opens with its cursor on the cell being
+    // worked on, and a tab off SONG takes the cell its cursor was moved to on this visit (G46).
+    void showTab(View to);
     void logBattery(Uint32 nowMs); // a line of it, when one is due (useBatteryLog)
     NoteScreen notes_;
     KitScreen kit_;
@@ -161,6 +191,12 @@ private:
     char undoSaid_[64] = "";
     int resyncsSeen_ = 0;
     Uint32 undoSaidUntil_ = 0;
+    // A chord's length said by L2 / R2 with Y held on the roll (G27): the box sits over the middle of the pack's
+    // tiles, so it goes as soon as the pick moves on (another chord, inversion or pack). When that box ends
+    // (0: none up), and the pick it was said on.
+    Uint32 lengthSaidUntil_ = 0;
+    int lengthSaidPick_[3] = {};
+    void dropLengthSaid(); // the box above, gone once the pick moves on
     bool help_ = false;
     // The help card's line of how hard the program works (cpu_use.hpp, Engine::soundShare): read
     // while it is open, kept here so a pass draws what the redraw compared (Readouts::load).
@@ -171,6 +207,7 @@ private:
     bool pretending_ = false;
     Uint32 selectHeldSince_ = 0; // 0: not held
     bool selectAlone_ = false; // SELECT is down and nothing else has been pressed since
+    bool selectUsed_ = false;  // ...and on every screen: something else was pressed while SELECT is down (no help card)
     bool nextSceneY_ = false;  // Y is down from SELECT + Y (next scene): letting it go is not a tap of Y
     SynthScreen phazed_; // the same screen, once for each synth
     SynthScreen jaxep_;

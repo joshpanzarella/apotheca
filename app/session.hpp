@@ -87,6 +87,13 @@ struct AudioInput {
 // A hit's step effects, as the engine is told them (Command::SetStepFx).
 Command stepFxCommand(int track, int scene, int bar, int lane, int step, const StepFx& fx);
 
+// Where a scene is after the ones from `from` on have moved one place (a NEXT SCENE put in, by = 1;
+// taken back, -1), as the engine works it out: never off the song. Whatever holds a scene's number
+// follows it so (the playing, a recording, the copies and the SONG screen's cursor).
+inline int movedScene(int scene, int from, int by) { return scene >= from && scene + by >= 0 && scene + by < kMaxScenes ? scene + by : scene; }
+// ...and is it the one that falls off the end (the last, when one is put in)? A copy of it goes: its scene is gone.
+inline bool sceneFallsOff(int scene, int from, int by) { return scene >= from && (scene + by < 0 || scene + by >= kMaxScenes); }
+
 class Session {
 public:
     Session(Engine& engine, Project& project);
@@ -138,6 +145,10 @@ public:
     // Play, a new song and panic let go too.
     static constexpr Uint32 kAuditionMs = 350;
     void auditionHeld(int track, int pitch, float velocity, const void* owner);  // a synth track (the sampler): this key
+    // A chord's keys, held as one and let go together (the roll's X on a chord, gesture audit G33). heard_ names
+    // the first; every key is held in its Sounding (kHeldOn).
+    void auditionHeld(int track, const int* pitches, int count, float velocity, const void* owner);
+    int keysHeld() const { int n = 0; for (const Sounding& s : sounding_) n += s.track >= 0 && s.until == kHeldOn ? 1 : 0; return n; } // (for the tests)
     void hearLaneHeld(int track, int lane, float level, const void* owner, float start = 0.f, float part = 0.f); // a drum lane
     void letGoHeard(Uint32 lasts = kAuditionMs); // X let go: it stops `lasts` after it began (a tap: kAuditionMs), or now if that has gone by
     void keepHearing(bool xHeld, const void* screen);
@@ -233,7 +244,7 @@ public:
     // their built-in drum (a sampler: to none). False if there is no such recording.
     std::vector<std::string> sampleFolders() const; // the folders in the samples folder, two levels, the empty ones too
     int sampleUses(const std::string& name) const; // how many drum lanes and sampler tracks of the open song have it on
-    bool deleteSample(const std::string& name);
+    bool deleteSample(const std::string& name); // for good: the lanes and tracks it was on go back to their drum, no step of undo
     // What the handheld does to the samples folder itself (the list of recordings: carry, + NEW FOLDER,
     // hold B on an empty folder), and how it went.
     enum class FileJob { Done, Same, TooLong, Taken, NotEmpty, Failed, NotSaved, Moving, Copying, Busy }; // NotSaved: done, but a song that names it could not be written (a full card). Moving: done, and the saved songs are following (following()). Copying: a card that will not rename, so it is being written again in its new place, off the screen's thread: nothing has changed yet, and carryDone() then says how it went. Busy: another is being copied.
@@ -258,14 +269,17 @@ public:
     // (`to` empty): they keep the name and are marked missing, as they would be the next time
     // the song was opened. Sent (`from` empty): one that was missing by that name is read.
     // A recording of that base name that turns up anywhere (`to` in another folder) is taken by
-    // one that was missing, if it is the only one (findMissing).
-    void recordingChanged(const std::string& from, const std::string& to);
+    // one that was missing, if it is the only one (findMissing). None of it is a step of undo, and
+    // every step of undo follows a rename or a move (undoFollows), as the saved songs do. `stepsFollow`
+    // false: the caller has them follow itself (Session::update, every change of a frame in one pass).
+    void recordingChanged(const std::string& from, const std::string& to, bool stepsFollow = true);
     // Recordings that were renamed or moved while a song was shut. A lane or sampler track whose
     // recording is not where the song says takes the one of the same base name (the part after
     // the folder) from the root of the samples folder or one of its folders, if there is EXACTLY
     // ONE and it reads. None, or two: it stays missing, never a guess. Run when a song or a rev
     // is opened; the changed name is saved as any change is. `label`: only those of that base
     // name. Returns how many were found. The folder is listed once, and only if something is missing.
+    // A recording found is no step of undo, and the steps of undo name it where it was found.
     int findMissing(const std::string& label = "");
     int sampleLookups() const { return lookups_; } // how many times findMissing has listed the folder (tests)
     // The page renamed or moved recordings (`first` to `second`, in order): every saved song and
@@ -290,7 +304,9 @@ public:
     int followFailures() const { return followFailures_; } // files that named one and could not be written, since the program started
     static constexpr int kFollowReadsAFrame = 8;
     static const char* const kOwedFile;                 // "renames-owed.txt"
-    void setLaneSample(int track, int lane, const std::string& name); // "" brings the drum back (and takes a synth voice off)
+    // "" brings the drum back (and takes a synth voice off); START and END go back to the whole. A step of
+    // undo with the name (soundMark): undo puts the old sound back with its own cut and voice.
+    void setLaneSample(int track, int lane, const std::string& name);
     // DRUM SYNTH (apotheca/drum_synth.hpp): the lane's sound made from a voice, in place of a recording
     // (its name is emptied) or the built-in drum. Made here, or on the helper thread past
     // drumsynth::kWorkInAFrame, and handed to the engine as a recording is. A voice that is not on puts
@@ -402,9 +418,17 @@ public:
     void useAudioInput(AudioInput* input) { input_ = input; }
     Rec toggleRecording(int track, int lane); // what it is doing now
     Rec recording() const { return rec_; }
+    void dropRecording(); // a recording under way called off, its take thrown away (the panic: one R1 began on the way)
     float recordSeconds() const { return recorder_.seconds(); }
     float recordLevel() const { return recorder_.level(); }
     const std::string& lastRecorded() const { return lastRecorded_; } // "" if the last one came to nothing
+    // A take waits for sound or runs. While it does, R1 stops it from any stop of a screen that records
+    // (the kit's lanes and its KIT stop, the sampler, CLOUD's every page: gesture audit G34), before
+    // R1's own job there (SAVE, a page turned).
+    bool recordingNow() const { return rec_ == Rec::Waiting || rec_ == Rec::Recording; }
+    // The line a screen that records says meanwhile, the limit as Recorder::kMaxSeconds has it (it said
+    // OF 10 after the limit went to 20). Empty when no take waits or runs.
+    std::string recordingLine() const;
 
     // ---- songs on disk ------------------------------------------------------------
     // Nothing here needs asking for. The song being worked on is written to
@@ -432,6 +456,12 @@ public:
     float volume() const { return volume_; }
     void setVolume(float volume);
     void loadVolume(float ifNone); // at start: what was kept, or this
+    // volume.txt and settings.txt are written once what they would say has stood still for
+    // kKeepRestMs (Session::update), never when it is what the card has already (G43: a held RIGHT on
+    // a SET row wrote a file and two fsyncs nine times a second, at an end too), and on the way out.
+    static constexpr Uint32 kKeepRestMs = 1000;
+    void keepSettingsNow(); // what is owed, written now (main.cpp on the way out; the destructor too)
+    bool settingsOwed() const { return settingsOwed_ || volumeOwed_; }
     // Two more things about the handheld, kept in "settings.txt" beside the
     // program: how fast the stick is (1 is as first built) and how many
     // octaves the piano roll shows (1, 2 or 3).
@@ -444,6 +474,8 @@ public:
     // at, and what a handheld with nothing kept gets), 3 XL. Only the number is held here: the
     // program loads the fonts again when it sees it change (main.cpp), between two frames.
     static constexpr int kTextSizeCount = 4, kTextSizeAsBuilt = 2;
+    static constexpr float kVolumeAsBuilt = 1.f;
+    static constexpr int kOctavesAsBuilt = 2; // PIANO ROLL's usual
     int textSize() const { return textSize_; }
     void setTextSize(int size);
     // And the colours: a THEME (ui.hpp's kThemeTable; 0 is the look as it was built, and what a
@@ -491,6 +523,11 @@ public:
     int bounceFiles() const;       // once done: how many files were written
     std::string bounceLast() const; // ...and the name of the last one
     void finishBounce();           // wait for it (the tests, and closing down)
+    // Hold B on SET's BOUNCE: told to stop, nothing kept, and NOT waited for (the thread may be loading the
+    // song, its samples read and its FIT lanes stretched, which it cannot leave half-way): bouncing() until it
+    // has stopped, and bounceStopping() meanwhile. cancelBounce stops it and waits (closing down, a still).
+    void stopBounce();
+    bool bounceStopping() const;
     void cancelBounce();
 
     // ---- automation -------------------------------------------------------------------
@@ -512,14 +549,20 @@ public:
     // put forward again. One step is one burst of editing: everything
     // changed until nothing has changed for seven tenths of a second (a
     // whole paint stroke, a roll of the dice, a cell emptied). The song
-    // keeps playing. It covers the patterns and each track's effects, sends, sound and GLIDE FROM,
-    // the master's effects and the buses' (soundMark_, restoreSounds).
+    // keeps playing. It covers the patterns and each track's effects, sends, sound (a recording on a
+    // lane, a sampler or a CLOUD with it) and GLIDE FROM, the master's effects and the buses'
+    // (soundMark_, restoreSounds).
     static constexpr int kUndoLevels = 20;
     bool undo();
     bool redo();
     int undoSteps() const;
     int redoSteps() const { return static_cast<int>(redo_.size()); }
     void noteEdit(); // something in a pattern has just changed
+    // A list of recordings is open on the screen shown (the App says so each frame, before update). What
+    // it puts on as the cursor goes is not watched for undo until it closes, however long it rests on
+    // each: a visit is one step of undo (from before it opened to what A kept), or none where the sound
+    // is as it was (B: what was there put back). Gesture audit G04, as a pick became a step of undo.
+    void browsingRecordings(bool on) { browsing_ = on; }
     // An edit's own step of undo, from outside (SongScreen::pasteCellHere): whatever was being
     // edited just before ends here, and nothing after it joins the step (as pasteBar's inline).
     void beginOwnUndoStep();
@@ -535,7 +578,10 @@ public:
     // undo, which also takes the player (and the playing) back.
     // Returns the new scene, or -1 when there is no room (the song's sixteenth scene has
     // something in it, or the scene worked on is the sixteenth), and then nothing is changed.
-    int nextScene();
+    int nextScene() { return nextScene(project.scene); }
+    // ...of another scene (the SONG screen: the one under its cursor). The player goes to its copy, on a bar
+    // that cell has; with no room nothing changes, the player neither.
+    int nextScene(int scene);
     // The scene that is playing (-1: none), as it is once the engine has heard every scene
     // move sent to it. For the block or so until it has, the engine still says the old number;
     // this is what to ask, not engine.playScene(). (project.playScene is this, once a frame.)
@@ -608,6 +654,17 @@ public:
     // effect: Session::setEffect, its 10 ms fade, its slot's automation cleared). Nothing is written
     // into automation, WRITE on or not.
     void putTrackSound(int track, const TrackSound& sound);
+    // B with A held puts the sound back (gesture audit G12). Where hold A steps through sounds (the KIT
+    // stop, a lane's SOUND, the sampler's SOUND and PRESET, a synth's FOLDER and PRESET, CLOUD's
+    // RECORDING) the screen keeps the track's whole sound as A goes down (keepSound), and B with A still
+    // held puts it back: the preset, its settings and macros, the recording, the sampler's settings and
+    // CHOP, every lane's kit fields, the effects, sends, GLIDE FROM and MODs, and what a whole preset
+    // found (PresetSoundMemory), each only where it differs, as a change like any other (a step of undo;
+    // a recording, as ever, is not). One kept at a time, in memory only, for its track by number:
+    // forgotten when the tracks move or another song comes, never put on another instrument.
+    // putSoundBack is false where nothing is kept for this track.
+    void keepSound(int track);
+    bool putSoundBack(int track);
     // Y on MAIN: a new sound from the dice, on a synth that has such a thing (PHYSIC: SynthSpec::roll).
     // The engine is told the whole patch. False on the others, and nothing changes.
     bool rollSynth(int track, unsigned seed);
@@ -618,6 +675,10 @@ public:
     // Keep the track's sound, as it is now with its macros, under a name.
     // The track is then on that preset. False if the name is no good or it could not be written.
     bool savePreset(int track, const std::string& name);
+    // The player's own preset the track is on: its file deleted, for good (hold B on PRESET). The track keeps
+    // its sound, and every track of that synth stays on its own preset (the numbers past it move up one).
+    // False if the track is not on one of the player's own, or the file could not be deleted.
+    bool deleteSynthPreset(int track);
     // KIT PRESETS (easywins batch 7; kits.cpp). The list: the built-in kits (recipes of DRUM SYNTH's named
     // voices), then the player's own ("NAME.kit" in the preset folder, written by SAVE as KIT 1, KIT 2...).
     // A kit is a drum track's every lane: its recording or synth voice, EDIT, FIT, one-slice, level,
@@ -773,6 +834,7 @@ public:
     // SCENE 1 COPIED, PASTED ON SCENE 2, and why not.
     SceneCopy copySceneHere(int scene);
     SceneCopy pasteSceneHere(int scene);
+    void clearSceneCopy(); // nothing copied any more (R1 on the copied scene)
     static std::string sceneCopyWords(SceneCopy answer, bool paste, int scene); // (scene from 0)
     enum class SceneClear { Done, AlreadyEmpty, NoScene };
     SceneClear clearScene(int scene);
@@ -781,7 +843,7 @@ public:
     int copiedScene() const { return sceneClip_->has ? sceneClip_->scene : -1; }
     const SceneClip& sceneClip() const { return *sceneClip_; }
     void setSceneClip(const SceneClip& clip) { *sceneClip_ = clip; } // (the App, putting it back after a panic begun with R1)
-    unsigned sceneCopies() const { return sceneCopies_; }           // how many copies have been made (the App: did one come in a panic?)
+    unsigned sceneCopies() const { return sceneCopies_; }           // how many copies have been made or cleared (the App: did one come in a panic?)
     const BarClip& barClip() const { return clip_; }
     void setBarClip(const BarClip& clip) { clip_ = clip; } // (the App, putting it back after a panic began with L1 + R1)
     unsigned barCopies() const { return barCopies_; }      // how many copies have been made (the App: did one come in a panic?)
@@ -810,10 +872,26 @@ private:
     };
     PresetSoundMemory presetSounds_[kNumTracks];
     void putPresetSound(int track, const TrackSound* sound); // null: a plain preset
+    // What keepSound kept: the track's fields as A went down (no patterns: none are copied), and what a
+    // whole preset had found there then. track -1: nothing.
+    // The effects' automation is in the patterns, not the fields, so it is kept beside them: setEffect clears a
+    // slot's lanes in every scene (and forgets the TYPEs it remembered) when a whole preset passed over puts
+    // another effect in it, and the put-back puts the old effect in again with nothing written for it.
+    struct KeptPoint { int scene, lane, step; float value; };
+    struct KeptSound {
+        int track = -1;
+        std::unique_ptr<TrackData> was;
+        PresetSoundMemory memory;
+        std::vector<KeptPoint> lanes;     // every step written in the effects' lanes (8..19), any scene
+        TypeMemory types[kTrackSlots];    // what each slot remembered of the TYPEs of its family
+    };
+    void putEffectLanesBack(int track); // the kept lanes and TYPEs, on each slot that holds its kept effect again
+    KeptSound kept_;
     struct Sounding { int track = -1, pitch = 0; Uint32 until = 0; };
     Sounding sounding_[8];
     static constexpr Uint32 kHeldOn = 0xffffffffu; // a Sounding's `until` while X holds it
-    // What X holds (or last held). lane -1: a synth key (`pitch`), its Sounding held at kHeldOn.
+    // What X holds (or last held). lane -1: a synth key (`pitch`; a chord's first), its Sounding (a chord's: each
+    // key's) held at kHeldOn. Only what X holds now is ever at kHeldOn: letGoHeard lets every one go.
     struct Heard { int track = -1, lane = -1, pitch = 0; Uint32 since = 0, ends = 0; const void* owner = nullptr; bool held = false; };
     Heard heard_;
     struct LaneStop { int track = -1, lane = 0; Uint32 at = 0; }; // a drum lane's audition, let go, to be stopped at `at`
@@ -859,8 +937,8 @@ private:
     void loadLane(int track, int lane);
     void sendLanePart(int track, int lane); // tell the engine how much of its sound a hit on the lane plays
     void finishRecording();
-    float volume_ = 1.f;
-    int octaves_ = 2;
+    float volume_ = kVolumeAsBuilt;
+    int octaves_ = kOctavesAsBuilt;
     int textSize_ = kTextSizeAsBuilt;
     int theme_ = kThemeAsBuilt;
     Lights lights_;
@@ -928,9 +1006,10 @@ private:
     bool readStep(const std::string& text, StepRead& was, bool same[kNumTracks], bool whole);
     bool readUndoWhole_ = false;
     // Undo covers more than the patterns: each track's effects, sends, sound (preset, settings,
-    // macros, a sampler's settings) and GLIDE FROM, the master's effects and the buses' (their
-    // LEVEL with them). Whatever changes them is seen here, as the cell is (cellMark): no screen
-    // has to say so. restoreSounds puts them back from a step, through the engine's usual commands.
+    // macros, a sampler's settings, a kit's lanes, and a recording's NAME: a lane's, a sampler's,
+    // a CLOUD's) and GLIDE FROM, the master's effects and the buses' (their LEVEL with them).
+    // Whatever changes them is seen here, as the cell is (cellMark): no screen has to say so.
+    // restoreSounds puts them back from a step, through the engine's usual commands.
     std::uint64_t soundMark() const;
     std::uint64_t soundMark_ = 0;
     void restoreSounds(const StepRead& was, const bool same[kNumTracks]);
@@ -938,8 +1017,12 @@ private:
     void sendMod(int track, int mod); // the project's MOD told to the engine (OFF: one command)
     struct UndoStep { std::string text; int nextScene = -1; };
     std::vector<UndoStep> undo_, redo_;
+    // A recording renamed, moved or found elsewhere (recordingChanged, findMissing): every step of
+    // undo and redo, and settled_, name it where it is now (renameRecordings).
+    void undoFollows(const std::vector<std::pair<std::string, std::string>>& renames);
     std::string settled_;                            // the patterns when things were last still
     bool editing_ = false, restoring_ = false, undoReady_ = false;
+    bool browsing_ = false; // a list of recordings is open on the screen shown
     Uint32 editedAt_ = 0;
     std::uint64_t cellMark_ = 0;
     void serveDesigner();
@@ -999,7 +1082,12 @@ private:
     struct Recording { bool on = false; int track = 0, scene = 0, bar = 0, slot = 0, startedAt = 0; };
     Recording recordingNote_[128];
     static float ui_stickSpeed();
-    void keepSettings() const;
+    void keepSettings(); // settings.txt is owed, if what it would say is not what the card has
+    std::string settingsText() const;
+    std::string volumeText() const;
+    std::string settingsKept_, volumeKept_; // what the card has (written or read; "" not known)
+    bool settingsOwed_ = false, volumeOwed_ = false;
+    Uint32 keepAfter_ = 0; // the last change owed: written kKeepRestMs after it
     Transfer transfer_;
     bool hotspotOwnsTransfer_ = false; // HOTSPOT turned the page on: turning it off turns it off again
     std::string programFolder_;
@@ -1043,7 +1131,6 @@ private:
     Recorder recorder_;
     Rec rec_ = Rec::Idle;
     int recTrack_ = 0, recLane_ = 0;
-    void dropRecording(); // a recording under way called off, its take thrown away
     std::string lastRecorded_;
     void loadTrackSample(int track);
     std::unique_ptr<sampler::SampleZoneSet> multisampleOf(const std::string& name, std::vector<float>& main);

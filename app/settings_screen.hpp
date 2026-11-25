@@ -2,7 +2,8 @@
 // The SETUP screen: the last tab. Things about this song, things about this
 // handheld, and the way back into the controls setup.
 //
-//   up / down (stick or D-pad)   choose a row
+//   up / down (stick or D-pad)   choose a row (a press of the D-pad at either end goes round; a run stops there)
+//   L1 / R1                      the heading before / after: its first row (round the ends)
 //   left / right                 change it (a choice, such as TEXT SIZE or THEME, clicks once a push)
 //
 // BRIGHTNESS and STICK LIGHT are shown only where the system gives the program the screen's
@@ -12,14 +13,17 @@
 //                                on HOTSPOT: our own network on / off (a phone joins it with one tap)
 //                                on TRACK NAME: type a name (below)
 //                                on BOUNCE: write the song (or its tracks) out as WAV files
+//                                (these two on A's let go, and only if no direction or other button went
+//                                down while it was held: hold A + a direction is not a tap)
+//   hold B for a second          on BOUNCE, while one is under way: stop it, nothing kept
 //                                on BUTTONS: the button test
 //   hold A for a second          on CONTROLS: set the controls up again
 //   START                        play / stop
 //
-// Typing a track's name: a grid of letters and numbers. The stick or D-pad
-// moves, A types the one under the cursor, B deletes the last (B with
-// nothing typed leaves without changing the name), Y or START keeps it.
-// Ten characters at most. While it is open every button belongs to it.
+// Typing a track's name: the name keys (name_keys.hpp), opened with the name there is. A types,
+// Y deletes the last letter, B keeps it and leaves (with nothing typed the name stays as it was),
+// START keeps it too (with nothing typed: the instrument's own name). Ten characters at most. While
+// it is open every button belongs to it.
 //
 // The button test shows what Apotheca hears from each button and the stick.
 // While it is open every button goes to it and does nothing else. It closes
@@ -35,6 +39,7 @@
 #include <vector>
 
 #include "input.hpp"
+#include "name_keys.hpp"
 #include "session.hpp"
 #include "ui.hpp"
 
@@ -56,6 +61,7 @@ public:
     static const char* groupName(int group);
 
     explicit SettingsScreen(Session& session) : session_(session), project_(session.project) {}
+    static bool hasUsual(int row); // B gives the row its usual value (a setting's row, G17)
 
     void onButton(const ButtonEvent& event, const Input& input) override;
     void update(const Input& input, Uint32 nowMs) override;
@@ -103,23 +109,35 @@ public:
 
     // To a row; one that is not here gives the next that is (or the one before, at the end).
     void goTo(int row);
-    void step(int by) { goTo(rowAt(placeOf(row_) + by)); } // up or down a place; the list has ends
+    // Up or down a place. A press of the D-pad at an end goes round to the other (G35); a held D-pad
+    // or the stick stops there (ui::listStep).
+    void step(int by, bool pressed = false) { goTo(rowAt(ui::listStep(placeOf(row_), by, places(), pressed))); }
+    // L1 / R1: to the first row of the heading before / after the cursor's, round the ends (G28).
+    void jumpGroup(int by);
     int cursorRow() const { return row_; }
     bool testing() const { return testing_; }
-    bool typing() const { return typing_; }
-    const std::string& typed() const { return typed_; }
-    static const char* const kKeys; // the grid's characters, row after row
+    bool typing() const { return password_ || keys_.isOpen(); } // a track's name, or a network's password
+    // What is typed: the name while its keys are up, else the password (a network's draft is kept when they go).
+    const std::string& typed() const { return keys_.isOpen() ? keys_.typed() : typed_; }
+    static constexpr const char* kKeys = NameKeys::kKeys; // the grid's characters, row after row
     // NETWORK (firmware-plan.md, section 14): hold A + up / down through the networks found, let go
     // to join; one that needs a password opens the keys in their PASSWORD mode (three sets of forty,
     // X turns to the next: small letters, capitals, signs; 63 letters at most, 8 at least). Hold B a
     // second forgets the network joined.
     static const char* const kPasswordKeys[3]; // each forty; '\x01' is a key with nothing on it
     static const char* const kPasswordSetNames[3];
-    static constexpr Uint32 kForgetHoldMs = 1000;
+    static constexpr Uint32 kForgetHoldMs = ui::kHoldForGoodMs;
+    // BOUNCE while one is under way: hold B a second stops it (G15). Nothing of it is kept, as when
+    // Apotheca is closed during one; the box above the bar says so. It is not waited for
+    // (Session::stopBounce): the row says kStoppingWords until it has stopped, and A starts nothing meanwhile.
+    static constexpr Uint32 kStopHoldMs = ui::kHoldForGoodMs;
+    static constexpr const char* kStoppingWords = "STOPPING IT: NOTHING IS KEPT";
+    static constexpr const char* kBounceStoppedWords = "BOUNCE STOPPED: NOTHING KEPT";
+    float stopPart() const { return stopPart_; }
     static constexpr const char* kForgettingWords = "FORGETTING IT: CANNOT BE UNDONE";
-    bool typingPassword() const { return typing_ && password_; }
+    bool typingPassword() const { return password_; }
     int passwordSet() const { return keySet_; }
-    int keyAt() const { return key_; } // the key the cursor is on
+    int keyAt() const { return keys_.isOpen() ? keys_.keyAt() : key_; } // the key the cursor is on
     bool picking() const { return picking_; }
     int picked() const { return pick_; }
     float forgetPart() const { return forgetPart_; }
@@ -134,6 +152,7 @@ public:
 
 private:
     void change(int by);
+    void usual(); // B on a setting's row: its usual value (G17)
 
     Session& session_;
     Project& project_;
@@ -141,15 +160,16 @@ private:
     int first_ = 0; // the row at the top of the page
     mutable char bounced_[64] = "";
     int bounceWhat_ = 0; // 0 the song, 1 each track, 2 this track
-    bool typing_ = false;
+    NameKeys keys_;         // a track's name being typed
     bool fromSong_ = false; // the keyboard was asked for from the SONG screen, and goes back there
-    std::string typed_;
-    int key_ = 0; // which character of the grid the cursor is on
+    void openName(bool fromSong); // the name keys, with the track's name typed in
     void typeButton(Button b);
+    std::string typed_; // a network's password (its draft is kept for the next try at that network)
+    int key_ = 0;       // which character of the password keys the cursor is on
     void passwordButton(Button b);
     void pickStep(int by);
     void joinPicked();
-    bool password_ = false; // the keys are in PASSWORD mode
+    bool password_ = false; // the PASSWORD keys are up
     int keySet_ = 0;
     std::string passwordFor_; // the network the password is for
     bool picking_ = false, pickMoved_ = false;
@@ -158,6 +178,11 @@ private:
     bool forgetting_ = false, forgetTimed_ = false;
     Uint32 forgetSince_ = 0;
     float forgetPart_ = 0.f;
+    bool stopping_ = false, stopTimed_ = false; // B held on BOUNCE with one under way
+    Uint32 stopSince_ = 0;
+    float stopPart_ = 0.f;
+    bool aTap_ = false; // A is down on BOUNCE or TRACK NAME and nothing else has gone down: its let go acts
+    int aRow_ = 0;      // the row it went down on
     std::string networkSaid_; // said on the row for a moment (TOO SHORT...)
     Uint32 networkSaidUntil_ = 0;
     void moveKey(Button direction);
@@ -170,8 +195,10 @@ private:
     bool relearn_ = false;
     float saved_ = 0.f;
     bool stickWas_ = false;
+    ui::StickClimb climb_; // a full push held on the rows climbs (G07)
     Button repeating_ = Button::None;
-    Uint32 repeatAt_ = 0, lastMs_ = 0;
+    ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
+    Uint32 lastMs_ = 0;
     float stickX_ = 0.f, stickY_ = 0.f; // for the test's picture
     float testStickX_ = 0.f, testStickY_ = 0.f; // where the stick was when it last counted as moved
     bool held_[static_cast<int>(Button::Count)] = {};

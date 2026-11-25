@@ -128,6 +128,94 @@ void Session::putPresetSound(int track, const TrackSound* sound) {
     memory = PresetSoundMemory();
 }
 
+void Session::keepSound(int track) {
+    kept_.track = -1;
+    if (track < 0 || track >= kNumTracks || project.tracks[track].kind == TrackKind::None) return;
+    if (!kept_.was) kept_.was.reset(new TrackData); // (large: kept on the heap, made once)
+    kept_.was->fieldsFrom(project.tracks[track]);
+    kept_.memory = presetSounds_[track];
+    const TrackData& t = project.tracks[track];
+    kept_.lanes.clear(); // (its room kept: one A down after another makes nothing new)
+    for (int scene = 0; scene < kMaxScenes; ++scene) {
+        if (!t.automation.has(scene)) continue; // (nothing written there)
+        for (int lane = autoLaneOfEffect(0, 0); lane < autoLaneOfEffect(kTrackSlots, 0); ++lane)
+            for (int step = 0; step < kAutoSteps; ++step) {
+                const float v = t.automation[scene][lane][step];
+                if (v >= 0.f) kept_.lanes.push_back({scene, lane, step, v});
+            }
+    }
+    for (int slot = 0; slot < kTrackSlots; ++slot) kept_.types[slot] = typeMemory_[memorySlot(track, slot)];
+    kept_.track = track;
+}
+
+// Each slot that holds the effect it held when A went down: its lanes in every scene as they were then, and the
+// TYPEs it remembered. Only a whole preset passed over (setEffect) changes them while A is held, so most often
+// nothing differs and nothing is done. Written into the song and the track sent once, whole (as FX's move of a
+// line: a command for every step could fill the engine's queue); a step of undo with the rest.
+void Session::putEffectLanesBack(int track) {
+    TrackData& t = project.tracks[track];
+    const TrackData& was = *kept_.was;
+    bool slot[kTrackSlots];
+    for (int s = 0; s < kTrackSlots; ++s) {
+        slot[s] = t.effects[s].kind == was.effects[s].kind;
+        if (slot[s]) typeMemory_[memorySlot(track, s)] = kept_.types[s];
+    }
+    // The same as kept? Every kept step there, and no more written than were kept.
+    int now = 0, same = 0, kept = 0;
+    for (const KeptPoint& p : kept_.lanes)
+        if (slot[autoSlotOfLane(p.lane)]) {
+            ++kept;
+            same += t.automation.has(p.scene) && t.automation[p.scene][p.lane][p.step] == p.value ? 1 : 0;
+        }
+    for (int scene = 0; scene < kMaxScenes; ++scene) {
+        if (!t.automation.has(scene)) continue;
+        for (int lane = autoLaneOfEffect(0, 0); lane < autoLaneOfEffect(kTrackSlots, 0); ++lane)
+            if (slot[autoSlotOfLane(lane)])
+                for (float v : t.automation[scene][lane]) now += v >= 0.f ? 1 : 0;
+    }
+    if (now == kept && same == kept) return;
+    for (int scene = 0; scene < kMaxScenes; ++scene) {
+        if (!t.automation.has(scene)) continue;
+        for (int lane = autoLaneOfEffect(0, 0); lane < autoLaneOfEffect(kTrackSlots, 0); ++lane)
+            if (slot[autoSlotOfLane(lane)])
+                for (float& v : t.automation[scene][lane]) v = kAutoNone;
+    }
+    for (const KeptPoint& p : kept_.lanes)
+        if (slot[autoSlotOfLane(p.lane)]) t.automation[p.scene][p.lane][p.step] = p.value;
+    noteEdit();
+    sendTrackImage(track);
+}
+
+// Through the usual setters, each only where it differs: the kit's lanes as a kit is put on (putKit),
+// the recording, the sampler's settings, a synth's patch as undo puts one back (sendSynthPatch: every
+// setting and macro, whatever preset it was on), then the track sound (putTrackSound) and, last, what a
+// whole preset had found, so a plain preset picked next does what it would have done without the trip.
+bool Session::putSoundBack(int track) {
+    if (track < 0 || track >= kNumTracks || track != kept_.track || !kept_.was) return false;
+    TrackData& t = project.tracks[track];
+    TrackData& was = *kept_.was;
+    if (t.kind != was.kind || t.kind == TrackKind::None) return false;
+    if (t.kind == TrackKind::Drums && kitText(t) != kitText(was)) putKit(track, was);
+    if (holdsRecording(t.kind) && std::strcmp(t.sample, was.sample) != 0) setTrackSample(track, was.sample);
+    if (t.kind == TrackKind::Sampler) {
+        for (int id = 0; id < sampler::kSettings; ++id) setSamplerSetting(track, id, was.sampler[id]);
+        if (t.samplerChop != was.samplerChop) setSamplerChop(track, was.samplerChop);
+    }
+    if (const SynthSpec* spec = specFor(t.kind)) {
+        const std::size_t size = sizeof(int) * static_cast<std::size_t>(settingCount(t.kind));
+        if (t.preset != was.preset || std::memcmp(spec->values(t), spec->values(was), size) != 0 || std::memcmp(t.macro, was.macro, sizeof t.macro) != 0) {
+            t.preset = was.preset;
+            std::memcpy(spec->values(t), spec->values(was), size);
+            std::memcpy(t.macro, was.macro, sizeof t.macro);
+            sendSynthPatch(track);
+        }
+    }
+    putTrackSound(track, trackSoundOf(was));
+    putEffectLanesBack(track);
+    presetSounds_[track] = kept_.memory;
+    return true;
+}
+
 // A new sound from the dice (PHYSIC's Y). A change of the sound like any other: undo sees it (soundMark).
 bool Session::rollSynth(int track, unsigned seed) {
     if (track < 0 || track >= kNumTracks) return false;
@@ -215,6 +303,7 @@ void Session::usePresetFolder(const std::string& folder) {
             UserPreset preset;
             std::string text;
             preset.name = presetNameFrom(name.substr(0, name.size() - ending.size()));
+            preset.file = name;
             if (!preset.name.empty() && readTextFile(folder + "/" + name, text) && readPresetFile(kind, text, preset)) presets.push_back(preset);
         }
         setUserPresets(kind, presets);
@@ -238,6 +327,28 @@ bool Session::savePreset(int track, const std::string& typed) {
     for (std::size_t i = 0; i < mine.size(); ++i)
         if (mine[i].name == name) t.preset = builtInPresets(t.kind) + static_cast<int>(i);
     if (undoReady_) soundMark_ = soundMark(); // retargeting the number is not an edit (a file saved)
+    return true;
+}
+
+bool Session::deleteSynthPreset(int track) {
+    if (track < 0 || track >= kNumTracks || presetFolder_.empty()) return false;
+    const TrackKind kind = project.tracks[track].kind;
+    const int first = builtInPresets(kind), gone = project.tracks[track].preset;
+    const std::vector<UserPreset>& mine = userPresets(kind);
+    const int own = gone - first;
+    if (!specFor(kind) || own < 0 || own >= static_cast<int>(mine.size()) || mine[static_cast<std::size_t>(own)].file.empty()) return false;
+    if (std::remove((presetFolder_ + "/" + mine[static_cast<std::size_t>(own)].file).c_str()) != 0) return false;
+    usePresetFolder(presetFolder_); // the list read again: the ones after it are a place earlier now
+    // Every track of this synth stays on its preset: past it, a place earlier. A track on the one deleted keeps
+    // its sound (nothing is sent: nothing changed), named by the preset before it, and that sound is its own
+    // now (as savePreset's): a plain preset picked next leaves its effects.
+    for (int i = 0; i < kNumTracks; ++i) {
+        TrackData& t = project.tracks[i];
+        if (t.kind != kind || t.preset < gone) continue;
+        if (t.preset == gone) presetSounds_[i] = PresetSoundMemory();
+        --t.preset;
+    }
+    if (undoReady_) soundMark_ = soundMark(); // retargeting the numbers is not an edit (a file deleted)
     return true;
 }
 

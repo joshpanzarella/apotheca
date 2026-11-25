@@ -29,7 +29,7 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   of edits, 20 deep. Anything that changes a pattern outside the grids calls
   `noteEdit()`. **It puts back the patterns and, since 2026-11-14 (owner),
   each track's effects, sends, sound (preset, settings, macros, a sampler's
-  settings), GLIDE FROM and its two MODs, the master's effects and the buses'
+  settings; since 2026-11-25 a recording too, next rule), GLIDE FROM and its two MODs, the master's effects and the buses'
   (LEVEL with them)**. Those are seen changing by `Session::soundMark()` each frame, as the
   cell is by `cellMark()`: no screen calls anything (the FX screen is
   untouched; a change is a step from the frame after it). `restoreSounds` puts them back only where they differ
@@ -41,14 +41,89 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   `Engine::setEffect` then its settings; the same kind, only the settings
   that differ; `SetSend`, `setGlideFrom`, `sendSynthPatch`), never a track
   image and never an `Effect` from this thread. Automation is a pattern, so a
-  TYPE change taken back has its lanes back with it. Tempo, mutes, names, the
-  kit's recordings and track deletes are not undone. After a restore the
-  marks are taken again (putting back is not an edit).
+  TYPE change taken back has its lanes back with it. Tempo, mutes, names and
+  track deletes are not undone. After a restore the marks are taken again
+  (putting back is not an edit).
   **Only another song clears undo** (`applyProject`). A resync after a full
   queue, a track deleted and a track given another instrument send the song
   with `sendSong()` and keep the steps: a delete takes its track out of every
   step's text (`dropTrackText`), and another instrument is passed by (its kind
   differs). The delete itself is still not undone.
+- **Words follow undo** (gesture audit G10, 2026-11-24): CANNOT BE UNDONE only where undo cannot bring
+  it back (a file: a song, a kit, a preset, a recording; a track; a network; the update). What undo
+  brings back says what is happening: FX's hold B **DELETING THIS EFFECT** (it said DELETING: CANNOT BE
+  UNDONE, written at 01:57 on 2026-11-14, three and a half hours before effects went into undo; the
+  MOD screen's DELETING THIS MOD is the house wording), REPEATS' **HOLD B empty** (it empties the
+  scene, a step of undo; it said delete), and the help card's **UNDO the last change (20 deep)** (it
+  said "to the patterns"). `app_test` `testHoldBDeletesAnEffect` takes the deleted effect back with SEL
+  + B. **Replacing one of the player's own presets says it where it is confirmed** (review of A3,
+  2026-11-25): while the name typed is taken, the name keys' title is `kPresetReplacingWords`, **B
+  REPLACES THE PRESET: CANNOT BE UNDONE**, in brass (the colour of SONG's words for what goes), on a
+  synth's and the sampler's keys; it said SAVE AS PRESET and only the bar's B replace told, though R1
+  on one's own opens with its name typed in, so one B writes over the file. `app_test`
+  `testDeletingAPresetSaysItCannotBeUndone`, `textsize` (whole at XL). `ctest -R words` fails a text that says erase, remove or rub out (the word is delete; a cell
+  is emptied), and since C4-docs (2026-11-25) the same words anywhere in the manual or README.md (the
+  roll's chord said "B to remove it"; the three are now "delete"), with plants of its own.
+- **A recording is a step of undo** (gesture audit G04, 2026-11-25): a drum lane's (with its FIT, cut
+  and voice), a sampler's and a CLOUD's. So CATCH, B on SOUND, a pick, a take (R1) and a kit or preset
+  put on are put back by SEL + B. Before, this file said "Tempo, mutes, names, **the kit's recordings**
+  and track deletes are not undone", and `setLaneSample` took the mark again so that "undo would
+  [not] put the old cut on the new file"; neither carried an owner mark. It left one tap of Y or B
+  able to lose a cut recording or a tuned DRUM SYNTH voice, with nothing on the screen saying so, and
+  only half undone: a CATCH changes FIT, which the mark saw, so SEL + B put the old FIT on the caught
+  bar. **More logical: the name, FIT, cut and voice are one step**, so the old sound comes back with
+  its own cut, which answers the old reason. How:
+  - `soundMark` mixes each lane's `laneSample` and a sampler's or CLOUD's `sample` **to its end**
+    (`strlen + 1`: what lies past a name is what a longer one left there). `setLaneSample` no longer
+    takes the mark again.
+  - `restoreSounds` puts a lane's sound back as `putKit` does (a voice through `setLaneSynth`, else a
+    name or the drum through `setLaneSample`), then its EDIT, LEVEL, FIT and ONE SLICE; a sampler's or
+    CLOUD's name through `setTrackSample`.
+  - **A step keeps only the NAME, as the song file does: no sample data is copied or kept per step.**
+    Putting it back reads the file again, as a pick does (the app thread; the old sound goes to the
+    engine's trash as any). A file deleted since is missing, as in a song opened. Undo's text is no
+    longer: the song's text named the recordings already. Keeping each step's sound read (a shared
+    pointer) would spare the read but hold up to twenty recordings in memory: not done. **A restore's
+    read is not timed on the handheld.**
+  - **A rename, a move or a carry (`recordingChanged`) and a recording found elsewhere (`findMissing`)
+    are no step, and the steps follow them** (`undoFollows`: every undo and redo step and `settled_`,
+    through `renameRecordings`, as the saved songs; a plain search first). Without it a rename was a
+    step, and every step before it put back a name whose file had gone. **What that costs** (review of
+    G04, 2026-11-25): up to 41 whole songs' texts gone through on the frame of the rename, which nearly
+    always all name it. `renameRecordings` now passes a line over at a glance unless its first word is
+    `track`, `sample` or `sound` (`namesARecording`: it made a stream for every line), which the saved
+    songs' following (`followFile`) gains too; the WiFi page's changes of one frame are one
+    `undoFollows` (`recordingChanged(..., false)`, in order), not one each. A rename with twenty steps
+    that name it: 0.6 to 0.9 ms in the bench's song (33 KB), 17 to 20 ms in the largest (64 scenes,
+    every lane of automation: 2.2 MB); 3.4 to 4.0 and 85 to 99 ms before (`bench --app`, measured.md).
+    **Not timed on the handheld** (13 to 20 times slower: about 8 to 18 ms, and a quarter to two fifths
+    of a second in the largest song, a frame or more it stops the screen for).
+  - **Deleting a recording (hold B in the list) is no step either** (`deleteSample` takes the mark
+    again): it is for good, and undo would only put back a missing name. A step from before that
+    names it finds it missing.
+  - **A visit to the list of recordings is ONE step, or none** (`Session::browsingRecordings`, told by
+    the App each frame before `update`): the list puts each recording on as the cursor comes to it,
+    and resting on one for 0.7 s would otherwise end a burst, so one browse made a step per recording
+    rested on and twenty of them pushed every older step out. While a list is open on the screen
+    shown, the sound's mark is not compared and a burst does not end; when it closes, A's pick is one step
+    from before it opened, and B (what was there put back) leaves the mark as it was: no step, and
+    the redo steps stay. **B puts a lane's cut back too** (review of G04, 2026-11-25: the kit's
+    `SamplePicker::Jobs::putBack`, kept from when the list opened): every recording put on gives the lane
+    the whole (`setLaneSample`), the one it had as well when the cursor comes back to it, so B put back
+    only the name, the cut was lost, and the mark differed: a step, the redo steps gone, against these
+    words. A recording deleted in the list meanwhile takes its cut with it (the drum goes back whole). No
+    DRUM SYNTH voice to put back: on a voice lane A's tap opens its knobs, never the list. The sampler's
+    and CLOUD's settings are not touched by a pick, so their B stays `use(original)`. A burst the list was opened in goes on, so the pick joins it. Hold A + UP /
+    DOWN on CLOUD's SOURCE (no list) is a step per rest, as a knob turned.
+  - Tests: `sample_test` `testUndoPutsBackARecording` (CATCH on a lane and on a CLOUD, B on SOUND on
+    a lane, a voice and a sampler, renames, the WiFi page's two in one frame, a move with a redo step
+    waiting, a find, a delete, a visit to the list: A, B, opened in a burst, a carry while open, B on a
+    lane with a cut and on the built-in drum cut, its recording deleted meanwhile), `transfer_test`
+    `testRenamingInSongText` (the lines passed over at a glance) and
+    `laneedit_test` `testUndoAndANewRecording` (the old sound and its cut, heard as by hand).
+    Twenty mutants, all killed. The idle frame with the names in the mark: 0.032 to 0.034 ms
+    (`bench --app` on a busy desk, not side by side with the old). **Not run on the handheld; nobody
+    has heard it.**
 - **The undo marks (`cellMark`, `soundMark`) are 64 bits, mixed eight bytes at a time** (`markMix`):
   only ever compared with one made the same way, in memory. A byte at a time, the idle frame was 0.048 ms
   on the desk; now 0.014 (`bench --app`, 2026-11-23).
@@ -101,9 +176,31 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   after it** (NEXT SCENE, SELECT + Y: `Session::nextScene`). Whatever holds a
   scene's number must follow: the engine's playing, its patterns and an
   arpeggio that is playing (`Command::ScenesMoved`, next rule),
-  `project.playScene`, a keyboard note being recorded (`Session::scenesMoved`
-  does those two and counts the move), and the player (`UndoStep::nextScene`
-  is how undo and redo know to move them). Its tests: `tests/nextscene_test.cpp`.
+  `project.playScene`, a keyboard note being recorded and the scene copy's
+  place (`Session::scenesMoved` does those three and counts the move), the
+  SONG screen's cursor, copied cell and a paste waiting for R1's let go
+  (`SongScreen::scenesMoved`, called by the App; G23 review, 2026-11-25), and
+  the player (`UndoStep::nextScene` is how undo and redo know to move them).
+  All of them move by one rule, `movedScene` (`session.hpp`). Its tests:
+  `tests/nextscene_test.cpp`; the copies `copyscene_test`
+  `testTheCopyFollowsNextScene`.
+- **NEXT SCENE (SELECT + Y) and the scene's length (SELECT + L2 / R2) are the App's, on every tab**
+  (gesture audit G03, 2026-11-24). They were PATTERN's alone: "The gesture belongs to the grids. On the
+  other screens SELECT + Y makes no scene" (`nextscene_test`, commit 211fd8e, 2026-11-12: Claude's
+  choice, not the owner's). Off PATTERN the press fell through to the screen's own Y, which does not
+  look at SELECT: SONG muted, the kit and the sampler CATCH (a sound replaced outside undo), PHYSIC and
+  MOD rolled, and SELECT + L2 / R2 turned the tab. More logical: "SELECT + something is for whole-song
+  things" (CLAUDE.md) holds on every tab, as undo, tempo and volume already did, and NEXT SCENE from
+  DEVICE, FX or MOD is one combo instead of a trip through the tabs. **No screen is handed a
+  SELECT-held Y**, but one: the open song list, where SELECT + Y saves a rev (its Y, as ever). The scene
+  is `App::sceneOfSelect()`: the scene being worked on, or on SONG the one under the cursor
+  (`SongScreen::sceneUnderCursor`: a cell's row or a REPEATS box; a head, + TRACK and MASTER are off the
+  scenes and take the scene being worked on). **`Session::nextScene(scene)`** copies any scene: the player
+  goes to the copy on a bar its cell has, the cell worked on until then is checked for an edit first
+  (so no step of undo is made by the move itself), and with no room nothing changes, the player
+  neither. The unbuilt LIVE tab (`big-features-plan.md`) wants SELECT + L2 / R2 for its QUANTIZE: it
+  would be the one exception. Tests: `nextscene_test` `testOnEveryTab`, `app_test` `testASceneOfAnyLength`,
+  `save_test` (the rev).
 - **A scene move is ONE command, and the audio thread copies nothing**
   (`Engine::moveScenes`, which sends `Command::ScenesMoved`). The engine keeps
   each scene of each track as a piece of its own (`Track::scenes`: kMaxScenes
