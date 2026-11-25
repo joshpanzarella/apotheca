@@ -3856,7 +3856,9 @@ void testSettingsWaitToStandStill() {
         rig.frames(60); // (about five steps, and on to the end)
         CHECK(!there(settings) && session.settingsOwed());
         rig.key(RIGHT, false);
-        rig.frames(58);
+        // The last repeat (at the end, still a change asked for) was due 200 + 6 x 110 ms after the first frame,
+        // and came on the frame 880 ms after the press: a second after it is 920 ms after the let go.
+        rig.frames(57);
         CHECK(!there(settings));
         rig.frames(8);
         CHECK(readTextFile(settings, kept) && kept.find("theme " + std::to_string(session.theme()) + "\n") != std::string::npos && !session.settingsOwed());
@@ -6034,14 +6036,15 @@ void testTheFxScreensList() {
     CHECK(kindNow() == EffectKind::Limiter && fx.onLine(0).param[0] == effectDefault(EffectKind::Limiter, 0)); // (nothing shared with COMP: its usual values)
     rig.tap(LEFT, 2);
     CHECK(kindNow() == EffectKind::Comp && fx.onLine(0).param[0] == effectDefault(EffectKind::Comp, 0));
-    // A held D-pad steps through the list slowly enough to see each one: five a second.
+    // A held D-pad steps through the list slowly enough to see each one: the list's pace (gesture audit G32: it was
+    // a bare 200 ms, five a second), after the cursor's wait it always had, each counted from when it was due.
     rig.tap(UP, familyListSize());
     CHECK(kindNow() == EffectKind::None);
     rig.key(DOWN, true);
     rig.frames(1);
     CHECK(familyPlace(kindNow()) == 1);
-    rig.frames(60); // a second: the wait, then one every fifth of a second
-    CHECK(familyPlace(kindNow()) >= 4 && familyPlace(kindNow()) <= 6);
+    rig.frames(40); // two thirds of a second: the wait, then one every 110 ms (short of the list's end)
+    CHECK(familyPlace(kindNow()) == static_cast<int>(1 + 1 + (41 * 16 - 16 - ui::kCursorDelayMs) / ui::kListEveryMs) && familyPlace(kindNow()) < familyListSize() - 1);
     rig.key(DOWN, false);
     rig.key(A, false);
     // On a setting, left and right with A held switch the slot's TYPE (testFxSwitchesType), the cursor kept;
@@ -8760,17 +8763,18 @@ void testStepEffects() {
     CHECK(drums.cursorStep() == 5 && !drums.fx(0, 4).any());
     rig.tap(LEFT);
 
-    // Held over, the D-pad runs: clicks, some eight a second up and down, four sideways. Not the cursor's 33.
+    // Held over, the D-pad runs: clicks, eight a second every way (ui::kClickEveryMs; gesture audit G32: sideways
+    // was four). Not the cursor's 33.
     rig.key(X, true);
     rig.key(UP, true);
-    rig.frames(62); // a second
+    rig.frames(62); // a second: the press, then a click each 125 ms after the 170 wait, counted from when due
     rig.key(UP, false);
-    CHECK(drums.fx(0, 4).pitch >= 5 && drums.fx(0, 4).pitch <= 9);
+    CHECK(drums.fx(0, 4).pitch == static_cast<int>(1 + 1 + (62 * 16 - 16 - ui::kClickDelayMs) / ui::kClickEveryMs));
     rig.tap(DOWN, 12);
     rig.key(RIGHT, true);
-    rig.frames(20); // a third of a second: the press, and one more after the wait
+    rig.frames(20); // a third of a second: the press, and two more after the wait (at four a second: one)
     rig.key(RIGHT, false);
-    CHECK(drums.fx(0, 4).hits() == 3);
+    CHECK(drums.fx(0, 4).hits() == 4);
     rig.tap(LEFT, 4);
     // The stick: a click at once, and then it runs. One way per push.
     drums.setFx(0, 4, StepFx());
@@ -12994,6 +12998,147 @@ void testTheStickClimbsOnACursor() {
     }
 }
 
+// Held keys (gesture audit G08, G32, 2026-11-25): one repeat for every screen, ui::Repeat, each counted from when
+// the one before was DUE; each screen names its pace (a cursor, a list, a click).
+void testHeldKeysRunAtTheirPace() {
+    using ui::Pace;
+    // The rule.
+    {
+        ui::Repeat repeat;
+        Uint32 t = 1000;
+        CHECK(!repeat.due(t, true, Pace::Cursor)); // the first ask starts the wait
+        CHECK(!repeat.due(t + ui::kCursorDelayMs - 1, true, Pace::Cursor) && repeat.due(t + ui::kCursorDelayMs, true, Pace::Cursor));
+        // A second of 16 ms frames at the cursor's pace: 27 after the wait, one each 30 ms. Counted from the frame
+        // that saw each, a repeat waited two frames (32 ms): 26.
+        repeat.restart();
+        int runs = 0;
+        for (int frame = 0; frame < 62; ++frame) {
+            t += 16;
+            while (repeat.due(t, true, Pace::Cursor)) ++runs;
+        }
+        CHECK(runs == 1 + static_cast<int>((61 * 16 - ui::kCursorDelayMs) / ui::kCursorEveryMs) && runs == 27);
+        // Let go: nothing, however long.
+        CHECK(!repeat.due(t + 500, false, Pace::Cursor));
+        // A frame held up (here 400 ms): one repeat, not the dozen it missed.
+        t += 400;
+        runs = 0;
+        while (repeat.due(t, true, Pace::Cursor)) ++runs;
+        CHECK(runs == 1);
+        t += 16;
+        CHECK(!repeat.due(t, true, Pace::Cursor)); // ...and the next 30 ms on, from that frame
+        CHECK(repeat.due(t + 14, true, Pace::Cursor));
+        // A pace faster than the frames: several in one frame (the list of recordings' 20 ms, the far end).
+        repeat.restart();
+        CHECK(!repeat.due(t, true, 0, 5));
+        runs = 0;
+        while (repeat.due(t + 16, true, 0, 5)) ++runs;
+        CHECK(runs == 4);
+        // The paces, and the third for clicks: none slower than it was (8 a second, after the cursor's wait).
+        CHECK(ui::paceDelayMs(Pace::Cursor) == 170 && ui::paceEveryMs(Pace::Cursor) == 30 && ui::paceDelayMs(Pace::List) == 200 && ui::paceEveryMs(Pace::List) == 110);
+        CHECK(ui::paceDelayMs(Pace::Click) == 170 && ui::paceEveryMs(Pace::Click) == 125 && ui::kStickClicksPerSecond == 8.f);
+        // Waits as one, runs as another.
+        repeat.restart();
+        CHECK(!repeat.due(t, true, Pace::Cursor, Pace::List) && repeat.due(t + 170, true, Pace::Cursor, Pace::List));
+        CHECK(!repeat.due(t + 279, true, Pace::Cursor, Pace::List) && repeat.due(t + 280, true, Pace::Cursor, Pace::List));
+    }
+    // The roll's keys held a second: the press and 27 (it was 25 and the press).
+    {
+        Rig rig;
+        addPhazed(rig);
+        rig.project().track = 1;
+        rig.app.session().view = View::Pattern;
+        rig.app.notes().moveCursorTo(24, 0);
+        rig.frames(2);
+        rig.key(RIGHT, true);
+        rig.frames(62);
+        rig.key(RIGHT, false);
+        CHECK(rig.app.notes().cursorPitch() == 24 + 1 + 27);
+    }
+    // The roll with X held on a note: the ratchet clicks at the clicks' pace (G32: it was 220 ms, after 200).
+    {
+        Rig rig;
+        rig.app.session().addTrack(TrackKind::Fm6);
+        rig.project().track = 1;
+        rig.frames(2);
+        NoteScreen& roll = rig.app.notes();
+        NotePattern& p = rig.project().tracks[1].notes[0][0];
+        roll.moveCursorTo(60, 4);
+        rig.tap(A);
+        const int slot = p.at(60, 4);
+        rig.key(X, true);
+        rig.frames(1);
+        rig.key(RIGHT, true);
+        rig.frames(20); // 320 ms: the press, and two clicks after the 170 wait (at 220 after 200: one)
+        rig.key(RIGHT, false);
+        CHECK(slot >= 0 && p.notes[slot].ratchet == 4 && roll.cursorPitch() == 60);
+        // The stick the same (it was four a second): a click at once, then eight a second (STICK SPEED 100% here).
+        rig.key(STICK_UP, true);
+        rig.frames(20); // the click at once, and 19 frames at 8 a second: two more (at four: one)
+        rig.key(STICK_UP, false);
+        rig.key(X, false);
+        rig.frames(1);
+        CHECK(slot >= 0 && p.notes[slot].glide == glideAt(3) && roll.cursorPitch() == 60);
+    }
+    // SONG's list of instruments runs when held, at the list's pace (it did not run at all): 20 frames is the press
+    // and one more.
+    {
+        Rig rig;
+        rig.app.session().view = View::Song;
+        rig.app.song().moveCursorTo(0, 1); // + TRACK: the list opens on PHAZED, the second
+        rig.tap(A);
+        CHECK(rig.app.song().choosing());
+        rig.key(DOWN, true);
+        rig.frames(20);
+        rig.key(DOWN, false);
+        rig.frames(10);
+        rig.tap(A);
+        CHECK(rig.project().trackCount() == 2 && rig.project().tracks[1].kind == kInstruments[(1 + 2) % kInstrumentCount].kind);
+        // A (or B) with the D-pad still held closes the list, and the run stops there: it does not go on over the cells.
+        rig.app.song().moveCursorTo(0, 2); // + TRACK
+        rig.tap(A);
+        CHECK(rig.app.song().choosing());
+        rig.key(DOWN, true);
+        rig.tap(A);
+        rig.frames(30);
+        rig.key(DOWN, false);
+        CHECK(rig.project().trackCount() == 3 && rig.app.song().cursorScene() == 0);
+    }
+    // The sampler's LOOP with A held clicks once a push of the stick: up ON, down OFF (it was turned as a range of
+    // one: 1.3 s of push to flip it).
+    {
+        Rig rig;
+        rig.app.session().addTrack(TrackKind::Sampler);
+        rig.project().track = 1;
+        rig.app.session().view = View::Device;
+        int loopStop = -1;
+        for (int place = 0; place < sampler::kSettings; ++place)
+            if (SamplerScreen::settingAt(place) == sampler::Loop) loopStop = place + 1;
+        rig.app.sampler().goTo(loopStop);
+        rig.frames(2);
+        const auto loop = [&] { return rig.project().tracks[1].sampler[sampler::Loop]; };
+        const int was = loop();
+        rig.key(A, true);
+        rig.frames(1);
+        rig.stick(0.f, was ? 0.7f : -0.7f); // a push past half (0.62 past the dead zone), away from what it is: it clicks at once
+        rig.frames(1);
+        CHECK(loop() == (was ? 0 : 1));
+        rig.frames(60); // held there: nothing more
+        CHECK(loop() == (was ? 0 : 1));
+        rig.stick(0.f, was ? -1.f : 1.f); // straight across the middle the other way: a push, a click
+        rig.frames(1);
+        CHECK(loop() == was);
+        rig.stick(0.f, 0.5f); // short of half (0.37 past the dead zone): nothing
+        rig.frames(30);
+        rig.stick(0.f, -0.5f);
+        rig.frames(30);
+        CHECK(loop() == was);
+        rig.stick(0.f, 0.f);
+        rig.key(A, false);
+        rig.frames(1);
+        CHECK(rig.app.sampler().cursor() == loopStop); // the cursor did not move
+    }
+}
+
 // G46: SONG opens with its cursor on the cell being worked on; a tab off SONG takes the cell the cursor was
 // moved to on this visit (bar 1), and nothing else: a glance, the same cell (its bar kept), a head.
 void testSongOpensOnTheCellWorkedOn() {
@@ -13244,6 +13389,14 @@ int main(int argc, char** argv) {
         if (failures == 0) std::printf("app tests passed (navigation only)\n");
         return failures == 0 ? 0 : 1;
     }
+    if (argc > 1 && std::string(argv[1]) == "--held") { // just the gesture audit's batch C1: held keys' paces
+        testHeldKeysRunAtTheirPace();
+        testTheFxScreensList();
+        testStepEffects();
+        testSettingsWaitToStandStill();
+        if (failures == 0) std::printf("app tests passed (held keys only)\n");
+        return failures == 0 ? 0 : 1;
+    }
     if (argc > 1 && std::string(argv[1]) == "--hands") { // just the button standards of the pit stop
         testHoldBDeletesAnEffect();
         testTheHintsFitAndSayWhatTheyDo();
@@ -13337,6 +13490,7 @@ int main(int argc, char** argv) {
     testTheEndsOfSetsRows();
     testSetJumpsHeadings();
     testTheStickClimbsOnACursor();
+    testHeldKeysRunAtTheirPace();
     testSongOpensOnTheCellWorkedOn();
     testTheTempoFromAnyScreen();
     testTheEffectsScreen();

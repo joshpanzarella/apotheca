@@ -219,7 +219,7 @@ private:
     float brush_ = kPlacedLevel;
 
     Button repeating_ = Button::None;
-    Uint32 repeatAt_ = 0;
+    ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
     Uint32 lastMs_ = 0;
     BarFollow follow_; // the view follows the bar playing (follow_bar.hpp)
     float stickX_ = 0.f, stickY_ = 0.f;

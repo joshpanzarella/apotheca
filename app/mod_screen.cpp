@@ -14,7 +14,6 @@ using namespace ui;
 
 namespace {
 
-constexpr Uint32 kRepeatDelayMs = kCursorDelayMs, kRepeatEveryMs = kCursorEveryMs;
 constexpr float kMovesPerSecond = 14.f, kClicksPerSecond = 5.f, kTurnPerSecond = 1.8f; // (an amount here is -1..1 or 0..1)
 constexpr float kNotch = 0.05f;
 constexpr double kSpeedOctaves = 4.0; // the stick on a FREE LFO's SPEED: octaves a unit of turn (its 10 octaves in about 1.4 s, pushed full)
@@ -408,7 +407,7 @@ void ModScreen::onButton(const ButtonEvent& event, const Input& input) {
     } else if (isDirection(b)) {
         press(b);
         repeating_ = b;
-        repeatAt_ = 0;
+        repeat_.restart();
     } else if (b == Button::B && holding_) {
         if (picking()) pickRow_ = -1, holding_ = false; // as it was: A does nothing more until it is pressed again
     } else if (b == Button::B) {
@@ -474,13 +473,13 @@ void ModScreen::update(const Input& input, Uint32 nowMs) {
                 press(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
         }
     }
-    if (repeating_ != Button::None && repeatAt_ == 0) {
-        repeatAt_ = nowMs + kRepeatDelayMs;
-    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
+    // A held D-pad: the list of targets and a choice clicked with A held at the list's pace, after the cursor's
+    // wait they always had; the cursor and an amount at the cursor's.
+    const auto runs = [&] {
         const bool click = holding_ && !amount() && (repeating_ == Button::Up || repeating_ == Button::Down);
-        repeatAt_ = nowMs + (picking() || click ? kListEveryMs : kRepeatEveryMs);
-        press(repeating_);
-    }
+        return picking() || click ? Pace::List : Pace::Cursor;
+    };
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::Cursor, runs())) press(repeating_);
 }
 
 // ---- drawing -----------------------------------------------------------------------------------

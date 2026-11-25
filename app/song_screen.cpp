@@ -18,7 +18,6 @@ constexpr Uint32 kDeleteHoldMs = 1000; // B held this long on a song deletes it
 
 constexpr int kGridTop = 34, kHeadH = 40, kRowH = 44, kRowsTop = kGridTop + kHeadH + 6;
 constexpr int kNumberW = 26, kRepeatW = 38, kColumnsLeft = 8 + kNumberW + kRepeatW; // (kRepeatW was 34: the column's word, REPEATS, is 67 wide at LARGE)
-constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs;
 constexpr float kStickCellsPerSecond = 24.f;
 constexpr float kRepeatsPerSecond = 20.f;
 constexpr float kSceneTempoPerSecond = 90.f; // L1 held on a repeat count, the stick fully over: BPM a second (the drum grid's tempo row's)
@@ -118,6 +117,7 @@ void SongScreen::moveCursor(Button direction, bool pressed) {
         return;
     }
     if (choosing_) {
+        // Round the ends on every move, a press, a held run (G08) or the stick (G35 left this list going round).
         if (direction == Button::Up) choice_ = (choice_ + kInstrumentCount - 1) % kInstrumentCount;
         if (direction == Button::Down) choice_ = (choice_ + 1) % kInstrumentCount;
         return;
@@ -385,7 +385,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (isDirection(b)) {
             moveCursor(b, true); // (a press: round the ends)
             repeating_ = b;
-            repeatAt_ = 0;
+            repeat_.restart();
         }
         if (b == Button::L1) {
             session_.toggleTransfer(lastMs_ * 2654435761u + 12345u); // files over WiFi, on or off
@@ -446,9 +446,17 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
 
     if (choosing_) {
-        if (!event.down) return;
+        if (!event.down) {
+            if (b == repeating_) repeating_ = Button::None;
+            return;
+        }
         if (b == Button::Start && !input.held(Button::Select)) playFromCursor(); // as everywhere (SEL + START quits)
-        if (isDirection(b)) moveCursor(b);
+        if (isDirection(b)) {
+            moveCursor(b, true); // (a press: round the ends)
+            repeating_ = b; // held, it runs on at the list's pace (update())
+            repeat_.restart();
+        }
+        if (b == Button::A || b == Button::B) repeating_ = Button::None; // (the list closes: a direction still held does not run on over the cells)
         if (b == Button::B) choosing_ = false;
         if (b == Button::A) {
             choosing_ = false;
@@ -485,7 +493,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down) {
             mixStep(b);
             repeating_ = b;
-            repeatAt_ = 0;
+            repeat_.restart();
         } else if (b == repeating_) {
             repeating_ = Button::None;
         }
@@ -695,7 +703,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             moveCursor(b, true);
         }
         repeating_ = b;
-        repeatAt_ = 0;
+        repeat_.restart();
         return;
     }
     if (b == Button::B && !input.held(Button::A)) {
@@ -834,10 +842,10 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
         }
     }
 
-    if (repeating_ != Button::None && repeatAt_ == 0) {
-        repeatAt_ = nowMs + kRepeatDelayMs;
-    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-        repeatAt_ = nowMs + kRepeatEveryMs;
+    // A held D-pad: the cursor's pace; the list of instruments at the list's (gesture audit G08: it did not run at
+    // all). The list of songs keeps the cursor's: the standard would put it at the list's, but no held run was
+    // made slower than it was.
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), choosing_ ? Pace::List : Pace::Cursor)) {
         if (mixing_) {
             mixStep(repeating_);
         } else if (holding_ && onCell()) {

@@ -33,7 +33,6 @@ int laneFitFor(float seconds, float tempo, int meter) {
 const char* laneChokeText(int group) { return group == kChokeNone ? "NONE" : group == 1 ? "1" : "2"; }
 
 namespace {
-constexpr Uint32 kRepeatDelayMs = ui::kListDelayMs, kRepeatEveryMs = ui::kListEveryMs; // eight rows, and sounds stepped through
 constexpr float kStepsPerSecond = 8.f; // the stick with A held: slow enough to hear each sound
 }
 
@@ -262,7 +261,7 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (isDirection(b)) {
             press(b);
             repeating_ = b;
-            repeatAt_ = 0;
+            repeat_.restart();
         } else if (b == Button::Y && !holding_) {
             const int now = session_.kitOf(project_.track);
             const std::string name = now >= 0 ? "" : session_.saveKit(project_.track);
@@ -304,7 +303,7 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (isDirection(b)) {
         press(b);
         repeating_ = b;
-        repeatAt_ = 0;
+        repeat_.restart();
     } else if (b == Button::B && holding_) {
         stepped_ = true; // (A's let go after it is no tap: on FIT no fit to its bars)
         if (column_ == kSound) putBack();
@@ -404,12 +403,9 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
         for (; saved_ >= 1.f; saved_ -= 1.f)
             press(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
     }
-    if (repeating_ != Button::None && repeatAt_ == 0) {
-        repeatAt_ = nowMs + kRepeatDelayMs;
-    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-        repeatAt_ = nowMs + kRepeatEveryMs;
-        press(repeating_);
-    }
+    // A held D-pad: the lanes and columns are a cursor (gesture audit G08: they ran at the list's pace); with A
+    // held it steps the sounds, FIT and CHOKE (and on the KIT stop the kits) at the list's, to hear each.
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), holding_ ? Pace::List : Pace::Cursor)) press(repeating_);
 }
 
 // ---- EDIT ------------------------------------------------------------------------------
@@ -485,7 +481,7 @@ void KitScreen::editButton(const ButtonEvent& event, const Input& input) {
     if (isDirection(b)) {
         editPress(b);
         repeating_ = b;
-        repeatAt_ = 0;
+        repeat_.restart();
     } else if (b == Button::B && !holding_) {
         // The box to its usual value at once; held on, the bar fills and every edit goes (update).
         const int usual = laneEditValue(LaneEdit(), editRow_);
@@ -568,12 +564,7 @@ void KitScreen::editUpdate(const Input& input, Uint32 nowMs, float dt) {
             }
         }
     }
-    if (repeating_ != Button::None && repeatAt_ == 0) {
-        repeatAt_ = nowMs + ui::kCursorDelayMs;
-    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-        repeatAt_ = nowMs + ui::kCursorEveryMs;
-        editPress(repeating_);
-    }
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::Cursor)) editPress(repeating_);
 }
 
 void KitScreen::drawEdit(SDL_Renderer* r, const Fonts& fonts) const {
@@ -736,7 +727,7 @@ void KitScreen::voiceButton(const ButtonEvent& event, const Input& input) {
     if (isDirection(b)) {
         voicePress(b);
         repeating_ = b;
-        repeatAt_ = 0;
+        repeat_.restart();
     } else if (b == Button::B && !holding_) {
         // The knob to its usual value at once; held on, the bar fills and every knob goes back (update).
         if (voicePlace_ == kVoiceModel) {
@@ -831,12 +822,11 @@ void KitScreen::voiceUpdate(const Input& input, Uint32 nowMs, float dt) {
             }
         }
     }
-    if (repeating_ != Button::None && repeatAt_ == 0) {
-        repeatAt_ = nowMs + (holding_ ? ui::kListDelayMs : ui::kCursorDelayMs);
-    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-        repeatAt_ = nowMs + (holding_ ? ui::kListEveryMs : ui::kCursorEveryMs);
+    // A held D-pad: the boxes are a cursor, and a knob with A held a value turned, 0 to 100 (gesture audit G08: it
+    // ran at the list's pace, eleven seconds end to end); MODEL with A held steps the models and the named voices,
+    // a list, at the list's.
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), holding_ && voicePlace_ == kVoiceModel ? Pace::List : Pace::Cursor))
         voicePress(repeating_);
-    }
 }
 
 void KitScreen::drawVoice(SDL_Renderer* r, const Fonts& fonts) const {

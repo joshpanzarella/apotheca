@@ -25,7 +25,6 @@ constexpr int kCellH = kRowH - 2;
 constexpr int kOctaveTop = 33, kOctaveH = 11, kKeysTop = 45;
 constexpr int kStripGap = 4; // from the grid down to the strip
 constexpr float kNewLevel = kPlacedLevel, kMinLevel = 0.05f; // a note or a chord placed (project.hpp)
-constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs, kPickRepeatEveryMs = ui::kListEveryMs;
 constexpr float kStickKeysPerSecond = 36.f, kStickStepsPerSecond = 24.f, kFillPerSecond = 3.f, kLengthStepsPerSecond = 10.f;
 constexpr float kShortestLength = 0.1f; // of a step
 constexpr float kMostNudge = 0.5f;      // half a step early or late
@@ -748,7 +747,7 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         } else if (isDirection(b)) {
             press(b);
             repeating_ = b;
-            repeatAt_ = 0;
+            repeat_.restart();
         } else if (b == Button::L1 || b == Button::R1) {
             session_.choosePack(session_.packIndex() + (b == Button::R1 ? 1 : -1));
             hand_ = 0;
@@ -860,7 +859,7 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (zooming_ && l1First_ && !shaping_ && !painting_ && !erasing_ && !picking_ && !fxHeld_ && carrying_ == Carry::Nothing && !input.held(Button::R1)) zoomUsed_ = true;
         press(b);
         repeating_ = b;
-        repeatAt_ = 0;
+        repeat_.restart();
         return;
     }
     if (b == Button::B && !input.held(Button::A) && !onBars_) {
@@ -940,7 +939,7 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
             if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
             const float push = axis_ == Axis::UpDown ? -y : x;
             if (push != 0.f) {
-                fxSaved_ += fxWas_ ? std::fabs(push) * 4.f * dt : 1.f;
+                fxSaved_ += fxWas_ ? std::fabs(push) * ui::kStickClicksPerSecond * dt : 1.f; // (G32: the clicks' pace)
                 fxWas_ = true;
                 for (; fxSaved_ >= 1.f; fxSaved_ -= 1.f)
                     fxTurn(axis_ == Axis::UpDown ? (push > 0.f ? Button::Up : Button::Down) : (push > 0.f ? Button::Right : Button::Left));
@@ -948,12 +947,7 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
         }
         stickX_ = stickY_ = 0.f;
         stickWasX_ = stickWasY_ = false;
-        if (repeating_ != Button::None && repeatAt_ == 0) {
-            repeatAt_ = nowMs + ui::kListDelayMs;
-        } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-            repeatAt_ = nowMs + 2 * ui::kListEveryMs; // clicks, not a run
-            fxTurn(repeating_);
-        }
+        while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::Click)) fxTurn(repeating_); // clicks, not a run
         return;
     }
     if (picking_) {
@@ -1028,13 +1022,9 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
         }
     }
 
-    if (repeating_ != Button::None && repeatAt_ == 0) {
-        repeatAt_ = nowMs + kRepeatDelayMs;
-    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-        repeatAt_ = nowMs + kRepeatEveryMs;
-        if (picking_) repeatAt_ = nowMs + kPickRepeatEveryMs; // chords are for hearing one at a time
-        press(repeating_);
-    }
+    // A held D-pad: the cursor's pace (BARS with A held too); the chords and their inversions with Y held at the
+    // list's, after the cursor's wait they always had: chords are for hearing one at a time.
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::Cursor, picking_ ? Pace::List : Pace::Cursor)) press(repeating_);
 }
 
 // Is this note written where something else on the same key is already sounding: one of a

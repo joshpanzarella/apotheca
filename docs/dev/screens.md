@@ -387,6 +387,43 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   part, full and at 50%; TEMPO turned; the kit's sounds; the instrument list), `testTheStickSpeedAndTheVolume`
   (SONG); `ui_test` (the drum grid, painting); `wifi_test` `testTheStickOverTheNetworks` (NETWORK's list, A held). **0.9 is a guess at "all the way"**: what the handheld's stick
   reads at its rim is not measured.
+- **A held key's repeats are one helper, `ui::Repeat`, on every screen** (gesture audit G08, 2026-11-25).
+  Each repeat is counted from when the one before was DUE, not from the frame that saw it, as the list of
+  recordings always counted: the cursor's 30 ms was rounded up to two frames' time (about 28 to 31 a second, not the
+  33 the manual says), and now is 33; a pace faster than the frames gives several in a frame; a frame held
+  up more than `kRepeatStallMs` (100) makes one, not a burst. Each screen names its pace (`ui::Pace`:
+  Cursor, List, Click) with `due(now, held, pace)`; `due(now, held, waits, runs)` waits as one and runs as
+  another. Twelve hand-rolled copies (`repeatAt_ = nowMs + every`) went. Tests that counted repeats were
+  moved to the exact count (`chord_test`, `feelapp_test`, `app_test`). `app_test`
+  `testHeldKeysRunAtTheirPace` (the rule, the roll's keys a second, the instrument list, LOOP, the roll's
+  clicks), `drumsynthapp_test testHeldKeysOnTheKitPage`.
+  - **Brought to the cursor's pace** (the standard calls them cursors): the KIT page's lanes and columns
+    (they ran at the list's: a held DOWN is 3.7 times as fast) and a drum synth's knob with A held (0 to
+    100 took about 11 s, now about 3). With A held the kit's sounds, FIT, CHOKE and the kits, and VOICE's
+    MODEL (models and named voices), stay lists.
+  - **The list of instruments runs when held** (it did not), at the list's pace, still going round (G35
+    left it going round on every move; a held run now does too). A or B closing it ends the run, so a
+    direction still held does not run on over the cells.
+  - **The sampler's LOOP clicks once a push of the stick** past half (`loopPush_`): up ON, down OFF, as
+    the D-pad and a synth's choices; back in the middle, or pushed the other way (a flick across can pass
+    the middle between two frames), the next push clicks. It was turned as a range of one: about 1.3 s of
+    full push to flip it.
+  - **Not made slower, though the standard would** (the owner's rule in `pattern_screen.hpp`'s `Feel`:
+    "faster is better; nobody has ever asked for slower"): the list of songs and its revs, a synth's and
+    the sampler's PRESET, FOLDER and choices with A held, CLOUD's RECORDING, FX's choice dials (TIME,
+    filter TYPE, BAND's SHAPE with A + UP / DOWN) and BARS on both grids keep the cursor's pace. The
+    lists that always waited the cursor's 170 before running at the list's 110 keep that wait (FX's list
+    and TYPE, MOD's targets and clicks, the sampler's SOUND with A held, the chord picker). Both are the
+    owner's question (the audit's G08 risk: the song list would scroll at 9 a second).
+- **A third pace, for clicks** (gesture audit G32, 2026-11-25; `ui::kClickDelayMs` 170, `kClickEveryMs`
+  125, `kStickClicksPerSecond` 8): what X held sets on a hit or a note. It was three rates written in the
+  screens, "clicks, not a slide": the drum grid's pitch 8 a second, its ratchet and a lane's FEEL 4, the
+  roll's ratchet and glide one each 220 ms after 200; the stick the same 8 and 4 on the drums, 4 on the
+  roll. **One pace, the fastest of them**, so none clicks slower than it did: the ratchet, FEEL and the
+  roll's clicks go twice as fast (FEEL's six clicks end to end in about 0.8 s, held or with the stick
+  at 75%). FX's list of effects ran at a bare 200 ms; it runs at the list's 110 (it reaches its end in
+  less than a second held). **The list of recordings' faster paces are named in `ui.hpp` as the one
+  exception** (`kRecordings...`). CLAUDE.md's "two speeds" line is the owner's to change.
 - **The list of instruments stands higher when it must** (`SongScreen::listTop`): six rows and what
   goes said under them (another instrument for a track) reached past the hints bar from `kListY`
   (70), so the box rises to end `kListBottom` (8 above the bar); adding a track it stands at 70 as

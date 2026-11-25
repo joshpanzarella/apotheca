@@ -39,7 +39,7 @@ namespace {
 
 const SDL_Keycode A = SDLK_x, B = SDLK_z, X = SDLK_s, L1 = SDLK_q, R1 = SDLK_w, L2 = SDLK_1, R2 = SDLK_2, UP = SDLK_UP, RIGHT = SDLK_RIGHT, LEFT = SDLK_LEFT, DOWN = SDLK_DOWN,
                   SELECT = SDLK_BACKSPACE;
-const SDL_Keycode STICK_DOWN = SDLK_k, STICK_RIGHT = SDLK_l;
+const SDL_Keycode STICK_DOWN = SDLK_k, STICK_RIGHT = SDLK_l, Y = SDLK_a;
 const int kStep = 6000; // 120 BPM at 48 kHz
 
 struct Rig {
@@ -924,6 +924,23 @@ void testDrumBarsLength() {
     CHECK(rig.project().bar == 3); // round the start
     rig.tap(RIGHT);
     CHECK(rig.project().bar == 0); // ...and back round the end
+    // Held, with A or Y held too, it runs on as the press did (gesture audit G21: the press turned the bar and
+    // the held repeat did nothing). 13 frames: the press, and one repeat after the cursor's 170 wait.
+    for (SDL_Keycode with : {A, Y}) {
+        rig.project().bar = 0;
+        rig.key(with, true);
+        rig.frames(1);
+        rig.key(RIGHT, true);
+        rig.frames(13);
+        rig.key(RIGHT, false);
+        CHECK(rig.project().bar == 2);
+        rig.key(LEFT, true);
+        rig.frames(15); // the press and two repeats: round the start
+        rig.key(LEFT, false);
+        rig.key(with, false);
+        rig.frames(1);
+        CHECK(rig.project().bar == 3 && rig.track(0).bars[0] == 4 && grid.cursorOnBars());
+    }
     // Down from BARS is back through the tempo to the lanes; up from BARS rounds to the bottom.
     rig.tap(DOWN);
     CHECK(!grid.cursorOnBars() && grid.cursorOnTempo());

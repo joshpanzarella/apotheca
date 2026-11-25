@@ -2612,8 +2612,30 @@ void testTheSliceView() {
     CHECK(rig.hit(3) > 2000); // the other lanes are not cut short
     rig.tap(DOWN);
     CHECK(!rig.project().tracks[0].laneOneSlice[2] && rig.hit(2) >= 16 * kStep - 2);
+    // Set, not flipped (gesture audit G09): UP is ONE SLICE and DOWN is RUNS ON, and one that is so already
+    // sends the engine nothing.
+    rig.render(64);
+    CHECK(rig.engine->caughtUp());
     rig.tap(DOWN);
-    CHECK(rig.project().tracks[0].laneOneSlice[2]);
+    CHECK(!rig.project().tracks[0].laneOneSlice[2] && rig.engine->caughtUp());
+    rig.tap(UP);
+    CHECK(rig.project().tracks[0].laneOneSlice[2] && !rig.engine->caughtUp());
+    rig.render(64);
+    rig.tap(UP);
+    CHECK(rig.project().tracks[0].laneOneSlice[2] && rig.engine->caughtUp());
+    // Held, the D-pad runs on and sets it again: it lands where it was pushed, however long it is held (it
+    // flipped on each repeat, so where it stopped was luck). The press alone, then one to four repeats.
+    for (int held = 10; held <= 18; held += 2) {
+        rig.key(DOWN, true);
+        rig.frames(held);
+        rig.key(DOWN, false);
+        CHECK(!rig.project().tracks[0].laneOneSlice[2]);
+        rig.key(UP, true);
+        rig.frames(held);
+        rig.key(UP, false);
+        CHECK(rig.project().tracks[0].laneOneSlice[2]);
+    }
+    CHECK(drums.cursorLane() == 2 && drums.cursorStep() == -1);
     // Hold Y there: right rolls every hit's slice, left puts them back in order (not all to the top).
     rig.key(Y, true);
     rig.tap(LEFT);

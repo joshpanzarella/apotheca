@@ -163,7 +163,7 @@ plays the recording as it was made; an octave up, twice as fast.
 | On | Hold A + up / down | B |
 | --- | --- | --- |
 | SOUND | **Tap A: the list of recordings.** Or hold A + up / down: one at a time. **B with A still held: the sound as it was when A went down** | None |
-| PITCH, TUNE, START, END, ATTACK, RELEASE, LOOP, LEVEL | The stick turns it; the D-pad moves it by one | Its usual value |
+| PITCH, TUNE, START, END, ATTACK, RELEASE, LOOP, LEVEL | The stick turns it; the D-pad moves it by one. **LOOP is a click a push of the stick**: up ON, down OFF | Its usual value |
 | PRESET | The preset after / before, **heard as it goes on** when the song is stopped (as a synth's preset and a kit are): the ends stop. **B with A still held: the sound as it was when A went down**, its effects too | Held a second, on one of your own: deletes its file (the bar says CANNOT BE UNDONE; the track keeps its sound) |
 
 **PRESET is the sound kept as a preset of its own** (or "-"): the
@@ -1850,8 +1850,9 @@ to paste it over the bar on screen (see "Copy a bar, paste it on another").
 **hold L1, left / right** sets the cell's bars, more or fewer (1, 2, 4 or 8,
 as the SONG screen's hold A).
 **Up from the tempo is the BARS stop**: left / right turn to the bar before
-or after, round the ends; hold A with up / down sets the cell's bars, more
-or fewer (1, 2, 4 or 8, as the SONG screen's hold A).
+or after, round the ends (held, they run on, with A held too); hold A with
+up / down sets the cell's bars, more or fewer (1, 2, 4 or 8, as the SONG
+screen's hold A).
 
 Hold **R1** and drag to paint hits at one level (the level of the hit you
 started on, or 90%). **Add R2 while R1 is held** and the brush paints
@@ -1899,9 +1900,17 @@ A few things mean one thing everywhere:
 | **L3** (press the stick in) | **The SONG screen with MASTER under the cursor**: hold A + up / down is the output's level at once, whatever the handheld's own volume. L3 again (still on MASTER): back where you were. Only where the controls setup learned it (it asks for it after the stick) |
 | SELECT + something | Things about the whole song: undo, tempo, volume, WRITE, the scene's length, the next scene |
 
-A held D-pad runs at one of two speeds on every screen: fast for a cursor
-(33 moves a second), slow for a list or a choice (9 a second), so each one
-can be seen or heard as it goes by.
+A held D-pad runs at one of three speeds on every screen, after a moment's
+wait:
+
+| Speed | For | How fast |
+| --- | --- | --- |
+| Cursor | Moving on a grid or among boxes, and turning a value: the KIT page's lanes and columns, a drum synth's knob with A held, BARS, the list of songs, a preset or a setting stepped with A held | 33 a second |
+| List | A list or a choice stepped through, so each one is seen or heard: SET, the name keys, the kit's sounds and kits, a drum synth's MODEL, the list of instruments, the list of effects, a chord picked | 9 a second |
+| Click | What X held sets: a hit's pitch and ratchet, a lane's FEEL, a note's ratchet and glide | 8 a second |
+
+The list of recordings goes faster the longer it is held (it can be hundreds
+long).
 
 **Typing a name is the same everywhere** (a track's, a new folder's, a
 preset's): A types, Y deletes a letter, **B keeps what is typed and leaves**
@@ -2073,7 +2082,7 @@ Everything the grid does works the same here. What is added:
 | Hold R1 and drag | Lay the break out **in order**: a hit on every step crossed, each on its own slice |
 | ...and R2 as well | A **random** slice on every step crossed: the break, shuffled |
 | X | Hear one slice: the hit's, or on an empty step the one a hit would get |
-| Up / down on the lane's name | Each hit plays **ONE SLICE** and stops, or **RUNS ON** through the recording until the next hit |
+| Up / down on the lane's name | **Up: ONE SLICE**, each hit plays its slice and stops. **Down: RUNS ON**, through the recording until the next hit. Held, it stays where it was pushed |
 | Hold Y + right on the name | Roll every hit's slice. Left: back in order. |
 
 So, to chop a break: put it on a lane, FIT it to 1 bar, L1, hold R1 and

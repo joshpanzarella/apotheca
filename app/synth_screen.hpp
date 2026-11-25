@@ -213,7 +213,7 @@ private:
     float saved_ = 0.f;    // part-steps saved up while the stick turns
 
     Button repeating_ = Button::None;
-    Uint32 repeatAt_ = 0;
+    ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
     Uint32 lastMs_ = 0;
     float stickX_ = 0.f, stickY_ = 0.f;
     bool stickWasX_ = false, stickWasY_ = false;

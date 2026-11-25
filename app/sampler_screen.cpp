@@ -12,7 +12,6 @@ namespace apotheca {
 using namespace ui;
 
 namespace {
-constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs;
 constexpr float kMovesPerSecond = 14.f, kSoundsPerSecond = 8.f;
 const char* const kNames[sampler::kSettings] = {"PITCH", "TUNE", "START", "ATTACK", "RELEASE", "LOOP", "LEVEL", "END"};
 // The order the page shows them in: END beside START (it is the last id: ids are appended).
@@ -220,6 +219,7 @@ void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
         holding_ = event.down;
         saved_ = turned_ = 0.f;
         stickWas_ = false;
+        loopPush_ = 0;
         if (event.down) names_ = session_.sampleNames(), namesSeen_ = session_.sampleFiles();
         if (event.down && (stop_ == 0 || stop_ == kPresetStop)) session_.keepSound(project_.track); // (what B with A held puts back)
         return;
@@ -232,7 +232,7 @@ void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (isDirection(b)) {
         press(b);
         repeating_ = b;
-        repeatAt_ = 0;
+        repeat_.restart();
     } else if (b == Button::B && holding_) {
         // B with A held on SOUND or PRESET (gesture audit G12): the sound as it was when A went down, its
         // effects too, heard. A is spent: the D-pad and the stick are the cursor's again, its let go no tap.
@@ -353,7 +353,14 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
     if (!said_.empty() && nowMs >= saidUntil_) said_.clear();
     const float x = input.stickX(), y = input.stickY();
 
-    if (holding_ && stop_ > 0 && settingAt(stop_ - 1) >= 0) {
+    if (holding_ && stop_ > 0 && settingAt(stop_ - 1) == sampler::Loop) {
+        // LOOP, a choice (off, on): it clicks once a push past half, up ON and down OFF, as the D-pad does (gesture
+        // audit G08: it was turned as a range of one, about 1.3 s of push to flip it). Back in the middle, or pushed
+        // the other way (a flick across can pass the middle between two frames), the next push clicks.
+        const int way = y < -0.5f ? 1 : (y > 0.5f ? -1 : 0);
+        if (way != 0 && way != loopPush_) setSetting(sampler::Loop, way > 0 ? 1 : 0);
+        loopPush_ = way;
+    } else if (holding_ && stop_ > 0 && settingAt(stop_ - 1) >= 0) {
         // A setting: the stick turns it through its whole range in about a second.
         const int id = settingAt(stop_ - 1);
         const float range = static_cast<float>(sampler::settingMax(id) - sampler::settingMin(id));
@@ -378,12 +385,11 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
                 press(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
         }
     }
-    if (repeating_ != Button::None && repeatAt_ == 0) {
-        repeatAt_ = nowMs + kRepeatDelayMs;
-    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-        repeatAt_ = nowMs + (holding_ && stop_ == 0 ? ui::kListEveryMs : kRepeatEveryMs);
+    // A held D-pad: SOUND's recordings with A held at the list's pace, after the cursor's wait they always had;
+    // the rest at the cursor's, PRESET and the settings with A held too (gesture audit G08: no held run was made
+    // slower than it was).
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::Cursor, holding_ && stop_ == 0 ? Pace::List : Pace::Cursor))
         press(repeating_);
-    }
 }
 
 void SamplerScreen::drawTyping(SDL_Renderer* r, const Fonts& fonts) const {

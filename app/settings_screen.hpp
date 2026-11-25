@@ -194,7 +194,8 @@ private:
     bool stickWas_ = false;
     ui::StickClimb climb_; // a full push held on the rows climbs (G07)
     Button repeating_ = Button::None;
-    Uint32 repeatAt_ = 0, lastMs_ = 0;
+    ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
+    Uint32 lastMs_ = 0;
     float stickX_ = 0.f, stickY_ = 0.f; // for the test's picture
     float testStickX_ = 0.f, testStickY_ = 0.f; // where the stick was when it last counted as moved
     bool held_[static_cast<int>(Button::Count)] = {};

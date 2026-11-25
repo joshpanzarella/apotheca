@@ -16,7 +16,6 @@ using namespace ui;
 namespace {
 constexpr Uint32 kRelearnHoldMs = 1000; // A held this long on CONTROLS
 constexpr Uint32 kTestQuietMs = 4000;   // the button test closes this long after the last press
-constexpr Uint32 kRepeatDelayMs = ui::kListDelayMs, kRepeatEveryMs = ui::kListEveryMs;
 constexpr float kMovesPerSecond = 7.f, kChangesPerSecond = 9.f;
 }
 
@@ -32,7 +31,7 @@ void SettingsScreen::passwordButton(Button b) {
     if (isDirection(b)) {
         moveKey(b);
         repeating_ = b;
-        repeatAt_ = 0;
+        repeat_.restart();
     } else if (b == Button::A) {
         const char c = kPasswordKeys[keySet_][key_];
         if (c != '\x01' && static_cast<int>(typed_.size()) < kWifiPasswordMost) typed_ += c;
@@ -260,7 +259,7 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
             if (event.down && (b == Button::Up || b == Button::Down)) {
                 pickStep(b == Button::Down ? 1 : -1);
                 repeating_ = b;
-                repeatAt_ = 0;
+                repeat_.restart();
             } else if (!event.down && b == repeating_) {
                 repeating_ = Button::None;
             }
@@ -309,7 +308,7 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
         holding_ = false; // moving off lets go
         holdPart_ = 0.f;
         repeating_ = b;
-        repeatAt_ = 0;
+        repeat_.restart();
     } else if (b == Button::Start && !input.held(Button::Select)) {
         session_.togglePlay(false);
     }
@@ -397,12 +396,7 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
             stickWas_ = true;
             for (; saved_ >= 1.f; saved_ -= 1.f) moveKey(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
         }
-        if (repeating_ != Button::None && repeatAt_ == 0) {
-            repeatAt_ = nowMs + kRepeatDelayMs;
-        } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-            repeatAt_ = nowMs + kRepeatEveryMs;
-            moveKey(repeating_);
-        }
+        while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::List)) moveKey(repeating_);
         return;
     }
     if (holding_) {
@@ -437,13 +431,11 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
             }
         }
     }
-    if (repeating_ != Button::None && repeatAt_ == 0) {
-        repeatAt_ = nowMs + kRepeatDelayMs;
-    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-        repeatAt_ = nowMs + kRepeatEveryMs;
+    // SET's rows, its values and NETWORK's list: a list's pace.
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::List)) {
         if (picking_) {
             pickStep(repeating_ == Button::Down ? 1 : repeating_ == Button::Up ? -1 : 0);
-            return;
+            continue;
         }
         if (repeating_ == Button::Up) step(-1);
         if (repeating_ == Button::Down) step(1);

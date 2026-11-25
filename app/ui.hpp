@@ -190,9 +190,59 @@ inline int waveEndMarkX(float end, int w) { const int x = static_cast<int>(end *
 
 // How a held D-pad runs, the same on every screen. Two speeds: a cursor (grids, and a
 // cursor among boxes) runs fast; a list, or a choice being stepped through, runs slowly
-// enough to see or hear each one go by.
+// enough to see or hear each one go by. (A third, for clicks, and the one exception below.)
 constexpr Uint32 kCursorDelayMs = 170, kCursorEveryMs = 30;
 constexpr Uint32 kListDelayMs = 200, kListEveryMs = 110;
+// A third speed, for CLICKS (gesture audit G32, 2026-11-25): what X held sets on a hit or a note (a hit's
+// pitch and ratchet, a lane's FEEL, a note's ratchet and glide) clicks from one to the next, slower than a
+// cursor runs so each click is heard, with the D-pad held and with the stick held fully over
+// (kStickClicksPerSecond, times STICK SPEED as the stick always is). It was three rates written in the screens
+// (8 and 4 a second on the drum grid, 220 ms on the roll); the fastest of them is the one kept, so none
+// clicks slower than it did.
+constexpr Uint32 kClickDelayMs = 170, kClickEveryMs = 125;
+constexpr float kStickClicksPerSecond = 1000.f / static_cast<float>(kClickEveryMs);
+// The one exception, named here (batch 3, 2026-11-15): the list of recordings (sample_picker.hpp) can be
+// hundreds of rows long, so a held D-pad there goes on from the list's pace to kRecordingsFasterEveryMs
+// after kRecordingsFasterAfterMs, and to kRecordingsFastestEveryMs after kRecordingsFastestAfterMs.
+constexpr Uint32 kRecordingsFasterAfterMs = 1500, kRecordingsFasterEveryMs = 60;
+constexpr Uint32 kRecordingsFastestAfterMs = 3500, kRecordingsFastestEveryMs = 20;
+
+// Which of the speeds a held key runs at. Each screen names it: a cursor (grids, boxes, a value turned),
+// a list or a choice stepped through, or a click.
+enum class Pace { Cursor, List, Click };
+constexpr Uint32 paceDelayMs(Pace pace) { return pace == Pace::Cursor ? kCursorDelayMs : pace == Pace::List ? kListDelayMs : kClickDelayMs; }
+constexpr Uint32 paceEveryMs(Pace pace) { return pace == Pace::Cursor ? kCursorEveryMs : pace == Pace::List ? kListEveryMs : kClickEveryMs; }
+
+// A held key's repeats, on every screen (gesture audit G08, 2026-11-25). Each is counted from when the
+// one before was DUE, not from the frame that saw it: a 30 ms pace is 33 a second whatever the frames
+// (counted from the frame it was rounded up to two frames' time, about 28 to 31 a second), a pace faster than the
+// frames gives several in one frame, and the run stops at the let go (it is asked only while the key is
+// held). A frame held up more than kRepeatStallMs makes no burst to catch up: the count starts again
+// from that frame. As the list of recordings always counted.
+//   the key pressed:  repeat.restart()   (its first wait starts at the next due(), on the screen's clock)
+//   each frame:       while (key != Button::None && repeat.due(nowMs, input.held(key), pace)) move(key);
+constexpr Uint32 kRepeatStallMs = 100;
+struct Repeat {
+    Uint32 at = 0; // when the next one is due; 0: a key has just gone down
+    void restart() { at = 0; }
+    // True once for each repeat due by `nowMs` while `held`; the first call after restart() starts the
+    // wait (`delayMs`) and is false. `everyMs` is the gap after this one (above 0).
+    bool due(Uint32 nowMs, bool held, Uint32 delayMs, Uint32 everyMs) {
+        if (at == 0) {
+            at = nowMs + delayMs;
+            if (at == 0) at = 1;
+            return false;
+        }
+        if (!held || nowMs < at) return false;
+        if (nowMs - at > kRepeatStallMs) at = nowMs;
+        at += everyMs > 0 ? everyMs : 1;
+        return true;
+    }
+    bool due(Uint32 nowMs, bool held, Pace pace) { return due(nowMs, held, paceDelayMs(pace), paceEveryMs(pace)); }
+    // Waits as `waits` does, then runs as `runs`: the lists that always waited the cursor's 170 before
+    // running at the list's pace keep their wait (nothing held runs slower than it did).
+    bool due(Uint32 nowMs, bool held, Pace waits, Pace runs) { return due(nowMs, held, paceDelayMs(waits), paceEveryMs(runs)); }
+};
 
 // A long list's ends (gesture audit G35, 2026-11-25: SET's rows, the list of songs and its revs): a
 // PRESS of the D-pad at an end goes round to the other end; a held D-pad running on, or the stick,

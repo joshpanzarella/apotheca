@@ -106,8 +106,8 @@
 //                       crossed, each on its own slice
 //   ...and R2 as well   each on a RANDOM slice: the break, shuffled
 //   X                   hears one slice: the hit's, or the step's own
-//   on the lane's name  up / down: whether a hit plays ONE SLICE and stops, or
-//                       RUNS ON through the recording until the next hit.
+//   on the lane's name  up: a hit plays ONE SLICE and stops; down: it RUNS ON
+//                       through the recording until the next hit.
 //                       Hold Y + right rolls every hit's slice; left puts
 //                       them back in order.
 //
@@ -119,8 +119,8 @@
 //   R1                  copy the bar on screen, every lane and every hit with all it is
 //   A                   paste it over the bar on screen (another bar, cell, scene or drum track).
 //                       One step of undo; on the same track its automation goes with it
-//   left / right        the bar before or after, round the ends
-//   up / down           BARS: the cell's, more or fewer (1, 2, 4 or 8, as the
+//   up / down           the bar before or after, round the ends (as on the roll)
+//   left / right        BARS: the cell's, more or fewer (1, 2, 4 or 8, as the
 //                       Song screen's hold A). One step of undo
 
 #include "redraw.hpp"
@@ -139,9 +139,8 @@ namespace apotheca {
 
 // How fast the controls feel. One place, so it can become a setting later.
 // The owner's rule: faster is better; nobody has ever asked for slower.
+// (A held D-pad runs at ui.hpp's paces, as on every screen: ui::Repeat.)
 struct Feel {
-    Uint32 repeatDelayMs = ui::kCursorDelayMs; // hold the D-pad this long before it runs
-    Uint32 repeatEveryMs = ui::kCursorEveryMs; // then one move this often (33 a second)
     float stickCellsPerSecond = 36.f; // stick held fully over, moving the cursor
     float fillPerSecond = 3.f;    // stick fully over: empty to full in a third of a second
     float tempoPerSecond = 90.f;  // stick fully over, in BPM
@@ -219,6 +218,7 @@ private:
     const TrackData& trk() const { return project_.current(); }
     void moveCursor(Button direction);
     void dragCursor(Button direction); // a move the player made: it paints if a brush is down
+    void direction(Button b, const Input& input); // a press of the D-pad, or its held repeat: the same job
     void placeHit(float chance);
     void paintHere();
     void diceOrder(int lane, int order[kSteps]) const;
@@ -300,7 +300,7 @@ private:
     std::uint32_t dice_ = 0x9E3779B9u; // for R2's random levels
 
     Button repeating_ = Button::None; // D-pad direction being held
-    Uint32 repeatAt_ = 0;
+    ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
     Uint32 lastMs_ = 0;
     BarFollow follow_; // the view follows the bar playing (follow_bar.hpp)
     float stickX_ = 0.f, stickY_ = 0.f; // cursor part-moves saved up

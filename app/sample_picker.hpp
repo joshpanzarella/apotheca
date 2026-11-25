@@ -115,8 +115,10 @@ public:
         int count;        // a folder: the recordings in it, those of the folders inside it too
     };
     static constexpr int kRows = 11, kPage = kRows - 1;
-    static constexpr Uint32 kFasterAfterMs = 1500, kFasterEveryMs = 60; // a held D-pad: the list's pace first, then this
-    static constexpr Uint32 kFastestAfterMs = 3500, kFastestEveryMs = 20; // ...and held this long, this: the far end of a long list
+    // A held D-pad: the list's pace first, then this; held longer, this: the far end of a long list (named in ui.hpp,
+    // the one exception to its paces).
+    static constexpr Uint32 kFasterAfterMs = ui::kRecordingsFasterAfterMs, kFasterEveryMs = ui::kRecordingsFasterEveryMs;
+    static constexpr Uint32 kFastestAfterMs = ui::kRecordingsFastestAfterMs, kFastestEveryMs = ui::kRecordingsFastestEveryMs;
     static constexpr float kStickRowsPerSecond = 80.f;                  // the stick pushed all the way (times ui::gStickSpeed); by the square of the push
     static constexpr Uint32 kHoldSaysMs = 400;                          // B held this long on a folder that is not empty: it says why not
     static constexpr Uint32 kTapMs = 250;                               // B let go sooner on a row it deletes (nothing else pressed) is a tap; later, nothing
@@ -213,7 +215,8 @@ private:
     float saved_ = 0.f;
     bool stickWas_ = false;
     Button repeating_ = Button::None;
-    Uint32 repeatAt_ = 0, repeatSince_ = 0, lastMs_ = 0;
+    ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
+    Uint32 repeatSince_ = 0, lastMs_ = 0;
     bool bDown_ = false;                          // B went down while the list was open (so its let-go is the list's), and is still a tap
     bool bHolds_ = false;                         // ...on a row where holding it does something (a bar fills, or a folder says why not)
     Uint32 bSince_ = 0;                           // when it went down

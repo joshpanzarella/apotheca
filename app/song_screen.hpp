@@ -261,7 +261,7 @@ private:
     int copyTrack_ = 0, copyScene_ = 0;
 
     Button repeating_ = Button::None;
-    Uint32 repeatAt_ = 0;
+    ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
     Uint32 lastMs_ = 0;
     float stickX_ = 0.f, stickY_ = 0.f;
     bool stickWasX_ = false, stickWasY_ = false;

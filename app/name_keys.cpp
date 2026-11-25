@@ -16,7 +16,7 @@ void NameKeys::open(const std::string& name, int most) {
     saved_ = 0.f;
     stickWas_ = false;
     repeating_ = Button::None;
-    repeatAt_ = 0;
+    repeat_.restart();
     open_ = true;
 }
 
@@ -42,7 +42,7 @@ NameKeys::Asked NameKeys::press(Button b) {
     if (isDirection(b)) {
         move(b);
         repeating_ = b;
-        repeatAt_ = 0;
+        repeat_.restart();
     } else if (b == Button::A) {
         const char c = kKeys[key_];
         const bool space = c == ' ';
@@ -76,12 +76,7 @@ void NameKeys::update(const Input& input, Uint32 nowMs, float dt) {
         for (; saved_ >= 1.f; saved_ -= 1.f) move(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
     }
     // A held D-pad direction runs, at a list's pace: each key is seen go by.
-    if (repeating_ != Button::None && repeatAt_ == 0) {
-        repeatAt_ = nowMs + kListDelayMs;
-    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-        repeatAt_ = nowMs + kListEveryMs;
-        move(repeating_);
-    }
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::List)) move(repeating_);
 }
 
 void NameKeys::draw(SDL_Renderer* r, const Fonts& fonts, const std::string& title, SDL_Color titleColour, const char* emptyNote, const char* bDoes, const char* startDoes) const {

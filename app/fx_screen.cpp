@@ -16,7 +16,6 @@ namespace apotheca {
 using namespace ui;
 
 namespace {
-constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs;
 constexpr float kMovesPerSecond = 14.f, kKindsPerSecond = 5.f, kTurnPerSecond = 0.9f, kNotch = 0.05f;
 static_assert(kEffectPushes == 20, "kNotch is a push of the usual twenty");
 
@@ -601,7 +600,7 @@ void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
     } else if (isDirection(b)) {
         press(b);
         repeating_ = b;
-        repeatAt_ = 0;
+        repeat_.restart();
     } else if (b == Button::B && holding_) {
         // B with A held calls it off: the slot is as it was, and A does nothing more until it is pressed again.
         if (tryRow_ >= 0) callOff(), holding_ = false;
@@ -743,13 +742,13 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
                 press(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
         }
     }
-    if (repeating_ != Button::None && repeatAt_ == 0) {
-        repeatAt_ = nowMs + kRepeatDelayMs;
-    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
+    // A held D-pad: the list of effects and a TYPE (a choice) at the list's pace, after the cursor's wait they
+    // always had (G32: the list ran at a bare 200 ms); the cursor, a setting and a send at the cursor's.
+    const auto runs = [&] {
         const bool types = typeKey() != nullptr && (repeating_ == Button::Left || repeating_ == Button::Right); // a TYPE: a choice
-        repeatAt_ = nowMs + (picking() ? 200u : (types ? ui::kListEveryMs : kRepeatEveryMs));
-        press(repeating_);
-    }
+        return picking() || types ? Pace::List : Pace::Cursor;
+    };
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::Cursor, runs())) press(repeating_);
 }
 
 // ---- drawing ------------------------------------------------------------------------------

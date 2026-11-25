@@ -122,9 +122,11 @@ private:
     bool wasRecording_ = false;
     float saved_ = 0.f, turned_ = 0.f;
     bool stickWas_ = false;
+    int loopPush_ = 0; // LOOP with A held: which way the stick is pushed past half, 1 up, -1 down, 0 not (its click is spent)
     ui::StickClimb climb_; // a full push held on the cursor climbs (G07)
     Button repeating_ = Button::None;
-    Uint32 repeatAt_ = 0, lastMs_ = 0;
+    ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
+    Uint32 lastMs_ = 0;
     Uint32 heardAt_ = 0; // when a changed setting was last heard
     ui::Playhead head_;  // where the recording has got to while it is heard
     bool headHeld_ = false; // head_ runs for as long as X holds the sound

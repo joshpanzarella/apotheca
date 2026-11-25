@@ -19,7 +19,6 @@ using namespace phazed;
 namespace {
 
 constexpr float kChoicesPerSecond = 5.f; // the stick held over on a choice
-constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs;
 constexpr float kStickStopsPerSecond = 16.f;
 constexpr float kMacroPerSecond = 2.f;    // stick fully over: bottom to top in half a second
 constexpr float kPresetsPerSecond = 10.f;
@@ -444,7 +443,7 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
             moveCursor(b);
         }
         repeating_ = b;
-        repeatAt_ = 0;
+        repeat_.restart();
         return;
     }
     if (b == Button::B && holding_) {
@@ -568,10 +567,9 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
         }
     }
 
-    if (repeating_ != Button::None && repeatAt_ == 0) {
-        repeatAt_ = nowMs + kRepeatDelayMs;
-    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-        repeatAt_ = nowMs + kRepeatEveryMs;
+    // A held D-pad: the cursor's pace, the presets, folders and choices with A held too (gesture audit G08: the
+    // standard puts a list at the list's pace, but no held run was made slower than it was).
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::Cursor)) {
         if (holding_) stepHeld(repeating_);
         else moveCursor(repeating_);
     }

@@ -99,6 +99,19 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   drawn by `pattern_slices.cpp`), not a screen of its own, so every grid
   gesture works in it unchanged. A hit's slice is its `start`; there is no
   separate slice data. A lane has 16 slices, or its FIT in steps if longer.
+- **On the slice view's lane name, UP sets ONE SLICE and DOWN sets RUNS ON** (gesture audit G09,
+  2026-11-25; `PatternScreen::sliceUpDown`). Either key flipped it (Claude's slice view, commit 966202f,
+  no owner tag), and a held key or the stick runs on (up to 33 and 18 flips a second), so where it
+  stopped was luck. Set, a run sets the same again; one that is so already sends the engine nothing
+  (`Session::setLaneOneSlice` still sends on every call; the check is in the screen, the one place a
+  run calls it, so the Session's other callers, a kit loaded and undo, are as they were). The hint already read `UP / DOWN one slice / runs on`, in that order. `sample_test`
+  (`caughtUp` for nothing sent; held for 0 to 4 repeats each way).
+- **On the drum grid's BARS stop a held LEFT / RIGHT runs on with A or Y held too** (gesture audit G21,
+  2026-11-25; `PatternScreen::direction`, one function for a press of the D-pad and its held repeats).
+  The press turned the bar, and the repeat went to `nudgeExact`, which on BARS takes only up / down, so
+  it stopped dead. The repeat used to test `input.held(Y)` and `input.held(A)` without `ySpent_` and
+  `aSpent_`, so after a feel or a THROW it could do what the press would not; now it does what the press
+  does. `copybar_test testDrumBarsLength`.
 - **COPY A BAR: hold L1, R1 copies the bar shown, A pastes over it** (owner, 2026-11-17: "copying
   steps 1-16 to paste on 17-32"; `Session::copyBar` / `pasteBar` / `BarClip`, `copyBarHere` /
   `pasteBarHere` for the screens; `tests/copybar_test.cpp`). The drum grid, its slice view and the roll.
@@ -127,9 +140,17 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     `App::takeSessionSaid`): BAR 1 COPIED, PASTED ON BAR 2, BAR 2 IS THE SAME ALREADY, NOTHING
     COPIED YET, DRUMS GO ON A DRUM TRACK, NOTES GO ON A NOTE TRACK. Each fits the box at LARGE
     (`testTheWordsFit`).
-  - **The hints are in the bar only while L1 is held** (R1 copy bar, A paste bar; the roll also
-    UP / DOWN zoom): the plain bars of the drum grid and the roll have no room. Not on the help card
-    (full). Stills `copy-bar`, `copy-bar-notes`, `copy-bar-refused`.
+  - **The hints are in the bar only while L1 is held** (UP / DOWN change bar, LEFT / RIGHT bar count,
+    R1 copy bar, A paste bar, the same on both grids): the plain bars of the drum grid and the roll have
+    no room. Not on the help card (full). Stills `copy-bar`, `copy-bar-notes`, `copy-bar-refused`.
+  - **Hold L1 + UP / DOWN is the bar before or after, round the ends; hold L1 + LEFT / RIGHT the cell's
+    count** (1, 2, 4, 8), on both grids (commit 5e2ae67, 2026-11-22, under the owner's own git name:
+    "Hold L1 with up / down turns to the bar before or after on the piano roll and the drums, from
+    anywhere; hold L1 with left / right sets the cell's count"). This line said the roll's L1 bar read
+    UP / DOWN zoom, and `pattern_screen.hpp`'s header gave the two the other way round (gesture audit
+    G21, 2026-11-25: both put right, the keys unchanged). **Which way they should go is the owner's
+    question** (G21's options: the count always with LEFT / RIGHT, BARS too; or the drum grid's L1
+    turning bars sideways as its time runs), not changed here.
   - Mutants: every one tried in `copybar_test` dies but the App's two `shouldersPressed` calls (the
     panic's, and "another shoulder with L1 held"): each is the other's belt, and the two taken out
     together die (`testTheSlicesAndL1`, the panic begun L1, L2, R2, R1).
@@ -516,7 +537,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     - **Big moves.** The stick is `kStickRowsPerSecond` 80 times its setting, by the SQUARE of
       the push (a little push reads each name). A held D-pad has a third pace
       (`kFastestEveryMs` 20 after `kFastestAfterMs` 3.5 s), counted from when each row was due
-      (several a frame; a stall makes no burst). **L1 held pages on, and R1 where it does not
+      (several a frame; a stall makes no burst). (Gesture audit G32, 2026-11-25: its numbers now live
+      in `ui.hpp` as the one named exception to the paces, `kRecordings...`, and it counts through
+      `ui::Repeat` as every screen does; the picker's names are kept for the tests.) **L1 held pages on, and R1 where it does not
       carry.** 500 rows: the stick 8.3 s, DOWN held 12.6, L1 held 5.5 (each was 33 or more).
     - **Hold R1 carries only where there is a folder to carry to** (`carries()`: not `flat()`).
       Let go where it was: LEFT WHERE IT WAS.

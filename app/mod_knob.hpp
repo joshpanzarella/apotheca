@@ -127,7 +127,7 @@ private:
     Uint32 deleteSince_ = 0;
     float deletePart_ = 0.f;
     Button repeating_ = Button::None;
-    Uint32 repeatAt_ = 0;
+    ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
     bool stickWait_ = false; // the stick was already pushed when X went down: it must come back first
     int stickAxis_ = 0;      // 0 none, 1 up / down (DEPTH), 2 left / right (RATE)
     float stickSaved_ = 0.f;

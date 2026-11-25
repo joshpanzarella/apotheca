@@ -820,6 +820,62 @@ void testHeardWhenTheTurnIsDone() {
     CHECK(!kit.voicing() && !kit.hearOwed());
 }
 
+// A held D-pad on the KIT page and its VOICE view (gesture audit G08): the lanes and columns, and a knob turned
+// with A held, are cursors and run at the cursor's pace; the sounds and the models stepped with A held are lists,
+// at the list's pace, so each one is heard. (The lanes and the knobs ran at the list's: a knob 0 to 100 took 11 s.)
+void testHeldKeysOnTheKitPage() {
+    Rig rig;
+    Session& session = rig.session();
+    session.view = View::Device;
+    KitScreen& kit = rig.app.kit();
+    kit.goTo(0, KitScreen::kSound);
+    rig.frames(2);
+    // Held 20 frames (320 ms): after the press, the cursor's 170 wait and then one each 30 ms is five more; the
+    // list's 200 wait and then one each 110 ms, one more.
+    const int held = 20;
+    const int cursorRuns = 1 + static_cast<int>((held * 16 - 16 - ui::kCursorDelayMs) / ui::kCursorEveryMs);
+    const int listRuns = 1 + static_cast<int>((held * 16 - 16 - ui::kListDelayMs) / ui::kListEveryMs);
+    CHECK(cursorRuns == 5 && listRuns == 1);
+    const auto hold = [&](SDL_Keycode code) {
+        rig.key(code, true);
+        rig.frames(held);
+        rig.key(code, false);
+    };
+    hold(Down);
+    CHECK(kit.cursorLane() == 1 + cursorRuns && kit.cursorColumn() == KitScreen::kSound);
+    // A held on SOUND: the sounds, from the drum into DRUM SYNTH's models, at the list's pace.
+    kit.goTo(0, KitScreen::kSound);
+    rig.key(A, true);
+    rig.frames(1);
+    hold(Down);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(rig.kit().laneSynth[0].on() && rig.kit().laneSynth[0].model == drumsynth::kKick + listRuns);
+    CHECK(!kit.voicing()); // (A let go after a step: no tap)
+    // VOICE: a knob with A held is a value turned, at the cursor's pace.
+    session.setLaneSynth(0, 0, voiceOf(drumsynth::kSnare, drumsynth::kTune, 50));
+    rig.frames(1);
+    rig.tap(A);
+    CHECK(kit.voicing() && kit.voicePlace() == KitScreen::kVoiceModel);
+    rig.tap(Down);
+    CHECK(kit.voicePlace() == drumsynth::kTune);
+    rig.key(A, true);
+    rig.frames(1);
+    hold(Up);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(rig.kit().laneSynth[0].dial[drumsynth::kTune] == 50 + 1 + cursorRuns);
+    // MODEL with A held steps the models, a list: the list's pace.
+    rig.tap(Up);
+    CHECK(kit.voicePlace() == KitScreen::kVoiceModel);
+    rig.key(A, true);
+    rig.frames(1);
+    hold(Up);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(rig.kit().laneSynth[0].model == drumsynth::kSnare + 1 + listRuns);
+}
+
 int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     struct Test {
@@ -831,6 +887,7 @@ int main(int argc, char** argv) {
         {"testALongVoiceWaits", testALongVoiceWaits}, {"testTheSongFile", testTheSongFile}, {"testASongOpens", testASongOpens}, {"testUndo", testUndo},
         {"testTheSoundColumn", testTheSoundColumn}, {"testTheVoiceView", testTheVoiceView}, {"testTheNamedVoices", testTheNamedVoices},
         {"testPickingAVoice", testPickingAVoice}, {"testHeardWhenTheTurnIsDone", testHeardWhenTheTurnIsDone},
+        {"testHeldKeysOnTheKitPage", testHeldKeysOnTheKitPage},
     };
     int named = 0;
     for (int i = 1; i < argc; ++i) {

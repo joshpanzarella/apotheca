@@ -312,7 +312,8 @@ private:
     bool stickWas_ = false;
     ui::StickClimb climb_; // a full push held on the cursor climbs (G07)
     Button repeating_ = Button::None;
-    Uint32 repeatAt_ = 0, lastMs_ = 0;
+    ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
+    Uint32 lastMs_ = 0;
     ModKnob modKnob_;
     bool stickWait_ = false; // X let go off a MOD with the stick still pushed: it moves nothing until it comes back
     void endMod(const Input& input);

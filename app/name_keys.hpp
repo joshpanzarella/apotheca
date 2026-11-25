@@ -20,6 +20,7 @@
 #include <string>
 
 #include "input.hpp"
+#include "ui.hpp"
 
 namespace apotheca {
 
@@ -60,7 +61,7 @@ private:
     float saved_ = 0.f;     // part-moves saved up while the stick is pushed
     bool stickWas_ = false; // the stick was pushed last frame (the first frame's push moves one at once)
     Button repeating_ = Button::None;
-    Uint32 repeatAt_ = 0;
+    ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
 };
 
 } // namespace apotheca

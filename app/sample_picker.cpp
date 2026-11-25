@@ -362,7 +362,7 @@ void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
             deletePart_ = 0.f;
             moveTo(cursor_ + kPage, playing, true);
             repeating_ = b; // held: page after page
-            repeatAt_ = 0;
+            repeat_.restart();
         } else if (r1Down_) {
             r1Down_ = false;
             if (carried_.empty()) moveTo(cursor_ + kPage, playing, true);
@@ -417,11 +417,11 @@ void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
     if (b == Button::Up || b == Button::Down) {
         moveTo(cursor_ + step(b), playing, true);
         repeating_ = b;
-        repeatAt_ = 0;
+        repeat_.restart();
     } else if (b == Button::L1) {
         moveTo(cursor_ + step(b), playing, true);
         repeating_ = b; // held: page after page
-        repeatAt_ = 0;
+        repeat_.restart();
     } else if (b == Button::Left) {
         out();
     } else if (b == Button::Right) {
@@ -541,21 +541,15 @@ void SamplePicker::update(const Input& input, Uint32 nowMs, bool playing) {
         stickWas_ = true;
         for (; saved_ >= 1.f; saved_ -= 1.f) moveTo(cursor_ + (y > 0.f ? 1 : -1), playing, false);
     }
-    if (repeating_ != Button::None && repeatAt_ == 0) {
-        repeatAt_ = nowMs + kListDelayMs;
-        repeatSince_ = nowMs;
-    } else if (repeating_ != Button::None && input.held(repeating_)) {
-        // The D-pad: the list's pace, then faster, then fastest. A shoulder: a page at the list's pace.
-        // Counted from when each was due, not from this frame: a pace faster than the frames is kept
-        // (several rows a frame), and one a little slower is not rounded up to a whole frame more.
+    // The D-pad: the list's pace, then faster, then fastest (ui.hpp's one exception). A shoulder: a page at the
+    // list's pace. Counted from when each was due, as every held key is (ui::Repeat).
+    if (repeating_ != Button::None && repeat_.at == 0) repeatSince_ = nowMs;
+    const auto every = [&] {
         const bool page = repeating_ == Button::L1 || repeating_ == Button::R1;
-        if (nowMs > repeatAt_ + 100) repeatAt_ = nowMs; // (the program was held up: no burst to catch up)
-        while (nowMs >= repeatAt_) {
-            const Uint32 held = repeatAt_ - repeatSince_;
-            repeatAt_ += page || held < kFasterAfterMs ? kListEveryMs : held < kFastestAfterMs ? kFasterEveryMs : kFastestEveryMs;
-            moveTo(cursor_ + step(repeating_), playing, false);
-        }
-    }
+        const Uint32 held = repeat_.at > repeatSince_ ? repeat_.at - repeatSince_ : 0;
+        return page || held < kFasterAfterMs ? kListEveryMs : held < kFastestAfterMs ? kFasterEveryMs : kFastestEveryMs;
+    };
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), kListDelayMs, every())) moveTo(cursor_ + step(repeating_), playing, false);
 }
 
 // One column's rows, from row `first`. `lit` is the row picked out (-1: none); `cursor`: this is
