@@ -1962,10 +1962,15 @@ void testTheOtherScreens() {
     session.pretendBounce(1.f, 123.4f);
     rig.frames(1);
     holds(rig, "a bounce in its tail");
+    CHECK(drew("stop it"));
     rig.key(B, true); // B held on it: its bar fills, and the row says nothing is kept
     rig.frames(20);
     CHECK(setup.stopPart() > 0.f);
     holds(rig, "a bounce being stopped");
+    rig.frames(50); // ...held its second: told to stop, not waited for. Until it has (a pretended one never does),
+    CHECK(rig.session().bounceStopping() && setup.stopPart() == 0.f); // the row still says so, and B's hint is gone
+    holds(rig, "a bounce stopping");
+    CHECK(drew(SettingsScreen::kStoppingWords) && !drew("stop it") && !drew("stopping"));
     rig.key(B, false);
     rig.frames(1);
     CHECK(std::system(("rm -rf '" + folder + "'").c_str()) == 0);

@@ -138,11 +138,20 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   `sceneHoldScene_`); `update()` calls it off when the cursor leaves it (`atTrackHold`: the stick moves
   with no press), and **any other press calls it off at the top of `onButton`**, as on FX (A's press
   included: `deleteCalledOff` is what makes that A no tap, on a head and on a cell; it was
-  `trackHold_ && input.held(B)` read after `update()` had cancelled). Onto a head and off it need no
-  check: only a press goes there. **A tap of B now empties the cell on its LET GO**, and only if the
-  bar never began to fill (`trackHoldPart_` still 0) and the cursor is where B went down: a hold let go
-  of or called off changes nothing, the cell neither (it was emptied on the press, a step of undo even
-  when the delete was given up). House precedent: the KIT EDIT box's B acts on its let go because hold
+  `trackHold_ && input.held(B)` read after `update()` had cancelled). **The place includes the head**
+  (`trackHoldOnHead_`, review of G02, 2026-11-25): the stick's DOWN leaves a head with no press and
+  changes neither column nor scene, so a hold armed on a head was kept, and a quick let go then emptied
+  the cell under it (a tap on a head empties nothing). **A tap of B now empties the cell on its LET
+  GO**, and only if the bar never began to fill (`trackHoldPart_` still 0): once the bar shows, a hold
+  let go of or called off changes nothing, the cell neither (it was emptied on the press, a step of undo
+  even when the delete was given up). **Before the bar shows, B was a tap however the hold ends**
+  (`dropTrackHold(tap)`, review of G02, 2026-11-25): its let go, the cursor leaving (the D-pad, the
+  stick), any other press, a tab (`callOffDelete`) each empty the cell B went down on first. Calling it
+  off with nothing done dropped fast taps: B, DOWN, B, DOWN down a column with two thumbs puts the next
+  press down before B comes up, and every empty was lost without a sign. B's let go is read before the
+  REPEATS box's, so the stick's LEFT off the first track in the same frame keeps the tap. **A is the exception**: A
+  pressed in the quiet half second calls the delete off and keeps the cell (`mixer_test` pins it; the
+  owner's "A pressed while B's delete is filling calls the delete off", 2026-11-14). House precedent: the KIT EDIT box's B acts on its let go because hold
   B is live there too (`drums-and-samples.md`). The 2 s length with its quiet 0.5 s is unchanged (the
   audit's optional 1.5 s was not part of this batch). The REPEATS hold was left alone: its tap already
   acts on the let go and it has no quiet wait to tell a tap from a hold. **A tab turned and turned

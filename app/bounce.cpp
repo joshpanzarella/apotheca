@@ -506,6 +506,7 @@ bool Session::startBounce(Bounce what) {
             if (!job->sampleFolder.empty()) offline.useSampleFolder(job->sampleFolder);
             offline.applyProject();
             offline.finishStretching();
+            if (job->cancel.load()) break; // stopped while the song was loaded: no file is begun
             // A moment of nothing first, thrown away: the engine takes everything in (mutes fade
             // over a few milliseconds, and must have finished before the first note).
             {
@@ -589,13 +590,19 @@ void Session::finishBounce() {
     if (bounce_->thread.joinable()) bounce_->thread.join();
 }
 
+void Session::stopBounce() {
+    if (bounce_) bounce_->cancel.store(true); // (the thread looks once a block, and after loading each track)
+}
+
 void Session::cancelBounce() {
     if (!bounce_) return;
-    bounce_->cancel.store(true);
+    stopBounce();
     finishBounce();
+    bounce_->done.store(true); // (one pretended for a still has no thread to say so)
 }
 
 bool Session::bouncing() const { return bounce_ && !bounce_->done.load(); }
+bool Session::bounceStopping() const { return bouncing() && bounce_->cancel.load(); }
 float Session::bounceProgress() const { return bounce_ ? bounce_->progress.load() : 0.f; }
 float Session::bounceTail() const { return bounce_ ? bounce_->tail.load() : -1.f; }
 void Session::pretendBounce(float progress, float tailSeconds) {

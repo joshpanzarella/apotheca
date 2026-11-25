@@ -114,8 +114,16 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
 - **A bounce is written as it goes**, to `NAME.wav.part`, and renamed when it
   is whole: a tail of minutes never sits in memory, and a cancelled bounce
   leaves nothing: **an EACH TRACK cut short deletes the tracks it had finished** (2026-11-25, with hold B
-  on SET's BOUNCE, G15: they were a part of the stems, never padded to one length). `cancelBounce` joins
-  the thread, which looks at the cancel once a block (256 frames), so it waits for that block. One that is KILLED (power, a crash) leaves its `.wav.part`:
+  on SET's BOUNCE, G15: they were a part of the stems, never padded to one length). **Hold B's stop is
+  `stopBounce`, which only sets the cancel** (review of G15, 2026-11-25): it called `cancelBounce`, which
+  joins the thread on the app thread, and the thread cannot leave loading a track half-way (a new
+  Engine, `applyProject` reading the samples from the card, `finishStretching` stretching every FIT
+  lane; `padWav` too), so a stray bounce stopped at once froze the screen and the buttons until the load
+  ended (this line said it "waits for that block": wrong). Now `bouncing()` stays true until the thread
+  sets `done`, `bounceStopping()` meanwhile: the row's note says STOPPING IT: NOTHING IS KEPT, B's hint
+  goes, and A starts nothing. The thread looks at the cancel once a block (256 frames) and after
+  loading each track, before its file is begun. `cancelBounce` (closing down, `~Session`; a still) still
+  stops and joins, and marks the job done (a pretended one has no thread to). One that is KILLED (power, a crash) leaves its `.wav.part`:
   `removeHalfBounces` takes those away when the program opens
   (`useBounceFolder`) and when a bounce starts, never while one is under way. The tracks of an EACH TRACK bounce are padded with silence
   to the longest. Its percentage counts the song's own playing only; in a

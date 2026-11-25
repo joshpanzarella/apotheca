@@ -515,6 +515,11 @@ public:
     int bounceFiles() const;       // once done: how many files were written
     std::string bounceLast() const; // ...and the name of the last one
     void finishBounce();           // wait for it (the tests, and closing down)
+    // Hold B on SET's BOUNCE: told to stop, nothing kept, and NOT waited for (the thread may be loading the
+    // song, its samples read and its FIT lanes stretched, which it cannot leave half-way): bouncing() until it
+    // has stopped, and bounceStopping() meanwhile. cancelBounce stops it and waits (closing down, a still).
+    void stopBounce();
+    bool bounceStopping() const;
     void cancelBounce();
 
     // ---- automation -------------------------------------------------------------------

@@ -255,7 +255,7 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (event.down && b != Button::A) aTap_ = false; // (a direction, or anything else, with A held: no tap of A)
     // BOUNCE while one is under way: hold B a second stops it, nothing kept (a bar fills, as NETWORK's forget).
     if (row_ == kBounce && b == Button::B) {
-        stopping_ = event.down && session_.bouncing(), stopTimed_ = false;
+        stopping_ = event.down && session_.bouncing(), stopTimed_ = false; // (one stopping already: update() calls it off)
         return;
     }
     if (row_ == kNetwork && session_.wifiHere()) {
@@ -351,7 +351,7 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
     if (!input.held(Button::A) || row_ != kNetwork) picking_ = false; // (a let go this screen never saw joins nothing)
     if (!input.held(Button::B) || row_ != kNetwork) forgetting_ = false;
     if (!input.held(Button::A)) aTap_ = false; // (a let go this screen never saw is no tap)
-    if (!input.held(Button::B) || row_ != kBounce || !session_.bouncing()) stopping_ = false; // (ended by itself meanwhile: nothing to stop)
+    if (!input.held(Button::B) || row_ != kBounce || !session_.bouncing() || session_.bounceStopping()) stopping_ = false; // (ended by itself meanwhile, or stopping: nothing to stop)
     if (!networkSaid_.empty() && nowMs >= networkSaidUntil_) networkSaid_.clear();
     // Our firmware's WiFi: its status asked for now and then, and a scan while the NETWORK row is up.
     session_.wifiLooking = row_ == kNetwork && !typing(); // (Session::update asks; the status is asked for on every screen)
@@ -361,7 +361,7 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
         stopPart_ = static_cast<float>(nowMs - stopSince_) / static_cast<float>(kStopHoldMs);
         if (nowMs - stopSince_ >= kStopHoldMs) {
             stopping_ = false, stopPart_ = 0.f;
-            session_.cancelBounce();
+            session_.stopBounce(); // (not waited for: the row says so until it has stopped)
             session_.say(kBounceStoppedWords);
         }
     }
@@ -613,7 +613,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 if (tail >= 0.f) std::snprintf(text, sizeof text, "TAIL  %d S", static_cast<int>(tail));
                 else std::snprintf(text, sizeof text, "WORKING  %d%%", static_cast<int>(session_.bounceProgress() * 100.f));
                 part = session_.bounceProgress();
-                note = stopPart_ > 0.f ? kStoppingWords : tail >= 0.f ? "until the echoes have died away" : "you can carry on meanwhile";
+                note = stopPart_ > 0.f || session_.bounceStopping() ? kStoppingWords : tail >= 0.f ? "until the echoes have died away" : "you can carry on meanwhile";
             } else {
                 std::snprintf(text, sizeof text, "%s", what[bounceWhat_]);
                 if (session_.bounceFiles() > 0) std::snprintf(bounced_, sizeof bounced_, "done: %d file%s, on the WiFi page", session_.bounceFiles(), session_.bounceFiles() == 1 ? "" : "s");
@@ -809,7 +809,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (hasUsual(row_)) hint("B", "default");
     if (row_ == kBounce) {
         if (!session_.bouncing()) hint("A", "bounce");
-        else hint("HOLD B", stopPart_ > 0.f ? "stopping" : "stop it");
+        else if (!session_.bounceStopping()) hint("HOLD B", stopPart_ > 0.f ? "stopping" : "stop it"); // (stopping: B has nothing left to do)
     }
     if (row_ == kTempo) hint("A", "tap it");
     if (row_ == kTrackName) hint("A", "type a name");

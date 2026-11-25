@@ -47,10 +47,17 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   written, or what stands for no file), a change back before the second is up writes nothing, and
   `Session::update` writes what is owed a second after the last change. **On the way out
   `keepSettingsNow`** (main.cpp, after `saveNow`, before the power-off mark; `~Session` too). Every way
-  the program ends goes through there: SEL + START, the idle rule, SDL_QUIT (SDL turns TERM and INT into
-  it), and on our firmware every way off sends TERM first (`S95apotheca`). **Not covered: a power cut
-  (the power key held 10 s, a battery pulled), a crash, a KILL**, which lose the song's last two seconds
-  too; and how the stock firmware's own power key ends the program is not known (TERM: covered).
+  the program ends that is known goes through there: SEL + START, the idle rule, SDL_QUIT (SDL turns TERM
+  and INT into it), and on our firmware every way off sends TERM first (`S95apotheca`). **Not covered: a
+  power cut (the power key held 10 s, a battery pulled), a crash, a KILL**, which lose the song's last two
+  seconds too. **On the stock firmware, how its own power key ends the program is not known** (a TERM is
+  covered; a KILL or a cut loses a setting changed in the last second). The batch's own words ("every
+  way the program ends reaches it") were wrong there. **The wait was kept on the stock port all the
+  same** (review of G43, 2026-11-25; the other way offered was to write at once wherever
+  `PowerOff::turnsOff()` is false): the song is saved only every two seconds (`kSaveEveryMs`), so
+  whatever that key does already costs the song's last two seconds, and a setting's last second lies
+  inside them; writing at once there would bring back the held-RIGHT writes on the handheld most players
+  have. Not tried on a stock handheld; the owner was told.
   `app_test` `testSettingsWaitToStandStill`; the tests that read a file at once call `keepSettingsNow`.
 - **A deleted song goes to `deleted/` under a name nothing there has** (song
   or rev: "ash well", else "ash well 2"), through `binSong`, which the

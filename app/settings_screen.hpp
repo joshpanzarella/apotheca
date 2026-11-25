@@ -128,7 +128,8 @@ public:
     static const char* const kPasswordSetNames[3];
     static constexpr Uint32 kForgetHoldMs = ui::kHoldForGoodMs;
     // BOUNCE while one is under way: hold B a second stops it (G15). Nothing of it is kept, as when
-    // Apotheca is closed during one (Session::cancelBounce); the box above the bar says so.
+    // Apotheca is closed during one; the box above the bar says so. It is not waited for
+    // (Session::stopBounce): the row says kStoppingWords until it has stopped, and A starts nothing meanwhile.
     static constexpr Uint32 kStopHoldMs = ui::kHoldForGoodMs;
     static constexpr const char* kStoppingWords = "STOPPING IT: NOTHING IS KEPT";
     static constexpr const char* kBounceStoppedWords = "BOUNCE STOPPED: NOTHING KEPT";

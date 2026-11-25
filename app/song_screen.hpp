@@ -151,7 +151,7 @@ public:
     // scenes (a track's head, + TRACK, MASTER). SELECT + Y and SELECT + L2 / R2 act on it here (the App).
     int sceneUnderCursor() const { return onHead_ || onMaster_ || column_ == addColumn() ? -1 : scene_; }
     void selectWasUsed() { cancelSelectTap(); } // SELECT did something else: letting go is not a tap
-    void callOffDelete() { trackHold_ = false, trackHoldPart_ = 0.f; } // (the App, while another screen is up: B held through a tab and back deletes nothing)
+    void callOffDelete() { dropTrackHold(true); } // (the App, while another screen is up: B held through a tab and back deletes nothing; a quick tap then a tab is a tap)
     // AT END: the REPEATS box of the first empty row, just past the song's last scene, is where the
     // song ends. It shows a loop (LOOP) or a stop square (STOP), and A there switches them.
     int songEndRow() const { return project_.sceneCount() < kMaxScenes ? project_.sceneCount() : -1; } // -1: every row is a scene
@@ -241,8 +241,12 @@ private:
     bool trackHold_ = false, trackHoldTimed_ = false; // B is being kept held on a track
     Uint32 trackHoldSince_ = 0;
     int trackHoldColumn_ = 0, trackHoldScene_ = 0; // ...where it went down: the stick leaving it calls it off, as the scene's
-    void armTrackHold();                           // (a press calls it off anyway, so onto a head and off it need no check)
-    bool atTrackHold() const { return column_ == trackHoldColumn_ && scene_ == trackHoldScene_; }
+    bool trackHoldOnHead_ = false;                 // ...on the track's head or on its cell (the stick's DOWN leaves a head with no press)
+    void armTrackHold();
+    bool atTrackHold() const { return column_ == trackHoldColumn_ && scene_ == trackHoldScene_ && onHead_ == trackHoldOnHead_; }
+    // The hold ends. `tap`: what ended it (B let go, a move, any other press but A) came while the bar had not
+    // begun, so it was a tap of B, and a tap on a cell empties the cell B went down on (on a head, nothing).
+    void dropTrackHold(bool tap);
     bool sceneHold_ = false, sceneHoldTimed_ = false; // B is being kept held on a repeat count
     Uint32 sceneHoldSince_ = 0;
     float sceneHoldPart_ = 0.f;

@@ -1595,7 +1595,8 @@ void testDeletingATrack() {
 // Hold B on a track deletes THAT track, the one where B went down (gesture audit G02: it deleted whichever
 // the cursor was on when the bar filled, and the cursor still moved). A move (the D-pad, the stick) or any
 // other press calls the delete off, as on FX. A tap of B empties the cell on its LET GO, so a delete called
-// off or let go of early changes nothing at all.
+// off or let go of once its bar shows changes nothing at all. Before the bar shows, B was a tap however
+// it ends (its let go, a move, another press; not A), so a quick B overlapping the next press still empties.
 void testTheTrackHoldStaysOnItsTrack() {
     Rig rig;
     Session& session = rig.app.session();
@@ -1680,15 +1681,100 @@ void testTheTrackHoldStaysOnItsTrack() {
     }
     CHECK(rig.project().playing);
     rig.tap(START);
-    // Moved off and let go before the screen's next frame: the cell left and the cell come to are both kept.
+    // Moved off and let go before the screen's next frame: B was a tap, so the cell left is emptied, and only
+    // that one (review of G02: a quick B overlapping the next move lost its empty).
     song.moveCursorTo(0, 0);
     rig.key(B, true);
     rig.key(STICK_RIGHT, true);
     rig.frames(1);
     rig.key(STICK_RIGHT, false);
     rig.key(B, false);
-    CHECK(song.cursorColumn() == 1 && allThere());
+    CHECK(song.cursorColumn() == 1 && !full(0) && full(1) && full(2) && rig.project().trackCount() == 3);
     rig.frames(1);
+    CHECK(session.undo() && allThere()); // (one step of undo, as a tap's)
+    // ...and off the first track onto its scene's REPEATS box (column -1), whose own B is read on the let go too.
+    song.moveCursorTo(0, 0);
+    rig.key(B, true);
+    rig.key(STICK_LEFT, true);
+    rig.frames(1);
+    rig.key(STICK_LEFT, false);
+    rig.key(B, false);
+    CHECK(song.cursorColumn() == -1 && !full(0) && full(1) && rig.project().repeats[0] == 1);
+    rig.frames(1);
+    CHECK(session.undo() && allThere());
+    // B, DOWN, B, DOWN down a column with two thumbs: the D-pad goes down before B comes up. The cell B went
+    // down on is emptied on that press, the cell come to is kept.
+    song.moveCursorTo(0, 1);
+    rig.key(B, true);
+    rig.frames(5);
+    rig.key(RIGHT, true);
+    CHECK(song.cursorColumn() == 2 && !full(1) && full(0) && full(2));
+    rig.key(B, false);
+    rig.key(RIGHT, false);
+    rig.frames(1);
+    CHECK(!full(1) && full(0) && full(2) && rig.project().trackCount() == 3);
+    CHECK(session.undo() && allThere());
+    // ...the stick, the same, B kept down: the move is seen a frame later, and the cell is emptied then.
+    song.moveCursorTo(0, 1);
+    rig.key(B, true);
+    rig.frames(5);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(2);
+    CHECK(song.cursorColumn() == 2 && !full(1) && full(0) && full(2) && song.trackDeletePart() == 0.f);
+    rig.frames(160);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(!full(1) && full(2) && rig.project().trackCount() == 3);
+    CHECK(session.undo() && allThere());
+    // ...and another press (L1 does nothing on a cell).
+    song.moveCursorTo(0, 1);
+    rig.key(B, true);
+    rig.frames(5);
+    rig.tap(L1);
+    CHECK(!full(1) && full(0) && full(2));
+    rig.frames(160);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(rig.project().trackCount() == 3);
+    CHECK(session.undo() && allThere());
+    // ...and a tab turned (a press the screen never sees) and turned back.
+    song.moveCursorTo(0, 1);
+    rig.key(B, true);
+    rig.frames(5);
+    rig.tap(R2);
+    rig.frames(2);
+    rig.key(B, false);
+    rig.tap(L2);
+    rig.frames(2);
+    CHECK(rig.view() == View::Song && !full(1) && full(0) && full(2) && rig.project().trackCount() == 3);
+    CHECK(session.undo() && allThere());
+    // On a head a tap of B empties nothing: B down on track 2's head, the stick DOWN off it (no press), B let
+    // go before half a second. The cell under the head is kept.
+    song.moveCursorTo(0, 1);
+    rig.tap(UP);
+    CHECK(song.cursorOnHead());
+    rig.key(B, true);
+    rig.key(STICK_DOWN, true);
+    rig.frames(1);
+    rig.key(STICK_DOWN, false);
+    CHECK(!song.cursorOnHead() && song.cursorColumn() == 1 && song.cursorScene() == 0);
+    rig.key(B, false); // (before the screen's next frame: the let go itself must know it went down on a head)
+    rig.frames(1);
+    CHECK(allThere());
+    // ...and kept held, the stick off a head calls the delete off: the track stays.
+    song.moveCursorTo(0, 1);
+    rig.tap(UP);
+    rig.key(B, true);
+    rig.key(STICK_DOWN, true);
+    rig.frames(1);
+    rig.key(STICK_DOWN, false);
+    rig.frames(160);
+    CHECK(allThere() && song.trackDeletePart() == 0.f && !song.cursorOnHead());
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(allThere());
     // Held past the half second the bar waits, then let go: nothing, the cell neither.
     song.moveCursorTo(0, 2);
     rig.key(B, true);
@@ -3459,10 +3545,31 @@ void testSetActsOnTheLetGo() {
     rig.frames(61);
     CHECK(session.bouncing());
     rig.frames(4);
-    CHECK(!session.bouncing() && session.bounceFiles() == 0 && wavs() == 0 && filesEnding(folder, ".wav.part").empty());
+    // Told to stop and not waited for (review of G15: the screen joined the bounce's thread, and froze while it
+    // loaded the song); it stops within a block, nothing kept.
+    CHECK(session.bounceStopping() || !session.bouncing());
     CHECK(std::string(rig.app.undoSaid()) == SettingsScreen::kBounceStoppedWords);
+    session.finishBounce();
+    CHECK(!session.bouncing() && !session.bounceStopping() && session.bounceFiles() == 0 && wavs() == 0 && filesEnding(folder, ".wav.part").empty());
     rig.key(B, false);
     rig.frames(2);
+    // Until it has stopped it is still under way (pretended here: no thread, so it never ends by itself). A starts
+    // nothing, B has nothing more to stop, and closing Apotheca (cancelBounce) waits for it and ends it.
+    session.pretendBounce(0.37f, -1.f);
+    rig.key(B, true);
+    rig.frames(65);
+    CHECK(session.bouncing() && session.bounceStopping() && setup.stopPart() == 0.f);
+    rig.key(B, false);
+    rig.frames(1);
+    rig.key(B, true);
+    rig.frames(30);
+    CHECK(setup.stopPart() == 0.f && session.bounceStopping());
+    rig.key(B, false);
+    rig.tap(A);
+    rig.frames(2);
+    CHECK(session.bounceStopping() && wavs() == 0);
+    session.cancelBounce();
+    CHECK(!session.bouncing() && !session.bounceStopping() && session.bounceFiles() == 0);
     // B with no bounce under way does nothing.
     rig.tap(B);
     CHECK(!session.bouncing() && rig.view() == View::Settings);

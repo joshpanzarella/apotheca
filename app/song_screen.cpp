@@ -338,13 +338,24 @@ void SongScreen::armTrackHold() {
     trackHoldPart_ = 0.f;
     trackHoldColumn_ = column_;
     trackHoldScene_ = scene_;
+    trackHoldOnHead_ = onHead_;
+}
+
+void SongScreen::dropTrackHold(bool tap) {
+    // B's quiet half second is a tap of B, however it ends: B let go, the cursor moved (the D-pad, the stick),
+    // any other press (B, DOWN, B, DOWN down a column with two thumbs: the next press comes before B's let go).
+    // Not A: A pressed while B is down calls the delete off and keeps the cell (owner, 2026-11-14). Once the
+    // bar shows, giving up changes nothing.
+    if (trackHold_ && tap && trackHoldPart_ <= 0.f && !trackHoldOnHead_ && trackHoldColumn_ < project_.trackCount())
+        clearCell(trackHoldColumn_, trackHoldScene_);
+    trackHold_ = false, trackHoldPart_ = 0.f;
 }
 
 void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
     // B kept held on a track: any other press calls its delete off, as on FX (and A's is then no tap: below).
     const bool deleteCalledOff = event.down && b != Button::B && trackHold_ && input.held(Button::B);
-    if (event.down && b != Button::B) trackHold_ = false, trackHoldPart_ = 0.f;
+    if (event.down && b != Button::B) dropTrackHold(b != Button::A); // (before the bar, a tap of B: the cell is emptied first)
 
     // SELECT, pressed and let go with nothing else in between, opens and
     // closes the list of songs. (SELECT with START is "quit", elsewhere.)
@@ -648,6 +659,13 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         return;
     }
+    // B let go on a cell before its bar began to fill: a tap, and the cell B went down on is emptied (the
+    // cursor may have left it this frame, even for the REPEATS box: so this comes first). Let go later:
+    // nothing, so a delete given up changes nothing.
+    if (b == Button::B && !event.down && trackHold_) {
+        dropTrackHold(true);
+        return;
+    }
     if (b == Button::B && !input.held(Button::A) && column_ == kRepeatColumn && !onSongEnd()) {
         // On a repeat count: the press arms the hold (update() empties the scene at half a second, G29),
         // and letting go first is a tap back to 1. Above the early return for a let go, as R1's paste.
@@ -665,14 +683,6 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         } else if (sceneHold_ && scene_ == sceneHoldScene_) {
             setRepeats(1);
         }
-        return;
-    }
-    // B let go on a cell before its bar began to fill: a tap, and the cell is emptied. Let go later, or after
-    // a move or another press called the delete off: nothing, so a delete given up changes nothing.
-    if (b == Button::B && !event.down && trackHold_) {
-        trackHold_ = false;
-        if (trackHoldPart_ <= 0.f && atTrackHold()) clearCell(column_, scene_);
-        trackHoldPart_ = 0.f;
         return;
     }
     if (!event.down) {
@@ -748,9 +758,11 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
         tracksSeen_ = project_.trackCount();
     }
     // B kept held on a track: after a moment a bar begins to fill on its head, and when it is full the track is deleted.
-    // It is the track where B went down: the cursor leaving that place (the D-pad, the stick) calls it off, as A
-    // or any other press does (onButton), as on the FX screen.
-    if (!input.held(Button::B) || input.held(Button::A) || !onCell() || !atTrackHold() || listing_ || choosing_) trackHold_ = false, trackHoldPart_ = 0.f;
+    // It is the track where B went down: the cursor leaving that place (the D-pad, the stick; off a head too) calls
+    // it off, as A or any other press does (onButton), as on the FX screen. Left before the bar began, B was a tap.
+    const bool leftHold = !onCell() || !atTrackHold();
+    if (!input.held(Button::B) || input.held(Button::A) || leftHold || listing_ || choosing_)
+        dropTrackHold(leftHold && input.held(Button::B) && !input.held(Button::A) && !listing_ && !choosing_);
     if (trackHold_) {
         if (!trackHoldTimed_) trackHoldTimed_ = true, trackHoldSince_ = nowMs;
         const Uint32 held = nowMs - trackHoldSince_;
