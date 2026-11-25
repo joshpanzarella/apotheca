@@ -476,6 +476,18 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   change of SHAPE fades the numbers (g, k, m0..m2: each step between is a filter that holds) over 30 ticks, one
   fade at a time. At 0 dB a BELL or a shelf is the sound to the bit, so the generic "every setting does
   something" check exempts FREQ, Q and SHAPE (testBand moves each). 15 mutants killed.
+  - **FREQ's D-pad push is a thirtieth of its range, and it starts on one** (gesture audit G19, 2026-11-25;
+    `pushes` 30 in its row). FREQ is 20 * 1000^v, so a twentieth was 1000^0.05 = 1.41 times, HALF an octave,
+    not the third the comment said: the points near hum were 39.9, 56.4 and 79.6 Hz, and the start, 0.5663,
+    was on none, so the D-pad could not come back to 1 kHz. A thirtieth is 10^0.1, the decade third octave
+    (0.08% off 2^(1/3)): the points are 20 * 10^(k/10), 50.2, 63.2, 79.6, 100 ... 1002 Hz. **The start is
+    17/30** (1002 Hz, reading 1.0 KHZ), so B's usual value and the D-pad's point are one number. 60 Hz falls
+    between 50 and 63 (the stick, or a semitone step if exact 60 Hz hum ever matters more than the series).
+    BAND had shipped that day, so its start could move; a song file writes every setting, so a saved BAND
+    keeps its own. 17/30 does not survive the song file's %.6g to the bit, as a twentieth does: it comes back
+    a hair off, which reads the same, steps the same (the push's 0.001 slack) and is `sameAsText` to undo.
+    The picture's fallback reads the table's default (it was a copy of 0.5663). No other row has `pushes`, so
+    no other setting's push moved.
 - **A per-sample loop works on locals** (WEAR's `stretch`: up to the tick's
   end, everything the samples change copied in, worked on, copied back).
   Written straight on the effect's own numbers WEAR cost 0.40% of a core; the

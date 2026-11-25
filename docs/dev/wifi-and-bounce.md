@@ -90,7 +90,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   recording goes on a list (`Transfer::takeChanges`), put there BEFORE
   `received()` goes up; `Session::update` reads it and calls
   `recordingChanged`. A rename changes the name only: reading the file again
-  would cut the sound. A recording SENT (no old name) is read again on every
+  would cut the sound. It is no step of undo, and every step of undo follows
+  it (`undoFollows`; songs-and-undo.md), as does a recording `findMissing` finds. A recording SENT (no old name) is read again on every
   lane and sampler track that names it, so a replaced file is heard at once.
 - **A missing recording is looked for by base name, and taken only if there
   is exactly one** (`Session::findMissing`, run after a song or a rev opens,

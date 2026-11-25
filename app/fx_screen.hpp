@@ -49,13 +49,16 @@
 //                    Hold A + stick up / down turns it; the D-pad moves it a
 //                    twentieth, or to the next choice. B: its usual value
 //                    (a send: nothing sent).
+//                    Hold Y on BAND's FREQ, GAIN or Q: left / right is FREQ and
+//                    up / down GAIN (on Q, Q), the stick and the D-pad alike,
+//                    both at once on the stick (bandGrip). The cursor stays.
 //   L1 / R1          the track before / after (it stops at the first and the
 //                    last, as the SONG screen's columns do); the cursor stays
-//   X                hear the track (a recording on it, on lane 1 or the sampler:
-//                    for as long as X is held; a tap for a moment). Held on a track's slot
-//                    setting or a send: its MOD (mod_knob.hpp), its fields in the heading's
-//                    place (on SENDS, in the other send's row) while X is held; a synth's
-//                    note is heard as long as X is
+//   X                hear the track (lane 1 on drums; a synth or the sampler: middle C),
+//                    for as long as X is held, over the song too; a tap for a moment. Held
+//                    on a track's slot setting or a send: its MOD (mod_knob.hpp), its fields
+//                    in the heading's place (on SENDS, in the other send's row) while X is
+//                    held
 //   START            play / stop
 
 #include "fx_picture.hpp"
@@ -115,6 +118,11 @@ public:
     int remembered(int row) const { return row < 0 || row >= kRows ? 1 : last_[row]; }
     // A is held on a slot's line: the list of effects is open on the right.
     bool picking() const { return holding_ && column_ == 0 && !sends(row_); }
+    // Y held on one of BAND's FREQ, GAIN or Q dials (A not held; gesture audit G18) moves the bell two ways at
+    // once: LEFT / RIGHT (the stick across) FREQ, UP / DOWN GAIN, or Q on the Q dial. The setting up / down
+    // turns (kBandGain or kBandQ), or -1 where Y is not that grip.
+    static constexpr int kBandFreq = 0, kBandGain = 1, kBandQ = 2; // BAND's settings (its row in the effect table)
+    int bandGrip() const;
     // With A held there, what the slot is TRYING (heard, drawn on the right and lit in the list) while the
     // project keeps what it had: `trying()` is true once the engine has been sent another effect than the
     // project's. What the slot holds in the project is data(row) only when nothing is being tried there.
@@ -277,6 +285,7 @@ private:
     float send(int bus) const { return project_.current().send[bus]; }
     void press(Button direction);
     void turn(float amount);
+    void turnSetting(int index, float amount); // a slot's setting `index` (not the cursor's), by `amount`
     void hear(bool held = false); // held: X is down; a recording (a drum lane, the sampler) sounds until it is let go
     void emptySend(int bus);
     void drawList(SDL_Renderer* r, const Fonts& fonts) const;

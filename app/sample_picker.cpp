@@ -318,6 +318,17 @@ void SamplePicker::typeButton(Button b) {
     if (keys_.press(b) != NameKeys::Asked::Nothing) keepFolder();
 }
 
+// As it was when the list opened (nothing to do if what is on is what was on), and the list closes.
+void SamplePicker::putBack() {
+    bDown_ = false;
+    deleting_ = refusing_ = false;
+    deletePart_ = 0.f;
+    waiting_ = false;
+    quiet();
+    if (on_ != original_ && jobs_.use) jobs_.use(original_);
+    open_ = false;
+}
+
 int SamplePicker::step(Button b) const { return b == Button::Up ? -1 : b == Button::Down ? 1 : b == Button::L1 ? -kPage : b == Button::R1 ? kPage : 0; }
 
 void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
@@ -327,6 +338,15 @@ void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
     if (keys_.isOpen()) { // a name is being typed: every button is its
         if (event.down) typeButton(b);
         else keys_.letGo(b);
+        return;
+    }
+    if (event.down && b != Button::B && bHolds_) bDown_ = false; // another button while B is held to delete: its let-go is no tap
+    // Nothing on the card: the list's words say Y catches a bar and R1 records. The list closes as B's tap
+    // closes it, and the screen that opened it does that.
+    if (event.down && nothing() && !r1Down_ && ((b == Button::Y && jobs_.catchBar) || (b == Button::R1 && jobs_.record))) {
+        const std::function<void()> job = b == Button::Y ? jobs_.catchBar : jobs_.record;
+        putBack();
+        job();
         return;
     }
     if (b == Button::R1) {
@@ -369,22 +389,22 @@ void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
     }
     if (b == Button::B) {
         // Held for a second on a recording: it is deleted, for good (hold B deletes for good on every
-        // screen). Let go sooner: a tap, which puts back what was there before the list was opened.
+        // screen). A tap puts back what was there before the list was opened; held there past kTapMs and
+        // let go sooner than the second, nothing happens. Where holding does nothing, B is always the tap.
         if (event.down) {
             bDown_ = true;
+            bSince_ = whenPressed(event, lastMs_);
             deleting_ = row && (row->kind == Kind::Recording || emptyFolder(*row));
             refusing_ = row && row->kind == Kind::Folder && !deleting_; // not empty: held, it says so (update)
+            bHolds_ = deleting_ || refusing_;
             deleteTimed_ = false;
             deletePart_ = 0.f;
-        } else if (bDown_) {
-            bDown_ = false;
+        } else if (bDown_ && (!bHolds_ || whenPressed(event, lastMs_) - bSince_ < kTapMs)) {
+            putBack(); // a tap (or a row where holding B does nothing): as it was
+        } else {
+            bDown_ = false; // held to delete, and let go before the bar was full: nothing happens (hold B's rule on every screen)
             deleting_ = refusing_ = false;
             deletePart_ = 0.f;
-            waiting_ = false;
-            // As it was. (Nothing to do if what is on is what was on.)
-            quiet();
-            if (on_ != original_ && jobs_.use) jobs_.use(original_);
-            open_ = false;
         }
         return;
     }
@@ -663,11 +683,13 @@ void SamplePicker::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hints(r, fonts, list, 3);
         return;
     }
-    // (On a recording L1 / R1's page gives its place to HOLD R1: the bar holds five.)
-    const bool carries = this->carries(row);
+    // (On a recording L1 / R1's page gives its place to HOLD R1: the bar holds five. With nothing on the card there
+    // is nothing to page through: Y and R1 are what the list's words say.)
+    const bool carries = this->carries(row), none = nothing();
     const Hint list[] = {{"A", !row ? nullptr : folder ? "open" : fresh ? "name it" : "keep it"}, {"B", "as it was"}, {flat() ? nullptr : row ? "LEFT / RIGHT" : "LEFT", row ? "out, in" : "out"},
-                         {row && !carries ? "L1 / R1" : nullptr, "page"}, {"HOLD R1", carries ? "carry" : nullptr}, {"HOLD B", recording || (folder && emptyFolder(*row)) ? "delete it" : nullptr}};
-    hints(r, fonts, list, 6);
+                         {row && !carries && !(none && jobs_.record) ? "L1 / R1" : nullptr, "page"}, {none && jobs_.catchBar ? "Y" : nullptr, "catch"}, {none && jobs_.record ? "R1" : nullptr, "record"},
+                         {"HOLD R1", carries ? "carry" : nullptr}, {"HOLD B", recording || (folder && emptyFolder(*row)) ? "delete it" : nullptr}};
+    hints(r, fonts, list, 8);
 }
 
 // The third column: what is on, its picture, how long it is and where the line has got to while it

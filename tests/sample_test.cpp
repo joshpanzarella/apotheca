@@ -928,6 +928,237 @@ void testCatch() {
     CHECK(bare.session().catchLastBar(0, 5).empty() && bare.project().tracks[0].laneSample[5][0] == 0);
 }
 
+// A recording is a step of undo (gesture audit G04): CATCH, B on SOUND, a pick or a take is put back
+// by SEL + B, the old recording with its own FIT, cut and voice, read again from its file. A rename, a
+// move, a recording found elsewhere and a delete are no step, and the steps follow a rename.
+void testUndoPutsBackARecording() {
+    const SDL_Keycode SELECT = SDLK_BACKSPACE;
+    const std::string folder = tempFolder("samples-undo");
+    writeWav(folder + "/hit.wav", tone(0.5f, 0.25f), 48000);
+    writeWav(folder + "/break.wav", tone(0.25f, 0.25f), 48000);
+    const auto undoKeys = [](Rig& rig, SDL_Keycode b) {
+        rig.key(SELECT, true);
+        rig.tap(b);
+        rig.key(SELECT, false);
+        rig.frames(4);
+    };
+    {
+        // CATCH on a lane: the caught bar goes on with FIT 16 and the whole of it; SEL + B puts back
+        // the recording that was there, its FIT and its cut together.
+        Rig rig(folder);
+        Session& session = rig.session();
+        KitScreen& kit = rig.app.kit();
+        TrackData& track = rig.project().tracks[0];
+        session.setLaneSample(0, 5, "hit");
+        LaneEdit cut;
+        cut.start = kEditUnits / 4;
+        session.setLaneEdit(0, 5, cut);
+        session.setLaneFit(0, 5, 8);
+        session.setLaneSample(0, 3, "break"); // plain: no cut, no FIT, no voice
+        session.setLaneSynth(0, 2, [] { drumsynth::Voice v; v.model = drumsynth::kClap; v.dial[0] = 70; return v; }());
+        const drumsynth::Voice voice = track.laneSynth[2];
+        rig.app.drums().setStep(0, 0, 1.f);
+        rig.frames(2); // as a song opened with it: nothing to undo
+        session.finishStretching();
+        CHECK(session.undoSteps() == 0 && voice.on() && !session.laneSound(0, 5).missing);
+        session.view = View::Device;
+        kit.goTo(5, KitScreen::kSound);
+        rig.tap(START);
+        rig.render(16 * kStep + 8 * kStep);
+        rig.tap(Y);
+        rig.tap(START);
+        rig.frames(60);
+        CHECK(std::strcmp(track.laneSample[5], "catches/catch 1") == 0 && track.laneFit[5] == 16 && track.laneEdit[5].start == 0);
+        CHECK(session.undoSteps() == 1);
+        undoKeys(rig, B);
+        CHECK(std::strcmp(track.laneSample[5], "hit") == 0 && track.laneFit[5] == 8 && track.laneEdit[5] == cut);
+        CHECK(!session.laneSound(0, 5).missing && std::fabs(session.laneSound(0, 5).sourceSeconds - 0.5f) < 1e-3f);
+        CHECK(rig.settle() && rig.hit(5) > 0);
+        undoKeys(rig, A); // SEL + A: the catch again
+        CHECK(std::strcmp(track.laneSample[5], "catches/catch 1") == 0 && track.laneFit[5] == 16 && track.laneEdit[5].start == 0 && track.laneEdit[5].end == kEditUnits);
+        CHECK(!session.laneSound(0, 5).missing);
+        // B on SOUND: the built-in drum back. A plain recording, and a DRUM SYNTH voice, each a step.
+        rig.frames(60);
+        kit.goTo(3, KitScreen::kSound);
+        rig.tap(B);
+        rig.frames(60);
+        kit.goTo(2, KitScreen::kSound);
+        rig.tap(B);
+        rig.frames(60);
+        CHECK(!track.laneSample[3][0] && !track.laneSynth[2].on() && session.undoSteps() == 3);
+        undoKeys(rig, B);
+        CHECK(track.laneSynth[2] == voice && !track.laneSample[3][0]);
+        undoKeys(rig, B);
+        CHECK(std::strcmp(track.laneSample[3], "break") == 0 && !session.laneSound(0, 3).missing && track.laneSynth[2] == voice);
+        CHECK(std::fabs(session.laneSound(0, 3).sourceSeconds - 0.25f) < 1e-3f);
+    }
+    {
+        // A sampler: B on SOUND empties it; SEL + B puts it back, heard again.
+        Rig rig(folder);
+        Session& session = rig.session();
+        CHECK(session.addTrack(TrackKind::Sampler));
+        TrackData& track = rig.project().tracks[1];
+        session.setTrackSample(1, "hit");
+        rig.project().track = 1;
+        session.view = View::Device;
+        rig.frames(2);
+        CHECK(session.undoSteps() == 0);
+        rig.app.sampler().goTo(0);
+        rig.tap(B);
+        rig.frames(60);
+        CHECK(!track.sample[0] && session.undoSteps() == 1);
+        rig.render(100000);
+        rig.tap(X);
+        CHECK(Rig::sounding(rig.render(4800)) == 0);
+        undoKeys(rig, B);
+        CHECK(std::strcmp(track.sample, "hit") == 0 && !session.trackSound(1).missing && std::fabs(session.trackSound(1).seconds - 0.5f) < 1e-3f);
+        rig.render(100000);
+        rig.tap(X);
+        CHECK(Rig::sounding(rig.render(4800)) > 0);
+        undoKeys(rig, A);
+        CHECK(!track.sample[0]);
+    }
+    {
+        // A CLOUD: CATCH as its recording; SEL + B puts back the one it had.
+        Rig rig(folder);
+        Session& session = rig.session();
+        rig.app.drums().setStep(0, 0, 1.f);
+        CHECK(session.addTrack(TrackKind::Cloud));
+        TrackData& track = rig.project().tracks[1];
+        session.setTrackSample(1, "break");
+        rig.frames(2);
+        rig.tap(START);
+        rig.render(16 * kStep + 8 * kStep);
+        const std::string caught = session.catchLastBar(1, 0);
+        rig.tap(START);
+        rig.frames(60);
+        CHECK(!caught.empty() && caught == track.sample && session.undoSteps() == 1);
+        undoKeys(rig, B);
+        CHECK(std::strcmp(track.sample, "break") == 0 && !session.trackSound(1).missing && std::fabs(session.trackSound(1).seconds - 0.25f) < 1e-3f);
+        undoKeys(rig, A);
+        CHECK(caught == track.sample && !session.trackSound(1).missing);
+    }
+    {
+        // A rename or a move (the WiFi page, a carry) and a recording found elsewhere are no step of
+        // undo, and every step follows them: undo puts back where the recording is NOW, never a name
+        // whose file has gone.
+        const std::string moved = tempFolder("samples-undo-moved");
+        writeWav(moved + "/hit.wav", tone(0.5f, 0.25f), 48000);
+        writeWav(moved + "/break.wav", tone(0.25f, 0.25f), 48000);
+        Rig rig(moved);
+        Session& session = rig.session();
+        TrackData& track = rig.project().tracks[0];
+        const auto lane = [&](int l) { return std::string(track.laneSample[l]); };
+        const auto missing = [&](int l) { return session.laneSound(0, l).missing; };
+        session.setLaneSample(0, 5, "hit");
+        session.setLaneSample(0, 6, "snap"); // not on the card
+        session.setLaneSample(0, 7, "gone"); // nor this
+        rig.frames(2);
+        session.setLaneSample(0, 5, "break");
+        rig.frames(60);
+        CHECK(session.undoSteps() == 1 && missing(6) && missing(7));
+        mkdir((moved + "/kicks").c_str(), 0755);
+        mkdir((moved + "/y").c_str(), 0755);
+        CHECK(std::rename((moved + "/hit.wav").c_str(), (moved + "/kicks/hit.wav").c_str()) == 0);
+        CHECK(std::rename((moved + "/break.wav").c_str(), (moved + "/kicks/break.wav").c_str()) == 0);
+        session.recordingChanged("hit", "kicks/hit");
+        session.recordingChanged("break", "kicks/break");
+        writeWav(moved + "/y/snap.wav", tone(0.25f, 0.25f), 48000);
+        session.recordingChanged("", "y/snap"); // sent from the page: the one missing takes it
+        rig.frames(60);
+        CHECK(lane(5) == "kicks/break" && lane(6) == "y/snap" && !missing(6) && session.undoSteps() == 1);
+        // Found by findMissing itself (a song or a rev opened asks it): no step either.
+        mkdir((moved + "/z").c_str(), 0755);
+        writeWav(moved + "/z/gone.wav", tone(0.25f, 0.25f), 48000);
+        CHECK(session.findMissing() == 1 && lane(7) == "z/gone");
+        rig.frames(60);
+        CHECK(session.undoSteps() == 1);
+        // The next edit's step starts from the names as they are now.
+        session.setLaneLevel(0, 1, 0.5f);
+        rig.frames(60);
+        CHECK(session.undoSteps() == 2);
+        undoKeys(rig, B);
+        CHECK(track.laneLevel[1] != 0.5f && lane(5) == "kicks/break" && !missing(5) && lane(6) == "y/snap" && !missing(6) && lane(7) == "z/gone" && !missing(7));
+        undoKeys(rig, B);
+        CHECK(lane(5) == "kicks/hit" && !missing(5) && lane(6) == "y/snap" && !missing(6) && lane(7) == "z/gone" && !missing(7));
+        // The steps to come forward to follow a move as well.
+        mkdir((moved + "/drums").c_str(), 0755);
+        CHECK(std::rename((moved + "/kicks/break.wav").c_str(), (moved + "/drums/break.wav").c_str()) == 0);
+        session.recordingChanged("kicks/break", "drums/break");
+        rig.frames(60);
+        CHECK(session.redoSteps() == 2 && session.undoSteps() == 0);
+        undoKeys(rig, A);
+        CHECK(lane(5) == "drums/break" && !missing(5));
+        // Hold B in the list deletes a recording for good: its lanes go back to their drum, and that is
+        // no step of undo (it would only put back a name whose file is gone).
+        rig.frames(60);
+        const int steps = session.undoSteps();
+        CHECK(session.deleteSample("drums/break") && !track.laneSample[5][0]);
+        rig.frames(60);
+        CHECK(session.undoSteps() == steps);
+    }
+    {
+        // The list of recordings puts each on as the cursor comes to it. A visit is ONE step of undo
+        // however long it rests on each (A keeps one), and none when the sound is as it was (B, a carry).
+        const std::string listed = tempFolder("samples-undo-list");
+        for (const char* name : {"/a.wav", "/b.wav", "/c.wav"}) writeWav(listed + name, tone(0.25f, 0.25f), 48000);
+        Rig rig(listed);
+        Session& session = rig.session();
+        KitScreen& kit = rig.app.kit();
+        TrackData& track = rig.project().tracks[0];
+        session.setLaneSample(0, 5, "a");
+        session.view = View::Device;
+        kit.goTo(5, KitScreen::kSound);
+        rig.frames(2);
+        rig.tap(A);
+        CHECK(kit.picker().isOpen());
+        rig.tap(DOWN);
+        rig.frames(60); // rested on, well past a burst of edits
+        rig.tap(DOWN);
+        rig.frames(60);
+        CHECK(std::strcmp(track.laneSample[5], "c") == 0 && session.undoSteps() == 0);
+        rig.tap(UP);
+        rig.frames(60);
+        rig.tap(A); // keep "b"
+        rig.frames(60);
+        CHECK(!kit.picker().isOpen() && std::strcmp(track.laneSample[5], "b") == 0 && session.undoSteps() == 1);
+        undoKeys(rig, B);
+        CHECK(std::strcmp(track.laneSample[5], "a") == 0 && session.undoSteps() == 0 && session.redoSteps() == 1);
+        rig.frames(60);
+        rig.tap(A);
+        rig.tap(DOWN);
+        rig.frames(60);
+        rig.tap(DOWN);
+        rig.frames(60);
+        rig.tap(B); // as it was
+        rig.frames(60);
+        CHECK(!kit.picker().isOpen() && std::strcmp(track.laneSample[5], "a") == 0 && session.undoSteps() == 0 && session.redoSteps() == 1);
+        // Opened in a burst of edits: the burst goes on until the list closes, and the pick joins it.
+        session.setLaneLevel(0, 1, 0.3f);
+        rig.frames(2);
+        rig.tap(A);
+        rig.tap(DOWN);
+        rig.frames(60);
+        rig.tap(DOWN);
+        rig.tap(A); // keep "c"
+        rig.frames(60);
+        CHECK(std::strcmp(track.laneSample[5], "c") == 0 && session.undoSteps() == 1);
+        undoKeys(rig, B);
+        CHECK(std::strcmp(track.laneSample[5], "a") == 0 && track.laneLevel[1] != 0.3f && session.undoSteps() == 0 && session.redoSteps() == 1);
+        rig.frames(60);
+        // A carry while it is open: the lane follows, and that is no step.
+        rig.tap(A);
+        mkdir((listed + "/kicks").c_str(), 0755);
+        CHECK(session.moveSample("a", "kicks/a") != Session::FileJob::Failed && std::strcmp(track.laneSample[5], "kicks/a") == 0);
+        rig.frames(60);
+        rig.tap(B);
+        rig.frames(60);
+        CHECK(!kit.picker().isOpen() && std::strcmp(track.laneSample[5], "kicks/a") == 0 && session.undoSteps() == 0 && session.redoSteps() == 1);
+        undoKeys(rig, A);
+        CHECK(std::strcmp(track.laneSample[5], "c") == 0 && track.laneLevel[1] == 0.3f);
+    }
+}
+
 // The recording's picture takes the room the SIGNAL box left (owner, 2026-11-14): read off
 // the drawn screen, it is as tall as kWaveH allows, not the 40 rows it was.
 void testTheSamplersPictureIsTall() {
@@ -2126,12 +2357,16 @@ void testTheSamplePicker() {
     rig.frames(80);
     rig.key(Y, false);
     CHECK(list.count() == 22 && list.isOpen() && std::string(track.laneSample[5]) == "take 05");
-    // B let go before the second is up: a tap. The list shuts with the lane as it was, and nothing is deleted.
+    // B let go before the second is up: nothing happens (gesture audit G42: it was B's tap, which shut the list).
+    // The list stays on the row, with it on the lane, and nothing is deleted. A quick tap still shuts it, as it was.
     rig.tap(DOWN);
     rig.key(B, true);
     rig.frames(30);
     CHECK(list.isOpen() && list.deletePart() > 0.3f);
     rig.key(B, false);
+    rig.frames(1);
+    CHECK(list.isOpen() && list.cursor() == 6 && list.deletePart() == 0.f && std::string(track.laneSample[5]) == "take 06" && session.sampleNames().size() == 20);
+    rig.tap(B);
     rig.frames(1);
     CHECK(!list.isOpen() && std::string(track.laneSample[5]) == "take 05" && session.sampleNames().size() == 20);
     rig.tap(A);
@@ -3472,6 +3707,7 @@ int main(int, char**) {
     testRollingALanesStarts();
     testTheKitScreen();
     testCatch();
+    testUndoPutsBackARecording();
     testTheSamplerTrack();
     testTheSamplersPictureIsTall();
     testTheSamplersEnd();

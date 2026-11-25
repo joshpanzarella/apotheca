@@ -112,12 +112,43 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     tab and the slices): the four shoulders are seldom down at once, and L1 or
     R1 first stepped the track on the way. The help card does not say L1 / R1
     here: it lists what is true on every screen, and it is full.
+    **A held on a setting is kept through L1 / R1 where the new track's line holds the same effect**
+    (gesture audit G44, 2026-11-25: turning one dial across the tracks took a fresh A per track, and
+    meanwhile the stick moved the cursor). "The same" is the same `EffectKind`, not the same family or a
+    setting of the same name: CLEAN's FEEDBACK in TAPE's place is another job, and with WRITE on it would
+    be written. Another effect, or an EMPTY slot, lets A go: an empty slot pulls the column back to the
+    list, where a held A is the list of effects and the stick's push would TRY effects on the new track.
+    SENDS keep it (the same two on every track), and a bus's or the master's line is the same whatever
+    the track. At the first or the last track nothing changes, so A stays held (it was let go before). A
+    try in the list is called off and A let go, as the owner's rule above says. The MOD tab does the same
+    (`ModScreen::stepTrack`): the same `modKind` on the line, and on a MOD's fifth setting the same job
+    (`ModKnob::moreName`: a FREE LFO's SPEED is not PHASE); a STEPS row keeps it for any two MODs of one
+    kind. `app_test` `testFxHoldKeptAcrossTracks`, `modtab_test` `testAHeldThroughTheTracks`.
   - **Hold B deletes an effect** (a slot's line or a bus's: a bar fills for
     `kDeleteHoldMs`, a second, on the line and the heading, which says
     `kDeletingWords`; a tap does nothing; any other button or a move calls it
     off; pit stop 2026-11-14; `app_test --hands` runs these tests). A tap of B on SENDS still empties both sends,
     and on a setting gives its usual value; a bus's LEVEL goes back to full
     (`effectDefault(kind, i, true)`).
+  - **A D-pad push on an amount is a twentieth, unless the effect's row says otherwise** (`EffectInfo::pushes`,
+    `effectPushes`; `pushed` in fx_screen.cpp). The twentieth keeps the arithmetic it always had (`kNotch`), so a
+    value the D-pad reaches is the same to the bit. Only BAND's FREQ has its own: thirty (gesture audit G19,
+    2026-11-24: engine.md's BAND rule). The sends stay twentieths.
+  - **Hold Y on BAND's FREQ, GAIN or Q moves the band two ways at once** (gesture audit G18, 2026-11-25; the
+    owner allowed "any of my decisions can be reversed if there is a more logical method", 2026-11-24, and took the
+    audit's hold-Y option): LEFT / RIGHT is FREQ, UP / DOWN GAIN, on the Q dial Q (`FxScreen::bandGrip`,
+    `kBandFreq` / `kBandGain` / `kBandQ`). **The stick and the D-pad do the same job on each axis**: the D-pad a
+    push (`pushed`, the row's own pushes: FREQ thirds of an octave, GAIN and Q twentieths), the stick both axes
+    together, squared, at A's turning pace (`kTurnPerSecond`), with no lock to one axis, as the SONG mixer (owner,
+    2026-11-14). The cursor stays. Not on SHAPE (a choice: Y held there leaves the D-pad the cursor's), not on
+    another effect (Y on a dial did nothing before and still does), not with A held (A's jobs stand: A + LEFT /
+    RIGHT is still the TYPE, owner 2026-11-14, untouched), not while trying or with X's MOD. Through
+    `setEffectParam`, so WRITE records both lanes. **The option not taken: hold A + the stick across = FREQ**:
+    on a FILTER dial A + D-pad LEFT / RIGHT is the TYPE, so the stick and the D-pad would have done two jobs on
+    one axis, which no other two-way grip (the mixer, a drum hit, a roll note) does. Y on the list (column 0)
+    still moves the line; a dial is column 1 and up, so the two never meet. The bar with Y up is full (it already
+    leaves HOLD X out), so "HOLD Y" is in the manual only; with Y held the bar says LEFT / RIGHT freq, UP / DOWN
+    gain (or q). `app_test --fx` `testHoldYMovesABandTwoWays`. **Not heard on the handheld.**
   - A choice has no bar: one piece for each choice, the one it is lit
     (`wideBar`). A value is drawn in the largest lettering that fits
     `kValueRoom` (`Fonts::fit`); `app_test` (`testFxTextsFit`) draws every
@@ -188,8 +219,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   pages never had the scope and do not. `scope_test` reads it all off the
   drawn screen in BROWN and PAPER.
 - **The screen is drawn only when it can have changed** (owner, 2026-11-15: save the battery,
-  "I don't want the user to notice"; `app/redraw.hpp`). main.cpp still goes round every 16 ms,
-  reads the buttons and runs `App::update`; only `App::draw` and the present are left out on a
+  "I don't want the user to notice"; `app/redraw.hpp`). main.cpp still goes round every 16 ms
+  (a press cuts the rest short: below), reads the buttons and runs `App::update`; only `App::draw` and the present are left out on a
   pass with nothing to show. **The picture must be exactly what drawing every frame shows, and a
   button is drawn on the pass it is pressed.** A pass is drawn on a STIR (`Stir` in redraw.hpp):
   any SDL event but a stick's motion, a button held, the stick pushed, the song playing; the
@@ -213,6 +244,39 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - The test makes the sound between passes, as the audio thread does while main.cpp waits, and
     holds it up once (`stalled`): a Stop heard three passes late takes the playhead away with no
     button, which only the readouts see.
+  - **The 16 ms rest is four naps of 4 ms, and a press ends it** (gesture audit G06, 2026-11-24;
+    `app/pass_wait.hpp`). Before each nap the events that came are taken off SDL's queue and read on
+    a copy of the program's `Input`: a button pressed or let go (a trigger or a D-pad sent as an
+    axis too, once past its threshold) or a volume key ends the rest, and the next pass reads it at
+    once. Before, every pass ended in one `SDL_Delay(16)`, so a press that came during the drawing
+    or the rest waited all of it before it was read. **The idle cadence is the owner's rule above
+    and is kept**: nothing but a press ends the rest. The stick's motion does not (a resting stick
+    that jitters sends a stream of it: `stirred` already left it out), nor a key's repeat, nor the
+    window, so with no press a pass is the same 16 ms rest. A press costs at most one pass (one
+    picture) more than before; a held button none. The events the rest took are read by the next
+    pass first, in order (`PassWait::next`), so nothing is lost or read twice.
+    - Only SDL calls every SDL2 has (`SDL_PumpEvents`, `SDL_PeepEvents`, `SDL_Delay`): the
+      handheld runs its firmware's libSDL2, of an age not known here. `SDL_WaitEventTimeout` was
+      not used: it wakes on every event, the stick's included.
+    - Pumping every 4 ms also times a press: SDL2 stamps an event with `SDL_GetTicks` as it queues
+      it, and `ButtonEvent::ms` carries that stamp. **TAP TEMPO times a tap by it**
+      (`whenPressed`), not by the pass's clock (`lastMs_`, up to a pass out each tap). A tap during
+      the rest is timed to within a nap (4 ms); one during the pass's work is stamped when the
+      work ends. A ButtonEvent made up (a gamepad gone, a test's) has no time, and the tap then
+      takes the pass's clock.
+    - `controls_test` holds it (`testTheRestEndsOnAPressAndOnNothingElse`, `testTheRestWithSdl`
+      with SDL's make-believe gamepad, `testAPressHasItsOwnTime`), and `easy_test taptempo`
+      the taps (`testTapByThePressesOwnTime`). `idle_test`'s pass is still 16 ms: a press's
+      shorter pass is a drawn pass, and nothing in the redraw counts the time between passes.
+    - Measured (desk, 2026-11-24, `controls_test --measure`, a model of the loop with 1.7 ms of
+      work a pass): a pass with nothing pressed 17.8 ms before, 18.2 ms now (the four naps run
+      about 0.1 ms over each); a press read after 9.5 ms on average and 17.7 at worst before,
+      2.0 and 4.1 now. With 25 ms of work (the handheld's 13 to 20 times, an estimate): 18.5 /
+      40.8 ms before, 8.8 / 24.4 now. The whole program left alone on the drum grid (`--demo`,
+      offscreen, dummy sound, under strace): a pass 20.05 ms before, 19.92 ms now; its CPU over
+      20 s the same within the desk's noise (8.4 to 8.8 s before, 7.9 to 8.3 s now, nearly all
+      the sound's threads). **Not measured on the handheld**: what four pumps a pass cost there,
+      and how late its presses really were.
   - Measured (desk, 2026-11-15): the drum grid left alone, the whole program for 20 s (software
     renderer, dummy sound): 1.1 s of CPU, against 5.8 s drawing every frame. A pass's drawing in
     the test's software renderer: 1.8 to 2.4 ms by screen; deciding whether to draw: 0.001 ms.
@@ -338,6 +402,10 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   brushes on an empty step). JAX-EP's MAIN and five pages are held to 0 at
   every stop, A held and not (`testJaxepsHintsFit`). **The piano roll on a note is still 48 to 69
   pixels over** (its help is not drawn): not mended.
+- **The help card's B line reads "delete, empty, or go back. X held: empty the effects"** (gesture
+  audit G11, 2026-11-24): X + B empties what X shows on a hit, a lane's name, a note and a chord,
+  and no held strip has room for its chip (next rule). It fits the card at every size (held at LARGE
+  at XL, as the card's other lines); `testTheHelpCardDrawsSel` reads it.
 - **With X held on a hit, a note or a chord, each button's chip stands under
   the field it sets** (owner, 2026-11-12; `ui::hintsUnder`): no word, the
   field's label says it; the dice alone at the left (a chord: at the right). On a note the

@@ -73,6 +73,7 @@ bool Input::set(Button button, bool down, ButtonEvent& out) {
     state = down;
     out.button = button;
     out.down = down;
+    out.ms = eventMs_;
     return true;
 }
 
@@ -152,6 +153,7 @@ void Input::letGoOfAll(ButtonEvent* out, int& count) {
             held_[i] = false;
             out[count].button = static_cast<Button>(i);
             out[count].down = false;
+            out[count].ms = 0; // (made up: no event of the device's says when)
             ++count;
         }
     for (int& h : hat_) h = 0;
@@ -159,6 +161,7 @@ void Input::letGoOfAll(ButtonEvent* out, int& count) {
 }
 
 bool Input::handle(const SDL_Event& event, ButtonEvent& out) {
+    eventMs_ = event.common.timestamp;
     if (map_) {
         if (handleMapped(event, out)) return true;
         // Nothing learned for it. SDL's own gamepad reading is ignored now

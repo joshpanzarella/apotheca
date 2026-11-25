@@ -111,6 +111,11 @@ struct EffectInfo {
     // types share by name can be matched when their choices differ. Not a
     // number for a setting it does not know; nullptr: none are known.
     float (*amount)(int index, float value) = nullptr;
+    // How many pushes of the D-pad take a setting that is an amount from one end to the other; 0 is the usual
+    // kEffectPushes (a push a twentieth). BAND's FREQ is 30: a third of an octave a push, so its start and
+    // 50 Hz are on a push (gesture audit G19). Use effectPushes(). Every other row leaves it at 0, so the D-pad
+    // lands where it always did.
+    int pushes[kEffectParams] = {};
 };
 // The row for a number. Anything that is not an effect gets NONE's row.
 const EffectInfo& effectInfo(EffectKind kind);
@@ -125,6 +130,9 @@ int effectPlace(EffectKind kind);   // 0 (NONE's) for anything not in the list
 EffectKind effectFromWord(const char* word);
 // How many choices a setting has; 0 if it is an amount (or is not there).
 int effectChoices(EffectKind kind, int index);
+// How many pushes of the D-pad take an amount from one end to the other: the row's own, else kEffectPushes.
+constexpr int kEffectPushes = 20;
+int effectPushes(EffectKind kind, int index);
 // How a setting reads: "810 HZ", "1/8 DOT", "8 BITS", "35%".
 // `all` is the effect's settings together, for one whose reading depends on
 // another; without it, each is read by itself.

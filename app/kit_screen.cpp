@@ -116,6 +116,21 @@ void KitScreen::stepChoke(int by) {
     session_.setLaneChoke(project_.track, lane_, to);
 }
 
+void KitScreen::catchBar() {
+    const std::string name = session_.catchLastBar(project_.track, lane_);
+    said_ = name.empty() ? "NOTHING TO CATCH: PLAY SOMETHING FIRST" : "CAUGHT THE LAST BAR AS \"" + name + "\"";
+    for (char& c : said_) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+    saidUntil_ = lastMs_ + 2500;
+}
+
+// Record from the input: once to start (it waits for sound), again to stop.
+void KitScreen::record() {
+    const Session::Rec now = session_.toggleRecording(project_.track, lane_);
+    if (now == Session::Rec::NoInput) said_ = "NO INPUT FOUND: PLUG IN A USB MICROPHONE OR INTERFACE";
+    else if (now == Session::Rec::Idle && session_.lastRecorded().empty()) said_ = "NOTHING RECORDED: NO SOUND CAME IN";
+    saidUntil_ = lastMs_ + 3000;
+}
+
 void KitScreen::openPicker() {
     const int track = project_.track, lane = lane_;
     SamplePicker::Jobs jobs;
@@ -132,6 +147,8 @@ void KitScreen::openPicker() {
     jobs.copied = [this] { return session_.carryResult(); };
     jobs.followFailures = [this] { return session_.followFailures(); };
     jobs.playhead = [this] { return &head_; };
+    jobs.catchBar = [this] { catchBar(); }; // (an empty list: as Y and R1 on the lane)
+    jobs.record = [this] { record(); };
     char title[48];
     std::snprintf(title, sizeof title, "LANE %d: PICK ITS SOUND", lane + 1);
     jobs.used = [this, track, lane](const std::string& name) { return session_.sampleUses(name) - (name == project_.tracks[track].laneSample[lane] ? 1 : 0); };
@@ -296,16 +313,9 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
         else if (column_ == kFit) session_.setLaneFit(project_.track, lane_, 0);
         else if (column_ == kChoke) session_.setLaneChoke(project_.track, lane_, kChokeNone);
     } else if (b == Button::Y && !holding_) {
-        const std::string name = session_.catchLastBar(project_.track, lane_);
-        said_ = name.empty() ? "NOTHING TO CATCH: PLAY SOMETHING FIRST" : "CAUGHT THE LAST BAR AS \"" + name + "\"";
-        for (char& c : said_) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
-        saidUntil_ = lastMs_ + 2500;
+        catchBar();
     } else if (b == Button::R1 && !holding_) {
-        // Record from the input: once to start (it waits for sound), again to stop.
-        const Session::Rec now = session_.toggleRecording(project_.track, lane_);
-        if (now == Session::Rec::NoInput) said_ = "NO INPUT FOUND: PLUG IN A USB MICROPHONE OR INTERFACE";
-        else if (now == Session::Rec::Idle && session_.lastRecorded().empty()) said_ = "NOTHING RECORDED: NO SOUND CAME IN";
-        saidUntil_ = lastMs_ + 3000;
+        record();
     } else if (b == Button::L1 && !holding_ && !input.held(Button::Select)) {
         // Straight to this lane cut into slices, on the PATTERN tab (pattern_screen.hpp).
         if (trk().laneSample[lane_][0] && !session_.laneSound(project_.track, lane_).missing) {

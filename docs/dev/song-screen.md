@@ -44,6 +44,13 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   the cell's bar has no room for `X solo` (20 pixels over): mute and solo are said on the head. The help
   card's X line reads "hear it (SONG: solo). Held: a step's effects, a knob's MOD" (joined with the MOD
   screens' line, 2026-11-15; it is held to the card's margin by `testTheHelpCardDrawsSel`). `app_test` `testMuteSoloAndNames`, still `song-head`.
+- **The stick on a scene's REPEATS does what the D-pad does there** (gesture audit G14, 2026-11-24;
+  `SongScreen::repeatStick`). **L1 held**: up / down the scene's own tempo, squared, a beat at a
+  time at up to `kSceneTempoPerSecond` (90, the drum grid's tempo row's), left / right its meter.
+  **A held**: up / down the repeat count as before, left / right the scene's steps (16 or fewer).
+  Sideways is a click at once, then `kRepeatSidePerSecond` (3): they are counts. **One job a push**
+  (`repeatAxis_`, set afresh when A or L1 goes down). Before, L1 + the stick moved the cursor off the
+  count (and so dropped `l1OnRepeat_`), and hold A read only the stick's y. `easy_test stick`.
 - **AT END: a song played as a song LOOPs (as it always did) or STOPs**
   (owner, 2026-11-14; `Project::songEnd`, `kSongLoop` / `kSongStop`). In a
   song file `songend 1` among the song's own lines (`cutSong` knows it),

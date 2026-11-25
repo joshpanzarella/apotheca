@@ -366,10 +366,14 @@ void testLaneNameIsTheDrumsVolume() {
     CHECK(rig.screen.cursorStep() == -1);
     CHECK(rig.screen.laneLevel(1) == 1.f);
 
-    // A plays the drum and places nothing.
-    rig.key(A, true);
+    // X plays the drum. A is silent there and places nothing (gesture audit G33: A sounded the drum on every
+    // press, so every hold of A for its volume was heard).
+    rig.tap(X);
     const float full = rig.listen();
     CHECK(full > 0.2f);
+    rig.listen(40000);
+    rig.key(A, true);
+    CHECK(rig.listen() == 0.f);
     for (int step = 0; step < kSteps; ++step) CHECK(rig.screen.level(1, step) == 0.f);
 
     // Hold A + stick down: the drum's volume drains, all the way to silent.

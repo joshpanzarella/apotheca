@@ -39,6 +39,7 @@ namespace {
 
 const SDL_Keycode A = SDLK_x, B = SDLK_z, X = SDLK_s, L1 = SDLK_q, R1 = SDLK_w, L2 = SDLK_1, R2 = SDLK_2, UP = SDLK_UP, RIGHT = SDLK_RIGHT, LEFT = SDLK_LEFT, DOWN = SDLK_DOWN,
                   SELECT = SDLK_BACKSPACE;
+const SDL_Keycode STICK_DOWN = SDLK_k, STICK_RIGHT = SDLK_l;
 const int kStep = 6000; // 120 BPM at 48 kHz
 
 struct Rig {
@@ -962,6 +963,59 @@ void testBarCopyTracksItsTrack() {
     CHECK(rig.track(2).automation[1][lane][2] == 0.5f);
 }
 
+// The gesture audit's G31 (2026-11-24): a stick move with L1 held is a use of L1, as a button press is.
+// Its let go then opens no slices on the drum grid and zooms nothing on the roll; a plain tap still does.
+void testAStickMoveIsAUseOfL1() {
+    const std::string folder = tempFolder("copybar-stick");
+    CHECK(writeWav(folder + "/break.wav", std::vector<float>(48000, 0.25f), 48000));
+    Rig rig(folder);
+    Session& session = rig.session();
+    session.setLaneSample(0, 2, "break");
+    rig.frames(2);
+    PatternScreen& drums = rig.app.drums();
+    drums.moveCursorTo(2, 3);
+    CHECK(drums.canSlice(2));
+    const auto stickWithL1 = [&](SDL_Keycode way) {
+        rig.key(L1, true);
+        rig.frames(1);
+        rig.key(way, true);
+        rig.frames(1);
+        rig.key(way, false);
+        rig.frames(1);
+        rig.key(L1, false);
+        rig.frames(1);
+    };
+    stickWithL1(STICK_RIGHT);
+    CHECK(drums.cursorStep() == 4 && !drums.slicing()); // the stick moved the cursor, and that was L1's hold
+    rig.key(L1, true);
+    rig.frames(1);
+    rig.key(L1, false);
+    rig.frames(1);
+    CHECK(drums.slicing()); // a plain tap still opens them
+    stickWithL1(STICK_DOWN);
+    CHECK(drums.slicing()); // ...and with them open, a stick move under L1 does not shut them
+    rig.key(L1, true);
+    rig.key(L1, false);
+    rig.frames(1);
+    CHECK(!drums.slicing());
+    // The roll: the same for its zoom.
+    CHECK(session.addTrack(TrackKind::Phazed));
+    rig.project().track = 1;
+    rig.frames(2);
+    NoteScreen& roll = rig.app.notes();
+    roll.moveCursorTo(60, 4);
+    const int octaves = session.octavesShown();
+    stickWithL1(STICK_DOWN);
+    CHECK(roll.cursorStep() == 5 && session.octavesShown() == octaves);
+    stickWithL1(STICK_RIGHT);
+    CHECK(roll.cursorPitch() == 61 && session.octavesShown() == octaves);
+    rig.key(L1, true);
+    rig.frames(1);
+    rig.key(L1, false);
+    rig.frames(1);
+    CHECK(session.octavesShown() != octaves); // a plain tap still zooms
+}
+
 // A paste is its own step even with an unmarked change in flight: the drift keeps its own step.
 void testPasteSeparatesUnmarkedDrift() {
     Rig rig;
@@ -988,6 +1042,7 @@ int main(int argc, char** argv) {
         {"testDrums", testDrums}, {"testNotes", testNotes}, {"testTheSlicesAndL1", testTheSlicesAndL1}, {"testTheEngineHearsIt", testTheEngineHearsIt}, {"testTheWordsFit", testTheWordsFit},
         {"testRollBarsLength", testRollBarsLength}, {"testDrumBarsLength", testDrumBarsLength},
         {"testBarCopyTracksItsTrack", testBarCopyTracksItsTrack}, {"testPasteSeparatesUnmarkedDrift", testPasteSeparatesUnmarkedDrift},
+        {"testAStickMoveIsAUseOfL1", testAStickMoveIsAUseOfL1},
     };
     for (const Test& test : tests) {
         bool wanted = argc < 2;

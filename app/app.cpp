@@ -281,6 +281,13 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
             screenNow().onButton(event, input);
             return;
         }
+        // With Y held on the roll they halve or double the chord in hand (gesture audit G27). On the
+        // drum grid Y held is the dice, and they stay swallowed there (below).
+        if (input.held(Button::Y) && session_.view == View::Pattern && isSynth(project_->current().kind) && !panicking_) {
+            notes_.onButton(event, input);
+            takeSessionSaid();
+            return;
+        }
         // On the drum grid, R2 with R1 held turns R1's brush random. R2 by
         // itself is the next screen, at once, like everywhere else.
         const bool onDrums = session_.view == View::Pattern && !isSynth(project_->current().kind);
@@ -452,6 +459,7 @@ void App::update(const Input& input, Uint32 nowMs) {
         }
     }
     if (updateSaid_ != 0 && nowMs >= updateSaidUntil_) updateSaid_ = 0;
+    session_.browsingRecordings(browsingRecordings()); // (a visit to the list: one step of undo, or none)
     session_.update(nowMs);
     // X held hears a recording until it is let go. Let go, or another screen or track up while it
     // is held (the screen that asked would never hear of the let go): it stops.
@@ -600,7 +608,7 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
             {"X", "hear it (SONG: solo). Held: a step's effects, a knob's MOD"},
             {"STICK or D-PAD", "move: the stick for big moves, the D-pad for exact"},
             {"A", "place, open or pick. Held: a direction changes it"},
-            {"B", "delete, empty, or go back"},
+            {"B", "delete, empty, or go back. X held: empty the effects"}, // (gesture audit G11: no room for a chip)
             {"START", "play / stop"},
             {"L2  R2", "the screen before / the screen after"},
             {"SELECT, tapped", "the SONG screen. On SONG: the list of songs"},

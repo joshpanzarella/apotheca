@@ -190,7 +190,7 @@ void filterPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
     }
     case EffectKind::Band: {
         // band.cpp's shapes as the textbook curves they are (H(s) = (b2 s^2 + b1 s + b0) / (a2 s^2 + a1 s + a0)).
-        const float f0 = freqAt(s("FREQ", 0.5663f)), db = (2.f * s("GAIN", 0.5f) - 1.f) * 12.f;
+        const float f0 = freqAt(s("FREQ", s.info.defaults[0])), db = (2.f * s("GAIN", 0.5f) - 1.f) * 12.f;
         const float q = 0.3f * std::pow(100.f, s("Q", 0.3495f)), a = std::pow(10.f, db / 40.f), r = std::sqrt(a);
         const int shape = s.choice("SHAPE");
         float b2 = 1.f, b1 = a / q, b0 = 1.f, a2 = 1.f, a1 = 1.f / (a * q), a0 = 1.f; // BELL
@@ -202,7 +202,7 @@ void filterPicture(SDL_Renderer* r, const Plot& p, const Settings& s) {
             const float top = (b0 - b2 * w2) * (b0 - b2 * w2) + (b1 * w) * (b1 * w), under = (a0 - a2 * w2) * (a0 - a2 * w2) + (a1 * w) * (a1 * w);
             return dbToV(10.f * std::log10(std::fmax(top, 1e-12f) / std::fmax(under, 1e-12f)));
         };
-        markT = s("FREQ", 0.5663f);
+        markT = s("FREQ", s.info.defaults[0]);
         break;
     }
     case EffectKind::Comb: {

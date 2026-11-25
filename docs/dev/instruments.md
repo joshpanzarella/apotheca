@@ -270,8 +270,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     on the recording. **A player's own CLOUD preset keeps its recording** (`UserPreset::recording`, a
     `sound NAME` line after `whole` in the file): picked, `Session::putPresetRecording` puts it in by its
     name, else by its base name where exactly one has it, else keeps the track's and says RECORDING NOT
-    FOUND (`Session::say`). A built-in never names one. The recording a pick changes is not a step of
-    undo (as the sampler's).
+    FOUND (`Session::say`). A built-in never names one. The recording a pick changes is in the pick's
+    step of undo (as the sampler's: since gesture audit G04, 2026-11-25, songs-and-undo.md).
   - **The WiFi page's synth page draws its recording** (batch 4, 2026-11-17): a spec with
     `SynthSpec::recording` adds `waves` (the recording's peaks, or the TONE's: `cloudToneOutline()`, which
     MAIN's picture shares), `band` (POSITION and SPRAY: the lit part and the brass mark; a click or a drag

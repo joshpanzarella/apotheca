@@ -8272,6 +8272,15 @@ static void testBand() {
     CHECK(reads(band, 3, 0.125f) == "BELL" && reads(band, 3, 0.375f) == "NOTCH" && reads(band, 3, 0.625f) == "LOW SHELF" && reads(band, 3, 0.875f) == "HIGH SHELF");
     CHECK(reads(band, 3, info.defaults[3]) == "BELL" && reads(band, 1, info.defaults[1]) == "0 DB");
     CHECK(reads(band, 1, 0.8f, notchAll) == "-" && reads(band, 1, 0.8f, bellAll) == "+7.2 DB"); // a NOTCH has no gain
+    // A D-pad push on FREQ is a thirtieth (gesture audit G19): 10^0.1, a third of an octave, so the points are 20 * 10^(k/10)
+    // Hz. 50 Hz is one, and the start is one, reading 1.0 KHZ. Every other setting of every effect keeps the usual
+    // twenty, so the D-pad lands where it always did.
+    CHECK(effectPushes(band, 0) == 30 && info.pushes[0] == 30 && info.defaults[0] == 17.f / 30.f);
+    CHECK(reads(band, 0, 4.f / 30.f) == "50 HZ" && reads(band, 0, 5.f / 30.f) == "63 HZ" && reads(band, 0, 7.f / 30.f) == "100 HZ" && reads(band, 0, 27.f / 30.f) == "10.0 KHZ");
+    for (int k = 0; k < kEffectKinds; ++k)
+        for (int i = -1; i <= kEffectParams; ++i)
+            if (!(k == static_cast<int>(band) && i == 0)) CHECK(effectPushes(static_cast<EffectKind>(k), i) == kEffectPushes);
+    CHECK(kEffectPushes == 20);
     const auto settings = [](double hz, double db, double q, int shape, float* s) {
         s[0] = static_cast<float>(std::log(hz / 20.0) / std::log(1000.0));
         s[1] = static_cast<float>((db / 12.0 + 1.0) / 2.0);

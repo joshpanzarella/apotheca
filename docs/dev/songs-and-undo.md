@@ -29,7 +29,7 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   of edits, 20 deep. Anything that changes a pattern outside the grids calls
   `noteEdit()`. **It puts back the patterns and, since 2026-11-14 (owner),
   each track's effects, sends, sound (preset, settings, macros, a sampler's
-  settings), GLIDE FROM and its two MODs, the master's effects and the buses'
+  settings; since 2026-11-25 a recording too, next rule), GLIDE FROM and its two MODs, the master's effects and the buses'
   (LEVEL with them)**. Those are seen changing by `Session::soundMark()` each frame, as the
   cell is by `cellMark()`: no screen calls anything (the FX screen is
   untouched; a change is a step from the frame after it). `restoreSounds` puts them back only where they differ
@@ -41,9 +41,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   `Engine::setEffect` then its settings; the same kind, only the settings
   that differ; `SetSend`, `setGlideFrom`, `sendSynthPatch`), never a track
   image and never an `Effect` from this thread. Automation is a pattern, so a
-  TYPE change taken back has its lanes back with it. Tempo, mutes, names, the
-  kit's recordings and track deletes are not undone. After a restore the
-  marks are taken again (putting back is not an edit).
+  TYPE change taken back has its lanes back with it. Tempo, mutes, names and
+  track deletes are not undone. After a restore the marks are taken again
+  (putting back is not an edit).
   **Only another song clears undo** (`applyProject`). A resync after a full
   queue, a track deleted and a track given another instrument send the song
   with `sendSong()` and keep the steps: a delete takes its track out of every
@@ -58,6 +58,49 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   said "to the patterns"). `app_test` `testHoldBDeletesAnEffect` takes the deleted effect back with SEL
   + B. `ctest -R words` fails a text that says erase, remove or rub out (the word is delete; a cell
   is emptied).
+- **A recording is a step of undo** (gesture audit G04, 2026-11-25): a drum lane's (with its FIT, cut
+  and voice), a sampler's and a CLOUD's. So CATCH, B on SOUND, a pick, a take (R1) and a kit or preset
+  put on are put back by SEL + B. Before, this file said "Tempo, mutes, names, **the kit's recordings**
+  and track deletes are not undone", and `setLaneSample` took the mark again so that "undo would
+  [not] put the old cut on the new file"; neither carried an owner mark. It left one tap of Y or B
+  able to lose a cut recording or a tuned DRUM SYNTH voice, with nothing on the screen saying so, and
+  only half undone: a CATCH changes FIT, which the mark saw, so SEL + B put the old FIT on the caught
+  bar. **More logical: the name, FIT, cut and voice are one step**, so the old sound comes back with
+  its own cut, which answers the old reason. How:
+  - `soundMark` mixes each lane's `laneSample` and a sampler's or CLOUD's `sample` **to its end**
+    (`strlen + 1`: what lies past a name is what a longer one left there). `setLaneSample` no longer
+    takes the mark again.
+  - `restoreSounds` puts a lane's sound back as `putKit` does (a voice through `setLaneSynth`, else a
+    name or the drum through `setLaneSample`), then its EDIT, LEVEL, FIT and ONE SLICE; a sampler's or
+    CLOUD's name through `setTrackSample`.
+  - **A step keeps only the NAME, as the song file does: no sample data is copied or kept per step.**
+    Putting it back reads the file again, as a pick does (the app thread; the old sound goes to the
+    engine's trash as any). A file deleted since is missing, as in a song opened. Undo's text is no
+    longer: the song's text named the recordings already. Keeping each step's sound read (a shared
+    pointer) would spare the read but hold up to twenty recordings in memory: not done. **A restore's
+    read is not timed on the handheld.**
+  - **A rename, a move or a carry (`recordingChanged`) and a recording found elsewhere (`findMissing`)
+    are no step, and the steps follow them** (`undoFollows`: every undo and redo step and `settled_`,
+    through `renameRecordings`, as the saved songs; a plain search first). Without it a rename was a
+    step, and every step before it put back a name whose file had gone.
+  - **Deleting a recording (hold B in the list) is no step either** (`deleteSample` takes the mark
+    again): it is for good, and undo would only put back a missing name. A step from before that
+    names it finds it missing.
+  - **A visit to the list of recordings is ONE step, or none** (`Session::browsingRecordings`, told by
+    the App each frame before `update`): the list puts each recording on as the cursor comes to it,
+    and resting on one for 0.7 s would otherwise end a burst, so one browse made a step per recording
+    rested on and twenty of them pushed every older step out. While a list is open on the screen
+    shown, the sound's mark is not compared and a burst does not end; when it closes, A's pick is one step
+    from before it opened, and B (what was there put back) leaves the mark as it was: no step, and
+    the redo steps stay. A burst the list was opened in goes on, so the pick joins it. Hold A + UP /
+    DOWN on CLOUD's SOURCE (no list) is a step per rest, as a knob turned.
+  - Tests: `sample_test` `testUndoPutsBackARecording` (CATCH on a lane and on a CLOUD, B on SOUND on
+    a lane, a voice and a sampler, renames, a move with a redo step waiting, a find, a delete, a visit
+    to the list: A, B, opened in a burst, a carry while open) and
+    `laneedit_test` `testUndoAndANewRecording` (the old sound and its cut, heard as by hand).
+    Twenty mutants, all killed. The idle frame with the names in the mark: 0.032 to 0.034 ms
+    (`bench --app` on a busy desk, not side by side with the old). **Not run on the handheld; nobody
+    has heard it.**
 - **The undo marks (`cellMark`, `soundMark`) are 64 bits, mixed eight bytes at a time** (`markMix`):
   only ever compared with one made the same way, in memory. A byte at a time, the idle frame was 0.048 ms
   on the desk; now 0.014 (`bench --app`, 2026-11-23).

@@ -17,8 +17,9 @@
 //                    under a name taken, it replaces that one (and says REPLACED).
 //   hold B on PRESET on one of the player's own: a second, and its file is deleted (CANNOT BE UNDONE);
 //                    the track keeps its sound.
-//   X                hear the sound. Held on a macro: its MOD (mod_knob.hpp), its fields in LIVE
-//                    OUTPUT's place while X is held, and the note heard as long as X is.
+//   X                hear the sound, for as long as X is held (a tap for a moment), over the song
+//                    too. Held on a macro: its MOD (mod_knob.hpp), its fields in LIVE OUTPUT's
+//                    place while X is held (the MOD run only while stopped: call E).
 //   Y                PHYSIC and CLOUD (SynthSpec::roll): a new sound from the dice.
 //
 // A synth that plays the track's recording (CLOUD: SynthSpec::recording) shows its picture on MAIN,
@@ -230,6 +231,8 @@ private:
     std::vector<std::string> names_; // the recordings, read as A goes down on RECORDING
     unsigned namesSeen_ = 0;        // sampleFiles() names_ was read at: behind, the next step reads it again
     void openPicker();
+    void catchBar(); // Y on CLOUD's first page: the last bar the song played, as its recording (the empty list of recordings asks too)
+    void record();   // R1 on CLOUD's RECORDING: record from the input, or stop
     void stepRecording(int by);
     void hearFromList(SamplePicker::Hear how);
 

@@ -112,6 +112,8 @@ private:
     bool stepped_ = false; // A was used to change something: letting go is not a tap
     SamplePicker picker_;
     void openPicker();
+    void catchBar(); // Y: the last bar the song played, as the recording (the list of recordings with nothing in it asks too)
+    void record();   // R1: record from the input, or stop
     unsigned sampleFilesSeen_ = 0; // sampleFiles() the picker's lists were read at: behind, it reads them again
     std::vector<std::string> names_;
     unsigned namesSeen_ = 0; // sampleFiles() names_ was read at: behind, the next step reads it again

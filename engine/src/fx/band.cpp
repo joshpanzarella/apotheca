@@ -2,8 +2,10 @@
 // change the Q ... maybe you only want to notch out a certain frequency"). EQ's three bands stay as they were (a
 // song's EQ sounds the same to the bit); this is the band a mixing desk's "parametric" EQ has, one to a slot.
 //
-//   FREQ   where it is, 20 Hz to 20 kHz (1 kHz a little past the middle; each D-pad push is about a third of an
-//          octave)
+//   FREQ   where it is, 20 Hz to 20 kHz. A D-pad push is a thirtieth of the range (pushes 30 in the row), which is
+//          10^0.1, a third of an octave to 0.1%: the points are 20 * 10^(k/10) Hz, so 50.2, 63.2, 100 and 1002 Hz.
+//          It starts on the 17th, reading 1.0 KHZ, so the D-pad comes back to it (gesture audit G19: a push was a
+//          twentieth, half an octave, and the start 0.5663 was on none; 50 Hz could not be reached)
 //   GAIN   -12 to +12 dB (as EQ's: 1.2 dB a push). NOTCH has none: it reads "-"
 //   Q      how narrow, 0.3 (wide: some three octaves) to 30 (a single note): Q 1.5 to start. A shelf goes no
 //          higher than Q 2 (a little bump at its corner; past it a shelf only rings: at Q 30 full-scale noise came out
@@ -210,9 +212,10 @@ Effect* create() { return new Band; }
 } // namespace
 
 const EffectInfo kBandInfo = {
-    "BAND", 4, {"FREQ", "GAIN", "Q", "SHAPE"}, {0.5663f, 0.5f, 0.3495f, 0.125f}, // 1 kHz, 0 dB, Q 1.5, a BELL: untouched
+    "BAND", 4, {"FREQ", "GAIN", "Q", "SHAPE"}, {17.f / 30.f, 0.5f, 0.3495f, 0.125f}, // 1 kHz, 0 dB, Q 1.5, a BELL: untouched
     "band", EffectFamily::Filter, {0, 0, 0, kShapes}, reading, create,
-    "one band anywhere: bell, notch, shelf",
+    "one band anywhere: bell, notch, shelf", nullptr, nullptr,
+    {30, 0, 0, 0}, // FREQ: a third of an octave a push
 };
 
 } // namespace fx

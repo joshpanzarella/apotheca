@@ -291,7 +291,7 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
             return;
         }
         aTap_ = row_ == kBounce || row_ == kTrackName, aRow_ = row_;
-        if (row_ == kTempo) session_.tapTempo(lastMs_); // TAP TEMPO: A in time
+        if (row_ == kTempo) session_.tapTempo(whenPressed(event, lastMs_)); // TAP TEMPO: A in time, by the press's own time
         if (row_ == kWifi) session_.toggleTransfer(lastMs_ * 2654435761u + 977u);
         if (row_ == kHotspot) session_.setHotspot(session_.wifi().now().status.state != WifiState::Hotspot, lastMs_ * 2654435761u + 977u);
         if (row_ == kTest) testing_ = true, testTimed_ = false, lastPressed_ = Button::None;

@@ -21,6 +21,8 @@ constexpr int kNumberW = 26, kRepeatW = 38, kColumnsLeft = 8 + kNumberW + kRepea
 constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs;
 constexpr float kStickCellsPerSecond = 24.f;
 constexpr float kRepeatsPerSecond = 20.f;
+constexpr float kSceneTempoPerSecond = 90.f; // L1 held on a repeat count, the stick fully over: BPM a second (the drum grid's tempo row's)
+constexpr float kRepeatSidePerSecond = 3.f;  // ...sideways, after the first click: the scene's steps (A) or its meter (L1)
 constexpr float kMixDbPerSecond = 24.f, kMixPanPerSecond = 60.f; // the stick, with A held on a head, at full push
 
 
@@ -214,6 +216,43 @@ void SongScreen::stepSceneMeter(int scene, int by) {
     char text[48];
     std::snprintf(text, sizeof text, "%d STEPS IN A BAR", project_.meterOf(scene));
     session_.say(text);
+}
+
+// A or L1 held on a repeat count: the stick does what the D-pad does there (gesture audit G14, 2026-11-24),
+// one job a push. A: up / down the repeat count (squared, as it always was), left / right the scene's
+// steps. L1: up / down the scene's own tempo (squared, a beat at a time, as fast as the drum grid's
+// tempo row), left / right the steps in its bars. Sideways is a click at once, then slowly: they are counts.
+void SongScreen::repeatStick(float x, float y, float dt) {
+    if (x == 0.f && y == 0.f) repeatAxis_ = RepeatAxis::None;
+    else if (repeatAxis_ == RepeatAxis::None) repeatAxis_ = std::fabs(y) >= std::fabs(x) ? RepeatAxis::UpDown : RepeatAxis::Sideways;
+    const bool tempo = !holding_; // (L1 held, not A)
+    if (repeatAxis_ == RepeatAxis::UpDown) {
+        const float push = -y;
+        saved_ += push * std::fabs(push) * (tempo ? kSceneTempoPerSecond : kRepeatsPerSecond) * dt;
+        for (; saved_ >= 1.f; saved_ -= 1.f) {
+            if (tempo) stepSceneTempo(scene_, 1);
+            else setRepeats(project_.repeats[scene_] + 1), turned_ = true;
+        }
+        for (; saved_ <= -1.f; saved_ += 1.f) {
+            if (tempo) stepSceneTempo(scene_, -1);
+            else setRepeats(project_.repeats[scene_] - 1), turned_ = true;
+        }
+    } else {
+        saved_ = 0.f;
+    }
+    if (repeatAxis_ != RepeatAxis::Sideways || x == 0.f) {
+        repeatSideSaved_ = 0.f, repeatSideWas_ = false;
+    } else {
+        repeatSideSaved_ += repeatSideWas_ ? std::fabs(x) * kRepeatSidePerSecond * dt : 1.f;
+        repeatSideWas_ = true;
+        for (; repeatSideSaved_ >= 1.f; repeatSideSaved_ -= 1.f) {
+            const int by = x > 0.f ? 1 : -1;
+            if (tempo) stepSceneMeter(scene_, by);
+            else session_.setSceneSteps(scene_, project_.sceneSteps(scene_) + by), turned_ = true;
+        }
+    }
+    stickX_ = stickY_ = 0.f;
+    stickWasX_ = stickWasY_ = false;
 }
 
 void SongScreen::setRepeats(int count) {
@@ -465,6 +504,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (b == Button::L1 && !mixing_) {
         l1OnHead_ = event.down && onHead_;
         l1OnRepeat_ = event.down && column_ == kRepeatColumn && !onSongEnd();
+        if (l1OnRepeat_) saved_ = 0.f, repeatAxis_ = RepeatAxis::None; // a new hold: a new choice of job for the stick
         if (!event.down) dupArmed_ = false;
         return;
     }
@@ -523,6 +563,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
                 holding_ = true;
                 turned_ = false;
                 saved_ = 0.f;
+                repeatAxis_ = RepeatAxis::None; // a new hold: a new choice of job for the stick
             }
         } else {
             if (holding_ && !turned_ && onCell()) {
@@ -771,14 +812,10 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
         }
         stickX_ = stickY_ = 0.f;
         stickWasY_ = false;
-    } else if (holding_) {
-        // The stick turns the repeat count.
-        const float push = -y;
-        saved_ += push * std::fabs(push) * kRepeatsPerSecond * dt;
-        while (saved_ >= 1.f) { saved_ -= 1.f; setRepeats(project_.repeats[scene_] + 1); turned_ = true; }
-        while (saved_ <= -1.f) { saved_ += 1.f; setRepeats(project_.repeats[scene_] - 1); turned_ = true; }
-        stickX_ = stickY_ = 0.f;
-        stickWasX_ = stickWasY_ = false;
+    } else if (holding_ || (l1OnRepeat_ && column_ == kRepeatColumn && !onSongEnd())) {
+        // A held on a repeat count: the stick turns the count, and sideways the scene's steps. L1 held
+        // there: its own tempo, and sideways its meter. (L1's stick moved the cursor off the count.)
+        repeatStick(x, y, dt);
     } else {
         // The cells are a cursor: a full push held climbs (G07). The lists (songs, instruments) do not.
         const bool cells = !listing_ && !choosing_;

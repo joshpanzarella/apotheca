@@ -152,7 +152,24 @@ void SamplerScreen::stepPreset(int by) {
     const int now = session_.samplerPresetOf(project_.track);
     const int to = now < 0 ? (by > 0 ? 0 : count - 1) : now + by;
     if (to < 0 || to >= count) return; // the ends stop
-    session_.loadSamplerPreset(project_.track, to);
+    // Heard as it is put on, when the song is stopped, as a synth's preset and a kit are (gesture audit G22:
+    // stepping the sampler's was silent, so a preset had to be stepped to, then X'd).
+    if (session_.loadSamplerPreset(project_.track, to) && !project_.playing) hear();
+}
+
+void SamplerScreen::catchBar() {
+    const std::string name = session_.catchLastBar(project_.track, 0);
+    said_ = name.empty() ? "NOTHING TO CATCH: PLAY SOMETHING FIRST" : "CAUGHT THE LAST BAR AS \"" + name + "\"";
+    for (char& c : said_) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+    saidUntil_ = lastMs_ + 2500;
+}
+
+// Record from the input: once to start (it waits for sound), again to stop.
+void SamplerScreen::record() {
+    const Session::Rec now = session_.toggleRecording(project_.track, 0);
+    if (now == Session::Rec::NoInput) said_ = "NO INPUT FOUND: PLUG IN A USB MICROPHONE OR INTERFACE";
+    else if (now == Session::Rec::Idle && session_.lastRecorded().empty()) said_ = "NOTHING RECORDED: NO SOUND CAME IN";
+    saidUntil_ = lastMs_ + 3000;
 }
 
 void SamplerScreen::openPicker() {
@@ -172,6 +189,8 @@ void SamplerScreen::openPicker() {
     jobs.copied = [this] { return session_.carryResult(); };
     jobs.followFailures = [this] { return session_.followFailures(); };
     jobs.used = [this, track](const std::string& name) { return session_.sampleUses(name) - (name == project_.tracks[track].sample ? 1 : 0); };
+    jobs.catchBar = [this] { catchBar(); }; // (an empty list: as Y and R1 on SOUND)
+    jobs.record = [this] { record(); };
     picker_.open(session_.sampleNames(), session_.sampleFolders(), trk().sample, "THE SAMPLER: PICK ITS RECORDING", "NO RECORDING", jobs);
     sampleFilesSeen_ = session_.sampleFiles();
 }
@@ -230,10 +249,7 @@ void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
             presetDeleteTimed_ = false;
         } else setSetting(settingAt(stop_ - 1), sampler::settingDefault(settingAt(stop_ - 1)));
     } else if (b == Button::Y && !holding_) {
-        const std::string name = session_.catchLastBar(project_.track, 0);
-        said_ = name.empty() ? "NOTHING TO CATCH: PLAY SOMETHING FIRST" : "CAUGHT THE LAST BAR AS \"" + name + "\"";
-        for (char& c : said_) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
-        saidUntil_ = lastMs_ + 2500;
+        catchBar();
     } else if (b == Button::R1 && !holding_) {
         if (stop_ == kPresetStop) {
             // Save the sound: the keys come up to name it, on one of the player's own with its name typed in
@@ -242,11 +258,7 @@ void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
             keys_.open(now >= 0 ? session_.samplerPresets()[static_cast<std::size_t>(now)].name : "", kPresetNameLength);
             return;
         }
-        // Record from the input: once to start (it waits for sound), again to stop.
-        const Session::Rec now = session_.toggleRecording(project_.track, 0);
-        if (now == Session::Rec::NoInput) said_ = "NO INPUT FOUND: PLUG IN A USB MICROPHONE OR INTERFACE";
-        else if (now == Session::Rec::Idle && session_.lastRecorded().empty()) said_ = "NOTHING RECORDED: NO SOUND CAME IN";
-        saidUntil_ = lastMs_ + 3000;
+        record();
     } else if (b == Button::L1 && !holding_) {
         const bool on = !project_.tracks[project_.track].samplerChop;
         session_.setSamplerChop(project_.track, on);
