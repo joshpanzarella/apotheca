@@ -58,7 +58,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (87) | `cd build && ctest -j8` (about 10 min at -j3 on a busy desk; use the FULL path to `build`: a bare `cd build` once landed in another checkout; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`, `idle_test` as `idle1` to `idle5`; `textsize`, `textviews` and `themeviews` each run by themselves) |
+| All tests (88) | `cd build && ctest -j8` (about 10 min at -j3 on a busy desk; use the FULL path to `build`: a bare `cd build` once landed in another checkout; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`, `idle_test` as `idle1` to `idle5`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them). `./build/bench --profile NAME [SECONDS]` renders one setup with no clock for callgrind (`--toggle-collect='*profiledRender*'`; NAME empty lists them; `docs/plans/speed-plan.md`) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (every NAME: `docs/dev/stills.md`; `--text-size xl`, `--theme solarized`, `--hold-a`, `--frames DIR` to keep every frame) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |

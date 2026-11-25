@@ -28,6 +28,27 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
 - **A helper takes a track by ONE atomic that holds the chunk's count and the next place** (`claims_`:
   count << 16 | place, 0 shut). Read apart, a helper that took a place past one chunk's end and then read
   the next chunk's larger count rendered a track another thread was rendering (review 2026-11-23).
+- **Late sound blocks are written down on the handheld** (`app/late_blocks.hpp`, main.cpp; owner, 2026-11-25:
+  "a noticeable click in the audio when I am moving between the parameters of the filter", FX screen, FILTER, firmware
+  app 0.975). The audio callback times itself and the gap since the call before began (a steady clock, three atomics
+  and a count: nothing made, freed or locked). LATE: the call took longer than its sound lasts, or it began more than
+  1.5 blocks after the one before (the card holds two). The screen's thread takes a new one each pass and writes a line
+  to `logs/sound.log` (beside `crash.txt`; only where `crash::install` runs, never for a still or a check; at most 1000
+  lines a run) and to the crash trail: the gap, the call's own time, the block's length, how many since the line
+  before and this run, the view, playing or stopped, on FX the track, line, effect and dial (`FxScreen::cursorWords`),
+  and the pass before's time (update, drawing and present) and its drawing alone. The log's first line says the rate,
+  the block, and whether realtime priority was granted to the sound and to how many helpers.
+  **Reading it**: a click with a late line at that moment is the sound falling behind (a long gap with a short call:
+  the thread was not run in time; a long call: the work, or a helper not run). **A click with no late line is not a
+  missed block**: look at the sound itself, or the hardware.
+  What a FILTER dial move does, found on the desk (2026-11-25): **it sends the engine nothing and writes no device**
+  (`FxScreen::goTo` moves the cursor; `late_test`'s `testFilterDialsSendNothing` holds the queue empty over 18
+  moves, playing and stopped; `lights_test`'s `testFilterDialsWriteNoLight` holds the ring's line and the backlight
+  unwritten). The screens share no lock with the sound (`SDL_LockAudioDevice` only in the stills' paths; the helpers'
+  `wakeMutex_` is the audio thread's and theirs). Text is drawn from one letter sheet, so no texture is made on a move.
+  While the song plays every pass is drawn anyway (`kStirPlaying`), so a move adds no frame; it costs the pass about
+  what a pass with the cursor still costs (`measured.md`). The cause was not found on the desk: the record is for the
+  handheld's next test.
 - **The built-in drum kit is built once per sample rate** and shared
   (`DrumKit::builtIn`). It never changes after that.
 - **A track taken away while it sounds fades for 5 ms first** (`RemoveInstrument`,

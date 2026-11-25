@@ -1015,15 +1015,30 @@ static void screenRows(App& app, Session& session, Engine& engine, Input& input,
         std::vector<float> out(512);
         const View was = session.view;
         session.togglePlay(true);
-        const struct { const char* name; View view; } places[] = {{"SONG, playing", View::Song}, {"drum grid, playing", View::Pattern}};
+        // FX: track 1's first slot a FILTER, the cursor on its dials; "moving": UP / DOWN pressed every pass, from
+        // dial to dial (the owner's click, 2026-11-25), the press timed with the update.
+        session.setEffect(0, 0, EffectKind::Filter);
+        const struct { const char* name; View view; bool moving; } places[] = {
+            {"SONG, playing", View::Song, false}, {"drum grid, playing", View::Pattern, false},
+            {"FX FILTER, playing", View::Effects, false}, {"FX FILTER, moving", View::Effects, true}};
         for (const auto& place : places) {
             session.view = place.view;
+            session.project.track = 0;
+            app.fx().goTo(0, 1);
             double work = 0.0, drawing = 0.0, worst = 0.0;
             const int passes = 60;
             for (int i = -10; i < passes; ++i) { // (ten first, not timed: the screen settles)
                 for (int k = 0; k < 3; ++k) engine.render(out.data(), 256); // a pass's 16 ms of sound
                 engine.collectGarbage();
                 const auto t0 = std::chrono::steady_clock::now();
+                if (place.moving) {
+                    ButtonEvent e;
+                    e.button = (i / 3) % 2 ? Button::Up : Button::Down; // 1 to 4 and back
+                    e.down = true;
+                    app.onButton(e, input);
+                    e.down = false;
+                    app.onButton(e, input);
+                }
                 app.update(input, clock += 16);
                 const auto t1 = std::chrono::steady_clock::now();
                 app.draw(renderer, *fonts);

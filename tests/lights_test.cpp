@@ -758,6 +758,33 @@ void testTrackColours() {
 
 } // namespace
 
+// The owner's click (2026-11-25): on the FX screen, moving the cursor from one of FILTER's dials to the next. A move
+// writes neither light: the ring's serial line and the backlight's file are as they were, the ring at ON, the song
+// stopped (playing, the ring follows the song's steps, as it should). Not the cause, then (docs/dev/engine.md, "Late
+// sound blocks").
+void testFilterDialsWriteNoLight() {
+    Sys sys;
+    Rig rig;
+    rig.session().useLights(sys.both());
+    rig.session().setStickLight(kRingOn);
+    rig.session().setEffect(0, 0, EffectKind::Filter);
+    rig.session().view = View::Effects;
+    rig.app.fx().goTo(0, 1);
+    rig.frames(80); // (past the ring's two resends after it was powered)
+    const std::size_t sent = sys.sent();
+    const std::string bright = got(sys.bl + "/brightness");
+    CHECK(sent > 0 && rig.session().lights().ringSends() > 0);
+    const unsigned sends = rig.session().lights().ringSends();
+    for (int i = 0; i < 12; ++i) {
+        rig.tap(i % 6 < 3 ? DOWN : UP);
+        CHECK(rig.app.fx().cursorColumn() >= 1);
+    }
+    rig.frames(4);
+    CHECK(rig.app.fx().cursorRow() == 0);
+    CHECK(sys.sent() == sent && rig.session().lights().ringSends() == sends);
+    CHECK(got(sys.bl + "/brightness") == bright);
+}
+
 int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     struct Test {
@@ -768,6 +795,7 @@ int main(int argc, char** argv) {
         {"testTheRules", testTheRules}, {"testFromTheEnvironment", testFromTheEnvironment}, {"testTheFiles", testTheFiles},
         {"testTheSetPage", testTheSetPage}, {"testKept", testKept}, {"testRingLevel", testRingLevel}, {"testTheVolumeKeys", testTheVolumeKeys},
         {"testTheRingFollowsTheSong", testTheRingFollowsTheSong}, {"testScenesAndColours", testScenesAndColours}, {"testTrackColours", testTrackColours},
+        {"testFilterDialsWriteNoLight", testFilterDialsWriteNoLight},
     };
     for (const Test& test : tests) {
         bool wanted = argc < 2;

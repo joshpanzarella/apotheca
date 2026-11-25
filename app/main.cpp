@@ -65,6 +65,8 @@
 #include <SDL.h>
 
 #include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -87,6 +89,7 @@
 #include "input.hpp"
 #include "joysticks.hpp"
 #include "crash_report.hpp"
+#include "late_blocks.hpp"
 #include "realtime.hpp"
 #include "song_file.hpp"
 #include "text.hpp"
@@ -102,16 +105,37 @@ struct AudioState {
     Engine* engine = nullptr;
     bool priorityAsked = false;
     std::atomic<int> realtime{-1}; // -1 not asked yet, 0 refused, 1 granted
+    int rate = 48000;               // the card's, as opened (set before the sound starts)
+    LateBlocks late;                // blocks that came late (late_blocks.hpp): written down on the handheld
 };
+std::atomic<int> gHelpersRealtime{0}; // the helpers that were given realtime priority
+
+std::int64_t steadyUs() {
+    return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+const char* viewWords(View v) {
+    switch (v) {
+    case View::Song: return "SONG";
+    case View::Pattern: return "the track's grid";
+    case View::Device: return "the track's sound";
+    case View::Effects: return "FX";
+    case View::Mods: return "MOD";
+    case View::Settings: return "SET";
+    }
+    return "?";
+}
 
 void audioCallback(void* userdata, Uint8* stream, int bytes) {
     AudioState* state = static_cast<AudioState*>(userdata);
+    const std::int64_t began = steadyUs();
     if (!state->priorityAsked) {
         state->priorityAsked = true;
         state->realtime.store(makeThreadRealtime(70) ? 1 : 0);
     }
     const int frames = bytes / static_cast<int>(2 * sizeof(float));
     state->engine->render(reinterpret_cast<float*>(stream), frames);
+    state->late.block(began, steadyUs() - began, static_cast<std::int64_t>(frames) * 1000000 / (state->rate > 0 ? state->rate : 48000));
 }
 
 
@@ -455,6 +479,7 @@ int main(int argc, char** argv) {
         SDL_Quit();
         return 1;
     }
+    audio.rate = have.freq;
     engine.prepare(static_cast<float>(have.freq)); // builds the drum kit for this sample rate
     engine.setFlushDenormals(true); // numbers too small to hear count as nothing, so a long tail never slows the processor (owner, 2026-11-11)
     // The handheld has four processor cores: the tracks are worked out across them, one fewer
@@ -462,12 +487,13 @@ int main(int argc, char** argv) {
     {
         const unsigned cores = std::thread::hardware_concurrency();
         const int helpers = helpersFor(cores);
-        if (!smoke && !shot) engine.useWorkers(helpers, [] { makeThreadRealtime(69); });
+        if (!smoke && !shot) engine.useWorkers(helpers, [] { if (makeThreadRealtime(69)) gHelpersRealtime.fetch_add(1); });
         std::printf("processor cores: %u; tracks shared across %d\n", cores, engine.workers() + 1);
     } // real sound: if it cannot keep up, do plainer work, not stutter
     std::printf("Apotheca %s, built %s\n", kVersion, kBuilt);
     std::printf("audio: %d Hz, %d frames per buffer\n", have.freq, have.samples);
 
+    std::string soundLog; // where late sound blocks are written: the handheld only (empty: nowhere)
     Input input;
     if (mapped) input.useMap(&controlMap);
     else if (noMenu && shot) input.useMap(&controlMap); // nothing learned: the keyboard stand-ins, and no MENU
@@ -515,6 +541,7 @@ int main(int argc, char** argv) {
             mkdir(logs.c_str(), 0755);
             app.useBatteryLog(logs + "/battery.log");
             crash::install(logs); // a death or a freeze written to logs/crash.txt, for the owner to send
+            soundLog = logs + "/sound.log"; // late sound blocks, with what the screen was doing (late_blocks.hpp)
         }
         // Sounds made on the sound-designer page: a "presets" folder beside the program.
         if (!smoke && !shot) app.session().useBounceFolder(beside.substr(0, beside.size() - 6) + "bounces");
@@ -582,8 +609,35 @@ int main(int argc, char** argv) {
     Uint32 audioTriedAt = 0; // the sound card gone: when it was last tried again
     // The rest between passes: 16 ms with nothing pressed, cut short by a press (pass_wait.hpp).
     PassWait wait;
+    // The pass before's own time (its update and drawing, and the drawing alone), for a late sound block's line.
+    double passMs = 0.0, drawMs = 0.0;
+    int soundLines = 0; // written this run: at most kSoundLines, so a sound that keeps falling behind cannot fill the card
+    constexpr int kSoundLines = 1000;
+    const auto soundLine = [&](const char* line) {
+        if (soundLog.empty() || soundLines >= kSoundLines) return;
+        if (FILE* f = std::fopen(soundLog.c_str(), "a")) {
+            std::fprintf(f, "%u ms: %s\n", SDL_GetTicks(), line);
+            std::fclose(f);
+            ++soundLines;
+        }
+    };
     while (running) {
         crash::alive();
+        const auto passStart = std::chrono::steady_clock::now();
+        {
+            LateBlock late;
+            if (audio.late.take(late)) {
+                char doing[160], line[400];
+                std::snprintf(doing, sizeof doing, "%s, %s", viewWords(app.session().view), app.session().project.playing ? "playing" : "stopped");
+                if (app.session().view == View::Effects) {
+                    const std::size_t at = std::strlen(doing);
+                    app.fx().cursorWords(doing + at, static_cast<int>(sizeof doing - at));
+                }
+                lateLine(line, sizeof line, late, doing, passMs, drawMs);
+                crash::note("%s", line);
+                soundLine(line);
+            }
+        }
         SDL_Event event;
         bool stirred = false; // a button, or anything of the window, this pass (a stick's motion counts by where it is)
         while (wait.next(event)) { // (what came during the rest first, then SDL's own)
@@ -652,6 +706,7 @@ int main(int argc, char** argv) {
             SDL_AudioSpec again = {};
             device = SDL_OpenAudioDevice(nullptr, 0, &want, &again, 0); // (as at the start: SDL converts, so the rate is the same)
             if (device) {
+                audio.late.restart(); // (the time it was away is no late block)
                 SDL_PauseAudioDevice(device, 0);
                 std::printf("the sound card is back\n");
             }
@@ -686,6 +741,11 @@ int main(int argc, char** argv) {
         if (!reported && audio.realtime.load() >= 0) {
             reported = true;
             std::printf("realtime priority: %s\n", audio.realtime.load() == 1 ? "granted" : "not granted");
+            char line[200];
+            std::snprintf(line, sizeof line, "Apotheca %s: sound at %d Hz, %d frames a block (%.1f ms); realtime priority %s, helpers %d of %d",
+                          kVersion, have.freq, have.samples, 1000.0 * have.samples / (have.freq > 0 ? have.freq : 48000),
+                          audio.realtime.load() == 1 ? "granted" : "NOT granted", gHelpersRealtime.load(), engine.workers());
+            soundLine(line);
         }
         const float peak = engine.trackPeak(0);
         if (peak > loudest) loudest = peak;
@@ -707,7 +767,9 @@ int main(int argc, char** argv) {
         if (learning) redraw.forget(); // the setup is drawn every pass, and the app's picture the pass after it
         ui::useTheme(app.session().theme()); // (App::draw does the same; the setup draws without it)
         if (learning) learner.draw(renderer, fonts); // (always at LARGE: it asks for the fixed set itself)
-        else if (draw) app.draw(renderer, fonts);
+        const auto drawStart = std::chrono::steady_clock::now();
+        if (!learning && draw) app.draw(renderer, fonts);
+        drawMs = !learning && draw ? std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - drawStart).count() : 0.0;
         if ((smoke || shot) && SDL_GetTicks() - start > static_cast<Uint32>(stillMs < 0 ? 0 : stillMs)) running = false;
         if (!running && texts) {
             // The same moment drawn once at each text size, and what each drew written down:
@@ -766,6 +828,7 @@ int main(int argc, char** argv) {
             keepPicture(frame);
         }
         if (draw) SDL_RenderPresent(renderer);
+        passMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - passStart).count(); // (the present's wait included, the rest after it not)
         wait.rest(input); // 16 ms in four naps, and a button pressed meanwhile ends it: the next pass reads it at once
     }
 

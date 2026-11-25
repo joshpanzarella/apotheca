@@ -408,6 +408,16 @@ void FxScreen::goTo(int row, int column) {
     if (column_ > 0) last_[row_] = column_;
 }
 
+void FxScreen::cursorWords(char* out, int size) const {
+    if (!out || size <= 0) return;
+    static const char* const tags[kRows] = {"1", "2", "3", "SENDS", "ECHO", "SPACE", "MASTER 1", "MASTER 2"};
+    const bool line = !sends(row_);
+    const EffectInfo& info = effectInfo(line ? static_cast<EffectKind>(data(row_).kind) : EffectKind::None);
+    const char* what = line ? (info.name ? info.name : "?") : "";
+    const char* dial = column_ < 1 ? "the list" : (line ? (column_ - 1 < info.params && info.paramNames[column_ - 1] ? info.paramNames[column_ - 1] : "?") : (column_ == 1 ? "ECHO" : "SPACE"));
+    std::snprintf(out, static_cast<std::size_t>(size), ", FX track %d line %s %s, dial %d %s%s", project_.track + 1, tags[row_], what, column_, dial, holding_ ? ", A held" : "");
+}
+
 float FxScreen::meterOf(int row) const {
     if (row < 0 || row >= kRows || sends(row)) return 0.f;
     return session_.engine.effectMeter(trackOf(row), slotOf(row));

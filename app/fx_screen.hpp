@@ -112,6 +112,9 @@ public:
     void goTo(int row, int column);
     int cursorRow() const { return row_; }
     int cursorColumn() const { return column_; }
+    // Where the cursor is, in words, for a late sound block's line (late_blocks.hpp): ", FX line 2 FILTER, dial 2
+    // CUTOFF" (track 1), ", FX line SENDS", ", A held" when it is.
+    void cursorWords(char* out, int size) const;
     // How many settings a line has (the sends line: two; an empty slot: none).
     int settings(int row) const { return sends(row) ? kBuses : effectInfo(static_cast<EffectKind>(data(row).kind)).params; }
     // The setting last used on a line: where RIGHT goes back to. 1 if none was.
