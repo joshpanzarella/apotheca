@@ -689,6 +689,14 @@ void testSamplerFromThePage() {
     CHECK(rig.tell("set 7 -40") && rig.track().sampler[sampler::End] == 80);
     CHECK(rig.tell("set 2 -40") && rig.track().sampler[sampler::Start] == 0);
     CHECK(rig.tell("set 7 400") && rig.track().sampler[sampler::End] == 100);
+    // LOOP START (8) from the page as on the handheld (sampler::heldApart): at or before START it is 0, its usual,
+    // so the song writes no 9th number that plays as the usual; past END less a percent, that.
+    CHECK(rig.tell("set 2 20") && rig.tell("set 8 5") && rig.track().sampler[sampler::LoopStart] == 0);
+    CHECK(rig.tell("set 8 20") && rig.track().sampler[sampler::LoopStart] == 0);
+    CHECK(rig.tell("set 8 50") && rig.track().sampler[sampler::LoopStart] == 50);
+    CHECK(rig.tell("set 8 100") && rig.track().sampler[sampler::LoopStart] == 99);
+    CHECK(rig.tell("set 8 21") && rig.track().sampler[sampler::LoopStart] == 21);
+    CHECK(rig.tell("set 8 0") && rig.tell("set 2 0") && rig.track().sampler[sampler::LoopStart] == 0 && rig.track().sampler[sampler::Start] == 0);
     // PITCH, kept as the root key: 72 plays middle C an octave down.
     const int high = rig.crossings();
     CHECK(rig.tell("set 0 72") && rig.track().sampler[sampler::Root] == 72);

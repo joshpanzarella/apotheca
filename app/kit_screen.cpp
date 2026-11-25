@@ -248,6 +248,7 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
         else picker_.onButton(event, project_.playing);
         return;
     }
+    edit_.closeIfMoved();
     if (edit_.isOpen()) return edit_.onButton(event, input);
     if (voicing_) return voiceButton(event, input);
     // While a take waits or runs, R1 stops it from any lane or column and from the KIT stop, A held or
@@ -357,6 +358,7 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
 }
 
 void KitScreen::update(const Input& input, Uint32 nowMs) {
+    edit_.closeIfMoved(); // (EDIT opened on another track, or the tracks changed under it, while another tab was up)
     // A button let go while another screen was showing (a song opened, a tab turned) never told this
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
     if (picker_.isOpen() && session_.sampleFiles() != sampleFilesSeen_) { // the card's lists changed (WiFi): read them again, the cursor kept

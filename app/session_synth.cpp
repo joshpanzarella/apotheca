@@ -838,7 +838,7 @@ void Session::serveDesigner() {
         }
         switch (r.kind) {
         case DesignRequest::Set:
-            if (sampler) { // as its screen turns it: START and END never cross (an id it has not: nothing)
+            if (sampler) { // as its screen turns it: START and END never cross, LOOP START 0 at or before START (an id it has not: nothing)
                 const int* v = project.current().sampler;
                 setSamplerSetting(project.track, r.a, sampler::heldApart(r.a, r.b, v[sampler::Start], v[sampler::End]));
             } else {

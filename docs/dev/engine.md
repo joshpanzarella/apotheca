@@ -536,8 +536,10 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     what the hold means**: at 100 and 50 Hz every RELEASE is clean; at 20 Hz, past the hold, the short RELEASE still
     bends more than 96 ms, and 96 ms more than 1 s. The hold is pinned to the sample (480, an offset under one click).
     **The price, at the same GAIN** (+6 dB into -2 dB): a dark mix 0.60 dB quieter at RELEASE 20 ms, 0.31 at 96 ms;
-    bright hits four a second 1.32 and 0.48 (the model said 0.3 to 1.3). `kHoldRing` 4096 (the 3 ms and the hold up
-    to 315 kHz): the queue is 32 KB a LIMITER where it was 8 KB. Its sleep is as it was: `down_` at 0 means all the
+    bright hits four a second 1.32 and 0.48 (the model said 0.3 to 1.3). **A click more GAIN (+7 dB) wins little
+    of it back**: dark 0.01 and 0.02 dB, hits 0.27 and 0.09; the extra goes into the turn-down (testLimiter pins it). `kHoldRing` 4096 (the 3 ms and the hold up
+    to 314 kHz: `SlidingMost` takes `back` up to N - 2, since a push writes before the oldest is dropped;
+    `testSlidingMost`): the queue is 32 KB a LIMITER where it was 8 KB. Its sleep is as it was: `down_` at 0 means all the
     hold holds is zeros; `clear()` (sleep and `reset()`) empties it.
   - **SNAP reads the level as the biggest of the last 14 ms** (`kWindowSeconds`; its peak reading lets go, 20 ms,
     only after that). On a note over 36 Hz the reading holds still: harmonics 2 to 9 of a steady 50 Hz sine at
@@ -552,7 +554,7 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     of two equal 3 ms bursts turns its first ms up 0.08 to 0.24 dB beyond the first's, where it was 0.51 to 1.37); and
     in a busy pattern each hit starts over a tail read 14 ms late, so a little louder, and cracks less. Sixteenths at
     120 BPM of a drum falling 60 dB in 0.3 s, the first ms of each hit: +3.33 dB at ATTACK +100% (+4.33 before), +1.58
-    at +50% (+2.07); eighths +10.52 (+11.00). The manual's SNAP line says so. `kWindowRing` 2048 (up to 136 kHz):
+    at +50% (+2.07); eighths +10.52 (+11.00). The manual's SNAP line says so. `kWindowRing` 2048 (up to 146 kHz):
     16 KB a SNAP. Asleep it forgets the window: it can fall asleep within 14 ms of sound under kQuiet, so `endTick`
     clears it, and so does `reset()` (testSnap wakes one with sound fainter still and holds it to a fresh one).
   - **Nothing else moved**: `effects_test --print` the same before and after (the 40 pinned renders, the maths line,
@@ -620,7 +622,11 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - **What moved**: `effects_test --print` the same before and after (the 40 pinned renders and the maths line).
     `--measure`: only FUZZ's lines moved (testFuzz's own; the sweep, swap and "bounded" lines with FUZZ in them; the
     rest differ only in clock timings). The sweep table's FUZZ row: FUZZ turned 21.3 to 18.8, TONE 14.7 to 14.4, GATE
-    11.1 to 10.8, MIX 10.1 to 9.7, held still 10.3 to 9.9 (the average rounds the clip's corners). **Presets that
+    11.1 to 10.8, MIX 10.1 to 9.7, held still 10.3 to 9.9 (the average rounds the clip's corners). testFuzz's tables
+    (old -> new, dB): TONE's scoop at 8 kHz -18.8 -> -19.1 (TONE 0%), +1.2 -> +0.9 (50%), +5.2 -> +4.9 (100%), at 3 kHz
+    +0.2 -> +0.1 (50%), +4.4 -> +4.3 (100%): the average's cosine; across the keyboard A6 / A7 at TONE 50% -5.8 / -4.4
+    -> -5.9 / -4.5, at TONE 100% -1.5 / -0.3 -> -1.6 / -0.4. LOPSIDED and QUIET OR LOUD did not move at their one
+    decimal. The fold-back under 12 kHz on the 887 Hz saw (-30.1 -> -52.7) is pinned now (`under12k < -50`). **Presets that
     change** (FUZZ in slot 1): ACID's Fuzz Line, Dub Smash and Fuzz Square; FM-6's Wasp; JAX-EP's Sync Scream and Fuzz
     Lead; PHAZED's Fuzz Lead; PHYSIC's Broken Kalimba. No kit or built-in song holds a FUZZ.
   - **Cost** (`bench`'s `effect()` copied into a scratch program linked against the engine before and after, six
@@ -720,9 +726,14 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     Frozen Choir, Static Drift, Night Drive, Video Strings, Power Ballad, Swell And Fall, Slow Morph, Pipe Organ,
     Church Organ, Metal Bell; MORPH's Slow Vowels, Glass Bell, Comb Drone; PHAZED's Night Flute, Choir Hall, Bell
     Hall, Organ Drone, Wind Drone; PHYSIC's Tine Pad, Breath Choir, Ghost Harp, Gong Wash, Bonang, Gong Ageng, Ombak,
-    Slenthem Dub, Koto Rain, Backwards Chimes, Phaser Marimba, Warp Bells, Filter Tide, Glass Keys. **47 more send to
-    SPACE** (ACID 1, CLOUD 5, FM-6 16, JAX-EP 5, MORPH 4, PHAZED 6, PHYSIC 10): they change in any song whose SPACE
-    holds a HALL, as every new song's does.
+    Slenthem Dub, Koto Rain, Backwards Chimes, Phaser Marimba, Warp Bells, Filter Tide, Glass Keys. **40 more send to
+    SPACE without holding a HALL**: ACID's Space Line; CLOUD's Backwards River, Cathedral, Bloom Choir, Warm Grain Pad,
+    Hall Pad; FM-6's Suitcase, Reed Piano, Worn Celeste, Dub Sub, Shimmer Bells, Glass Bowl, Pan Dub, Saw Drift,
+    Breathy Flute, Radio Ghost, Pitch Steps, Feedback Tide, Soft Horns, Chime Drone, Orchestra Drone; JAX-EP's Singing
+    Lead; MORPH's Warm Strings, Drift Bells, Ratio Tremble, Ratio Bell; PHAZED's Dusty Keys, Bell Piano, Velvet Pad,
+    Slow Sweep, Harp Space, Vibe Tremolo; PHYSIC's Bowed Glass, Singing Bowl, Fold Bell, Gender, Hand Pan, Dub
+    Kalimba, Worn Music Box, Timbre Walk. They change in any song whose SPACE holds a HALL, as every new song's does.
+    (47 send to SPACE in all; the other 7, FM-6 1, JAX-EP 4, PHYSIC 2, hold a HALL too and are in the 68.)
   - **Cost.** Desk, `bench`'s `effect()` copied into a scratch program linked against the engine, the old HALL and
     the new in turns, best of seven: at its usual settings 0.175 to 0.181% of a core before, 0.197 to 0.204% after;
     TONE above 50% 0.193 to 0.198%, 0.228 to 0.235%. `bench` itself, two runs each in turns on a desk at load 5 to 14:
@@ -736,15 +747,19 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     to 1.3% and +2 to 8%). The memory is what it was (the lines' ring already held the bend).
   - **Tests that fail on the old HALL** (linked into effects_test by hand): 18 checks: the ringing at all three
     DECAYs, all four rooms cut four ways, the wander, the 14 kHz TONE pins, the turns, SIZE landing (6.2e-6 apart).
-    **Mutants**: 18. 17 killed: two lines bent, half the depth, one rate for all, all from one place, the bends not
+    **Mutants**: 20. 19 killed: two lines bent, half the depth, one rate for all, all from one place, the bends not
     started again on waking, a sound not starting the quiet count again (`testHall`'s click 100 samples before a
     faint-woken room would sleep: it lived until that test was written), waking at the call's start, a step of the
     bends at every call, a read a sample further, whole samples only, the count started again each stretch, the
     asleep MIX-0 test turned over, no bend while SIZE glides, the bends every 16 samples (it lived until the buzz test
     was written), and three in `ringOnOf` (the later window not read, the neighbours not taken out, only the windows
-    next to each other compared: it lived until the sliding notes). **One lives: the turning pairs never put back on
-    their circles.** A float pair turned for ever drifts off it: 0.97 to 1.01 of its depth after the tests' 150 s,
-    0.51 to 1.31 after an hour awake (computed by turning the eight pairs as HALL does). No test runs an hour.
+    next to each other compared: it lived until the sliding notes), and **the turning pairs never put back on their
+    circles** (it lived until the twenty-minute test) and the count to the next putting back never started again. A float pair turned for ever drifts off it: 0.97 to 1.01 of its
+    depth after 150 s, 0.82 to 1.05 after 20 minutes, 0.51 to 1.31 after an hour awake. Every bend rate is a whole
+    hundredth of a hertz, so the room comes round every 100 s: `testHall` holds a 1 kHz sine 20 minutes and 50 s
+    and holds seconds 1210 to 1250 against 10 to 50. Put back, 2.0e-4 apart (the sound 0.14 across); never put back,
+    0.24 (and the wander 28.8 dB). About 3 s of the desk. **One lives**: the pair put back by 1 / (c^2 + s^2), not its root
+    (3.3e-4): it keeps each pair within a step of its circle, which is all the putting back is for.
 - **A per-sample loop works on locals** (WEAR's `stretch`: up to the tick's
   end, everything the samples change copied in, worked on, copied back).
   Written straight on the effect's own numbers WEAR cost 0.40% of a core; the

@@ -50,6 +50,13 @@ public:
     void open(const Target& target, int row);
     void close() { open_ = false; }
     bool isOpen() const { return open_; }
+    // The Target's jobs name the track it opened on. EDIT stays open across a tab, so a track picked on SONG
+    // meanwhile, or one added, deleted or duplicated (the numbers shift), or the track's kind changed, would
+    // leave it drawing and editing another track's sound under this one's name: the screen calls this first
+    // in its onButton and update, and it closes.
+    void closeIfMoved() {
+        if (open_ && (project_.track != track_ || project_.tracks[track_].kind != kind_ || project_.trackCount() != tracks_)) open_ = false;
+    }
     int row() const { return row_; }
     bool holding() const { return holding_; }
     float deletePart() const { return deletePart_; } // the hold-B bar, 0..1
@@ -84,6 +91,8 @@ private:
     Project& project_;
     Target target_;
     bool open_ = false;
+    int track_ = 0, tracks_ = 0; // the track it opened on, and how many there were then (closeIfMoved)
+    TrackKind kind_ = TrackKind::None;
     int row_ = 0;
     bool holding_ = false;       // A is held
     float turned_ = 0.f;         // the stick's part-turned box

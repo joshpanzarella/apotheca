@@ -96,10 +96,9 @@ void SamplerScreen::hearFromList(SamplePicker::Hear how) {
 // often than a few times a second, however fast the stick turns it.
 void SamplerScreen::setSetting(int id, int value) {
     const int before = trk().sampler[id];
-    // START and END never cross: each stops kLeastSpan short of the other.
+    // START and END never cross: each stops kLeastSpan short of the other. LOOP START: from START (0, its usual,
+    // the attack looped as before) to a percent short of END. (sampler::heldApart: the designer page's rule too.)
     value = sampler::heldApart(id, value, trk().sampler[sampler::Start], trk().sampler[sampler::End]);
-    // LOOP START: from START (0, its usual, the attack looped as before) to a percent short of END.
-    if (id == sampler::LoopStart) value = value <= trk().sampler[sampler::Start] ? 0 : sampler::playedLoop(trk().sampler[sampler::Start], value, trk().sampler[sampler::End]);
     session_.setSamplerSetting(project_.track, id, value);
     if (trk().sampler[id] == before || project_.playing || lastMs_ - heardAt_ < kHearEveryMs) return;
     heardAt_ = lastMs_;
@@ -268,6 +267,7 @@ void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
         else picker_.onButton(event, project_.playing);
         return;
     }
+    edit_.closeIfMoved();
     if (edit_.isOpen()) return edit_.onButton(event, input);
     if (event.down && b != Button::B) presetDeleting_ = false; // (any other button calls a delete off)
     // While a take waits or runs, R1 stops it from any stop, before PRESET's SAVE (gesture audit G34: there
@@ -380,6 +380,7 @@ bool SamplerScreen::nameTaken() const {
 }
 
 void SamplerScreen::update(const Input& input, Uint32 nowMs) {
+    edit_.closeIfMoved(); // (EDIT opened on another track, or the tracks changed under it, while another tab was up)
     // A button let go while another screen was showing (a song opened, a tab turned) never told this
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
     if (picker_.isOpen() && session_.sampleFiles() != sampleFilesSeen_) { // the card's lists changed (WiFi): read them again, the cursor kept
@@ -451,6 +452,7 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
     } else if (holding_ && stop_ > 0 && (stop_ == kPictureStop || stopSetting() >= 0)) {
         // A setting (the picture's: LOOP START): the stick turns it through its whole range in about a second.
         const int id = stop_ == kPictureStop ? sampler::LoopStart : stopSetting();
+        if (y != 0.f) stepped_ = true; // (a turn by the stick, as by the D-pad: letting A go then opens nothing)
         const float range = static_cast<float>(sampler::settingMax(id) - sampler::settingMin(id));
         turned_ += -y * std::fabs(y) * range * dt;
         const int whole = static_cast<int>(turned_);

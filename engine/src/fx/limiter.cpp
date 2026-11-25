@@ -63,7 +63,7 @@ namespace {
 constexpr float kLookSeconds = 0.003f;
 constexpr float kHoldSeconds = 0.010f; // the turn-down held this long after a peak before it lets go
 constexpr int kRing = 1024;         // room for 3 ms at up to 340 kHz; a power of two
-constexpr int kHoldRing = 4096;     // room for the 3 ms and the hold at up to 315 kHz; a power of two
+constexpr int kHoldRing = 4096;     // room for the 3 ms and the hold at up to 314 kHz; a power of two
 constexpr float kDbPerLog = 8.6858896f; // 20 / ln(10)
 constexpr float kSettle = 0.02f;    // seconds for a turned setting to get most of the way
 constexpr float kLeastDb = 0.01f;   // dB: the last stretch of letting go takes at most one RELEASE
@@ -82,7 +82,7 @@ public:
         if (look_ > kRing - 2) look_ = kRing - 2;
         invLook_ = 1.f / static_cast<float>(look_);
         hold_ = static_cast<int>(std::round(kHoldSeconds * sr_));
-        if (look_ + hold_ > kHoldRing - 1) hold_ = kHoldRing - 1 - look_;
+        if (look_ + hold_ > kHoldRing - 2) hold_ = kHoldRing - 2 - look_; // SlidingMost's most
         changed();
         reset();
     }

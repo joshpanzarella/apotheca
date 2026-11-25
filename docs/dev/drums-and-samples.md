@@ -77,7 +77,10 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     the picture is a stop between SOUND and PITCH along the row (right from SOUND, left from PITCH; up from it SOUND,
     down PITCH), and **up and down pass it by**, so SOUND to the settings is still one press. Hold A + up / down
     turns LOOP START from where the loop goes back to now (START, while it is at its usual); turned back to START it
-    stores 0 again. B puts 0. The heading reads LOOP START 40% (or LOOP START: AT START) while the cursor is there;
+    stores 0 again. B puts 0. The stick turns it too, and a turn by the stick counts as a step, so letting A go after
+    it opens nothing (review fix: it opened EDIT). The rule (at or before START 0, else `playedLoop`) is in
+    `sampler::heldApart`, the one the designer page's Set takes too (review fix: the page stored LOOP START below
+    START, or START's own number; `design_test` pins `set 8 5` with START at 20 storing 0). The heading reads LOOP START 40% (or LOOP START: AT START) while the cursor is there;
     **with LOOP on a dashed purple mark** stands at it (a new mark: START's and END's are solid purple, and nothing
     on the picture said a third place; looked at on SOLARIZED, a light theme, in the still `sampler-loop` with
     `--samples`: it shows). The designer page lists it last (`settingAt(8)`), as a dial, read
@@ -113,6 +116,13 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     the words) and which boxes it has (`rows`): the sampler's PITCH and FINE are empty boxes the cursor passes by, as
     the VOICE view's unused places (left / right skip them, up / down take the nearest, the left first). The KIT's
     gestures, words and hints are unchanged (`laneedit_test` as it was).
+  - **EDIT closes when the track under it moves** (review fix, 2026-11-25). The Target's jobs name the track (and
+    the lane) it opened on, and EDIT stays open across a tab: another track picked on SONG, or the tracks added,
+    deleted or duplicated meanwhile (their numbers shift), drew and edited the old track's sound under the new
+    one's name (the KIT read the track live before the shared view, so it edited the same lane of the new track).
+    `EditView::closeIfMoved` (the track, its kind and the count as they were at open) runs first in the sampler's
+    and the KIT's `onButton` and `update`. Tests: `laneedit_test testEditClosesOnAnotherTrack`, the end of
+    `sample_test testTheSamplersLoopStartOnThePage`.
   - **Opened by a tap of A on the picture** (above). **A multisample has none** (each note is its own file; which
     note's would a cut be?): A on its picture says `kNoEditWords` (NO EDIT FOR A MULTISAMPLE: EACH NOTE IS ITS OWN
     FILE), the hint bar leaves A out there, and the manual says so. **Claude's pick, 2026-11-25, open to the owner.**

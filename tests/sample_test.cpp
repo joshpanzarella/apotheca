@@ -4148,6 +4148,33 @@ void testTheSamplersLoopStartOnThePage() {
     CHECK(session.undo());
     rig.frames(4);
     CHECK(track.sampler[sampler::LoopStart] == 40);
+    // Hold A + the stick turns it too, and letting A go then opens nothing (a turn, not a tap: it opened EDIT).
+    session.setSamplerSetting(1, sampler::LoopStart, 0);
+    rig.frames(2);
+    screen.goTo(SamplerScreen::kPictureStop);
+    rig.key(A, true);
+    rig.key(STICK_UP, true);
+    rig.frames(10);
+    rig.key(STICK_UP, false);
+    rig.key(A, false);
+    rig.frames(2);
+    CHECK(track.sampler[sampler::LoopStart] > 21 && !screen.editing());
+    // EDIT opened here, another sampler track picked on SONG meanwhile: closed, not drawing track 1's sound
+    // under track 2's name (nor editing track 1 from it).
+    CHECK(session.addTrack(TrackKind::Sampler));
+    session.setTrackSample(2, "alpha");
+    rig.frames(2);
+    screen.goTo(SamplerScreen::kPictureStop);
+    rig.tap(A);
+    CHECK(screen.editing());
+    session.view = View::Song;
+    rig.frames(2);
+    rig.project().track = 2;
+    session.view = View::Device;
+    rig.frames(2);
+    CHECK(!screen.editing());
+    rig.tap(A); // (on track 2's own picture: its EDIT)
+    CHECK(screen.editing());
 }
 
 int main(int, char**) {

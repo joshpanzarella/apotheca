@@ -27,6 +27,7 @@ bool editFromMiddle(int row) { return row == kEditGain || row == kEditPitch || r
 void EditView::open(const Target& target, int row) {
     target_ = target;
     open_ = true;
+    track_ = project_.track, tracks_ = project_.trackCount(), kind_ = project_.tracks[track_].kind;
     yJust_ = false;
     hearOwed_ = false;
     holding_ = deleting_ = bBack_ = false;

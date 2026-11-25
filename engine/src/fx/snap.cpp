@@ -59,7 +59,7 @@ namespace {
 
 constexpr float kPeakRelease = 0.02f;  // seconds: the peak reading both followers listen to lets go this fast
 constexpr float kWindowSeconds = 0.014f; // ...once the biggest peak of this long has passed
-constexpr int kWindowRing = 2048;      // room for the window at up to 136 kHz; a power of two
+constexpr int kWindowRing = 2048;      // room for the window at up to 146 kHz; a power of two
 constexpr float kQuickSeconds = 0.001f;
 constexpr float kSlowSeconds = 0.025f;
 constexpr float kAttackShare = 0.5f;   // of how far the quick follower is ahead, in dB, at ATTACK 100%
@@ -80,7 +80,7 @@ public:
         quick_ = 1.f - std::exp(-1.f / (kQuickSeconds * sr_));
         slow_ = 1.f - std::exp(-1.f / (kSlowSeconds * sr_));
         back_ = static_cast<int>(std::round(kWindowSeconds * sr_));
-        if (back_ > kWindowRing - 1) back_ = kWindowRing - 1;
+        if (back_ > kWindowRing - 2) back_ = kWindowRing - 2; // SlidingMost's most
         changed();
         reset();
     }

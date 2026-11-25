@@ -43,19 +43,22 @@ constexpr int kLeastSpan = 1; // END is at least this many percent after START (
 // Where a note ends, as played: END, or kLeastSpan after START where END is not after it (a song
 // file may say so; the screen never does).
 inline int playedEnd(int start, int end) { return end < start + kLeastSpan ? start + kLeastSpan : end; }
-// START or END turned to `value`, held kLeastSpan short of the other, so they never cross. The one
-// rule for whatever turns them: the device's screen and the sound-designer page.
-inline int heldApart(int id, int value, int start, int end) {
-    if (id == Start && value > end - kLeastSpan) return end - kLeastSpan;
-    if (id == End && value < start + kLeastSpan) return start + kLeastSpan;
-    return value;
-}
 // Where LOOP goes back to, as played: LOOP START, but never before START (so 0, its usual, is START itself, to
 // the bit) and never closer to END than kLeastSpan.
 inline int playedLoop(int start, int loopStart, int end) {
     const int last = playedEnd(start, end) - kLeastSpan;
     const int at = loopStart < last ? loopStart : last;
     return at > start ? at : start;
+}
+// A setting turned to `value`, as it is kept. START or END: held kLeastSpan short of the other, so they never
+// cross. LOOP START: at or before START it is 0 (its usual, START itself, so the song writes no 9th number that
+// plays as the usual), else where it plays (playedLoop). The one rule for whatever turns them: the device's
+// screen and the sound-designer page.
+inline int heldApart(int id, int value, int start, int end) {
+    if (id == Start && value > end - kLeastSpan) return end - kLeastSpan;
+    if (id == End && value < start + kLeastSpan) return start + kLeastSpan;
+    if (id == LoopStart) return value <= start ? 0 : playedLoop(start, value, end);
+    return value;
 }
 // At the jump back, the end of the part looped is blended into what follows LOOP START over this long (or a third of
 // the part looped, if that is shorter), so the jump never clicks: only with LOOP on (S4, 2026-11-25).
