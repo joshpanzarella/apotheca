@@ -31,14 +31,38 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     UP / DOWN, as LEFT / RIGHT is the TYPE with A held in the list. The ends stop, the
     cursor keeps its row (pulled in where the new type has fewer), every setting row alike,
     D-pad only (the stick with A held turns the value), repeating at the list's pace
-    (`kListEveryMs`). **Without A, LEFT is the list from any setting and RIGHT does
-    nothing.** (A first try that day had plain LEFT / RIGHT switch, with LEFT the list only
+    (`kListEveryMs`). (A first try that day had plain LEFT / RIGHT switch, with LEFT the list only
     from the first setting: LEFT doing two jobs was awkward, and a long RIGHT in from the
     list ran through the types. It is gone, `cameIn_` with it.) **With A held the
     heading's TYPE row and the bar show the key that switches** (`typeKey`, `typeKeyFor`:
     RIGHT, LEFT or LEFT / RIGHT; no RIGHT on the family's last type, no LEFT on its first,
-    none for a family of one or on SENDS); with A up the bar says LEFT list and HOLD A
+    none for a family of one or on SENDS); with A up the bar names the walk (`walkKeyFor`, 2026-11-25: LEFT / RIGHT "list, dial" on the
+    first dial, LEFT / RIGHT "dial" between, LEFT "dial" on the last, as L1 / R1 "track") and HOLD A
     "turn, type" ("turn" where there are no types). B's hint there is "default".
+  - **Without A, LEFT / RIGHT walk the dials; UP / DOWN do nothing** (owner, 2026-11-25,
+    after using it on the handheld: "moving up and down to traverse the parameters is
+    odd... that should be changed to left/right"). **A reversal**: the rule of 2026-11-14
+    was "Without A, LEFT is the list from any setting and RIGHT does nothing", with UP /
+    DOWN walking the settings. The settings are drawn side by side as dials, four across
+    under the picture, so the walk goes across. **LEFT from the first dial is the list, on
+    the same line; RIGHT on the last stops.** LEFT has one job again: the 2026-11-14
+    awkwardness was LEFT being both the TYPE and the list; the TYPE stays on A held, so
+    plain LEFT is only the cursor. SENDS' two dials (ECHO, SPACE, side by side) the same.
+    The stick across walks them (it presses LEFT / RIGHT through `press`), up / down does
+    nothing; a held D-pad repeats at the cursor's pace. Hold Y on BAND's FREQ, GAIN or Q
+    is untouched: the D-pad is the grip there, not the cursor. Approved table, as built:
+
+    | Button | Before | Now |
+    | --- | --- | --- |
+    | LEFT / RIGHT, A up, on a dial | LEFT the list; RIGHT nothing | Walk the dials; LEFT from the first the list; RIGHT on the last stops |
+    | UP / DOWN, A up, on a dial | Walk the dials | Nothing |
+    | A held + LEFT / RIGHT | The TYPE before / after | Unchanged |
+    | A held + UP / DOWN | Turn the dial | Unchanged |
+
+    `app_test` `testFxDialsWalkAcross` pins it. Two things followed: **SENDS' bar lost HOLD X "mod"** (the walk's
+    two arrows and "list, dial" put ECHO 43 pixels over; a setting's bar never had room for it, and the help card
+    says it), and **"the setting last used" is now nearly always the first**, since a walk out to the list passes
+    it (it still holds where L1 / R1 or a tab left the cursor). Neither is the owner's call yet.
   - **A slot remembers each type's own settings** (`Session::rememberType` /
     `rememberedType`, `switchEffectType` in fx_screen.cpp): a switch goes through
     `changeEffectType` (lanes moved as always: **a remembered type's automation is not

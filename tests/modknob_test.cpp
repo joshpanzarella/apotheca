@@ -755,17 +755,18 @@ void testHeldAcrossThings() {
         CHECK(fx.cursorRow() == 0 && fx.cursorColumn() == 1);
         if (stick == SDLK_i) CHECK(rig.mod(t, 1).depth > fxDepth + 0.05f);
     }
-    // X let go with the stick still pushed: the cursor waits for it to come back.
-    rig.key(SDLK_k, true);
+    // X let go with the stick still pushed (across, which walks the dials: owner, 2026-11-25): the cursor waits for
+    // it to come back.
+    rig.key(SDLK_l, true);
     rig.frames(1);
     rig.key(X, false);
     rig.frames(3);
     CHECK(fx.cursorRow() == 0 && fx.cursorColumn() == 1);
-    rig.key(SDLK_k, false);
+    rig.key(SDLK_l, false);
     rig.frames(1);
-    rig.key(SDLK_k, true);
+    rig.key(SDLK_l, true);
     rig.frames(1);
-    rig.key(SDLK_k, false);
+    rig.key(SDLK_l, false);
     rig.frames(1);
     CHECK(fx.cursorColumn() == 2); // pushed again: it moves
 }
@@ -1116,7 +1117,7 @@ void testDrawnOnFx() {
     const ModPlaces& p = kFxModPlaces;
     rig.draw();
     // (A setting's bar has no room for HOLD X: MOD: 22 pixels short with it. The help card says it.)
-    const ui::Hint plain[] = {{"LEFT", "list"}, {"HOLD A", "turn, type"}, {"B", "default"}, {"L1 / R1", "track"}, {"START", "play"}};
+    const ui::Hint plain[] = {{"LEFT / RIGHT", "dial"}, {"HOLD A", "turn, type"}, {"B", "default"}, {"L1 / R1", "track"}, {"START", "play"}};
     CHECK(rig.plainBar(plain, 5) && ui::gHintsOver == 0.f);
     const std::vector<Uint32> barBefore = rig.canvas.part(0, kBarTop, ui::kScreenW, ui::kHintsH);
     const std::vector<Uint32> headBefore = rig.canvas.part(FxScreen::kPaneX, FxScreen::kPaneY, FxScreen::kPaneW, FxScreen::kHeadH);
@@ -1164,13 +1165,14 @@ void testDrawnOnFx() {
     CHECK(rig.chips().empty());
     rig.key(X, false);
     rig.draw();
-    const ui::Hint sendsBar[] = {{"LEFT", "list"}, {"HOLD A", "turn"}, {"B", "none"}, {"HOLD X", "mod"}, {"L1 / R1", "track"}, {"START", "play"}};
+    // (No HOLD X: MOD on a send since LEFT / RIGHT walk the dials, 2026-11-25: on ECHO it would be 43 pixels over.)
+    const ui::Hint sendsBar[] = {{"LEFT", "dial"}, {"HOLD A", "turn"}, {"B", "none"}, {"L1 / R1", "track"}, {"START", "play"}};
     if (printing) std::printf("FX, a send: %.1f over\n", static_cast<double>(ui::gHintsOver));
-    CHECK(rig.plainBar(sendsBar, 6) && ui::gHintsOver == 0.f);
+    CHECK(rig.plainBar(sendsBar, 5) && ui::gHintsOver == 0.f);
     // A bus's setting: no HOLD X: MOD.
     fx.goTo(FxScreen::kBusRow, 1);
     rig.draw();
-    const ui::Hint busBar[] = {{"LEFT", "list"}, {"HOLD A", "turn, type"}, {"B", "default"}, {"L1 / R1", "track"}, {"START", "play"}};
+    const ui::Hint busBar[] = {{"LEFT / RIGHT", "list, dial"}, {"HOLD A", "turn, type"}, {"B", "default"}, {"L1 / R1", "track"}, {"START", "play"}};
     CHECK(rig.plainBar(busBar, 5));
 }
 

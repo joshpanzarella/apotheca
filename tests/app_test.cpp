@@ -4732,8 +4732,10 @@ void testTheEffectsScreen() {
     // Right: into its settings. TIME is a choice: the D-pad steps to the next one.
     rig.tap(RIGHT);
     CHECK(fx.cursorColumn() == 1 && fx.cursorRow() == 0);
-    rig.tap(RIGHT); // there is nothing further right
-    CHECK(fx.cursorColumn() == 1);
+    rig.tap(RIGHT); // the dials sit side by side: RIGHT is the next, LEFT back (owner, 2026-11-25)
+    CHECK(fx.cursorColumn() == 2);
+    rig.tap(LEFT);
+    CHECK(fx.cursorColumn() == 1 && fx.cursorRow() == 0);
     rig.key(A, true);
     CHECK(!fx.picking()); // on a setting A turns it: no list
     rig.tap(UP);
@@ -4743,8 +4745,8 @@ void testTheEffectsScreen() {
     rig.tap(DOWN, 9);
     CHECK(delaySteps(first.param[0]) == 1 && first.param[0] > 0.05f && first.param[0] < 0.12f); // the middle of its part of the range
     rig.key(A, false);
-    // FEEDBACK, the next one down, is an amount: the D-pad moves it a twentieth, the stick turns it.
-    rig.tap(DOWN);
+    // FEEDBACK, the next one across, is an amount: the D-pad moves it a twentieth, the stick turns it.
+    rig.tap(RIGHT);
     CHECK(fx.cursorColumn() == 2);
     rig.key(A, true);
     rig.tap(UP);
@@ -4769,20 +4771,26 @@ void testTheEffectsScreen() {
     rig.key(A, false);
     rig.tap(B);
     CHECK(first.param[1] == effectInfo(EffectKind::Delay).defaults[1]);
-    rig.tap(DOWN, 9);
+    rig.tap(RIGHT, 9);
     CHECK(fx.cursorColumn() == 4 && fx.cursorRow() == 0); // four settings, no more: the end stops
-    rig.tap(UP, 9);
-    CHECK(fx.cursorColumn() == 1 && fx.cursorRow() == 0); // and the top
-    // Left: back to the list, on the same line. Right: back to the setting last used there.
-    rig.tap(DOWN, 2);
-    CHECK(fx.cursorColumn() == 3);
+    rig.tap(UP, 3);
+    rig.tap(DOWN, 3);
+    CHECK(fx.cursorColumn() == 4 && fx.cursorRow() == 0); // up / down without A: nothing
+    // Left: one dial back, and from the first back to the list, on the same line. Right: back to the setting
+    // last used there (the first, after a walk out).
     rig.tap(LEFT);
-    CHECK(fx.cursorColumn() == 0 && fx.cursorRow() == 0 && fx.remembered(0) == 3);
+    CHECK(fx.cursorColumn() == 3 && fx.remembered(0) == 3);
+    rig.tap(LEFT, 2);
+    CHECK(fx.cursorColumn() == 1 && fx.cursorRow() == 0);
+    rig.tap(LEFT);
+    CHECK(fx.cursorColumn() == 0 && fx.cursorRow() == 0 && fx.remembered(0) == 1);
     rig.tap(LEFT); // nothing further left
     CHECK(fx.cursorColumn() == 0 && fx.cursorRow() == 0);
+    fx.goTo(0, 3); // (a setting used last, as L1 / R1 or a tab leaves it)
+    fx.goTo(0, 0);
     rig.tap(RIGHT);
     CHECK(fx.cursorColumn() == 3);
-    rig.tap(LEFT);
+    fx.goTo(0, 0);
 
     // Down the list: the track's second and third, its sends, the buses and the master's two, and round.
     rig.tap(DOWN);
@@ -4792,9 +4800,9 @@ void testTheEffectsScreen() {
     rig.key(A, false);
     CHECK(rig.project().tracks[0].effects[1].kind == static_cast<int>(EffectKind::Reverb) && first.kind == static_cast<int>(EffectKind::Delay));
     rig.tap(RIGHT);
-    rig.tap(DOWN, 9);
+    rig.tap(RIGHT, 9);
     CHECK(fx.cursorColumn() == 3 && fx.cursorRow() == 1); // the room reverb has three
-    rig.tap(LEFT);
+    rig.tap(LEFT, 3);
     rig.tap(DOWN);
     CHECK(fx.cursorRow() == 2 && fx.cursorColumn() == 0);
     rig.tap(DOWN, 4);
@@ -4818,11 +4826,13 @@ void testTheEffectsScreen() {
     rig.key(STICK_RIGHT, false);
     rig.frames(1);
     CHECK(fx.cursorRow() == 0 && fx.cursorColumn() == 3);
-    rig.key(STICK_LEFT, true);
-    rig.frames(1);
-    rig.key(STICK_LEFT, false);
-    rig.frames(1);
-    CHECK(fx.cursorRow() == 0 && fx.cursorColumn() == 0);
+    for (int push = 0; push < 3; ++push) { // a dial a push, and from the first the list
+        rig.key(STICK_LEFT, true);
+        rig.frames(1);
+        rig.key(STICK_LEFT, false);
+        rig.frames(1);
+        CHECK(fx.cursorRow() == 0 && fx.cursorColumn() == 2 - push);
+    }
     rig.key(B, true); // held: deleted when the bar is full
     rig.frames(70);
     rig.key(B, false);
@@ -5956,25 +5966,29 @@ void testTheFxScreensList() {
     fx.goTo(3, 0);
     rig.tap(RIGHT);
     CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 1); // the ECHO send
-    rig.tap(DOWN, 3);
+    rig.tap(RIGHT, 3);
     CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 2); // the SPACE send, and the end
     rig.tap(UP, 3);
+    rig.tap(DOWN, 3);
+    CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 2); // (up / down without A: nothing)
+    rig.tap(LEFT);
     CHECK(fx.cursorColumn() == 1);
     rig.tap(LEFT);
     CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 0);
-    // Each line remembers its own last setting.
+    // Each line remembers its own last setting (as L1 / R1 or a tab leaves it: a walk out with LEFT passes the
+    // first, so leaves that).
     fx.goTo(4, 3); // ECHO's TAPE: AGE
-    rig.tap(LEFT);
+    fx.goTo(4, 0);
     rig.tap(DOWN);
     rig.tap(RIGHT);
     CHECK(fx.cursorRow() == 5 && fx.cursorColumn() == 1); // SPACE's: never used, its first
-    rig.tap(DOWN, 9);
+    rig.tap(RIGHT, 9);
     CHECK(fx.cursorColumn() == 4); // HALL has four
-    rig.tap(LEFT);
+    fx.goTo(5, 0);
     rig.tap(UP);
     rig.tap(RIGHT);
     CHECK(fx.cursorRow() == 4 && fx.cursorColumn() == 3);
-    rig.tap(LEFT);
+    fx.goTo(4, 0);
     rig.tap(DOWN);
     rig.tap(RIGHT);
     CHECK(fx.cursorRow() == 5 && fx.cursorColumn() == 4 && fx.remembered(5) == 4 && fx.remembered(4) == 3 && fx.remembered(0) == 1);
@@ -6014,7 +6028,7 @@ void testTheFxScreensList() {
     rig.key(A, false);
     rig.tap(RIGHT);
     CHECK(fx.cursorColumn() == 2); // where the line was last (goTo, above)
-    rig.tap(UP);
+    rig.tap(LEFT);
     rig.key(A, true);
     rig.tap(UP, 3);
     CHECK(near(project.tracks[0].send[0], 0.15f) && project.tracks[0].send[1] == 0.f);
@@ -6026,7 +6040,7 @@ void testTheFxScreensList() {
     rig.tap(RIGHT); // sideways with A held does nothing to a send, and does not move off it
     CHECK(project.tracks[0].send[0] == 0.f && project.tracks[0].send[1] == 0.f && fx.cursorColumn() == 1);
     rig.key(A, false);
-    rig.tap(DOWN);
+    rig.tap(RIGHT);
     rig.key(A, true);
     rig.tap(UP, 25);
     CHECK(project.tracks[0].send[1] == 1.f && project.tracks[0].send[0] == 0.f);
@@ -6042,7 +6056,7 @@ void testTheFxScreensList() {
     CHECK(std::fabs(turned / 0.05f - std::round(turned / 0.05f)) > 0.02f); // smoothly: not in twentieths
     // ...the first send as the second.
     rig.key(A, false);
-    rig.tap(UP);
+    rig.tap(LEFT);
     rig.key(A, true);
     rig.key(STICK_UP, true);
     rig.frames(10);
@@ -6052,7 +6066,7 @@ void testTheFxScreensList() {
     CHECK(echo > 0.02f && echo < 0.3f && std::fabs(echo / 0.05f - std::round(echo / 0.05f)) > 0.02f);
     rig.key(A, false);
     session.setSend(0, 0, 0.f);
-    rig.tap(DOWN);
+    rig.tap(RIGHT);
     // It reaches the engine: a hit now wakes the SPACE bus and not the ECHO bus.
     Command hit;
     hit.type = Command::Trigger;
@@ -6069,7 +6083,7 @@ void testTheFxScreensList() {
     rig.tap(B);
     CHECK(project.tracks[0].send[1] == 0.f && project.tracks[0].send[0] == 0.4f && fx.cursorColumn() == 2);
     CHECK(!session.hasAutomation(0, 0, autoLaneOfSend(1)) && session.hasAutomation(0, 0, autoLaneOfSend(0)) && session.hasAutomation(0, 2, autoLaneOfSend(1)));
-    rig.tap(UP);
+    rig.tap(LEFT);
     rig.tap(B);
     CHECK(project.tracks[0].send[0] == 0.f && !session.hasAutomation(0, 0, autoLaneOfSend(0)));
     // B on the SENDS line itself: nothing sent to either, and both automations of this cell go.
@@ -6111,7 +6125,7 @@ void testTheFxScreensList() {
     rig.tap(B); // B: its usual value, the automation of this cell gone, and that not written either
     CHECK(!session.hasAutomation(0, 0, autoLaneOfEffect(0, 1)) && project.tracks[0].effects[0].param[1] == effectInfo(EffectKind::Filter).defaults[1]);
     // Picking an effect and changing a TYPE are not knobs: WRITE records nothing of them.
-    rig.tap(LEFT);
+    rig.tap(LEFT, 2);
     rig.key(A, true);
     rig.tap(DOWN, familyPlace(EffectKind::Delay) - familyPlace(EffectKind::Filter)); // DELAY
     rig.tap(RIGHT); // its TAPE
@@ -6634,13 +6648,13 @@ void testTheFxScreenAsDrawn() {
         CHECK(hinted("sends") && hinted("send nothing") && !hinted("effects"));
         fx.goTo(F::kSendsRow, 2);
         draw();
-        CHECK(hinted("list") && hinted("turn") && hinted("none") && !hinted("default"));
+        CHECK(hinted("dial") && hinted("turn") && hinted("none") && !hinted("default"));
         fx.goTo(0, 2);
         draw();
-        CHECK(hinted("list") && hinted("turn, type") && hinted("default")); // (DELAY has types: HOLD A turns and switches)
+        CHECK(hinted("dial") && hinted("turn, type") && hinted("default")); // (DELAY has types: HOLD A turns and switches)
         rig.key(A, true);
         draw();
-        CHECK(hinted("turn it") && !hinted("list") && !hinted("effect"));
+        CHECK(hinted("turn it") && !hinted("dial") && !hinted("effect"));
         fx.goTo(0, 0);
         draw();
         CHECK(hinted("effect") && hinted("type") && !hinted("turn it")); // DELAY has types
@@ -11064,25 +11078,26 @@ void testFxSwitchesType() {
         CHECK(fx.cursorColumn() == 1 && sameParams(slot, duckWas));
         typeTap(rig, LEFT);
         CHECK(fx.cursorColumn() == 1 && sameParams(slot, compWas));
-        // WITHOUT A: LEFT is the list from any setting, the slot untouched; RIGHT there does nothing at all,
-        // tapped or held (owner, 2026-11-14: LEFT doing two jobs was awkward).
+        // WITHOUT A: LEFT / RIGHT only walk the dials (owner, 2026-11-25; testFxDialsWalkAcross), the slot
+        // untouched, tapped or held; LEFT from the first is the list.
         for (int column : {1, 2, 3}) {
             fx.goTo(0, column);
             rig.tap(RIGHT, 3);
             rig.key(RIGHT, true);
             rig.frames(40);
             rig.key(RIGHT, false);
-            CHECK(fx.cursorColumn() == column && sameParams(slot, compWas));
-            rig.tap(LEFT);
+            CHECK(fx.cursorColumn() == effectInfo(EffectKind::Comp).params && sameParams(slot, compWas));
+            rig.tap(LEFT, 10);
             CHECK(fx.cursorColumn() == 0 && sameParams(slot, compWas));
         }
-        // ...nor does the stick switch, with A up (it is the list, or nothing) or with A held (it turns values).
+        // ...nor does the stick switch, with A up (it walks the dials) or with A held (it turns values).
         fx.goTo(0, 2);
         rig.key(STICK_RIGHT, true);
         rig.frames(20);
         rig.key(STICK_RIGHT, false);
         rig.frames(1);
-        CHECK(slot.kind == comp && fx.cursorColumn() == 2);
+        CHECK(slot.kind == comp && fx.cursorColumn() == effectInfo(EffectKind::Comp).params);
+        fx.goTo(0, 2);
         rig.key(A, true);
         rig.key(STICK_RIGHT, true);
         rig.frames(20);
@@ -11123,13 +11138,13 @@ void testFxSwitchesType() {
             CHECK(session.effectData(0, 0).kind == static_cast<int>(next) && fx.cursorColumn() == effectInfo(next).params);
             break;
         }
-        // The sends switch nothing: LEFT is the list from either, RIGHT does nothing.
+        // The sends switch nothing; A up, RIGHT on the last (SPACE) stops and LEFT walks back to the list.
         fx.goTo(FxScreen::kSendsRow, 2);
         typeTap(rig, RIGHT);
         typeTap(rig, LEFT);
         rig.tap(RIGHT);
         CHECK(fx.cursorColumn() == 2 && fx.cursorRow() == FxScreen::kSendsRow);
-        rig.tap(LEFT);
+        rig.tap(LEFT, 2);
         CHECK(fx.cursorColumn() == 0 && fx.cursorRow() == FxScreen::kSendsRow);
         // An empty slot has no settings to be in.
         session.setEffect(0, 1, EffectKind::None);
@@ -11293,14 +11308,14 @@ void testFxSwitchesType() {
                     for (int x = keyX; x < F::kPaneX + F::kPaneW - 12; ++x) n += canvas.is(x, y, ui::kPanel) ? 0 : 1;
                 return n;
             };
-            // In the list, and on a setting with A up: no key in the heading; the bar says LEFT is the list and
-            // that HOLD A turns and switches.
+            // In the list, and on a setting with A up: no key in the heading; the bar says LEFT / RIGHT walk the
+            // dials (LEFT from the first the list) and that HOLD A turns and switches.
             fx.goTo(0, 0);
             CHECK(draw() && keyInk() == 0 && fx.typeKey() == nullptr);
             for (int column : {1, 2}) {
                 fx.goTo(0, column);
                 CHECK(draw() && keyInk() == 0 && fx.typeKey() == nullptr);
-                CHECK(hintKeyed(canvas, scratch, "LEFT", "list") && hintKeyed(canvas, scratch, "HOLD A", "turn, type") && !hintKeyed(canvas, scratch, "RIGHT", "type"));
+                CHECK(hintKeyed(canvas, scratch, "LEFT / RIGHT", column == 1 ? "list, dial" : "dial") && hintKeyed(canvas, scratch, "HOLD A", "turn, type") && !hintKeyed(canvas, scratch, "RIGHT", "type"));
             }
             // A held on a setting: the key that switches. The family's FIRST type: RIGHT alone, on any setting.
             rig.key(A, true);
@@ -11312,10 +11327,10 @@ void testFxSwitchesType() {
             rig.tap(RIGHT, levels); // the family's LAST type: LEFT alone (the two arrows are one width and one ink: typeKey says which)
             CHECK(draw() && keyInk() == right && fx.typeKey() && std::strcmp(fx.typeKey(), "LEFT") == 0 && hintKeyed(canvas, scratch, "LEFT", "type") && !hintKeyed(canvas, scratch, "LEFT / RIGHT", "type"));
             rig.key(A, false);
-            CHECK(draw() && keyInk() == 0 && fx.typeKey() == nullptr && hintKeyed(canvas, scratch, "LEFT", "list"));
+            CHECK(draw() && keyInk() == 0 && fx.typeKey() == nullptr && hintKeyed(canvas, scratch, "LEFT / RIGHT", fx.cursorColumn() == 1 ? "list, dial" : "dial"));
             // SENDS have no types: no key held or not, and HOLD A only turns.
             fx.goTo(F::kSendsRow, 2);
-            CHECK(draw() && hintKeyed(canvas, scratch, "LEFT", "list") && hintKeyed(canvas, scratch, "HOLD A", "turn") && !hintKeyed(canvas, scratch, "HOLD A", "turn, type"));
+            CHECK(draw() && hintKeyed(canvas, scratch, "LEFT", "dial") && hintKeyed(canvas, scratch, "HOLD A", "turn") && !hintKeyed(canvas, scratch, "HOLD A", "turn, type"));
             rig.key(A, true);
             CHECK(draw() && fx.typeKey() == nullptr && !hintKeyed(canvas, scratch, "RIGHT", "type"));
             rig.key(A, false);
@@ -11350,6 +11365,155 @@ void testFxSwitchesType() {
         CHECK(sameParams(session.effectData(0, 0), duckWas)); // the DUCK, as it was left two switches ago
         typeTap(rig, LEFT);
         CHECK(sameParams(session.effectData(0, 0), compWas));
+    }
+}
+
+// The dials of the line picked sit side by side, so LEFT / RIGHT walk them (owner, 2026-11-25, after using it
+// on the handheld: "moving up and down to traverse the parameters is odd... that should be changed to
+// left/right"; the table he approved). LEFT from the FIRST dial is the list, on the same line; RIGHT on the last
+// stops; UP / DOWN do nothing without A. With A held: LEFT / RIGHT the TYPE, UP / DOWN turn, as before. The
+// stick across walks, up / down nothing. SENDS the same. The bar names the ways that work.
+void testFxDialsWalkAcross() {
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& project = rig.app.project();
+    FxScreen& fx = rig.app.fx();
+    session.view = View::Effects;
+    const EffectData compWas = turnedComp(rig);
+    const EffectData& slot = session.effectData(0, 0);
+    const int dials = effectInfo(EffectKind::Comp).params;
+    CHECK(dials >= 3);
+    session.setEffect(0, 1, EffectKind::Comp); // a line below, so a stray UP / DOWN would show as a row
+    rig.frames(1);
+    const auto at = [&](int row, int column) { return fx.cursorRow() == row && fx.cursorColumn() == column; };
+    // RIGHT from the list goes in at the first (never used yet); RIGHT walks each in turn; the last stops.
+    fx.goTo(0, 0);
+    rig.tap(RIGHT);
+    CHECK(at(0, 1));
+    for (int column = 2; column <= dials; ++column) {
+        rig.tap(RIGHT);
+        CHECK(at(0, column));
+    }
+    rig.tap(RIGHT, 3);
+    CHECK(at(0, dials) && sameParams(slot, compWas));
+    // UP / DOWN without A: nothing at all, tapped or held, on every dial.
+    for (int column = 1; column <= dials; ++column) {
+        fx.goTo(0, column);
+        rig.tap(UP);
+        rig.tap(DOWN, 2);
+        rig.key(DOWN, true);
+        rig.frames(40);
+        rig.key(DOWN, false);
+        rig.frames(1);
+        CHECK(at(0, column) && sameParams(slot, compWas));
+    }
+    // LEFT walks back one at a time; from a dial past the first it is NOT the list.
+    fx.goTo(0, dials);
+    for (int column = dials - 1; column >= 1; --column) {
+        rig.tap(LEFT);
+        CHECK(at(0, column));
+    }
+    // LEFT from the first is the list, on the same line; RIGHT goes back in where it was last (the first).
+    rig.tap(LEFT);
+    CHECK(at(0, 0) && sameParams(slot, compWas));
+    rig.tap(RIGHT);
+    CHECK(at(0, 1));
+    // A held D-pad runs along at the cursor's pace and stops at the last; held LEFT runs back out to the list.
+    rig.key(RIGHT, true);
+    rig.frames(90);
+    rig.key(RIGHT, false);
+    CHECK(at(0, dials));
+    rig.key(LEFT, true);
+    rig.frames(90);
+    rig.key(LEFT, false);
+    CHECK(at(0, 0)); // (in the list LEFT does nothing: it stays there)
+    // A held: LEFT / RIGHT the TYPE, the cursor kept; UP / DOWN turn the dial.
+    fx.goTo(0, 2);
+    typeTap(rig, RIGHT);
+    CHECK(at(0, 2) && slot.kind == static_cast<int>(EffectKind::Duck));
+    typeTap(rig, LEFT);
+    CHECK(at(0, 2) && sameParams(slot, compWas));
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(at(0, 2) && slot.param[1] > compWas.param[1]);
+    rig.tap(DOWN);
+    rig.key(A, false);
+    CHECK(at(0, 2) && slot.kind == compWas.kind);
+    session.setEffectParam(0, 0, 1, compWas.param[1]);
+    // The stick, A up: across walks the dials (a push one, then on at its pace), up / down nothing.
+    fx.goTo(0, 1);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(at(0, 2));
+    rig.key(STICK_RIGHT, true);
+    rig.frames(60);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(at(0, dials));
+    rig.key(STICK_DOWN, true);
+    rig.frames(30);
+    rig.key(STICK_DOWN, false);
+    rig.key(STICK_UP, true);
+    rig.frames(30);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    CHECK(at(0, dials) && sameParams(slot, compWas));
+    rig.key(STICK_LEFT, true);
+    rig.frames(90);
+    rig.key(STICK_LEFT, false);
+    rig.frames(1);
+    CHECK(at(0, 0));
+    // SENDS: its two dials the same. LEFT from ECHO is the list, on SENDS; RIGHT on SPACE stops; UP / DOWN
+    // without A turn nothing; with A held they turn the send.
+    session.setSend(0, 0, 0.35f);
+    session.setSend(0, 1, 0.5f);
+    fx.goTo(FxScreen::kSendsRow, 0);
+    rig.tap(RIGHT);
+    CHECK(at(FxScreen::kSendsRow, 1));
+    rig.tap(RIGHT);
+    CHECK(at(FxScreen::kSendsRow, 2));
+    rig.tap(RIGHT, 2);
+    CHECK(at(FxScreen::kSendsRow, 2));
+    rig.tap(UP);
+    rig.tap(DOWN);
+    CHECK(at(FxScreen::kSendsRow, 2) && project.tracks[0].send[0] == 0.35f && project.tracks[0].send[1] == 0.5f);
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(at(FxScreen::kSendsRow, 2) && project.tracks[0].send[1] > 0.5f);
+    rig.tap(LEFT);
+    CHECK(at(FxScreen::kSendsRow, 1));
+    rig.tap(LEFT);
+    CHECK(at(FxScreen::kSendsRow, 0));
+    // The bar's key: both ways where both do something, LEFT alone on the last; the list in the words on the first.
+    CHECK(FxScreen::walkKeyFor(0, 4) == nullptr);
+    CHECK(std::strcmp(FxScreen::walkKeyFor(1, 4), "LEFT / RIGHT") == 0 && std::strcmp(FxScreen::walkKeyFor(3, 4), "LEFT / RIGHT") == 0);
+    CHECK(std::strcmp(FxScreen::walkKeyFor(4, 4), "LEFT") == 0 && std::strcmp(FxScreen::walkKeyFor(1, 1), "LEFT") == 0);
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    const auto draw = [&] {
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        return ui::gHintsOver == 0.f;
+    };
+    for (int menu = 0; menu < 2; ++menu) {
+        ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP";
+        fx.goTo(0, 1);
+        CHECK(draw() && hintKeyed(canvas, scratch, "LEFT / RIGHT", "list, dial"));
+        fx.goTo(0, 2);
+        CHECK(draw() && hintKeyed(canvas, scratch, "LEFT / RIGHT", "dial") && !hintKeyed(canvas, scratch, "LEFT / RIGHT", "list, dial"));
+        fx.goTo(0, dials);
+        CHECK(draw() && hintKeyed(canvas, scratch, "LEFT", "dial"));
+        fx.goTo(FxScreen::kSendsRow, 1);
+        CHECK(draw() && hintKeyed(canvas, scratch, "LEFT / RIGHT", "list, dial"));
+        fx.goTo(FxScreen::kSendsRow, 2);
+        CHECK(draw() && hintKeyed(canvas, scratch, "LEFT", "dial"));
+        fx.goTo(FxScreen::kBusRow, 1);
+        CHECK(draw() && hintKeyed(canvas, scratch, "LEFT / RIGHT", "list, dial"));
     }
 }
 
@@ -11600,17 +11764,20 @@ void testFxHoldKeptAcrossTracks() {
     rig.key(STICK_UP, false);
     rig.frames(1);
     CHECK(feedback(1) > pushed && fx.cursorColumn() == 2);
-    // Another type on the next track: A is let go. UP moves the cursor; CLEAN's FEEDBACK is not turned.
+    // Another type on the next track: A is let go. LEFT moves the cursor; CLEAN's FEEDBACK is not turned.
     const EffectData clean = session.effectData(2, 1);
     rig.tap(R1);
     rig.frames(1);
-    rig.tap(UP);
+    rig.tap(UP); // (A let go: up / down does nothing on a dial)
+    CHECK(rig.project().track == 2 && fx.cursorColumn() == 2 && session.effectData(2, 1).param[1] == clean.param[1]);
+    rig.tap(LEFT);
     CHECK(rig.project().track == 2 && fx.cursorColumn() == 1 && session.effectData(2, 1).param[1] == clean.param[1] && session.effectData(2, 1).param[0] == clean.param[0]);
     // ...and it stays let go, back on a TAPE, until A is pressed again.
     fx.goTo(1, 2);
     rig.tap(R1);
     rig.frames(1);
     rig.tap(UP);
+    rig.tap(LEFT);
     CHECK(rig.project().track == 3 && fx.cursorColumn() == 1 && feedback(3) == usual);
     rig.key(A, false);
     // An empty slot on the next track: A is let go, the cursor comes back to the list, and DOWN tries nothing.
@@ -11692,7 +11859,7 @@ void testBandFreqStepsAThirdOfAnOctave() {
     rig.tap(B);
     CHECK(freq() == start);
     // GAIN: a twentieth, 1.2 dB.
-    rig.tap(DOWN);
+    rig.tap(RIGHT);
     CHECK(fx.cursorColumn() == 2);
     rig.key(A, true);
     rig.tap(UP);
@@ -11743,7 +11910,7 @@ void testHoldYMovesABandTwoWays() {
     CHECK(p(0, 0) == 16.f / 30.f && p(0, 1) == 9.f * 0.05f && p(0, 2) == q0 && still(1));
     // On GAIN: the same.
     rig.key(Y, false);
-    rig.tap(DOWN);
+    rig.tap(RIGHT);
     rig.key(Y, true);
     CHECK(still(2) && fx.bandGrip() == FxScreen::kBandGain);
     rig.tap(UP);
@@ -11751,7 +11918,7 @@ void testHoldYMovesABandTwoWays() {
     CHECK(p(0, 1) == 10.f * 0.05f && p(0, 0) == 17.f / 30.f && still(2));
     // On Q: up / down is Q.
     rig.key(Y, false);
-    rig.tap(DOWN);
+    rig.tap(RIGHT);
     rig.key(Y, true);
     CHECK(still(3) && fx.bandGrip() == FxScreen::kBandQ);
     rig.tap(UP);
@@ -11770,24 +11937,24 @@ void testHoldYMovesABandTwoWays() {
             rig.frames(1);
             canvas.clear();
             rig.app.draw(canvas.r, *canvas.fonts);
-            CHECK(!hintKeyed(canvas, scratch, "LEFT / RIGHT", "freq") && hintKeyed(canvas, scratch, "LEFT", "list"));
-            rig.tap(UP);
+            CHECK(!hintKeyed(canvas, scratch, "LEFT / RIGHT", "freq") && hintKeyed(canvas, scratch, "LEFT / RIGHT", "dial"));
+            rig.tap(LEFT);
             rig.key(Y, true);
             rig.frames(1);
             canvas.clear();
             rig.app.draw(canvas.r, *canvas.fonts);
             CHECK(ui::gHintsOver == 0.f && hintKeyed(canvas, scratch, "UP / DOWN", "gain"));
             rig.key(Y, false);
-            rig.tap(DOWN);
+            rig.tap(RIGHT);
             rig.key(Y, true);
         }
     }
-    // SHAPE, a choice, is no grip: Y held, the D-pad is the cursor's, and up is the Q dial again (then Q's).
+    // SHAPE, a choice, is no grip: Y held, the D-pad is the cursor's, and LEFT is the Q dial again (then Q's).
     rig.key(Y, false);
-    rig.tap(DOWN);
+    rig.tap(RIGHT);
     rig.key(Y, true);
     CHECK(still(4) && fx.bandGrip() == -1);
-    rig.tap(UP);
+    rig.tap(LEFT);
     CHECK(still(3) && p(0, 3) == shape0 && p(0, 2) == 7.f * 0.05f);
     rig.key(Y, false);
     // Another effect: Y held does what it always did on a dial (nothing): the D-pad moves the cursor.
@@ -11836,7 +12003,7 @@ void testHoldYMovesABandTwoWays() {
     rig.key(Y, false);
     // A direction that brought the cursor onto the dials with Y held is a move, not a turn (review of G18, as the
     // roll's X): from BAND's line, RIGHT held past the repeat's wait, or the stick pushed across, leaves FREQ as it
-    // was until a fresh push; so does UP held from SHAPE onto Q.
+    // was until a fresh push; so does LEFT held from SHAPE onto Q.
     rig.tap(LEFT);
     CHECK(still(0));
     const float f3 = p(0, 0), g3 = p(0, 1), q3 = p(0, 2);
@@ -11866,11 +12033,12 @@ void testHoldYMovesABandTwoWays() {
     fx.goTo(0, 4);
     rig.frames(1);
     rig.key(Y, true);
-    rig.key(UP, true);
+    const float f5 = p(0, 0);
+    rig.key(LEFT, true);
     rig.frames(30);
-    rig.key(UP, false);
+    rig.key(LEFT, false);
     rig.frames(1);
-    CHECK(still(3) && p(0, 2) == q3);
+    CHECK(still(3) && p(0, 2) == q3 && p(0, 0) == f5); // (LEFT held onto Q: neither Q nor FREQ)
     rig.key(Y, false);
     fx.goTo(0, 1);
     rig.frames(1);
@@ -14256,6 +14424,7 @@ int main(int argc, char** argv) {
         testBandFreqStepsAThirdOfAnOctave();
         testHoldYMovesABandTwoWays();
         testFxSwitchesType();
+        testFxDialsWalkAcross();
         testFxSwitchMends();
         testTheFxScreensList();
         testTheFxScreenAsDrawn();
@@ -14477,6 +14646,7 @@ int main(int argc, char** argv) {
     testBandFreqStepsAThirdOfAnOctave();
     testHoldYMovesABandTwoWays();
     testFxSwitchesType();
+    testFxDialsWalkAcross();
     testFxSwitchMends();
     testEffectsThroughTheSession();
     testSendsThroughTheSession();

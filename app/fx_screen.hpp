@@ -264,6 +264,10 @@ public:
     // column (0 the list), how many types the family has, and which of them the slot is. Below the first setting
     // it is nullptr only for a family of one, and that is what sends LEFT back to the list from there.
     static const char* typeKeyFor(int column, int types, int at);
+    // With A up on a dial: the key the bar names for walking them (owner, 2026-11-25: LEFT / RIGHT walk the dials,
+    // LEFT from the first is the list, RIGHT on the last stops), only the ways that do something: "LEFT" on the last
+    // (and on a line of one dial), else "LEFT / RIGHT"; nullptr in the list. `last` is how many dials the line has.
+    static const char* walkKeyFor(int column, int last);
 
 private:
     static bool sends(int row) { return row == kSendsRow; }

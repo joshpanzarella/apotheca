@@ -348,8 +348,8 @@ to the sound just now.
 | | Hold A, then **B** | **As it was**: nothing tried goes in. Leaving the screen or the track with A held does the same |
 | | Hold B | **Deletes the effect**, with its settings and its automation: a bar fills for half a second, and the heading says DELETING THIS EFFECT. Let go sooner and it stays. **SELECT + B brings it back**, its settings and automation with it. On SENDS a tap of B: nothing sent. |
 | | Hold Y + up / down | On one of the track's own three lines: **moves it** there, settings, automation and MODs with it. The cursor goes with it; the ends stop. One step of undo. The buses' and the master's never move. |
-| The settings | Up / down | The next setting |
-| | Left | Back to the list, on the same line, from any setting. (Right does nothing here.) |
+| The settings | Left / right | The next dial, across: they sit side by side. **Left from the first is back to the list**, on the same line. Right on the last stops. The stick across does the same |
+| | Up / down | Nothing, without A (hold A to turn the dial) |
 | | **Hold A + left / right** | **The TYPE before / after** (COMP to DUCK), at once, in the same grip that turns the value: the cursor stays on its row. The first and the last type stop. |
 | | Hold A + up / down | The stick turns it. The D-pad moves it a twentieth, or to the next choice (BAND's FREQ: a third of an octave). |
 | | **Hold Y** on BAND's FREQ, GAIN or Q | **Moves the band two ways at once**: left / right is FREQ, up / down is GAIN (on the Q dial, Q). The stick does both together (push it on a slant); the D-pad moves each a push (FREQ a third of an octave, GAIN or Q a twentieth). The cursor stays. Not on SHAPE, and with A held A's jobs stand (left / right is still the TYPE). With WRITE on, both are recorded. The bar says it only while Y is held: it has no room before. |
