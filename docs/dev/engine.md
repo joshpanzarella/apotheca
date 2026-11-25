@@ -55,6 +55,10 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   `testAPresetPutsTheMacrosRestBack`). The app sends the macros after a built-in preset too
   (`chooseSynthPreset`), as `sendSong` does: the engine is told the project's knobs, never left to agree
   by itself (`app_test` `testABuiltInPresetRestsTheMacrosWhereTheyShow`).
+- **A key an audition holds is the player's until its own NoteOff** (review of gesture audit G33,
+  2026-11-25; drums-and-samples.md): `NoteOn` / `NoteOff` with `e = 1` set and clear `Track::auditioned`;
+  `fireNoteOffs` passes such a key by, and an audition's NoteOff on a key the song still plays leaves it to
+  the song's note-off. `letGoOfNotes` and a track taken away clear it. With no audition nothing differs.
 - **A tempo change keeps every place in the step** (`SetTempo`): what is left
   of the step, an arpeggio's wait, notes waiting, notes' ends and drum hits
   waiting are all scaled by the same amount, so the arpeggio stays on the beat.

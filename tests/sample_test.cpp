@@ -1098,6 +1098,31 @@ void testUndoPutsBackARecording() {
         CHECK(session.undoSteps() == steps);
     }
     {
+        // The WiFi page's changes in one frame: every step follows them all, in order, in one pass over its
+        // text (review of G04: a pass for each change).
+        const std::string sent = tempFolder("samples-undo-wifi");
+        writeWav(sent + "/hit.wav", tone(0.5f, 0.25f), 48000);
+        mkdir((sent + "/a").c_str(), 0755);
+        mkdir((sent + "/b").c_str(), 0755);
+        Rig rig(sent);
+        Session& session = rig.session();
+        TrackData& track = rig.project().tracks[0];
+        session.setLaneSample(0, 5, "hit");
+        rig.frames(2);
+        session.setLaneLevel(0, 1, 0.5f);
+        rig.frames(60);
+        CHECK(session.undoSteps() == 1);
+        CHECK(std::rename((sent + "/hit.wav").c_str(), (sent + "/b/hit.wav").c_str()) == 0);
+        session.transfer().noteChange("hit.wav", "a/hit.wav");
+        session.transfer().noteChange("a/hit.wav", "b/hit.wav");
+        rig.frames(2);
+        CHECK(std::strcmp(track.laneSample[5], "b/hit") == 0 && !session.laneSound(0, 5).missing && session.undoSteps() == 1);
+        undoKeys(rig, B);
+        CHECK(track.laneLevel[1] != 0.5f && std::strcmp(track.laneSample[5], "b/hit") == 0 && !session.laneSound(0, 5).missing);
+        undoKeys(rig, A);
+        CHECK(track.laneLevel[1] == 0.5f && std::strcmp(track.laneSample[5], "b/hit") == 0 && !session.laneSound(0, 5).missing);
+    }
+    {
         // The list of recordings puts each on as the cursor comes to it. A visit is ONE step of undo
         // however long it rests on each (A keeps one), and none when the sound is as it was (B, a carry).
         const std::string listed = tempFolder("samples-undo-list");
@@ -1156,6 +1181,76 @@ void testUndoPutsBackARecording() {
         CHECK(!kit.picker().isOpen() && std::strcmp(track.laneSample[5], "kicks/a") == 0 && session.undoSteps() == 0 && session.redoSteps() == 1);
         undoKeys(rig, A);
         CHECK(std::strcmp(track.laneSample[5], "c") == 0 && track.laneLevel[1] == 0.3f);
+    }
+    {
+        // B in the list puts back the lane's cut with its recording (review of G04). Every recording put on
+        // gives the lane the whole, the one it had too when the cursor comes back to it, so the name alone
+        // lost the cut, and that was a step of undo with the redo steps gone.
+        const std::string listed = tempFolder("samples-undo-cut");
+        for (const char* name : {"/a.wav", "/b.wav"}) writeWav(listed + name, tone(0.5f, 0.25f), 48000);
+        Rig rig(listed);
+        Session& session = rig.session();
+        KitScreen& kit = rig.app.kit();
+        TrackData& track = rig.project().tracks[0];
+        session.setLaneSample(0, 5, "a");
+        LaneEdit cut;
+        cut.start = kEditUnits / 4;
+        cut.end = kEditUnits / 2;
+        session.setLaneEdit(0, 5, cut);
+        session.view = View::Device;
+        kit.goTo(5, KitScreen::kSound);
+        rig.frames(2);
+        session.setLaneLevel(0, 1, 0.5f); // a step, taken back: one to redo
+        rig.frames(60);
+        undoKeys(rig, B);
+        CHECK(session.undoSteps() == 0 && session.redoSteps() == 1 && track.laneEdit[5] == cut);
+        rig.frames(60);
+        // Away and back: "a" again, given the whole on the way.
+        rig.tap(A);
+        CHECK(kit.picker().isOpen());
+        rig.tap(DOWN);
+        rig.frames(60);
+        rig.tap(UP);
+        rig.frames(60);
+        CHECK(std::strcmp(track.laneSample[5], "a") == 0 && track.laneEdit[5].start == 0);
+        rig.tap(B);
+        rig.frames(60);
+        CHECK(!kit.picker().isOpen() && std::strcmp(track.laneSample[5], "a") == 0 && track.laneEdit[5] == cut);
+        CHECK(session.undoSteps() == 0 && session.redoSteps() == 1);
+        // Left on another: the name and the cut back.
+        rig.tap(A);
+        rig.tap(DOWN);
+        rig.frames(60);
+        CHECK(std::strcmp(track.laneSample[5], "b") == 0 && track.laneEdit[5].start == 0);
+        rig.tap(B);
+        rig.frames(60);
+        CHECK(!kit.picker().isOpen() && std::strcmp(track.laneSample[5], "a") == 0 && track.laneEdit[5] == cut);
+        CHECK(!session.laneSound(0, 5).missing && session.undoSteps() == 0 && session.redoSteps() == 1);
+        undoKeys(rig, A); // the step waiting is still the one taken back
+        CHECK(track.laneLevel[1] == 0.5f && track.laneEdit[5] == cut);
+        // The recording it had deleted in the list (hold B): the drum goes back as it is, not given that cut.
+        rig.frames(60);
+        rig.tap(A);
+        rig.key(B, true);
+        rig.frames(65);
+        rig.key(B, false);
+        rig.frames(1);
+        CHECK(kit.picker().isOpen() && session.sampleNames().size() == 1 && std::strcmp(track.laneSample[5], "b") == 0);
+        rig.tap(B);
+        rig.frames(60);
+        CHECK(!kit.picker().isOpen() && !track.laneSample[5][0] && track.laneEdit[5].start == 0 && track.laneEdit[5].end == kEditUnits);
+        // The built-in drum cut: its cut back as well.
+        session.setLaneEdit(0, 6, cut);
+        kit.goTo(6, KitScreen::kSound);
+        rig.frames(60);
+        CHECK(!track.laneSample[6][0] && track.laneEdit[6] == cut);
+        rig.tap(A);
+        rig.tap(DOWN);
+        rig.frames(60);
+        CHECK(std::strcmp(track.laneSample[6], "b") == 0 && track.laneEdit[6].start == 0);
+        rig.tap(B);
+        rig.frames(60);
+        CHECK(!kit.picker().isOpen() && !track.laneSample[6][0] && track.laneEdit[6] == cut);
     }
 }
 

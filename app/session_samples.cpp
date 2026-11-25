@@ -191,11 +191,11 @@ void Session::undoFollows(const std::vector<std::pair<std::string, std::string>>
     follow(settled_);
 }
 
-void Session::recordingChanged(const std::string& from, const std::string& to) {
+void Session::recordingChanged(const std::string& from, const std::string& to, bool stepsFollow) {
     if ((from.empty() && to.empty()) || (!from.empty() && !sampleNameOk(from)) || (!to.empty() && !sampleNameOk(to))) return;
     // The new name is no step of undo (nothing was done to the song), and the steps follow it.
     const bool unmarked = undoReady_ && soundMark() == soundMark_;
-    if (!from.empty() && !to.empty()) undoFollows({{from, to}});
+    if (stepsFollow && !from.empty() && !to.empty()) undoFollows({{from, to}});
     for (int t = 0; t < kNumTracks; ++t) {
         TrackData& track = project.tracks[t];
         const bool sampler = holdsRecording(track.kind); // (a sampler or a CLOUD: one recording)

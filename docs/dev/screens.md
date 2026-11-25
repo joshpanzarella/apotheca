@@ -152,7 +152,13 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     `setEffectParam`, so WRITE records both lanes. **The option not taken: hold A + the stick across = FREQ**:
     on a FILTER dial A + D-pad LEFT / RIGHT is the TYPE, so the stick and the D-pad would have done two jobs on
     one axis, which no other two-way grip (the mixer, a drum hit, a roll note) does. Y on the list (column 0)
-    still moves the line; a dial is column 1 and up, so the two never meet. The bar with Y up is full (it already
+    still moves the line; a dial is column 1 and up. **They did meet** (review of G18, 2026-11-25; this said
+    "the two never meet"): with Y held on BAND's line, RIGHT goes into the settings (usually FREQ), and the
+    same RIGHT held then repeated into FREQ, a third of an octave a repeat; a sideways slip of the stick while
+    moving the line swept FREQ with no A held; UP held from SHAPE landed on Q and turned it. **A direction that
+    brings the cursor onto BAND's dials with Y held is a move, not a turn** (`FxScreen::moved`, the roll's
+    rule for X: a direction already held is no turn): the held D-pad stops repeating and the stick waits until
+    it is back in the middle; a fresh push turns. The bar with Y up is full (it already
     leaves HOLD X out), so "HOLD Y" is in the manual only; with Y held the bar says LEFT / RIGHT freq, UP / DOWN
     gain (or q). `app_test --fx` `testHoldYMovesABandTwoWays`. **Not heard on the handheld.**
   - A choice has no bar: one piece for each choice, the one it is lit

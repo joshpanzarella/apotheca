@@ -700,6 +700,7 @@ void Engine::letGoOfNotes(bool stopping) {
         else track.synth->allNotesOff();
         for (double& off : track.offIn) off = kNoNote;
         track.keysHeld.clearAll();
+        track.auditioned.clearAll(); // (every key let go: an audition's NoteOff lost meanwhile cannot hold one for ever)
     }
     closeThrows();
 }
@@ -1041,7 +1042,9 @@ void Engine::fireNoteOffs() {
         if (!track.synth) continue;
         track.keysHeld.each([&](int pitch) {
             if (track.offIn[pitch] < 1.0) {
-                track.synth->noteOff(pitch);
+                // A key X holds stays held: its audition's NoteOff lets it go (review of gesture audit G33: the
+                // song's own note on that key ending silenced X, though X was still down).
+                if (!track.auditioned.has(pitch)) track.synth->noteOff(pitch);
                 track.offIn[pitch] = kNoNote;
             }
             if (track.offIn[pitch] >= kNoNote) track.keysHeld.clear(pitch);
@@ -1313,10 +1316,23 @@ bool Engine::applySound(const Command& c) {
         if (validTrack(c.track)) tracks_[c.track].glideFrom = static_cast<std::uint8_t>(glideFromKind(c.a));
         break;
     case Command::NoteOn:
-        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->noteOn(c.a, c.value);
+        if (validTrack(c.track) && tracks_[c.track].synth) {
+            // An audition's key (X held: e = 1) is the player's until its own NoteOff (fireNoteOffs passes it by).
+            if (c.e == 1 && c.a >= 0 && c.a < 128) tracks_[c.track].auditioned.set(c.a);
+            tracks_[c.track].synth->noteOn(c.a, c.value);
+        }
         break;
     case Command::NoteOff:
-        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->noteOff(c.a);
+        if (validTrack(c.track) && tracks_[c.track].synth) {
+            Track& track = tracks_[c.track];
+            // An audition's let go, on a key the song is playing too: the song's note plays on, and its own
+            // note-off lets the key go (review of gesture audit G33: X let go cut the song's note).
+            if (c.e == 1 && c.a >= 0 && c.a < 128) {
+                track.auditioned.clear(c.a);
+                if (track.offIn[c.a] < kNoNote) break;
+            }
+            track.synth->noteOff(c.a);
+        }
         break;
     case Command::SelectPreset:
         if (validTrack(c.track) && tracks_[c.track].synth) {
@@ -2295,6 +2311,7 @@ void Engine::takeAway(int t) {
     for (auto& lane : track.pending)
         for (auto& p : lane) p = Track::Pending();
     track.keysHeld.clearAll();
+    track.auditioned.clearAll();
     track.notesWaiting.clearAll();
     track.hitsWaiting.clearAll();
     for (int bus = 0; bus < kBuses; ++bus) { // the next instrument here starts with its sends as they are set

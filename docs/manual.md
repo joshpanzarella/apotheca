@@ -248,7 +248,7 @@ column. It opens in the folder of the recording that is on, on it.
 | **L1 / R1** | A page up / down. (With nothing at all on the card, R1 records: below) |
 | **Hold R1** | On a recording: **carry it**. Keep R1 down and steer (D-pad, stick, L1) to a folder, or into one; let go and it is there. The top line says where it would go. Let go on a row of SAMPLES that is no folder: out of every folder. **B with R1 held calls it off** |
 | A | On a recording: keep it (one step of SELECT + B, however many you passed on the way). On a folder: into it. On **+ NEW FOLDER**: type its name (A types, Y deletes a letter, **B makes the folder and leaves**, as START does; with nothing typed B leaves and makes none) |
-| B | **A tap**: put back what was there before the list opened. On a recording or a folder (where holding B deletes), only a quick tap does: held longer than a quarter of a second, or with another button pressed meanwhile, letting go does nothing and the list stays where it is |
+| B | **A tap**: put back what was there before the list opened, a lane's cut (EDIT's START and END) with it. On a recording or a folder (where holding B deletes), only a quick tap does: held longer than a quarter of a second, or with another button pressed meanwhile, letting go does nothing and the list stays where it is |
 | X | **While it is still playing: it plays on to its end.** Nothing playing: hear it again; **held, it plays until you let go**, or to its end; a tap plays a moment |
 | **Hold B** | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. Or an **empty folder**: one with anything in it is never deleted. Let go before the bar is full and nothing happens |
 | Y / R1 | **With nothing on the card at all** (no recording, no folder), the list says where recordings come from: **Y catches the last bar and R1 records**, as on the page it was opened from. The list closes as a tap of B closes it |
@@ -2327,7 +2327,7 @@ is loud; holding A shapes it the way it is drawn.
 | Hold A, **D-pad** up / down | Length by whole steps: the end goes to the next step line, or the one before |
 | Hold A, **L2 / R2** | Nudge: the note a tenth of a step early (L2) or late (R2), up to half a step. It sits a little above or below its line. |
 | B | Delete the note under the cursor |
-| X | Hear the key, the note or the chord **for as long as X is held** (a tap: a moment), and over the song while it plays |
+| X | Hear the key, the note or the chord **for as long as X is held** (a tap: a moment), and over the song while it plays. A key the song plays too stays held while X is; letting X go leaves the song's own note playing. ACID plays one note at a time, so its song's next note takes the key from X |
 | Hold R1 and drag | Paint a note on every step crossed |
 | Hold B and drag | Delete every note (or chord) the cursor crosses |
 | **Hold X on a note**, left / right | **RATCHET**: the note played 2, 3 or 4 times inside its first step |
@@ -2428,7 +2428,7 @@ Y is the chord button. Chords come from the song's chord pack.
 | ...up / down | Inversion: the bottom note goes up an octave, or the top one comes down |
 | ...L1 / R1 | Another pack |
 | ...L2 / R2 | **Half or twice as long**: 1, 2, 4, 8 or 16 steps (from a length between two, the next one that way). The box above the bar says it, and where it does not fit here: CHORD 16 STEPS: 3 FIT. It goes when you pick another chord, inversion or pack, so the chords are not hidden |
-| ...X | Hear it again |
+| ...X | Hear it, for as long as X is held (a tap: a moment), over the song too |
 | Let go of Y | The chord lands at the cursor, and the cursor moves on past it |
 | ...B first | Nothing lands |
 

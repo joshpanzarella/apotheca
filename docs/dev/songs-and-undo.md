@@ -88,7 +88,16 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - **A rename, a move or a carry (`recordingChanged`) and a recording found elsewhere (`findMissing`)
     are no step, and the steps follow them** (`undoFollows`: every undo and redo step and `settled_`,
     through `renameRecordings`, as the saved songs; a plain search first). Without it a rename was a
-    step, and every step before it put back a name whose file had gone.
+    step, and every step before it put back a name whose file had gone. **What that costs** (review of
+    G04, 2026-11-25): up to 41 whole songs' texts gone through on the frame of the rename, which nearly
+    always all name it. `renameRecordings` now passes a line over at a glance unless its first word is
+    `track`, `sample` or `sound` (`namesARecording`: it made a stream for every line), which the saved
+    songs' following (`followFile`) gains too; the WiFi page's changes of one frame are one
+    `undoFollows` (`recordingChanged(..., false)`, in order), not one each. A rename with twenty steps
+    that name it: 0.6 to 0.9 ms in the bench's song (33 KB), 17 to 20 ms in the largest (64 scenes,
+    every lane of automation: 2.2 MB); 3.4 to 4.0 and 85 to 99 ms before (`bench --app`, measured.md).
+    **Not timed on the handheld** (13 to 20 times slower: about 8 to 18 ms, and a quarter to two fifths
+    of a second in the largest song, a frame or more it stops the screen for).
   - **Deleting a recording (hold B in the list) is no step either** (`deleteSample` takes the mark
     again): it is for good, and undo would only put back a missing name. A step from before that
     names it finds it missing.
@@ -98,11 +107,19 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     rested on and twenty of them pushed every older step out. While a list is open on the screen
     shown, the sound's mark is not compared and a burst does not end; when it closes, A's pick is one step
     from before it opened, and B (what was there put back) leaves the mark as it was: no step, and
-    the redo steps stay. A burst the list was opened in goes on, so the pick joins it. Hold A + UP /
+    the redo steps stay. **B puts a lane's cut back too** (review of G04, 2026-11-25: the kit's
+    `SamplePicker::Jobs::putBack`, kept from when the list opened): every recording put on gives the lane
+    the whole (`setLaneSample`), the one it had as well when the cursor comes back to it, so B put back
+    only the name, the cut was lost, and the mark differed: a step, the redo steps gone, against these
+    words. A recording deleted in the list meanwhile takes its cut with it (the drum goes back whole). No
+    DRUM SYNTH voice to put back: on a voice lane A's tap opens its knobs, never the list. The sampler's
+    and CLOUD's settings are not touched by a pick, so their B stays `use(original)`. A burst the list was opened in goes on, so the pick joins it. Hold A + UP /
     DOWN on CLOUD's SOURCE (no list) is a step per rest, as a knob turned.
   - Tests: `sample_test` `testUndoPutsBackARecording` (CATCH on a lane and on a CLOUD, B on SOUND on
-    a lane, a voice and a sampler, renames, a move with a redo step waiting, a find, a delete, a visit
-    to the list: A, B, opened in a burst, a carry while open) and
+    a lane, a voice and a sampler, renames, the WiFi page's two in one frame, a move with a redo step
+    waiting, a find, a delete, a visit to the list: A, B, opened in a burst, a carry while open, B on a
+    lane with a cut and on the built-in drum cut, its recording deleted meanwhile), `transfer_test`
+    `testRenamingInSongText` (the lines passed over at a glance) and
     `laneedit_test` `testUndoAndANewRecording` (the old sound and its cut, heard as by hand).
     Twenty mutants, all killed. The idle frame with the names in the mark: 0.032 to 0.034 ms
     (`bench --app` on a busy desk, not side by side with the old). **Not run on the handheld; nobody

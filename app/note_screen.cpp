@@ -778,7 +778,12 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         } else if (b == Button::L2 || b == Button::R2) {
             doubleHand(b == Button::R2 ? 1 : -1); // (the App sends them here while Y is held on the roll)
         } else if (b == Button::X) {
-            hearChord(editing_ >= 0 ? pat().chords[editing_] : inHand());
+            // Heard for as long as X is held (a tap: a moment), over the song too, as X on a chord placed (review
+            // of G33: it was hearChord's fixed moment a key).
+            const ChordEvent chord = editing_ >= 0 ? pat().chords[editing_] : inHand();
+            int keys[kChordNotes];
+            const int count = chord.pitches(keys);
+            session_.auditionHeld(project_.track, keys, count, chord.velocity, this);
         } else if (b == Button::B) {
             putPickBack(); // as it was when Y went down (G26: it broke the chord up)
             picking_ = false;

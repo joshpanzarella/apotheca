@@ -486,6 +486,9 @@ void FxScreen::press(Button b) {
             if (b == Button::Down) goTo(row_, column_ + 1);
             if (b == Button::Left) column_ = 0;
         }
+        // Y held, and this move came onto BAND's FREQ, GAIN or Q (from its line, or from SHAPE): the push that
+        // brought the cursor here was a move, so it turns nothing (moved(): a fresh push does).
+        if (bandGrip() >= 0) gripEntered_ = true;
         return;
     }
     if (column_ == 0) {
@@ -556,6 +559,19 @@ int FxScreen::knobHere() const {
     return -1; // a bus's or the master's setting: nothing there is automated or modulated
 }
 
+// After a push of a direction (press): one that brought the cursor onto BAND's dials with Y held stops the held
+// D-pad's repeats, and the stick waits until it comes back to the middle (stickWait_), so neither goes on into
+// the grip and turns FREQ or Q (review of G18: a sideways slip of the stick while moving the line swept FREQ).
+// The roll's rule for X (note_screen.cpp, fxWait_): a direction that was already held is not a turn.
+void FxScreen::moved(const Input& input) {
+    if (!gripEntered_) return;
+    gripEntered_ = false;
+    repeating_ = Button::None;
+    saved_ = 0.f;
+    stickWas_ = false;
+    stickWait_ = input.stickX() != 0.f || input.stickY() != 0.f;
+}
+
 void FxScreen::endMod(const Input& input) {
     if (!modKnob_.held()) return;
     modKnob_.letGo();
@@ -601,6 +617,7 @@ void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
         press(b);
         repeating_ = b;
         repeat_.restart();
+        moved(input);
     } else if (b == Button::B && holding_) {
         // B with A held calls it off: the slot is as it was, and A does nothing more until it is pressed again.
         if (tryRow_ >= 0) callOff(), holding_ = false;
@@ -738,8 +755,11 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
         } else {
             saved_ += stickWas_ ? std::fabs(push) * (kinds ? kKindsPerSecond : kMovesPerSecond * climb) * dt : 1.f;
             stickWas_ = true;
-            for (; saved_ >= 1.f; saved_ -= 1.f)
+            for (; saved_ >= 1.f; saved_ -= 1.f) {
                 press(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
+                if (gripEntered_) break; // (onto BAND's dials with Y held: moved() below)
+            }
+            moved(input);
         }
     }
     // A held D-pad: the list of effects and a TYPE (a choice) at the list's pace, after the cursor's wait they
@@ -748,7 +768,10 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
         const bool types = typeKey() != nullptr && (repeating_ == Button::Left || repeating_ == Button::Right); // a TYPE: a choice
         return picking() || types ? Pace::List : Pace::Cursor;
     };
-    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::Cursor, runs())) press(repeating_);
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::Cursor, runs())) {
+        press(repeating_);
+        moved(input);
+    }
 }
 
 // ---- drawing ------------------------------------------------------------------------------

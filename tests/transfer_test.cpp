@@ -1094,6 +1094,11 @@ static void testRenamingInSongText() {
     CHECK(std::string(was->tracks[0].laneSample[0]) == "thud" && std::string(now->tracks[0].laneSample[0]) == "kicks/big boom");
     CHECK(std::string(now->tracks[0].laneSample[7]) == "kicks/big boom" && now->tracks[0].laneFit[7] == 4 && std::string(now->tracks[0].laneSample[4]) == "kicks/big boom");
     CHECK(std::string(now->tracks[1].sample) == "kicks/big boom" && std::string(now->tracks[0].laneSample[1]) == "kicks/snap" && now->tracks[0].laneFit[1] == 16);
+    // Lines with none of the three words are passed over at a glance (review of G04): copied as they are, a
+    // Windows line end too, and a word that only begins as one of them is not it. A tab after the word is white space.
+    text = "apotheca-song 1\r\ntrack sampler\r\nlevels 1 2\r\nsounds thud\r\nsound\tthud\r\nsamples 1 0 thud\n\ttrack drums\nsample\t1 0 thud\n";
+    CHECK(renameRecordings(text, one));
+    CHECK(text == "apotheca-song 1\r\ntrack sampler\r\nlevels 1 2\r\nsounds thud\r\nsound\tkicks/big boom\r\nsamples 1 0 thud\n\ttrack drums\nsample\t1 0 kicks/big boom\n");
     // Nothing names it: nothing changes, and it says so.
     text = after;
     CHECK(!renameRecordings(text, one) && text == after);

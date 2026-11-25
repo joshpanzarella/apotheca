@@ -237,6 +237,7 @@ void Session::audition(int track, int pitch, float velocity) {
     Command c;
     c.track = slot->track;
     c.a = slot->pitch;
+    c.e = 1; // an audition's: the song's own note on the key plays on, and the song's note-off leaves it (engine)
     c.type = Command::NoteOff;
     if (slot->track >= 0) engine.send(c);
     c.type = Command::NoteOn;
@@ -379,6 +380,7 @@ void Session::endHearing() {
         c.type = Command::NoteOff;
         c.track = s.track;
         c.a = s.pitch;
+        c.e = 1; // (an audition's)
         engine.send(c);
         s.track = -1;
     }
@@ -485,11 +487,15 @@ void Session::update(Uint32 nowMs) {
     const std::vector<Transfer::Change> changes = transfer_.takeChanges();
     if (!changes.empty()) {
         ++sampleFiles_;
-        std::vector<std::pair<std::string, std::string>> renames;
+        std::vector<std::pair<std::string, std::string>> renames, moved;
         for (const Transfer::Change& change : changes) {
-            recordingChanged(change.from, change.to);
+            recordingChanged(change.from, change.to, false);
             renames.push_back({change.from, change.to}); // one sent or deleted has no name on one side, and is passed over there
+            if (!change.from.empty() && !change.to.empty() && sampleNameOk(change.from) && sampleNameOk(change.to)) moved.push_back(renames.back());
         }
+        // Every step of undo follows the frame's renames in one pass over its text, in order (a folder sent
+        // whole is many: a pass for each was twenty-one songs' texts gone through again each time).
+        undoFollows(moved);
         followLater(renames); // a few files a frame, below (it was all at once: a freeze)
         // The open song is written now, not at the next autosave: its revs will have the new
         // name, and a flat battery in between would leave the song itself with the old one.

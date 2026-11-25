@@ -317,6 +317,10 @@ private:
     ModKnob modKnob_;
     bool stickWait_ = false; // X let go off a MOD with the stick still pushed: it moves nothing until it comes back
     void endMod(const Input& input);
+    // A direction moved the cursor onto BAND's dials with Y held (press). It was a move, not a turn (review of G18,
+    // as the roll's X): the held D-pad stops and the stick waits until it has come back (moved()).
+    bool gripEntered_ = false;
+    void moved(const Input& input);
     void drawModPanel(SDL_Renderer* r, const Fonts& fonts) const;
 };
 

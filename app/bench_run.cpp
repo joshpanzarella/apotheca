@@ -1207,6 +1207,33 @@ static void drumSynthRows() {
 
 static int appRows(bool all);
 
+// A recording renamed (a carry let go, the WiFi page) with twenty steps of undo, each naming it: the song, every
+// step's text, the redo steps' and the one undo goes back to follow it (Session::undoFollows; review of gesture
+// audit G04, 2026-11-25). Lane 1 of every drum track has it; its file is not there (no card), as the lanes'
+// reading it again on the way costs the same with or without the steps.
+static void renameRow(App& app, Session& session, Engine& engine, const Input& input, Uint32& clock, const char* name) {
+    std::vector<float> out(512);
+    const auto drain = [&] { engine.render(out.data(), 64); };
+    Project& p = app.project();
+    for (int t = 0; t < kNumTracks; ++t)
+        if (p.tracks[t].kind == TrackKind::Drums) session.setLaneSample(t, 0, "kicks/a");
+    for (int step = 0; step < 200 && (step <= Session::kUndoLevels || session.undoSteps() < Session::kUndoLevels); ++step) { // (an edit the text rounds away is none)
+        p.tracks[0].drums[0][0].level[1][step % kSteps] = (step % 2) ? 0.f : 0.9f;
+        session.noteEdit();
+        app.update(input, clock += 800);
+        drain();
+    }
+    const int rounds = 10;
+    double spent = 0.0;
+    for (int i = 0; i < rounds; ++i) {
+        const char* from = i % 2 ? "kicks/b" : "kicks/a";
+        const char* to = i % 2 ? "kicks/a" : "kicks/b";
+        spent += ms([&] { session.recordingChanged(from, to); }, 1);
+        for (int k = 0; k < 20; ++k) drain();
+    }
+    std::printf("  %-28s %7.3f ms  (%d steps)\n", name, spent / rounds, session.undoSteps());
+}
+
 int apotheca::runBench() {
     std::setvbuf(stdout, nullptr, _IOLBF, 0); // a line at a time down the pipe, so the SPEED TEST page shows each row as it comes
     processorRows("before the rows", true);
@@ -1438,6 +1465,28 @@ static int appRows(bool all) {
             spent += ms([&] { session.nextScene(); app.update(input, clock += 800); drain(); session.undo(); app.update(input, clock += 800); drain(); }, 1);
         }
         std::printf("  %-28s %7.3f ms\n", "NEXT SCENE, then undo", spent / rounds);
+    }
+    renameRow(app, session, *engine, input, clock, "a rename, 20 steps of undo");
+    if (!all) {
+        // The same in the largest song (the desk only: the handheld would take seconds to make it): sixty-four
+        // scenes, every lane of automation written.
+        std::unique_ptr<Engine> bigEngine(new Engine);
+        App big(*bigEngine);
+        Session& bigSession = big.session();
+        for (int t = 1; t < kNumTracks; ++t) bigSession.addTrack(kinds[t % 4]);
+        Project& q = big.project();
+        for (int t = 0; t < kNumTracks; ++t)
+            for (int scene = 0; scene < kMaxScenes; ++scene) {
+                for (int step = 0; step < kSteps; ++step) q.tracks[t].drums[scene][0].level[step % kDrumLanes][step] = 0.8f;
+                for (int n = 0; n < 12; ++n) q.tracks[t].notes[scene][0].notes[n] = NoteEvent{n, 48 + n, 1.f, 0.f, 0.8f};
+                for (int lane = 0; lane < kAutoLanes; ++lane)
+                    for (int i = 0; i < kSteps; ++i) q.tracks[t].automation[scene][lane][i] = 0.5f;
+            }
+        Uint32 bigClock = 1000;
+        big.update(input, bigClock += 16);
+        char name[48];
+        std::snprintf(name, sizeof name, "...in a %zu KB song", songText(q).size() / 1024);
+        renameRow(big, bigSession, *bigEngine, input, bigClock, name);
     }
     {
         // What the program holds (the whole process: the engine, the Session, its undo, the song's text kept).

@@ -37,6 +37,16 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   pattern plays it; a tapped built-in drum whole: `letGoHeard`). **What stays: a MOD held is run only while
   stopped** (call E, 2026-11-15, kept: `Session::hearMods` sends nothing while playing, where the song's
   MODs run). Stepping a preset or moving a note or chord with A held stays silent while playing (not X).
+  **X's key and the song's are one key of the synth** (review of G33, 2026-11-25): `Command::NoteOn` / `NoteOff`
+  play by pitch, and the song's own note ending let every voice on that key go, X's too, so X held on a note
+  the song plays went quiet when the song's copy ended; letting X go cut the song's note. An audition's commands
+  now carry `e = 1` (as a drum audition's Trigger does) and the engine keeps the keys it holds
+  (`Track::auditioned`): `fireNoteOffs` passes a key X holds by, and an audition's NoteOff leaves a key the song
+  still plays (`offIn` below `kNoNote`) for the song's own note-off. Play, Stop, panic and a track taken away
+  clear them (so a NoteOff lost to a full queue cannot hold a key for ever). Nothing changes in a song with no
+  audition (the same to the bit). **What stays: ACID plays one note at a time**, so the song's next note on its
+  track takes the voice from X (the manual says so). Choosing a chord (Y held), X now holds the chord in hand
+  as well (it was `hearChord`'s fixed moment a key). `hear_test` `testXHeldOverTheSongsOwnKey`.
   A chord's keys are held as one: `Session::auditionHeld(track, pitches, count, ...)`; every key X holds is
   at `kHeldOn` (only what X holds now ever is), so `letGoHeard` and `stopHeard` let every key go, and a held
   key struck again (a setting turned) stays held. **A on a drum lane's name is silent** (it sounded the drum
@@ -481,7 +491,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     sampler and CLOUD); the list closes as B's tap does first (`putBack`), so what the screen says next
     is seen. "Nothing" is no recording and no folder, exactly when the words are drawn; with anything
     on the card Y and R1 are as they were. The bar says Y catch and R1 record there in place of the page.
-    `picker_test` `testBIsATapAndTheEmptyList`, `testTheEmptyListCatchesAndRecords`.
+    `picker_test` `testBIsATapAndTheEmptyList`, `testTheEmptyListCatchesAndRecords` (the kit's, the sampler's
+    and CLOUD's lists: the bar and what each screen says, review of B4).
   - **It changes the card too** (batch 2, 2026-11-15): `Session::moveSample`,
     `makeSampleFolder`, `deleteSampleFolder`, each a `Session::FileJob` (Done, Same, TooLong,
     Taken, NotEmpty, Failed), reached through the list's `Jobs`. The list never touches a file.
@@ -601,7 +612,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
       none after one is written. Measured on the desk, 40 songs with 10 revs each (one of them the
       bench's 32 KB song): every one naming the recording, all at once was 450 to 740 ms (about 2
       to 4 s on the handheld); a few a frame, the let-go is 1 ms and the longest frame 12 to 16 ms
-      (one card write), 440 frames. None naming it: 2 to 3 ms all at once. `moveSample` answers
+      (one card write), 440 frames. (Since G04 the let-go also has every step of undo follow: 0.6 to 0.9
+      ms more with twenty steps in the bench's song, 17 to 20 in a 2.2 MB one, after `renameRecordings`
+      learnt to pass a line over at a glance: songs-and-undo.md, measured.md. The 1 ms was not timed again.) None naming it: 2 to 3 ms all at once. `moveSample` answers
       `Moving` and the list says MOVING TO X... until `following()` is false, then MOVED TO X,
       or MOVED, BUT A SONG COULD NOT BE SAVED... (`followFailures` went up). **Safe against a
       switch-off**: before any file is touched what is owed is written (`kOwedFile`,

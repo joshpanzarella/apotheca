@@ -106,6 +106,10 @@ public:
         // and do these, as Y and R1 do on the screen that opened it. May be empty.
         std::function<void()> catchBar;                    // Y: the last bar the song played, caught as a recording
         std::function<void()> record;                      // R1: record from the input (again: stop)
+        // B's tap, after use() has put back the recording that was on (where another is on now): what a pick takes
+        // off besides the name goes back too (a lane's cut: each recording put on gives its lane the whole, the
+        // one it had as well). Given that recording's name as it is now ("": deleted meanwhile). May be empty.
+        std::function<void(const std::string&)> putBack;
     };
     // A row of a column.
     enum class Kind { First, Folder, Recording, NewFolder };

@@ -263,8 +263,9 @@ public:
     // the song was opened. Sent (`from` empty): one that was missing by that name is read.
     // A recording of that base name that turns up anywhere (`to` in another folder) is taken by
     // one that was missing, if it is the only one (findMissing). None of it is a step of undo, and
-    // every step of undo follows a rename or a move (undoFollows), as the saved songs do.
-    void recordingChanged(const std::string& from, const std::string& to);
+    // every step of undo follows a rename or a move (undoFollows), as the saved songs do. `stepsFollow`
+    // false: the caller has them follow itself (Session::update, every change of a frame in one pass).
+    void recordingChanged(const std::string& from, const std::string& to, bool stepsFollow = true);
     // Recordings that were renamed or moved while a song was shut. A lane or sampler track whose
     // recording is not where the song says takes the one of the same base name (the part after
     // the folder) from the root of the samples folder or one of its folders, if there is EXACTLY

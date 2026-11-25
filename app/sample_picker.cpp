@@ -326,6 +326,7 @@ void SamplePicker::putBack() {
     waiting_ = false;
     quiet();
     if (on_ != original_ && jobs_.use) jobs_.use(original_);
+    if (jobs_.putBack) jobs_.putBack(original_); // (on the one it had too: put on again on the way, it was given the whole)
     open_ = false;
 }
 

@@ -11786,6 +11786,46 @@ void testHoldYMovesABandTwoWays() {
     rig.frames(1);
     CHECK(p(0, 0) < f2 - 0.1f && p(0, 1) == g2 && still(1));
     rig.key(Y, false);
+    // A direction that brought the cursor onto the dials with Y held is a move, not a turn (review of G18, as the
+    // roll's X): from BAND's line, RIGHT held past the repeat's wait, or the stick pushed across, leaves FREQ as it
+    // was until a fresh push; so does UP held from SHAPE onto Q.
+    rig.tap(LEFT);
+    CHECK(still(0));
+    const float f3 = p(0, 0), g3 = p(0, 1), q3 = p(0, 2);
+    rig.key(Y, true);
+    rig.key(RIGHT, true);
+    rig.frames(30); // 0.48 s: the cursor's repeats would have come since 0.17
+    rig.key(RIGHT, false);
+    rig.frames(1);
+    CHECK(still(1) && p(0, 0) == f3 && p(0, 1) == g3);
+    rig.tap(RIGHT);
+    const float f4 = p(0, 0);
+    CHECK(still(1) && f4 > f3);
+    rig.key(Y, false);
+    rig.tap(LEFT);
+    rig.key(Y, true);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(10);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(still(1) && p(0, 0) == f4 && p(0, 1) == g3);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(5);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(still(1) && p(0, 0) > f4);
+    rig.key(Y, false);
+    fx.goTo(0, 4);
+    rig.frames(1);
+    rig.key(Y, true);
+    rig.key(UP, true);
+    rig.frames(30);
+    rig.key(UP, false);
+    rig.frames(1);
+    CHECK(still(3) && p(0, 2) == q3);
+    rig.key(Y, false);
+    fx.goTo(0, 1);
+    rig.frames(1);
     // WRITE records both, on the step playing.
     session.setWriting(true);
     rig.tap(START);

@@ -766,6 +766,37 @@ void testTheEmptyListCatchesAndRecords() {
     rig.tap(R1);
     rig.frames(1);
     CHECK(!rig.list().isOpen() && rig.app.kit().said().find("NO INPUT FOUND") == 0);
+    // The sampler's list (A on SOUND) and CLOUD's (A on RECORDING): the same, each with its own screen's words.
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Sampler) && session.addTrack(TrackKind::Cloud));
+    rig.app.project().track = 1;
+    rig.frames(2);
+    rig.app.sampler().goTo(0);
+    rig.tap(A);
+    SamplePicker& sampled = rig.app.sampler().picker();
+    CHECK(sampled.isOpen() && barIs(empty, 4));
+    rig.tap(Y);
+    rig.frames(1);
+    CHECK(!sampled.isOpen() && rig.app.sampler().said() == "NOTHING TO CATCH: PLAY SOMETHING FIRST");
+    rig.tap(A);
+    CHECK(sampled.isOpen());
+    rig.tap(R1);
+    rig.frames(1);
+    CHECK(!sampled.isOpen() && rig.app.sampler().said().find("NO INPUT FOUND") == 0);
+    rig.app.project().track = 2;
+    rig.frames(2);
+    rig.app.cloud().goTo(1, 0);
+    rig.tap(A);
+    SamplePicker& clouded = rig.app.cloud().picker();
+    CHECK(clouded.isOpen() && barIs(empty, 4));
+    rig.tap(Y);
+    rig.frames(1);
+    CHECK(!clouded.isOpen() && rig.app.cloud().said() == "NOTHING TO CATCH: PLAY SOMETHING FIRST");
+    rig.tap(A);
+    CHECK(clouded.isOpen());
+    rig.tap(R1);
+    rig.frames(1);
+    CHECK(!clouded.isOpen() && rig.app.cloud().said().find("NO INPUT FOUND") == 0);
     // A recording on the card: the page, as before.
     card.wav("one", 2000);
     Rig full(card);
