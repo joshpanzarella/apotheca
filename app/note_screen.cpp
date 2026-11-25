@@ -93,11 +93,11 @@ void NoteScreen::moveCursorTo(int pitch, int step) {
     onBars_ = false;
     pitch_ = pitch < kLowest ? kLowest : (pitch > kHighest ? kHighest : pitch);
     // A step past either end of the bar is in the next bar of the cell, or
-    // the one before; past the cell's ends it comes round.
-    const int all = cellBars() * kSteps;
-    const int at = (((project_.bar * kSteps + step) % all) + all) % all;
-    project_.bar = at / kSteps;
-    step_ = at % kSteps;
+    // the one before (its FILL after its last, once made); past the ends it comes round.
+    const TrackData& cell = project_.current();
+    if (step < 0) project_.bar = cell.barAfter(project_.scene, project_.bar, -1 - (-step - 1) / kSteps), step = kSteps - 1 - (-step - 1) % kSteps;
+    if (step >= kSteps) project_.bar = cell.barAfter(project_.scene, project_.bar, step / kSteps), step %= kSteps;
+    step_ = step;
     // The keys scroll to keep the cursor in view.
     if (pitch_ < low_) low_ = pitch_;
     if (pitch_ > low_ + (visibleKeys() - 1)) low_ = pitch_ - (visibleKeys() - 1);
@@ -297,8 +297,7 @@ void NoteScreen::moveCursor(Button direction) {
         // BARS sits above the grid; down goes back to it, up comes round to the bottom.
         // Left and right show the bar before or after, round the ends.
         if (direction == Button::Left || direction == Button::Right) {
-            const int bars = cellBars() < 1 ? 1 : cellBars();
-            project_.bar = (project_.bar + (direction == Button::Right ? 1 : bars - 1)) % bars;
+            project_.bar = project_.current().barAfter(project_.scene, project_.bar, direction == Button::Right ? 1 : -1); // (its FILL after its last)
         } else if (direction == Button::Down) {
             onBars_ = false;
         } else {
@@ -357,7 +356,7 @@ void NoteScreen::setLength(float length) {
     float& now = slot >= 0 ? pat().notes[slot].length : pat().chords[chord].length;
     // It may run to the end of the bar, or up to the next note on this key
     // (for a chord, up to the next chord).
-    int room = (cellBars() - project_.bar) * kSteps - start; // to the end of the cell: a note may run on over the bar lines
+    int room = barsToEnd() * kSteps - start; // to the end of the cell: a note may run on over the bar lines (on the FILL: its end)
     if (slot >= 0) {
         for (const NoteEvent& other : pat().notes) {
             if (&other != &pat().notes[slot] && other.velocity > 0.f && other.pitch == pitch_ && other.step > start && other.step - start < room) {
@@ -406,7 +405,7 @@ void NoteScreen::stepLength(int by) {
 ChordEvent NoteScreen::inHand() const {
     ChordEvent c = makeChord(shapeAt(hand_), pitch_, step_, handLength_, kNewLevel, inversion_);
     // It stops at the end of the bar, or where the next chord starts.
-    const float most = static_cast<float>((cellBars() - project_.bar) * kSteps - c.step); // to the end of the cell
+    const float most = static_cast<float>(barsToEnd() * kSteps - c.step); // to the end of the cell (on the FILL: its end)
     if (c.length > most) c.length = most;
     for (const ChordEvent& other : pat().chords) {
         if (other.velocity > 0.f && other.step > c.step && other.step - c.step < c.length) c.length = other.step - c.step;
@@ -519,7 +518,7 @@ void NoteScreen::doubleHand(int way) {
     float lands = to;
     if (editing_ >= 0) {
         ChordEvent& c = pat().chords[editing_];
-        float room = static_cast<float>((cellBars() - project_.bar) * kSteps - c.step); // to the end of the cell
+        float room = static_cast<float>(barsToEnd() * kSteps - c.step); // to the end of the cell (on the FILL: its end)
         for (const ChordEvent& other : pat().chords)
             if (other.velocity > 0.f && other.step > c.step && static_cast<float>(other.step - c.step) < room) room = static_cast<float>(other.step - c.step);
         lands = to > room ? room : to;
@@ -758,6 +757,12 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down) fxEmpty(); // what X shows, emptied. (B's own delete waits until X is let go.)
         return;
     }
+    // L1 held (pressed first) + Y: the FILL (Session::fillKeyHere), caught before Y's own block. Y was pressed for
+    // that: no chord in hand while it stays down, so none is placed when it is let go (endPick: nothing picked).
+    if (event.down && l1First_ && input.held(Button::L1) && !input.held(Button::X) && b == Button::Y) {
+        session_.fillKeyHere();
+        return;
+    }
     if (b == Button::Y) {
         if (event.down && !shaping_ && !painting_ && !onBars_) beginPick();
         else if (!event.down) endPick();
@@ -833,8 +838,7 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
     // Hold L1, left / right: the cell's bars, more or fewer (as the Song screen's hold A).
     if (zooming_ && l1First_ && event.down && !shaping_ && !painting_ && !erasing_ && !picking_ && !fxHeld_ && carrying_ == Carry::Nothing && !input.held(Button::R1) && !onBars_) {
         if (b == Button::Up || b == Button::Down) {
-            const int bars = cellBars();
-            project_.bar = (project_.bar + (b == Button::Down ? 1 : bars - 1)) % (bars < 1 ? 1 : bars);
+            project_.bar = project_.current().barAfter(project_.scene, project_.bar, b == Button::Down ? 1 : -1); // (1 ... the last, its FILL, 1)
             zoomUsed_ = true; // (letting go of L1 zooms nothing: it moved bars)
             return;
         }
@@ -936,13 +940,13 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
     if (dt > 0.05f) dt = 0.05f;
     dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number
     lastMs_ = nowMs;
-    if (project_.bar >= cellBars()) project_.bar = 0; // the cell was shortened, or it is another cell
+    if (!project_.current().barThere(project_.scene, project_.bar)) project_.bar = 0; // the cell was shortened, or it is another cell (its FILL is a bar to stand on)
     float x = input.stickX(), y = input.stickY();
     {
-        // The view follows the bar playing, unless the player is at the controls (follow_bar.hpp).
-        const int bars = cellBars();
-        const bool here = project_.playing && project_.playScene == project_.scene && project_.playStep >= 0 && bars > 0;
-        const int at = follow_.step(here, here ? project_.playBar % bars : -1, input.anyHeld() || x != 0.f || y != 0.f, nowMs);
+        // The view follows the bar playing, unless the player is at the controls (follow_bar.hpp); the FILL
+        // played is one of its bars, and the FILL looked at by hand holds the view.
+        const bool here = project_.playing && project_.playScene == project_.scene && project_.playStep >= 0 && cellBars() > 0;
+        const int at = follow_.step(here, here ? project_.cellBarPlaying(project_.track) : -1, input.anyHeld() || x != 0.f || y != 0.f, nowMs, project_.bar, onFill());
         if (at >= 0) {
             project_.bar = at;
             followTheNotes();
@@ -1084,7 +1088,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char text[96], name[24];
     trackName(project_, project_.track, name, sizeof name);
     // Always: which bar is shown reads at a glance, one bar or eight.
-    std::snprintf(text, sizeof text, "%s / BAR %d OF %d / SCENE %d", name, project_.bar + 1, cellBars(), project_.scene + 1);
+    std::snprintf(text, sizeof text, "%s / %s / SCENE %d", name, Session::cellBarWords(project_.current(), project_.scene, project_.bar).c_str(), project_.scene + 1); // (the FILL: FILL, FILL OFF)
     const TopBar top = topBar(r, fonts, View::Pattern, text, project_);
     if (onBars_) {
         // BARS is the readout itself, outlined where it drew (it shortens while playing).
@@ -1139,7 +1143,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     bool numbersFit = true;
     const int meter = project_.meterOf(project_.scene);
     for (int step = 0; step < kSteps; ++step) {
-        const int number = project_.bar * meter + step + 1;
+        const int number = sceneBar() * meter + step + 1;
         std::snprintf(text, sizeof text, "%d", number);
         numbersFit = numbersFit && fonts.small.width(text) <= kGridLeft - (number >= 100 ? 3.f : 7.f);
     }
@@ -1148,10 +1152,10 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     for (int step = 0; step < kSteps; ++step) {
         // Counted through the cell: bar 2 reads 17 to 32. A step past the scene's end (a scene of
         // 25 steps: 26 to 32) is never played and reads "-".
-        if (step < project_.barSteps(project_.scene, project_.bar)) std::snprintf(text, sizeof text, "%d", project_.bar * meter + step + 1);
+        if (step < project_.barSteps(project_.scene, sceneBar())) std::snprintf(text, sizeof text, "%d", sceneBar() * meter + step + 1); // (the FILL: the scene's last bar's)
         else std::snprintf(text, sizeof text, "-");
         // Three figures (bars 7 and 8) need the room: they stand four pixels nearer the grid.
-        numberFont.drawRight(r, kGridLeft - (project_.bar * meter + step + 1 >= 100 ? 3.f : 7.f), gy(step) + (kCellH - numberFont.capHeight()) / 2.f, text,
+        numberFont.drawRight(r, kGridLeft - (sceneBar() * meter + step + 1 >= 100 ? 3.f : 7.f), gy(step) + (kCellH - numberFont.capHeight()) / 2.f, text,
                               step == step_ ? kTeal : (step % 4 == 0 ? kText : kDim));
         for (int pitch = low_; pitch < low_ + visibleKeys(); ++pitch) {
             const SDL_Color inside = isBlackKey(pitch) ? kBg : (step % 4 == 0 ? kPanel2 : kPanel);
@@ -1216,10 +1220,12 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     };
     // What is still sounding from earlier bars of the cell: drawn faint, from
     // the top, for as long as it has left. It is changed in the bar it starts in.
-    for (int earlier = 0; earlier < project_.bar; ++earlier) {
+    // (On the FILL: those before the bar it plays instead of, which play before it.)
+    const int ownBar = project_.ownBarOf(project_.track, project_.scene, project_.bar);
+    for (int earlier = 0; earlier < ownBar; ++earlier) {
         NoteEvent from[kMaxNotes];
         project_.current().notes[project_.scene][earlier].render(from);
-        const float gone = static_cast<float>((project_.bar - earlier) * kSteps);
+        const float gone = static_cast<float>((ownBar - earlier) * kSteps);
         for (const NoteEvent& n : from) {
             const float left = static_cast<float>(n.step) + n.length - gone;
             if (n.velocity <= 0.f || left <= 0.f || !shows(n.pitch)) continue;
@@ -1347,7 +1353,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         bool any = false;
         for (int b = 0; b < cellBars() && !any; ++b)
             for (const NoteEvent& n : project_.current().notes[project_.scene][b].notes) any = any || (n.velocity > 0.f && n.glide);
-        if (any) {
+        if (any && !onFill()) { // (the FILL's are not drawn: it is not one of the cell's bars in order, Project::glideLines)
             GlideLine lines[kMaxBars * kMaxNotes];
             project_.glideLines(project_.track, project_.scene, lines);
             const int rows = project_.barSteps(project_.scene, project_.bar);
@@ -1391,10 +1397,10 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     }
     if (picking_ && editing_ < 0) drawChord(inHand(), false, true); // where it will land
     if (!onBars_) outline(r, gx(pitch_) - 1, gy(step_) - 1, cellW() + 2, kCellH + 2, cursorColor, 2);
-    const int playStep = project_.playScene == project_.scene && project_.playBar % cellBars() == project_.bar ? project_.playStep : -1;
+    const int playStep = project_.playScene == project_.scene && project_.cellBarPlaying(project_.track) == project_.bar ? project_.playStep : -1;
     if (playStep >= 0) fill(r, kGridLeft, gy(playStep), visibleKeys() * keyW() - 2, kCellH, faded(kPurple, 76));
     // A scene of fewer than sixteen steps: the steps past its end are never played, and are shaded.
-    if (const int steps = project_.barSteps(project_.scene, project_.bar); steps < kSteps)
+    if (const int steps = project_.barSteps(project_.scene, sceneBar()); steps < kSteps)
         fill(r, 0, gy(steps) - 1, kGridLeft + visibleKeys() * keyW(), (kSteps - steps) * kRowH, faded(kBg, 185));
 
     // ---- what is under the cursor ---------------------------------------------------
@@ -1464,8 +1470,9 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             noteName(pitch_, text, sizeof text);
             field(8.f, "KEY", text, kText);
         }
-        if (onBars_) std::snprintf(text, sizeof text, "%d OF %d", project_.bar + 1, cellBars());
-        else std::snprintf(text, sizeof text, "%d", project_.bar * project_.meterOf(project_.scene) + step_ + 1); // as the numbers at the left read
+        if (onBars_ && onFill()) std::snprintf(text, sizeof text, "%s", project_.current().fillOn(project_.scene) ? "FILL" : "FILL OFF");
+        else if (onBars_) std::snprintf(text, sizeof text, "%d OF %d", project_.bar + 1, cellBars());
+        else std::snprintf(text, sizeof text, "%d", sceneBar() * project_.meterOf(project_.scene) + step_ + 1); // as the numbers at the left read
         if (!chordFx) field(100.f, onBars_ ? "BAR" : "STEP", text, onBars_ ? cursorColor : kText);
         const int ratchetHere = under ? under->ratchet : (chordUnder ? chordUnder->ratchet : 0);
         const int glideKindHere = under ? glideKind(under->glide) : kGlideOff;
@@ -1589,6 +1596,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("LEFT / RIGHT", "bar count");
         hint("R1", "copy bar");
         hint("A", "paste bar");
+        if (const char* fill = Session::fillKeyHint(project_.current(), project_.scene, project_.bar)) hint("Y", fill); // the FILL
     } else if (carrying_ != Carry::Nothing) {
         hint("STICK UP / DOWN", "slide in time");
         hint("D-PAD", "whole steps");
@@ -1618,7 +1626,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         // Up and down past a bar's ends move across the cell's bars (up from the very top is the BARS stop).
         // Said instead of the zoom there: the bar has no room for both.
         if (step_ == 0) hint("UP", project_.bar == 0 ? "bars" : "prev bar");
-        else if (step_ == kSteps - 1 && project_.bar + 1 < cellBars()) hint("DOWN", "next bar");
+        else if (step_ == kSteps - 1 && project_.current().barAfter(project_.scene, project_.bar, 1) != 0) hint("DOWN", "next bar"); // (the FILL after the last)
         else hint("L1", "zoom");
     }
     hints(r, fonts, list, count);

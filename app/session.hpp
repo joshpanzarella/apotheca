@@ -811,7 +811,7 @@ public:
     // BAR 1 COPIED, PASTED ON BAR 2, and why not.
     BarCopy copyBarHere();
     BarCopy pasteBarHere();
-    static std::string barCopyWords(BarCopy answer, bool paste, int bar); // (bar from 0)
+    static std::string barCopyWords(BarCopy answer, bool paste, int bar, bool fill = false); // (bar from 0; fill: it is the cell's FILL)
     enum class SceneCopy { Done, Same, NothingCopied, NoScene };
     struct SceneClip {
         bool has = false;
@@ -853,21 +853,32 @@ public:
     // the scene's last bar, on the scene's last time round (a scene played alone: the last of each
     // REPEATS of its rounds). Not on a cell of eight bars. Each change is one step of undo; one that
     // changes nothing is none (AlreadyOn, AlreadyOff, AlreadyEmpty). The screens (the next batch) make the gesture; these are what it calls.
-    enum class Fill { Made, On, Off, Emptied, AlreadyOn, AlreadyOff, AlreadyEmpty, NoFill, EightBars, NoTrack };
-    // On. Never made: made as a copy of the bar it plays instead of (with that bar's automation), so it
-    // starts as what would have played (Made). Made and off: on again as it was kept, an emptied one empty (On).
-    Fill makeFill(int track, int scene);
+    // (Shown: fillKeyHere put the view on a FILL already made, nothing changed.)
+    enum class Fill { Made, On, Off, Emptied, AlreadyOn, AlreadyOff, AlreadyEmpty, NoFill, EightBars, NoTrack, Shown };
+    // On. Never made: made as a copy of bar `from` of the cell (the grids' gesture: the bar on screen) or, with
+    // none given, of the bar it plays instead of, so it starts as what would have played (with that bar's
+    // automation; Made). Made and off: on again as it was kept, an emptied one empty (On).
+    Fill makeFill(int track, int scene, int from = -1);
     Fill fillOff(int track, int scene);   // off; its bar is kept (Off). None made: NoFill
     Fill emptyFill(int track, int scene); // its hits or notes and its automation emptied: a drop. On stays on (Emptied)
     // The grids' view onto the FILL (project.track, scene and bar = kFillSlot); false where none is made.
     bool goToFill(int track, int scene);
     // ...on the cell the grids show, and what was done said (say()): FILL MADE, FILL ON, FILL OFF...
-    Fill makeFillHere();
+    Fill makeFillHere(); // (made from the bar on screen)
     Fill fillOffHere();
     Fill emptyFillHere();
+    // HOLD L1 + Y on the drum grid and the roll, the FILL's one gesture (docs/dev/songs-and-undo.md, "The FILL's
+    // screens"): on a cell with none, a FILL made as a copy of the bar on screen and the view put on it (FILL
+    // MADE); from another bar, the view put on the FILL (Shown, nothing said: the top bar reads FILL or FILL
+    // OFF); on the FILL, it turned off (FILL OFF: its bar kept, the view stays) or on again (FILL ON). A cell of
+    // eight bars says why it has none (NO FILL ON 8 BARS).
+    Fill fillKeyHere();
     static std::string fillWords(Fill answer);
     // What the grids' top bar names a bar of a cell: "BAR 2 OF 4", or "FILL" (on), or "FILL OFF".
     static std::string cellBarWords(const TrackData& track, int scene, int bar);
+    // What Y does with L1 held there (the grids' hints): "make fill", "go to fill", "fill off", "fill on"; on a cell
+    // of eight bars nothing (it would only say why there is none).
+    static const char* fillKeyHint(const TrackData& track, int scene, int bar);
 
     // A line for the App to say for a moment (its box above the hints bar): what a copy or a paste did.
     void say(const char* text);

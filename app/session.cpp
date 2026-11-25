@@ -679,18 +679,20 @@ Session::BarCopy Session::pasteBar(int track, int scene, int bar) {
 
 Session::BarCopy Session::copyBarHere() {
     const BarCopy answer = copyBar(project.track, project.scene, project.bar);
-    say(barCopyWords(answer, false, project.bar).c_str());
+    say(barCopyWords(answer, false, project.bar, project.current().onFill(project.scene, project.bar)).c_str());
     return answer;
 }
 
 Session::BarCopy Session::pasteBarHere() {
     const BarCopy answer = pasteBar(project.track, project.scene, project.bar);
-    say(barCopyWords(answer, true, project.bar).c_str());
+    say(barCopyWords(answer, true, project.bar, project.current().onFill(project.scene, project.bar)).c_str());
     return answer;
 }
 
-std::string Session::barCopyWords(BarCopy answer, bool paste, int bar) {
+std::string Session::barCopyWords(BarCopy answer, bool paste, int bar, bool fill) {
     char text[64];
+    if (fill && answer == BarCopy::Done) return paste ? "PASTED ON THE FILL" : "FILL COPIED"; // (the bar is a cell's FILL)
+    if (fill && answer == BarCopy::Same) return "THE FILL IS THE SAME";
     switch (answer) {
     case BarCopy::Done: std::snprintf(text, sizeof text, paste ? "PASTED ON BAR %d" : "BAR %d COPIED", bar + 1); break;
     case BarCopy::Same: std::snprintf(text, sizeof text, "BAR %d IS THE SAME ALREADY", bar + 1); break;
@@ -883,7 +885,7 @@ std::string Session::sceneClearWords(SceneClear answer, int scene) {
 
 // ---- the FILL ---------------------------------------------------------------------------------
 
-Session::Fill Session::makeFill(int track, int scene) {
+Session::Fill Session::makeFill(int track, int scene, int from) {
     if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes) return Fill::NoTrack;
     TrackData& t = project.tracks[track];
     if (t.kind == TrackKind::None) return Fill::NoTrack;
@@ -896,7 +898,7 @@ Session::Fill Session::makeFill(int track, int scene) {
         // what would have played, and is changed from there), with that bar's automation. Notes and chords
         // that run over the bar line are held to the FILL's end, as a pasted bar's to its cell's.
         const int bars = t.bars[scene] < 1 ? 1 : t.bars[scene];
-        const int from = ((project.sceneSteps(scene) - 1) / project.meterOf(scene)) % bars;
+        if (from < 0 || from >= bars) from = project.lastBar(scene) % bars; // (none given: the bar it plays instead of)
         if (t.kind == TrackKind::Drums) {
             t.drums[scene][kFillSlot] = t.drums[scene][from];
         } else {
@@ -973,7 +975,28 @@ bool Session::goToFill(int track, int scene) {
 }
 
 Session::Fill Session::makeFillHere() {
-    const Fill answer = makeFill(project.track, project.scene);
+    const Fill answer = makeFill(project.track, project.scene, project.bar);
+    say(fillWords(answer).c_str());
+    return answer;
+}
+
+Session::Fill Session::fillKeyHere() {
+    const int track = project.track, scene = project.scene;
+    if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes || project.tracks[track].kind == TrackKind::None) {
+        say(fillWords(Fill::NoTrack).c_str());
+        return Fill::NoTrack;
+    }
+    const TrackData& t = project.tracks[track];
+    Fill answer;
+    if (!t.fillMade(scene)) {
+        answer = makeFill(track, scene, project.bar); // (a cell of eight bars: EightBars, said)
+        if (answer == Fill::Made) goToFill(track, scene);
+    } else if (project.bar != kFillSlot) {
+        goToFill(track, scene);
+        return Fill::Shown; // (nothing said: the top bar reads FILL or FILL OFF)
+    } else {
+        answer = t.fillOn(scene) ? fillOff(track, scene) : makeFill(track, scene);
+    }
     say(fillWords(answer).c_str());
     return answer;
 }
@@ -1002,6 +1025,7 @@ std::string Session::fillWords(Fill answer) {
     case Fill::NoFill: return "NO FILL HERE";
     case Fill::EightBars: return "NO FILL ON 8 BARS";
     case Fill::NoTrack: return "NO TRACK HERE";
+    case Fill::Shown: return "";
     }
     return "";
 }
@@ -1012,6 +1036,13 @@ std::string Session::cellBarWords(const TrackData& track, int scene, int bar) {
     char text[32];
     std::snprintf(text, sizeof text, "BAR %d OF %d", bar + 1, track.bars[scene]);
     return text;
+}
+
+const char* Session::fillKeyHint(const TrackData& track, int scene, int bar) {
+    if (scene < 0 || scene >= kMaxScenes || track.bars[scene] >= kMaxBars) return nullptr;
+    if (!track.fillMade(scene)) return "make fill";
+    if (bar != kFillSlot) return "go to fill";
+    return track.fillOn(scene) ? "fill off" : "fill on";
 }
 
 void Session::say(const char* text) {
@@ -1842,9 +1873,10 @@ bool Session::undo() {
     }
     // A "next scene" taken back: the scene goes, the playing leaves it for the one it was
     // copied from (the two are the same), and the player goes too.
-    const int from = back.nextScene;
+    const int from = back.nextScene, bar = project.bar;
     restorePatterns(back.text, from + 1, -1);
     scenesMoved(from + 1, -1);
+    project.bar = bar; // (the bar shown on the copy, its FILL too, if the scene stood on has it: standOn)
     standOn(from);
     return true;
 }
@@ -1859,7 +1891,7 @@ bool Session::redo() {
         return true;
     }
     // A "next scene" put back.
-    const int from = forward.nextScene;
+    const int from = forward.nextScene; // (the bar shown, a FILL too, is kept: the scene stood on has it, a copy of this one)
     restorePatterns(forward.text, from, 1);
     scenesMoved(from, 1);
     standOn(from + 1);
@@ -1869,7 +1901,7 @@ bool Session::redo() {
 // Put the player on a scene, on a bar its cell has.
 void Session::standOn(int scene) {
     project.scene = scene;
-    if (project.bar >= project.current().bars[scene]) project.bar = 0;
+    if (!project.current().barThere(scene, project.bar)) project.bar = 0; // (a FILL is a bar to stand on: barThere)
     cellMark_ = cellMark(); // going there is not an edit
 }
 

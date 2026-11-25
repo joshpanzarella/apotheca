@@ -216,6 +216,9 @@ private:
     const DrumPattern& pat() const { return project_.current().drums[project_.scene][project_.bar]; }
     TrackData& trk() { return project_.current(); }
     const TrackData& trk() const { return project_.current(); }
+    // The bar of the scene the bar shown is in (the FILL: the scene's last bar, where it plays): the step numbers
+    // and the steps shaded past a scene's end go by it.
+    int sceneBar() const { return project_.sceneBarOf(project_.track, project_.scene, project_.bar); }
     void moveCursor(Button direction);
     void dragCursor(Button direction); // a move the player made: it paints if a brush is down
     void direction(Button b, const Input& input); // a press of the D-pad, or its held repeat: the same job

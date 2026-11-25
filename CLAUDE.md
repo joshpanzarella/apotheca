@@ -43,7 +43,7 @@ New screens and gestures keep these; do not invent a variant.
 - **Typing a name** (`NameKeys`, every place; the password keys alike): A types, Y deletes a letter (held, on), B or START keeps it and leaves. Every button is the keys' meanwhile; only the four-shoulder panic acts.
 - **X** hears, as long as it is held, over the song too (on SONG it solos the track: owner, 2026-11-15). **Hold X** is "what it does": step effects on a drum hit, ratchet and glide on a note.
 - **Hold R1** drags: paint from an empty step, carry from a note. **On SONG R1 is a tap**: on a cell or a scene's REPEATS box it copies; on another it pastes, and the copy stays (brass) until R1 on it clears it.
-- **Hold L1 on the grids** (drum grid, slices, roll) is the bar key: **+ R1 copies the bar, + A pastes it** (the copy stays for the next paste).
+- **Hold L1 on the grids** (drum grid, slices, roll) is the bar key: **+ R1 copies the bar, + A pastes it** (the copy stays for the next paste), **+ Y is the cell's FILL** (made, gone to, off and on: `songs-and-undo.md`).
   So L1's own tap (the slices, the roll's zoom) acts on its LET GO, and only if nothing else was pressed meanwhile (a stick move included).
 - **Y** is the screen's special (chance, chord, mute, catch, roll).
 - **Hold Y + a direction moves a line where R1 is taken** (FX's effects: R1 is its track key). Not on the drum grid, where hold Y + a direction sets chance, a hit's slice and the lane dice.

@@ -398,6 +398,16 @@ struct TrackData : TrackFields {
     bool fillOn(int s) const { return fill[s] == kFillOn && bars[s] < kMaxBars; }
     bool fillMade(int s) const { return fill[s] != kFillNone && bars[s] < kMaxBars; }
     bool barThere(int s, int bar) const { return (bar >= 0 && bar < bars[s]) || (bar == kFillSlot && fillMade(s)); }
+    bool onFill(int s, int bar) const { return bar == kFillSlot && fillMade(s); } // is bar `bar` its FILL (not an eighth bar of its own)?
+    // The bars the grids stand on, in order: the cell's own, then its FILL once made (the screens' ring: hold L1 +
+    // UP / DOWN, the BARS stop's LEFT / RIGHT, the cursor run off a bar's end). The bar `by` places on from `bar`,
+    // round the ends: 1 ... the last bar, FILL, 1.
+    int barAfter(int s, int bar, int by) const {
+        const int own = bars[s] < 1 ? 1 : bars[s], count = own + (fillMade(s) ? 1 : 0);
+        const int at = onFill(s, bar) ? own : bar;
+        const int to = ((at + by) % count + count) % count;
+        return to == own ? kFillSlot : to;
+    }
     int piecesHeld() const { return drums.held() + notes.held() + automation.held(); }
     // Are every scene's patterns here those of `other`, byte for byte (no piece is the blank piece)?
     bool samePatternsAs(const TrackData& other) const {
@@ -528,6 +538,20 @@ struct Project : ProjectHead {
     int barSteps(int s, int barIndex) const {
         const int left = sceneSteps(s) - barIndex * meterOf(s), meter = meterOf(s);
         return left > meter ? meter : (left < 0 ? 0 : left);
+    }
+    // The scene's last bar, the one its last step is in: where a cell's FILL plays (fill_rule.hpp's fillTime).
+    int lastBar(int s) const {
+        const int steps = sceneSteps(s);
+        return steps > 0 ? (steps - 1) / meterOf(s) : 0;
+    }
+    // Bar `bar` of track `t`'s cell in scene `s`, as the grids count it: the bar of the scene it is in (its own
+    // place; its FILL, the scene's last bar), for the step numbers and the shading past a scene's end...
+    int sceneBarOf(int t, int s, int bar) const { return tracks[t].onFill(s, bar) ? lastBar(s) : bar; }
+    // ...and which of the cell's own bars it stands for (its FILL: the bar it plays instead of), for a slice's own
+    // start and the notes running into it from the bars before.
+    int ownBarOf(int t, int s, int bar) const {
+        const int bars = tracks[t].bars[s] < 1 ? 1 : tracks[t].bars[s];
+        return tracks[t].onFill(s, bar) ? lastBar(s) % bars : bar;
     }
     // GLIDE, for the roll to draw: what each note of a synth track's cell slides from and for how
     // long, as the scene goes round (lines[bar * kMaxNotes + slot], kMaxBars * kMaxNotes of them;

@@ -77,7 +77,7 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
     for (int s = 0; s < kSteps; ++s)
         if (pat().level[lane_][s] > 0.f) used[sliceOf(s)] = true;
     const int cursorSlice = onName ? -1 : (hitHere() ? sliceOf(step_) : static_cast<int>(std::round(ownStart(step_) * count)));
-    const int playStep = project_.playScene == project_.scene && project_.playBar % trk().bars[project_.scene] == project_.bar ? project_.playStep : -1;
+    const int playStep = project_.playScene == project_.scene && project_.cellBarPlaying(project_.track) == project_.bar ? project_.playStep : -1;
     int playSlice = -1;
     if (playStep >= 0) {
         // The hit that is sounding: the last one at or before the step being played. One slice of it,
@@ -120,7 +120,7 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
     for (int s = 0; s < kSteps; ++s) {
         const int x = kGridLeft + s * kStepW;
         box(r, x, kStepsY, kCellW, kStepsH, s % 4 == 0 ? kPanel2 : kPanel, kLine);
-        if (s < project_.barSteps(project_.scene, project_.bar)) std::snprintf(text, sizeof text, "%d", project_.bar * project_.meterOf(project_.scene) + s + 1);
+        if (s < project_.barSteps(project_.scene, sceneBar())) std::snprintf(text, sizeof text, "%d", sceneBar() * project_.meterOf(project_.scene) + s + 1);
         else std::snprintf(text, sizeof text, "-");
         fonts.small.drawCentered(r, x + kCellW / 2.f, kStepsY + kStepsH + 5.f, text, s % 4 == 0 ? kText : kDim);
     }
@@ -157,7 +157,7 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
     if (!onName) outline(r, kGridLeft + step_ * kStepW - 1, kStepsY - 1, kCellW + 2, kStepsH + 2, cursorColor, 2);
     if (playStep >= 0) fill(r, kGridLeft + playStep * kStepW, kStepsY, kCellW, kStepsH, faded(kPurple, 76));
     // A scene of fewer than sixteen steps: the steps past its end are never played, and are shaded.
-    if (const int steps = project_.barSteps(project_.scene, project_.bar); steps < kSteps)
+    if (const int steps = project_.barSteps(project_.scene, sceneBar()); steps < kSteps)
         fill(r, kGridLeft + steps * kStepW - 1, kStepsY - 2, (kSteps - steps) * kStepW, kStepsH + 22, faded(kBg, 185));
 }
 

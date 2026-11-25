@@ -327,7 +327,8 @@ void PatternScreen::setSlicing(bool on) {
 
 float PatternScreen::ownStart(int step) const {
     const int count = slices();
-    return static_cast<float>((project_.bar * kSteps + step) % count) / static_cast<float>(count);
+    const int bar = project_.ownBarOf(project_.track, project_.scene, project_.bar); // (the FILL: the bar it plays instead of)
+    return static_cast<float>((bar * kSteps + step) % count) / static_cast<float>(count);
 }
 
 void PatternScreen::stepBars(int by) {
@@ -342,8 +343,7 @@ void PatternScreen::stepBars(int by) {
 }
 
 void PatternScreen::moveBar(int by) {
-    const int bars = trk().bars[project_.scene] < 1 ? 1 : trk().bars[project_.scene];
-    project_.bar = (project_.bar + by + bars) % bars;
+    project_.bar = trk().barAfter(project_.scene, project_.bar, by); // the cell's bars, then its FILL, round the ends
 }
 
 int PatternScreen::sliceOf(int step) const {
@@ -587,17 +587,18 @@ void PatternScreen::moveCursor(Button direction) {
         else ++lane_;
     }
     // Sideways: the lane's name, then the bar's sixteen steps. Off the right
-    // of step 16 is the next bar of the cell; after the last bar, the name
-    // again. The name is always one left of step 1, whichever bar is showing.
-    const int bars = trk().bars[project_.scene];
+    // of step 16 is the next bar of the cell (its FILL after its last, once made);
+    // after the last of them, the name again. The name is always one left of step 1,
+    // whichever bar is showing.
     if (direction == Button::Right) {
+        const int next = trk().barAfter(project_.scene, project_.bar, 1);
         if (step_ < kSteps - 1) ++step_; // from the name too: it is -1
-        else if (project_.bar + 1 < bars) ++project_.bar, step_ = 0;
+        else if (next != 0) project_.bar = next, step_ = 0;
         else project_.bar = 0, step_ = kLaneName;
     }
     if (direction == Button::Left) {
         if (step_ >= 0) --step_; // step 1 goes to the name
-        else project_.bar = project_.bar > 0 ? project_.bar - 1 : bars - 1, step_ = kSteps - 1;
+        else project_.bar = trk().barAfter(project_.scene, project_.bar, -1), step_ = kSteps - 1;
     }
 }
 
@@ -778,6 +779,15 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         else session_.pasteBarHere(), aSpent_ = true; // (A's hold does nothing either: no nudge with the D-pad)
         return;
     }
+    // L1 held (pressed first) + Y: the FILL (Session::fillKeyHere): made from the bar shown and gone to, gone to,
+    // or on it, off and on. Y was pressed for that: its let go rolls no dice and steps no chance, and its hold is
+    // not the dice (no "maybe" hit on its press either).
+    if (event.down && l1First_ && input.held(Button::L1) && !input.held(Button::X) && b == Button::Y) {
+        session_.fillKeyHere();
+        yDidSomething_ = true;
+        ySpent_ = true;
+        return;
+    }
     // (The bar shown and the cell's count live on the BARS stop too, above the tempo.)
     // Hold L1, up / down: the bar before or after, round the ends (as on the roll). Left / right:
     // the cell's bars, more or fewer. Only with L1 held first and nothing else going: shaping,
@@ -786,8 +796,7 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (event.down && l1First_ && input.held(Button::L1) && !input.held(Button::X) && !shaping_ && paint_ == Paint::None && !dicing_ && !fxHeld_ && !feelHeld_ && !onTempo_ && !onBars_ &&
         !input.held(Button::R1) && !input.held(Button::A)) {
         if (b == Button::Up || b == Button::Down) {
-            const int bars = trk().bars[project_.scene] < 1 ? 1 : trk().bars[project_.scene];
-            project_.bar = (project_.bar + (b == Button::Down ? 1 : bars - 1)) % bars;
+            moveBar(b == Button::Down ? 1 : -1); // (1 ... the last bar, then the FILL once made, then 1)
             return;
         }
         if (b == Button::Left || b == Button::Right) {
@@ -915,12 +924,14 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
     lastMs_ = nowMs;
 
     float x = input.stickX(), y = input.stickY();
-    if (project_.bar >= trk().bars[project_.scene]) project_.bar = 0; // the cell was shortened, or it is another cell
+    if (!project_.current().barThere(project_.scene, project_.bar)) project_.bar = 0; // the cell was shortened, or it is another cell (its FILL is a bar to stand on)
     {
-        // The view follows the bar playing, unless the player is at the controls (follow_bar.hpp).
-        const int bars = trk().bars[project_.scene];
-        const bool here = project_.playing && project_.playScene == project_.scene && project_.playStep >= 0 && bars > 0;
-        const int at = follow_.step(here, here ? project_.playBar % bars : -1, input.anyHeld() || x != 0.f || y != 0.f, nowMs);
+        // The view follows the bar playing, unless the player is at the controls (follow_bar.hpp); the FILL
+        // played is one of its bars, and the FILL looked at by hand holds the view.
+        const TrackData& cell = project_.current();
+        const bool here = project_.playing && project_.playScene == project_.scene && project_.playStep >= 0 && cell.bars[project_.scene] > 0;
+        const int at = follow_.step(here, here ? project_.cellBarPlaying(project_.track) : -1, input.anyHeld() || x != 0.f || y != 0.f, nowMs,
+                                    project_.bar, cell.onFill(project_.scene, project_.bar));
         if (at >= 0) project_.bar = at;
     }
     // The hit went from under X (an undo) with the stick pushed for it: the same wait as X let go (onButton).
@@ -1055,8 +1066,9 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // ---- top bar -----------------------------------------------------------
     char context[96], name[24];
     trackName(project_, project_.track, name, sizeof name);
-    // Always: which bar is shown reads at a glance, one bar or eight.
-    std::snprintf(context, sizeof context, "%s / %sBAR %d OF %d / SCENE %d", name, slicing_ ? "SLICES / " : "", project_.bar + 1, trk().bars[project_.scene], project_.scene + 1);
+    // Always: which bar is shown reads at a glance, one bar or eight (or the FILL: DRUMS / FILL / SCENE 1).
+    std::snprintf(context, sizeof context, "%s / %s%s / SCENE %d", name, slicing_ ? "SLICES / " : "", Session::cellBarWords(trk(), project_.scene, project_.bar).c_str(),
+                  project_.scene + 1);
     const TopBar top = topBar(r, fonts, View::Pattern, context, project_);
     // The tight rows are always at LARGE, whatever TEXT SIZE is: the tempo's box in the top bar
     // and the strip under the grid, whose fields stand at fixed places with a chip under each.
@@ -1085,7 +1097,8 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // ---- step numbers --------------------------------------------------------
     for (int s = 0; s < kSteps; ++s) {
         // Counted through the cell, as the piano roll counts: bar 2 reads 17 to 32; past the scene's end, "-".
-        if (s < project_.barSteps(project_.scene, project_.bar)) std::snprintf(text, sizeof text, "%d", project_.bar * project_.meterOf(project_.scene) + s + 1);
+        // The FILL counts as the scene's last bar, where it plays (sceneBar).
+        if (s < project_.barSteps(project_.scene, sceneBar())) std::snprintf(text, sizeof text, "%d", sceneBar() * project_.meterOf(project_.scene) + s + 1);
         else std::snprintf(text, sizeof text, "-");
         fonts.small.drawCentered(r, kGridLeft + s * kStepW + kCellW / 2.f, 36.f, text, s % 4 == 0 ? kText : kDim);
     }
@@ -1162,7 +1175,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         outline(r, kGridLeft + step_ * kStepW - 1, kGridTop + lane_ * kLaneH - 1, kCellW + 2, kCellH + 2, cursorColor, 2);
     }
     // The play line shows when the bar on screen is the one sounding: a short cell goes round under a long scene.
-    const int playStep = project_.playScene == project_.scene && project_.playBar % trk().bars[project_.scene] == project_.bar ? project_.playStep : -1;
+    const int playStep = project_.playScene == project_.scene && project_.cellBarPlaying(project_.track) == project_.bar ? project_.playStep : -1;
     if (playStep >= 0) {
         SDL_Color glow = kPurple;
         glow.a = 76;
@@ -1173,7 +1186,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
 
     // ---- what is under the cursor, spelled out -----------------------------------
     // A scene of fewer than sixteen steps: the steps past its end are never played, and are shaded.
-    if (const int steps = project_.barSteps(project_.scene, project_.bar); steps < kSteps && !slicing_)
+    if (const int steps = project_.barSteps(project_.scene, sceneBar()); steps < kSteps && !slicing_)
         fill(r, kGridLeft + steps * kStepW - 1, kGridTop - 14, (kSteps - steps) * kStepW, kDrumLanes * kLaneH + 12, faded(kBg, 185));
     const int stripY = kStripY;
     const auto field = [&](float fx, const char* name, const char* value, SDL_Color color) {
@@ -1186,7 +1199,8 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     };
     if (onBars_) {
         field(8.f, "CELL", "BARS", kText);
-        std::snprintf(text, sizeof text, "%d OF %d", project_.bar + 1, trk().bars[project_.scene]);
+        if (trk().onFill(project_.scene, project_.bar)) std::snprintf(text, sizeof text, "%s", trk().fillOn(project_.scene) ? "FILL" : "FILL OFF");
+        else std::snprintf(text, sizeof text, "%d OF %d", project_.bar + 1, trk().bars[project_.scene]);
         field(134.f, "BAR", text, cursorColor);
     } else if (onTempo_) {
         field(8.f, "SONG", "TEMPO", kText);
@@ -1233,7 +1247,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else {
         tight.small.draw(r, 8.f, stripY, "LANE", kDim);
         tight.fit(laneLabel(lane_), 104.f).draw(r, 8.f, stripY + 16.f, laneLabel(lane_), kText);
-        std::snprintf(text, sizeof text, "%d", project_.bar * project_.meterOf(project_.scene) + step_ + 1);
+        std::snprintf(text, sizeof text, "%d", sceneBar() * project_.meterOf(project_.scene) + step_ + 1);
         field(120.f, "STEP", text, kText);
         if (!hitHere()) {
             field(190.f, "LEVEL", "-", kDim);
@@ -1325,6 +1339,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("LEFT / RIGHT", "bar count");
         hint("R1", "copy bar");
         hint("A", "paste bar");
+        if (const char* fill = Session::fillKeyHint(trk(), project_.scene, project_.bar)) hint("Y", fill); // the FILL
     } else if (slicing_ && paint_ == Paint::OneLevel) {
         hint("DRAG", "lay the break out in order");
         hint("+ R2", "shuffled");

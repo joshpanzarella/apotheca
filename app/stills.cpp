@@ -1200,6 +1200,18 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         }
         pushKey(SDLK_q, true); // L1, held
         tapKey(view[9] == 'r' ? SDLK_x : SDLK_w); // A pastes, R1 copies
+    } else if (std::strncmp(view, "fill", 4) == 0 && (view[4] == 0 || view[4] == '-')) {
+        // THE FILL: L1 held (the bar says what Y does now: FILL OFF) just after L1 + Y made the cell's FILL from the
+        // bar shown and went onto it (FILL MADE; the top bar reads 1 DRUMS / FILL / SCENE 1), on the drum grid,
+        // stopped; on the piano roll ("fill-roll"); on an eight-bar cell ("fill-eight": NO FILL ON 8 BARS said,
+        // nothing made); the drum grid's with the song playing ("fill-playing": the top bar has room for the name only).
+        if (std::strcmp(view, "fill-roll") == 0) {
+            app.project().track = 1;
+            app.notes().moveCursorTo(57, 6);
+        }
+        if (std::strcmp(view, "fill-eight") == 0) app.session().setCellBars(0, 0, 8);
+        pushKey(SDLK_q, true); // L1, held
+        tapKey(SDLK_a);        // Y
     } else if (std::strcmp(view, "update-ready") == 0 || std::strcmp(view, "update-ready-drums") == 0) {
         // An update accepted, waiting for the next start: the bar's end says so.
         app.session().markUpdateReadyForStill();
@@ -1254,6 +1266,8 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         // nothing more: any press would put the notice away
     } else if (demo && std::strcmp(view, "help-nomenu") == 0) {
         // nothing more: START with SELECT held is "quit"
+    } else if (demo && std::strncmp(view, "fill", 4) == 0 && std::strcmp(view, "fill-playing") != 0) {
+        // nothing more: stopped, the top bar has the room to read DRUMS / FILL / SCENE 1 (playing, it is cut to the name)
     } else if (demo && std::strcmp(view, "add-track") != 0 && std::strstr(view, "-deleting") == nullptr && std::strstr(view, "-forgetting") == nullptr && std::strcmp(view, "setup-network-keys") != 0 && std::strcmp(view, "picker-typing") != 0 && std::strcmp(view, "typing") != 0) { // (another press calls a held B off; START keeps a name being typed, and makes the folder: the "typing" still showed the SET page, not the keys, until 2026-11-15)
         tapKey(SDLK_RETURN); // playing, so the stills show the play position and the scope
     }
