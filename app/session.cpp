@@ -1177,7 +1177,7 @@ std::uint64_t Session::soundMark() const {
             mix(spec->values(const_cast<TrackData&>(track)), sizeof(int) * static_cast<std::size_t>(settingCount(track.kind)));
             mix(track.macro, sizeof track.macro);
         }
-        if (track.kind == TrackKind::Sampler) mix(track.sampler, sizeof track.sampler), mix(&track.samplerChop, sizeof track.samplerChop);
+        if (track.kind == TrackKind::Sampler) mix(track.sampler, sizeof track.sampler), mix(&track.samplerChop, sizeof track.samplerChop), mix(&track.samplerEdit, sizeof track.samplerEdit);
     }
     mix(project.masterEffects, sizeof project.masterEffects);
     mix(project.busEffects, sizeof project.busEffects);
@@ -1330,6 +1330,7 @@ void Session::restoreSounds(const StepRead& was, const bool same[kNumTracks]) {
             for (int id = 0; id < sampler::kSettings; ++id)
                 if (now.sampler[id] != then.sampler[id]) setSamplerSetting(t, id, then.sampler[id]);
             if (now.samplerChop != then.samplerChop) setSamplerChop(t, then.samplerChop);
+            if (now.samplerEdit != then.samplerEdit) setSamplerEdit(t, then.samplerEdit); // (after the recording: its cut with it)
         }
     }
     for (int slot = 0; slot < kMasterSlots; ++slot)

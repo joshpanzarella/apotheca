@@ -672,7 +672,7 @@ void testSamplerFromThePage() {
     }
     rig.frames(3);
     CHECK(specNumber(rig.get("/design/state").body) == before + 1); // nothing changed: the page is not sent it again
-    CHECK(has(state, "\"name\":\"SAMPLER\",") && has(state, "\"preset\":-1") && valuesOf(state) == "\"values\":[60,0,0,0,20,0,80,100]" );
+    CHECK(has(state, "\"name\":\"SAMPLER\",") && has(state, "\"preset\":-1") && valuesOf(state) == "\"values\":[60,0,0,0,20,0,80,100,0]" );
 
     // START from the page: the track has it, the engine plays from there.
     rig.loud();
@@ -680,7 +680,7 @@ void testSamplerFromThePage() {
     CHECK(rig.tell("set 2 50") && rig.track().sampler[sampler::Start] == 50);
     const float fromMiddle = rig.loud();
     CHECK(fromMiddle > 3.f * fromTop);
-    CHECK(valuesOf(rig.get("/design/state").body) == "\"values\":[60,0,50,0,20,0,80,100]");
+    CHECK(valuesOf(rig.get("/design/state").body) == "\"values\":[60,0,50,0,20,0,80,100,0]");
     // START and END never cross, from the page as on the handheld.
     CHECK(rig.tell("set 7 30") && rig.track().sampler[sampler::End] == 51);
     CHECK(rig.tell("set 2 99") && rig.track().sampler[sampler::Start] == 50);
@@ -698,7 +698,7 @@ void testSamplerFromThePage() {
     // A setting that is not there changes nothing; nor do a synth's requests.
     int kept[sampler::kSettings];
     std::copy(rig.track().sampler, rig.track().sampler + sampler::kSettings, kept);
-    CHECK(rig.tell("set 8 5") && rig.tell("set -1 5") && rig.tell("macro 0 0.9") && rig.tell("preset 1") && rig.tell("roll 4") && rig.tell("save mine"));
+    CHECK(rig.tell("set 9 5") && rig.tell("set -1 5") && rig.tell("macro 0 0.9") && rig.tell("preset 1") && rig.tell("roll 4") && rig.tell("save mine"));
     CHECK(std::equal(kept, kept + sampler::kSettings, rig.track().sampler) && !exists(rig.root + "/presets/MINE.sampler") && !exists(rig.root + "/presets/MINE"));
 
     // Its key: down, it sounds and goes on; up, it stops.
@@ -754,7 +754,7 @@ void testSamplerFromThePage() {
     // What is turned on the handheld shows on the page; what is turned on the page is a step of undo.
     session.setSamplerSetting(track, sampler::Level, 33);
     rig.frames(1);
-    CHECK(has(valuesOf(rig.get("/design/state").body), ",33,100]"));
+    CHECK(has(valuesOf(rig.get("/design/state").body), ",33,100,0]"));
     for (int i = 0; i < 4; ++i) rig.frames(30);
     CHECK(rig.tell("set 6 70") && rig.track().sampler[sampler::Level] == 70);
     for (int i = 0; i < 4; ++i) rig.frames(30);

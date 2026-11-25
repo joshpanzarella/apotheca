@@ -164,6 +164,7 @@ plays the recording as it was made; an octave up, twice as fast.
 | --- | --- | --- |
 | SOUND | **Tap A: the list of recordings.** Or hold A + up / down: one at a time. **B with A still held: the sound as it was when A went down** | None |
 | PITCH, TUNE, START, END, ATTACK, RELEASE, LOOP, LEVEL | The stick turns it; the D-pad moves it by one. **LOOP is a click a push of the stick**: up ON, down OFF | Its usual value |
+| The recording's picture (right from SOUND, left from PITCH) | **LOOP START**: where LOOP goes back to. **Tap A: EDIT** (below) | LOOP START back to START |
 | PRESET | The preset after / before, **heard as it goes on** when the song is stopped (as a synth's preset and a kit are): the ends stop. **B with A still held: the sound as it was when A went down**, its effects too | Held a second, on one of your own: deletes its file (the bar says CANNOT BE UNDONE; the track keeps its sound) |
 
 **PRESET is the sound kept as a preset of its own** (or "-"): the
@@ -216,7 +217,32 @@ percent of it: a note plays from START to END and stops, and with LOOP on it
 goes round between the two. END is beside START and starts at 100% (the
 recording's end). **They never cross**: turned toward each other, each stops a
 percent short of the other. The recording's picture marks both in purple and
-lights only what a note plays.
+lights only what a note plays. **A note that reaches END fades out over its
+last 3 ms**, so it never stops with a click. (Before, it stopped dead: an old
+song's notes that run to END now end in that short fade.)
+
+**LOOP START makes a pad**: with LOOP on, a held note plays from START once,
+then goes round from LOOP START to END, so the attack is heard only once. Its
+usual is START (it reads START), so a sound that never moved it loops as it
+always did. Move the cursor onto the recording's picture (right from SOUND)
+and hold A + up / down: it moves from START to a percent short of END, and the
+heading says LOOP START 40%. With LOOP on, a dashed purple line marks it. B
+puts it back to START. **The jump back is blended**: the last 10 ms before
+END fade into what follows LOOP START (less on a very short loop), so it does
+not click. That is new for old songs with LOOP on too: their jump is now
+blended.
+
+**EDIT (tap A on the picture)** is the KIT's EDIT, on the sampler's one
+recording: START and END to the millisecond (the page's START and END are
+whole percents: 1% of a 20 s file is 200 ms), FADE IN, FADE OUT, GAIN and
+REVERSE, with Y for TRIM SILENCE (on START or END) and NORMALIZE (elsewhere),
+B back, hold B for every edit back to none. **The file itself is never
+changed.** PITCH and FINE are empty boxes: the page's PITCH and TUNE do that.
+The page's START, END, LOOP START and CHOP then work on the edited sound (CHOP
+cuts what EDIT made into 16). Another recording puts EDIT's START and END
+back to the whole; the rest stay. A preset keeps the EDIT. **A multisample has
+no EDIT**: each note is its own file, and A on the picture says so (NO EDIT FOR
+A MULTISAMPLE). Nor does CLOUD.
 
 **PITCH is semitones up or down, and up is higher.** (It used to be ROOT, a
 key, which ran the other way. Old songs open as they were.) **X hears it at

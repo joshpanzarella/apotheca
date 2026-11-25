@@ -27,6 +27,7 @@ Where things are in the app:
 | `session_songs.cpp` | songs on disk, revisions, settings files |
 | `session_synth.cpp` | sounds, presets, the designer page, USB keyboard |
 | `session_samples.cpp` | recordings, fitting to tempo, the WiFi page, updates |
+| `lane_edit.hpp/.cpp`, `edit_view.hpp/.cpp` | EDIT: what is done to a recording without writing its file (the sums), and **the one EDIT view**, a drum lane's and the sampler's (S4: `EditView::Target` says what it edits) |
 | `name_keys.hpp/.cpp` | **the one set of keys a name is typed with**: a track's, a new folder's, a preset's (`NameKeys`) |
 
 **Adding an instrument**: a `TrackKind` (project.hpp), a row in

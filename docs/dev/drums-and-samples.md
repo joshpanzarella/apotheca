@@ -67,6 +67,68 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   and lights only what a note plays; the line over it ends there (`Playhead::to`). Not a MOD
   target: no sampler setting is. `engine_test` (`testTheSampler`, `testTheSamplersEndInAnyBlocks`),
   `sample_test` (`testTheSamplersEnd`).
+- **LOOP START, the blend and the END fade** (S4, 2026-11-25; the sampling list the owner approved on
+  2026-11-25: "I like all of it, let's build all of that in"; `docs/plans/sampling-gaps.md` #6). `sampler::LoopStart`
+  is setting 8, appended after END, 0..100 percent, **its usual 0 meaning START itself** (`sampler::playedLoop`: never
+  before START, never closer to END than `kLeastSpan`), so a song without it is the same to the bit. The song file
+  writes the `sampler` line up to the last of END and LOOP START that is not at its usual (so an old sampler is
+  written as it was; one with LOOP START writes END too). Presets' `sampler` line carries it the same way.
+  - **On the page it is the picture's** (`SamplerScreen::kPictureStop`, after PRESET so the old stop numbers hold):
+    the picture is a stop between SOUND and PITCH along the row (right from SOUND, left from PITCH; up from it SOUND,
+    down PITCH), and **up and down pass it by**, so SOUND to the settings is still one press. Hold A + up / down
+    turns LOOP START from where the loop goes back to now (START, while it is at its usual); turned back to START it
+    stores 0 again. B puts 0. The heading reads LOOP START 40% (or LOOP START: AT START) while the cursor is there;
+    **with LOOP on a dashed purple mark** stands at it (a new mark: START's and END's are solid purple, and nothing
+    on the picture said a third place; looked at on SOLARIZED, a light theme, in the still `sampler-loop` with
+    `--samples`: it shows). The designer page lists it last (`settingAt(8)`), as a dial, read
+    START at 0. **Claude's pick, 2026-11-25, open to the owner**: the picture as the stop for both LOOP START and
+    EDIT (the page's two rows of four are full, and the KIT's picture is its EDIT stop already).
+  - **The blend** (only with LOOP on): the last `kLoopBlendMs` (10 ms) of the recording before END fade, linearly,
+    into the samples after LOOP START, and the jump lands that far past LOOP START, where the blend got to. Capped at
+    a third of the part looped; under a sample (a loop under three samples long), no blend: the jump as it was.
+    **This changes old songs with LOOP on** (their jump was a hard cut, a click; it is now a blend, and the loop is
+    10 ms shorter): part of the approved item, which asked for "a crossfade at the jump back". Linear, not equal
+    power: the two ends of one recording are mostly alike (**Claude's pick, 2026-11-25, open to the owner**, as the
+    10 ms).
+  - **The END fade** (LOOP off): a note's last `kEndFadeMs` (3 ms) of the recording before END fade to nothing,
+    as the drum lanes fade their part's end. **This changes old songs** where a note reaches END (a click is now a
+    fade): approved with the sampling list (owner, 2026-11-25), recorded here. A note that never reaches its last
+    3 ms is the same to the bit: `engine_test testTheSamplerIsAsItWasBeforeItsEnd` holds the sums the old
+    `sampler.cpp` gave for three setups (glides, TUNE, START and END, a key let go, blocks of every size), taken by
+    building it beside the new one.
+  - Cost (measured.md): the plain read the same, a short loop at most about 0.015% of a desk core more.
+  - Tests: `engine_test` `testTheSamplersLoopStart`, `testTheSamplersLoopBlend`, `testTheSamplerIsAsItWasBeforeItsEnd`,
+    the END test's lines and `testTheSamplersEndInAnyBlocks` (LOOP START in it too); `sample_test`
+    `testTheSamplersLoopStartOnThePage`. **Nobody has heard any of it.**
+- **EDIT on the SAMPLER** (S4, 2026-11-25; sampling-gaps.md #5): the lane EDIT's tools on the sampler's one
+  recording, **the file never written** (owner, 2026-11-16, for the lanes). `TrackData::samplerEdit` (a `LaneEdit`,
+  PITCH and FINE always 0: the page has PITCH and TUNE), `Session::setSamplerEdit`, `normalizeSampler`,
+  `trimSamplerSilence`, `samplerEdits` (EDIT offered). `loadTrackSample` keeps the file as `LaneSound::recording` /
+  `source` and makes the sound with `shapeSampler` (`makeShape`: the cut, REVERSE) and `installSampler`
+  (`makeLevel`), the lanes' code; **at rest the engine gets the file as it is, to the bit** (a copy, no guard).
+  The engine knows nothing of it, so the page's START, END, LOOP START and CHOP are of the edited sound (CHOP's
+  slices are cut from what EDIT made). No helper thread: without PITCH a shape is a pass over the file.
+  - **The view is the KIT's, shared** (`app/edit_view.hpp`, `EditView`: it was `KitScreen`'s own; the brief said reuse,
+    not copy). A `Target` says what it edits (the edit, how to set it, the sound, trim, normalize, hear, the line,
+    the words) and which boxes it has (`rows`): the sampler's PITCH and FINE are empty boxes the cursor passes by, as
+    the VOICE view's unused places (left / right skip them, up / down take the nearest, the left first). The KIT's
+    gestures, words and hints are unchanged (`laneedit_test` as it was).
+  - **Opened by a tap of A on the picture** (above). **A multisample has none** (each note is its own file; which
+    note's would a cut be?): A on its picture says `kNoEditWords` (NO EDIT FOR A MULTISAMPLE: EACH NOTE IS ITS OWN
+    FILE), the hint bar leaves A out there, and the manual says so. **Claude's pick, 2026-11-25, open to the owner.**
+    A missing file or none says why too. A CLOUD keeps the field and does nothing with it.
+  - Another recording puts EDIT's START and END back to the whole, the rest stay (the lanes' rule), in the one step
+    of undo with the name. Undo (`soundMark`, `restoreSounds`: after the recording), B with A held
+    (`putSoundBack`) and the song file (`sampleredit START END GAIN FADEIN FADEOUT REVERSE`, as `laneedit` without
+    the lane, PITCH and FINE; left out at rest) all carry it. **A sampler preset keeps it** (an `edit` line, left
+    out at rest; a preset is that preset only while the EDIT is the same; loading one puts its EDIT on, none for an
+    old file): Claude's pick, 2026-11-25, open to the owner (else a saved sound came back without its cut).
+  - Not on the designer page (its sampler has its settings and the picture's marks only).
+  - Tests: `sample_test testTheSamplersEdit` (the cut to the millisecond, CHOP of the edited sound, GAIN through the
+    guard, at rest to the bit, NORMALIZE, TRIM SILENCE, a new recording, the song file and an old one, undo, a
+    preset, the page's picture and the view's empty boxes, B back, a multisample, a CLOUD); `textsize` (the view
+    with the longest name a file can have, A held; the picture's heading; every stop's hints fit); stills
+    `sampler-edit`, `sampler-loop`. **Nobody has heard it; not run on the handheld.**
 - **A recording is 20 s at most** (owner, 2026-11-18: it was 10): `kMaxSampleSeconds` for a file read
   (a longer one is cut there and faded) and `Recorder::kMaxSeconds` for RECORD; `sample_test` holds both
   (15 s kept whole). **Catch is not tied to it**: the engine remembers `kCatchFrames`, ten seconds.
@@ -334,7 +396,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     track gone, numbers out of range) and `tests/chokeapp_test.cpp` (the new kit, the KIT page,
     the mark off the drawn screen in BROWN and PAPER, the song file, undo, a song sent again).
     Stills `choke`, `kit-choke`, `kit-choke-held`. **Nobody has heard it.**
-- **EDIT is what a drum lane does to its sound, and the file is never written** (owner, 2026-11-16:
+- **EDIT is what a drum lane does to its sound, and the file is never written** (the view is shared with the
+  SAMPLER's EDIT since S4: `app/edit_view.hpp`; owner, 2026-11-16:
   "only affected the sample in the project, not the raw file"; `app/lane_edit.hpp`, `LaneEdit`,
   `TrackData::laneEdit`, `Session::setLaneEdit`). START, END (parts of the file in `kEditUnits`),
   FADE IN, FADE OUT (ms), GAIN (tenths of a dB), PITCH, FINE, REVERSE, all whole numbers (undo

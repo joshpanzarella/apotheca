@@ -40,6 +40,7 @@
 #include "apotheca/acid.hpp"
 #include "apotheca/cloud.hpp"
 #include "apotheca/morph.hpp"
+#include "apotheca/sampler.hpp"
 #include "apotheca/drum_synth.hpp"
 #include "app.hpp"
 #include "bench_run.hpp"
@@ -1139,6 +1140,38 @@ static void cloudRow(const char* name, bool full) {
     std::printf("  %-28s %5.2f%% of one core, %.1f grains\n", name, 100.0 * each / (256.0 / 48.0), blocks ? static_cast<double>(grains) / blocks : 0.0);
 }
 
+// The SAMPLER with a recording (S4, 2026-11-25): eight keys of a 4 s recording, every one sounding. `how`:
+//   0  LOOP off, held: the plain read, START to END
+//   1  LOOP on round a 50 ms part (START 40, END 41): the jump back comes every few ms
+//   2  LOOP off, END at 2%: every note in its END fade (from S4) half the time, played again each block
+static void samplerRow(const char* name, int how) {
+    std::unique_ptr<Sampler> synth(new Sampler);
+    synth->prepare(48000.f);
+    std::vector<float> recording(4 * 48000);
+    std::uint32_t x = 1;
+    for (float& v : recording) {
+        x = x * 1664525u + 1013904223u;
+        v = (static_cast<float>(x >> 8) / 8388608.f - 1.f) * 0.5f;
+    }
+    synth->setSample(recording.data(), static_cast<int>(recording.size()));
+    synth->setSetting(sampler::Release, 60);
+    if (how == 1) {
+        synth->setSetting(sampler::Loop, 1);
+        synth->setSetting(sampler::Start, 40);
+        synth->setSetting(sampler::End, 41);
+    }
+    if (how == 2) synth->setSetting(sampler::End, 2);
+    for (int k = 0; k < sampler::kVoices; ++k) synth->noteOn(40 + 3 * k, 0.9f);
+    std::vector<float> l(256), r(256);
+    synth->render(l.data(), r.data(), 256);
+    const double each = ms([&] {
+        if (how == 2)
+            for (int k = 0; k < sampler::kVoices; ++k) synth->noteOn(40 + 3 * k, 0.9f);
+        synth->render(l.data(), r.data(), 256);
+    }, 600);
+    std::printf("  %-28s %5.2f%% of one core\n", name, 100.0 * each / (256.0 / 48.0));
+}
+
 // MORPH (docs/plans/wavetable-plan.md, section 4): six keys of A and B with the SUB and LOW 12, the
 // MOD ENV sweeping POSITION; the pool full (UNISON 2, A and B, WIDTH, LOW 24: 24 streams); asleep.
 static void morphRow(const char* name, int what) {
@@ -1260,6 +1293,9 @@ int apotheca::runBench() {
     morphRow("MORPH asleep", 2);
     std::printf("  %-28s %7.1f ms (once, the first MORPH track)\n", "MORPH's 16 tables made", 1000.0 * Morph::tablesSeconds());
     instrument("Sampler (no recording)", SynthKind::Sampler, 8);
+    samplerRow("SAMPLER, 8 notes", 0);
+    samplerRow("SAMPLER, 8 looped, 50 ms", 1);
+    samplerRow("SAMPLER, 8 at END", 2);
 
     {
         std::unique_ptr<Engine> engine(new Engine);

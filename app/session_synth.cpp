@@ -200,6 +200,7 @@ bool Session::putSoundBack(int track) {
     if (t.kind == TrackKind::Sampler) {
         for (int id = 0; id < sampler::kSettings; ++id) setSamplerSetting(track, id, was.sampler[id]);
         if (t.samplerChop != was.samplerChop) setSamplerChop(track, was.samplerChop);
+        if (t.samplerEdit != was.samplerEdit) setSamplerEdit(track, was.samplerEdit); // (after the recording: its cut with it)
     }
     if (const SynthSpec* spec = specFor(t.kind)) {
         const std::size_t size = sizeof(int) * static_cast<std::size_t>(settingCount(t.kind));
