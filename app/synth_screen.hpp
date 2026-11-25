@@ -26,13 +26,15 @@
 // a tick at its place), and its first page's first stop is RECORDING: a tap of A the list of
 // recordings (the sampler's, with its preview), hold A + up / down the next one, R1 there RECORD
 // (elsewhere R1 is the next page), Y anywhere on that page CATCH (the last bar the song played).
+// While a take waits or runs, R1 on any page and stop stops it (before SAVE and a page turned).
 //
 // ADVANCED is every setting. For Phazed that is nine pages: the sound as a
 // whole, each of the two lines, and each line's three eight-step envelopes
 // drawn out. For JAX-EP, five. For FM-6, eight: the voice and its LFO, one a
 // operator (its ON and all 21 of its settings), and the pitch envelope. For
-// PHYSIC, four: SOUND, RING, PLAY, DICE. L1 and R1 turn the pages; B goes back
-// to MAIN.
+// PHYSIC, four: SOUND, RING, PLAY, DICE. L1 and R1 turn the pages, the cursor
+// keeping its place; B goes back to MAIN, and A on ADVANCED comes back to the
+// page and stop the track was last on (turnPage, firstStop).
 
 #include "redraw.hpp"
 #include "screen.hpp"
@@ -145,6 +147,14 @@ public:
     // CLOUD's RECORDING stop: the first of its first page (not a setting: its id is kRecordingId).
     static constexpr int kRecordingId = -1;
     bool onRecording() const { return spec_.recording && page_ == 1 && cursor_ == 0; }
+    // Where ADVANCED opens, and where a page turn puts the cursor (gesture audit G13). Each track keeps
+    // the page and stop it was last on, in memory only (as FX's last_): A on ADVANCED opens there, and the
+    // first time on page 1 at firstStop. L1 / R1 keep the cursor's row and column where the next page
+    // has them (FM-6: the same knob of the next operator), else the nearest. Neither lands on CLOUD's
+    // RECORDING (where R1 records): firstStop is the stop after it, and a page turn that would land on
+    // it lands there. A place remembered ON it opens on it.
+    int firstStop(int page) const { return spec_.recording && page == 1 ? 1 : 0; }
+    void turnPage(int to);
     SamplePicker& picker() { return picker_; }
     const SamplePicker& picker() const { return picker_; }
     const std::string& said() const { return said_; }
@@ -192,6 +202,8 @@ private:
     const SynthSpec& spec_;
     int page_ = 0;
     int cursor_ = kPreset;
+    int placePage_[kNumTracks] = {}, placeStop_[kNumTracks] = {}; // each track's ADVANCED place (page 0: none yet)
+    void keepPlace(); // the page and stop shown, as the track's place (on an advanced page)
     static constexpr int kChoiceRange = 12; // a setting with this many steps or fewer is a choice, not a range
     bool isChoice(int id) const;
     bool choicePushed_ = false; // the stick is over, and has already clicked a choice once

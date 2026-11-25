@@ -42,6 +42,14 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
 - **A recording is 20 s at most** (owner, 2026-11-18: it was 10): `kMaxSampleSeconds` for a file read
   (a longer one is cut there and faded) and `Recorder::kMaxSeconds` for RECORD; `sample_test` holds both
   (15 s kept whole). **Catch is not tied to it**: the engine remembers `kCatchFrames`, ten seconds.
+- **While a take waits or runs, R1 stops it from any stop of a screen that records** (gesture audit
+  G34, 2026-11-25; `Session::recordingNow`, checked first in each screen's `onButton`): the kit's lanes,
+  every column and the KIT stop (where R1 did nothing), the sampler's every stop (on PRESET R1 opened
+  the name keys and the take ran on) and CLOUD's every page (`instruments.md`), A held or not. Not the
+  kit's EDIT and VOICE views, where the recording line is not shown (VOICE's R1 is the next synth
+  lane). **The line is one function, `Session::recordingLine`**, and says the limit from
+  `Recorder::kMaxSeconds`: all three copies said OF 10 after the limit went to 20. The R1 hint says
+  `stop` meanwhile where it named R1's other job. `sample_test` `testR1StopsATakeFromAnyStop`.
 - **A panic calls off a recording that R1 began on the way** (gesture audit G25, 2026-11-25;
   `App::recBeforeShoulders_`, noted at the first shoulder, as the copies are): R1 first on a kit lane, the
   sampler or CLOUD's RECORDING starts one, which would have replaced the sound when it ended, outside undo.
@@ -511,6 +519,43 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   `easy_test kits` (`builtInKitProblems`). A kit put on goes through the lanes' own setters, so it is a
   step of undo as they are (a recording is not put back). A player's own are `kit N.kit` in the preset
   folder. Stills `kit-preset`, `-held`, `-own`. **Nobody has heard the kits.**
+- **B with A held puts the sound back wherever hold A steps through sounds** (gesture audit G12,
+  2026-11-25; `Session::keepSound` / `putSoundBack`, one function with the KIT stop's, whose own
+  `kitBefore_` copy is gone). The KIT stop, a lane's SOUND, the sampler's SOUND and PRESET, a synth's
+  FOLDER and PRESET and CLOUD's RECORDING (`instruments.md`) keep the track's whole sound as A goes down;
+  B with A still held puts it back, **heard** with the song stopped (the KIT stop too, new), and **A is
+  spent** (`holding_` false, as FX's and MOD's call-off: the D-pad and stick are the cursor's again, and
+  letting go is no tap, so no list or VOICE view opens; on the kit's other columns B with A held does
+  nothing but make the let go no tap, so FIT's tap below does not follow it). Before, B with A held did nothing there; a burst of undo
+  ends after 0.7 s, so each sound stopped on was its own step (ten heard: ten undos, past 20 the start
+  gone), and a recording or a lane's sound picked is no step of undo at all. **What is kept**
+  (`Session::KeptSound`): the track's fields copied whole (`fieldsFrom`, no patterns: one `TrackData` on
+  the heap, made once) and `PresetSoundMemory` as it was (files.md). **What is put back**, each only
+  where it differs: the kit's lanes (`putKit`, only when `kitText` differs: sound, EDIT, FIT, one slice,
+  level, FEEL, SWING, CHOKE), the recording (`setTrackSample`), the sampler's settings and CHOP, the
+  preset, settings (`settingCount`) and macros (`sendSynthPatch`, as undo puts a synth back), the track
+  sound (`putTrackSound`: effects, sends, GLIDE FROM, MODs), and the memory last, so a plain preset
+  picked next puts back what it would have without the trip. Not the mixer, the name, mute or solo. One kept at a time
+  (one A), in memory only; forgotten by `removeTrack`, `duplicateTrack` and `applyProject` (a number
+  then names another track) and never put on another instrument. The put-back is a change like any
+  other: a step of undo (a recording, as ever, is not). **The mixer's B with A held is not this** (owner,
+  2026-11-14, song-screen.md): it is 0 dB and the middle, a reset, and stays so. `sample_test`
+  `testBWithAHeldPutsTheSoundBack`, `testAKeptSoundIsForgotten`; `easy_test` `testTheKitStop`; `app_test`
+  `testAPutBackSoundIsTheEngines` (the engine plays the sound put back, to the sample).
+- **A tap of A on FIT sets the bars the recording fills** (gesture audit G45, 2026-11-25;
+  `laneFitFor`, `KitScreen::fitToItsBars`): FIT started at OFF, so the usual 1 BAR was the fifth click.
+  The length is what the lane plays unfitted (`LaneSound::seconds`: the cut, turned round and pitched
+  shape, which is what FIT stretches; the review's note said `sourceSeconds`, the whole file, which a
+  trimmed loop would get wrong), the steps it fills at the tempo (a step is 15 / tempo seconds),
+  rounded to FIT's stops **in the scene's meter**: 1, 2, 4 or 8 steps (those under a bar), or 1, 2 or
+  4 bars of `meterOf` (12 a bar in 3/4, as CATCH sets; FIT's most is 4 bars, so not 8 as first proposed). The
+  nearest by ratio, since a stretch is one: 24 steps in 4/4 are 2 bars, not 1. **Nothing on a
+  built-in drum, a DRUM SYNTH voice or a file not found** (a hit, not a loop; `fitsByTap`), where the
+  bar keeps HOLD A fit to steps; on a recording it says A fit to its bars. Hold A + up / down stays
+  exact. One step of undo, as FIT is (`laneFit` is in `soundMark`). **Left as it was**: FIT's box reads
+  16-step bars (`laneFitText`), so a tap's 48 steps in 3/4 (four of its bars) reads 3 BARS and 12 reads
+  12 STEPS, as CATCH's 12 always has; a question for the owner, not changed here. `sample_test`
+  `testATapOnFitFitsItsBars`.
 - **Hold B deletes one of the player's own presets the same way everywhere** (gesture audit G10, G30,
   2026-11-24): a kit (`kKitDeletingWords`), a sampler preset (`SamplerScreen::kPresetDeletingWords`:
   it said nothing, a 2-pixel line only, though the file is gone for good) and a synth's

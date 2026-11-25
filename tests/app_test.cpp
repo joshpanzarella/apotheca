@@ -7860,6 +7860,121 @@ void testTheEngineHearsMacrosAndSettings() {
     CHECK(std::fabs(ratio - 0.251f) < 0.03f);
 }
 
+// B with A held puts the sound back in the engine too (gesture audit G12): after stepping through presets,
+// a macro turned before A went down, the note is the one an engine never moved off that sound plays.
+void testAPutBackSoundIsTheEngines() {
+    std::unique_ptr<Rig> still(onPhazed()), back(onPhazed());
+    still->app.session().setSynthMacro(1, phazed::MacroOctave, 0.8f);
+    back->app.session().setSynthMacro(1, phazed::MacroOctave, 0.8f);
+    const std::vector<float> wanted = noteNow(*still);
+    back->project().playing = true; // (as if the song ran: the steps are not heard)
+    SynthScreen& screen = back->app.phazed();
+    screen.goTo(0, SynthScreen::kPreset);
+    back->key(A, true);
+    back->tap(UP, 5);
+    CHECK(back->project().tracks[1].preset == 5);
+    back->tap(B);
+    back->key(A, false);
+    back->project().playing = false;
+    CHECK(back->project().tracks[1].preset == 0 && back->project().tracks[1].macro[phazed::MacroOctave] == 0.8f);
+    CHECK(noteNow(*back) == wanted);
+}
+
+// ADVANCED keeps its place (gesture audit G13): each track comes back to the page and stop it was last on
+// (in memory, as FX's last_), and L1 / R1 keep the cursor's row and column, so on FM-6 the same knob of the
+// next operator is under it. Where the next page has no such place, the nearest.
+void testAdvancedKeepsItsPlace() {
+    Rig rig;
+    Session& session = rig.app.session();
+    CHECK(session.addTrack(TrackKind::Fm6) && session.addTrack(TrackKind::Fm6)); // tracks 2 and 3
+    rig.project().track = 1;
+    session.view = View::Device;
+    rig.frames(2);
+    SynthScreen& screen = rig.app.fm6();
+    // The first time: page 1, its first stop.
+    screen.goTo(0, SynthScreen::kAdvanced);
+    rig.tap(A);
+    CHECK(screen.page() == 1 && screen.cursor() == 0);
+    // OPERATOR 1's OUTPUT LEVEL (its second box); R1: OPERATOR 2's, R1 again OPERATOR 3's, L1 back.
+    rig.tap(R1);
+    rig.tap(RIGHT);
+    CHECK(screen.page() == 2 && screen.settingHere() == fm6::opSetting(1, fm6::OpLevel));
+    rig.tap(R1);
+    CHECK(screen.page() == 3 && screen.cursor() == 1 && screen.settingHere() == fm6::opSetting(2, fm6::OpLevel));
+    rig.tap(R1);
+    CHECK(screen.page() == 4 && screen.settingHere() == fm6::opSetting(3, fm6::OpLevel));
+    rig.tap(L1);
+    CHECK(screen.page() == 3 && screen.settingHere() == fm6::opSetting(2, fm6::OpLevel));
+    // Down a row: the place is a row and a column, kept the same way.
+    rig.tap(DOWN, 2);
+    const int deep = screen.cursor();
+    CHECK(deep == 9);
+    rig.tap(R1);
+    CHECK(screen.page() == 4 && screen.cursor() == deep);
+    // B to MAIN, A on ADVANCED: back on page 4 at that stop, not page 1.
+    rig.tap(B);
+    CHECK(screen.page() == 0 && screen.cursor() == SynthScreen::kAdvanced);
+    rig.tap(A);
+    CHECK(screen.page() == 4 && screen.cursor() == deep);
+    rig.tap(B);
+    // Another track of FM-6: its own place (none yet: page 1); then the first track's is still its own.
+    rig.project().track = 2;
+    rig.frames(2);
+    rig.tap(A);
+    CHECK(screen.page() == 1 && screen.cursor() == 0);
+    rig.tap(R1, 6); // (OPERATOR 6)
+    CHECK(screen.page() == 7);
+    rig.tap(B);
+    rig.project().track = 1;
+    rig.frames(2);
+    rig.tap(A);
+    CHECK(screen.page() == 4 && screen.cursor() == deep);
+    rig.tap(B);
+    rig.project().track = 2;
+    rig.frames(2);
+    rig.tap(A);
+    CHECK(screen.page() == 7 && screen.cursor() == 0);
+    // A place the next page has not: the nearest. The last box of an operator page (its 22nd), L1 to the
+    // voice's page: its last stop.
+    screen.goTo(3, 21);
+    rig.frames(1);
+    const int voiceStops = [&] { screen.goTo(1, 99); return screen.cursor() + 1; }();
+    screen.goTo(3, 21);
+    CHECK(voiceStops < 22);
+    rig.tap(L1);
+    CHECK(screen.page() == 2 && screen.cursor() == 21);
+    rig.tap(L1);
+    CHECK(screen.page() == 1 && screen.cursor() == voiceStops - 1);
+    // Left by another track rather than B: the place is still the track's (kept as it is shown).
+    rig.project().track = 1;
+    rig.frames(1);
+    screen.goTo(5, 2);
+    rig.frames(1);
+    rig.project().track = 2; // (the screen stays on page 5: shown for the other track now)
+    rig.frames(1);
+    screen.goTo(2, 0);
+    rig.tap(B);
+    rig.project().track = 1;
+    rig.frames(1);
+    rig.tap(A);
+    CHECK(screen.page() == 5 && screen.cursor() == 2);
+    // From an envelope (eight to a row) to a page of four: a column past the fourth is the row's fourth.
+    CHECK(session.addTrack(TrackKind::Phazed));
+    rig.project().track = 3;
+    rig.frames(1);
+    SynthScreen& phazed = rig.app.phazed();
+    phazed.goTo(4, 6);
+    rig.tap(L1);
+    CHECK(phazed.page() == 3 && phazed.cursor() == 3);
+    rig.tap(R1);
+    CHECK(phazed.page() == 4 && phazed.cursor() == 3);
+    // ...and on the second row, from the last envelope round to SOUND (thirteen boxes): the row's fourth
+    // (7), not a sixth column it has not (9, a row further on).
+    phazed.goTo(9, 13);
+    rig.tap(R1);
+    CHECK(phazed.page() == 1 && phazed.cursor() == 7);
+}
+
 void testAdvancedPages() {
     std::unique_ptr<Rig> rig(onPhazed());
     SynthScreen& screen = rig->app.phazed();
@@ -11247,8 +11362,10 @@ void testPhysicOnATrack() {
     CHECK(screen.page() == 5 && screen.settingHere() == physic::Pair);
     rig.tap(RIGHT);
     CHECK(screen.settingHere() == physic::Motor);
-    rig.tap(L1);
-    CHECK(screen.page() == 4 && screen.settingHere() == physic::Dice);
+    rig.tap(L1); // (the cursor keeps its place: the second box, G13)
+    CHECK(screen.page() == 4 && screen.cursor() == 1);
+    rig.tap(LEFT);
+    CHECK(screen.settingHere() == physic::Dice);
     // Every setting is on one page, once; MAIN has none; the names are as the plan's.
     const SynthSpec& spec = physicSpec();
     int seen[physic::kSettings] = {};
@@ -11694,13 +11811,16 @@ void testCloudOnATrack() {
     session.recordingChanged("drone", "hum");
     CHECK(session.deleteSample("hum") && !track.sample[0] && session.sampleUses("hum") == 0);
 
-    // The device screen: MAIN, then SOURCE (RECORDING first), GRAINS, PLAY.
+    // The device screen: MAIN, then SOURCE (RECORDING first), GRAINS, PLAY. The first visit opens on
+    // POSITION, not RECORDING (where R1 records: G13); LEFT is RECORDING.
     session.view = View::Device;
     rig.frames(2);
     SynthScreen& screen = rig.app.cloud();
     screen.goTo(0, SynthScreen::kAdvanced);
     rig.tap(A);
-    CHECK(screen.page() == 1 && screen.pageCount() == 4 && screen.onRecording() && screen.settingHere() == SynthScreen::kRecordingId);
+    CHECK(screen.page() == 1 && screen.pageCount() == 4 && !screen.onRecording() && screen.settingHere() == cloud::Position);
+    rig.tap(LEFT);
+    CHECK(screen.onRecording() && screen.settingHere() == SynthScreen::kRecordingId);
     // Hold A + up: the next recording ("buzz", the one left), heard; down: none again.
     rig.key(A, true);
     rig.tap(UP);
@@ -11726,12 +11846,16 @@ void testCloudOnATrack() {
     // RIGHT: POSITION; R1 there turns the page (on RECORDING it records: no input here, said so).
     rig.tap(RIGHT);
     CHECK(screen.settingHere() == cloud::Position);
-    rig.tap(R1);
-    CHECK(screen.page() == 2 && screen.settingHere() == cloud::Size);
+    rig.tap(R1); // (the cursor keeps its place: the second box, G13)
+    CHECK(screen.page() == 2 && screen.settingHere() == cloud::Density);
+    rig.tap(LEFT);
+    CHECK(screen.settingHere() == cloud::Size);
     rig.tap(R1);
     CHECK(screen.page() == 3 && screen.settingHere() == cloud::PitchSpray);
+    // Round to SOURCE from the first box: the place after RECORDING, never RECORDING itself (G13).
     rig.tap(R1);
-    CHECK(screen.page() == 1 && screen.onRecording());
+    CHECK(screen.page() == 1 && !screen.onRecording() && screen.settingHere() == cloud::Position);
+    rig.tap(LEFT);
     rig.tap(R1);
     CHECK(screen.page() == 1 && screen.said().find("NO INPUT FOUND") == 0);
     rig.frames(200);
@@ -12602,6 +12726,8 @@ int main(int argc, char** argv) {
     testMacros();
     testTheEngineHearsMacrosAndSettings();
     testAdvancedPages();
+    testAdvancedKeepsItsPlace();
+    testAPutBackSoundIsTheEngines();
     testEveryPatchSettingIsOnSomePage();
     testAddingJaxep();
     testJaxepsDeviceScreen();

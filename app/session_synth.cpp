@@ -128,6 +128,44 @@ void Session::putPresetSound(int track, const TrackSound* sound) {
     memory = PresetSoundMemory();
 }
 
+void Session::keepSound(int track) {
+    kept_.track = -1;
+    if (track < 0 || track >= kNumTracks || project.tracks[track].kind == TrackKind::None) return;
+    if (!kept_.was) kept_.was.reset(new TrackData); // (large: kept on the heap, made once)
+    kept_.was->fieldsFrom(project.tracks[track]);
+    kept_.memory = presetSounds_[track];
+    kept_.track = track;
+}
+
+// Through the usual setters, each only where it differs: the kit's lanes as a kit is put on (putKit),
+// the recording, the sampler's settings, a synth's patch as undo puts one back (sendSynthPatch: every
+// setting and macro, whatever preset it was on), then the track sound (putTrackSound) and, last, what a
+// whole preset had found, so a plain preset picked next does what it would have done without the trip.
+bool Session::putSoundBack(int track) {
+    if (track < 0 || track >= kNumTracks || track != kept_.track || !kept_.was) return false;
+    TrackData& t = project.tracks[track];
+    TrackData& was = *kept_.was;
+    if (t.kind != was.kind || t.kind == TrackKind::None) return false;
+    if (t.kind == TrackKind::Drums && kitText(t) != kitText(was)) putKit(track, was);
+    if (holdsRecording(t.kind) && std::strcmp(t.sample, was.sample) != 0) setTrackSample(track, was.sample);
+    if (t.kind == TrackKind::Sampler) {
+        for (int id = 0; id < sampler::kSettings; ++id) setSamplerSetting(track, id, was.sampler[id]);
+        if (t.samplerChop != was.samplerChop) setSamplerChop(track, was.samplerChop);
+    }
+    if (const SynthSpec* spec = specFor(t.kind)) {
+        const std::size_t size = sizeof(int) * static_cast<std::size_t>(settingCount(t.kind));
+        if (t.preset != was.preset || std::memcmp(spec->values(t), spec->values(was), size) != 0 || std::memcmp(t.macro, was.macro, sizeof t.macro) != 0) {
+            t.preset = was.preset;
+            std::memcpy(spec->values(t), spec->values(was), size);
+            std::memcpy(t.macro, was.macro, sizeof t.macro);
+            sendSynthPatch(track);
+        }
+    }
+    putTrackSound(track, trackSoundOf(was));
+    presetSounds_[track] = kept_.memory;
+    return true;
+}
+
 // A new sound from the dice (PHYSIC's Y). A change of the sound like any other: undo sees it (soundMark).
 bool Session::rollSynth(int track, unsigned seed) {
     if (track < 0 || track >= kNumTracks) return false;

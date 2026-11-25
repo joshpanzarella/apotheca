@@ -189,6 +189,12 @@ void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (event.down && b != Button::B) presetDeleting_ = false; // (any other button calls a delete off)
+    // While a take waits or runs, R1 stops it from any stop, before PRESET's SAVE (gesture audit G34: there
+    // R1 opened the name keys and the take ran on).
+    if (b == Button::R1 && event.down && session_.recordingNow()) {
+        session_.toggleRecording(project_.track, 0);
+        return;
+    }
     if (b == Button::A) {
         if (!event.down && holding_ && !stepped_ && stop_ == 0) openPicker(); // a plain tap on SOUND: the list
         if (event.down) stepped_ = false;
@@ -196,6 +202,7 @@ void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
         saved_ = turned_ = 0.f;
         stickWas_ = false;
         if (event.down) names_ = session_.sampleNames(), namesSeen_ = session_.sampleFiles();
+        if (event.down && (stop_ == 0 || stop_ == kPresetStop)) session_.keepSound(project_.track); // (what B with A held puts back)
         return;
     }
     if (!event.down) {
@@ -207,6 +214,15 @@ void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
         press(b);
         repeating_ = b;
         repeatAt_ = 0;
+    } else if (b == Button::B && holding_) {
+        // B with A held on SOUND or PRESET (gesture audit G12): the sound as it was when A went down, its
+        // effects too, heard. A is spent: the D-pad and the stick are the cursor's again, its let go no tap.
+        if (stop_ == 0 || stop_ == kPresetStop) {
+            if (session_.putSoundBack(project_.track) && !project_.playing) hear();
+            holding_ = false;
+            repeating_ = Button::None;
+            saved_ = turned_ = 0.f;
+        }
     } else if (b == Button::B && !holding_) {
         if (stop_ == 0) session_.setTrackSample(project_.track, "");
         else if (stop_ == kPresetStop) { // one's own sound on the track: B kept held deletes its file
@@ -308,12 +324,8 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
         return;
     }
     // While recording, the line says how it is going.
-    const Session::Rec rec = session_.recording();
-    if (rec == Session::Rec::Waiting || rec == Session::Rec::Recording) {
-        char text[64];
-        if (rec == Session::Rec::Waiting) std::snprintf(text, sizeof text, "WAITING FOR SOUND...  R1 TO CANCEL");
-        else std::snprintf(text, sizeof text, "RECORDING  %.1f S OF 10  R1 TO STOP", static_cast<double>(session_.recordSeconds()));
-        said_ = text;
+    if (session_.recordingNow()) {
+        said_ = session_.recordingLine();
         wasRecording_ = true;
         saidUntil_ = nowMs + 3000;
     } else if (wasRecording_) {
@@ -441,6 +453,7 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("HOLD B", kPresetDeletingWords); // (a file, gone for good: the kit's words)
     } else if (holding_) {
         hint("UP / DOWN", stop_ == 0 ? "next / previous recording" : (stop_ == kPresetStop ? "next / previous preset" : "turn it"));
+        if (stop_ == 0 || stop_ == kPresetStop) hint("B", "as it was");
     } else if (stop_ == kPresetStop) {
         hint("HOLD A", "pick one");
         // With an own preset the bar holds five: START yields to the delete (it is on every
@@ -448,14 +461,14 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const bool own = const_cast<Session&>(session_).samplerPresetOf(project_.track) >= 0;
         if (own) hint("HOLD B", "delete this preset");
         hint("Y", "catch");
-        hint("R1", "save");
+        hint("R1", session_.recordingNow() ? "stop" : "save");
         hint("L1", "chop");
         if (!own) hint("START", project_.playing ? "stop" : "play");
     } else {
         hint("HOLD A", stop_ == 0 ? "pick one" : "turn");
         hint("B", stop_ == 0 ? "none" : "default");
         hint("Y", "catch");
-        hint("R1", "record");
+        hint("R1", session_.recordingNow() ? "stop" : "record");
         hint("L1", "chop");
         hint("START", project_.playing ? "stop" : "play");
     }

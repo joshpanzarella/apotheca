@@ -12,9 +12,10 @@
 //           quickly; on a lane with a synth voice, its VOICE view (below). Or
 //           hold A + up / down: from the built-in drum UP each recording, one at
 //           a time, and DOWN the twelve synth models (KICK ... NOISE, each at its
-//           usual knobs). B: the drum back.
+//           usual knobs). B: the drum back. B with A still held: the lane as it was when A went down
+//           (Session::keepSound, as the KIT stop's), heard; A then does nothing more until pressed again.
 //   FIT     hold A + up / down: OFF, 1, 2, 4, 8, 16 (one bar), 32, 64 steps.
-//           B: off.
+//           A tap of A on a recording: the bars it fills at the tempo (laneFitFor). B: off.
 //   CHOKE   hold A + up / down: NONE, 1, 2. A hit on a lane in a group cuts
 //           the other lanes of that group (the closed hat cuts the open one:
 //           a new kit has its two hats in 1). B: none.
@@ -22,13 +23,15 @@
 //   KIT     up from lane 1 (easywins batch 7, kit presets): the kit's own stop, where SOUND's heading
 //           stands. It names the kit the track's is (a built-in, one of your own, or YOUR OWN).
 //           hold A + up / down: the kit after / before in the list (the built-in kits, then your
-//           own), put on at once; B with A still held: the kit as it was when A went down.
+//           own), put on at once; B with A still held: the kit as it was when A went down, heard.
 //           Y: SAVE the kit as it is now as KIT 1, KIT 2... Hold B a second on one of your own:
 //           delete its file (the track keeps its sound).
 //   Y       CATCH: the last bar the song played, all of it as it was
 //           heard, becomes a recording on this lane, fitted to one bar.
 //   R1      RECORD from a USB microphone or interface onto this lane: once
-//           to start (it waits for sound), again to stop. Ten seconds at most.
+//           to start (it waits for sound), again to stop. Twenty seconds at most.
+//           While a take waits or runs, R1 on any lane or column stops it, and on the KIT stop
+//           (not in the EDIT and VOICE views, where the recording line is not shown).
 //   L1      SLICES: the PATTERN tab, zoomed into this lane's recording cut
 //           into slices, for chopping a break (pattern_screen.hpp)
 //   X       hear the lane, for as long as X is held (to the recording's end);
@@ -80,6 +83,11 @@ namespace apotheca {
 constexpr int kLaneFits[] = {0, 1, 2, 4, 8, 16, 32, 64};
 constexpr int kLaneFitCount = sizeof kLaneFits / sizeof kLaneFits[0];
 void laneFitText(int steps, char* text, std::size_t size); // "OFF", "4 STEPS", "1 BAR", "2 BARS"
+// A tap of A on FIT (gesture audit G45): the steps a sound `seconds` long fills at `tempo` (a step is
+// 15 / tempo seconds), rounded to FIT's stops in a meter of `meter` steps a bar: 1, 2, 4 or 8 steps
+// (those under a bar), or 1, 2 or 4 bars; the nearest by ratio, since a stretch is one (24 steps in
+// 4/4 are 2 bars, not 1). 0 where any of the three is not above 0.
+int laneFitFor(float seconds, float tempo, int meter);
 const char* laneChokeText(int group);                      // "NONE", "1", "2"
 
 class KitScreen : public Screen {
@@ -97,6 +105,7 @@ public:
     void goTo(int lane, int column) { lane_ = lane; column_ = column; }
     int cursorLane() const { return lane_; }
     int cursorColumn() const { return column_; }
+    bool fitsByTap() const; // a recording on the lane, found: a tap of A on FIT fits it to its bars (G45)
     const std::string& said() const { return said_; }
     const ui::Playhead& playhead() const { return head_; }
     enum { kSound, kFit, kChoke, kEdit, kColumns }; // (kEdit: the sound's picture)
@@ -166,13 +175,14 @@ private:
     int lane_ = 0, column_ = kSound;
     // The KIT stop (up from lane 1).
     bool onKit_ = false;
-    std::unique_ptr<TrackData> kitBefore_; // the kit as it was when A went down on the stop
     bool kitDeleting_ = false, kitDeleteTimed_ = false;
     Uint32 kitDeleteSince_ = 0;
     float kitDeletePart_ = 0.f;
     void stepKit(int by);
     bool holding_ = false; // A is held
     bool stepped_ = false; // ...and something was changed with it, so letting go is not a tap
+    void putBack();        // B with A held on SOUND or the KIT stop: the sound as A went down (G12)
+    void fitToItsBars();
     SamplePicker picker_;
     void openPicker();
     unsigned sampleFilesSeen_ = 0; // sampleFiles() the picker's lists were read at: behind, it reads them again

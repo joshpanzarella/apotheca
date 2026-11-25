@@ -406,6 +406,13 @@ public:
     float recordSeconds() const { return recorder_.seconds(); }
     float recordLevel() const { return recorder_.level(); }
     const std::string& lastRecorded() const { return lastRecorded_; } // "" if the last one came to nothing
+    // A take waits for sound or runs. While it does, R1 stops it from any stop of a screen that records
+    // (the kit's lanes and its KIT stop, the sampler, CLOUD's every page: gesture audit G34), before
+    // R1's own job there (SAVE, a page turned).
+    bool recordingNow() const { return rec_ == Rec::Waiting || rec_ == Rec::Recording; }
+    // The line a screen that records says meanwhile, the limit as Recorder::kMaxSeconds has it (it said
+    // OF 10 after the limit went to 20). Empty when no take waits or runs.
+    std::string recordingLine() const;
 
     // ---- songs on disk ------------------------------------------------------------
     // Nothing here needs asking for. The song being worked on is written to
@@ -618,6 +625,17 @@ public:
     // effect: Session::setEffect, its 10 ms fade, its slot's automation cleared). Nothing is written
     // into automation, WRITE on or not.
     void putTrackSound(int track, const TrackSound& sound);
+    // B with A held puts the sound back (gesture audit G12). Where hold A steps through sounds (the KIT
+    // stop, a lane's SOUND, the sampler's SOUND and PRESET, a synth's FOLDER and PRESET, CLOUD's
+    // RECORDING) the screen keeps the track's whole sound as A goes down (keepSound), and B with A still
+    // held puts it back: the preset, its settings and macros, the recording, the sampler's settings and
+    // CHOP, every lane's kit fields, the effects, sends, GLIDE FROM and MODs, and what a whole preset
+    // found (PresetSoundMemory), each only where it differs, as a change like any other (a step of undo;
+    // a recording, as ever, is not). One kept at a time, in memory only, for its track by number:
+    // forgotten when the tracks move or another song comes, never put on another instrument.
+    // putSoundBack is false where nothing is kept for this track.
+    void keepSound(int track);
+    bool putSoundBack(int track);
     // Y on MAIN: a new sound from the dice, on a synth that has such a thing (PHYSIC: SynthSpec::roll).
     // The engine is told the whole patch. False on the others, and nothing changes.
     bool rollSynth(int track, unsigned seed);
@@ -824,6 +842,14 @@ private:
     };
     PresetSoundMemory presetSounds_[kNumTracks];
     void putPresetSound(int track, const TrackSound* sound); // null: a plain preset
+    // What keepSound kept: the track's fields as A went down (no patterns: none are copied), and what a
+    // whole preset had found there then. track -1: nothing.
+    struct KeptSound {
+        int track = -1;
+        std::unique_ptr<TrackData> was;
+        PresetSoundMemory memory;
+    };
+    KeptSound kept_;
     struct Sounding { int track = -1, pitch = 0; Uint32 until = 0; };
     Sounding sounding_[8];
     static constexpr Uint32 kHeldOn = 0xffffffffu; // a Sounding's `until` while X holds it

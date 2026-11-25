@@ -148,9 +148,9 @@ plays the recording as it was made; an octave up, twice as fast.
 
 | On | Hold A + up / down | B |
 | --- | --- | --- |
-| SOUND | **Tap A: the list of recordings.** Or hold A + up / down: one at a time | None |
+| SOUND | **Tap A: the list of recordings.** Or hold A + up / down: one at a time. **B with A still held: the sound as it was when A went down** | None |
 | PITCH, TUNE, START, END, ATTACK, RELEASE, LOOP, LEVEL | The stick turns it; the D-pad moves it by one | Its usual value |
-| PRESET | The preset after / before: the ends stop | Held a second, on one of your own: deletes its file (the bar says CANNOT BE UNDONE; the track keeps its sound) |
+| PRESET | The preset after / before: the ends stop. **B with A still held: the sound as it was when A went down**, its effects too | Held a second, on one of your own: deletes its file (the bar says CANNOT BE UNDONE; the track keeps its sound) |
 
 **PRESET is the sound kept as a preset of its own** (or "-"): the
 recording, its settings, CHOP and the whole sound around it, as a synth's
@@ -159,6 +159,7 @@ come up (A types, Y deletes a letter, **B saves and leaves**, as START does;
 with nothing typed B leaves and saves nothing; 24 letters at most). On one of
 your own its name is typed in already, so **R1 then B saves over it**. Under a
 name taken it replaces that one, and says REPLACED (SAVED AS for a new one).
+While a recording waits or runs, R1 stops it instead, here as on every box.
 A preset is kept as `NAME.sampler` in `presets` beside the program.
 
 **A multisample**: where the files beside the picked one spell notes in
@@ -631,8 +632,8 @@ designer".
   file (or the built-in drum), the part played lit, as loud as GAIN and the
   fades make it. FIT is for a recording or a synth voice: a built-in drum has none. As on the
   handheld, the file on the card is never changed, and a lane's EDIT, CHOKE,
-  FEEL, SWING and synth voice are undone with undo; a recording picked, FIT and
-  VOLUME are not.
+  FEEL, SWING, synth voice, FIT and VOLUME are undone with undo; a recording
+  picked is not.
 - Every setting of the synth is on the page, in the same groups as the
   handheld's pages, with the eight macros at the top. Phazed's envelopes
   are drawn as lines. Turn something on the handheld and the page shows it.
@@ -703,6 +704,12 @@ three effects, its ECHO and SPACE sends, GLIDE FROM and its two MODs.
   and it is yours: the next plain preset leaves it.
 - What is heard while browsing is what loads. A track whose effects came from
   a preset is an ordinary track afterwards.
+- **B with A still held puts back the sound you started from**: the preset,
+  its settings and macros, your effects, sends and MODs, all as they were when
+  A went down, however many presets you passed (one press, where undo was one
+  step a preset). The same on FOLDER, on the sampler's SOUND and PRESET, on
+  CLOUD's RECORDING and on a drum lane's SOUND, as on the KIT stop. A then does
+  nothing more until you press it again.
 - **A new track starts plain** on its synth's first preset, whatever that
   preset holds.
 - The mixer's LEVEL and PAN are never in a preset.
@@ -1252,8 +1259,11 @@ track makes a sound at once.
 - **Pick its recording on SOURCE, the first page**: the first stop is
   RECORDING. A opens the list of recordings (the same list as the sampler's:
   folders, a preview as you go, X to hear); **hold A + UP / DOWN** steps to the
-  next one, heard at once. **R1 there records** a new one (as the sampler's
-  R1; elsewhere R1 turns the page). **Y on SOURCE is CATCH**: the last bar the
+  next one, heard at once (B with A still held: the one you started on). **R1 there records** a new one (as the sampler's
+  R1; elsewhere R1 turns the page). ADVANCED opens on POSITION the first time,
+  and a page turn never lands on RECORDING, so R1 records only once you have
+  moved onto it. **While a take waits or runs, R1 stops it** on any page and
+  any box. **Y on SOURCE is CATCH**: the last bar the
   song played becomes this track's recording. B in the list leaves the
   recording as it was. "THE BUILT-IN TONE" at the top of the list is none.
 - **MAIN shows the recording**, between PRESET and the macros: its outline,
@@ -2049,7 +2059,7 @@ picture, EDIT (round the ends).
 **Kits.** UP from lane 1 is the kit's own stop, at the top left: KIT and its
 name. Hold A + UP / DOWN there puts on the next / previous kit: seven
 built-in kits (DRUMS, SYNTH, TIGHT, BIG, ELECTRO, DUSTY, HAND DRUMS), then
-your own. B with A still held gives back the kit you had. Y saves the kit as
+your own. B with A still held gives back the kit you had (and plays it). Y saves the kit as
 it is now as KIT 1, KIT 2... (a file `kit 1.kit` beside the presets). Hold B
 a second deletes one of your own; the track keeps its sound. A kit is each
 lane's sound with its EDIT, FIT, VOLUME, CHOKE, FEEL and SWING, not the
@@ -2057,8 +2067,8 @@ patterns or the effects. A changed kit reads YOUR OWN until it is saved.
 
 | On | Hold A + stick up / down | B |
 | --- | --- | --- |
-| SOUND | From the built-in drum: UP each recording by name, DOWN the twelve synth models. Heard as it changes. | The drum back |
-| FIT TO | Off, 1, 2, 4, 8 steps, 1 bar, 2 bars, 4 bars | Off |
+| SOUND | From the built-in drum: UP each recording by name, DOWN the twelve synth models. Heard as it changes. **B with A still held: the lane as it was when A went down** (its EDIT and FIT too) | The drum back |
+| FIT TO | Off, 1, 2, 4, 8 steps, 1 bar, 2 bars, 4 bars. **A tap of A on a recording: the bars it fills at the tempo** (1, 2 or 4 bars in the scene's meter, or 1 to 8 steps for a short one) | Off |
 | CHOKE | None, 1, 2 | None |
 | EDIT | (A opens the lane's EDIT view, below) | |
 
@@ -2184,7 +2194,8 @@ last bar's worth of sound.
 
 **R1 is Record.** With a USB microphone or audio interface plugged into the
 USB-C port: R1 on a lane starts it waiting for sound, so there is no silence
-on the front. R1 again stops it; it stops by itself at twenty seconds. Silence
+on the front. R1 again stops it, on any lane or box and on the KIT stop; it
+stops by itself at twenty seconds. Silence
 on the end is trimmed, a quiet take is brought up, and it is saved as
 `rec 1.wav`, `rec 2.wav`... in `samples/recorded` and put on the lane. The sampler has the same
 button. Not tried on the handheld yet: it depends on the firmware seeing the
@@ -2195,6 +2206,11 @@ at the song's tempo. Change the tempo and it is fitted again, a quarter of a
 second after the tempo stops moving. The work is done ahead of time on
 another thread and swapped in when ready, so it never costs the sound
 anything while playing. Until it is ready the lane plays what it had.
+**A tap of A on FIT** picks the length for you: the bars the recording (as
+EDIT cuts it) lasts at the tempo, rounded to 1, 2 or 4 bars of the scene's
+meter (or 1, 2, 4 or 8 steps for a short one). Hold A + up / down still
+moves it one stop at a time. Nothing happens on the built-in drum or a synth
+voice.
 
 - WAV files of 8, 16, 24 or 32 bits or 32-bit float, any sample rate, any
   number of channels. They are played as one channel at 48 kHz.
@@ -2433,7 +2449,9 @@ CUTOFF, RESO, ENV, TUNE, MIX, LFO, ATTACK, RELEASE. FM-6's are BRIGHT,
 FEEDBACK, ATTACK, DECAY, RELEASE, DETUNE, LFO, PITCH ENV. PHYSIC's are TONE, POSITION,
 DECAY, MATERIAL, STRETCH, RELEASE, DICE, OCTAVE. MORPH's are POSITION, MIX,
 CUTOFF, RESO, ENV POS, ENV CUT, DETUNE, RELEASE. Hold A + stick turns the one under
-the cursor; B puts a macro back in the middle. On PRESET, R1 saves the sound
+the cursor; B puts a macro back in the middle. **On FOLDER and PRESET, B with A
+still held puts back the sound you started from** (its settings, macros and the
+effects a whole preset brought), however many you stepped through. On PRESET, R1 saves the sound
 as one of your own and hold B deletes one of your own ("Presets", above). Each macro has a small picture
 of what it does and a colour for its kind (teal: the sound's colour; purple:
 movement and width; cream: time), and stays dim until it is turned. Macros bend the sound and
@@ -2462,7 +2480,11 @@ each line's volume, wave and pitch envelopes drawn out). JAX-EP has
 five (DCO-1, DCO-2, VCF, VCA and envelope, LFO and chorus). FM-6 has eight
 (the voice and its LFO, one for each operator, the pitch envelope: see FM-6,
 above). PHYSIC has five (SOUND, RING, PLAY, DICE, BODY: see PHYSIC, above). L1 and
-R1 turn the pages; B goes back to MAIN.
+R1 turn the pages; B goes back to MAIN. **The cursor keeps its place** as a page
+turns (the same row and box, or the nearest the page has): on FM-6 the same
+knob of the next operator. **A on ADVANCED comes back to the page and box the
+track was last on** (each track its own; the first time, page 1). The place is
+not kept in the song.
 
 JAX-EP is a virtual analog synth modeled after a popular DCO synth, and its
 pages are that synth's panel:

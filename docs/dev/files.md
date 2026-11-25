@@ -211,7 +211,10 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   turned since: `PresetSoundMemory`, compared as text) **puts back what the track had
   before it**, so browsing past a whole preset leaves no effects behind; forgotten by
   any other change, SAVE, `applyProject`, `addTrack`, `setTrackKind`, moved by
-  `removeTrack`. One step of undo takes a pick back (`soundMark` sees it all). A new
+  `removeTrack`. One step of undo takes a pick back (`soundMark` sees it all). **B with A held
+  puts back the whole sound A went down on, this memory with it** (gesture audit G12,
+  `Session::keepSound` / `putSoundBack`: drums-and-samples.md), so a plain preset picked after the
+  trip does what it would have done without it. A new
   track starts plain on preset 1, whatever that one holds.
 - **The built-ins past the engine's own are DATA, compiled in** (`app/presets/NAME.inc`,
   one raw string a synth; `readPresetData`, read once, `builtInData`): `new FOLDER /

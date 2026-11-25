@@ -16,6 +16,20 @@ void laneFitText(int fit, char* text, std::size_t size) {
     else std::snprintf(text, size, "%d STEP%s", fit, fit == 1 ? "" : "S");
 }
 
+int laneFitFor(float seconds, float tempo, int meter) {
+    if (!(seconds > 0.f) || !(tempo > 0.f) || meter <= 0) return 0;
+    const double steps = static_cast<double>(seconds) * static_cast<double>(tempo) / 15.0;
+    const int stops[] = {1, 2, 4, 8, meter, 2 * meter, 4 * meter}; // (steps only under a bar)
+    int best = 0;
+    double bestOff = 0.0;
+    for (int i = 0; i < 7; ++i) {
+        if (i < 4 && stops[i] >= meter) continue;
+        const double off = std::fabs(std::log(steps / stops[i]));
+        if (best == 0 || off < bestOff) best = stops[i], bestOff = off;
+    }
+    return best;
+}
+
 const char* laneChokeText(int group) { return group == kChokeNone ? "NONE" : group == 1 ? "1" : "2"; }
 
 namespace {
@@ -135,6 +149,30 @@ void KitScreen::stepKit(int by) {
     if (!project_.playing) hear(false); // (heard: its first lane, where the stop is reached from)
 }
 
+// B with A held on SOUND or the KIT stop (gesture audit G12): the track's sound as it was when A went down,
+// heard as each step is. A is spent, as FX's and MOD's call-off: the D-pad and the stick are the cursor's
+// again, and its let go is no tap (no list, no VOICE view).
+void KitScreen::putBack() {
+    if (session_.putSoundBack(project_.track) && !project_.playing) hear();
+    holding_ = false;
+    repeating_ = Button::None;
+    saved_ = 0.f;
+}
+
+// A built-in drum, a DRUM SYNTH voice (a hit, not a loop: it has no laneSample) or a file not found has no
+// length to fit by (and the bar keeps HOLD A fit to steps).
+bool KitScreen::fitsByTap() const {
+    return trk().laneSample[lane_][0] && !session_.laneSound(project_.track, lane_).missing;
+}
+
+// A tap of A on FIT (gesture audit G45): the bars what the lane plays unfitted (its cut) fills at the
+// tempo, rounded to FIT's stops in the scene's meter. A step of undo, as FIT is.
+void KitScreen::fitToItsBars() {
+    if (!fitsByTap()) return;
+    const int fit = laneFitFor(session_.laneSound(project_.track, lane_).seconds, project_.tempo, project_.meterOf(project_.scene));
+    if (fit > 0) session_.setLaneFit(project_.track, lane_, fit);
+}
+
 void KitScreen::press(Button b) {
     if (onKit_) {
         if (holding_) {
@@ -171,6 +209,13 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
     if (editing_) return editButton(event, input);
     if (voicing_) return voiceButton(event, input);
+    // While a take waits or runs, R1 stops it from any lane or column and from the KIT stop, A held or
+    // not (gesture audit G34: the line says R1 TO STOP, and on the KIT stop R1 did nothing).
+    if (b == Button::R1 && event.down && session_.recordingNow()) {
+        kitDeleting_ = false; // (any other button calls a delete off)
+        session_.toggleRecording(project_.track, lane_);
+        return;
+    }
     if (onKit_) {
         // The KIT stop: hold A + up / down the kits, B with A held the kit as it was, Y save, hold B delete.
         if (event.down && b != Button::B) kitDeleting_ = false; // (any other button calls a delete off)
@@ -178,15 +223,12 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
             holding_ = event.down;
             stepped_ = false;
             saved_ = 0.f;
-            if (event.down) {
-                kitBefore_.reset(new TrackData);
-                copyKit(trk(), *kitBefore_);
-            }
+            if (event.down) session_.keepSound(project_.track); // (what B with A held puts back)
             return;
         }
         if (b == Button::B) {
             if (event.down && holding_) {
-                if (kitBefore_) session_.putKit(project_.track, *kitBefore_);
+                putBack();
             } else if (event.down) {
                 const int now = session_.kitOf(project_.track);
                 kitDeleting_ = now >= 0 && session_.kits()[static_cast<std::size_t>(now)].own;
@@ -225,6 +267,7 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
             }
             openPicker();
         }
+        if (!event.down && holding_ && !stepped_ && column_ == kFit) fitToItsBars();
         if (!event.down && holding_ && !stepped_ && column_ == kEdit) {
             openEdit(editRow_);
             holding_ = false;
@@ -234,6 +277,7 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
         holding_ = event.down;
         saved_ = 0.f;
         if (event.down) names_ = session_.sampleNames(), namesSeen_ = session_.sampleFiles(), stepped_ = false;
+        if (event.down && column_ == kSound) session_.keepSound(project_.track); // (what B with A held puts back)
         return;
     }
     if (!event.down) {
@@ -244,6 +288,9 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
         press(b);
         repeating_ = b;
         repeatAt_ = 0;
+    } else if (b == Button::B && holding_) {
+        stepped_ = true; // (A's let go after it is no tap: on FIT no fit to its bars)
+        if (column_ == kSound) putBack();
     } else if (b == Button::B && !holding_) {
         if (column_ == kSound) session_.setLaneSample(project_.track, lane_, "");
         else if (column_ == kFit) session_.setLaneFit(project_.track, lane_, 0);
@@ -317,12 +364,8 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
         return editing_ ? editUpdate(input, nowMs, dt) : voiceUpdate(input, nowMs, dt);
     }
     // While recording, the line says how it is going.
-    const Session::Rec rec = session_.recording();
-    if (rec == Session::Rec::Waiting || rec == Session::Rec::Recording) {
-        char text[64];
-        if (rec == Session::Rec::Waiting) std::snprintf(text, sizeof text, "WAITING FOR SOUND...  R1 TO CANCEL");
-        else std::snprintf(text, sizeof text, "RECORDING  %.1f S OF 10  R1 TO STOP", static_cast<double>(session_.recordSeconds()));
-        said_ = text;
+    if (session_.recordingNow()) {
+        said_ = session_.recordingLine();
         wasRecording_ = true;
         saidUntil_ = nowMs + 3000;
     } else if (wasRecording_) {
@@ -982,7 +1025,7 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             hint("HOLD B", kKitDeletingWords);
         } else if (holding_) {
             hint("UP / DOWN", "next / previous kit");
-            hint("B", "as it was");
+            hint("B", "as it was"); // (Session::putSoundBack, as SOUND's)
         } else {
             hint("HOLD A", "kits");
             if (now < 0) hint("Y", "save this kit");
@@ -997,15 +1040,19 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("A", "edit"); // (opens when it is let go)
     } else if (holding_) {
         hint("UP / DOWN", column_ == kSound ? "recordings / synths" : column_ == kFit ? "longer / shorter" : "next / previous group");
+        if (column_ == kSound) hint("B", "as it was");
     } else if (column_ == kEdit) {
         hint("A", "edit");
+    } else if (column_ == kFit && fitsByTap()) {
+        hint("A", "fit to its bars"); // (HOLD A steps it: the help card says so)
+        hint("B", "fit off");
     } else {
         hint(column_ == kSound ? "A" : "HOLD A", column_ == kSound ? (trk().laneSynth[lane_].on() ? "knobs" : "pick from list") : column_ == kFit ? "fit to steps" : "choke group");
         hint("B", column_ == kSound ? "default drum" : column_ == kFit ? "fit off" : "no choke");
     }
     if (!holding_) {
         hint("Y", "catch");
-        hint("R1", "record");
+        hint("R1", session_.recordingNow() ? "stop" : "record");
         // A recording on the lane has all six it can hold: START yields to the slices (it is on
         // every other bar, and the top bar shows playing).
         const bool slices = trk().laneSample[lane_][0] != 0;

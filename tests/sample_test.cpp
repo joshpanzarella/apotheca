@@ -14,6 +14,9 @@
 #include <vector>
 
 #include "app.hpp"
+#include "apotheca/cloud.hpp"
+#include "drum_voices.hpp"
+#include "presets.hpp"
 #include "canvas.hpp"
 #include "samples.hpp"
 #include "song_file.hpp"
@@ -1436,6 +1439,330 @@ void testRecordingOntoACloud() {
     // A name that is gone: found where exactly one recording has its base name.
     session.setTrackSample(1, "old/rec 1");
     CHECK(session.trackSound(1).missing && session.findMissing("rec 1") == 1 && std::string(track.sample) == "recorded/rec 1" && !session.trackSound(1).missing);
+}
+
+// The bar holds every hint of the screen as it is now, with either help (hints must fit: ui::gHintsOver).
+bool hintsFit(Rig& rig) {
+    Canvas canvas;
+    if (!canvas.ok) return true; // (no lettering here: nothing drawn means anything)
+    bool fit = true;
+    const char* const was = ui::gHelpHint;
+    for (const char* help : {"MENU: HELP", "HLD SEL: HELP"}) {
+        ui::gHelpHint = help;
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        if (ui::gHintsOver != 0.f) std::printf("  the hints are %.0f pixels over\n", static_cast<double>(ui::gHintsOver)), fit = false;
+    }
+    ui::gHelpHint = was;
+    return fit;
+}
+
+// While a take waits or runs, R1 stops it from any stop of a screen that records (gesture audit G34):
+// the kit's other lanes and its KIT stop, the sampler's PRESET (where R1 opened the name keys and the take
+// ran on), CLOUD's settings and MAIN's PRESET (where R1 turned the page or opened the keys). The line says
+// the real limit, twenty seconds (it said OF 10).
+void testR1StopsATakeFromAnyStop() {
+    const std::string folder = tempFolder("samples-r1stops");
+    Rig rig(folder);
+    Session& session = rig.session();
+    FakeInput input;
+    session.useAudioInput(&input);
+    session.view = View::Device;
+    // The kit: R1 on lane 4 starts it; on lane 6, then on the KIT stop, R1 stops it (lane 4 takes it).
+    KitScreen& kit = rig.app.kit();
+    kit.goTo(3, KitScreen::kSound);
+    rig.frames(2);
+    rig.tap(R1);
+    CHECK(session.recording() == Session::Rec::Waiting && session.recordingNow());
+    input.add(tone(0.5f, 0.25f));
+    rig.frames(5);
+    CHECK(session.recording() == Session::Rec::Recording && kit.said().find("RECORDING") == 0 && kit.said().find(" S OF 20  R1 TO STOP") != std::string::npos);
+    kit.goTo(5, KitScreen::kChoke);
+    CHECK(hintsFit(rig)); // (R1 stop)
+    rig.tap(R1);
+    CHECK(session.recording() == Session::Rec::Idle && !session.recordingNow() && std::string(rig.project().tracks[0].laneSample[3]) == "recorded/rec 1");
+    rig.tap(R1); // (not recording: R1 on a lane starts one again)
+    CHECK(session.recording() == Session::Rec::Waiting);
+    kit.goToKit();
+    rig.tap(R1);
+    CHECK(session.recording() == Session::Rec::Idle && kit.onKit() && session.lastRecorded().empty()); // (no sound came)
+    // The sampler: R1 on SOUND starts it; on PRESET R1 stops it, and no keys come up. Stopped, R1 there saves.
+    CHECK(session.addTrack(TrackKind::Sampler));
+    rig.project().track = 1;
+    rig.frames(2);
+    SamplerScreen& sampler = rig.app.sampler();
+    sampler.goTo(0);
+    rig.tap(R1);
+    CHECK(session.recording() == Session::Rec::Waiting);
+    sampler.goTo(SamplerScreen::kPresetStop);
+    CHECK(hintsFit(rig)); // (R1 stop, where it is R1 save)
+    rig.tap(R1);
+    CHECK(session.recording() == Session::Rec::Idle && !sampler.typing());
+    rig.tap(R1);
+    CHECK(sampler.typing() && session.recording() == Session::Rec::Idle);
+    rig.tap(B); // (nothing typed: B leaves)
+    CHECK(!sampler.typing());
+    // CLOUD: R1 on RECORDING starts it; on POSITION R1 stops it and the page stays; on MAIN's PRESET too.
+    CHECK(session.addTrack(TrackKind::Cloud));
+    rig.project().track = 2;
+    rig.frames(2);
+    SynthScreen& screen = rig.app.cloud();
+    screen.goTo(1, 0);
+    rig.tap(R1);
+    CHECK(session.recording() == Session::Rec::Waiting);
+    rig.tap(RIGHT);
+    CHECK(hintsFit(rig)); // (L1 page, R1 stop)
+    rig.tap(R1);
+    CHECK(session.recording() == Session::Rec::Idle && screen.page() == 1 && screen.settingHere() == cloud::Position);
+    rig.tap(R1); // stopped: R1 off RECORDING turns the page, as ever
+    CHECK(screen.page() == 2 && session.recording() == Session::Rec::Idle);
+    screen.goTo(1, 0);
+    rig.tap(R1);
+    CHECK(session.recording() == Session::Rec::Waiting);
+    screen.goTo(0, SynthScreen::kPreset);
+    rig.tap(R1);
+    CHECK(session.recording() == Session::Rec::Idle && !screen.typing() && screen.page() == 0);
+}
+
+// B with A held puts back the sound A went down on (gesture audit G12), with one function shared with the
+// KIT stop (Session::keepSound / putSoundBack): a lane's SOUND (its EDIT and FIT too), the sampler's SOUND
+// and PRESET (the effects a whole preset brought too), CLOUD's RECORDING, a synth's PRESET (its settings,
+// macros and effects, and what a whole preset found when it came). A is then spent: what it held is let go.
+void testBWithAHeldPutsTheSoundBack() {
+    const std::string folder = tempFolder("samples-putback");
+    CHECK(writeWav(folder + "/aa.wav", tone(0.3f, 0.3f), 48000) && writeWav(folder + "/bb.wav", tone(0.4f, 0.3f), 48000) && writeWav(folder + "/cc.wav", tone(0.5f, 0.3f), 48000));
+    Rig rig(folder);
+    Session& session = rig.session();
+    session.usePresetFolder(folder + "/presets");
+    session.view = View::Device;
+    // A lane's SOUND: "bb", turned up and fitted; hold A, UP to "cc", DOWN to KICK; B: "bb" as it was.
+    KitScreen& kit = rig.app.kit();
+    TrackData& drums = rig.project().tracks[0];
+    session.setLaneSample(0, 2, "bb");
+    LaneEdit edit = drums.laneEdit[2];
+    edit.gain = 30;
+    session.setLaneEdit(0, 2, edit);
+    session.setLaneFit(0, 2, 16);
+    kit.goTo(2, KitScreen::kSound);
+    rig.frames(2);
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(std::string(drums.laneSample[2]) == "cc");
+    rig.tap(DOWN, 4); // cc, bb, aa, the drum, KICK
+    CHECK(drums.laneSynth[2].on() && !drums.laneSample[2][0] && hintsFit(rig)); // (B as it was)
+    const int heard = kit.hears();
+    rig.tap(B);
+    CHECK(std::string(drums.laneSample[2]) == "bb" && !drums.laneSynth[2].on() && drums.laneEdit[2].gain == 30 && drums.laneFit[2] == 16 && kit.hears() == heard + 1);
+    // Spent: UP with A still held moves the cursor, not the sound; let go, nothing opens.
+    rig.tap(UP);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(std::string(drums.laneSample[2]) == "bb" && kit.cursorLane() == 1 && !kit.picker().isOpen() && !kit.voicing());
+    // B with A held off SOUND puts nothing back (FIT's own steps stay).
+    kit.goTo(2, KitScreen::kFit);
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.tap(B);
+    rig.key(A, false);
+    CHECK(drums.laneFit[2] == 32);
+
+    // The sampler's SOUND: "bb"; hold A, UP ("cc"), B: "bb". A down, B, A up: no list (it was no tap).
+    CHECK(session.addTrack(TrackKind::Sampler));
+    rig.project().track = 1;
+    TrackData& smp = rig.project().tracks[1];
+    session.setTrackSample(1, "bb");
+    rig.frames(2);
+    SamplerScreen& sampler = rig.app.sampler();
+    sampler.goTo(0);
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(std::string(smp.sample) == "cc" && hintsFit(rig));
+    rig.tap(B);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(std::string(smp.sample) == "bb" && !sampler.picker().isOpen());
+    rig.key(A, true);
+    rig.tap(B);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(std::string(smp.sample) == "bb" && !sampler.picker().isOpen());
+    // ...and PRESET: two saved (each whole: ONE with a REVERB, TWO with none), the track on neither with a DELAY.
+    session.setTrackSample(1, "aa");
+    session.setSamplerSetting(1, sampler::Attack, 10);
+    session.setEffect(1, 0, EffectKind::Reverb);
+    CHECK(session.saveSamplerPreset(1, "ONE"));
+    session.setTrackSample(1, "cc");
+    session.setSamplerSetting(1, sampler::Attack, 90);
+    session.setEffect(1, 0, EffectKind::None);
+    CHECK(session.saveSamplerPreset(1, "TWO"));
+    session.setTrackSample(1, "bb");
+    session.setSamplerSetting(1, sampler::Attack, 40);
+    session.setEffect(1, 0, EffectKind::Delay);
+    CHECK(session.samplerPresetOf(1) == -1);
+    sampler.goTo(SamplerScreen::kPresetStop);
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(session.samplerPresetOf(1) == 0 && smp.effects[0].kind == static_cast<int>(EffectKind::Reverb));
+    rig.tap(UP);
+    CHECK(session.samplerPresetOf(1) == 1 && smp.effects[0].kind == static_cast<int>(EffectKind::None) && hintsFit(rig));
+    rig.tap(B);
+    rig.key(A, false);
+    CHECK(std::string(smp.sample) == "bb" && smp.sampler[sampler::Attack] == 40 && smp.effects[0].kind == static_cast<int>(EffectKind::Delay) && session.samplerPresetOf(1) == -1);
+
+    // CLOUD's RECORDING: "aa"; hold A, UP twice ("cc"), B: "aa", and no list on letting go.
+    CHECK(session.addTrack(TrackKind::Cloud));
+    rig.project().track = 2;
+    TrackData& cl = rig.project().tracks[2];
+    session.setTrackSample(2, "aa");
+    rig.frames(2);
+    SynthScreen& cloudScreen = rig.app.cloud();
+    cloudScreen.goTo(1, 0);
+    rig.key(A, true);
+    rig.tap(UP, 2);
+    CHECK(std::string(cl.sample) == "cc" && hintsFit(rig));
+    rig.tap(B);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(std::string(cl.sample) == "aa" && !cloudScreen.picker().isOpen());
+
+    // A synth's PRESET: preset 2, a macro turned, a DELAY by hand. Hold A, eight at a time past the
+    // plain ones into the whole ones (their effects come in), B: preset 2, the settings, the macro, the DELAY.
+    CHECK(session.addTrack(TrackKind::Phazed));
+    rig.project().track = 3;
+    TrackData& ph = rig.project().tracks[3];
+    rig.frames(2);
+    SynthScreen& phazed = rig.app.phazed();
+    CHECK(presetSound(TrackKind::Phazed, 64) == nullptr && presetSound(TrackKind::Phazed, 65) && presetSound(TrackKind::Phazed, 66));
+    CHECK(trackSoundText(TrackKind::Phazed, *presetSound(TrackKind::Phazed, 65)) != trackSoundText(TrackKind::Phazed, *presetSound(TrackKind::Phazed, 66)));
+    session.chooseSynthPreset(3, 2);
+    session.setSynthMacro(3, 0, 0.2f);
+    session.setSynthSetting(3, 0, ph.patch.value[0] == 0 ? 1 : 0);
+    session.setEffect(3, 0, EffectKind::Delay);
+    const std::string own = trackSoundText(TrackKind::Phazed, trackSoundOf(ph));
+    const std::vector<int> values(ph.patch.value, ph.patch.value + phazed::kSettings);
+    phazed.goTo(0, SynthScreen::kPreset);
+    rig.key(A, true);
+    rig.tap(RIGHT, 8);
+    CHECK(ph.preset == 66 && trackSoundText(TrackKind::Phazed, trackSoundOf(ph)) != own && hintsFit(rig));
+    rig.tap(B);
+    rig.key(A, false);
+    CHECK(ph.preset == 2 && ph.macro[0] == 0.2f && std::vector<int>(ph.patch.value, ph.patch.value + phazed::kSettings) == values && trackSoundText(TrackKind::Phazed, trackSoundOf(ph)) == own);
+    // FOLDER too.
+    phazed.goTo(0, SynthScreen::kFolder);
+    rig.key(A, true);
+    rig.tap(UP, 3);
+    CHECK(ph.preset != 2);
+    rig.tap(B);
+    rig.key(A, false);
+    CHECK(ph.preset == 2 && trackSoundText(TrackKind::Phazed, trackSoundOf(ph)) == own);
+    // What a whole preset found is put back too: 65 picked (it found the DELAY), then A, UP (66), B: 65 again,
+    // and a plain one picked next still gives back the DELAY, as it would have without the trip to 66.
+    session.chooseSynthPreset(3, 65);
+    CHECK(trackSoundText(TrackKind::Phazed, trackSoundOf(ph)) != own);
+    phazed.goTo(0, SynthScreen::kPreset);
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(ph.preset == 66);
+    rig.tap(B);
+    rig.key(A, false);
+    CHECK(ph.preset == 65);
+    rig.key(A, true);
+    rig.tap(DOWN);
+    rig.key(A, false);
+    CHECK(ph.preset == 64 && trackSoundText(TrackKind::Phazed, trackSoundOf(ph)) == own);
+}
+
+// What B with A held puts back is one track's, by its number: forgotten when the tracks move or another song
+// comes, so it never lands on another track of the same instrument.
+void testAKeptSoundIsForgotten() {
+    Rig rig;
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Phazed) && session.addTrack(TrackKind::Phazed)); // 2 and 3
+    session.chooseSynthPreset(1, 4);
+    session.chooseSynthPreset(2, 9);
+    session.keepSound(2);
+    CHECK(!session.putSoundBack(1)); // (kept for another track)
+    CHECK(session.putSoundBack(2) && rig.project().tracks[2].preset == 9);
+    // A track copied in before it: track 3 is the copy of 2 now, and nothing is put on it.
+    session.keepSound(2);
+    CHECK(session.duplicateTrack(1) == 2);
+    session.chooseSynthPreset(2, 5);
+    CHECK(!session.putSoundBack(2) && rig.project().tracks[2].preset == 5);
+    // A track deleted before it: the same.
+    session.keepSound(2);
+    CHECK(session.removeTrack(1));
+    session.chooseSynthPreset(2, 6);
+    CHECK(!session.putSoundBack(2) && rig.project().tracks[2].preset == 6);
+    // Another song.
+    session.keepSound(0);
+    CHECK(session.newSong());
+    CHECK(!session.putSoundBack(0));
+}
+
+// A tap of A on FIT (gesture audit G45): the bars the lane's recording fills at the tempo, rounded to FIT's
+// stops in the scene's meter (up to 4 bars), from what the lane plays (its cut). Nothing on a built-in drum,
+// a synth voice or a file not found. Hold A + up / down still steps it exactly. One step of undo.
+void testATapOnFitFitsItsBars() {
+    CHECK(laneFitFor(2.f, 120.f, 16) == 16 && laneFitFor(4.f, 120.f, 16) == 32 && laneFitFor(8.f, 120.f, 16) == 64);
+    CHECK(laneFitFor(30.f, 120.f, 16) == 64);  // past four bars: FIT's most
+    CHECK(laneFitFor(1.9f, 120.f, 16) == 16 && laneFitFor(2.2f, 120.f, 16) == 16);
+    CHECK(laneFitFor(3.f, 120.f, 16) == 32);   // 24 steps: nearer 32 by ratio (4 / 3) than 16 (3 / 2)
+    CHECK(laneFitFor(2.f, 90.f, 16) == 16);    // 12 steps: nearer 16 (4 / 3) than 8 (3 / 2)
+    CHECK(laneFitFor(0.5f, 120.f, 16) == 4 && laneFitFor(0.13f, 120.f, 16) == 1 && laneFitFor(0.25f, 120.f, 16) == 2 && laneFitFor(1.f, 120.f, 16) == 8);
+    CHECK(laneFitFor(1.5f, 120.f, 12) == 12 && laneFitFor(3.f, 120.f, 12) == 24 && laneFitFor(6.f, 120.f, 12) == 48); // 3/4
+    CHECK(laneFitFor(2.f, 120.f, 12) == 12);   // 16 steps in 3/4: a bar (4 / 3), not 24 (3 / 2)
+    CHECK(laneFitFor(1.f, 120.f, 6) == 6);     // 8 steps in a bar of 6: steps only under a bar, so one bar
+    CHECK(laneFitFor(0.f, 120.f, 16) == 0 && laneFitFor(2.f, 0.f, 16) == 0 && laneFitFor(2.f, 120.f, 0) == 0);
+
+    const std::string folder = tempFolder("samples-fittap");
+    CHECK(writeWav(folder + "/loop.wav", tone(2.f, 0.3f), 48000) && writeWav(folder + "/long.wav", tone(4.f, 0.3f), 48000));
+    Rig rig(folder);
+    Session& session = rig.session();
+    session.view = View::Device;
+    KitScreen& kit = rig.app.kit();
+    TrackData& track = rig.project().tracks[0];
+    CHECK(rig.project().tempo == 120.f);
+    session.setLaneSample(0, 0, "loop");
+    session.setLaneSample(0, 1, "long");
+    session.setLaneSynth(0, 3, drumsynth::usualVoice(1));
+    session.setLaneSample(0, 4, "gone");
+    kit.goTo(0, KitScreen::kFit);
+    rig.frames(60);
+    CHECK(hintsFit(rig)); // (A fit to its bars)
+    rig.tap(A);
+    CHECK(track.laneFit[0] == 16);
+    rig.frames(60);
+    CHECK(session.undo() && track.laneFit[0] == 0); // (one step of undo)
+    rig.tap(A);
+    CHECK(track.laneFit[0] == 16);
+    kit.goTo(1, KitScreen::kFit);
+    rig.tap(A);
+    CHECK(track.laneFit[1] == 32);
+    // Hold A + down still steps it, and A let go after a step is no tap.
+    rig.key(A, true);
+    rig.tap(DOWN);
+    rig.key(A, false);
+    CHECK(track.laneFit[1] == 16);
+    // What the lane plays: cut to its first half, a second, 8 steps.
+    LaneEdit edit = track.laneEdit[0];
+    edit.end = kEditUnits / 2;
+    session.setLaneEdit(0, 0, edit);
+    kit.goTo(0, KitScreen::kFit);
+    rig.tap(A);
+    CHECK(track.laneFit[0] == 8);
+    // In 3/4 a bar is 12 steps: four seconds are two of them.
+    session.setSceneMeter(rig.project().scene, 12);
+    kit.goTo(1, KitScreen::kFit);
+    rig.tap(A);
+    CHECK(track.laneFit[1] == 24);
+    // A built-in drum, a synth voice, a file not found: nothing (and the bar keeps HOLD A fit to steps).
+    CHECK(kit.fitsByTap()); // (on "long", a recording found)
+    for (int lane : {2, 3, 4}) {
+        kit.goTo(lane, KitScreen::kFit);
+        CHECK(!kit.fitsByTap());
+        rig.tap(A);
+        CHECK(track.laneFit[lane] == 0);
+    }
 }
 
 // A recording under way goes onto the track it began on, wherever that track goes, and is called off
@@ -3153,6 +3480,10 @@ int main(int, char**) {
     testThePanicCallsOffARecordingBegunOnTheWay();
     testARecordingFollowsItsTrack();
     testRecordingOntoACloud();
+    testR1StopsATakeFromAnyStop();
+    testBWithAHeldPutsTheSoundBack();
+    testAKeptSoundIsForgotten();
+    testATapOnFitFitsItsBars();
     testNoteNames();
     testMultisampleZones();
     testMultisampleCap();

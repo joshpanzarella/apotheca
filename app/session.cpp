@@ -114,6 +114,7 @@ bool Session::removeTrack(int track) {
         else if (recTrack_ > track) --recTrack_;
     }
     for (int t = track; t + 1 < kNumTracks; ++t) project.tracks[t] = project.tracks[t + 1];
+    kept_.track = -1; // (what B with A held puts back was for a track by its number)
     for (int t = track; t < kNumTracks; ++t) { // the types each slot remembers move with their tracks, and what a preset found
         for (int s = 0; s < kTrackSlots; ++s) typeMemory_[t * kTrackSlots + s] = t + 1 < kNumTracks ? typeMemory_[(t + 1) * kTrackSlots + s] : TypeMemory();
         presetSounds_[t] = t + 1 < kNumTracks ? presetSounds_[t + 1] : PresetSoundMemory();
@@ -151,6 +152,7 @@ int Session::duplicateTrack(int track) {
     const int count = project.trackCount();
     if (track < 0 || track >= count || count >= kNumTracks) return -1;
     if ((rec_ == Rec::Waiting || rec_ == Rec::Recording) && recTrack_ > track) ++recTrack_;
+    kept_.track = -1; // (what B with A held puts back was for a track by its number)
     for (int t = count; t > track + 1; --t) { // the tracks after it, a place down (from the end)
         project.tracks[t] = project.tracks[t - 1];
         for (int s = 0; s < kTrackSlots; ++s) typeMemory_[t * kTrackSlots + s] = typeMemory_[(t - 1) * kTrackSlots + s];
@@ -2151,6 +2153,7 @@ void Session::applyProject() {
     // Another song: nothing of the last one to go back to.
     for (TypeMemory& m : typeMemory_) m = TypeMemory();
     for (PresetSoundMemory& m : presetSounds_) m = PresetSoundMemory();
+    kept_.track = -1;
     undo_.clear();
     redo_.clear();
     editing_ = false;

@@ -28,7 +28,8 @@
 //              (PITCH moves every slice together). START, END and LOOP work within a
 //              slice. Not with a multisample: its zones win.
 //   R1         RECORD from a USB microphone or interface: once to start (it
-//              waits for sound), again to stop. Ten seconds at most.
+//              waits for sound), again to stop. Twenty seconds at most. While a
+//              take waits or runs, R1 on any stop stops it (PRESET too: no SAVE).
 //   X          hear it, at middle C (its own pitch, until ROOT or TUNE is moved),
 //              for as long as X is held, to the recording's end; let go, its
 //              RELEASE runs. A tap is heard for a moment, as before.

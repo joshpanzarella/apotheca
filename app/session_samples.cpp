@@ -521,6 +521,13 @@ Session::Rec Session::toggleRecording(int track, int lane) {
     return rec_ = Rec::Waiting;
 }
 
+std::string Session::recordingLine() const {
+    char text[64] = {};
+    if (rec_ == Rec::Waiting) std::snprintf(text, sizeof text, "WAITING FOR SOUND...  R1 TO CANCEL");
+    else if (rec_ == Rec::Recording) std::snprintf(text, sizeof text, "RECORDING  %.1f S OF %d  R1 TO STOP", static_cast<double>(recordSeconds()), static_cast<int>(Recorder::kMaxSeconds));
+    return text;
+}
+
 void Session::finishRecording() {
     if (input_) input_->stop();
     rec_ = Rec::Idle;

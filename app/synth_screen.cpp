@@ -53,6 +53,22 @@ void SynthScreen::goTo(int page, int cursor) {
     cursor_ = cursor < 0 ? 0 : (cursor >= count ? count - 1 : cursor);
 }
 
+// L1 / R1: the next page, the cursor on the same row and column where it has them, else the nearest
+// (its last column, its last stop); never onto CLOUD's RECORDING (firstStop).
+void SynthScreen::turnPage(int to) {
+    const int cols = columns(), row = cursor_ / cols, col = cursor_ % cols;
+    goTo(to, 0);
+    const int toCols = columns(), count = itemCount();
+    int at = row * toCols + (col < toCols ? col : toCols - 1);
+    if (at >= count) at = count - 1;
+    cursor_ = at < firstStop(page_) ? firstStop(page_) : at;
+}
+
+void SynthScreen::keepPlace() {
+    const int t = project_.track;
+    if (page_ > 0 && t >= 0 && t < kNumTracks) placePage_[t] = page_, placeStop_[t] = cursor_;
+}
+
 // ---- the cursor --------------------------------------------------------------------
 
 void SynthScreen::moveCursor(Button direction) {
@@ -347,6 +363,12 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
         else picker_.onButton(event, project_.playing);
         return;
     }
+    // CLOUD: while a take waits or runs, R1 stops it from any page and stop, before SAVE on PRESET and a page
+    // turned (gesture audit G34: off RECORDING R1 turned the page and the take ran on).
+    if (b == Button::R1 && event.down && spec_.recording && session_.recordingNow()) {
+        session_.toggleRecording(project_.track, 0);
+        return;
+    }
     // X: hear the sound. Held on a macro (MAIN, A not held), it is also the macro's MOD: the X-held
     // check comes before every other button's own job (Y's roll, B's middle, the D-pad's cursor).
     if (b == Button::X) {
@@ -365,15 +387,20 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (b == Button::A && onRecording()) {
         if (!event.down && holding_ && !stepped_) openPicker();
         if (event.down) stepped_ = false, names_ = session_.sampleNames(), namesSeen_ = session_.sampleFiles();
+        if (event.down) session_.keepSound(project_.track); // (what B with A held puts back)
         holding_ = event.down;
         saved_ = 0.f;
         return;
     }
     if (b == Button::A) {
         if (event.down && page_ == 0 && cursor_ == kAdvanced) {
-            goTo(1, 0);
+            // The page and stop this track was last on; the first time, page 1 at its first stop.
+            const int t = project_.track;
+            if (t >= 0 && t < kNumTracks && placePage_[t] > 0) goTo(placePage_[t], placeStop_[t]);
+            else goTo(1, firstStop(1));
             return; // A opened the pages; it is not holding anything
         }
+        if (event.down && page_ == 0 && (cursor_ == kFolder || cursor_ == kPreset)) session_.keepSound(project_.track); // (what B with A held puts back)
         holding_ = event.down;
         saved_ = 0.f;
         return;
@@ -405,8 +432,20 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
         repeatAt_ = 0;
         return;
     }
+    if (b == Button::B && holding_) {
+        // B with A held on FOLDER, PRESET or CLOUD's RECORDING (gesture audit G12): the sound as it was when
+        // A went down (its settings, macros, effects and recording), heard. A is spent: the D-pad and the
+        // stick are the cursor's again, and its let go is no tap (no list).
+        if ((page_ == 0 && (cursor_ == kFolder || cursor_ == kPreset)) || onRecording()) {
+            if (session_.putSoundBack(project_.track)) hear();
+            holding_ = false;
+            repeating_ = Button::None;
+            saved_ = 0.f;
+        }
+        return;
+    }
     if (b == Button::B && !holding_) {
-        if (page_ > 0) goTo(0, kAdvanced); // back to MAIN, on the way in
+        if (page_ > 0) keepPlace(), goTo(0, kAdvanced); // back to MAIN, on the way in (the place kept for A)
         else if (cursor_ == kPreset) { // one of the player's own: B kept held deletes its file (as a kit's)
             presetDeleting_ = onOwnPreset();
             presetDeleteTimed_ = false;
@@ -429,9 +468,9 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
         // R1 then B saves over it.
         keys_.open(onOwnPreset() ? spec_.presetName(trk().preset) : "", kPresetNameLength);
     } else if (b == Button::R1 && page_ > 0) {
-        goTo(page_ == spec_.pages - 1 ? 1 : page_ + 1, 0);
+        turnPage(page_ == spec_.pages - 1 ? 1 : page_ + 1);
     } else if (b == Button::L1 && page_ > 0) {
-        goTo(page_ == 1 ? spec_.pages - 1 : page_ - 1, 0);
+        turnPage(page_ == 1 ? spec_.pages - 1 : page_ - 1);
     } else if (b == Button::Start && !input.held(Button::Select)) {
         session_.togglePlay(false);
     }
@@ -445,6 +484,7 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
         picker_.rescan(session_.sampleNames(), session_.sampleFolders());
     }
     if (!input.held(Button::A)) holding_ = false;
+    keepPlace(); // (on an advanced page: where A on ADVANCED comes back to)
     // B kept held on one of the player's own presets: its file is deleted when the bar is full. (Let go, A
     // held, off PRESET or another track up: called off.)
     if (!input.held(Button::B) || input.held(Button::A) || page_ != 0 || cursor_ != kPreset || project_.track != presetDeleteTrack_ || keys_.isOpen()) presetDeleting_ = false;
@@ -480,12 +520,8 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
         picker_.update(input, nowMs, project_.playing);
         if (picker_.isOpen()) return;
         // While recording, the line says how it is going (as the sampler's).
-        const Session::Rec rec = session_.recording();
-        if (rec == Session::Rec::Waiting || rec == Session::Rec::Recording) {
-            char text[64];
-            if (rec == Session::Rec::Waiting) std::snprintf(text, sizeof text, "WAITING FOR SOUND...  R1 TO CANCEL");
-            else std::snprintf(text, sizeof text, "RECORDING  %.1f S OF 10  R1 TO STOP", static_cast<double>(session_.recordSeconds()));
-            say(text, 3000);
+        if (session_.recordingNow()) {
+            say(session_.recordingLine(), 3000);
             wasRecording_ = true;
         } else if (wasRecording_) {
             wasRecording_ = false; // it has just stopped, by R1 or at kMaxSeconds (20 s)
@@ -709,10 +745,11 @@ void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
             if (cursor_ == kFolder) hint("UP / DOWN", "next / previous folder");
             else if (cursor_ == kPreset) { hint("UP / DOWN", "next / previous preset"); hint("LEFT / RIGHT", "8 at a time"); }
             else hint("UP / DOWN", "turn it");
+            if (cursor_ == kFolder || cursor_ == kPreset) hint("B", "as it was");
         } else {
             if (cursor_ == kAdvanced) hint("A", "open");
             else hint("HOLD A", cursor_ < kFirstMacro ? "change" : "turn");
-            if (cursor_ == kPreset) hint("R1", "save");
+            if (cursor_ == kPreset) hint("R1", spec_.recording && session_.recordingNow() ? "stop" : "save");
             if (cursor_ == kPreset && onOwnPreset()) hint("HOLD B", "delete this preset");
             if (cursor_ >= kFirstMacro && cursor_ < kAdvanced) hint("B", "back to the middle");
             // (Where the bar has room for it with nothing left out. The help card says it everywhere.)
@@ -813,15 +850,17 @@ void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
     if (holding_) {
         hint("STICK UP / DOWN", onRecording() ? "next recording" : "change it");
         hint("D-PAD UP / DOWN", "by one");
+        if (onRecording()) hint("B", "as it was");
     } else if (onRecording()) {
         hint("A", "list");
         hint("HOLD A", "next");
-        hint("R1", "record");
+        hint("R1", session_.recordingNow() ? "stop" : "record");
         hint("Y", "catch");
         hint("B", "main");
     } else {
         hint("HOLD A", "change");
-        hint("L1 R1", "page");
+        if (spec_.recording && session_.recordingNow()) hint("L1", "page"), hint("R1", "stop"); // (R1 stops the take: G34)
+        else hint("L1 R1", "page");
         hint("B", "main");
         hint("START", project_.playing ? "stop" : "play");
     }

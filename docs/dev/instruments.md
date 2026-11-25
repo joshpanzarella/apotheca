@@ -19,6 +19,23 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     so the last row of any page ends on `kAboveScope`. **At XL those boxes are drawn at LARGE**,
     names and values (`boxFontsFor`: the value would come within `kValueClear` of the bar);
     `textsize` holds every FM-6 setting at its least and most to it.
+- **ADVANCED keeps its place** (gesture audit G13, 2026-11-25; `SynthScreen::placePage_` / `placeStop_`,
+  `keepPlace`, `turnPage`; `app_test` `testAdvancedKeepsItsPlace`). Each track keeps the page and stop it
+  was last on, **in memory only, never in the song** (as FX's `last_`): written by `update()` while an
+  advanced page shows (so a track left by another track's coming, not by B, keeps it too) and by B on
+  its way to MAIN. **A on ADVANCED opens there**; a track never on the pages opens page 1 at
+  `firstStop` (0, or 1 on CLOUD). **L1 / R1 keep the cursor's row and column** (`index / columns`, an
+  envelope page's eight to a row and its HOLD AT / LAST STEP row as Phazed's `moveCursor` counts them):
+  on FM-6 the same knob of the next operator is under it, one press each. Where the next page has no
+  such place, the nearest: the row's last column (an envelope's sixth column on a page of four is the
+  fourth), then the page's last stop. Before, A always opened page 1 at stop 0 and L1 / R1 put the
+  cursor on stop 0 (Phazed's page 5, step 3 was 16 presses each visit). Per track by number, so a
+  track deleted hands its place to the one after it: a cursor, clamped (`goTo`), never a sound.
+- **B with A held on MAIN's FOLDER and PRESET, and on CLOUD's RECORDING, puts the sound back** as it
+  was when A went down (gesture audit G12, 2026-11-25: `Session::keepSound` / `putSoundBack`, the whole
+  rule in drums-and-samples.md): the preset, its settings and macros told to the engine as undo tells
+  them (`sendSynthPatch`), the effects a whole preset brought, and the recording. Heard (`hear()`), and
+  A is spent. B with A held on a macro or a page's setting still does nothing.
 - **A new synth track tells the engine its first preset** (`Session::addTrack` calls
   `sendSynthPatch`). The engine makes a synth on its start patch, which is no preset: JAX-EP and
   FM-6 played it (a plain saw, one sine) under a MAIN that said A1 or BRASS 1 until a preset was
@@ -234,6 +251,11 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     SOURCE** (`kRecordingId`, not a setting: `item()` adds it): a tap of A the list of recordings (the
     sampler's `SamplePicker`, its preview the cloud at middle C), hold A + up / down the next, R1 there
     RECORD (elsewhere R1 is the page), Y anywhere on SOURCE CATCH; what is said shows in the top bar.
+    **Neither a first visit nor a page turn lands on RECORDING** (gesture audit G13, 2026-11-25:
+    `SynthScreen::firstStop`): "A, R1", page 2 on every other synth, started a recording here, and so
+    did R1 once the pages came round to SOURCE. Both land on POSITION; a place remembered on RECORDING
+    (the player was there last) opens on it. **While a take waits or runs, R1 on any page and stop stops
+    it** (G34), before SAVE on MAIN's PRESET and before a page turn.
   - **The grains are a readout for the redraw** (`Readouts::grains`, `kStirGrains`: the track up's places,
     `App::readouts`); `idle_test` has a part (a CLOUD at LEVEL 0, so SIGNAL stands still and only the
     grains move).

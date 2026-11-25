@@ -1276,9 +1276,17 @@ void testTheKitStop() {
         rig.tap(UP); // past the last: nothing, and nothing heard
         CHECK(kit.hears() == heardSoFar);
     }
-    // B with A still held: the kit as it was when A went down.
-    rig.tap(B);
-    CHECK(session.kitOf(0) == 0);
+    // B with A still held: the kit as it was when A went down, heard (gesture audit G12: Session::putSoundBack,
+    // SOUND's too). A is spent: UP with it still held moves the cursor off the stop, not to another kit.
+    {
+        const int heardSoFar = kit.hears();
+        rig.tap(B);
+        CHECK(session.kitOf(0) == 0 && kit.hears() == heardSoFar + 1);
+        rig.tap(UP);
+        CHECK(!kit.onKit() && kit.cursorLane() == kDrumLanes - 1 && session.kitOf(0) == 0);
+        rig.tap(DOWN), rig.tap(UP);
+        CHECK(kit.onKit() && session.kitOf(0) == 0);
+    }
     rig.key(A, false);
     rig.frames(2);
     CHECK(kit.onKit() && !kit.editing() && !kit.voicing()); // (A let go opens nothing on the stop)
