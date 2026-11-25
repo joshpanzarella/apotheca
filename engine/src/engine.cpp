@@ -324,6 +324,7 @@ bool Engine::leavesBlank(const Command& c) {
     case Command::SetStepStart: return c.value <= 0.f;
     case Command::SetNote: return !(c.value > 0.f);
     case Command::SetCellBars: return c.a <= 1;
+    case Command::SetCellFill: return c.a == 0;
     case Command::SetAutomation: return c.value < 0.f;
     default: return false; // (SetStepFx: given a store, as the app sends it only for a hit that has some)
     }
@@ -343,6 +344,7 @@ bool Engine::send(const Command& command) {
     case Command::SetStepFx:
     case Command::SetNote:
     case Command::SetCellBars:
+    case Command::SetCellFill:
     case Command::SetAutomation: {
         const int t = command.track, scene = command.scene;
         if (validTrack(t) && validScene(scene) && !((given_[t] >> scene) & 1) && !leavesBlank(command)) {
@@ -383,11 +385,15 @@ bool Engine::send(const Command& command) {
         std::uint64_t has = 0;
         for (int scene = 0; scene < kMaxScenes; ++scene) {
             const SceneImage* from = image.scenes[scene].get();
-            if (!from && image.bars[scene] == 1) continue;
+            if (!from && image.bars[scene] == 1 && !image.fill[scene]) continue;
             SceneStore* store = new SceneStore;
             set->scenes[scene] = store;
-            if (from) sceneIn(*store, from->level, from->nudge, from->chance, from->start, from->fx, from->notes, image.bars[scene], from->automation);
-            else store->bars = static_cast<std::uint8_t>(image.bars[scene] < 1 ? 1 : (image.bars[scene] > kMaxBars ? kMaxBars : image.bars[scene]));
+            if (from) {
+                sceneIn(*store, from->level, from->nudge, from->chance, from->start, from->fx, from->notes, image.bars[scene], image.fill[scene], from->automation);
+            } else { // (nothing in it but its length, or its FILL on)
+                store->bars = static_cast<std::uint8_t>(image.bars[scene] < 1 ? 1 : (image.bars[scene] > kMaxBars ? kMaxBars : image.bars[scene]));
+                store->fill = image.fill[scene] ? 1 : 0;
+            }
             has |= std::uint64_t(1) << scene;
         }
         for (int lane = 0; lane < kDrumLanes; ++lane) {
@@ -430,7 +436,7 @@ bool Engine::moveScenes(int from, int by, const std::unique_ptr<SceneImage>* sce
         if (!scenes[t]) continue;
         const SceneImage& image = *scenes[t];
         move->scenes[t] = new SceneStore;
-        sceneIn(*move->scenes[t], image.level, image.nudge, image.chance, image.start, image.fx, image.notes, image.bars, image.automation);
+        sceneIn(*move->scenes[t], image.level, image.nudge, image.chance, image.start, image.fx, image.notes, image.bars, image.fill, image.automation);
     }
     Command c;
     c.type = Command::ScenesMoved;
@@ -447,8 +453,10 @@ bool Engine::moveScenes(int from, int by, const std::unique_ptr<SceneImage>* sce
 }
 
 void Engine::sceneIn(SceneStore& to, const float (*level)[kDrumLanes][kSteps], const float (*nudge)[kDrumLanes][kSteps], const float (*chance)[kDrumLanes][kSteps],
-                     const float (*start)[kDrumLanes][kSteps], const StepFx (*fx)[kDrumLanes][kSteps], const TrackImage::Note (*notes)[kMaxNotes], int bars, const float* automation) {
+                     const float (*start)[kDrumLanes][kSteps], const StepFx (*fx)[kDrumLanes][kSteps], const TrackImage::Note (*notes)[kMaxNotes], int bars, bool fill,
+                     const float* automation) {
     to.bars = static_cast<std::uint8_t>(bars < 1 ? 1 : (bars > kMaxBars ? kMaxBars : bars));
+    to.fill = fill ? 1 : 0;
     for (int bar = 0; bar < kMaxBars; ++bar) {
         for (int lane = 0; lane < kDrumLanes; ++lane)
             for (int step = 0; step < kSteps; ++step) {
@@ -1114,6 +1122,7 @@ void Engine::startPlaying(const Command& c) {
     scene_ = validScene(c.a) ? c.a : 0;
     if (!loopScene_ && scene_ >= sceneCount_) scene_ = 0;
     repeat_ = 0;
+    loopPass_ = 0;
     bar_ = 0;
     nextStep_ = 0;
     untilStep_ = 0.0;
@@ -1442,6 +1451,10 @@ bool Engine::applySong(const Command& c) {
         break;
     case Command::SetSceneRepeats:
         if (validScene(c.scene)) repeats_[c.scene] = c.a < 1 ? 1 : (c.a > kMaxRepeats ? kMaxRepeats : c.a);
+        // Changed on a bar's last step: what follows may be another time round (the scene again, or the next
+        // scene), and the next bar the FILL or not. What the step asked ahead for is asked again (askAgain
+        // asks nothing where it is the same bar of the same store).
+        askAgain();
         break;
     case Command::SetSceneSteps:
         if (validScene(c.scene)) steps_[c.scene] = c.a < 0 ? 0 : (c.a > kMaxBars * kSteps ? kMaxBars * kSteps : c.a);
@@ -1467,6 +1480,10 @@ bool Engine::applySong(const Command& c) {
         break;
     case Command::SetCellBars:
         if (SceneStore* store = writable(c)) store->bars = static_cast<std::uint8_t>(c.a < 1 ? 1 : (c.a > kMaxBars ? kMaxBars : c.a));
+        break;
+    case Command::SetCellFill:
+        if (SceneStore* store = writable(c)) store->fill = c.a != 0 ? 1 : 0;
+        askAgain(); // (switched on the last step before the FILL's bar, or of it: the bar that follows is another)
         break;
     case Command::Play:
         ++playsTaken_; // (songEnded says which one stopped at its end; a Play counted in is taken now)
@@ -1798,7 +1815,7 @@ void Engine::clearPending() {
 // way every time it plays, by a roll worked out from where the hit is and which time this is. A
 // lane with SWING plays every second sixteenth late. A lane with none of them goes exactly the way
 // it always did.
-bool Engine::schedule(Track& track, int lane, const DrumScene& scene, int step, double delaySamples, int bar, long stepAt, bool ahead) {
+bool Engine::schedule(Track& track, int lane, const DrumScene& scene, int step, double delaySamples, int bar, long stepAt, bool ahead, bool fill) {
     const LaneFeel feel = track.feel[lane];
     const int swing = track.swing[lane];
     bool whole = false;
@@ -1809,7 +1826,7 @@ bool Engine::schedule(Track& track, int lane, const DrumScene& scene, int step, 
         // sample sooner or later by how the sound is cut into blocks.
         // (`scene` is bar `bar` of its cell, and a cell's bars stand in a row: `&scene - bar` is
         // the cell's first. The run may begin bars back: a break longer than a bar, in order.)
-        const int back = feelRunBack(&scene - bar, bar, lane, step);
+        const int back = fill ? feelRunBack(&scene, 0, lane, step) : feelRunBack(&scene - bar, bar, lane, step); // (a FILL: a cell of its own)
         const int headAt = bar * kSteps + step - back; // steps from the cell's top
         const int head = headAt % kSteps;
         double moved = delaySamples;
@@ -1925,6 +1942,13 @@ int Engine::sceneSteps(int scene) const {
     return steps_[scene] > 0 && steps_[scene] < whole ? steps_[scene] : whole;
 }
 
+// The FILL's moment (fill_rule.hpp): the scene's last bar, its last time round; in a scene played alone,
+// the last of each REPEATS of its rounds (loopPass_).
+bool Engine::fillTimeAt(const Position& at) const {
+    if (!validScene(at.scene)) return false; // (never so; it tells GCC, which warned of steps_[] past its end)
+    return fillTime(at.bar, meterOf(at.scene), sceneSteps(at.scene), loopScene_ ? at.pass : at.repeat, repeats_[at.scene]);
+}
+
 // A bar line, for Catch: the bar that has just ended is the last whole bar (where it began and
 // ended), and the next begins here. Called where a bar's first step fires, and where a song that
 // stops at its end stops (no step fires there, and its last bar is a whole bar all the same).
@@ -1983,10 +2007,10 @@ bool Engine::songEndsNow() const {
 }
 
 Engine::Position Engine::afterThisBar() const {
-    if ((bar_ + 1) * meterOf(scene_) < sceneSteps(scene_)) return {scene_, repeat_, bar_ + 1}; // further into the scene
-    if (loopScene_) return {scene_, repeat_, 0};
-    if (repeat_ + 1 < repeats_[scene_]) return {scene_, repeat_ + 1, 0};
-    return {(scene_ + 1) % sceneCount_, 0, 0};
+    if ((bar_ + 1) * meterOf(scene_) < sceneSteps(scene_)) return {scene_, repeat_, bar_ + 1, loopPass_}; // further into the scene
+    if (loopScene_) return {scene_, repeat_, 0, loopPass_ + 1 >= repeats_[scene_] ? 0 : loopPass_ + 1}; // (round its REPEATS, for the FILL)
+    if (repeat_ + 1 < repeats_[scene_]) return {scene_, repeat_ + 1, 0, 0};
+    return {(scene_ + 1) % sceneCount_, 0, 0, 0};
 }
 
 // The early hits of step `following` of `then`, set waiting. `elapsed`: how far into the step
@@ -1996,7 +2020,7 @@ Engine::Position Engine::afterThisBar() const {
 // A lane with HUMAN TIME: every hit of it is asked here, a step ahead, since the roll may bring it
 // early; and the track keeps that it was (`feelAsked`), so the hit is not begun again on its own
 // step if the lane's feel is turned between the two askings.
-void Engine::askAheadHits(Track& track, const DrumScene& then, int bar, int following, double elapsed) {
+void Engine::askAheadHits(Track& track, const DrumScene& then, int bar, int following, double elapsed, bool fill) {
     asking_ = true;
     for (int lane = 0; lane < kDrumLanes; ++lane) {
         if (then.level[lane][following] <= 0.f) continue;
@@ -2009,7 +2033,7 @@ void Engine::askAheadHits(Track& track, const DrumScene& then, int bar, int foll
             if (!felt && wait < 0.0) continue;
             // Taken: not begun again on its own step. (Asked again too late for its early moment,
             // it is not taken, and comes on its step with the hits that are not early.)
-            if (schedule(track, lane, then, following, wait, bar, stepsFired_, true) && felt) track.feelAsked[lane] = stepsFired_; // (stepsFired_: the number the step after this one will have)
+            if (schedule(track, lane, then, following, wait, bar, stepsFired_, true, fill) && felt) track.feelAsked[lane] = stepsFired_; // (stepsFired_: the number the step after this one will have)
         }
     }
     asking_ = false;
@@ -2046,6 +2070,7 @@ void Engine::askAgain(bool endChanged) {
     const Position after = afterThisBar();
     const int followingScene = following == 0 ? after.scene : scene_;
     const int followingBar = following == 0 ? after.bar : bar_;
+    const bool fillThen = fillTimeAt(following == 0 ? after : Position{scene_, repeat_, bar_, loopPass_});
     const bool lastStep = following == 0 && (bar_ + 1) * meterOf(scene_) >= sceneSteps(scene_) && repeat_ + 1 >= repeats_[scene_] && scene_ + 1 >= sceneCount_;
     const bool pastEnd = playsOnce() && lastStep;
     if (endChanged && !lastStep) return; // (AT END switched anywhere else: nothing asked depends on it)
@@ -2053,7 +2078,7 @@ void Engine::askAgain(bool endChanged) {
     const double now = static_cast<double>(stepsFired_ - 1); // the step playing
     for (Track& track : tracks_) {
         if (!track.hasInstrument()) continue;
-        const int slotThen = slotOf(track, followingScene, followingBar);
+        const int slotThen = slotOf(track, followingScene, followingBar, fillThen);
         if (!endChanged && track.askedFrom == track.scenes[slotThen / kMaxBars] && track.askedBar == slotThen % kMaxBars) continue; // the same bar: as asked
         for (auto& p : track.pendingNotes)
             if (p.ahead) p = Track::PendingNote();
@@ -2077,7 +2102,7 @@ void Engine::askAgain(bool endChanged) {
         track.askedBar = slotThen % kMaxBars;
         if (pastEnd) continue;
         if (track.hasDrums) {
-            askAheadHits(track, track.drumScenes[slotThen], slotThen % kMaxBars, following, elapsed);
+            askAheadHits(track, track.drumScenes[slotThen], slotThen % kMaxBars, following, elapsed, fillSlot(track, slotThen));
         } else if (track.synth) {
             for (int pass = track.glideFrom == kFromPaired ? 0 : 1; pass < 2; ++pass) {
                 telling_ = pass == 0;
@@ -2103,6 +2128,7 @@ void Engine::fireStep() {
         scene_ = next.scene;
         repeat_ = next.repeat;
         bar_ = next.bar;
+        loopPass_ = next.pass;
         if (sceneTempoNow(scene_) != tempo_) useTempo(sceneTempoNow(scene_)); // a scene with its own tempo
     }
     // The very first step after Play. A hit or note on step 1 that is pushed
@@ -2128,27 +2154,31 @@ void Engine::fireStep() {
     const Position after = afterThisBar();
     const int followingScene = following == 0 ? after.scene : scene_;
     const int followingBar = following == 0 ? after.bar : bar_;
+    // The FILL (fill_rule.hpp): a cell that has one on plays it in the scene's last bar, its last time round.
+    const bool fillNow = fillTimeAt(Position{scene_, repeat_, bar_, loopPass_});
+    const bool fillThen = following == 0 ? fillTimeAt(after) : fillNow;
     // Played once through (a bounce, or a song that stops at its end), the song's last step asks for nothing of its first: an
     // early hit or note there would sound in the song's last moments, and ring on after them.
     const bool pastEnd = playsOnce() && following == 0 && (bar_ + 1) * meter >= sceneSteps(scene_) && repeat_ + 1 >= repeats_[scene_] && scene_ + 1 >= sceneCount_;
 
     for (Track& track : tracks_) {
         if (track.hasDrums) {
-            const DrumScene& now = track.drumScenes[slotOf(track, scene_, bar_)];
-            const DrumScene& then = track.drumScenes[slotOf(track, followingScene, followingBar)];
-            const int barNow = slotOf(track, scene_, bar_) % kMaxBars;
+            const int slotNow = slotOf(track, scene_, bar_, fillNow), barNow = slotNow % kMaxBars;
+            const int slotThen = slotOf(track, followingScene, followingBar, fillThen);
+            const DrumScene& now = track.drumScenes[slotNow];
+            const DrumScene& then = track.drumScenes[slotThen];
+            const bool fillNowHere = fillSlot(track, slotNow); // (its slices' runs begin in it: schedule)
             for (int lane = 0; lane < kDrumLanes; ++lane) {
                 if (track.feelAsked[lane] == stepsFired_ - 1) continue; // FEEL: this step's hit was asked for a step ago
                 if (now.level[lane][nextStep_] > 0.f && now.nudge[lane][nextStep_] >= 0.f) {
-                    schedule(track, lane, now, nextStep_, now.nudge[lane][nextStep_] * samplesPerStep_, barNow, stepsFired_ - 1, false);
+                    schedule(track, lane, now, nextStep_, now.nudge[lane][nextStep_] * samplesPerStep_, barNow, stepsFired_ - 1, false, fillNowHere);
                 } else if (veryFirst && now.level[lane][0] > 0.f) {
-                    schedule(track, lane, now, 0, 0.0, barNow, stepsFired_ - 1, false);
+                    schedule(track, lane, now, 0, 0.0, barNow, stepsFired_ - 1, false, fillNowHere);
                 }
             }
-            const int slotThen = slotOf(track, followingScene, followingBar);
             track.askedFrom = track.scenes[slotThen / kMaxBars];
             track.askedBar = slotThen % kMaxBars;
-            if (!pastEnd) askAheadHits(track, then, slotThen % kMaxBars, following, 0.0);
+            if (!pastEnd) askAheadHits(track, then, slotThen % kMaxBars, following, 0.0, fillSlot(track, slotThen));
         } else if (track.synth) {
             // The notes whose time was up have been let go already
             // (fireNoteOffs). Start this step's.
@@ -2163,9 +2193,9 @@ void Engine::fireStep() {
             // "early" now but was not asked begins on its step, its early keys with the step.
             // (Only the step is kept, not the bar: NEXT SCENE moves the playing to another
             // scene's number between the two askings, and the chord is the same chord.)
-            const int slotNow = slotOf(track, scene_, bar_);
+            const int slotNow = slotOf(track, scene_, bar_, fillNow);
             const bool asked = track.chordAsked == stepsFired_ - 1;
-            const int slotThen = slotOf(track, followingScene, followingBar);
+            const int slotThen = slotOf(track, followingScene, followingBar, fillThen);
             // GLIDE FROM PAIRED: a note's key comes from its place among the notes of its own
             // moment, so the step's notes are gone through twice, by the one set of conditions:
             // first only told to the trail as coming (`telling_`: startNote and startChordNote
@@ -2199,7 +2229,7 @@ void Engine::fireStep() {
     autoPhase_ = 0.0;
     for (Track& track : tracks_) {
         if (!track.hasInstrument()) continue;
-        const int at = (slotOf(track, scene_, bar_) % kMaxBars) * kSteps + nextStep_;
+        const int at = (slotOf(track, scene_, bar_, fillNow) % kMaxBars) * kSteps + nextStep_;
         for (int lane = 0; lane < kAutoLanes; ++lane) {
             if (track.autoWaits(lane)) { // the FX screen is trying another effect in the slot
                 track.autoGliding[lane] = false;
@@ -2220,6 +2250,7 @@ void Engine::fireStep() {
     playStep_.store(nextStep_, std::memory_order_relaxed);
     tellScene(scene_);
     playRepeat_.store(repeat_, std::memory_order_relaxed);
+    playPass_.store(loopPass_, std::memory_order_relaxed);
     playBar_.store(bar_, std::memory_order_relaxed);
     nextStep_ = following;
 }

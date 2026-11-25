@@ -809,6 +809,17 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   while the song plays the scene on screen; never while a button is held or the stick pushed, nor
   `kFollowRestMs` (1.5 s) after, so a bar looked at by hand stays until the playhead next enters a bar.
   The cursor keeps its step.
+  **A cell's FILL looked at by hand holds the view still** (F2-fill-screens, 2026-11-25: the plan's question 3,
+  "Should it hold still on the FILL instead (recommended)?", approved with the plan; the rule's change is
+  Claude's, open to the owner). The rule above, quoted: "a bar looked at by hand stays until the playhead next
+  enters a bar" (and 1.5 s after the controls rest): on the FILL, which plays once in REPEATS rounds, that took
+  the view back to the bar playing a moment after the player stopped pressing, in the middle of drawing it.
+  Now, while the view is on the FILL because the player put it there, or worked on it there (anything held or
+  pushed while it is shown), no bar entered moves it, however long the rest; only the player moves it off. A
+  FILL that FOLLOW itself showed (it played) is followed on from as any bar. `BarFollow::step` takes the bar
+  shown and whether it is the FILL, and remembers the bar it last put the view on (`put_`). The playing bar is
+  `Project::cellBarPlaying` (the FILL's place while it plays). `follow_test` `testTheFillRule`,
+  `testTheFillOnBothGrids`.
   **The roll's keys follow the notes too** (owner, 2026-11-24; `keysToShow` in follow_bar.hpp, `NoteScreen::followTheNotes`):
   when FOLLOW shows a bar, the keys go to the stretch holding the most of its notes (then the most of their length,
   then centred on them, then nearest where they were); a bar with none leaves them; the cursor, if left out of view,

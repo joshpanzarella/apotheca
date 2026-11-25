@@ -43,7 +43,7 @@ New screens and gestures keep these; do not invent a variant.
 - **Typing a name** (`NameKeys`, every place; the password keys alike): A types, Y deletes a letter (held, on), B or START keeps it and leaves. Every button is the keys' meanwhile; only the four-shoulder panic acts.
 - **X** hears, as long as it is held, over the song too (on SONG it solos the track: owner, 2026-11-15). **Hold X** is "what it does": step effects on a drum hit, ratchet and glide on a note.
 - **Hold R1** drags: paint from an empty step, carry from a note. **On SONG R1 is a tap**: on a cell or a scene's REPEATS box it copies; on another it pastes, and the paste spends the copy (R1 on the copied one clears it unpasted).
-- **Hold L1 on the grids** (drum grid, slices, roll) is the bar key: **+ R1 copies the bar, + A pastes it** (a paste spends the copy).
+- **Hold L1 on the grids** (drum grid, slices, roll) is the bar key: **+ R1 copies the bar, + A pastes it** (a paste spends the copy), **+ Y is the cell's FILL** (made, gone to, off and on: `songs-and-undo.md`).
   So L1's own tap (the slices, the roll's zoom) acts on its LET GO, and only if nothing else was pressed meanwhile (a stick move included).
 - **Y** is the screen's special (chance, chord, mute, catch, roll).
 - **Hold Y + a direction moves a line where R1 is taken** (FX's effects: R1 is its track key). Not on the drum grid, where hold Y + a direction sets chance, a hit's slice and the lane dice.
@@ -58,7 +58,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (83) | `cd build && ctest -j8` (about 10 min at -j3 on a busy desk; use the FULL path to `build`: a bare `cd build` once landed in another checkout; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`, `idle_test` as `idle1` to `idle5`; `textsize`, `textviews` and `themeviews` each run by themselves) |
+| All tests (86) | `cd build && ctest -j8` (about 10 min at -j3 on a busy desk; use the FULL path to `build`: a bare `cd build` once landed in another checkout; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`, `idle_test` as `idle1` to `idle5`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them). `./build/bench --profile NAME [SECONDS]` renders one setup with no clock for callgrind (`--toggle-collect='*profiledRender*'`; NAME empty lists them; `docs/plans/speed-plan.md`) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (every NAME: `docs/dev/stills.md`; `--text-size xl`, `--theme solarized`, `--hold-a`, `--frames DIR` to keep every frame) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -112,6 +112,8 @@ file gets only a new hard rule.**
   old path. (`engine.md`)
 - **Nothing on the app thread holds an `Effect` in a slot**; the WiFi server's thread never touches the `Project`.
 - **Anything below zero is not a track** (-1 master, -2 and -3 the buses): test `track >= 0`. (`screens.md`)
+- **Which bar of a cell plays goes through `fill_rule.hpp`** (`Engine::slotOf`, `Project::cellBarPlaying`),
+  never `bar % bars`: a cell's FILL plays in place of its own bar. (`songs-and-undo.md`)
 - **A colour goes through the theme's ten names**; a new mark is checked on a light theme; **text is checked at XL**;
   tight rows use `fonts.fixed()`. (`screens.md`)
 - **The device writes SEL, never SELECT; no maker's or model's name where a player reads; never erase, remove or rub out** (`ctest -R words`).

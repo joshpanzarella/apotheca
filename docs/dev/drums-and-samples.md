@@ -126,6 +126,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
 - **COPY A BAR: hold L1, R1 copies the bar shown, A pastes over it** (owner, 2026-11-17: "copying
   steps 1-16 to paste on 17-32"; `Session::copyBar` / `pasteBar` / `BarClip`, `copyBarHere` /
   `pasteBarHere` for the screens; `tests/copybar_test.cpp`). The drum grid, its slice view and the roll.
+  **Hold L1 + Y is the cell's FILL** (2026-11-25, `songs-and-undo.md` "The FILL's screens"); on the FILL a copy
+  or a paste says FILL COPIED / PASTED ON THE FILL / THE FILL IS THE SAME, and the L1 hints end with Y.
   - **The clipboard is memory only**, never in the song file; a new song keeps it. It holds a drum
     bar (`DrumPattern`, every field) or a note bar (`NotePattern`, chords and their effects), the bar's
     16 steps of every automation lane, and where it came from.

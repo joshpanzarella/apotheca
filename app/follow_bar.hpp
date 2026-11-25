@@ -5,6 +5,10 @@
 // keeps its step. Never while the player is at the controls: a button held or the stick pushed, and
 // kFollowRestMs after, so a bar looked at by hand stays until the playhead next comes into a bar.
 // One rule for both grids (tests/follow_test.cpp).
+// A cell's FILL looked at by hand holds the view still (fills-ideas.md question 3, the owner approved the plan
+// 2026-11-25; Claude's pick, recorded in docs/dev/screens.md): while the player has put the view on the FILL, it
+// is not taken back to the bar playing, however long the controls rest. Only the player moves it off. A FILL that
+// FOLLOW itself showed (it played) is followed on from as any bar, until anything is pressed or pushed on it.
 
 #include <cstdint>
 #include <vector>
@@ -16,10 +20,12 @@ constexpr std::uint32_t kFollowRestMs = 1500;
 class BarFollow {
 public:
     // Called every frame. playingHere: the song plays the scene on screen. playingBar: the bar of the
-    // cell it is in (0-based). atControls: a button held or the stick pushed. Returns the bar to show
-    // now, or -1 to leave the view where it is.
-    int step(bool playingHere, int playingBar, bool atControls, std::uint32_t nowMs) {
+    // cell it is in (0-based; its FILL's place while the FILL plays: Project::cellBarPlaying). atControls: a
+    // button held or the stick pushed. shown: the bar on screen; onFill: it is the cell's FILL. Returns the
+    // bar to show now, or -1 to leave the view where it is.
+    int step(bool playingHere, int playingBar, bool atControls, std::uint32_t nowMs, int shown = -1, bool onFill = false) {
         if (atControls) touched_ = true, touchedMs_ = nowMs;
+        if (shown != put_ || (atControls && onFill)) put_ = -1; // moved since FOLLOW put it there, or worked on there: by hand
         if (!playingHere || playingBar < 0) {
             last_ = -1;
             return -1;
@@ -27,12 +33,15 @@ public:
         const bool entered = playingBar != last_;
         last_ = playingBar;
         if (!entered) return -1;
+        if (onFill && put_ < 0) return -1; // the FILL, looked at by hand: the view holds still on it
         if (touched_ && nowMs - touchedMs_ < kFollowRestMs) return -1;
+        put_ = playingBar;
         return playingBar;
     }
 
 private:
     int last_ = -1;
+    int put_ = -1; // the bar FOLLOW last put the view on, while it is still there
     bool touched_ = false;
     std::uint32_t touchedMs_ = 0;
 };

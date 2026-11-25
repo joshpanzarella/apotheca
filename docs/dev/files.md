@@ -27,6 +27,10 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   written after a `bar K` past the cell's end (`hidesBars` in song_file.cpp);
   a program from before reads no line for a bar the cell does not have, so it
   skips them. A note there may run to where the longest cell would end.
+- **A cell's FILL is a `fill 1` (on) or `fill 0` (made, off) line after its scene's `bars`** (2026-11-25;
+  songs-and-undo.md "The FILL"). Its bar is the cell's eighth, written as a hidden bar is (`bar 8`). Never
+  made: no line, so a song without one is written as it always was. A program from before skips the line
+  and plays the cell's own bars (it never plays a short cell's eighth). Dropped on a cell of eight bars.
 - **A song file is read with Windows line ends too**: `parseSong` takes a
   trailing `\r` off each line (a name ending in one was refused, and every
   recording dropped); `renameRecordings` reads lines the same way and writes

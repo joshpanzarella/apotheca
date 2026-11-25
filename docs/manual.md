@@ -1560,7 +1560,7 @@ The track columns share the width of the screen: with few tracks they are wide.
 | A track's head (up from the top scene, with the D-pad) | **A** (a quick tap) changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go (the list warns UNSAVED PATCHES WILL BE LOST). This cannot be undone. Held, it is the mixer: once its card is up, letting go never changes it, turned or not. While it is held the head fills with the level, as a lane's name does. **R1**, on its let go, types its name. **Hold L1 and press R1** copies the track: a new track right after it with the same instrument, sound, effects, sends, MODs, mixer, name and every scene's patterns (the tracks after it move a place along; twelve is the most). The copy is not soloed. It is not undone by SELECT + B: hold B on the copy deletes it. **Hold B** two seconds deletes the track. Y and X work there as on its cells. | | | |
 | A track (any of its cells) | **Y** mutes it and **X** solos it, each a tap, at once, playing or not; again to undo. X does not hear the track here: on its DEVICE page it does. L1 does nothing on a track. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. SELECT + Y there is NEXT SCENE, not a mute. | | | |
 | A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell: when B is let go, or at once if you move or press another button, not A, in its first half second.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted, the cell neither. **It is the track B went down on: moving the cursor (D-pad or stick) or pressing any other button calls it off.** The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
-| A repeat count | Tap: 1, 2, 4, 8. **R1** copies the whole scene; **R1** on another row pastes it there, on its let go, and **the copy is cleared** (its brass mark too). **R1** on the copied scene clears it without pasting | Up / down: times the scene plays, 1 to 16. Left / right: how many steps the scene's bars have, 16 or fewer (as the D-pad's). One job a push | Back to 1; held half a second, empties the whole scene (one step of undo) | |
+| A repeat count (on the last time round, each cell's FILL plays in the scene's last bar: see "A FILL") | Tap: 1, 2, 4, 8. **R1** copies the whole scene; **R1** on another row pastes it there, on its let go, and **the copy is cleared** (its brass mark too). **R1** on the copied scene clears it without pasting | Up / down: times the scene plays, 1 to 16. Left / right: how many steps the scene's bars have, 16 or fewer (as the D-pad's). One job a push | Back to 1; held half a second, empties the whole scene (one step of undo) | |
 | The song's end (the REPEATS box of the first empty row, just past the last scene) | Switches what the song does at its end: LOOP (a loop arrow) or STOP (a square) | | Back to LOOP | |
 | + TRACK | Pick DRUMS, PHAZED, JAX-EP, SAMPLER, FM-6, PHYSIC, ACID, CLOUD or MORPH | | | |
 | MASTER (the head at the right-hand end, right of + TRACK) | | Its level and pan, as a track's (below) | | |
@@ -1672,6 +1672,55 @@ into bar 2; hold L1 and press A.
 - **One step of undo** (SELECT + B). A paste onto a bar that is already the
   same does nothing and is no step.
 - While L1 is held the bar at the bottom says what R1 and A do.
+
+### A FILL: one bar for the scene's last time round
+
+![A FILL on the drum grid](manual/fill.png)
+
+A cell can have **one FILL bar**. It plays **instead of** the cell's own bar
+in the scene's **last bar**, on the scene's **last time round** (its REPEATS
+on SONG). Every other time round the cell plays as it always did. So a drum
+fill before the next scene is one scene, not two.
+
+On the drum grid (the slice view too) and the piano roll:
+
+| Gesture | Does |
+| --- | --- |
+| **Hold L1, press Y** (no FILL yet) | **Makes the FILL** as a copy of the bar on screen, and shows it: FILL MADE. Change it as any bar |
+| **Hold L1, press Y** (on the FILL) | Turns it **off** (FILL OFF): it is kept, and plays nothing. Again: **on**, as it was (FILL ON) |
+| **Hold L1, press Y** (on another bar) | Goes to the FILL |
+| **Hold L1, up / down** | The bars in turn: 1 ... the last bar, then the FILL, then 1 again |
+
+So, from SONG with the cursor on the scene's REPEATS box: RIGHT onto the drum
+cell, A to open it, hold L1 and press Y, and draw the fill. Four presses and
+the fill itself, with four tracks or twelve.
+
+- **The top bar reads FILL** (1 DRUMS / FILL / SCENE 1), or FILL OFF. While
+  the song plays the top bar only has room for the track's name.
+- **The FILL is a bar like the others**: the cursor runs into it off the end
+  of the last bar (and off the FILL's end back to bar 1); the BARS stop's
+  left / right reach it; copy a bar onto it and from it with L1 + R1 and
+  L1 + A (FILL COPIED, PASTED ON THE FILL). Its automation is its own.
+- **Its step numbers are the scene's last bar's** (a FILL in a scene of two
+  bars reads 17 to 32), and a scene cut short shades its steps the same way.
+- **A note on the FILL runs at most to the FILL's end.**
+- **While you are on the FILL, the view stays there** when the song plays: it
+  does not go back to the bar playing (FOLLOW), however long you rest. Move
+  off it and the view follows again. When the FILL plays, the view goes to it
+  and the playhead runs over it.
+- **Each change is one step of undo** (SELECT + B): making it, turning it off
+  or on. Going to it is no change.
+- **A cell of eight bars has no FILL**: its eighth bar is its own. L1 + Y
+  says NO FILL ON 8 BARS. A cell with a FILL made eight bars long: the FILL
+  becomes bar 8.
+- **A scene played alone (START on PATTERN) counts its times round too**: at
+  REPEATS 4 the FILL plays every fourth time. To hear it, wait the four.
+  Its REPEATS blocks (the top bar, SONG's box) fill round by round, so you
+  see the FILL's round coming.
+- Copying a cell or a scene on SONG, NEXT SCENE, undo, the song file, MIDI
+  export and a bounce all carry the FILL. Emptying a cell or a scene empties
+  its FILL too.
+- SONG does not mark a cell that has a FILL.
 
 **SELECT** lists the songs: start a new one, or open another.
 
@@ -1879,9 +1928,13 @@ Hold **B** and drag to delete every hit the cursor crosses.
 
 **Hold L1 and press R1** to copy the bar on screen, **hold L1 and press A**
 to paste it over the bar on screen (see "Copy a bar, paste it on another").
-**Hold L1, up / down** turns to the bar before or after, round the ends;
+**Hold L1, up / down** turns to the bar before or after, round the ends
+(through the FILL, once there is one);
 **hold L1, left / right** sets the cell's bars, more or fewer (1, 2, 4 or 8,
-as the SONG screen's hold A).
+as the SONG screen's hold A). **Hold L1 and press Y** makes the cell's FILL,
+goes to it, or on it turns it off and on (see "A FILL: one bar for the
+scene's last time round"). Y's let go after it does nothing else: no dice,
+no chance, no maybe hit.
 **Up from the tempo is the BARS stop**: left / right turn to the bar before
 or after, round the ends (held, they run on, with A held too); hold A with
 up / down sets the cell's bars, more or fewer (1, 2, 4 or 8, as the SONG
@@ -2348,10 +2401,11 @@ is loud; holding A shapes it the way it is drawn.
 | **Hold X on a note**, B | **Empty** what X shows: RATCHET, GLIDE and THROW go off. The note stays, its level, length and nudge as they were (the track's GLIDE FROM too). One step of undo. Let go of X and B deletes, as ever |
 | **Hold R1 on a note** and move | Carry the note (or the whole chord) under the cursor. **D-pad or stick left / right:** to another key (with a SCALE on, a note goes to the scale's next key). **D-pad up / down:** a whole step. **Stick up / down:** it slides freely in time, off the grid. One job a push: pushed up or down first, the stick slides in time only until it comes back. **L1 held:** left / right go an octave at a time, the stick one octave a push. It stops at the ends of the bar and will not land on another note. |
 | L1 | Zoom: a tap goes closer (2 octaves, 1, then round to 3). Only a tap: anything done while L1 is held, a stick move included, zooms nothing |
-| Hold L1, up / down | The bar before or after, round the ends, from anywhere on the grid |
+| Hold L1, up / down | The bar before or after, round the ends (through the FILL, once there is one), from anywhere on the grid |
 | Hold L1, left / right | The cell's count, more or fewer (1, 2, 4 or 8, as the SONG screen's hold A). One step of undo |
 | BARS (up from step 1 of bar 1) | Left / right: the bar before or after, round the ends. **Hold A, up / down**: the cell's count, more or fewer (1, 2, 4 or 8, as the SONG screen's hold A). One step of undo |
 | Hold L1, R1 / A | **Copy** the bar on screen (let go of R1 unmoved) / **paste** it over the bar on screen (see "Copy a bar, paste it on another"). The tap's zoom does not happen as well |
+| Hold L1, Y | **The FILL**: made as a copy of the bar on screen and shown; on it, off and on; from another bar, gone to (see "A FILL: one bar for the scene's last time round"). No chord is picked or placed, and the tap's zoom does not happen |
 
 A note runs at most to the end of the bar, or to the next note on that key.
 It can be as short as a tenth of a step. The engine lets go of each note on

@@ -442,6 +442,13 @@ void putAutomation(std::string& out, const TrackData& track) {
         }
 }
 
+// fill 1 (on) or fill 0 (made, off): the cell's FILL (fill_rule.hpp), its bar the "bar 8" lines. Left out
+// where none was ever made, so a song without one is written as it always was, and a program from
+// before skips the line (and plays the cell's own bars: it never plays a short cell's eighth).
+void putFill(std::string& out, const TrackData& track, int scene) {
+    if (track.fillMade(scene)) out += track.fillOn(scene) ? "fill 1\n" : "fill 0\n";
+}
+
 // ...a drum track's scenes...
 void putDrumScenes(std::string& out, const TrackData& track) {
     // scene N, then "bars B" if the cell is longer than one, then each
@@ -450,9 +457,10 @@ void putDrumScenes(std::string& out, const TrackData& track) {
     // longer again), each after its "bar K" past the cell's end. A program from before
     // reads no line for a bar the cell does not have, so it skips them.
     for (int scene = 0; scene < kMaxScenes; ++scene) {
-        if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene)) continue;
+        if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene) && !track.fillMade(scene)) continue;
         put(out, "scene %.0f\n", scene + 1);
         if (track.bars[scene] > 1) put(out, "bars %.0f\n", track.bars[scene]);
+        putFill(out, track, scene);
         for (int bar = 0; bar < kMaxBars; ++bar) {
             const DrumPattern& p = track.drums[scene][bar];
             if (p.empty()) continue;
@@ -493,9 +501,10 @@ void putDrumScenes(std::string& out, const TrackData& track) {
 // ...and a synth track's.
 void putNoteScenes(std::string& out, const TrackData& track) {
     for (int scene = 0; scene < kMaxScenes; ++scene) { // (and the hidden bars, as a drum track's)
-        if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene)) continue;
+        if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene) && !track.fillMade(scene)) continue;
         put(out, "scene %.0f\n", scene + 1);
         if (track.bars[scene] > 1) put(out, "bars %.0f\n", track.bars[scene]);
+        putFill(out, track, scene);
         for (int bar = 0; bar < kMaxBars; ++bar) {
             const NotePattern& p = track.notes[scene][bar];
             if (p.empty()) continue;
@@ -1129,6 +1138,10 @@ void readLines(SongReading& r, const std::string& text, std::size_t from, std::s
         } else if (word == "bars") {
             double b;
             if (in >> b) track->bars[scene] = b < 2 ? 1 : (b < 4 ? 2 : (b < 8 ? 4 : 8));
+            if (track->bars[scene] >= kMaxBars) track->fill[scene] = kFillNone; // (a cell of eight bars has no FILL)
+        } else if (word == "fill") {
+            double on;
+            if ((in >> on) && track->bars[scene] < kMaxBars) track->fill[scene] = on == 1 ? kFillOn : kFillOff; // (a number not known: made, off)
         } else if (word == "bar") {
             double b;
             bar = (in >> b) && b >= 1 && b <= kMaxBars && isWhole(b) ? static_cast<int>(b) - 1 : -1;

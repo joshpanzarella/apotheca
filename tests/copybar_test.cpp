@@ -865,15 +865,16 @@ void testTheWordsFit() {
         canvas.clear();
         rig.app.draw(canvas.r, *canvas.fonts);
     };
-    const ui::Hint held[] = {{"UP / DOWN", "change bar"}, {"LEFT / RIGHT", "bar count"}, {"R1", "copy bar"}, {"A", "paste bar"}};
+    const ui::Hint held[] = {{"UP / DOWN", "change bar"}, {"LEFT / RIGHT", "bar count"}, {"R1", "copy bar"}, {"A", "paste bar"}, {"Y", "make fill"}}; // (Y: the FILL, fillapp_test)
     const ui::Hint grid[] = {{"LEFT / RIGHT", "bar"}, {"HOLD A", "more / fewer"}, {"START", "play"}};
     const ui::Hint roll[] = {{"LEFT / RIGHT", "bar"}, {"HOLD A", "more / fewer"}};
     drawn();
-    CHECK(!barIs(held, 4));
+    CHECK(!barIs(held, 5));
     rig.key(L1, true);
     rig.frames(1);
     drawn();
-    CHECK(barIs(held, 4) && ui::gHintsOver == 0);
+    CHECK(barIs(held, 5) && ui::gHintsOver == 0);
+    if (ui::gHintsOver != 0) std::printf("  L1 held: %.0f pixels over\n", static_cast<double>(ui::gHintsOver));
     rig.key(L1, false);
     rig.frames(1);
     rig.app.drums().moveCursorTo(0, 0);

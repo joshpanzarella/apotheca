@@ -59,6 +59,14 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   2026-11-25; drums-and-samples.md): `NoteOn` / `NoteOff` with `e = 1` set and clear `Track::auditioned`;
   `fireNoteOffs` passes such a key by, and an audition's NoteOff on a key the song still plays leaves it to
   the song's note-off. `letGoOfNotes` and a track taken away clear it. With no audition nothing differs.
+- **Which bar of a cell plays is `slotOf(track, scene, bar, atFillTime)`, by `fill_rule.hpp`** (the FILL,
+  2026-11-25; songs-and-undo.md "The FILL"): the cell's own `bar % bars`, or its eighth bar (`kFillSlot`)
+  in the scene's last bar on its last time round where `SceneStore::fill` is on. `fireStep` works out the
+  FILL's moment for the bar playing and the bar after (`fillTimeAt`: a song's round is `repeat_`, a looped
+  scene's `loopPass_`, which counts round its REPEATS while `repeat_` stays 0 as it always did), and
+  `askAgain` for what was asked ahead. **`SetSceneRepeats` and `SetCellFill` ask again** (a change on a
+  bar's last step changes the bar that follows). A FILL's slices begin their runs in it (`schedule`'s `fill`).
+  A cell with no FILL takes the old path: `effects_test --print` the same before and after.
 - **A tempo change keeps every place in the step** (`SetTempo`): what is left
   of the step, an arpeggio's wait, notes waiting, notes' ends and drum hits
   waiting are all scaled by the same amount, so the arpeggio stays on the beat.

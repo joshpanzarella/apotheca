@@ -142,6 +142,12 @@ private:
     NotePattern& pat() { return project_.current().notes[project_.scene][project_.bar]; }
     const NotePattern& pat() const { return project_.current().notes[project_.scene][project_.bar]; }
     int cellBars() const { return project_.current().bars[project_.scene]; }
+    // The bar shown is the cell's FILL; the bar of the scene it is in (the FILL: the scene's last, where it plays:
+    // the step numbers and the shading go by it); how many bars from it to the cell's end (a note may run on over
+    // the bar lines to there; the FILL is a bar of its own: one).
+    bool onFill() const { return project_.current().onFill(project_.scene, project_.bar); }
+    int sceneBar() const { return project_.sceneBarOf(project_.track, project_.scene, project_.bar); }
+    int barsToEnd() const { return onFill() ? 1 : cellBars() - project_.bar; }
     void moveCursor(Button direction);
     void press(Button direction); // a direction, whatever it means just now
     void resend();

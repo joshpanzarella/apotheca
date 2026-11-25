@@ -414,6 +414,7 @@ void Session::update(Uint32 nowMs) {
         const int step = engine.playStep();
         project.playScene = playScene();
         project.playRepeat = engine.playRepeat();
+        project.playPass = engine.playPass();
         project.playBar = engine.playBar();
         if (engine.playStep() == step) { project.playStep = step; break; }
     }
@@ -569,13 +570,18 @@ void Session::setCellBars(int track, int scene, int bars) {
     TrackData& t = project.tracks[track];
     const int was = t.bars[scene] < 1 ? 1 : t.bars[scene];
     if (bars == was) return;
+    // A FILL made (on or off) in a cell made eight bars long becomes its eighth bar, as it is (an emptied
+    // one empty: not filled in below), and the cell has no FILL any more (fill_rule.hpp; owner, 2026-11-25).
+    const bool fillIsBar8 = bars >= kMaxBars && t.fillMade(scene);
     t.bars[scene] = bars;
+    if (fillIsBar8) t.fill[scene] = kFillNone;
     // Made longer: the new bars are filled with what the cell already plays, round and round, so a
     // one-bar loop made two bars long is the loop twice, ready to be changed in its second half.
     // Only bars with nothing in them: a bar that was written, then hidden by shortening the cell,
     // comes back as it was.
     bool filled = false;
     for (int bar = was; bar < bars && t.kind != TrackKind::None; ++bar) {
+        if (bar == kFillSlot && fillIsBar8) continue;
         const int from = bar % was;
         bool automated = false;
         for (int lane = 0; lane < kAutoLanes; ++lane)
@@ -589,13 +595,18 @@ void Session::setCellBars(int track, int scene, int bars) {
     }
     noteEdit();
     if (filled) sendTrackImage(track); // every bar of it, in one piece
-    if (track == project.track && scene == project.scene && project.bar >= bars) project.bar = bars - 1;
+    if (track == project.track && scene == project.scene && !t.barThere(scene, project.bar)) project.bar = bars - 1;
     Command c;
     c.type = Command::SetCellBars;
     c.track = track;
     c.scene = scene;
     c.a = bars;
     engine.send(c);
+    if (fillIsBar8) {
+        c.type = Command::SetCellFill; // (an eighth bar plays as the cell's own; made shorter again, it is no FILL)
+        c.a = 0;
+        engine.send(c);
+    }
 }
 
 // ---- copy a bar ---------------------------------------------------------------------------
@@ -641,8 +652,8 @@ Session::BarCopy Session::pasteBar(int track, int scene, int bar) {
     // (as the roll holds a length: a note may run on over the bar lines, not past the cell).
     NotePattern notes = clip_.noteBar;
     const int bars = t.bars[scene] < 1 ? 1 : (t.bars[scene] > kMaxBars ? kMaxBars : t.bars[scene]);
-    if (bar >= bars) return BarCopy::NoTrack; // (a bar the cell does not have: the grids never show one)
-    const int room = (bars - bar) * kSteps;
+    if (!t.barThere(scene, bar)) return BarCopy::NoTrack; // (a bar the cell does not have, nor its FILL: the grids never show one)
+    const int room = ((bar < bars ? bars : kMaxBars) - bar) * kSteps; // (the FILL: to its own end, as longestFrom has it)
     for (NoteEvent& n : notes.notes)
         if (n.velocity > 0.f && n.length > static_cast<float>(room - n.step)) n.length = static_cast<float>(room - n.step);
     for (ChordEvent& c : notes.chords)
@@ -671,18 +682,20 @@ Session::BarCopy Session::pasteBar(int track, int scene, int bar) {
 
 Session::BarCopy Session::copyBarHere() {
     const BarCopy answer = copyBar(project.track, project.scene, project.bar);
-    say(barCopyWords(answer, false, project.bar).c_str());
+    say(barCopyWords(answer, false, project.bar, project.current().onFill(project.scene, project.bar)).c_str());
     return answer;
 }
 
 Session::BarCopy Session::pasteBarHere() {
     const BarCopy answer = pasteBar(project.track, project.scene, project.bar);
-    say(barCopyWords(answer, true, project.bar).c_str());
+    say(barCopyWords(answer, true, project.bar, project.current().onFill(project.scene, project.bar)).c_str());
     return answer;
 }
 
-std::string Session::barCopyWords(BarCopy answer, bool paste, int bar) {
+std::string Session::barCopyWords(BarCopy answer, bool paste, int bar, bool fill) {
     char text[64];
+    if (fill && answer == BarCopy::Done) return paste ? "PASTED ON THE FILL" : "FILL COPIED"; // (the bar is a cell's FILL)
+    if (fill && answer == BarCopy::Same) return "THE FILL IS THE SAME";
     switch (answer) {
     case BarCopy::Done: std::snprintf(text, sizeof text, paste ? "PASTED ON BAR %d" : "BAR %d COPIED", bar + 1); break;
     case BarCopy::Same: std::snprintf(text, sizeof text, "BAR %d IS THE SAME ALREADY", bar + 1); break;
@@ -704,6 +717,7 @@ Session::SceneCopy Session::copyScene(int scene) {
         SceneClip::Track& to = sceneClip_->tracks[t];
         to.kind = from.kind;
         to.bars = from.bars[scene];
+        to.fill = from.fill[scene];
         std::memcpy(to.drums, from.drums[scene], sizeof to.drums);
         std::memcpy(to.notes, from.notes[scene], sizeof to.notes);
         std::memcpy(to.automation, from.automation[scene], sizeof to.automation);
@@ -725,7 +739,7 @@ Session::SceneCopy Session::pasteScene(int scene) {
         const TrackData& target = project.tracks[t];
         const SceneClip::Track& clip = sceneClip_->tracks[t];
         if (!pasteKindsFit(clip.kind, target.kind)) continue;
-        same = target.bars[scene] == clip.bars && std::memcmp(&target.drums[scene], clip.drums, sizeof clip.drums) == 0 &&
+        same = target.bars[scene] == clip.bars && target.fill[scene] == clip.fill && std::memcmp(&target.drums[scene], clip.drums, sizeof clip.drums) == 0 &&
                std::memcmp(&target.notes[scene], clip.notes, sizeof clip.notes) == 0 &&
                std::memcmp(&target.automation[scene], clip.automation, sizeof clip.automation) == 0;
     }
@@ -738,6 +752,7 @@ Session::SceneCopy Session::pasteScene(int scene) {
         const SceneClip::Track& clip = sceneClip_->tracks[t];
         if (!pasteKindsFit(clip.kind, target.kind)) continue; // another kind now: a drum bar cannot go on a synth
         target.bars[scene] = clip.bars;
+        target.fill[scene] = clip.fill;
         std::memcpy(target.drums[scene], clip.drums, sizeof clip.drums);
         std::memcpy(target.notes[scene], clip.notes, sizeof clip.notes);
         if (target.kind == TrackKind::Drums) sendDrumPattern(t, scene);
@@ -807,15 +822,16 @@ Session::SceneClear Session::clearScene(int scene) {
     if (scene < 0 || scene >= kMaxScenes) return SceneClear::NoScene;
     bool empty = project.repeats[scene] == 1 && project.steps[scene] == 0 && project.sceneTempo[scene] <= 0.f && project.meterOf(scene) == kSteps;
     for (int t = 0; t < kNumTracks && empty; ++t)
-        empty = project.tracks[t].bars[scene] == 1 && !project.tracks[t].holdsPieces(scene);
+        empty = project.tracks[t].bars[scene] == 1 && !project.tracks[t].holdsPieces(scene) && project.tracks[t].fill[scene] == kFillNone;
     if (empty) return SceneClear::AlreadyEmpty; // nothing to do, and no step of undo
 
     // A step of undo of its own, as pasteScene's.
     beginOwnUndoStep();
     for (int t = 0; t < kNumTracks; ++t) {
         TrackData& target = project.tracks[t];
-        if (target.bars[scene] == 1 && !target.holdsPieces(scene)) continue;
+        if (target.bars[scene] == 1 && !target.holdsPieces(scene) && target.fill[scene] == kFillNone) continue;
         target.bars[scene] = 1;
+        target.fill[scene] = kFillNone; // (its FILL goes with the rest: an emptied scene has none)
         // Blank, not dropped: undo restores into the pieces (a dropped one stays dropped).
         if (target.drums.has(scene))
             for (int bar = 0; bar < kMaxBars; ++bar) target.drums[scene][bar] = DrumPattern();
@@ -829,6 +845,9 @@ Session::SceneClear Session::clearScene(int scene) {
         engine.send(c);
         c.type = Command::SetCellBars;
         c.a = 1;
+        engine.send(c);
+        c.type = Command::SetCellFill;
+        c.a = 0;
         engine.send(c);
     }
     project.repeats[scene] = 1;
@@ -870,6 +889,168 @@ std::string Session::sceneClearWords(SceneClear answer, int scene) {
     return text;
 }
 
+// ---- the FILL ---------------------------------------------------------------------------------
+
+Session::Fill Session::makeFill(int track, int scene, int from) {
+    if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes) return Fill::NoTrack;
+    TrackData& t = project.tracks[track];
+    if (t.kind == TrackKind::None) return Fill::NoTrack;
+    if (t.bars[scene] >= kMaxBars) return Fill::EightBars; // (its eighth bar is its own)
+    if (t.fill[scene] == kFillOn) return Fill::AlreadyOn;
+    beginOwnUndoStep(); // a step of undo of its own, as pasteBar's
+    const bool make = t.fill[scene] == kFillNone;
+    if (make) {
+        // A copy of the bar it plays instead of: the cell's own bar in the scene's last bar (so it starts as
+        // what would have played, and is changed from there), with that bar's automation. Notes and chords
+        // that run over the bar line are held to the FILL's end, as a pasted bar's to its cell's.
+        const int bars = t.bars[scene] < 1 ? 1 : t.bars[scene];
+        if (from < 0 || from >= bars) from = project.lastBar(scene) % bars; // (none given: the bar it plays instead of)
+        if (t.kind == TrackKind::Drums) {
+            t.drums[scene][kFillSlot] = t.drums[scene][from];
+        } else {
+            NotePattern notes = t.notes[scene][from];
+            for (NoteEvent& n : notes.notes)
+                if (n.velocity > 0.f && n.length > static_cast<float>(kSteps - n.step)) n.length = static_cast<float>(kSteps - n.step);
+            for (ChordEvent& c : notes.chords)
+                if (c.velocity > 0.f && c.length > static_cast<float>(kSteps - c.step)) c.length = static_cast<float>(kSteps - c.step);
+            t.notes[scene][kFillSlot] = notes;
+        }
+        if (t.automation.has(scene))
+            for (int lane = 0; lane < kAutoLanes; ++lane)
+                for (int step = 0; step < kSteps; ++step) t.automation[scene][lane][kFillSlot * kSteps + step] = t.automation[scene][lane][from * kSteps + step];
+    }
+    t.fill[scene] = kFillOn;
+    if (make) {
+        sendTrackImage(track); // its bar and the flag, in one piece (as pasteBar)
+    } else {
+        Command c;
+        c.type = Command::SetCellFill;
+        c.track = track;
+        c.scene = scene;
+        c.a = 1;
+        engine.send(c);
+    }
+    endOwnUndoStep();
+    return make ? Fill::Made : Fill::On;
+}
+
+Session::Fill Session::fillOff(int track, int scene) {
+    if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes || project.tracks[track].kind == TrackKind::None) return Fill::NoTrack;
+    TrackData& t = project.tracks[track];
+    if (!t.fillMade(scene)) return Fill::NoFill;
+    if (t.fill[scene] == kFillOff) return Fill::AlreadyOff;
+    beginOwnUndoStep();
+    t.fill[scene] = kFillOff; // (its bar is kept: on again, it is as it was)
+    Command c;
+    c.type = Command::SetCellFill;
+    c.track = track;
+    c.scene = scene;
+    c.a = 0;
+    engine.send(c);
+    endOwnUndoStep();
+    return Fill::Off;
+}
+
+Session::Fill Session::emptyFill(int track, int scene) {
+    if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes || project.tracks[track].kind == TrackKind::None) return Fill::NoTrack;
+    const TrackData& seen = project.tracks[track]; // (read through a const track: looking makes no piece)
+    if (!seen.fillMade(scene)) return Fill::NoFill;
+    const bool drums = seen.kind == TrackKind::Drums;
+    bool empty = drums ? seen.drums[scene][kFillSlot].empty() : seen.notes[scene][kFillSlot].empty();
+    for (int lane = 0; lane < kAutoLanes && empty && seen.automation.has(scene); ++lane)
+        for (int step = 0; step < kSteps; ++step) empty = empty && seen.automation[scene][lane][kFillSlot * kSteps + step] < 0.f;
+    if (empty) return Fill::AlreadyEmpty; // nothing plays in it already: no step of undo that does nothing
+    beginOwnUndoStep();
+    TrackData& t = project.tracks[track];
+    if (drums) t.drums[scene][kFillSlot] = DrumPattern();
+    else t.notes[scene][kFillSlot] = NotePattern();
+    if (t.automation.has(scene))
+        for (int lane = 0; lane < kAutoLanes; ++lane)
+            for (int step = 0; step < kSteps; ++step) t.automation[scene][lane][kFillSlot * kSteps + step] = kAutoNone;
+    sendTrackImage(track); // (it stays made, on or off: an emptied FILL is a drop, and is not made again as a copy)
+    endOwnUndoStep();
+    return Fill::Emptied;
+}
+
+bool Session::goToFill(int track, int scene) {
+    if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes || !project.tracks[track].fillMade(scene)) return false;
+    project.track = track;
+    project.scene = scene;
+    project.bar = kFillSlot;
+    return true;
+}
+
+Session::Fill Session::makeFillHere() {
+    const Fill answer = makeFill(project.track, project.scene, project.bar);
+    say(fillWords(answer).c_str());
+    return answer;
+}
+
+Session::Fill Session::fillKeyHere() {
+    const int track = project.track, scene = project.scene;
+    if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes || project.tracks[track].kind == TrackKind::None) {
+        say(fillWords(Fill::NoTrack).c_str());
+        return Fill::NoTrack;
+    }
+    const TrackData& t = project.tracks[track];
+    Fill answer;
+    if (!t.fillMade(scene)) {
+        answer = makeFill(track, scene, project.bar); // (a cell of eight bars: EightBars, said)
+        if (answer == Fill::Made) goToFill(track, scene);
+    } else if (project.bar != kFillSlot) {
+        goToFill(track, scene);
+        return Fill::Shown; // (nothing said: the top bar reads FILL or FILL OFF)
+    } else {
+        answer = t.fillOn(scene) ? fillOff(track, scene) : makeFill(track, scene);
+    }
+    say(fillWords(answer).c_str());
+    return answer;
+}
+
+Session::Fill Session::fillOffHere() {
+    const Fill answer = fillOff(project.track, project.scene);
+    say(fillWords(answer).c_str());
+    return answer;
+}
+
+Session::Fill Session::emptyFillHere() {
+    const Fill answer = emptyFill(project.track, project.scene);
+    say(fillWords(answer).c_str());
+    return answer;
+}
+
+std::string Session::fillWords(Fill answer) {
+    switch (answer) {
+    case Fill::Made: return "FILL MADE";
+    case Fill::On: return "FILL ON";
+    case Fill::Off: return "FILL OFF";
+    case Fill::Emptied: return "FILL EMPTIED";
+    case Fill::AlreadyOn: return "THE FILL IS ON";
+    case Fill::AlreadyOff: return "THE FILL IS OFF";
+    case Fill::AlreadyEmpty: return "THE FILL IS EMPTY";
+    case Fill::NoFill: return "NO FILL HERE";
+    case Fill::EightBars: return "NO FILL ON 8 BARS";
+    case Fill::NoTrack: return "NO TRACK HERE";
+    case Fill::Shown: return "";
+    }
+    return "";
+}
+
+std::string Session::cellBarWords(const TrackData& track, int scene, int bar) {
+    if (scene < 0 || scene >= kMaxScenes) return "";
+    if (bar == kFillSlot && track.fillMade(scene)) return track.fillOn(scene) ? "FILL" : "FILL OFF";
+    char text[32];
+    std::snprintf(text, sizeof text, "BAR %d OF %d", bar + 1, track.bars[scene]);
+    return text;
+}
+
+const char* Session::fillKeyHint(const TrackData& track, int scene, int bar) {
+    if (scene < 0 || scene >= kMaxScenes || track.bars[scene] >= kMaxBars) return nullptr;
+    if (!track.fillMade(scene)) return "make fill";
+    if (bar != kFillSlot) return "go to fill";
+    return track.fillOn(scene) ? "fill off" : "fill on";
+}
+
 void Session::say(const char* text) {
     std::snprintf(saidText_, sizeof saidText_, "%s", text);
     ++saidCount_;
@@ -902,6 +1083,9 @@ void Session::sendDrumPattern(int track, int scene) {
     engine.send(c);
     c.type = Command::SetCellBars;
     c.a = project.tracks[track].bars[scene];
+    engine.send(c);
+    c.type = Command::SetCellFill;
+    c.a = project.tracks[track].fillOn(scene) ? 1 : 0;
     engine.send(c);
     for (int bar = 0; bar < kMaxBars; ++bar) {
         const DrumPattern& p = project.tracks[track].drums[scene][bar];
@@ -968,6 +1152,9 @@ void Session::sendNotePattern(int track, int scene) {
     engine.send(c);
     c.type = Command::SetCellBars;
     c.a = project.tracks[track].bars[scene];
+    engine.send(c);
+    c.type = Command::SetCellFill;
+    c.a = project.tracks[track].fillOn(scene) ? 1 : 0;
     engine.send(c);
     for (int bar = 0; bar < kMaxBars; ++bar)
         if (!project.tracks[track].notes[scene][bar].empty()) sendNoteBar(track, scene, bar);
@@ -1100,7 +1287,7 @@ float Session::automated(int track, int lane, float resting) const {
     const int scene = project.playScene, step = project.playStep;
     if (!project.playing || scene < 0 || step < 0 || track < 0 || track >= kNumTracks || lane < 0 || lane >= kAutoLanes) return resting;
     const TrackData& t = project.tracks[track];
-    const float written = t.automation[scene][lane][(project.playBar % t.bars[scene]) * kSteps + step];
+    const float written = t.automation[scene][lane][project.cellBarPlaying(track) * kSteps + step]; // (the FILL's, where it plays)
     return written >= 0.f ? written : resting;
 }
 
@@ -1108,7 +1295,7 @@ float Session::automated(int track, int lane, float resting) const {
 void Session::recordAutomation(int track, int lane, float value) {
     const int scene = project.playScene, step = project.playStep;
     if (!project.writing || !project.playing || scene < 0 || step < 0) return;
-    setAutomation(track, scene, lane, (project.playBar % project.tracks[track].bars[scene]) * kSteps + step, value);
+    setAutomation(track, scene, lane, project.cellBarPlaying(track) * kSteps + step, value); // (into the FILL, where it plays)
 }
 
 // ---- undo -----------------------------------------------------------------------------------
@@ -1399,6 +1586,7 @@ void Session::moveScenesHere(int from, int by, const StepRead* last) {
     const auto carry = [this](int to, int scene) {
         for (TrackData& t : project.tracks) {
             t.bars[to] = t.bars[scene];
+            t.fill[to] = t.fill[scene];
             t.drums.take(to, scene);
             t.notes.take(to, scene);
             t.automation.take(to, scene);
@@ -1414,6 +1602,7 @@ void Session::moveScenesHere(int from, int by, const StepRead* last) {
         for (int scene = kMaxScenes - 1; scene > from; --scene) carry(scene, scene - 1); // (the last's pieces freed as they are written over)
         for (TrackData& t : project.tracks) {
             t.bars[from] = t.bars[from + 1];
+            t.fill[from] = t.fill[from + 1];
             if (t.drums.has(from + 1)) std::memcpy(t.drums[from], t.drums[from + 1], sizeof t.drums[from]);
             if (t.notes.has(from + 1)) std::memcpy(t.notes[from], t.notes[from + 1], sizeof t.notes[from]);
             if (t.automation.has(from + 1)) std::memcpy(t.automation[from], t.automation[from + 1], sizeof t.automation[from]);
@@ -1426,6 +1615,7 @@ void Session::moveScenesHere(int from, int by, const StepRead* last) {
         TrackData& now = project.tracks[t];
         const bool has = last && last->kind[t] == now.kind && last->read[t]; // (a scene move reads the step whole)
         now.bars[end] = has ? last->track(t).bars[end] : 1;
+        now.fill[end] = has ? last->track(t).fill[end] : kFillNone;
         if (!has) continue; // (nothing in it: no piece)
         const TrackData& then = last->track(t);
         if (then.drums.has(end)) std::memcpy(now.drums[end], then.drums[end], sizeof now.drums[end]);
@@ -1488,7 +1678,7 @@ int Session::nextScene(int scene) {
 
     moveScenesHere(from, 1, nullptr);
     project.scene = to; // the same track and bar: the cell there is as long as the one left...
-    if (project.bar >= project.current().bars[to]) project.bar = 0; // ...where it is the one left (another, from SONG: a bar it has)
+    if (!project.current().barThere(to, project.bar)) project.bar = 0; // ...where it is the one left (another, from SONG: a bar it has, or its FILL)
     tellScenesMoved(from, 1);
     scenesMoved(from, 1);
 
@@ -1518,6 +1708,7 @@ bool Session::patternsSameAsText(const TrackData& now, const TrackData& then) {
     if (now.kind == then.kind) return patternText(now) == patternText(then);
     std::unique_ptr<TrackData> here(new TrackData(then)); // `then`, with the patterns of `now`
     std::memcpy(here->bars, now.bars, sizeof here->bars);
+    std::memcpy(here->fill, now.fill, sizeof here->fill);
     here->drums = now.drums;
     here->notes = now.notes;
     here->automation = now.automation;
@@ -1625,13 +1816,14 @@ void Session::restorePatterns(const std::string& text, int movedFrom, int movedB
         const TrackData& then = was.track(t);
         // A track that is the same then as now is left alone. Most are: an edit is
         // to one track, and sending a track's every pattern again is the costly part.
-        if (std::memcmp(now.bars, then.bars, sizeof now.bars) == 0 && now.samePatternsAs(then)) continue;
+        if (std::memcmp(now.bars, then.bars, sizeof now.bars) == 0 && std::memcmp(now.fill, then.fill, sizeof now.fill) == 0 && now.samePatternsAs(then)) continue;
         // Numbers that differ only as the text rounds them (a keyboard's 90/127, a setting
         // written with WRITE on) are the same patterns: the track is as it was, and is left
         // alone, unrounded. Compared as above, every such track was sent whole on an undo
         // of one hit on another, and its values rounded.
         if (patternsSameAsText(now, then)) continue;
         std::memcpy(now.bars, then.bars, sizeof now.bars);
+        std::memcpy(now.fill, then.fill, sizeof now.fill);
         now.drums = then.drums;
         now.notes = then.notes;
         now.automation = then.automation;
@@ -1667,7 +1859,7 @@ void Session::restorePatterns(const std::string& text, int movedFrom, int movedB
         engine.send(c);
     }
     restoreSounds(was, same); // effects, sends, sounds, GLIDE FROM, the master and the buses
-    if (project.bar >= project.current().bars[project.scene]) project.bar = 0;
+    if (!project.current().barThere(project.scene, project.bar)) project.bar = 0;
     syncSong();
     restoring_ = false;
     settled_ = text;
@@ -1687,9 +1879,10 @@ bool Session::undo() {
     }
     // A "next scene" taken back: the scene goes, the playing leaves it for the one it was
     // copied from (the two are the same), and the player goes too.
-    const int from = back.nextScene;
+    const int from = back.nextScene, bar = project.bar;
     restorePatterns(back.text, from + 1, -1);
     scenesMoved(from + 1, -1);
+    project.bar = bar; // (the bar shown on the copy, its FILL too, if the scene stood on has it: standOn)
     standOn(from);
     return true;
 }
@@ -1704,7 +1897,7 @@ bool Session::redo() {
         return true;
     }
     // A "next scene" put back.
-    const int from = forward.nextScene;
+    const int from = forward.nextScene; // (the bar shown, a FILL too, is kept: the scene stood on has it, a copy of this one)
     restorePatterns(forward.text, from, 1);
     scenesMoved(from, 1);
     standOn(from + 1);
@@ -1714,7 +1907,7 @@ bool Session::redo() {
 // Put the player on a scene, on a bar its cell has.
 void Session::standOn(int scene) {
     project.scene = scene;
-    if (project.bar >= project.current().bars[scene]) project.bar = 0;
+    if (!project.current().barThere(scene, project.bar)) project.bar = 0; // (a FILL is a bar to stand on: barThere)
     cellMark_ = cellMark(); // going there is not an edit
 }
 
@@ -2135,9 +2328,10 @@ void sceneInto(const TrackData& track, int scene, float (*level)[kDrumLanes][kSt
 // engine's blank store goes in its place) and its cell is a bar long.
 std::unique_ptr<SceneImage> Session::sceneImage(int t, int scene) const {
     const TrackData& track = project.tracks[t];
-    if (track.bars[scene] == 1 && !sceneHolds(track, scene)) return nullptr;
+    if (track.bars[scene] == 1 && !track.fillOn(scene) && !sceneHolds(track, scene)) return nullptr;
     std::unique_ptr<SceneImage> image(new SceneImage);
     image->bars = track.bars[scene];
+    image->fill = track.fillOn(scene);
     sceneInto(track, scene, image->level, image->nudge, image->chance, image->start, image->fx, image->notes);
     std::memcpy(image->automation, track.automation[scene], sizeof track.automation[scene]);
     return image;
@@ -2148,6 +2342,7 @@ std::unique_ptr<TrackImage> Session::trackImage(int t) const {
     std::unique_ptr<TrackImage> image(new TrackImage);
     for (int scene = 0; scene < kMaxScenes; ++scene) {
         image->bars[scene] = track.bars[scene];
+        image->fill[scene] = track.fillOn(scene);
         if (!sceneHolds(track, scene)) continue; // nothing in it: no scene for the engine to keep (scenes-plan.md)
         SceneImage& to = image->scene(scene);
         sceneInto(track, scene, to.level, to.nudge, to.chance, to.start, to.fx, to.notes);

@@ -279,7 +279,7 @@ void SongScreen::clearCell(int track, int scene) {
     // Already empty: nothing to do, and no step of undo that does nothing. (Read through a const track:
     // a scene with no pieces is not given any.)
     const TrackData& seen = project_.tracks[track];
-    bool any = seen.bars[scene] != 1;
+    bool any = seen.bars[scene] != 1 || seen.fill[scene] != kFillNone;
     if (!any && seen.holdsPieces(scene)) {
         for (int bar = 0; bar < kMaxBars && !any; ++bar) any = !seen.drums[scene][bar].empty() || !seen.notes[scene][bar].empty();
         for (const auto& lane : seen.automation[scene])
@@ -293,6 +293,7 @@ void SongScreen::clearCell(int track, int scene) {
     // Every bar of it, and it is one bar long again. Its automation goes too: an emptied cell
     // must not keep running lanes (as Session::clearScene).
     t.bars[scene] = 1;
+    t.fill[scene] = kFillNone; // (its FILL too: an emptied cell has none)
     if (track == project_.track && scene == project_.scene) project_.bar = 0;
     if (t.kind == TrackKind::Drums) {
         for (DrumPattern& bar : t.drums[scene]) bar = DrumPattern();
@@ -307,7 +308,8 @@ void SongScreen::clearCell(int track, int scene) {
 void SongScreen::copyCell(const CellCopy& from, int toTrack, int toScene) {
     TrackData& to = project_.tracks[toTrack];
     if (!pasteKindsFit(from.kind, to.kind)) return; // a drum bar cannot go on a synth
-    to.bars[toScene] = from.bars; // the whole cell: its length and every bar
+    to.bars[toScene] = from.bars; // the whole cell: its length and every bar, its FILL with them
+    to.fill[toScene] = from.fill;
     if (toTrack == project_.track && toScene == project_.scene) project_.bar = 0;
     if (to.kind == TrackKind::Drums) {
         for (int bar = 0; bar < kMaxBars; ++bar) to.drums[toScene][bar] = from.drums[bar];
@@ -650,6 +652,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             cellCopy_.has = true;
             cellCopy_.kind = from.kind;
             cellCopy_.bars = from.bars[scene_];
+            cellCopy_.fill = from.fill[scene_]; // (its FILL, kept in its eighth bar, comes with every bar)
             for (int bar = 0; bar < kMaxBars; ++bar) {
                 cellCopy_.drums[bar] = from.drums[scene_][bar];
                 cellCopy_.notes[bar] = from.notes[scene_][bar];
@@ -1090,7 +1093,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         }
         if (playingHere) {
             // One block per pass, filling as the bar goes by.
-                sceneProgress(r, rx + 4, y + kRowH - 14, kRepeatW - 12, 6, project_.playLoop ? 1 : repeats, project_.playRepeat,
+                sceneProgress(r, rx + 4, y + kRowH - 14, kRepeatW - 12, 6, repeats, project_.roundPlaying(), // (looped too)
                           project_.playBar * project_.meterOf(scene) + playStep, project_.sceneSteps(scene));
         }
         if (column_ == kRepeatColumn && scene == scene_ && !onMaster_) {

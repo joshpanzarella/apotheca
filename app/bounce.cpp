@@ -100,15 +100,17 @@ void addMidiNote(std::vector<MidiNote>& out, long songStep, float length, float 
 }
 
 // One track's notes in one scene, in the scene's own ticks. A shorter cell goes round under a
-// longer scene, bar by bar, as it plays (slotOf, engine.cpp).
-void gatherMidiScene(const Project& song, int track, int scene, std::vector<MidiNote>& out) {
+// longer scene, bar by bar, as it plays (slotOf, engine.cpp). `round`: which time round of the scene's
+// REPEATS (from 0): on its last a cell's FILL plays in the scene's last bar (fill_rule.hpp, as the engine has it).
+void gatherMidiScene(const Project& song, int track, int scene, std::vector<MidiNote>& out, int round) {
     const TrackData& t = song.tracks[track];
     const int steps = song.sceneSteps(scene), meter = song.meterOf(scene);
     const int bars = t.bars[scene] < 1 ? 1 : (t.bars[scene] > kMaxBars ? kMaxBars : t.bars[scene]);
     // A bar is the scene's METER of steps, as the engine plays it (a bar of 12 is 3/4): its steps past
     // the meter are never played (review 2026-11-23: they were written, and the bars after slid).
     for (int i = 0; i < steps; ++i) {
-        const int cellBar = (i / meter) % bars, st = i % meter;
+        const int sceneBar = i / meter;
+        const int cellBar = cellBarOf(bars, t.fillOn(scene), sceneBar, fillTime(sceneBar, meter, steps, round, song.repeats[scene])), st = i % meter;
         if (t.kind == TrackKind::Drums) {
             const DrumPattern& bar = t.drums[scene][cellBar];
             for (int lane = 0; lane < kDrumLanes; ++lane) {
@@ -288,11 +290,14 @@ std::string midiFileBytes(const Project& song, const std::string& title) {
         std::vector<MidiNote> notes;
         long base = 0; // this scene's first step, in song steps
         for (int s = 0; s < scenes; ++s) {
-            std::vector<MidiNote> scene;
-            gatherMidiScene(song, o.track, s, scene);
+            // The scene is gathered once and repeated; its last time round again where the cell has a FILL on.
+            std::vector<MidiNote> scene, last;
+            gatherMidiScene(song, o.track, s, scene, 0);
+            const bool fill = song.tracks[o.track].fillOn(s);
+            if (fill) gatherMidiScene(song, o.track, s, last, song.repeats[s] - 1);
             const long steps = song.sceneSteps(s);
             for (int rep = 0; rep < song.repeats[s]; ++rep) {
-                for (MidiNote n : scene) {
+                for (MidiNote n : fill && rep + 1 == song.repeats[s] ? last : scene) {
                     n.start += (base + static_cast<long>(rep) * steps) * kMidiTicksPerStep;
                     notes.push_back(n);
                 }
