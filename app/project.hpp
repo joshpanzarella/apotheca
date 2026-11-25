@@ -485,6 +485,9 @@ struct ProjectHead {
     int playScene = -1, playStep = -1, playRepeat = 0, playBar = 0;
     int playPass = 0;      // a scene played alone: its time round through its REPEATS, for its FILL (Engine::playPass)
     bool playLoop = false; // one scene going round, not the song
+    // The time round through the playing scene's REPEATS: the song's count, or a looped scene's own (its
+    // FILL comes on the last). What the REPEATS blocks and the FILL go by; the ring lights stay on playRepeat.
+    int roundPlaying() const { return playLoop ? playPass : playRepeat; }
     bool writing = false;  // automation WRITE is on: a macro or effect setting moved while playing is recorded
     bool silenced = false; // a panic has shut the output and it has not opened again yet
 
@@ -584,7 +587,7 @@ struct Project : ProjectHead {
         if (playScene < 0 || playScene >= kMaxScenes || t < 0 || t >= kNumTracks) return -1;
         const TrackData& track = tracks[t];
         const int s = playScene, bars = track.bars[s] < 1 ? 1 : track.bars[s];
-        return cellBarOf(bars, track.fillOn(s), playBar, fillTime(playBar, meterOf(s), sceneSteps(s), playLoop ? playPass : playRepeat, repeats[s]));
+        return cellBarOf(bars, track.fillOn(s), playBar, fillTime(playBar, meterOf(s), sceneSteps(s), roundPlaying(), repeats[s]));
     }
     TrackData& current() { return tracks[track]; }
     const TrackData& current() const { return tracks[track]; }

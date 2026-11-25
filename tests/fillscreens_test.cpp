@@ -868,6 +868,40 @@ void testNextSceneUndoKeepsTheView() {
     CHECK(rig.project().scene == 1 && rig.project().bar == kFillSlot);
 }
 
+// A scene looped shows its REPEATS blocks, filling by its own count (playPass), so the player sees when its
+// FILL's round comes; it used to draw one block. The top bar and SONG's REPEATS box alike.
+void testLoopedRepeatsBlocks() {
+    Canvas canvas, scratch;
+    if (!canvas.ok) return;
+    Rig rig;
+    rig.session().view = View::Song;
+    rig.frames(2);
+    Project& p = rig.project();
+    const auto drawn = [&](Canvas& c, int repeats, int pass, int repeat) {
+        p.repeats[0] = repeats;
+        p.playing = true, p.playLoop = true, p.playScene = 0, p.playBar = 0, p.playStep = 8, p.playRepeat = repeat, p.playPass = pass;
+        c.clear();
+        rig.app.draw(c.r, *c.fonts);
+        p.playing = false, p.playLoop = false, p.playScene = -1;
+    };
+    const auto top = [](const Canvas& c) { return c.part(0, 0, ui::kScreenW, ui::kTopBarH); };
+    const auto song = [](const Canvas& c) { return c.part(0, ui::kTopBarH, ui::kScreenW, ui::kScreenH - ui::kTopBarH - ui::kHintsH); };
+    const auto purple = [](const std::vector<Uint32>& part) {
+        return static_cast<int>(std::count(part.begin(), part.end(), Canvas::colour(ui::kPurple)));
+    };
+    // Three blocks, not one: half way through the first round, a third as much is purple as under REPEATS 1
+    // (which fills its one block half way), both places.
+    drawn(canvas, 3, 0, 0);
+    drawn(scratch, 1, 0, 0);
+    CHECK(purple(top(canvas)) < purple(top(scratch)) && purple(song(canvas)) < purple(song(scratch)));
+    // The round is the loop's own: round 2 of 3 is drawn otherwise than round 1, both places.
+    drawn(scratch, 3, 1, 0);
+    CHECK(purple(top(canvas)) < purple(top(scratch)) && purple(song(canvas)) < purple(song(scratch)));
+    // ...and the song's count is not it in a loop (playRepeat stays 0 there): round 1 of 3 as before.
+    drawn(scratch, 3, 0, 2);
+    CHECK(top(canvas) == top(scratch) && song(canvas) == song(scratch));
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -882,6 +916,7 @@ int main(int argc, char** argv) {
         {"testTheNumbersAndTheShading", testTheNumbersAndTheShading}, {"testThePlayhead", testThePlayhead}, {"testASliceOnTheFill", testASliceOnTheFill},
         {"testNextSceneUndoKeepsTheView", testNextSceneUndoKeepsTheView}, {"testTheBarsField", testTheBarsField},
         {"testNotesRunningIntoTheFill", testNotesRunningIntoTheFill}, {"testNoGlideLinesOnTheFill", testNoGlideLinesOnTheFill},
+        {"testLoopedRepeatsBlocks", testLoopedRepeatsBlocks},
     };
     for (const Test& test : tests) {
         bool wanted = argc < 2;

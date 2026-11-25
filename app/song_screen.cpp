@@ -1064,7 +1064,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         }
         if (playingHere) {
             // One block per pass, filling as the bar goes by.
-                sceneProgress(r, rx + 4, y + kRowH - 14, kRepeatW - 12, 6, project_.playLoop ? 1 : repeats, project_.playRepeat,
+                sceneProgress(r, rx + 4, y + kRowH - 14, kRepeatW - 12, 6, repeats, project_.roundPlaying(), // (looped too)
                           project_.playBar * project_.meterOf(scene) + playStep, project_.sceneSteps(scene));
         }
         if (column_ == kRepeatColumn && scene == scene_ && !onMaster_) {

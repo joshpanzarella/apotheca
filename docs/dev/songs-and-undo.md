@@ -383,7 +383,11 @@ fields, so the text cache, `sameFields`, a duplicated track and undo's compares 
 **appended after `SetClick`**; it goes through `send`'s GiveScene path (off on a blank scene needs no
 store: `leavesBlank`). `slotOf(track, scene, bar, atFillTime)` returns `kFillSlot` where the rule says.
 **`loopPass_` counts a looped scene's rounds; `repeat_` stays 0 there as it always did**, so its readers
-(the REPEATS progress bars, the ring lights, `songEndsNow`, `askAgain`'s last step) are untouched.
+(the ring lights, `songEndsNow`, `askAgain`'s last step) are untouched. **The REPEATS blocks are not**
+(the plan's fixes table: "show REPEATS blocks from it"; done in the review fixes, 2026-11-25): in a loop the
+top bar and SONG's REPEATS box draw `repeats` blocks filled by `Project::roundPlaying()` (`playPass` in a
+loop, `playRepeat` in the song), where they drew one, so a player looping a scene sees the FILL's round
+coming. Every looped scene shows it, with a FILL or not (`fillscreens_test` `testLoopedRepeatsBlocks`).
 `playPass()` and `ProjectHead::playPass` tell it out. **`askAgain` runs after `SetSceneRepeats` and
 `SetCellFill`**: changed on a bar's last step, the next bar may be the FILL or not (or another scene: a
 REPEATS change on the last step was not asked again before; `fill_test` `testAskedAgain` holds both ways).
@@ -527,6 +531,9 @@ FILL, off the FILL to bar 1, up from bar 1's top past BARS round to the FILL's e
 - **The hints with L1 held say what Y does** (`Session::fillKeyHint`): make fill, go to fill, fill off, fill
   on; nothing on eight bars. Every one fits (`gHintsOver` 0; the bar is always at LARGE, so XL the same).
 - **SONG has no new mark** for a cell with a FILL (the look is settled; an owner question).
+- **Not on the help card** (the App's ON EVERY SCREEN / WITH SEL HELD card): it lists only what every screen
+  does, and it is full (`app.cpp`), as for COPY A BAR (`drums-and-samples.md`). The manual and the L1 hints
+  carry it.
 
 **Claude's picks, 2026-11-25, open to the owner:**
 - **The gesture copies the bar on screen**, as the brief for the screens says, not the bar it plays instead
@@ -537,11 +544,11 @@ FILL, off the FILL to bar 1, up from bar 1's top past BARS round to the FILL's e
 - The ring includes the cursor's walk and the BARS stop, above. Going to an off FILL leaves it off, above.
 - FOLLOW's hold on the FILL (`screens.md`, FOLLOW): held when the player put the view there or worked on it.
 
-**Tests**: `tests/fillscreens_test.cpp` (16 parts: the ring and the scene's bars by themselves; the gesture on
+**Tests**: `tests/fillscreens_test.cpp` (17 parts: the ring and the scene's bars by themselves; the gesture on
 the grid; Y swallowed; the ring on the grid; copy and paste on the FILL; eight bars; the gesture and the ring
 on the roll; a note on the FILL; the top bar, the hints and the words; the numbers and the shading, both
 grids; the playhead, both grids; a slice on the FILL (its start, numbers, shading, playhead); NEXT SCENE's undo
-and redo; the BARS field; notes running into the FILL; no glide lines on it), `follow_test` `testTheFillRule`,
+and redo; the BARS field; notes running into the FILL; no glide lines on it; a looped scene's REPEATS blocks), `follow_test` `testTheFillRule`,
 `testTheFillOnBothGrids`; `copybar_test`'s L1 hints now with Y. Every check reads the real App through key
 presses, or what it drew on a canvas.
 
@@ -549,7 +556,8 @@ presses, or what it drew on a canvas.
 of A held first, then L1 + Y), the slice view's playhead (the check compared the top bar too, which shows the
 scene playing either way), the roll's glide-line skip (it shows only under a scene of eight bars). **One
 survived and its code went**: NEXT SCENE's redo keeping the bar shown (the scene it stands on is the copy, which
-has the FILL, so `restorePatterns` keeps it already).
+has the FILL, so `restorePatterns` keeps it already). The review fixes' looped REPEATS blocks: 3 more, 3 killed
+(one block in a loop, in the top bar and on SONG; SONG's blocks filled by `playRepeat`).
 
 **Not seen on the handheld; nothing heard.** The stills (`docs/dev/stills.md`: `fill`, `fill-roll`,
 `fill-eight`, `fill-playing`, at every text size in `textsize`, every theme in `themeviews`) and the tests are

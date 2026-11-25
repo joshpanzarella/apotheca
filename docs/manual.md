@@ -1707,6 +1707,8 @@ the fill itself, with four tracks or twelve.
   becomes bar 8.
 - **A scene played alone (START on PATTERN) counts its times round too**: at
   REPEATS 4 the FILL plays every fourth time. To hear it, wait the four.
+  Its REPEATS blocks (the top bar, SONG's box) fill round by round, so you
+  see the FILL's round coming.
 - Copying a cell or a scene on SONG, NEXT SCENE, undo, the song file, MIDI
   export and a bounce all carry the FILL. Emptying a cell or a scene empties
   its FILL too.
