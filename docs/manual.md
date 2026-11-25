@@ -897,7 +897,7 @@ and A starts nothing meanwhile.
 | THE SONG | One WAV of the whole song: every scene as many times as it plays, then **for as long as its echoes and tails take to die away**. Muted tracks are left out. |
 | EACH TRACK | One WAV for every track by itself (stems), all the same length (the longest one's), so they line up in any other program |
 | THIS TRACK | The track being worked on, by itself |
-| TRACK TO SAMPLES | **A loop of this track, made into a recording** (to put on a lane or a sampler, and to free the handheld's work: a busy synth played back as a recording costs little). The track being worked on by itself (muted or not), the scene you are on played round once and then **the second time round kept**, so whatever rings past its end is heard at its start, as when it loops. **1, 2 or 4 whole bars** (the most the scene has, within twenty seconds: 4 bars at 120 BPM, 2 at 40); a scene under a bar, all of it. One channel, 16-bit 48 kHz, in `samples/bounces` ("bounces/bass 1", after the track's name), where the list of recordings sees it at once. On a lane, **a tap of A on FIT fits it to its bars**. The row says `done: "bounces/bass 1" in recordings` |
+| TRACK TO SAMPLES | **A loop of this track, made into a recording** (to put on a lane or a sampler, and to free the handheld's work: a busy synth played back as a recording costs little). The track being worked on by itself (muted or not), the scene you are on played round once and then **the second time round kept**, so whatever rings past its end is heard at its start, as when it loops. **1, 2 or 4 whole bars** (the most the scene has, within twenty seconds: 4 bars at 120 BPM, 2 at 40); a scene under a bar, all of it. One channel, 16-bit 48 kHz, in `samples/bounces` ("bounces/bass 1", after the track's name), where the list of recordings sees it at once. **The cell's FILL is left out**: a loop is the plain cell. On a lane, **a tap of A on FIT fits it to its bars**. The row says `done: "bounces/bass 1" in recordings` |
 | MIDI FILE | One MIDI file of the whole song (Type 1): every scene as many times as it plays, one track per track, at the song's tempo. Notes and chords as written, with ratchets and nudges; drums as General MIDI on channel 10. Muted tracks are left out. Chance, swing and feel, strum, glide and automation have no MIDI in them and are left out |
 
 A bounce is **not recorded as the song plays**. A second engine works the
@@ -1751,8 +1751,9 @@ the fill itself, with four tracks or twelve.
   Its REPEATS blocks (the top bar, SONG's box) fill round by round, so you
   see the FILL's round coming.
 - Copying a cell or a scene on SONG, NEXT SCENE, undo, the song file, MIDI
-  export and a bounce all carry the FILL. Emptying a cell or a scene empties
-  its FILL too.
+  export and a bounce all carry the FILL, but for TRACK TO SAMPLES: a loop is
+  the plain cell, so it leaves the FILL out. Emptying a cell or a scene
+  empties its FILL too.
 - SONG does not mark a cell that has a FILL.
 
 **SELECT** lists the songs: start a new one, or open another.
@@ -2191,9 +2192,12 @@ when L1 is let go: held, L1 is the key a bar is copied and pasted with (see
 does it after anything else done while L1 was held: another button, or the
 stick moved.
 
-The recording is drawn large and cut into **slices**: sixteen of them, or
-one to a step if it is fitted to more than a bar (32 for two bars, 64 for
-four). Under it are the bar's sixteen steps. A line runs from every hit up
+The recording is drawn large and cut into **slices**: one to a step if it is
+fitted to 12 steps or more (12 for a bar of 3/4, 16 for a bar of 4/4, 32 for
+two bars, 64 for four), else sixteen. Laid out in order, each bar of a longer
+break plays its own part of it, counted in the scene's meter (bar 2 of a 3/4
+break fitted to 2 bars plays slices 13 to 24). A FILL is laid out as the bar
+it plays instead of. Under it are the bar's sixteen steps. A line runs from every hit up
 to the slice it plays: straight down when the slice is the step's own,
 crossing and purple when it has been moved.
 

@@ -969,8 +969,11 @@ std::string Session::savedLine(SaveSound how, const std::string& name) {
 
 int Session::evenSlices(int track, int lane) const {
     if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return kSteps;
+    // A slice a step of the fitted sound once FIT is over half a bar of 16: a 3/4 bar (12) is cut into 12, not 16
+    // (integration review, 2026-11-25: at 16 a 3/4 break painted in order never reached slices 13 to 16). Under
+    // that, 16, as it always was.
     const int fit = project.tracks[track].laneFit[lane];
-    return fit > kSteps ? fit : kSteps;
+    return fit > kSteps / 2 ? fit : kSteps;
 }
 
 int Session::laneSlices(int track, int lane) const {
@@ -1036,7 +1039,7 @@ void Session::setLaneCuts(int track, int lane, const LaneCuts& cuts) {
     sendLanePart(track, lane); // ONE SLICE's share goes by how many there are
 }
 
-void Session::moveLaneHits(int t, int lane, const std::function<float(int, int, float)>& to) {
+void Session::moveLaneHits(int t, int lane, const std::function<float(int, int, int, float)>& to) {
     TrackData& track = project.tracks[t];
     struct Moved {
         int scene, bar, step;
@@ -1049,7 +1052,7 @@ void Session::moveLaneHits(int t, int lane, const std::function<float(int, int, 
             DrumPattern& p = track.drums[scene][bar];
             for (int step = 0; step < kSteps; ++step) {
                 if (!(p.level[lane][step] > 0.f)) continue;
-                const float was = p.start[lane][step], now = to(bar, step, was);
+                const float was = p.start[lane][step], now = to(scene, bar, step, was);
                 if (now == was) continue;
                 p.start[lane][step] = now;
                 moved.push_back({scene, bar, step, now});
@@ -1133,8 +1136,12 @@ Session::Cut Session::cutLaneAtHits(int track, int lane, int sense) {
     // the lane's FIT (`even` steps: a bar, or 2 or 4), so every bar painted in order is the same bar: the whole
     // break hit at the top of bar 2, 3 or 4 is slice 1 there, not slice 17, 33 or 49 (review fix, 2026-11-25:
     // round past the count, those came to a cut in the middle of the break).
-    moveLaneHits(track, lane, [&](int bar, int step, float start) {
-        const int own = (bar * kSteps + step) % even;
+    // Counted in the scene's meter (a 3/4 bar is 12 steps: bar 2 of a 2-bar break at FIT 24 is slices 13 to 24),
+    // and a FILL by the bar it plays instead of, as the slice view lays it out (PatternScreen::ownStart; integration
+    // review, 2026-11-25: the stored eighth bar put a 1-bar cell's FILL at FIT 32 on slices 17 to 32).
+    moveLaneHits(track, lane, [&](int scene, int bar, int step, float start) {
+        const int ownBar = project.ownBarOf(track, scene, bar);
+        const int own = (ownBar * project.meterOf(scene) + step) % even;
         if (std::fabs(start - slices::cutStart(was, even, own)) <= slices::kHair) return slices::cutStart(now, even, own);
         return slices::cutStart(now, even, slices::sliceAt(now, even, start));
     });
@@ -1169,7 +1176,7 @@ Session::Cut Session::moveLaneCut(int track, int lane, int k, float to) {
     const float was = own.at[k];
     if (to == was) return Cut::Same;
     own.at[k] = to;
-    moveLaneHits(track, lane, [&](int, int, float start) { return std::fabs(start - was) <= slices::kHair ? to : start; });
+    moveLaneHits(track, lane, [&](int, int, int, float start) { return std::fabs(start - was) <= slices::kHair ? to : start; });
     setLaneCuts(track, lane, own);
     return Cut::Done;
 }
@@ -1203,7 +1210,7 @@ Session::Cut Session::deleteLaneCut(int track, int lane, int k) {
     const float was = own.at[k], before = own.at[k - 1];
     for (int i = k; i + 1 < own.count; ++i) own.at[i] = own.at[i + 1];
     own.at[--own.count] = 0.f;
-    moveLaneHits(track, lane, [&](int, int, float start) { return std::fabs(start - was) <= slices::kHair ? before : start; });
+    moveLaneHits(track, lane, [&](int, int, int, float start) { return std::fabs(start - was) <= slices::kHair ? before : start; });
     setLaneCuts(track, lane, own);
     return Cut::Done;
 }

@@ -341,7 +341,7 @@ void PatternScreen::setSlicing(bool on) {
 
 float PatternScreen::ownStart(int step) const {
     const int bar = project_.ownBarOf(project_.track, project_.scene, project_.bar); // (the FILL: the bar it plays instead of)
-    return cutAt(bar * kSteps + step); // (round again past the last)
+    return cutAt(bar * project_.meterOf(project_.scene) + step); // (bars of the scene's meter; round again past the last)
 }
 
 float PatternScreen::cutAt(int k) const { return session_.laneCutAt(project_.track, lane_, k); }

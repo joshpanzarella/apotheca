@@ -181,7 +181,7 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
 - **The slice view is a mode of the drum grid** (`PatternScreen::slicing()`,
   drawn by `pattern_slices.cpp`), not a screen of its own, so every grid
   gesture works in it unchanged. A hit's slice is its `start`; there is no
-  separate slice data per hit. A lane has 16 slices, or its FIT in steps if longer (EVEN), or cuts of its own
+  separate slice data per hit. A lane has 16 slices, or its FIT in steps past half a bar (EVEN; `evenSlices`: 12 in 3/4 is 12 slices, integration review 2026-11-25), or cuts of its own
   (SLICES AT THE HITS, batch S2, below: `TrackFields::laneCuts`).
 - **On the slice view's lane name, UP sets ONE SLICE and DOWN sets RUNS ON** (gesture audit G09,
   2026-11-25; `PatternScreen::sliceUpDown`). Either key flipped it (Claude's slice view, commit 966202f,
@@ -951,7 +951,13 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     starts (the hit it was playing in). A moved cut takes the hits on it; a deleted one's go to the cut before; an added
     one moves none (what is heard stays). Claude's pick, 2026-11-25, open to the owner: by number alone, a break painted
     in order lost its second half to the first going EVEN, AT HITS 1 (8 slices) and back. **In order is by the hit's
-    place in the lane's FIT** (`(bar * 16 + step) % evenSlices`: in a bar, or across 2 or 4 bars for a longer FIT), so
+    place in the lane's FIT** (`(ownBar * meterOf(scene) + step) % evenSlices`: in a bar, or across 2 or 4 bars for a
+    longer FIT; integration review, 2026-11-25: **bars of the scene's meter**, as `PatternScreen::ownStart` lays them out,
+    and **a FILL by the bar it plays instead of** (`ownBarOf`), not its stored eighth bar: it was `bar * 16`, so a 3/4
+    break at FIT 24 had bar 2 as slices 17 to 24 then 1 to 4, and a 1-bar cell's FILL at FIT 32 was read as 17 to 32;
+    and FIT 12 cut 16 slices, of which a 3/4 bar in order reached 12; `testSlicesInOrderOnAFillAndIn34`). An old song
+    with a lane at FIT 12 now has 12 even slices: its hits keep their starts, ONE SLICE plays a twelfth, not a
+    sixteenth. So
     every bar painted in order is the same; by its place in the whole cell (review fix, 2026-11-25) the whole break hit
     at the top of bars 2 to 4 was slice 17, 33, 49, round past the count a cut mid-break at nine cuts, and an in-order
     bar 2 was renumbered. What stays ambiguous: a hit at the top on the step whose place goes round to slice 1 (step 13

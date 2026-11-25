@@ -1183,6 +1183,42 @@ void testBouncingIntoSamples() {
     CHECK(!bare.session().startBounce(Session::Bounce::ToSamples));
 }
 
+// A bounce into samples leaves the FILL out (integration review, 2026-11-25): a loop is the plain cell. The round
+// kept is the last at REPEATS 1 or 2 and not at 3 or more, so a FILL kept in would bounce the same cell two ways.
+void testABounceIntoSamplesLeavesTheFill() {
+    const std::string folder = tempFolder("samples") + "/fill";
+    mkdir(folder.c_str(), 0755);
+    writeWav(folder + "/hit.wav", steady(0.05f, 0.2f), 48000); // shorter than a step
+    Rig rig(folder);
+    Session& session = rig.session();
+    session.setLaneSample(0, 1, "hit");
+    const int scene = rig.project().scene;
+    CHECK(rig.project().tracks[0].bars[scene] == 1);
+    CHECK(session.makeFill(0, scene) == Session::Fill::Made);
+    rig.project().tracks[0].drums[scene][kFillSlot].level[1][0] = 1.f; // a hit on the FILL only; the cell's bar is empty
+    rig.project().track = 0;
+    for (int repeats : {1, 2, 4}) {
+        rig.project().repeats[scene] = repeats;
+        rig.frames(2);
+        CHECK(session.startBounce(Session::Bounce::ToSamples));
+        session.finishBounce();
+        std::vector<float> file;
+        CHECK(session.bounceSampleSteps() == 16 && readWav(folder + "/" + session.bounceSample() + ".wav", file) && file.size() == 16u * kStep);
+        float most = 0.f;
+        for (float v : file) most = std::fmax(most, std::fabs(v));
+        CHECK(most < 1e-3f);
+    }
+    CHECK(rig.project().tracks[0].fill[scene] == kFillOn); // (the song keeps its FILL on)
+    // The same hit on the cell's own bar is in it: the bounce is not silent for another reason.
+    rig.project().tracks[0].drums[scene][0].level[1][0] = 1.f;
+    rig.frames(2);
+    CHECK(session.startBounce(Session::Bounce::ToSamples));
+    session.finishBounce();
+    std::vector<float> file;
+    CHECK(readWav(folder + "/" + session.bounceSample() + ".wav", file) && file.size() == 16u * kStep);
+    CHECK(file.size() == 16u * kStep && std::fabs(std::fabs(file[100]) - 0.2f * kTrackLevel) < 0.01f);
+}
+
 // A recording is a step of undo (gesture audit G04): CATCH, B on SOUND, a pick or a take is put back
 // by SEL + B, the old recording with its own FIT, cut and voice, read again from its file. A rename, a
 // move, a recording found elsewhere and a delete are no step, and the steps follow a rename.
@@ -3397,6 +3433,63 @@ void testSlicesAtTheHitsInEveryBar() {
     for (int s = 0; s < kSteps; ++s) CHECK(track.drums[0][1].start[2][s] == (16 + s) / 32.f);
 }
 
+// In order counts as the slice view lays it out (integration review, 2026-11-25): a FILL by the bar it plays instead
+// of, not its stored eighth bar, and bars of the scene's meter (12 steps in 3/4), with FIT 12 cut into 12.
+void testSlicesInOrderOnAFillAndIn34() {
+    const std::string folder = tempFolder("samples-hits-fill");
+    CHECK(writeWav(folder + "/break.wav", theBreak(), 48000));
+    Rig rig(folder);
+    Session& session = rig.session();
+    TrackData& track = rig.project().tracks[0];
+    session.setLaneSample(0, 2, "break");
+    rig.app.drums().moveCursorTo(2, 0); // (ownStart reads the cursor's lane)
+    // A 1-bar cell at FIT 32 (two bars of slices): its FILL laid in order is slices 1 to 16, as the bar it replaces.
+    session.setLaneFit(0, 2, 32);
+    CHECK(rig.settle());
+    CHECK(track.bars[0] == 1 && session.makeFill(0, 0) == Session::Fill::Made);
+    rig.project().track = 0;
+    rig.project().bar = kFillSlot;
+    for (int s = 0; s < kSteps; ++s) {
+        track.drums[0][kFillSlot].level[2][s] = 0.9f;
+        track.drums[0][kFillSlot].start[2][s] = rig.app.drums().ownStart(s);
+        CHECK(track.drums[0][kFillSlot].start[2][s] == s / 32.f);
+    }
+    CHECK(session.cutLaneAtHits(0, 2, kSenseMost) == Session::Cut::Done && track.laneCuts[2].count == 9);
+    for (int s = 0; s < kSteps; ++s) CHECK(track.drums[0][kFillSlot].start[2][s] == session.laneCutAt(0, 2, s % 9));
+    CHECK(session.cutLaneAtHits(0, 2, 0) == Session::Cut::Done);
+    for (int s = 0; s < kSteps; ++s) CHECK(track.drums[0][kFillSlot].start[2][s] == s / 32.f);
+    session.emptyFill(0, 0);
+    for (int s = 0; s < kSteps; ++s) track.drums[0][kFillSlot].level[2][s] = 0.f;
+    CHECK(session.fillOff(0, 0) == Session::Fill::Off);
+    // EVEN slices: a slice a step of the fitted sound past half a bar of 16; 16 under it.
+    const int fits[][2] = {{0, 16}, {4, 16}, {8, 16}, {12, 12}, {16, 16}, {24, 24}, {48, 48}, {64, 64}};
+    for (const auto& f : fits) {
+        session.setLaneFit(0, 2, f[0]);
+        CHECK(session.evenSlices(0, 2) == f[1]);
+    }
+    // 3/4: a 1-bar break at FIT 12 is 12 slices, laid in order in its 12 steps.
+    rig.project().sceneMeter[0] = 12;
+    session.setLaneFit(0, 2, 12);
+    CHECK(rig.settle());
+    rig.project().bar = 0;
+    CHECK(session.laneSlices(0, 2) == 12);
+    for (int s = 0; s < 12; ++s) CHECK(rig.app.drums().ownStart(s) == s / 12.f);
+    // A 2-bar break at FIT 24: bar 2 laid in order is slices 13 to 24, and stays in order through the hits and back.
+    track.bars[0] = 2;
+    session.setLaneFit(0, 2, 24);
+    CHECK(rig.settle());
+    rig.project().bar = 1;
+    for (int s = 0; s < 12; ++s) {
+        CHECK(rig.app.drums().ownStart(s) == (12 + s) / 24.f);
+        track.drums[0][1].level[2][s] = 0.9f;
+        track.drums[0][1].start[2][s] = (12 + s) / 24.f;
+    }
+    CHECK(session.cutLaneAtHits(0, 2, kSenseMost) == Session::Cut::Done);
+    for (int s = 0; s < 12; ++s) CHECK(track.drums[0][1].start[2][s] == session.laneCutAt(0, 2, 12 + s));
+    CHECK(session.cutLaneAtHits(0, 2, 0) == Session::Cut::Done);
+    for (int s = 0; s < 12; ++s) CHECK(track.drums[0][1].start[2][s] == (12 + s) / 24.f);
+}
+
 // Hold A on the slice view's lane name, LEFT / RIGHT: EVEN, AT HITS 1..10. The hits follow: in order stays in
 // order, each on a hit; any other to the cut at or before it (in every scene). ONE SLICE plays to the next cut.
 void testSlicesAtTheHits() {
@@ -5508,6 +5601,7 @@ int main(int argc, char** argv) {
     if (argc > 1 && std::strcmp(argv[1], "--hits") == 0) { // SLICES AT THE HITS alone (batch S2)
         testSlicesAtTheHits();
         testSlicesAtTheHitsInEveryBar();
+        testSlicesInOrderOnAFillAndIn34();
         testCutsByHand();
         testCutsAreKept();
         testFindingHitsOnAThread();
@@ -5524,6 +5618,7 @@ int main(int argc, char** argv) {
     testOneSliceIsKeptInTheSong();
     testSlicesAtTheHits();
     testSlicesAtTheHitsInEveryBar();
+    testSlicesInOrderOnAFillAndIn34();
     testCutsByHand();
     testCutsAreKept();
     testFindingHitsOnAThread();
@@ -5540,6 +5635,7 @@ int main(int argc, char** argv) {
     testCatch();
     testCatchingBarsAndATrack();
     testBouncingIntoSamples();
+    testABounceIntoSamplesLeavesTheFill();
     testUndoPutsBackARecording();
     testTheSamplerTrack();
     testTheSamplersPictureIsTall();

@@ -636,16 +636,48 @@ static void busiestMods(Engine& e, int mods) {
 }
 void apotheca::sendBusiestMods(Engine& engine, int mods) { busiestMods(engine, mods); }
 
+// The three lanes merged on 2026-11-25 (integration review), on top of the busiest song: CATCH's second ring
+// following track 1 (setCatchTrack, as the app does every frame on a drum track's screens), and that track's cell
+// with a FILL on (its eighth bar busy, the other step of every lane; the scene is one bar at REPEATS 1, so the FILL
+// is the bar that plays every time round). HALL's eight bent lines are in the busiest song already (every other
+// track). `fill` false: the following ring alone, against the plain song's row.
+static void mergedLanes(Engine& e, bool fill) {
+    e.setCatchTrack(0);
+    if (!fill) return;
+    std::vector<float> scratch(512);
+    Command c;
+    for (int lane = 0; lane < kDrumLanes; ++lane)
+        for (int step = (lane + 1) % 2; step < kSteps; step += 2) {
+            c = Command();
+            c.type = Command::SetStep;
+            c.track = 0;
+            c.bar = kFillSlot;
+            c.value = 1.f;
+            c.a = lane;
+            c.b = step;
+            e.send(c);
+        }
+    e.render(scratch.data(), 256);
+    c = Command();
+    c.type = Command::SetCellFill;
+    c.track = 0;
+    c.a = 1;
+    e.send(c);
+    e.render(scratch.data(), 256);
+}
+
 // The busiest song in real time: a block is worked out, then the thread sleeps until the next
 // is due, as the sound card's thread does. On its own thread, which asks for realtime priority
 // as the program's audio thread does (`realtime`), and the helpers as the program's do.
-static WholeSongTimes playWholeSong(int helpers, double seconds, bool realtime, int mods = 0, bool heaviest = false, bool typical = false) {
+// `merged`: 0 the song alone; 1 with CATCH's ring following a track; 2 with that and a FILL too (mergedLanes).
+static WholeSongTimes playWholeSong(int helpers, double seconds, bool realtime, int mods = 0, bool heaviest = false, bool typical = false, int merged = 0) {
     WholeSongTimes times;
     std::thread player([&] {
         if (realtime) times.realtime = makeThreadRealtime(70);
         std::unique_ptr<Engine> engine(new Engine);
         if (typical) typicalSong(*engine);
         else busiestSong(*engine), busiestMods(*engine, mods);
+        if (!typical && merged > 0) mergedLanes(*engine, merged > 1);
         std::vector<float> out(512);
         for (int i = 0; i < 400; ++i) { // two seconds, so every tail and bus is going
             engine->render(out.data(), 256);
@@ -1074,6 +1106,17 @@ static void wholeSongRows() {
         sayClocks(watch);
         if (h == helpers) break; // a machine of one core has no helpers: one row
     }
+    // The same song with what came in on 2026-11-25 (integration review): CATCH's ring following a track (against
+    // none: the rows above), then that and a FILL on the track's cell. Five seconds each.
+    std::printf("the busiest song with CATCH following track 1, then that and a FILL (HALL's bent lines are in all):\n");
+    for (int merged : {1, 2})
+        for (int h : {0, helpers}) {
+            const WholeSongTimes t = playWholeSong(h, 5.0, true, 0, false, false, merged);
+            char name[48];
+            std::snprintf(name, sizeof name, "%s, %d helper%s", merged == 1 ? "CATCH 1 track" : "CATCH + FILL", t.helpers, t.helpers == 1 ? "" : "s");
+            std::printf("  %-28s %5.1f%% of a block, 1 in 100 over %.2f ms, worst %.2f ms, %d of %d too late\n", name, 100.0 * t.meanMs / (256.0 / 48.0), t.p99Ms, t.worstMs, t.over, t.blocks);
+            if (h == helpers) break;
+        }
     // A typical song beside it (8 tracks, one effect each, sends, the master): what a player meets.
     std::printf("a typical song (8 tracks: two drums, ACID, JAX-EP, FM-6, PHAZED, PHYSIC, MORPH; one effect each, sends), in real time:\n");
     for (int h : {0, helpers}) {

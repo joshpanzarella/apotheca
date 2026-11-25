@@ -467,6 +467,10 @@ void Session::bounceToSamples(BounceJob& job) {
     engine->setFlushDenormals(true);
     std::unique_ptr<Project> copy(new Project(song));
     for (int t = 0; t < kNumTracks; ++t) copy->tracks[t].muted = t != job.track; // that track alone, muted or not
+    // A loop is the plain cell: its FILL is left out. (Kept, the FILL would play in the round kept only when REPEATS
+    // is 1 or 2, so the same cell would bounce two ways.) Off, not emptied: the copy is thrown away after.
+    for (int t = 0; t < kNumTracks; ++t)
+        if (copy->tracks[t].fill[scene] == kFillOn) copy->tracks[t].fill[scene] = kFillOff;
     Session offline(*engine, *copy);
     if (!job.sampleFolder.empty()) offline.useSampleFolder(job.sampleFolder);
     offline.applyProject();

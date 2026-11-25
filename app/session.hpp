@@ -328,7 +328,7 @@ public:
     // bars, 64 for four), EVEN; or its own cuts (below). And whether a hit plays just its
     // slice and stops, or runs on until the next hit on the lane.
     int laneSlices(int track, int lane) const;
-    int evenSlices(int track, int lane) const; // ...as EVEN: 16, or FIT's steps past a bar
+    int evenSlices(int track, int lane) const; // ...as EVEN: FIT's steps past half a bar (12 is 12), else 16
     void setLaneOneSlice(int track, int lane, bool on);
     // SLICES AT THE HITS (batch S2, sampling-gaps.md #2; apotheca/slice_rule.hpp): a lane's own cuts in
     // place of its EVEN slices, found where its hits land or moved, added and deleted by hand. Parts of
@@ -1265,9 +1265,9 @@ private:
     void finishHits(bool wait); // a job done (or waited for) is kept as its lane's hits, and its SENSITIVITY put on
     const std::vector<slices::Found>* foundHits(int track, int lane, bool atOnce); // the lane's, found for its shape now (nullptr: not yet)
     void sendLaneCuts(int track, int lane);
-    // Every hit of a lane, each scene and bar, its start through `to(bar, step, start)`; the engine told (a start a
+    // Every hit of a lane, each scene and bar, its start through `to(scene, bar, step, start)`; the engine told (a start a
     // command, or the track's image when many moved). Undo sees it with the cuts.
-    void moveLaneHits(int track, int lane, const std::function<float(int, int, float)>& to);
+    void moveLaneHits(int track, int lane, const std::function<float(int scene, int bar, int step, float start)>& to);
     FileJob carryResult_ = FileJob::Done;
     unsigned carriesDone_ = 0;
     void finishCarry(); // the copy has ended: the open song follows, as a rename does
