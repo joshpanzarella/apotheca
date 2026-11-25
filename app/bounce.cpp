@@ -28,6 +28,7 @@
 #include <sys/stat.h>
 
 #include "instruments.hpp"
+#include "samples.hpp"
 #include "session.hpp"
 #include "song_file.hpp"
 
@@ -100,15 +101,17 @@ void addMidiNote(std::vector<MidiNote>& out, long songStep, float length, float 
 }
 
 // One track's notes in one scene, in the scene's own ticks. A shorter cell goes round under a
-// longer scene, bar by bar, as it plays (slotOf, engine.cpp).
-void gatherMidiScene(const Project& song, int track, int scene, std::vector<MidiNote>& out) {
+// longer scene, bar by bar, as it plays (slotOf, engine.cpp). `round`: which time round of the scene's
+// REPEATS (from 0): on its last a cell's FILL plays in the scene's last bar (fill_rule.hpp, as the engine has it).
+void gatherMidiScene(const Project& song, int track, int scene, std::vector<MidiNote>& out, int round) {
     const TrackData& t = song.tracks[track];
     const int steps = song.sceneSteps(scene), meter = song.meterOf(scene);
     const int bars = t.bars[scene] < 1 ? 1 : (t.bars[scene] > kMaxBars ? kMaxBars : t.bars[scene]);
     // A bar is the scene's METER of steps, as the engine plays it (a bar of 12 is 3/4): its steps past
     // the meter are never played (review 2026-11-23: they were written, and the bars after slid).
     for (int i = 0; i < steps; ++i) {
-        const int cellBar = (i / meter) % bars, st = i % meter;
+        const int sceneBar = i / meter;
+        const int cellBar = cellBarOf(bars, t.fillOn(scene), sceneBar, fillTime(sceneBar, meter, steps, round, song.repeats[scene])), st = i % meter;
         if (t.kind == TrackKind::Drums) {
             const DrumPattern& bar = t.drums[scene][cellBar];
             for (int lane = 0; lane < kDrumLanes; ++lane) {
@@ -288,11 +291,14 @@ std::string midiFileBytes(const Project& song, const std::string& title) {
         std::vector<MidiNote> notes;
         long base = 0; // this scene's first step, in song steps
         for (int s = 0; s < scenes; ++s) {
-            std::vector<MidiNote> scene;
-            gatherMidiScene(song, o.track, s, scene);
+            // The scene is gathered once and repeated; its last time round again where the cell has a FILL on.
+            std::vector<MidiNote> scene, last;
+            gatherMidiScene(song, o.track, s, scene, 0);
+            const bool fill = song.tracks[o.track].fillOn(s);
+            if (fill) gatherMidiScene(song, o.track, s, last, song.repeats[s] - 1);
             const long steps = song.sceneSteps(s);
             for (int rep = 0; rep < song.repeats[s]; ++rep) {
-                for (MidiNote n : scene) {
+                for (MidiNote n : fill && rep + 1 == song.repeats[s] ? last : scene) {
                     n.start += (base + static_cast<long>(rep) * steps) * kMidiTicksPerStep;
                     notes.push_back(n);
                 }
@@ -435,6 +441,68 @@ long long BounceTail::keep() const {
     return lastSound_ + after_ < most ? lastSound_ + after_ : most;
 }
 
+// BOUNCE THIS TRACK INTO SAMPLES (batch S3; Session::Bounce::ToSamples): the track alone, its scene played round
+// as a loop by an engine nobody hears, the second time round kept, mono, 1, 2 or 4 whole bars of it.
+int samplesBounceSteps(const Project& song, int scene, float rate) {
+    const int steps = song.sceneSteps(scene), meter = song.meterOf(scene);
+    const float tempo = song.sceneTempo[scene] > 0.f ? song.sceneTempo[scene] : (song.tempo > 0.f ? song.tempo : 120.f);
+    const double stepFrames = rate * 60.0 / tempo / 4.0;
+    if (steps < meter) return steps; // under a bar: all of it
+    for (int bars = 4; bars >= 1; bars /= 2)
+        if (bars * meter <= steps && bars * meter * stepFrames <= kCatchLongest + 0.5) return bars * meter;
+    return meter; // (a bar is 6 s at the slowest: always fits)
+}
+
+void Session::bounceToSamples(BounceJob& job) {
+    const Project& song = *job.song;
+    const float rate = 48000.f;
+    const int scene = job.scene >= 0 && job.scene < kMaxScenes ? job.scene : 0;
+    const int steps = samplesBounceSteps(song, scene, rate);
+    const float tempo = song.sceneTempo[scene] > 0.f ? song.sceneTempo[scene] : (song.tempo > 0.f ? song.tempo : 120.f);
+    const double stepFrames = rate * 60.0 / tempo / 4.0;
+    const long long round = std::llround(song.sceneSteps(scene) * stepFrames); // once round the scene
+    const long long keep = std::llround(steps * stepFrames);
+    std::unique_ptr<Engine> engine(new Engine);
+    engine->prepare(rate);
+    engine->setFlushDenormals(true);
+    std::unique_ptr<Project> copy(new Project(song));
+    for (int t = 0; t < kNumTracks; ++t) copy->tracks[t].muted = t != job.track; // that track alone, muted or not
+    // A loop is the plain cell: its FILL is left out. (Kept, the FILL would play in the round kept only when REPEATS
+    // is 1 or 2, so the same cell would bounce two ways.) Off, not emptied: the copy is thrown away after.
+    for (int t = 0; t < kNumTracks; ++t)
+        if (copy->tracks[t].fill[scene] == kFillOn) copy->tracks[t].fill[scene] = kFillOff;
+    Session offline(*engine, *copy);
+    if (!job.sampleFolder.empty()) offline.useSampleFolder(job.sampleFolder);
+    offline.applyProject();
+    offline.finishStretching();
+    if (job.cancel.load()) return;
+    {
+        std::vector<float> settle(2 * 1024);
+        engine->render(settle.data(), 1024);
+    }
+    Command c;
+    c.type = Command::Play;
+    c.a = scene;
+    c.b = 1; // the scene goes round
+    engine->send(c);
+    const int block = 256;
+    std::vector<float> out(static_cast<std::size_t>(2 * block)), mono;
+    mono.reserve(static_cast<std::size_t>(keep));
+    for (long long at = 0; at < round + keep && !job.cancel.load();) {
+        const int frames = static_cast<int>(round + keep - at < block ? round + keep - at : block);
+        engine->render(out.data(), frames);
+        for (int i = 0; i < frames; ++i)
+            if (at + i >= round) mono.push_back(0.5f * (out[2 * static_cast<std::size_t>(i)] + out[2 * static_cast<std::size_t>(i) + 1]));
+        at += frames;
+        job.progress.store(static_cast<float>(at) / static_cast<float>(round + keep));
+    }
+    if (job.cancel.load()) return;
+    if (!writeWav(job.sampleFolder + "/" + job.sample + ".wav", mono, static_cast<int>(rate))) return;
+    job.files = 1;
+    job.sampleSteps = steps;
+    job.last = job.sample;
+}
+
 void Session::useBounceFolder(const std::string& folder) {
     bounceFolder_ = folder;
     if (!folder.empty() && !bouncing()) removeHalfBounces(folder);
@@ -443,9 +511,11 @@ void Session::useBounceFolder(const std::string& folder) {
 bool Session::startBounce(Bounce what) {
     if (bounce_ && !bounce_->done.load()) return false; // one at a time
     finishBounce();
-    if (bounceFolder_.empty()) return false;
-    mkdir(bounceFolder_.c_str(), 0755);
-    removeHalfBounces(bounceFolder_);
+    if (bounceFolder_.empty() && what != Bounce::ToSamples) return false; // (into samples: the samples folder is enough)
+    if (!bounceFolder_.empty()) {
+        mkdir(bounceFolder_.c_str(), 0755);
+        removeHalfBounces(bounceFolder_);
+    }
     std::shared_ptr<BounceJob> job(new BounceJob);
     job->song.reset(new Project(project)); // as the song is this moment
     job->what = what;
@@ -456,6 +526,16 @@ bool Session::startBounce(Bounce what) {
     const std::time_t now = std::time(nullptr);
     std::strftime(when, sizeof when, "%y%m%d-%H%M%S", std::localtime(&now));
     job->base = bounceFolder_ + "/" + (songName_.empty() ? std::string("song") : songName_) + " " + when;
+    if (what == Bounce::ToSamples) {
+        // Into the samples folder, where the list of recordings sees it: "bounces/bass 1", after the track's name.
+        const int t = project.track;
+        if (sampleFolder_.empty() || t < 0 || t >= project.trackCount() || project.tracks[t].kind == TrackKind::None) return false;
+        job->scene = project.scene;
+        mkdir(sampleFolder_.c_str(), 0755);
+        mkdir((sampleFolder_ + "/" + kBouncesInSamples).c_str(), 0755);
+        job->sample = freeSampleName(kBouncesInSamples, project.tracks[t].name[0] ? project.tracks[t].name : instrumentName(project.tracks[t].kind));
+        if (job->sample.empty()) return false;
+    }
     bounce_ = job;
     job->thread = std::thread([job] {
         Project& song = *job->song;
@@ -483,6 +563,12 @@ bool Session::startBounce(Bounce what) {
         }
         song.playing = false;
         for (TrackData& t : song.tracks) t.solo = false;
+        if (job->what == Bounce::ToSamples) {
+            bounceToSamples(*job);
+            job->progress.store(1.f);
+            job->done.store(true);
+            return;
+        }
         // Which renders to make: the whole song, or one for each track asked for.
         std::vector<int> stems;
         if (job->what == Bounce::Song) stems.push_back(-1);
@@ -613,5 +699,7 @@ void Session::pretendBounce(float progress, float tailSeconds) {
 }
 int Session::bounceFiles() const { return bounce_ && bounce_->done.load() ? bounce_->files : 0; }
 std::string Session::bounceLast() const { return bounce_ && bounce_->done.load() ? bounce_->last : std::string(); }
+std::string Session::bounceSample() const { return bounce_ && bounce_->done.load() && bounce_->what == Bounce::ToSamples && bounce_->files > 0 ? bounce_->sample : std::string(); }
+int Session::bounceSampleSteps() const { return bounceSample().empty() ? 0 : bounce_->sampleSteps; }
 
 } // namespace apotheca

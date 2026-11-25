@@ -5,6 +5,7 @@
 #include <SDL.h>
 
 #include <atomic>
+#include <functional>
 #include <cstdint>
 #include <memory>
 #include <thread>
@@ -52,6 +53,10 @@ constexpr float kBounceQuietSeconds = 7.f;
 constexpr float kBounceAfterSeconds = 0.5f;
 constexpr float kBounceCapSeconds = 480.f;
 constexpr float kBounceFadeSeconds = 1.f;
+constexpr const char* kBouncesInSamples = "bounces"; // a ToSamples bounce's folder, inside the samples folder
+// A ToSamples bounce's length in steps: 4, 2 or 1 whole bars of the scene's meter, the most it has within twenty
+// seconds (kCatchLongest); a scene under a bar, all of it (bounce.cpp).
+int samplesBounceSteps(const Project& song, int scene, float rate);
 
 // Listens to a bounce's tail, block by block, and says when it is over and
 // how much of it belongs in the file. No engine, no file: it can be tested
@@ -314,23 +319,80 @@ public:
     // to the whole, as another recording does; a knob turned keeps them. A step of undo (soundMark).
     void setLaneSynth(int track, int lane, const drumsynth::Voice& voice);
     void setLaneFit(int track, int lane, int steps);                  // 0: as recorded
+    // THE TEMPO FROM THIS LOOP (batch S1, 2026-11-25; KitScreen, loopTempo): the song's tempo to `bpm` and the lane's
+    // FIT to `bars` bars of the scene's meter, as ONE step of undo, and that step puts the tempo back too (no
+    // other change of tempo is undone). False: not a drum lane, or a tempo out of range.
+    bool setTempoFromLoop(int track, int lane, float bpm, int bars);
     // A lane's sound as slices, for chopping a break. How many there are: sixteen,
     // or one to a step if the recording is fitted to more than a bar (32 for two
-    // bars, 64 for four). And whether a hit plays just its slice and stops, or
-    // runs on until the next hit on the lane.
+    // bars, 64 for four), EVEN; or its own cuts (below). And whether a hit plays just its
+    // slice and stops, or runs on until the next hit on the lane.
     int laneSlices(int track, int lane) const;
+    int evenSlices(int track, int lane) const; // ...as EVEN: FIT's steps past half a bar (12 is 12), else 16
     void setLaneOneSlice(int track, int lane, bool on);
+    // SLICES AT THE HITS (batch S2, sampling-gaps.md #2; apotheca/slice_rule.hpp): a lane's own cuts in
+    // place of its EVEN slices, found where its hits land or moved, added and deleted by hand. Parts of
+    // what the lane plays (0..1), as a hit's start is; the first is the top. laneSlices counts them.
+    float laneCutAt(int track, int lane, int k) const;        // where slice k begins (round again past the last)
+    int laneSliceAt(int track, int lane, float start) const;  // the slice a start falls in
+    float lanePartAt(int track, int lane, float start) const; // what ONE SLICE plays from a start
+    float laneCutStep(int track, int lane, float start, int by) const; // the next cut up (by > 0) or down, round the ends
+    // As they are, no hit moved (a song read, undo, a kit put on): the engine told, and ONE SLICE's share.
+    void setLaneCuts(int track, int lane, const LaneCuts& cuts);
+    enum class Cut { Done, Same, Finding, NoSound, Top, Full, NoRoom };
+    // The SENSITIVITY: 0 EVEN, 1..10 cut where the lane's hits land. Every hit of the lane (each scene, each
+    // bar) follows: one in order (its step's own slice) stays in order, each step its own slice of the new cuts
+    // (round again past the last); any other goes to the cut at or before where it starts (a hit, if it was
+    // playing one). The hits are found once a sound
+    // (a shape): at once on a short one, else on a thread of their own (Finding: put on, at the SENSITIVITY
+    // last asked, when found; `update` collects it). NoSound: no recording there, or its shape still made.
+    Cut cutLaneAtHits(int track, int lane, int sense);
+    bool findingHits(int track, int lane) const; // the lane's hits are being found meanwhile
+    int senseShown(int track, int lane) const;   // ...the SENSITIVITY last asked for then, else the lane's
+    static constexpr int kFindInAFrame = 192000; // a sound this long (4 s) or shorter is looked at at once (about 1.4 ms on the desk)
+    // By hand. Cut k moved to `to` (held kHandGapSeconds inside its neighbours), every hit on it with it; a
+    // cut added in slice k (at the strongest hit found there, else its middle), no hit moved; cut k deleted,
+    // its slice joined to the one before and the hits on it moved to that one's cut. EVEN slices become the
+    // lane's own first. The first cut is the top: never moved or deleted (Top). Full: 64 already. NoRoom: no
+    // room inside its neighbours. Each a change like any (soundMark sees the cuts: undo).
+    Cut moveLaneCut(int track, int lane, int k, float to);
+    Cut addLaneCut(int track, int lane, int k);
+    Cut deleteLaneCut(int track, int lane, int k);
     void setSamplerChop(int track, bool on); // chopped or whole: 16 even slices from C1 up, or the one recording
     // Asked for from another screen (the kit's): the drum grid opens on this lane's slices.
     int wantSlices = -1; // a lane, or -1
     // Asked for from the SONG screen: the keyboard for the current track's name (it lives on the SET tab).
     // When it is done, the SONG screen comes back.
     bool wantTrackName = false;
-    // Catch: the last bar the song played (everything, as it was heard)
-    // becomes a recording, "catch 1", "catch 2"..., and goes on this lane
-    // fitted to one bar. Returns its name, or "" if there was only silence
-    // to catch or nowhere to keep it.
+    // Catch: the last bars the song played become a recording, "catch 1", "catch 2"..., and go on this lane
+    // fitted to their steps (on a sampler or CLOUD: its recording). Returns its name, or "" if there was only
+    // silence to catch or nowhere to keep it. What is caught is CATCH's choice (batch S3, 2026-11-25; it was
+    // always one bar of everything): 1, 2 or 4 bars (Engine::lastBars: fewer where fewer were played, or 4
+    // would pass twenty seconds), of the whole mix as it was heard, or of one track alone (after its effects
+    // and level; muted or not, no soloing). The choice is the session's, not the song's (Claude's pick,
+    // 2026-11-25, open to the owner), and the app hands catchFrom() to the engine every frame
+    // (Engine::setCatchTrack), so the engine remembers that track from when it was chosen.
     std::string catchLastBar(int track, int lane);
+    // The next free name "folder/stem N" in the samples folder (N from 1; capitals not counted), or "" if none.
+    std::string freeSampleName(const std::string& folder, const std::string& stem) const;
+    int catchBars() const { return catchBars_; } // 1, 2 or 4
+    int catchFrom() const { return catchFrom_ < project.trackCount() ? catchFrom_ : -1; } // -1: the mix; else a track there is
+    void stepCatchBars(int by);  // 1, 2, 4: the ends stop
+    void stepCatchFrom(int by);  // the mix, then track 1, 2... to the last there is: the ends stop
+    int caughtBars() const { return caughtBars_; } // the last catch: its whole bars (0: a bar's worth up to now)
+    int caughtFrom() const { return caughtFrom_; } // ...and what it was of (-1: the mix)
+    bool caughtNoWholeBar() const { return caughtNoBar_; } // ...nothing: one track, no whole bar heard since it was chosen
+    // SAVE AS A RECORDING (batch S1, 2026-11-25; sampling-gaps.md 1): what the lane plays, as EDIT and FIT make it (a
+    // DRUM SYNTH voice, the built-in drum too: not its VOLUME, a hit's level or step effects, or the track's
+    // effects), written as a new recording, 16-bit mono 48 kHz as CATCH writes, on this (the app) thread. Of it,
+    // from `start` (0..1 of it) for `part` of it (1: to its end): one slice, from the slice view, with the 1 ms
+    // fade a hit's part ends with where it is cut short. Named after its source with the next free number
+    // ("breaks/amen 1", "amen 2"...: never over a file, capitals not counted), in its folder; a voice or the
+    // built-in drum after its model or drum ("kick 1") in the samples folder. Nothing else changes (the lane
+    // keeps its sound). `name` is what it was saved as.
+    enum class SaveSound { Saved, Missing, Making, Failed };
+    SaveSound saveLaneSound(int track, int lane, float start, float part, std::string& name);
+    static std::string savedLine(SaveSound how, const std::string& name); // what the screen says: SAVED "AMEN 1" (its name, not its folder)...
     // EDIT (lane_edit.hpp): what a lane does to its sound, made from the file (or the built-in drum)
     // here and handed to the engine. The file is never written. START and END go back to the whole of
     // it when the lane is given another sound (setLaneSample); the rest stay.
@@ -356,12 +418,24 @@ public:
         int zones = 0;            // a sampler's multisample: how many recordings play (0: one, as always)
         int layers = 0;           // ...and the most velocity layers on one of its notes (1: none)
         unsigned version = 0;     // goes up whenever the lane's sound changes
+        // SLICES AT THE HITS: its hits as found (slice_rule.hpp), once a shape: `hitsOf` is the shape they were found in.
+        std::vector<slices::Found> hits;
+        std::shared_ptr<const std::vector<float>> hitsOf;
     };
     const LaneSound& laneSound(int track, int lane) const { return sounds_[track][lane]; }
     // A sampler track's one recording, and its settings (sampler.hpp).
     void setTrackSample(int track, const std::string& name); // "" for none
     void setSamplerSetting(int track, int id, int value);
     const LaneSound& trackSound(int track) const { return sounds_[track][0]; }
+    // The SAMPLER's EDIT (S4, 2026-11-25): the lane EDIT's tools on its one recording (START and END to the
+    // millisecond, the fades, GAIN, REVERSE; never PITCH or FINE, which its page has), made here from the file and
+    // handed to the engine as its recording, so CHOP's slices are of the edited sound. The file is never written.
+    // Another recording puts START and END back to the whole, as on a lane. Not for a multisample (each note is its
+    // own file) or a CLOUD: there it is kept and does nothing.
+    bool samplerEdits(int track) const; // EDIT is offered: a sampler track whose one recording was found
+    void setSamplerEdit(int track, const LaneEdit& edit); // held to its limits (laneEditHeld; PITCH and FINE 0)
+    bool normalizeSampler(int track);   // GAIN so what is played peaks at kNormalDb. False: silence (or no EDIT)
+    bool trimSamplerSilence(int track); // START and END at the first and last sound. False: silence (or no EDIT)
     bool stretching() const;  // some lane is still waiting for its fitted version
     void finishStretching();  // wait for them all. For tests, and before leaving.
 
@@ -509,7 +583,13 @@ public:
     // The song, or its tracks, written out as WAV files (or the song as one MIDI file) in the
     // "bounces" folder. Worked out off to one side, not recorded as it plays, so it is
     // whole whatever the handheld could keep up with.
-    enum class Bounce { Song, EachTrack, ThisTrack, MidiFile };
+    // ToSamples (batch S3, 2026-11-25; sampling-gaps.md 4): BOUNCE THIS TRACK INTO SAMPLES. The track alone (muted
+    // or not), the scene being worked on played round as a loop, the second time round kept (so what rings
+    // past its end is in its start, as when it loops), 1, 2 or 4 whole bars of it (the most it has, within 20
+    // s; a scene under a bar, all of it), one channel, 16-bit 48 kHz as CATCH writes, in the samples folder's
+    // "bounces" folder ("bounces/bass 1") where the list of recordings sees it. A tap of A on a lane's FIT then
+    // fits it to its bars (G45). bounceSample() and bounceSampleSteps() say what it made.
+    enum class Bounce { Song, EachTrack, ThisTrack, MidiFile, ToSamples };
     void useBounceFolder(const std::string& folder); // (and what a killed bounce left there is removed)
     bool startBounce(Bounce what); // false if one is under way, or there is nowhere to put it
     bool bouncing() const;
@@ -522,6 +602,8 @@ public:
     void pretendBounce(float progress, float tailSeconds);    // as if one were under way, this far along: for a still of the screen
     int bounceFiles() const;       // once done: how many files were written
     std::string bounceLast() const; // ...and the name of the last one
+    std::string bounceSample() const; // a ToSamples bounce, once done: the recording's name ("bounces/bass 1"); "" if none
+    int bounceSampleSteps() const;    // ...and its steps (what FIT fits it to)
     void finishBounce();           // wait for it (the tests, and closing down)
     // Hold B on SET's BOUNCE: told to stop, nothing kept, and NOT waited for (the thread may be loading the
     // song, its samples read and its FIT lanes stretched, which it cannot leave half-way): bouncing() until it
@@ -695,6 +777,17 @@ public:
     bool putKit(int track, const TrackData& kit);  // ...the kit fields of `kit` (copyKit's)
     std::string saveKit(int track);                // as the next free "KIT n": its name, or "" (no folder, or the card refused)
     bool deleteKit(int index);                     // an own kit's file, for good
+    // A FOLDER AS A KIT (batch S1, 2026-11-25; sampling-gaps.md 3): on the KIT stop the samples folders come after the
+    // kits. The folders with a recording in them (not in a folder inside), as wavFolders lists them.
+    std::vector<std::string> kitFolders() const;
+    // Its first recordings on the 8 lanes, by name where it helps (folderKitLanes): each lane's sound with nothing
+    // done to it (EDIT, FIT, FEEL, SWING at rest, VOLUME full), a hat on lane 3 or 4 in CHOKE 1, a lane left over
+    // the built-in drum. Through putKit: one step of undo, and what B with A held puts back (keepSound). False:
+    // not a drum track, or no recording there.
+    bool loadFolderKit(int track, const std::string& folder);
+    // The folder the track's kit was put on from, while the kit is still as it was put on (its text then); "" if
+    // none. Memory only: a song opened again reads YOUR OWN (which kit a track has is worked out, never kept).
+    std::string folderKitOf(int track) const;
     // SAMPLER PRESETS (sampler_presets.cpp): a sampler track's sound kept as a file of its own, "NAME.sampler"
     // in the preset folder. A preset is its recording, its settings, chopped or whole; and the track's whole
     // sound (effects, sends, MODs), as a new synth preset's. There are no built-in ones: the list is the
@@ -704,6 +797,7 @@ public:
         std::string name, file, sample;
         int settings[sampler::kSettings];
         bool chop = false;
+        LaneEdit edit;    // its EDIT (S4; none in a file that has no `edit` line)
         TrackSound sound; // the whole sound, when the file holds it
     };
     const std::vector<SamplerPreset>& samplerPresets();
@@ -811,7 +905,7 @@ public:
     // BAR 1 COPIED, PASTED ON BAR 2, and why not.
     BarCopy copyBarHere();
     BarCopy pasteBarHere();
-    static std::string barCopyWords(BarCopy answer, bool paste, int bar); // (bar from 0)
+    static std::string barCopyWords(BarCopy answer, bool paste, int bar, bool fill = false); // (bar from 0; fill: it is the cell's FILL)
     enum class SceneCopy { Done, Same, NothingCopied, NoScene };
     struct SceneClip {
         bool has = false;
@@ -819,6 +913,7 @@ public:
         struct Track {
             TrackKind kind = TrackKind::None;
             int bars = 1;
+            std::uint8_t fill = kFillNone; // its FILL (kept in drums / notes [kFillSlot], with its automation)
             DrumPattern drums[kMaxBars];
             NotePattern notes[kMaxBars];
             float automation[kAutoLanes][kAutoSteps];
@@ -851,6 +946,38 @@ public:
     // held, A on a grid; R1 tapped on SONG) spent the copy, and it stays spent.
     void takeBackBarCopy() { clip_ = clipBeforeCopy_; }
     void takeBackSceneCopy() { *sceneClip_ = *sceneClipBeforeCopy_; }
+    // ---- the FILL (apotheca/fill_rule.hpp; docs/dev/songs-and-undo.md) ----------------------------
+    // A cell's one extra bar, kept in its eighth bar (kFillSlot): it plays INSTEAD of the cell's own bar in
+    // the scene's last bar, on the scene's last time round (a scene played alone: the last of each
+    // REPEATS of its rounds). Not on a cell of eight bars. Each change is one step of undo; one that
+    // changes nothing is none (AlreadyOn, AlreadyOff, AlreadyEmpty). The screens (the next batch) make the gesture; these are what it calls.
+    // (Shown: fillKeyHere put the view on a FILL already made, nothing changed.)
+    enum class Fill { Made, On, Off, Emptied, AlreadyOn, AlreadyOff, AlreadyEmpty, NoFill, EightBars, NoTrack, Shown };
+    // On. Never made: made as a copy of bar `from` of the cell (the grids' gesture: the bar on screen) or, with
+    // none given, of the bar it plays instead of, so it starts as what would have played (with that bar's
+    // automation; Made). Made and off: on again as it was kept, an emptied one empty (On).
+    Fill makeFill(int track, int scene, int from = -1);
+    Fill fillOff(int track, int scene);   // off; its bar is kept (Off). None made: NoFill
+    Fill emptyFill(int track, int scene); // its hits or notes and its automation emptied: a drop. On stays on (Emptied)
+    // The grids' view onto the FILL (project.track, scene and bar = kFillSlot); false where none is made.
+    bool goToFill(int track, int scene);
+    // ...on the cell the grids show, and what was done said (say()): FILL MADE, FILL ON, FILL OFF...
+    Fill makeFillHere(); // (made from the bar on screen)
+    Fill fillOffHere();
+    Fill emptyFillHere();
+    // HOLD L1 + Y on the drum grid and the roll, the FILL's one gesture (docs/dev/songs-and-undo.md, "The FILL's
+    // screens"): on a cell with none, a FILL made as a copy of the bar on screen and the view put on it (FILL
+    // MADE); from another bar, the view put on the FILL (Shown, nothing said: the top bar reads FILL or FILL
+    // OFF); on the FILL, it turned off (FILL OFF: its bar kept, the view stays) or on again (FILL ON). A cell of
+    // eight bars says why it has none (NO FILL ON 8 BARS).
+    Fill fillKeyHere();
+    static std::string fillWords(Fill answer);
+    // What the grids' top bar names a bar of a cell: "BAR 2 OF 4", or "FILL" (on), or "FILL OFF".
+    static std::string cellBarWords(const TrackData& track, int scene, int bar);
+    // What Y does with L1 held there (the grids' hints): "make fill", "go to fill", "fill off", "fill on"; on a cell
+    // of eight bars nothing (it would only say why there is none).
+    static const char* fillKeyHint(const TrackData& track, int scene, int bar);
+
     // A line for the App to say for a moment (its box above the hints bar): what a copy or a paste did.
     void say(const char* text);
     unsigned saidCount() const { return saidCount_; }
@@ -957,14 +1084,21 @@ private:
         Bounce what = Bounce::Song;
         int track = 0, files = 0;
         std::string sampleFolder, base, last;
+        std::string sample; // ToSamples: the recording's name, chosen when it starts
+        int scene = 0, sampleSteps = 0;
+        bool seen = false;  // ...its being done told to the open lists (the app thread's)
         float cap = kBounceCapSeconds;
         std::atomic<float> progress{0.f}, tail{-1.f};
         std::atomic<bool> done{false}, cancel{false};
         std::thread thread;
     };
     std::shared_ptr<BounceJob> bounce_;
+    static void bounceToSamples(BounceJob& job); // (on the bounce's thread)
     std::string bounceFolder_;
     float bounceCap_ = kBounceCapSeconds;
+    int catchBars_ = 1, catchFrom_ = -1; // CATCH's choice (catchLastBar)
+    int caughtBars_ = 0, caughtFrom_ = -1;
+    bool caughtNoBar_ = false;
     std::string patternsNow() const;                 // the patterns as text: a step of undo
     // (moved: a "next scene" lies between; see moveScenesHere). Only undo and redo call it, each just
     // after patternsNow(): readStep takes the text of each track now from what that made.
@@ -1021,7 +1155,10 @@ private:
     void restoreSounds(const StepRead& was, const bool same[kNumTracks]);
     void restoreEffect(int track, int slot, const EffectData& then);
     void sendMod(int track, int mod); // the project's MOD told to the engine (OFF: one command)
-    struct UndoStep { std::string text; int nextScene = -1; };
+    // `tempo`: the step puts this tempo back as well (THE TEMPO FROM THIS LOOP: setTempoFromLoop); 0 leaves
+    // the tempo alone. Kept in the step, not read from its text: a tempo change is not an edit, so the text's
+    // tempo is whatever stood at the last settle.
+    struct UndoStep { std::string text; int nextScene = -1; float tempo = 0.f; };
     std::vector<UndoStep> undo_, redo_;
     // A recording renamed, moved or found elsewhere (recordingChanged, findMissing): every step of
     // undo and redo, and settled_, name it where it is now (renameRecordings).
@@ -1047,6 +1184,7 @@ private:
     std::string presetFolder_;
     std::vector<Kit> kits_;
     void readKits();
+    struct FolderKit { std::string folder, text; } folderKits_[kNumTracks]; // what loadFolderKit put on each track last
     std::vector<SamplerPreset> samplerPresets_;
     bool samplerPresetsRead_ = false; // (empty is usual: no built-ins)
     void readSamplerPresets();
@@ -1058,6 +1196,7 @@ private:
     int designSpecPresets_ = -1, designSpecTrack_ = -1;
     unsigned designSpecSound_ = 0;  // the sampler's recording's version (LaneSound::version) it was made from
     unsigned designSpecFx_ = 0;     // the slots', buses' and master's effects it was made from (their kinds, hashed)
+    int designSpecMeter_ = 0; // the scene's meter the spec was made in (FIT TO reads bars of it: batch S1)
     std::string designSpecText_ = "{}";
     unsigned designSpecSerial_ = 0; // goes up whenever designSpecText_ changes: the page asks for it again
     // The recordings a sampler's page is offered: read from the card on this thread, when the page
@@ -1113,6 +1252,22 @@ private:
         std::thread thread;
     };
     std::unique_ptr<CarryJob> carry_;
+    // SLICES AT THE HITS: a long sound's hits found on a thread of their own (cutLaneAtHits), one at a time.
+    struct HitsJob {
+        int track = 0, lane = 0;
+        std::shared_ptr<const std::vector<float>> of; // the shape looked at
+        std::vector<slices::Found> found;
+        std::atomic<bool> done{false};
+        std::thread thread;
+    };
+    std::unique_ptr<HitsJob> hits_;
+    int hitsSense_ = 0; // the SENSITIVITY last asked for while it runs: put on when it lands (0: EVEN or an undo came after: none)
+    void finishHits(bool wait); // a job done (or waited for) is kept as its lane's hits, and its SENSITIVITY put on
+    const std::vector<slices::Found>* foundHits(int track, int lane, bool atOnce); // the lane's, found for its shape now (nullptr: not yet)
+    void sendLaneCuts(int track, int lane);
+    // Every hit of a lane, each scene and bar, its start through `to(scene, bar, step, start)`; the engine told (a start a
+    // command, or the track's image when many moved). Undo sees it with the cuts.
+    void moveLaneHits(int track, int lane, const std::function<float(int scene, int bar, int step, float start)>& to);
     FileJob carryResult_ = FileJob::Done;
     unsigned carriesDone_ = 0;
     void finishCarry(); // the copy has ended: the open song follows, as a rename does
@@ -1144,6 +1299,8 @@ private:
     void madeLane(int track, int lane, std::vector<float> made); // a synth voice made: the lane's recording, then shapeLane
     void shapeLane(int track, int lane);   // the lane's sound made again from its source, from the cut on (then FIT, then installLane)
     void installLane(int track, int lane); // the fades, GAIN and the guard on what is shaped (or fitted), into the engine
+    void shapeSampler(int track);   // the sampler's sound made again from its source (EDIT's cut and REVERSE), then installSampler
+    void installSampler(int track); // ...its fades, GAIN and the guard, into the engine (at rest: the file, to the bit)
     bool wantsFitting(int track, int lane) const;
     void startJob(int track, int lane);
     void collectJob(bool wait);
@@ -1181,5 +1338,12 @@ private:
 
 // A built-in kit's recipe naming a voice the data does not have ("TIGHT: no voice kick TIGHT"): the tests fail on one.
 std::vector<std::string> builtInKitProblems();
+// A FOLDER AS A KIT (batch S1): which of `recordings` (a folder's, in name order) goes on each lane ("" none). By
+// the words of each one's name (letters and numbers apart, capitals not counted: "808_BD01" is 808 BD 01): lane 1
+// the first KICK or BD, lane 2 the first SNARE or SD (else a CLAP), lane 3 the first closed hat (CH, HH, CLOSED
+// with a hat word, or a hat word not OPEN), lane 4 the first open hat (OH, or OPEN with a hat word); then every
+// lane still empty, in order, the rest in name order. At most 8.
+void folderKitLanes(const std::vector<std::string>& recordings, std::string lanes[kDrumLanes]);
+bool folderKitHat(const std::string& recording); // a hat by its name, closed or open (lanes 3 and 4 go in CHOKE 1)
 
 } // namespace apotheca

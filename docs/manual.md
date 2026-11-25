@@ -136,7 +136,8 @@ TYPE changed comes back with its old settings and automation), its sends,
 its sound (preset, settings, macros, and a recording: a kit lane's with its
 FIT, cut and synth voice, a sampler's, a CLOUD's), its GLIDE FROM, the
 master's effects and the buses' (their LEVEL too). So a Catch, a take or a B
-on SOUND is put back with SELECT + B. Tempo, mutes, names, a recording
+on SOUND is put back with SELECT + B. Tempo (but for the tempo from a loop:
+hold A + left / right on FIT), mutes, names, a recording
 deleted from the card and a track deleted or given another instrument are
 not. The song keeps playing while you undo.
 
@@ -169,6 +170,7 @@ plays the recording as it was made; an octave up, twice as fast.
 | --- | --- | --- |
 | SOUND | **Tap A: the list of recordings.** Or hold A + up / down: one at a time. **B with A still held: the sound as it was when A went down** | None |
 | PITCH, TUNE, START, END, ATTACK, RELEASE, LOOP, LEVEL | The stick turns it; the D-pad moves it by one. **LOOP is a click a push of the stick**: up ON, down OFF | Its usual value |
+| The recording's picture (right from SOUND, left from PITCH) | **LOOP START**: where LOOP goes back to. **Tap A: EDIT** (below) | LOOP START back to START |
 | PRESET | The preset after / before, **heard as it goes on** when the song is stopped (as a synth's preset and a kit are): the ends stop. **B with A still held: the sound as it was when A went down**, its effects too | Held a second, on one of your own: deletes its file (the bar says CANNOT BE UNDONE; the track keeps its sound) |
 
 **PRESET is the sound kept as a preset of its own** (or "-"): the
@@ -221,7 +223,32 @@ percent of it: a note plays from START to END and stops, and with LOOP on it
 goes round between the two. END is beside START and starts at 100% (the
 recording's end). **They never cross**: turned toward each other, each stops a
 percent short of the other. The recording's picture marks both in purple and
-lights only what a note plays.
+lights only what a note plays. **A note that reaches END fades out over its
+last 3 ms**, so it never stops with a click. (Before, it stopped dead: an old
+song's notes that run to END now end in that short fade.)
+
+**LOOP START makes a pad**: with LOOP on, a held note plays from START once,
+then goes round from LOOP START to END, so the attack is heard only once. Its
+usual is START (it reads START), so a sound that never moved it loops as it
+always did. Move the cursor onto the recording's picture (right from SOUND)
+and hold A + up / down: it moves from START to a percent short of END, and the
+heading says LOOP START 40%. With LOOP on, a dashed purple line marks it. B
+puts it back to START. **The jump back is blended**: the last 10 ms before
+END fade into what follows LOOP START (less on a very short loop), so it does
+not click. That is new for old songs with LOOP on too: their jump is now
+blended.
+
+**EDIT (tap A on the picture)** is the KIT's EDIT, on the sampler's one
+recording: START and END to the millisecond (the page's START and END are
+whole percents: 1% of a 20 s file is 200 ms), FADE IN, FADE OUT, GAIN and
+REVERSE, with Y for TRIM SILENCE (on START or END) and NORMALIZE (elsewhere),
+B back, hold B for every edit back to none. **The file itself is never
+changed.** PITCH and FINE are empty boxes: the page's PITCH and TUNE do that.
+The page's START, END, LOOP START and CHOP then work on the edited sound (CHOP
+cuts what EDIT made into 16). Another recording puts EDIT's START and END
+back to the whole; the rest stay. A preset keeps the EDIT. **A multisample has
+no EDIT**: each note is its own file, and A on the picture says so (NO EDIT FOR
+A MULTISAMPLE). Nor does CLOUD.
 
 **PITCH is semitones up or down, and up is higher.** (It used to be ROOT, a
 key, which ran the other way. Old songs open as they were.) **X hears it at
@@ -231,8 +258,9 @@ recording; let go and it stops (its RELEASE runs). A tap plays a moment
 (0.35 s), as before. Pressed again, it starts again from the top. A setting
 is also heard as it is changed, when the song is stopped.
 
-**Y is Catch** here too: the last bar the song played becomes this track's
-recording. Eight notes at a time. SELECT + B puts back the one it had.
+**Y is Catch** here too: the last bars the song played become this track's
+recording (hold Y + a direction for 1, 2 or 4 bars, of the mix or one track:
+see Catch under the kit). Eight notes at a time. SELECT + B puts back the one it had.
 
 ## The list of recordings
 
@@ -256,7 +284,7 @@ column. It opens in the folder of the recording that is on, on it.
 | B | **A tap**: put back what was there before the list opened, a lane's cut (EDIT's START and END) with it. On a recording or a folder (where holding B deletes), only a quick tap does: held longer than a quarter of a second, or with another button pressed meanwhile, letting go does nothing and the list stays where it is |
 | X | **While it is still playing: it plays on to its end.** Nothing playing: hear it again; **held, it plays until you let go**, or to its end; a tap plays a moment |
 | **Hold B** | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. Or an **empty folder**: one with anything in it is never deleted. Let go before the bar is full and nothing happens |
-| Y / R1 | **With nothing on the card at all** (no recording, no folder), the list says where recordings come from: **Y catches the last bar and R1 records**, as on the page it was opened from. The list closes as a tap of B closes it |
+| Y / R1 | **With nothing on the card at all** (no recording, no folder), the list says where recordings come from: **Y catches the last bars and R1 records**, as on the page it was opened from. The list closes as a tap of B closes it |
 | START | Play / stop, with the list still open |
 
 **Folders.** Folders inside `samples` (kicks, breaks, vocals...), and
@@ -363,12 +391,12 @@ first three dials (above).
 | Family | Types |
 | --- | --- |
 | FILTER | FILTER |
-| DRIVE | **DRIVE**, **SATURATE** |
+| DRIVE | **DRIVE**, **SATURATE**, **FOLD**, **FUZZ** |
 | CRUSH | CRUSH |
 | MOD | **CHORUS** |
 | DELAY | **CLEAN**, **TAPE**, **PING** |
 | REVERB | **ROOM**, **HALL**, **SPRING**, **PLATE** |
-| LEVEL | **COMP**, **DUCK** |
+| LEVEL | **COMP**, **DUCK**, **LIMITER**, **SNAP** |
 
 Each family's line names its types ("clean, tape, ping"), and the one in the
 slot is lit, so you see what is inside before you pick. FILTER and CRUSH
@@ -444,10 +472,11 @@ song file calls each by the name it has always had.
 | FILTER | Cutoff, resonance, type, mix. Types: LOW 12 DB (two poles, gentle), LOW 24 DB (four poles, steep), BAND PASS, HIGH PASS, and DJ: one knob, nothing in the middle, turned down it closes from the top, turned up it clears out the bottom. |
 | SATURATE | Drive, type, tone, mix. Clean drive: the newer of the two, far smoother on high notes than DRIVE. DRIVE is how hard the sound is pushed; **the loudness stays about level as it rises**, so it is the grit that changes and not the volume (a quiet sound comes up, a loud one comes down). Types: TAPE (soft and even), TUBE (lopsided: warmer, with a touch of the octave), FOLD (past the top the wave folds back down: hollow, then metallic), HARD (straight, then flat: a clipper). TONE takes the top off afterwards. |
 | DRIVE | Drive, tone, mix, output. The older one: rougher up high, and louder as it is driven. Songs made with it sound as they did. |
+| FUZZ (a DRIVE type) | Fuzz, tone, gate, mix. **A fuzz pedal**: the sound pushed so far it comes out nearly square, one side clipped harder than the other. FUZZ is how far, 6 to 48 dB (it starts at 70%); the loudness stays about level as it rises, and quiet and loud notes come out at about one level. TONE: down is dark and woolly, the middle scooped, up thin and cutting. GATE makes quiet sound sputter and stop instead of hissing on (0 is no gate). **High notes, slides and vibrato stay clean**: the clip is worked out so that far less of the fizz that does not follow the pitch is left (on an 887 Hz saw, 19 dB less than before; 7 dB less where the saw itself reaches past 19 KHZ). The very top is a touch softer for it (2 dB at 20 KHZ). |
 | TAPE | A tape echo: each repeat is duller, thinner and a little bent. **Time** (1/16, 1/8 triplet, 1/8, 1/4 triplet, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; a triplet, shown as TRIP, is three in the space of two; a dotted one, shown as DOT, is half as long again), **feedback** (to 120%), **age**, **mix**. Turn TIME while it sounds and the echoes swoop in pitch, as tape does when its speed changes. FEEDBACK past 100% howls and holds there; it does not blow up. **It does not howl for ever either**: while sound is coming in, and for 30 seconds after the last of it, FEEDBACK is what it reads; left alone longer than that, a FEEDBACK over 90% eases back to 90% and the echoes die away. Play into it again and it is back at once. A FEEDBACK that reads 90% or less is never touched. AGE is how worn the tape is: more wobble in pitch, duller and thinner repeats, a lower ceiling on the howl. MIX is how loud the echoes are; the sound itself stays as it is. |
 | PING | A clean echo that bounces from side to side: the first repeat on the left, the next on the right, and so on. **Time** (TAPE's eight choices), **feedback** (0 to 100%, as CLEAN's: how much of each repeat is in the next. Like CLEAN it does nine tenths of what it reads, so it cannot ring for ever), **tone** (how bright the repeats stay: low is duller each time across), **mix**. A sound in the middle, or on one side only, bounces all the same. The first repeat is the sound exactly as it was. Turn TIME while it sounds and the echoes swoop in pitch, as TAPE's do. |
 | DELAY (the type CLEAN) | Time (1/16, 1/8, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; dotted is shown as DOT), feedback, tone, mix |
-| HALL | A reverb with a dense tail that keeps moving. **Size** (the room, and the gap before it answers: 2 to 30 ms), **decay** (how long the tail lasts, in seconds: 0.3 to 20), **tone** (low is dark: the highs die soon; above the middle it is bright and the lows are thinned), **mix** (from the sound alone to the room alone). Turning SIZE while it sounds bends the room's pitch for a moment. |
+| HALL | A reverb with a dense tail that keeps moving. **Size** (the room, and the gap before it answers: 2 to 30 ms), **decay** (how long the tail lasts, in seconds: 0.3 to 20), **tone** (low is dark: the highs die soon; above the middle it is bright and the lows are thinned), **mix** (from the sound alone to the room alone). Its notes drift a hair all the while, so a long tail on a pad or a piano is a smooth wash, never the same few notes ringing on; a note held into it swells and dips a little, as in a real room. Turning SIZE while it sounds bends the room's pitch for a moment. |
 | SPRING | A spring tank: the boing. In a spring the high notes travel slower than the low ones, so a click comes back as a quick sweep, low first, and each time round it is longer. **Drip** (how strong that sweep is; at none, plain echoes), **decay** (how long the tail lasts, in seconds: 0.4 to 4), **tone** (low is dark: the highs die soon), **mix**. Like a real one it passes little under 100 Hz or over about 4.5 kHz, takes the left in at one spring and the right at the other, and gives it back a little different on each side. Changing TYPE from HALL keeps DECAY as the seconds it reads, or the nearest SPRING has. |
 | PLATE | A plate reverb: a dense wash from its first moment, with no early echoes to pick out, bright and smooth, and an even fall. **Pre** (a gap before it answers: 0 to 100 ms), **decay** (how long the tail lasts, in seconds: 0.3 to 20, as HALL's), **tone** (low is dark; high is bright; at any setting the lowest notes die a little sooner than the rest), **mix**. Left and right go in together, as on a real plate, and come out wide. Turning PRE while it sounds bends its pitch for a moment. |
 | REVERB (the type ROOM) | The older, plainer reverb. Size, damping, mix |
@@ -457,6 +486,8 @@ song file calls each by the name it has always had.
 | PITCH (a MOD type) | Pitch, fine, grain, mix. **The sound again, higher or lower**: an octave under a bass, a fifth over a lead. PITCH is -12 to +12 semitones (ST), one click each. FINE is -50 to +50 cents on top (a cent is a hundredth of a semitone): a few either way at half MIX thickens a sound, as two players a hair apart. GRAIN is how long each piece it reads is, 20 to 120 MS: short follows fast playing; long blurs it. Each piece is joined on where the sound lines up (up to 25 MS further on), so a held note stays at one level; the shifted sound comes up to a GRAIN and 30 MS late. Shifted up, the very top of the sound is cut first, so a bright sound does not fizz. MIX at 0 is the sound untouched; at 100% only the shifted sound is left. At PITCH 0 and FINE 0 the shifted sound is the sound half a GRAIN late (or where it stood when PITCH passed 0), so with MIX part way it sounds hollow (a comb), as any shifter does. It starts an octave up at half MIX. |
 | COMP | Threshold, ratio, speed, mix. A compressor: it turns the loud parts down and then the whole up, so a sound is more even and sits forward. THRESHOLD is how loud "loud" is (-48 to 0 dB: lower catches more). RATIO is how hard (1.5:1, 2:1, 3:1, 4:1, 8:1, 20:1). **While sound passes, a thin line under the THRESHOLD bar shows how far it is turning the sound down**, and the heading says it in words (TURNING DOWN 7 DB): it grows from the right, and the whole width is 24 dB. No line: the sound is under the threshold and nothing is done to it. SPEED is how fast it acts and lets go, as one knob: it reads both, from 1/50 MS (it catches every hit) to 30/400 MS (hits get through, the whole is held together). MIX part way keeps the plain sound beside the squashed one. The level comes back up by itself. It does not listen below 60 Hz, so a kick's thump does not pull everything down. **On the master it glues a mix together.** |
 | DUCK | Amount, release, source. **The track dips each time a drum is hit**, and comes back up: the pumping sound, or room made for the kick. SOURCE is which drum: a lane, 1 to 8, of the **first drum track** in the song (lane 1 is the kick in the built-in kit). AMOUNT is how far it dips (100%: right down to nothing). RELEASE is how long it takes to come back, 20 ms to 1 second. It goes by the hit itself, not by the drum's sound: it works with the drums muted or that lane turned right down, every hit counts whatever its level (each hit of a ratchet, and a drum played by hand), and a step that its chance leaves out does nothing. **A thin line under the AMOUNT bar shows how far it is dipping**, and the heading says DIPPING 3 DB, as COMP's does. On the master it dips the whole song. Not for ECHO or SPACE. |
+| LIMITER (a LEVEL type) | Gain, ceiling, release. **A hard top: nothing comes out over the CEILING**, to the sample. GAIN pushes the sound into it (0 to +20 dB): the peaks are held down, so the whole sounds louder for the same top. CEILING is the top, -10 to 0 dB. RELEASE is how fast it lets go after a peak, 20 ms to 1 second: short is loud and pumps, long is smooth. **It keeps the sound turned down for 10 ms after each peak before it lets go**, so a low note (a sub, a kick's boom) is not made rough even at a short RELEASE; the price is a little loudness at the same GAIN (up to about 1.3 dB at the shortest RELEASE on spaced hits, 0.6 dB on a full mix; a click more GAIN wins little of it back, because the extra goes into the turn-down). It sees each peak coming and turns down before it, so the sound comes out 3 ms late: it is meant for the master, where everything is late alike (on one track it puts that track 3 ms behind the others). No MIX. A thin line under the GAIN bar shows how far it is turning down, and the heading says it in words, as COMP's does. |
+| SNAP (a LEVEL type) | Attack, sustain, mix. **It shapes each hit**: it listens not for how loud the sound is but for how it moves. ATTACK (-100 to +100%) turns the start of each hit down (a brush instead of a stick) or up (it cracks). SUSTAIN (-100 to +100%) turns each hit's tail down (dry, tight) or up (big, roomy). A steady sound is left alone. **It reads the level over the last 14 ms**, so a low note or an 808's tail is not made rough. So hits closer together than that (a flam, a very fast roll) are shaped as one hit, and in a busy pattern each hit starts over the tail of the one before, read 14 ms late, so it cracks less than a hit from silence (sixteenths at 120 BPM, ATTACK +100%: its first ms about +3 dB, where a hit on its own gets +12). Nothing is late, so MIX part way lays it under the plain sound; MIX at 0 is the sound untouched. |
 | CRUSH | Bits, rate, mix |
 
 Effects are kept in the song. They can be changed while it plays. Stopping
@@ -866,6 +897,7 @@ and A starts nothing meanwhile.
 | THE SONG | One WAV of the whole song: every scene as many times as it plays, then **for as long as its echoes and tails take to die away**. Muted tracks are left out. |
 | EACH TRACK | One WAV for every track by itself (stems), all the same length (the longest one's), so they line up in any other program |
 | THIS TRACK | The track being worked on, by itself |
+| TRACK TO SAMPLES | **A loop of this track, made into a recording** (to put on a lane or a sampler, and to free the handheld's work: a busy synth played back as a recording costs little). The track being worked on by itself (muted or not), the scene you are on played round once and then **the second time round kept**, so whatever rings past its end is heard at its start, as when it loops. **1, 2 or 4 whole bars** (the most the scene has, within twenty seconds: 4 bars at 120 BPM, 2 at 40); a scene under a bar, all of it. One channel, 16-bit 48 kHz, in `samples/bounces` ("bounces/bass 1", after the track's name), where the list of recordings sees it at once. **The cell's FILL is left out**: a loop is the plain cell. On a lane, **a tap of A on FIT fits it to its bars**. The row says `done: "bounces/bass 1" in recordings` |
 | MIDI FILE | One MIDI file of the whole song (Type 1): every scene as many times as it plays, one track per track, at the song's tempo. Notes and chords as written, with ratchets and nudges; drums as General MIDI on channel 10. Muted tracks are left out. Chance, swing and feel, strum, glide and automation have no MIDI in them and are left out |
 
 A bounce is **not recorded as the song plays**. A second engine works the
@@ -898,7 +930,8 @@ far. Nobody knows how long a tail will be until it ends, so there is no
 percentage to give.
 
 Files are 48 kHz, 16-bit stereo, in a `bounces` folder beside the program.
-The WiFi page lists them under BOUNCES, to play, download or delete.
+The WiFi page lists them under BOUNCES, to play, download or delete. (TRACK TO
+SAMPLES is the exception: its one file is a recording, in `samples/bounces`.)
 
 ## Automation
 
@@ -1323,9 +1356,9 @@ track makes a sound at once.
   R1; elsewhere R1 turns the page). ADVANCED opens on POSITION the first time,
   and a page turn never lands on RECORDING, so R1 records only once you have
   moved onto it. **While a take waits or runs, R1 stops it** on any page and
-  any box (but with X held on a macro, R1 is its MOD's, as ever). **Y on SOURCE is CATCH**: the last bar the
-  song played becomes this track's recording (SELECT + B puts back the one it
-  had). B in the list leaves the
+  any box (but with X held on a macro, R1 is its MOD's, as ever). **Y on SOURCE is CATCH**: the last bars the
+  song played become this track's recording, as the kit's Catch (hold Y + a direction picks the bars and what;
+  SELECT + B puts back the one it had). B in the list leaves the
   recording as it was. "THE BUILT-IN TONE" at the top of the list is none.
 - **MAIN shows the recording**, between PRESET and the macros: its outline,
   the part the grains come from lit (POSITION give or take SPRAY), POSITION a
@@ -1560,7 +1593,7 @@ The track columns share the width of the screen: with few tracks they are wide.
 | A track's head (up from the top scene, with the D-pad) | **A** (a quick tap) changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go (the list warns UNSAVED PATCHES WILL BE LOST). This cannot be undone. Held, it is the mixer: once its card is up, letting go never changes it, turned or not. While it is held the head fills with the level, as a lane's name does. **R1**, on its let go, types its name. **Hold L1 and press R1** copies the track: a new track right after it with the same instrument, sound, effects, sends, MODs, mixer, name and every scene's patterns (the tracks after it move a place along; twelve is the most). The copy is not soloed. It is not undone by SELECT + B: hold B on the copy deletes it. **Hold B** two seconds deletes the track. Y and X work there as on its cells. | | | |
 | A track (any of its cells) | **Y** mutes it and **X** solos it, each a tap, at once, playing or not; again to undo. X does not hear the track here: on its DEVICE page it does. L1 does nothing on a track. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. SELECT + Y there is NEXT SCENE, not a mute. | | | |
 | A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell: when B is let go, or at once if you move or press another button, not A, in its first half second.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted, the cell neither. **It is the track B went down on: moving the cursor (D-pad or stick) or pressing any other button calls it off.** The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
-| A repeat count | Tap: 1, 2, 4, 8. **R1** copies the whole scene; **R1** on another row pastes it there, on its let go, and **the copy is cleared** (its brass mark too). **R1** on the copied scene clears it without pasting | Up / down: times the scene plays, 1 to 16. Left / right: how many steps the scene's bars have, 16 or fewer (as the D-pad's). One job a push | Back to 1; held half a second, empties the whole scene (one step of undo) | |
+| A repeat count (on the last time round, each cell's FILL plays in the scene's last bar: see "A FILL") | Tap: 1, 2, 4, 8. **R1** copies the whole scene; **R1** on another row pastes it there, on its let go, and **the copy is cleared** (its brass mark too). **R1** on the copied scene clears it without pasting | Up / down: times the scene plays, 1 to 16. Left / right: how many steps the scene's bars have, 16 or fewer (as the D-pad's). One job a push | Back to 1; held half a second, empties the whole scene (one step of undo) | |
 | The song's end (the REPEATS box of the first empty row, just past the last scene) | Switches what the song does at its end: LOOP (a loop arrow) or STOP (a square) | | Back to LOOP | |
 | + TRACK | Pick DRUMS, PHAZED, JAX-EP, SAMPLER, FM-6, PHYSIC, ACID, CLOUD or MORPH | | | |
 | MASTER (the head at the right-hand end, right of + TRACK) | | Its level and pan, as a track's (below) | | |
@@ -1672,6 +1705,56 @@ into bar 2; hold L1 and press A.
 - **One step of undo** (SELECT + B). A paste onto a bar that is already the
   same does nothing and is no step.
 - While L1 is held the bar at the bottom says what R1 and A do.
+
+### A FILL: one bar for the scene's last time round
+
+![A FILL on the drum grid](manual/fill.png)
+
+A cell can have **one FILL bar**. It plays **instead of** the cell's own bar
+in the scene's **last bar**, on the scene's **last time round** (its REPEATS
+on SONG). Every other time round the cell plays as it always did. So a drum
+fill before the next scene is one scene, not two.
+
+On the drum grid (the slice view too) and the piano roll:
+
+| Gesture | Does |
+| --- | --- |
+| **Hold L1, press Y** (no FILL yet) | **Makes the FILL** as a copy of the bar on screen, and shows it: FILL MADE. Change it as any bar |
+| **Hold L1, press Y** (on the FILL) | Turns it **off** (FILL OFF): it is kept, and plays nothing. Again: **on**, as it was (FILL ON) |
+| **Hold L1, press Y** (on another bar) | Goes to the FILL |
+| **Hold L1, up / down** | The bars in turn: 1 ... the last bar, then the FILL, then 1 again |
+
+So, from SONG with the cursor on the scene's REPEATS box: RIGHT onto the drum
+cell, A to open it, hold L1 and press Y, and draw the fill. Four presses and
+the fill itself, with four tracks or twelve.
+
+- **The top bar reads FILL** (1 DRUMS / FILL / SCENE 1), or FILL OFF. While
+  the song plays the top bar only has room for the track's name.
+- **The FILL is a bar like the others**: the cursor runs into it off the end
+  of the last bar (and off the FILL's end back to bar 1); the BARS stop's
+  left / right reach it; copy a bar onto it and from it with L1 + R1 and
+  L1 + A (FILL COPIED, PASTED ON THE FILL). Its automation is its own.
+- **Its step numbers are the scene's last bar's** (a FILL in a scene of two
+  bars reads 17 to 32), and a scene cut short shades its steps the same way.
+- **A note on the FILL runs at most to the FILL's end.**
+- **While you are on the FILL, the view stays there** when the song plays: it
+  does not go back to the bar playing (FOLLOW), however long you rest. Move
+  off it and the view follows again. When the FILL plays, the view goes to it
+  and the playhead runs over it.
+- **Each change is one step of undo** (SELECT + B): making it, turning it off
+  or on. Going to it is no change.
+- **A cell of eight bars has no FILL**: its eighth bar is its own. L1 + Y
+  says NO FILL ON 8 BARS. A cell with a FILL made eight bars long: the FILL
+  becomes bar 8.
+- **A scene played alone (START on PATTERN) counts its times round too**: at
+  REPEATS 4 the FILL plays every fourth time. To hear it, wait the four.
+  Its REPEATS blocks (the top bar, SONG's box) fill round by round, so you
+  see the FILL's round coming.
+- Copying a cell or a scene on SONG, NEXT SCENE, undo, the song file, MIDI
+  export and a bounce all carry the FILL, but for TRACK TO SAMPLES: a loop is
+  the plain cell, so it leaves the FILL out. Emptying a cell or a scene
+  empties its FILL too.
+- SONG does not mark a cell that has a FILL.
 
 **SELECT** lists the songs: start a new one, or open another.
 
@@ -1879,9 +1962,13 @@ Hold **B** and drag to delete every hit the cursor crosses.
 
 **Hold L1 and press R1** to copy the bar on screen, **hold L1 and press A**
 to paste it over the bar on screen (see "Copy a bar, paste it on another").
-**Hold L1, up / down** turns to the bar before or after, round the ends;
+**Hold L1, up / down** turns to the bar before or after, round the ends
+(through the FILL, once there is one);
 **hold L1, left / right** sets the cell's bars, more or fewer (1, 2, 4 or 8,
-as the SONG screen's hold A).
+as the SONG screen's hold A). **Hold L1 and press Y** makes the cell's FILL,
+goes to it, or on it turns it off and on (see "A FILL: one bar for the
+scene's last time round"). Y's let go after it does nothing else: no dice,
+no chance, no maybe hit.
 **Up from the tempo is the BARS stop**: left / right turn to the bar before
 or after, round the ends (held, they run on, with A held too); hold A with
 up / down sets the cell's bars, more or fewer (1, 2, 4 or 8, as the SONG
@@ -2105,9 +2192,12 @@ when L1 is let go: held, L1 is the key a bar is copied and pasted with (see
 does it after anything else done while L1 was held: another button, or the
 stick moved.
 
-The recording is drawn large and cut into **slices**: sixteen of them, or
-one to a step if it is fitted to more than a bar (32 for two bars, 64 for
-four). Under it are the bar's sixteen steps. A line runs from every hit up
+The recording is drawn large and cut into **slices**: one to a step if it is
+fitted to 12 steps or more (12 for a bar of 3/4, 16 for a bar of 4/4, 32 for
+two bars, 64 for four), else sixteen. Laid out in order, each bar of a longer
+break plays its own part of it, counted in the scene's meter (bar 2 of a 3/4
+break fitted to 2 bars plays slices 13 to 24). A FILL is laid out as the bar
+it plays instead of. Under it are the bar's sixteen steps. A line runs from every hit up
 to the slice it plays: straight down when the slice is the step's own,
 crossing and purple when it has been moved.
 
@@ -2122,6 +2212,11 @@ Everything the grid does works the same here. What is added:
 | X | Hear one slice: the hit's, or on an empty step the one a hit would get |
 | Up / down on the lane's name | **Up: ONE SLICE**, each hit plays its slice and stops. **Down: RUNS ON**, through the recording until the next hit. Held, it stays where it was pushed |
 | Hold Y + right on the name | Roll every hit's slice. Left: back in order. |
+| **Hold Y on a hit, R1** | **Save the slice** as a new recording: the slice the hit plays (from where it starts, to the end of its slice), as the lane plays it (EDIT and FIT made), beside the lane's file, named after it with the next free number (`amen 1`, `amen 2`...; never over a file). The strip says SAVED "AMEN 1". The hit, its chance and the lane stay as they were. |
+| **Hold A + right / left on the lane's name** | **Cut at the hits**: the slices are cut where the recording's drums land, not evenly. Each push is a step of SENSITIVITY, from EVEN (sixteen even slices, as before) through AT HITS 1 (only the loudest hits) to AT HITS 10 (soft ghost notes too). See "Slices at the hits" below. |
+| **Hold Y on a hit, left / right** | **Move its slice's cut** a millisecond earlier or later (the stick slides it), and every hit that starts on that cut with it. Heard as it moves. |
+| **Hold Y on a hit, A** | **Add a cut** inside its slice: where a hit was passed by (the strongest one there), or else in its middle |
+| **Hold Y on a hit, hold B** | **Delete its slice's cut** once the bar under the strip has filled (half a second; SELECT + B brings it back): the slice joins the one before, and the hits on it start there. A tap of B deletes nothing. |
 
 So, to chop a break: put it on a lane, FIT it to 1 bar, L1, hold R1 and
 sweep the stick across. That is the break as it was, in sixteen hits. Now
@@ -2132,10 +2227,41 @@ move to a step and press up or down until it plays the slice you want.
   slice out of order is heard as a cut.
 - **ONE SLICE** is for beats with gaps: take a hit out and its step is
   silent. With **RUNS ON** the recording plays on through the gap.
-- A hit's start can still be slid off the cuts (hold Y, stick left / right).
-  The strip then reads `9 + 40%`: slice 9, and 40% of a slice further in.
+- A hit's start can still be slid off the cuts on the plain drum grid (hold
+  Y, stick left / right). In the slice view the strip then reads `9 + 40%`:
+  slice 9, and 40% of a slice further in. (In the slice view, hold Y + left /
+  right moves the slice's cut instead: below.)
 - A slice change is undone by SELECT + B like any other edit. ONE SLICE /
   RUNS ON is kept in the song.
+
+### Slices at the hits
+
+A break is rarely even: its drums do not land on sixteen equal pieces. **Hold
+A on the lane's name and push right**, and the slices are cut where its hits
+land instead. The name's box says **AT HITS 1** and how many slices it found;
+each push right is a step more SENSITIVITY (it finds softer hits, up to AT HITS
+10), each push left a step less, back to **EVEN**. Every hit on the lane
+follows: a break laid out in order (hold R1 and drag) stays in order, now with
+each step starting on a hit; a hit moved out of order starts on the hit it was
+playing in. The picture draws each cut where it is.
+
+- Each cut sits a millisecond before its hit, so the hit's attack is heard
+  whole.
+- **ONE SLICE** now plays each hit to the next cut, so a slice is one clean
+  drum.
+- **Fix one by hand**: hold Y on a hit and press left / right to move its cut
+  a millisecond at a time (the stick slides it); hold Y and press **A** to add a
+  cut inside its slice (where a softer hit was passed by), or hold **B** to
+  delete its cut (a bar fills for half a second). The first slice always starts at the top of the sound. Moving,
+  adding or deleting a cut on EVEN slices makes them the lane's own: the box
+  says **BY HAND**. Up to 64 slices.
+- A long recording (over 4 seconds) is looked at while you carry on: the box
+  says FINDING... for a moment.
+- Another recording on the lane makes its slices EVEN again. A change of
+  START or END in its EDIT keeps the cuts where they were: cut at the hits
+  again after it.
+- It is all undone by SELECT + B, and kept in the song and in a kit.
+- The sampler's CHOP still cuts its recording into 16 even slices.
 
 ## DEVICE, drums: the kit
 
@@ -2150,16 +2276,27 @@ picture, EDIT (round the ends).
 **Kits.** UP from lane 1 is the kit's own stop, at the top left: KIT and its
 name. Hold A + UP / DOWN there puts on the next / previous kit: seven
 built-in kits (DRUMS, SYNTH, TIGHT, BIG, ELECTRO, DUSTY, HAND DRUMS), then
-your own. B with A still held gives back the kit you had (and plays it). Y saves the kit as
+your own, **then each folder of `samples` that holds recordings**. B with A still held gives back the kit you had (and plays it). Y saves the kit as
 it is now as KIT 1, KIT 2... (a file `kit 1.kit` beside the presets). Hold B
 a second deletes one of your own; the track keeps its sound. A kit is each
 lane's sound with its EDIT, FIT, VOLUME, CHOKE, FEEL and SWING, not the
 patterns or the effects. A changed kit reads YOUR OWN until it is saved.
 
+**A folder as a kit.** A folder puts its recordings on the eight lanes in one
+go, by name where it helps: lane 1 the first KICK or BD, lane 2 the first
+SNARE or SD (else a CLAP), lane 3 the first closed hat (CH, HH, or a HAT that
+is not OPEN), lane 4 the first open hat (OH, or OPEN with HAT); then the
+lanes still empty take the rest in name order. A lane left over plays its
+built-in drum. Each lane's sound comes with nothing done to it (no EDIT, no
+FIT, full VOLUME), and a hat on lane 3 or 4 is in CHOKE 1. It is one step of
+undo, and B with A still held gives back the kit you had. The stop reads
+FOLDER and the folder's name until a lane is changed (or the song is opened
+again: then YOUR OWN).
+
 | On | Hold A + stick up / down | B |
 | --- | --- | --- |
 | SOUND | From the built-in drum: UP each recording by name, DOWN the twelve synth models. Heard as it changes. **B with A still held: the lane as it was when A went down** (its EDIT and FIT too) | The drum back |
-| FIT TO | Off, 1, 2, 4, 8 steps, 1 bar, 2 bars, 4 bars. **A tap of A on a recording: the bars it fills at the tempo** (1, 2 or 4 bars in the scene's meter, or 1 to 8 steps for a short one). From a count between those (24 steps, two bars of 3/4), hold A + down goes to the one below it (16), up to the one above (32) | Off |
+| FIT TO | Off, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64 steps, read as bars of the scene's meter where they are whole (16 is 1 BAR in 4/4; 12 is 1 BAR in 3/4, 24 two, 48 four). **A tap of A on a recording: the bars it fills at the tempo** (the scene's own, if it has one) (1, 2 or 4 bars in the scene's meter, or one of the stops under a bar for a short one). From a count between those (20 steps, two bars of a 10-step meter), hold A + down goes to the one below it (16), up to the one above (24). **Hold A + left / right on a recording: the tempo from it** (below) | Off |
 | CHOKE | None, 1, 2 | None |
 | EDIT | (A opens the lane's EDIT view, below) | |
 
@@ -2231,6 +2368,16 @@ the edits make it, and eight boxes laid out as the sampler's.
   sound, END after the last: under 40 dB below its loudest is silence).
   **Y anywhere else: NORMALIZE**: GAIN so the part played peaks at about
   -1 dB, never over it. Both only set the boxes, and are undone like any edit.
+- **R1: SAVE A COPY.** What the lane plays, as its EDIT and FIT make it, is
+  written as a new recording (16-bit, one channel, 48 kHz, as Catch writes),
+  beside the lane's file and named after it with the next free number:
+  `amen 1`, `amen 2`... (never over a file). A synth voice or a built-in drum
+  goes in `samples` itself, after its model or drum (`kick 1`). The line at
+  the top says SAVED "AMEN 1", and it is in the list at once. The lane keeps
+  its sound; nothing else changes. Not the lane's VOLUME, a hit's level or
+  step effects, or the track's effects: the sound itself. Just after a FIT
+  or a tempo change it says NOT SAVED: IT IS STILL BEING MADE; press again
+  in a moment.
 - **The file on the card is never written.** The lane plays a copy made from
   it whenever an edit changes, so FIT stretches the edited sound, slices cut
   it (a trimmed break slices into its trimmed part), and slices in order still
@@ -2280,13 +2427,31 @@ screen, another track, Play or a new song stops it.
 **L1 is Slices**: the PATTERN tab, zoomed into this lane's recording cut
 into slices (see "Slices: chopping a break").
 
-**Y is Catch.** The engine remembers the last ten seconds it played. Y on a
-lane takes the last whole bar the song played, everything as it was heard,
-saves it as `catch 1.wav`, `catch 2.wav`... in `samples/catches`, and puts
-it on that lane fitted to one bar. It works just after stopping too. With no
-whole bar to take (the first bar, or after playing by hand), it takes the
-last bar's worth of sound. SELECT + B puts back what the lane had, its FIT,
-cut and synth voice with it (the catch's file stays in `catches`).
+**Y is Catch.** The engine remembers the last 25 seconds it played. A tap of Y on a
+lane takes the last whole bars the song played, saves them as `catch 1.wav`, `catch 2.wav`... in
+`samples/catches`, and puts them on that lane **fitted to their steps** (2 bars: 32). It catches when Y
+is let go. It works just after stopping too. SELECT + B puts back what the lane had, its FIT, cut and
+synth voice with it (the catch's file stays in `catches`).
+
+**Hold Y to choose what it catches**; the line at the top says it, e.g. `CATCH THE LAST 2 BARS OF THE MIX`:
+
+| Hold Y + | Does |
+| --- | --- |
+| LEFT / RIGHT | **1, 2 or 4 bars** (the ends stop) |
+| UP / DOWN | **THE MIX** (everything, as it was heard), or **one track alone**, 1 to the last (the ends stop; hold it to run through them) |
+
+The stick does the same, one choice a push. Let go of Y after choosing and nothing is caught; tap it
+to catch. The choice stays until you change it (it is not saved with the song).
+
+- **Fewer bars than asked**: since Play only 2 whole bars have gone by, so 4 asked gives 2, and the
+  line says `CAUGHT ONLY 2 BARS`. With no whole bar at all (the first bar, or after playing by hand) it
+  takes that many bars' worth of the sound up to now.
+- **Twenty seconds at most**, the longest recording: 4 bars fit down to 48 BPM; at 40 BPM, 3.
+- **One track alone**: what that track puts out after its own effects and level, **muted or not, with
+  no soloing**: a muted bass can be caught while the rest plays on. Not its pan, and not what it sends
+  to the buses. The handheld starts remembering a track when you choose it, so its bars count from
+  then: choose, let a bar or more go by, then tap Y. Before a whole bar of it has gone by nothing is
+  caught, and the line says `NO WHOLE BAR OF 3 BASS YET: LET ONE GO BY`.
 
 **R1 is Record.** With a USB microphone or audio interface plugged into the
 USB-C port: R1 on a lane starts it waiting for sound, so there is no silence
@@ -2303,13 +2468,25 @@ second after the tempo stops moving. The work is done ahead of time on
 another thread and swapped in when ready, so it never costs the sound
 anything while playing. Until it is ready the lane plays what it had.
 **A tap of A on FIT** picks the length for you: the bars the recording (as
-EDIT cuts it) lasts at the tempo, rounded to 1, 2 or 4 bars of the scene's
-meter (or 1, 2, 4 or 8 steps for a short one). Hold A + up / down still
+EDIT cuts it) lasts at the tempo (the scene's own, if it has one), rounded to 1, 2 or 4 bars of the scene's
+meter (or 1, 2, 3, 4, 6, 8 or 12 steps for a short one, those under a bar). Hold A + up / down still
 moves it one stop at a time. Nothing happens on the built-in drum or a synth
 voice.
 
-- WAV files of 8, 16, 24 or 32 bits or 32-bit float, any sample rate, any
-  number of channels. They are played as one channel at 48 kHz.
+**The tempo from a loop: hold A + right (or left) on FIT.** The other way
+round: the song's tempo is set so the recording (as EDIT cuts it) fills 1, 2
+or 4 bars of the scene's meter, the nearest to the tempo now first (either
+way: a loop already at the song's tempo with FIT OFF keeps the tempo and
+gets FIT), as a whole number between 40 and 240. Again with A held: **right** doubles the
+bars (a faster tempo), **left** halves them. FIT goes to those bars with it,
+so the loop plays as it is and stays in time if the tempo moves later. The
+line at the top says TEMPO 123: IT FILLS 2 BARS. **One step of undo, the
+tempo with it** (SELECT + B puts the tempo and FIT back; no other change of
+tempo is undone). A scene with its own tempo still plays at its own.
+Nothing happens on the built-in drum or a synth voice.
+
+- WAV files of 8, 16, 24 or 32 bits or 32-bit float, at 4 kHz to 192 kHz,
+  with 1 to 8 channels. They are played as one channel at 48 kHz.
 - **Twenty seconds** of each is used; a longer file is cut there, with a short fade so it does not click.
 - The song file keeps each lane's file by name and each hit's start. If the
   file is not on the card, the lane plays its drum and says so (FILE NOT
@@ -2348,10 +2525,11 @@ is loud; holding A shapes it the way it is drawn.
 | **Hold X on a note**, B | **Empty** what X shows: RATCHET, GLIDE and THROW go off. The note stays, its level, length and nudge as they were (the track's GLIDE FROM too). One step of undo. Let go of X and B deletes, as ever |
 | **Hold R1 on a note** and move | Carry the note (or the whole chord) under the cursor. **D-pad or stick left / right:** to another key (with a SCALE on, a note goes to the scale's next key). **D-pad up / down:** a whole step. **Stick up / down:** it slides freely in time, off the grid. One job a push: pushed up or down first, the stick slides in time only until it comes back. **L1 held:** left / right go an octave at a time, the stick one octave a push. It stops at the ends of the bar and will not land on another note. |
 | L1 | Zoom: a tap goes closer (2 octaves, 1, then round to 3). Only a tap: anything done while L1 is held, a stick move included, zooms nothing |
-| Hold L1, up / down | The bar before or after, round the ends, from anywhere on the grid |
+| Hold L1, up / down | The bar before or after, round the ends (through the FILL, once there is one), from anywhere on the grid |
 | Hold L1, left / right | The cell's count, more or fewer (1, 2, 4 or 8, as the SONG screen's hold A). One step of undo |
 | BARS (up from step 1 of bar 1) | Left / right: the bar before or after, round the ends. **Hold A, up / down**: the cell's count, more or fewer (1, 2, 4 or 8, as the SONG screen's hold A). One step of undo |
 | Hold L1, R1 / A | **Copy** the bar on screen (let go of R1 unmoved) / **paste** it over the bar on screen (see "Copy a bar, paste it on another"). The tap's zoom does not happen as well |
+| Hold L1, Y | **The FILL**: made as a copy of the bar on screen and shown; on it, off and on; from another bar, gone to (see "A FILL: one bar for the scene's last time round"). No chord is picked or placed, and the tap's zoom does not happen |
 
 A note runs at most to the end of the bar, or to the next note on that key.
 It can be as short as a tenth of a step. The engine lets go of each note on

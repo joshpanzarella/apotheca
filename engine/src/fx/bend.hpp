@@ -3,7 +3,9 @@
 // bends the wave at twice the sample rate (halfband.hpp), brings it back on
 // centre, and keeps the plain sound as late as the bent one, so the two can be
 // mixed without cancelling up high (CLAUDE.md: a wet sound that comes out late
-// is never mixed with the plain sound as it came in).
+// is never mixed with the plain sound as it came in). FUZZ's side (BendSide)
+// bends by the curve's AVERAGE between one point and the next; FOLD's
+// (BendSide4) at four times the rate.
 //
 // It is worked a SAMPLE at a time, so an effect built on it can keep the
 // TICK (svf.hpp): what glides is worked out every 16 samples counted from its
@@ -26,41 +28,108 @@ namespace fx {
 
 constexpr float kBendDcHz = 5.f; // a lopsided bend leaves the wave off centre: this brings it back
 
+// Near enough that the curve's average between two points is the curve at their middle (BendSide::average). In
+// the curve's own units (after FUZZ's push, up to about 300): the areas' difference, in double, over the distance
+// is good to about 1e-9 there, and the middle's error (the distance squared over 12 at the curve's sharpest bend)
+// to about 1e-9.
+constexpr double kBendNear = 1e-4;
+
+// FUZZ's side. Each sample at twice the rate is bent by the curve's AVERAGE between where the sound is now and
+// where it was the sample before: (F(u) - F(was)) / (u - was), F the curve's area from 0 (its antiderivative).
+// That is first-order antiderivative anti-aliasing (ADAA; 2026-11-25, docs/plans/effect-quality.md). A corner the
+// curve turns at once (the flat top, the gate's step) is met as a slope as wide as the sound moved, so the
+// overtones it makes past the top of the rate, which fold back down as notes never played, come out far quieter:
+// an 887 Hz saw at FUZZ's usual settings, -27.8 dB of fold-back under 19 kHz bent plainly at twice the rate,
+// -46.6 averaged (testFuzz has the rest; four times the rate was -39 in the scratch model). It costs the area and
+// a division a sample at twice the rate, and half a sample there (a quarter at the plain rate) of lateness, which
+// the plain sound is given too (plain()). Up high it is a little quieter: the average of a straight line is its
+// middle, a cosine, 0.7 dB down at 12 kHz and 2 dB at 20 kHz.
+// The curve is handed in as a `Curve`: `push` (what the sound is scaled by first), `level` (what comes out is
+// scaled by after), `shape` (a number that says which curve it is: FUZZ's gate), `at(u)` the curve and
+// `area(u)` its area from 0, in double (in float the difference of two areas is lost to rounding where the
+// curve is flat far out, as the area there is as big as u). The area to 0 is 0 for every shape.
 struct BendSide {
-    Halfband up, down, late;
+    Halfband up, down, lateUp, lateDown; // the plain sound has its own up and down
     float dcIn = 0.f, dcOut = 0.f;
+    float halfIn = 0.f, halfOut = 0.f; // the plain sound's all-pass (halfLate)
+    float was = 0.f;                    // the curve's last input (after the push), at twice the rate
+    double wasArea = 0.0;               // the curve's area to `was`, for the shape `wasShape`
+    float wasShape = 0.f;
+    static constexpr float kHalfLate = 1.f / 3.f;
     void reset() {
-        up.reset(), down.reset(), late.reset();
-        dcIn = dcOut = 0.f;
+        up.reset(), down.reset(), lateUp.reset(), lateDown.reset();
+        dcIn = dcOut = halfIn = halfOut = 0.f;
+        was = 0.f, wasArea = 0.0, wasShape = 0.f; // (the area to 0 is 0 for every shape)
     }
+    // The stages are settled every SAMPLE (twice(), plain()), as BendSide4's are, and only the centring on the
+    // tick. Settled on the tick (as they were before the average), what they hold falls a long way in between (by
+    // 0.08 a sample in the first stage: 1e-20 to 3e-38 in a tick), and a stage whose input stops at once leaves a
+    // difference far under 1e-20 to fall from: the plain sound's way down was handed a number too small for a
+    // float to hold (holdsTheRules' TooSmall saw it).
     void settle() {
-        up.settle(), down.settle(), late.settle();
         if (std::fabs(dcOut) < kTiny) dcOut = 0.f;
         if (std::fabs(dcIn) < kTiny) dcIn = 0.f;
     }
     // (In FOLD and FUZZ the tone filters after it follow dcOut down, so they would keep it awake without
-    // dcOut here: a mutant that leaves it out survives. Kept, so the side is right by itself.)
+    // dcOut here: a mutant that leaves it out survives. Kept, so the side is right by itself; halfOut likewise,
+    // which lateDown follows.) `was` is the push times up's last output and halfIn is lateUp's, so those two are
+    // seen through up and lateUp; reset() puts them back to 0 with the rest.
     float loudest() const {
-        return std::fmax(std::fmax(up.loudest(), down.loudest()), std::fmax(late.loudest(), std::fmax(std::fabs(dcIn), std::fabs(dcOut))));
+        const float halfbands = std::fmax(std::fmax(up.loudest(), down.loudest()), std::fmax(lateUp.loudest(), lateDown.loudest()));
+        return std::fmax(std::fmax(halfbands, std::fabs(halfOut)), std::fmax(std::fabs(dcIn), std::fabs(dcOut)));
     }
-    // One sample in (as heard), `bend` on each of the two worked out at twice the rate, one back on centre.
-    // `keep` is dcKeep(rate).
-    template <class Bend>
-    float twice(float x, const Bend& bend, float keep) {
+    // One sample in (as heard), the curve's average on each of the two worked out at twice the rate, one back on
+    // centre. `keep` is dcKeep(rate).
+    template <class Curve>
+    float twice(float x, const Curve& curve, float keep) {
         float two[2], y;
         up.up(&x, two, 1);
-        two[0] = bend(two[0]);
-        two[1] = bend(two[1]);
+        two[0] = curve.level * average(curve, two[0] * curve.push);
+        two[1] = curve.level * average(curve, two[1] * curve.push);
         down.down(two, &y, 1);
+        up.settle(), down.settle(); // every sample: see settle() above
         dcOut = y - dcIn + keep * dcOut;
         dcIn = y;
         return dcOut;
     }
-    // The plain sound, as late as twice() makes the bent one.
+    // The plain sound, as late as twice() makes the bent one: up, half a sample late at twice the rate, down. Of
+    // a straight line the average is the middle of the two points, half a sample late, but quieter up high (a
+    // cosine: 0.7 dB down at 12 kHz, 2 dB at 20 kHz); the plain sound is kept as loud at every pitch by an
+    // all-pass half a sample late instead (Thiran's, kHalfLate), as late as the average within a degree at
+    // 12 kHz and 4.5 at 20 kHz. So at MIX 50% the two add in step, and the plain half is the sound as it came.
     float plain(float x) {
-        float y;
-        late.late(&x, &y, 1);
+        float two[2], y;
+        lateUp.up(&x, two, 1);
+        two[0] = halfLate(two[0]);
+        two[1] = halfLate(two[1]);
+        lateDown.down(two, &y, 1);
+        lateUp.settle(), lateDown.settle();
+        if (std::fabs(halfOut) < kTiny) halfOut = 0.f;
         return y;
+    }
+    // The curve's average from `was` to `u`. A curve turned since the last sample (FUZZ's GATE gliding) has the
+    // area to `was` taken again on the new curve: the two areas must be of one curve, or a difference over a
+    // small distance is anything. The difference is taken in double and divided in float (it is the difference
+    // that needs the room; a division in float is the quicker, and good to 1e-7 of the answer).
+    // What is under kNothing at the middle is nothing: FUZZ's lower side squares what it is given, and 1e-20
+    // squared is too small for a float to hold. At GATE 0 the clip itself did that before it was averaged
+    // (holdsTheRules turns GATE to 50%, where the step hides it; testFuzz now looks at GATE 0). Far apart the
+    // areas are in double, so `u` needs no such care going in.
+    template <class Curve>
+    float average(const Curve& curve, float u) {
+        if (curve.shape != wasShape) wasArea = curve.area(was), wasShape = curve.shape;
+        const double area = curve.area(u), apart = static_cast<double>(u) - static_cast<double>(was);
+        const float y = std::fabs(apart) > kBendNear ? static_cast<float>(area - wasArea) / static_cast<float>(apart) : curve.at(something(0.5f * (u + was)));
+        was = u, wasArea = area;
+        return y;
+    }
+    static float something(float v) { return std::fabs(v) >= kNothing ? v : 0.f; }
+    // An all-pass at twice the rate, half a sample late (as late as the average) at low notes: Halfband's stage
+    // with Thiran's number for half a sample, (1 - 1/2) / (1 + 1/2).
+    float halfLate(float in) {
+        const float out = kHalfLate * (in - halfOut) + halfIn;
+        halfIn = in, halfOut = out;
+        return out;
     }
 };
 // The same at FOUR times the rate (FOLD): twice the rate, and twice that again inside it. A folder pushed
@@ -75,7 +144,8 @@ struct BendSide4 {
         up.reset(), down.reset(), up2.reset(), down2.reset(), lateUp.reset(), lateDown.reset(), late2.reset();
         dcIn = dcOut = 0.f;
     }
-    // The stages are settled every SAMPLE (twice(), plain()), not on the tick as BendSide's are. A stage whose
+    // The stages are settled every SAMPLE (twice(), plain()), not on the tick as BendSide's were before 2026-11-25
+    // (it does the same now). A stage whose
     // number is small (0.08) shrinks what it holds 0.08 times a step: 16 steps from 1e-20 is 2.8e-38, a hair
     // over the smallest number a float holds, and the inner stages take 32 steps a tick. On the tick, the
     // plain sound's last stage was handed a number too small to hold (TooSmall saw it). Here only the

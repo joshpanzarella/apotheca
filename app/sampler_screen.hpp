@@ -21,9 +21,15 @@
 //                         percent short of the other)
 //                ATTACK   fade in
 //                RELEASE  fade out when the key is let go
-//                LOOP     go round from START to END while the key is held
+//                LOOP     go round to LOOP START from END while the key is held
 //                LEVEL
-//   Y          CATCH: the last bar the song played becomes this track's recording
+//   the picture (under SOUND; right from SOUND, left from PITCH: up and down pass it by; S4, 2026-11-25)
+//              tap A: the EDIT view (edit_view.hpp): START and END to the millisecond, the fades, GAIN,
+//              REVERSE, TRIM SILENCE and NORMALIZE on the one recording, the file never written. Not on a
+//              multisample (each note its own file): A says so. Hold A + up / down: LOOP START, where LOOP
+//              goes back to (from START, its usual, to a percent short of END; a dashed mark). B: START.
+//   Y          CATCH (on its let go): the last bars the song played become this track's recording. Hold
+//              Y + LEFT / RIGHT: 1, 2 or 4 bars; + UP / DOWN: of THE MIX or one track (catch_key.hpp)
 //   L1         CHOP: the recording in 16 even slices from C1 up, each at its own pitch
 //              (PITCH moves every slice together). START, END and LOOP work within a
 //              slice. Not with a multisample: its zones win.
@@ -43,6 +49,8 @@
 #include <string>
 #include <vector>
 
+#include "edit_view.hpp"
+#include "catch_key.hpp"
 #include "input.hpp"
 #include "name_keys.hpp"
 #include "sample_picker.hpp"
@@ -74,14 +82,20 @@ public:
     static constexpr int kPresetH = 34;
     static constexpr int kSettingH = (ui::kAboveScope - kSettingY - kSettingGap - kPresetH - kSettingGap) / 2;
     static constexpr int kPresetY = kSettingY + 2 * (kSettingH + kSettingGap);
-    static constexpr int kPresetStop = sampler::kSettings + 1; // below the settings
+    static constexpr int kPlaces = 8;                 // the boxes: two rows of four (LOOP START is the picture's)
+    static constexpr int kPresetStop = kPlaces + 1;   // below the settings
+    static constexpr int kPictureStop = kPresetStop + 1; // the recording's picture (S4): EDIT, and LOOP START
+    static constexpr const char* kNoEditWords = "NO EDIT FOR A MULTISAMPLE: EACH NOTE IS ITS OWN FILE";
+    bool editing() const { return edit_.isOpen(); }
+    EditView& editView() { return edit_; }
+    const EditView& editView() const { return edit_; }
 
     // For tests and stills. Stop 0 is SOUND; 1.. are the settings in the order the page shows them
     // (settingAt: PITCH, TUNE, START, END, then ATTACK, RELEASE, LOOP, LEVEL); kPresetStop is PRESET.
-    static int settingAt(int place);                 // the setting's id at this place (0..7), -1 past them
+    static int settingAt(int place);                 // the setting's id at this place (0..7; 8 LOOP START, the picture's), -1 past them
     static float endPart(const TrackData& t) { return static_cast<float>(sampler::playedEnd(t.sampler[sampler::Start], t.sampler[sampler::End])) / 100.f; } // 0..1 (past 1: START at 100)
     static int endMarkX(float end, int w) { return ui::waveEndMarkX(end, w); } // END's mark, inside the picture
-    void goTo(int stop) { stop_ = stop < 0 ? 0 : (stop > kPresetStop ? kPresetStop : stop); }
+    void goTo(int stop) { stop_ = stop < 0 ? 0 : (stop > kPictureStop ? kPictureStop : stop); }
     int cursor() const { return stop_; }
     bool typing() const { return keys_.isOpen(); }
     const std::string& typed() const { return keys_.typed(); }
@@ -107,18 +121,23 @@ private:
     void press(Button direction);
     void stepSound(int by);
     void stepPreset(int by);      // the presets after / before: ends stop (none: nothing)
+    int stopSetting() const;      // the setting the cursor's box is (stops 1..kPlaces), else -1
+    void turnLoopStart(int by);   // LOOP START, from where the loop goes back to now
+    void openEdit();              // the EDIT view, or the line says why not
     void hear(bool held = false); // held: X is down, and it sounds until X is let go
     void hearFromList(SamplePicker::Hear how); // the list of recordings' preview (SamplePicker::Hear)
     void setSetting(int id, int value); // kept, and heard
 
     Session& session_;
     Project& project_;
+    EditView edit_{session_, project_}; // (after the two it holds)
     int stop_ = 0;
     bool holding_ = false;
     bool stepped_ = false; // A was used to change something: letting go is not a tap
     SamplePicker picker_;
     void openPicker();
-    void catchBar(); // Y: the last bar the song played, as the recording (the list of recordings with nothing in it asks too)
+    void catchBar(); // Y: the last bars the song played, as the recording (the list of recordings with nothing in it asks too)
+    CatchKey catchKey_; // Y's tap and its held choice (catch_key.hpp)
     void record();   // R1: record from the input, or stop
     unsigned sampleFilesSeen_ = 0; // sampleFiles() the picker's lists were read at: behind, it reads them again
     std::vector<std::string> names_;

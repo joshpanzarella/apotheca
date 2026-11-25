@@ -66,7 +66,11 @@ Engine::Engine() {
     for (int& n : steps_) n = 0;
     for (int& m : meter_) m = kSteps;
     caught_.reset(new std::atomic<float>[kCatchFrames]);
+    trackCaught_.reset(new std::atomic<float>[kCatchFrames]);
     for (int i = 0; i < kCatchFrames; ++i) caught_[i].store(0.f, std::memory_order_relaxed);
+    for (int i = 0; i < kCatchFrames; ++i) trackCaught_[i].store(0.f, std::memory_order_relaxed);
+    for (auto& at : lineAt_) at.store(0, std::memory_order_relaxed);
+    for (auto& n : lineSteps_) n.store(kSteps, std::memory_order_relaxed);
     for (auto& s : scope_) s.store(0.f, std::memory_order_relaxed);
     for (Track& track : tracks_) {
         for (auto& m : track.meters) m.store(0.f, std::memory_order_relaxed);
@@ -239,23 +243,71 @@ bool Engine::setLaneSample(int track, int lane, std::unique_ptr<SampleData> samp
 }
 
 std::vector<float> Engine::lastBar(int* steps) const {
-    const std::uint64_t now = caughtCount_.load(std::memory_order_relaxed);
-    std::uint64_t end = barEndedAt_.load(std::memory_order_relaxed);
-    int frames = barFrames_.load(std::memory_order_acquire);
-    if (steps) *steps = barSteps_.load(std::memory_order_relaxed);
-    // No whole bar, or one so long ago that the ring has gone round past it:
-    // the last bar's worth up to now.
-    if (frames <= 0 || now - (end - static_cast<std::uint64_t>(frames)) > static_cast<std::uint64_t>(kCatchFrames)) {
-        frames = barFramesNow_.load(std::memory_order_relaxed);
-        if (frames > kCatchFrames) frames = kCatchFrames;
-        end = now;
-        if (steps) *steps = kSteps; // (a bar's worth at the present tempo)
+    Caught caught = lastBars(1);
+    if (steps) *steps = caught.steps;
+    return std::move(caught.sound);
+}
+
+Engine::Caught Engine::lastBars(int bars, int track) const {
+    bars = bars < 1 ? 1 : (bars > kCatchMostBars ? kCatchMostBars : bars);
+    const bool alone = track >= 0;
+    const std::atomic<float>* ring = alone ? trackCaught_.get() : caught_.get();
+    Caught out;
+    std::uint64_t now = 0, lines[kCatchMostBars + 1] = {};
+    int steps[kCatchMostBars + 1] = {};
+    int whole = 0;
+    std::uint64_t from = 0; // the first frame the ring holds of what is asked for
+    // The bar lines of this run, read with a check: read again if the audio thread drew one meanwhile.
+    for (int tries = 0; tries < 8; ++tries) {
+        const std::uint64_t count = lineCount_.load(std::memory_order_acquire), run = runFrom_.load(std::memory_order_acquire);
+        const int follows = following_.load(std::memory_order_acquire);
+        const std::uint64_t followFrom = followFrom_.load(std::memory_order_relaxed);
+        now = caughtCount_.load(std::memory_order_relaxed);
+        const std::uint64_t have = count - run < static_cast<std::uint64_t>(kBarLinesKept) ? count - run : kBarLinesKept;
+        whole = have >= 1 ? static_cast<int>(have) - 1 : 0;
+        if (whole > bars) whole = bars;
+        for (int j = 0; j <= whole; ++j) {
+            const std::uint64_t n = count - 1 - static_cast<std::uint64_t>(whole) + static_cast<std::uint64_t>(j);
+            lines[j] = lineAt_[n % kBarLinesKept].load(std::memory_order_relaxed);
+            steps[j] = lineSteps_[n % kBarLinesKept].load(std::memory_order_relaxed);
+        }
+        from = now > static_cast<std::uint64_t>(kCatchFrames) ? now - kCatchFrames : 0;
+        if (alone) {
+            if (follows != track) return out; // the ring holds another track (or none): nothing of this one
+            if (followFrom > from) from = followFrom;
+        }
+        if (lineCount_.load(std::memory_order_acquire) == count && runFrom_.load(std::memory_order_acquire) == run &&
+            following_.load(std::memory_order_acquire) == follows)
+            break;
     }
-    std::vector<float> out(static_cast<std::size_t>(frames), 0.f);
+    // The most whole bars, up to `bars`, that the ring still holds (of the track: since it began following it).
+    int b = whole;
+    while (b > 0 && (lines[whole - b] < from || lines[whole] - lines[whole - b] > static_cast<std::uint64_t>(kCatchLongest))) --b;
+    std::uint64_t end = now;
+    int frames = 0;
+    if (b > 0) {
+        end = lines[whole];
+        frames = static_cast<int>(end - lines[whole - b]);
+        out.bars = b;
+        out.steps = 0;
+        for (int j = whole - b + 1; j <= whole; ++j) out.steps += steps[j];
+    } else {
+        // No whole bar: `bars` bars' worth up to now (no more than the ring holds of it).
+        const int bar = barFramesNow_.load(std::memory_order_relaxed);
+        // (Of the mix, from before the engine began is silence; of a track, only what was heard of it.)
+        std::uint64_t most = alone ? now - from : static_cast<std::uint64_t>(kCatchLongest);
+        if (most > static_cast<std::uint64_t>(kCatchLongest)) most = kCatchLongest;
+        frames = bars * bar;
+        if (static_cast<std::uint64_t>(frames) > most) frames = static_cast<int>(most);
+        out.steps = frames == bars * bar ? kSteps * bars : static_cast<int>(std::lround(static_cast<double>(frames) * kSteps / (bar > 0 ? bar : 1)));
+        if (out.steps < 1) out.steps = 1;
+        if (alone && frames <= 0) return out;
+    }
+    out.sound.assign(static_cast<std::size_t>(frames), 0.f);
     for (int i = 0; i < frames; ++i) {
         const std::uint64_t back = static_cast<std::uint64_t>(frames - i);
         if (back > end) continue; // before the engine began: silence
-        out[static_cast<std::size_t>(i)] = caught_[(end - back) % kCatchFrames].load(std::memory_order_relaxed);
+        out.sound[static_cast<std::size_t>(i)] = ring[(end - back) % kCatchFrames].load(std::memory_order_relaxed);
     }
     return out;
 }
@@ -324,6 +376,7 @@ bool Engine::leavesBlank(const Command& c) {
     case Command::SetStepStart: return c.value <= 0.f;
     case Command::SetNote: return !(c.value > 0.f);
     case Command::SetCellBars: return c.a <= 1;
+    case Command::SetCellFill: return c.a == 0;
     case Command::SetAutomation: return c.value < 0.f;
     default: return false; // (SetStepFx: given a store, as the app sends it only for a hit that has some)
     }
@@ -343,6 +396,7 @@ bool Engine::send(const Command& command) {
     case Command::SetStepFx:
     case Command::SetNote:
     case Command::SetCellBars:
+    case Command::SetCellFill:
     case Command::SetAutomation: {
         const int t = command.track, scene = command.scene;
         if (validTrack(t) && validScene(scene) && !((given_[t] >> scene) & 1) && !leavesBlank(command)) {
@@ -383,11 +437,15 @@ bool Engine::send(const Command& command) {
         std::uint64_t has = 0;
         for (int scene = 0; scene < kMaxScenes; ++scene) {
             const SceneImage* from = image.scenes[scene].get();
-            if (!from && image.bars[scene] == 1) continue;
+            if (!from && image.bars[scene] == 1 && !image.fill[scene]) continue;
             SceneStore* store = new SceneStore;
             set->scenes[scene] = store;
-            if (from) sceneIn(*store, from->level, from->nudge, from->chance, from->start, from->fx, from->notes, image.bars[scene], from->automation);
-            else store->bars = static_cast<std::uint8_t>(image.bars[scene] < 1 ? 1 : (image.bars[scene] > kMaxBars ? kMaxBars : image.bars[scene]));
+            if (from) {
+                sceneIn(*store, from->level, from->nudge, from->chance, from->start, from->fx, from->notes, image.bars[scene], image.fill[scene], from->automation);
+            } else { // (nothing in it but its length, or its FILL on)
+                store->bars = static_cast<std::uint8_t>(image.bars[scene] < 1 ? 1 : (image.bars[scene] > kMaxBars ? kMaxBars : image.bars[scene]));
+                store->fill = image.fill[scene] ? 1 : 0;
+            }
             has |= std::uint64_t(1) << scene;
         }
         for (int lane = 0; lane < kDrumLanes; ++lane) {
@@ -430,7 +488,7 @@ bool Engine::moveScenes(int from, int by, const std::unique_ptr<SceneImage>* sce
         if (!scenes[t]) continue;
         const SceneImage& image = *scenes[t];
         move->scenes[t] = new SceneStore;
-        sceneIn(*move->scenes[t], image.level, image.nudge, image.chance, image.start, image.fx, image.notes, image.bars, image.automation);
+        sceneIn(*move->scenes[t], image.level, image.nudge, image.chance, image.start, image.fx, image.notes, image.bars, image.fill, image.automation);
     }
     Command c;
     c.type = Command::ScenesMoved;
@@ -447,8 +505,10 @@ bool Engine::moveScenes(int from, int by, const std::unique_ptr<SceneImage>* sce
 }
 
 void Engine::sceneIn(SceneStore& to, const float (*level)[kDrumLanes][kSteps], const float (*nudge)[kDrumLanes][kSteps], const float (*chance)[kDrumLanes][kSteps],
-                     const float (*start)[kDrumLanes][kSteps], const StepFx (*fx)[kDrumLanes][kSteps], const TrackImage::Note (*notes)[kMaxNotes], int bars, const float* automation) {
+                     const float (*start)[kDrumLanes][kSteps], const StepFx (*fx)[kDrumLanes][kSteps], const TrackImage::Note (*notes)[kMaxNotes], int bars, bool fill,
+                     const float* automation) {
     to.bars = static_cast<std::uint8_t>(bars < 1 ? 1 : (bars > kMaxBars ? kMaxBars : bars));
+    to.fill = fill ? 1 : 0;
     for (int bar = 0; bar < kMaxBars; ++bar) {
         for (int lane = 0; lane < kDrumLanes; ++lane)
             for (int step = 0; step < kSteps; ++step) {
@@ -1114,6 +1174,7 @@ void Engine::startPlaying(const Command& c) {
     scene_ = validScene(c.a) ? c.a : 0;
     if (!loopScene_ && scene_ >= sceneCount_) scene_ = 0;
     repeat_ = 0;
+    loopPass_ = 0;
     bar_ = 0;
     nextStep_ = 0;
     untilStep_ = 0.0;
@@ -1139,7 +1200,7 @@ void Engine::apply(const Command& c) {
     // played by hand after it stopped, or on a panic.
     if (c.type == Command::Play || c.type == Command::Panic ||
         (!playing_ && (c.type == Command::Trigger || c.type == Command::NoteOn))) {
-        barFrames_.store(0, std::memory_order_relaxed);
+        runFrom_.store(lineCount_.load(std::memory_order_relaxed), std::memory_order_release); // (the lines before are another run)
     }
     if (gate_ == Gate::Shut && !panicHeld_ && !cutEverything_ &&
         (c.type == Command::Play || c.type == Command::Trigger || c.type == Command::NoteOn)) {
@@ -1251,6 +1312,12 @@ bool Engine::applyDrums(const Command& c) {
         break;
     case Command::SetLaneChoke:
         if (validTrack(c.track)) tracks_[c.track].drums.setLaneChoke(c.a, c.b);
+        break;
+    case Command::SetLaneCuts:
+        if (validTrack(c.track)) {
+            const float at[3] = {c.value, c.extra, c.shift};
+            tracks_[c.track].drums.setLaneCuts(c.a, c.c, c.b, c.d, at);
+        }
         break;
     case Command::SetLaneSwing:
         if (validTrack(c.track) && c.a >= 0 && c.a < kDrumLanes) tracks_[c.track].swing[c.a] = laneSwingOf(c.b);
@@ -1442,6 +1509,10 @@ bool Engine::applySong(const Command& c) {
         break;
     case Command::SetSceneRepeats:
         if (validScene(c.scene)) repeats_[c.scene] = c.a < 1 ? 1 : (c.a > kMaxRepeats ? kMaxRepeats : c.a);
+        // Changed on a bar's last step: what follows may be another time round (the scene again, or the next
+        // scene), and the next bar the FILL or not. What the step asked ahead for is asked again (askAgain
+        // asks nothing where it is the same bar of the same store).
+        askAgain();
         break;
     case Command::SetSceneSteps:
         if (validScene(c.scene)) steps_[c.scene] = c.a < 0 ? 0 : (c.a > kMaxBars * kSteps ? kMaxBars * kSteps : c.a);
@@ -1467,6 +1538,10 @@ bool Engine::applySong(const Command& c) {
         break;
     case Command::SetCellBars:
         if (SceneStore* store = writable(c)) store->bars = static_cast<std::uint8_t>(c.a < 1 ? 1 : (c.a > kMaxBars ? kMaxBars : c.a));
+        break;
+    case Command::SetCellFill:
+        if (SceneStore* store = writable(c)) store->fill = c.a != 0 ? 1 : 0;
+        askAgain(); // (switched on the last step before the FILL's bar, or of it: the bar that follows is another)
         break;
     case Command::Play:
         ++playsTaken_; // (songEnded says which one stopped at its end; a Play counted in is taken now)
@@ -1798,7 +1873,7 @@ void Engine::clearPending() {
 // way every time it plays, by a roll worked out from where the hit is and which time this is. A
 // lane with SWING plays every second sixteenth late. A lane with none of them goes exactly the way
 // it always did.
-bool Engine::schedule(Track& track, int lane, const DrumScene& scene, int step, double delaySamples, int bar, long stepAt, bool ahead) {
+bool Engine::schedule(Track& track, int lane, const DrumScene& scene, int step, double delaySamples, int bar, long stepAt, bool ahead, bool fill) {
     const LaneFeel feel = track.feel[lane];
     const int swing = track.swing[lane];
     bool whole = false;
@@ -1809,7 +1884,7 @@ bool Engine::schedule(Track& track, int lane, const DrumScene& scene, int step, 
         // sample sooner or later by how the sound is cut into blocks.
         // (`scene` is bar `bar` of its cell, and a cell's bars stand in a row: `&scene - bar` is
         // the cell's first. The run may begin bars back: a break longer than a bar, in order.)
-        const int back = feelRunBack(&scene - bar, bar, lane, step);
+        const int back = fill ? feelRunBack(&scene, 0, lane, step) : feelRunBack(&scene - bar, bar, lane, step); // (a FILL: a cell of its own)
         const int headAt = bar * kSteps + step - back; // steps from the cell's top
         const int head = headAt % kSteps;
         double moved = delaySamples;
@@ -1925,18 +2000,25 @@ int Engine::sceneSteps(int scene) const {
     return steps_[scene] > 0 && steps_[scene] < whole ? steps_[scene] : whole;
 }
 
+// The FILL's moment (fill_rule.hpp): the scene's last bar, its last time round; in a scene played alone,
+// the last of each REPEATS of its rounds (loopPass_).
+bool Engine::fillTimeAt(const Position& at) const {
+    if (!validScene(at.scene)) return false; // (never so; it tells GCC, which warned of steps_[] past its end)
+    return fillTime(at.bar, meterOf(at.scene), sceneSteps(at.scene), loopScene_ ? at.pass : at.repeat, repeats_[at.scene]);
+}
+
 // A bar line, for Catch: the bar that has just ended is the last whole bar (where it began and
 // ended), and the next begins here. Called where a bar's first step fires, and where a song that
 // stops at its end stops (no step fires there, and its last bar is a whole bar all the same).
+// Each line is kept (the last kBarLinesKept), so CATCH can take 1, 2 or 4 bars (batch S3); the first of a
+// run (Play's first step: a Play always begins a run, apply) only marks where its first bar begins.
 void Engine::barLine() {
     const std::uint64_t now = caughtCount_.load(std::memory_order_relaxed);
-    if (!firstStep_ && now - barBeganAt_ <= static_cast<std::uint64_t>(kCatchFrames)) {
-        const long long steps = stepsFired_ - barBeganStep_; // (a scene of 3/4: 12; a short last bar: fewer)
-        barSteps_.store(steps >= 1 && steps <= kSteps ? static_cast<int>(steps) : kSteps, std::memory_order_relaxed);
-        barFrames_.store(static_cast<int>(now - barBeganAt_), std::memory_order_release);
-        barEndedAt_.store(now, std::memory_order_relaxed);
-    }
-    barBeganAt_ = now;
+    const long long steps = stepsFired_ - barBeganStep_; // (a scene of 3/4: 12; a short last bar: fewer)
+    const std::uint64_t n = lineCount_.load(std::memory_order_relaxed);
+    lineAt_[n % kBarLinesKept].store(now, std::memory_order_relaxed);
+    lineSteps_[n % kBarLinesKept].store(!firstStep_ && steps >= 1 && steps <= kSteps ? static_cast<int>(steps) : kSteps, std::memory_order_relaxed);
+    lineCount_.store(n + 1, std::memory_order_release);
     barBeganStep_ = stepsFired_;
 }
 
@@ -1983,10 +2065,10 @@ bool Engine::songEndsNow() const {
 }
 
 Engine::Position Engine::afterThisBar() const {
-    if ((bar_ + 1) * meterOf(scene_) < sceneSteps(scene_)) return {scene_, repeat_, bar_ + 1}; // further into the scene
-    if (loopScene_) return {scene_, repeat_, 0};
-    if (repeat_ + 1 < repeats_[scene_]) return {scene_, repeat_ + 1, 0};
-    return {(scene_ + 1) % sceneCount_, 0, 0};
+    if ((bar_ + 1) * meterOf(scene_) < sceneSteps(scene_)) return {scene_, repeat_, bar_ + 1, loopPass_}; // further into the scene
+    if (loopScene_) return {scene_, repeat_, 0, loopPass_ + 1 >= repeats_[scene_] ? 0 : loopPass_ + 1}; // (round its REPEATS, for the FILL)
+    if (repeat_ + 1 < repeats_[scene_]) return {scene_, repeat_ + 1, 0, 0};
+    return {(scene_ + 1) % sceneCount_, 0, 0, 0};
 }
 
 // The early hits of step `following` of `then`, set waiting. `elapsed`: how far into the step
@@ -1996,7 +2078,7 @@ Engine::Position Engine::afterThisBar() const {
 // A lane with HUMAN TIME: every hit of it is asked here, a step ahead, since the roll may bring it
 // early; and the track keeps that it was (`feelAsked`), so the hit is not begun again on its own
 // step if the lane's feel is turned between the two askings.
-void Engine::askAheadHits(Track& track, const DrumScene& then, int bar, int following, double elapsed) {
+void Engine::askAheadHits(Track& track, const DrumScene& then, int bar, int following, double elapsed, bool fill) {
     asking_ = true;
     for (int lane = 0; lane < kDrumLanes; ++lane) {
         if (then.level[lane][following] <= 0.f) continue;
@@ -2009,7 +2091,7 @@ void Engine::askAheadHits(Track& track, const DrumScene& then, int bar, int foll
             if (!felt && wait < 0.0) continue;
             // Taken: not begun again on its own step. (Asked again too late for its early moment,
             // it is not taken, and comes on its step with the hits that are not early.)
-            if (schedule(track, lane, then, following, wait, bar, stepsFired_, true) && felt) track.feelAsked[lane] = stepsFired_; // (stepsFired_: the number the step after this one will have)
+            if (schedule(track, lane, then, following, wait, bar, stepsFired_, true, fill) && felt) track.feelAsked[lane] = stepsFired_; // (stepsFired_: the number the step after this one will have)
         }
     }
     asking_ = false;
@@ -2046,6 +2128,7 @@ void Engine::askAgain(bool endChanged) {
     const Position after = afterThisBar();
     const int followingScene = following == 0 ? after.scene : scene_;
     const int followingBar = following == 0 ? after.bar : bar_;
+    const bool fillThen = fillTimeAt(following == 0 ? after : Position{scene_, repeat_, bar_, loopPass_});
     const bool lastStep = following == 0 && (bar_ + 1) * meterOf(scene_) >= sceneSteps(scene_) && repeat_ + 1 >= repeats_[scene_] && scene_ + 1 >= sceneCount_;
     const bool pastEnd = playsOnce() && lastStep;
     if (endChanged && !lastStep) return; // (AT END switched anywhere else: nothing asked depends on it)
@@ -2053,7 +2136,7 @@ void Engine::askAgain(bool endChanged) {
     const double now = static_cast<double>(stepsFired_ - 1); // the step playing
     for (Track& track : tracks_) {
         if (!track.hasInstrument()) continue;
-        const int slotThen = slotOf(track, followingScene, followingBar);
+        const int slotThen = slotOf(track, followingScene, followingBar, fillThen);
         if (!endChanged && track.askedFrom == track.scenes[slotThen / kMaxBars] && track.askedBar == slotThen % kMaxBars) continue; // the same bar: as asked
         for (auto& p : track.pendingNotes)
             if (p.ahead) p = Track::PendingNote();
@@ -2077,7 +2160,7 @@ void Engine::askAgain(bool endChanged) {
         track.askedBar = slotThen % kMaxBars;
         if (pastEnd) continue;
         if (track.hasDrums) {
-            askAheadHits(track, track.drumScenes[slotThen], slotThen % kMaxBars, following, elapsed);
+            askAheadHits(track, track.drumScenes[slotThen], slotThen % kMaxBars, following, elapsed, fillSlot(track, slotThen));
         } else if (track.synth) {
             for (int pass = track.glideFrom == kFromPaired ? 0 : 1; pass < 2; ++pass) {
                 telling_ = pass == 0;
@@ -2103,6 +2186,7 @@ void Engine::fireStep() {
         scene_ = next.scene;
         repeat_ = next.repeat;
         bar_ = next.bar;
+        loopPass_ = next.pass;
         if (sceneTempoNow(scene_) != tempo_) useTempo(sceneTempoNow(scene_)); // a scene with its own tempo
     }
     // The very first step after Play. A hit or note on step 1 that is pushed
@@ -2128,27 +2212,31 @@ void Engine::fireStep() {
     const Position after = afterThisBar();
     const int followingScene = following == 0 ? after.scene : scene_;
     const int followingBar = following == 0 ? after.bar : bar_;
+    // The FILL (fill_rule.hpp): a cell that has one on plays it in the scene's last bar, its last time round.
+    const bool fillNow = fillTimeAt(Position{scene_, repeat_, bar_, loopPass_});
+    const bool fillThen = following == 0 ? fillTimeAt(after) : fillNow;
     // Played once through (a bounce, or a song that stops at its end), the song's last step asks for nothing of its first: an
     // early hit or note there would sound in the song's last moments, and ring on after them.
     const bool pastEnd = playsOnce() && following == 0 && (bar_ + 1) * meter >= sceneSteps(scene_) && repeat_ + 1 >= repeats_[scene_] && scene_ + 1 >= sceneCount_;
 
     for (Track& track : tracks_) {
         if (track.hasDrums) {
-            const DrumScene& now = track.drumScenes[slotOf(track, scene_, bar_)];
-            const DrumScene& then = track.drumScenes[slotOf(track, followingScene, followingBar)];
-            const int barNow = slotOf(track, scene_, bar_) % kMaxBars;
+            const int slotNow = slotOf(track, scene_, bar_, fillNow), barNow = slotNow % kMaxBars;
+            const int slotThen = slotOf(track, followingScene, followingBar, fillThen);
+            const DrumScene& now = track.drumScenes[slotNow];
+            const DrumScene& then = track.drumScenes[slotThen];
+            const bool fillNowHere = fillSlot(track, slotNow); // (its slices' runs begin in it: schedule)
             for (int lane = 0; lane < kDrumLanes; ++lane) {
                 if (track.feelAsked[lane] == stepsFired_ - 1) continue; // FEEL: this step's hit was asked for a step ago
                 if (now.level[lane][nextStep_] > 0.f && now.nudge[lane][nextStep_] >= 0.f) {
-                    schedule(track, lane, now, nextStep_, now.nudge[lane][nextStep_] * samplesPerStep_, barNow, stepsFired_ - 1, false);
+                    schedule(track, lane, now, nextStep_, now.nudge[lane][nextStep_] * samplesPerStep_, barNow, stepsFired_ - 1, false, fillNowHere);
                 } else if (veryFirst && now.level[lane][0] > 0.f) {
-                    schedule(track, lane, now, 0, 0.0, barNow, stepsFired_ - 1, false);
+                    schedule(track, lane, now, 0, 0.0, barNow, stepsFired_ - 1, false, fillNowHere);
                 }
             }
-            const int slotThen = slotOf(track, followingScene, followingBar);
             track.askedFrom = track.scenes[slotThen / kMaxBars];
             track.askedBar = slotThen % kMaxBars;
-            if (!pastEnd) askAheadHits(track, then, slotThen % kMaxBars, following, 0.0);
+            if (!pastEnd) askAheadHits(track, then, slotThen % kMaxBars, following, 0.0, fillSlot(track, slotThen));
         } else if (track.synth) {
             // The notes whose time was up have been let go already
             // (fireNoteOffs). Start this step's.
@@ -2163,9 +2251,9 @@ void Engine::fireStep() {
             // "early" now but was not asked begins on its step, its early keys with the step.
             // (Only the step is kept, not the bar: NEXT SCENE moves the playing to another
             // scene's number between the two askings, and the chord is the same chord.)
-            const int slotNow = slotOf(track, scene_, bar_);
+            const int slotNow = slotOf(track, scene_, bar_, fillNow);
             const bool asked = track.chordAsked == stepsFired_ - 1;
-            const int slotThen = slotOf(track, followingScene, followingBar);
+            const int slotThen = slotOf(track, followingScene, followingBar, fillThen);
             // GLIDE FROM PAIRED: a note's key comes from its place among the notes of its own
             // moment, so the step's notes are gone through twice, by the one set of conditions:
             // first only told to the trail as coming (`telling_`: startNote and startChordNote
@@ -2199,7 +2287,7 @@ void Engine::fireStep() {
     autoPhase_ = 0.0;
     for (Track& track : tracks_) {
         if (!track.hasInstrument()) continue;
-        const int at = (slotOf(track, scene_, bar_) % kMaxBars) * kSteps + nextStep_;
+        const int at = (slotOf(track, scene_, bar_, fillNow) % kMaxBars) * kSteps + nextStep_;
         for (int lane = 0; lane < kAutoLanes; ++lane) {
             if (track.autoWaits(lane)) { // the FX screen is trying another effect in the slot
                 track.autoGliding[lane] = false;
@@ -2220,6 +2308,7 @@ void Engine::fireStep() {
     playStep_.store(nextStep_, std::memory_order_relaxed);
     tellScene(scene_);
     playRepeat_.store(repeat_, std::memory_order_relaxed);
+    playPass_.store(loopPass_, std::memory_order_relaxed);
     playBar_.store(bar_, std::memory_order_relaxed);
     nextStep_ = following;
 }
@@ -2282,6 +2371,7 @@ void Engine::takeAway(int t) {
         bin(trash);
     }
     for (int lane = 0; lane < kDrumLanes; ++lane) track.drums.setLaneLevel(lane, 1.f), track.drums.setLaneChoke(lane, kChokeNone); // (the next kit here is in no group until told)
+    for (int lane = 0; lane < kDrumLanes; ++lane) track.drums.setLaneCuts(lane, 0, 0, 0, nullptr); // ...and has no cuts of its own (SLICES AT THE HITS)
     // Its patterns: every scene back to the blank store, nothing written, nothing copied. The stores
     // go back in the holder RemoveInstrument brought (one thing in the trash), or one by one.
     SceneSet* const holder = track.goneSet;
@@ -2684,6 +2774,11 @@ void Engine::renderTrack(int t) {
         }
         scopeWritten_.store(written, std::memory_order_relaxed);
     }
+    if (t == chunkCatch_) { // CATCH of this track alone: as the scope hears it (after its effects and level)
+        for (int i = 0; i < frames; ++i)
+            trackCaught_[(chunkAt_ + static_cast<std::uint64_t>(i)) % kCatchFrames].store(0.5f * (left[i] + right[i]) * track.level, std::memory_order_relaxed);
+        chunkTapped_ = true;
+    }
     float peak = chunkPeaks_[t];
     const float gateTo = track.heard ? 1.f : 0.f, gateStep = 1.f / (0.005f * sampleRate_);
     const float glide = 1.f / (kSendGlideSeconds * sampleRate_);
@@ -2992,6 +3087,17 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
         tracks_[t].hitsNow = 0;
     }
     chunkScope_ = scopeTrack_.load(std::memory_order_relaxed);
+    // CATCH of one track: the ring follows the track the app names (from this chunk, if it is another).
+    chunkAt_ = caughtCount_.load(std::memory_order_relaxed);
+    int follow = catchTrack_.load(std::memory_order_relaxed);
+    if (follow < 0 || follow >= kNumTracks) follow = -1;
+    if (follow != chunkCatch_) {
+        following_.store(-1, std::memory_order_relaxed);
+        followFrom_.store(chunkAt_, std::memory_order_relaxed);
+        following_.store(follow, std::memory_order_release);
+        chunkCatch_ = follow;
+    }
+    chunkTapped_ = false;
     if (workers_.empty() || count < 2) {
         for (int i = 0; i < count; ++i) renderTrack(active_[i]);
     } else {
@@ -3077,6 +3183,8 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
         for (int i = 0; i < frames; ++i, ++at) {
             caught_[at % kCatchFrames].store(0.5f * (interleaved[2 * i] + interleaved[2 * i + 1]), std::memory_order_relaxed);
         }
+        if (chunkCatch_ >= 0 && !chunkTapped_) // the track followed was not worked out (none there): silence
+            for (int i = 0; i < frames; ++i) trackCaught_[(chunkAt_ + static_cast<std::uint64_t>(i)) % kCatchFrames].store(0.f, std::memory_order_relaxed);
         caughtCount_.store(at, std::memory_order_relaxed);
         barFramesNow_.store(static_cast<int>(samplesPerStep_ * kSteps), std::memory_order_relaxed);
     };

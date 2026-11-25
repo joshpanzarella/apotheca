@@ -1009,6 +1009,56 @@ void testTheDrumGridsRows() {
     rig.frames(2);
     holds(rig, "the slice view, X held on a hit", kDrumStrip);
     rig.key(X, false);
+    rig.key(SDLK_a, true); // Y held on a hit: R1 saves the slice (batch S1)
+    rig.frames(2);
+    holds(rig, "the slice view, Y held on a hit", kDrumStrip);
+    CHECK(ui::gHintsOver == 0);
+    rig.tap(SDLK_w);
+    rig.key(SDLK_a, false);
+    rig.frames(2);
+    CHECK(std::string(drums.said()).find("SAVED \"") == 0);
+    holds(rig, "the slice view, a slice saved", kDrumStrip);
+    // Saved on a hit with step effects: the said line has the row, the effects' summary waits (it ran into it).
+    StepFx full;
+    full.pitch = -12, full.ratchet = 4, full.reverse = true, full.cut = 2, full.throwTo = 3;
+    drums.setFx(5, 2, full);
+    rig.key(SDLK_a, true);
+    rig.tap(SDLK_w);
+    rig.key(SDLK_a, false);
+    rig.frames(2);
+    CHECK(std::string(drums.said()).find("SAVED \"") == 0);
+    holds(rig, "the slice view, a slice saved on a hit with step effects", kDrumStrip);
+    for (const textfit::Frame* f : {&lastLarge, &lastXl})
+        for (const textfit::Text& said : f->texts)
+            if (said.words.find("SAVED") == 0)
+                for (const textfit::Text& t : f->texts)
+                    if (&t != &said && t.y < said.y + said.h && said.y < t.y + t.h) CHECK(t.x >= said.x + said.w || t.x + t.w <= said.x);
+    drums.setFx(5, 2, StepFx());
+    // Saved from a recording whose name is as long as a saved one's may be (61 letters and " 1"): the stem is cut to
+    // the strip, never the number, at every size.
+    const std::string longest = "a very long " + std::string(49, 'w'); // (61, of the widest letter; the lane's name, its first nine, fits)
+    CHECK(longest.size() == 61 && writeWav(folder + "/" + longest + ".wav", sound, 48000) && sampleNameOk(longest + " 1"));
+    rig.session().setLaneSample(0, 5, longest);
+    rig.session().finishStretching();
+    rig.frames(2);
+    rig.key(SDLK_a, true);
+    rig.tap(SDLK_w);
+    rig.key(SDLK_a, false);
+    rig.frames(2);
+    CHECK(std::string(drums.said()) == "SAVED \"A VERY LONG " + std::string(49, 'W') + " 1\"");
+    holds(rig, "the slice view, a slice saved with the longest name", kDrumStrip);
+    int cut = 0;
+    for (const textfit::Frame* f : {&lastLarge, &lastXl})
+        for (const textfit::Text& t : f->texts)
+            if (t.words.find("SAVED") == 0) {
+                ++cut;
+                CHECK(t.words.size() > 4 && t.words.compare(t.words.size() - 5, 5, ".. 1\"") == 0 && t.x + t.w <= 632.f);
+            }
+    CHECK(cut == 2);
+    CHECK(std::remove((folder + "/" + longest + " 1.wav").c_str()) == 0);
+    rig.session().setLaneSample(0, 5, "a very long recording name");
+    rig.session().finishStretching();
+    rig.frames(2);
     drums.moveCursorTo(5, -1);
     rig.frames(2);
     holds(rig, "the slice view, on the lane's name", kDrumStrip);
@@ -1019,6 +1069,49 @@ void testTheDrumGridsRows() {
     holds(rig, "the slice view, a lane that plays one slice", kDrumStrip);
     CHECK(drew("ONE SLICE") && capAtXl("ONE SLICE") == screens().at[kTextLarge]->medium.capHeight());
     CHECK(screens().at[kTextXl]->medium.capHeight() > screens().at[kTextLarge]->medium.capHeight());
+    // SLICES AT THE HITS (batch S2): the lane's own cuts, at the widest word (AT HITS 10), by the name and on the
+    // strip with A held; Y held on a hit (move, add, delete its cut); and the longest of what is said.
+    {
+        LaneCuts cuts;
+        cuts.count = 12;
+        cuts.sense = kSenseMost;
+        for (int k = 1; k < cuts.count; ++k) cuts.at[k] = static_cast<float>(k) / 13.f;
+        rig.session().setLaneCuts(0, 5, cuts);
+        rig.frames(1);
+        holds(rig, "the slice view, cut at the hits", kDrumStrip);
+        CHECK(drew("AT HITS 10") && drew("12 SLICES"));
+        rig.key(A, true);
+        rig.frames(2);
+        holds(rig, "the slice view, A held on the name: the slices", kDrumStrip);
+        CHECK(ui::gHintsOver == 0);
+        rig.key(A, false);
+        cuts.sense = 0;
+        rig.session().setLaneCuts(0, 5, cuts);
+        rig.frames(1);
+        holds(rig, "the slice view, cut by hand", kDrumStrip);
+        CHECK(drew("BY HAND"));
+        drums.moveCursorTo(5, 3);
+        drums.setStep(5, 3, 0.9f);
+        rig.key(SDLK_a, true);
+        rig.frames(2);
+        holds(rig, "the slice view, Y held on a hit of its own cuts", kDrumStrip);
+        CHECK(ui::gHintsOver == 0);
+        drums.moveCursorTo(5, 0);
+        drums.setStep(5, 0, 0.9f);
+        rig.key(SDLK_z, true); // hold B on slice 1: the bar fills, then SLICE 1 ALWAYS STARTS AT THE TOP
+        rig.frames(15);
+        holds(rig, "the slice view, B held on a hit's cut: the bar filling", kDrumStrip);
+        CHECK(drew("DELETING THE CUT..."));
+        rig.frames(25);
+        rig.key(SDLK_z, false);
+        rig.key(SDLK_a, false);
+        rig.frames(2);
+        CHECK(std::string(drums.said()) == "SLICE 1 ALWAYS STARTS AT THE TOP");
+        holds(rig, "the slice view, slice 1 stays at the top", kDrumStrip);
+        rig.session().setLaneCuts(0, 5, LaneCuts());
+        rig.project().tracks[0].laneOneSlice[5] = true;
+        rig.frames(1);
+    }
     // WRITE on, a scene of several bars, a twelfth track with the longest name: the top bar at its fullest.
     rig.tap(L1);
     rig.session().setTrackName(0, "WWWWWWWWWW");
@@ -1297,6 +1390,40 @@ void testTheOtherScreens() {
         rig.frames(1);
     }
     CHECK(pagesSeen == 10 + 6 + 9 + 6 + 3 + 4 + 6);
+    {
+        // Batch S3 (review): CLOUD's first page, Y held, the song playing: CATCH's choice at its longest (4 bars of a
+        // track with a ten-letter name), drawn whole on the page's heading row (the top bar's room cut it short).
+        for (int t = 0; t < kNumTracks; ++t)
+            if (project.tracks[t].kind == TrackKind::Cloud) project.track = t;
+        SynthScreen& cloud = rig.app.cloud();
+        cloud.goTo(1, 0);
+        char before[sizeof project.tracks[0].name];
+        std::memcpy(before, project.tracks[0].name, sizeof before);
+        session.setTrackName(0, "WWWWWWWWWW");
+        rig.tap(SDLK_RETURN); // START
+        rig.frames(2);
+        rig.key(Y, true);
+        rig.tap(RIGHT, 2);
+        rig.tap(DOWN);
+        rig.frames(1);
+        holds(rig, "CLOUD, Y held: CATCH's choice at its longest, playing");
+        CHECK(drew("CATCH THE LAST 4 BARS OF 1 WWWWWWWWWW") && ui::gHintsOver == 0);
+        int whole = 0;
+        for (const textfit::Frame* frame : {&lastLarge, &lastXl})
+            for (const textfit::Text& t : frame->texts)
+                if (t.words == "CATCH THE LAST 4 BARS OF 1 WWWWWWWWWW") {
+                    ++whole;
+                    CHECK(t.x + t.w <= 632.5f && t.y > ui::kTopBarH);
+                }
+        CHECK(whole == 2);
+        rig.key(Y, false);
+        rig.tap(SDLK_RETURN);
+        session.stepCatchFrom(-1);
+        session.stepCatchBars(-1);
+        session.stepCatchBars(-1);
+        session.setTrackName(0, before);
+        rig.frames(1);
+    }
 
     // A synth's own preset (gesture audit G01, G30): the name keys at their longest, saying save and then replace;
     // what is said in the top bar after, a long own name on MAIN, and the bar while B deletes it.
@@ -1626,10 +1753,42 @@ void testTheOtherScreens() {
     session.setTrackSample(project.track, longest);
     rig.frames(2);
     holds(rig, "the sampler, the longest name");
-    for (int stop = 0; stop <= sampler::kSettings; ++stop) {
+    for (int stop = 0; stop <= SamplerScreen::kPictureStop; ++stop) { // (the picture too, S4)
         rig.app.sampler().goTo(stop);
         rig.frames(1);
         holds(rig, "the sampler, each setting");
+        CHECK(ui::gHintsOver == 0);
+    }
+    // S4: its EDIT, with the longest name a file can have, and A held; the picture saying LOOP START.
+    {
+        SamplerScreen& screen = rig.app.sampler();
+        session.setTrackSample(project.track, deep); // (the longest name a file can have: EDIT needs the file)
+        screen.goTo(SamplerScreen::kPictureStop);
+        rig.frames(1);
+        rig.tap(A);
+        rig.frames(2);
+        CHECK(screen.editing());
+        {
+            CHECK(holds(rig, "the sampler's EDIT, the longest name") > 6);
+            CHECK(drew("FADE OUT") && drew("REVERSE") && ui::gHintsOver == 0);
+            rig.key(A, true);
+            rig.frames(1);
+            holds(rig, "the sampler's EDIT, A held");
+            rig.key(A, false);
+            rig.frames(1);
+            // (No Y here: its trim is heard once made, and a sound heard would be caught by the kit's CATCH below. The
+            // view's words are the kit's, held there.)
+            rig.tap(B);
+            rig.frames(2);
+        }
+        CHECK(!screen.editing() && screen.cursor() == SamplerScreen::kPictureStop);
+        session.setSamplerSetting(project.track, sampler::Loop, 1);
+        session.setSamplerSetting(project.track, sampler::LoopStart, 50);
+        rig.frames(1);
+        holds(rig, "the sampler's picture, LOOP START said");
+        session.setSamplerSetting(project.track, sampler::Loop, 0);
+        session.setSamplerSetting(project.track, sampler::LoopStart, 0);
+        session.setTrackSample(project.track, longest);
     }
     // Its own preset (gesture audit G01, G10): the name keys at their longest, saying save and then replace; what
     // is said after, a long own name on PRESET, and the bar while B deletes it, which says it cannot be undone.
@@ -1695,6 +1854,27 @@ void testTheOtherScreens() {
     CHECK(drew("NOTHING TO CATCH: PLAY SOMETHING FIRST") && !drew("CHOKE"));
     for (const textfit::Text& t : lastLarge.texts)
         if (t.words == "NOTHING TO CATCH: PLAY SOMETHING FIRST") CHECK(t.x + t.w <= ui::kScreenW - 8);
+    {
+        // Batch S3: Y held, CATCH's choice said at its longest (4 bars of a track with a ten-letter name), and the hints.
+        char before[sizeof project.tracks[0].name];
+        std::memcpy(before, project.tracks[0].name, sizeof before);
+        session.setTrackName(0, "WWWWWWWWWW");
+        rig.key(SDLK_a, true); // Y held
+        rig.tap(SDLK_RIGHT, 2);
+        rig.tap(SDLK_DOWN);
+        rig.frames(1);
+        CHECK(holds(rig, "the kit, Y held: CATCH's choice at its longest") > 8);
+        CHECK(drew("CATCH THE LAST 4 BARS OF 1 WWWWWWWWWW") && ui::gHintsOver == 0);
+        for (const textfit::Frame* frame : {&lastLarge, &lastXl})
+            for (const textfit::Text& t : frame->texts)
+                if (t.words.find("CATCH THE LAST") == 0) CHECK(t.x + t.w <= ui::kScreenW - 8);
+        rig.key(SDLK_a, false); // (a choice was made: nothing is caught)
+        session.stepCatchFrom(-1);
+        session.stepCatchBars(-1);
+        session.stepCatchBars(-1);
+        session.setTrackName(0, before);
+        rig.frames(1);
+    }
     rig.app.kit().goTo(2, KitScreen::kFit);
     rig.frames(1);
     holds(rig, "the kit, on FIT TO");
@@ -1759,6 +1939,77 @@ void testTheOtherScreens() {
         rig.tap(SDLK_z);
         CHECK(!rig.app.kit().editing());
         session.setLaneEdit(0, 2, LaneEdit());
+    }
+    {
+        // Batch S1: R1 in a lane's EDIT view saves a copy, said with its name at its longest (63 letters); A held on FIT
+        // on a recording (LEFT / RIGHT the tempo from it) and the longest thing it says; the KIT stop on a folder.
+        std::unique_ptr<TrackData> kept(new TrackData(project.tracks[0])); // (the kit as it was, put back after)
+        session.setLaneSample(0, 6, deep);
+        session.finishStretching();
+        rig.app.kit().goTo(6, KitScreen::kEdit);
+        rig.app.kit().openEdit(kEditGain);
+        rig.frames(2);
+        rig.tap(SDLK_w); // R1
+        CHECK(rig.app.kit().said() == "SAVED \"X OF NAM 1\"");
+        CHECK(std::remove((samples + "/" + sampleFolderOf(deep) + "/x of nam 1.wav").c_str()) == 0); // (the lists below count that folder's)
+        holds(rig, "a lane's EDIT, SAVED said with the longest name");
+        CHECK(ui::gHintsOver == 0);
+        for (const textfit::Text& t : lastXl.texts)
+            if (t.words.find("SAVED") == 0) CHECK(t.x + t.w <= ui::kScreenW - 8);
+        // From a recording in the samples folder itself with a 61-letter name: SAVED "QQQ... 1", its stem cut, its number kept.
+        rig.tap(SDLK_z);
+        const std::string longest = "a very long " + std::string(49, 'w'); // (61, of the widest letter)
+        std::vector<float> tenSeconds(480000, 0.f); // (PLAYS 10.00 S on the right: wider at XL than PLAYS 0.50 S)
+        for (std::size_t i = 0; i < tenSeconds.size(); ++i) tenSeconds[i] = 0.4f * std::sin(static_cast<float>(i) * 0.05f);
+        CHECK(longest.size() == 61 && writeWav(samples + "/" + longest + ".wav", tenSeconds, 48000));
+        session.setLaneSample(0, 6, longest);
+        session.finishStretching();
+        rig.app.kit().goTo(6, KitScreen::kEdit);
+        rig.app.kit().openEdit(kEditGain);
+        rig.frames(2);
+        rig.tap(SDLK_w); // R1
+        CHECK(rig.app.kit().said() == "SAVED \"A VERY LONG " + std::string(49, 'W') + " 1\"");
+        holds(rig, "a lane's EDIT, SAVED said with a 61-letter name");
+        int cut = 0;
+        for (const textfit::Frame* f : {&lastLarge, &lastXl})
+            for (const textfit::Text& t : f->texts)
+                if (t.words.find("SAVED") == 0) {
+                    ++cut;
+                    CHECK(t.words.compare(t.words.size() - 5, 5, ".. 1\"") == 0 && t.x + t.w <= 8.f + 7.f + 624.f - 120.f + 0.5f);
+                }
+        CHECK(cut == 2);
+        CHECK(std::remove((samples + "/" + longest + " 1.wav").c_str()) == 0 && std::remove((samples + "/" + longest + ".wav").c_str()) == 0);
+        session.setLaneSample(0, 6, deep);
+        session.finishStretching();
+        rig.tap(SDLK_z);
+        rig.app.kit().goTo(6, KitScreen::kFit);
+        rig.key(SDLK_x, true); // A held
+        rig.frames(1);
+        holds(rig, "the kit, A held on FIT on a recording");
+        CHECK(ui::gHintsOver == 0);
+        rig.tap(SDLK_RIGHT); // (half a second: no tempo fits it)
+        rig.key(SDLK_x, false);
+        rig.frames(1);
+        CHECK(rig.app.kit().said() == "NO TEMPO FITS IT IN 1, 2 OR 4 BARS");
+        holds(rig, "the kit, no tempo fits the loop");
+        for (const textfit::Text& t : lastXl.texts)
+            if (t.words == rig.app.kit().said()) CHECK(t.x + t.w <= ui::kScreenW - 8);
+        session.setLaneSample(0, 6, "");
+        CHECK(session.loadFolderKit(0, sampleFolderOf(deep)));
+        session.finishStretching();
+        rig.app.kit().goToKit();
+        rig.frames(200); // (what was said has gone)
+        holds(rig, "the KIT stop, on a folder with a long name");
+        CHECK(ui::gHintsOver == 0);
+        rig.key(SDLK_x, true); // A held: kits, then folders
+        rig.frames(1);
+        holds(rig, "the KIT stop, A held");
+        CHECK(ui::gHintsOver == 0);
+        rig.key(SDLK_x, false);
+        rig.frames(1);
+        rig.tap(SDLK_DOWN);
+        CHECK(session.putKit(0, *kept));
+        session.finishStretching();
     }
     {
         // DRUM SYNTH: synth lanes on the kit, and a VOICE view at its widest readings (NOISE's TUNE at
@@ -1977,6 +2228,11 @@ void testTheOtherScreens() {
     rig.frames(300); // it closes by itself
     CHECK(!setup.testing());
     setup.goTo(SettingsScreen::kBounce);
+    rig.tap(SDLK_LEFT); // round to the last: TRACK TO SAMPLES (batch S3)
+    rig.frames(1);
+    holds(rig, "BOUNCE: TRACK TO SAMPLES");
+    CHECK(drew("TRACK TO SAMPLES"));
+    rig.tap(SDLK_RIGHT);
     session.pretendBounce(0.37f, -1.f);
     rig.frames(1);
     holds(rig, "a bounce under way");

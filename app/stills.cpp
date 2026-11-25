@@ -378,6 +378,18 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         app.session().setSamplerSetting(app.project().track, sampler::End, 80); // (its mark too)
         app.session().view = View::Device;
         app.sampler().goTo(std::strcmp(view, "sampler-end") == 0 ? 4 : 3); // START; sampler-end: END, beside it
+        if (std::strcmp(view, "sampler-loop") == 0) { // S4: the picture, LOOP on and LOOP START at 50%: its dashed mark
+            app.session().setSamplerSetting(app.project().track, sampler::Loop, 1);
+            app.session().setSamplerSetting(app.project().track, sampler::LoopStart, 50);
+            app.sampler().goTo(SamplerScreen::kPictureStop);
+        }
+        if (std::strcmp(view, "sampler-edit") == 0) { // S4: its EDIT view, START 10%, END 70%, a fade out and REVERSE
+            LaneEdit e;
+            e.start = 10000, e.end = 70000, e.fadeOut = 200, e.reverse = 1, e.gain = -30;
+            app.session().setSamplerEdit(app.project().track, e);
+            app.sampler().goTo(SamplerScreen::kPictureStop);
+            tapKey(SDLK_x);
+        }
         if (std::strcmp(view, "sampler-picker") == 0) { // its list of recordings, open on the one that is on
             app.sampler().goTo(0);
             tapKey(SDLK_x);
@@ -827,6 +839,28 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
             app.drums().moveCursorTo(5, std::strncmp(view, "slices-name", 11) == 0 ? -1 : 5);
             if (std::strcmp(view, "slices-name-feel") == 0) app.session().setLaneFeel(0, 5, 25, 50), app.session().setLaneSwing(0, 5, 75); // the lane's feel and swing: their marks by the name, their line on the strip
             app.drums().setSlicing(true);
+            if (std::strncmp(view, "slices-hits", 11) == 0) {
+                // SLICES AT THE HITS: cuts of the lane's own, uneven, as a break's hits fall (put by hand here, so the
+                // still is the same whatever recording it is given), at the widest word, AT HITS 10. -64: the most,
+                // their numbers where there is room. -name-held: A held on the name (the strip's SLICES); -y: Y held on a hit.
+                LaneCuts cuts;
+                cuts.sense = kSenseMost;
+                if (std::strcmp(view, "slices-hits-64") == 0) {
+                    cuts.count = kMaxLaneCuts;
+                    for (int k = 1; k < kMaxLaneCuts; ++k) cuts.at[k] = (static_cast<float>(k) + 0.4f * static_cast<float>(k % 3)) / (kMaxLaneCuts + 1.f);
+                } else {
+                    const float at[] = {0.f, 0.062f, 0.125f, 0.19f, 0.25f, 0.31f, 0.375f, 0.5f, 0.56f, 0.625f, 0.75f, 0.81f, 0.875f};
+                    cuts.count = sizeof at / sizeof at[0];
+                    for (int k = 0; k < cuts.count; ++k) cuts.at[k] = at[k];
+                }
+                app.session().setLaneCuts(0, 5, cuts);
+                for (int step = 0; step < kSteps; ++step) app.drums().setStart(5, step, app.drums().ownStart(step));
+                app.drums().setStart(5, 5, app.drums().cutAt(9));
+                app.drums().setStart(5, 6, app.drums().cutAt(2));
+                app.drums().moveCursorTo(5, std::strcmp(view, "slices-hits-name-held") == 0 ? -1 : 5);
+                if (std::strcmp(view, "slices-hits-name-held") == 0) pushKey(SDLK_x, true); // A held
+                if (std::strcmp(view, "slices-hits-y") == 0) pushKey(SDLK_a, true); // Y held
+            }
             if (std::strcmp(view, "slices-throw") == 0) { // slices thrown to a bus, and X held on one
                 StepFx f;
                 f.throwTo = kThrowSpace;
@@ -1200,6 +1234,18 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         }
         pushKey(SDLK_q, true); // L1, held
         tapKey(view[9] == 'r' ? SDLK_x : SDLK_w); // A pastes, R1 copies
+    } else if (std::strncmp(view, "fill", 4) == 0 && (view[4] == 0 || view[4] == '-')) {
+        // THE FILL: L1 held (the bar says what Y does now: FILL OFF) just after L1 + Y made the cell's FILL from the
+        // bar shown and went onto it (FILL MADE; the top bar reads 1 DRUMS / FILL / SCENE 1), on the drum grid,
+        // stopped; on the piano roll ("fill-roll"); on an eight-bar cell ("fill-eight": NO FILL ON 8 BARS said,
+        // nothing made); the drum grid's with the song playing ("fill-playing": the top bar has room for the name only).
+        if (std::strcmp(view, "fill-roll") == 0) {
+            app.project().track = 1;
+            app.notes().moveCursorTo(57, 6);
+        }
+        if (std::strcmp(view, "fill-eight") == 0) app.session().setCellBars(0, 0, 8);
+        pushKey(SDLK_q, true); // L1, held
+        tapKey(SDLK_a);        // Y
     } else if (std::strcmp(view, "update-ready") == 0 || std::strcmp(view, "update-ready-drums") == 0) {
         // An update accepted, waiting for the next start: the bar's end says so.
         app.session().markUpdateReadyForStill();
@@ -1254,6 +1300,8 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         // nothing more: any press would put the notice away
     } else if (demo && std::strcmp(view, "help-nomenu") == 0) {
         // nothing more: START with SELECT held is "quit"
+    } else if (demo && std::strncmp(view, "fill", 4) == 0 && std::strcmp(view, "fill-playing") != 0) {
+        // nothing more: stopped, the top bar has the room to read DRUMS / FILL / SCENE 1 (playing, it is cut to the name)
     } else if (demo && std::strcmp(view, "add-track") != 0 && std::strstr(view, "-deleting") == nullptr && std::strstr(view, "-forgetting") == nullptr && std::strcmp(view, "setup-network-keys") != 0 && std::strcmp(view, "picker-typing") != 0 && std::strcmp(view, "typing") != 0) { // (another press calls a held B off; START keeps a name being typed, and makes the folder: the "typing" still showed the SET page, not the keys, until 2026-11-15)
         tapKey(SDLK_RETURN); // playing, so the stills show the play position and the scope
     }

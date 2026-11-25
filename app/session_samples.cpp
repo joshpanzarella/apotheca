@@ -16,6 +16,7 @@
 #include <sstream>
 #include <cstdlib>
 #include <ctime>
+#include <functional>
 #include <memory>
 
 #include "samples.hpp"
@@ -391,6 +392,8 @@ void Session::setLaneSample(int track, int lane, const std::string& name) {
     edit.start = 0;
     edit.end = kEditUnits;
     t.laneSynth[lane] = drumsynth::Voice();
+    // Its own cuts were the last sound's: EVEN again (SLICES AT THE HITS; in the same step of undo, as the cut).
+    setLaneCuts(track, lane, LaneCuts());
     loadLane(track, lane);
 }
 
@@ -401,6 +404,7 @@ void Session::setLaneSynth(int track, int lane, const drumsynth::Voice& wanted) 
     if (now == was && (now.on() || !t.laneSample[lane][0])) return;
     t.laneSynth[lane] = now;
     t.laneSample[lane][0] = 0; // a synth, or the built-in drum: no recording
+    setLaneCuts(track, lane, LaneCuts()); // (no recording, no slices: SLICES AT THE HITS)
     if (now.model != was.model) { // another sound: START and END go back to the whole (the rest of EDIT stays)
         t.laneEdit[lane].start = 0;
         t.laneEdit[lane].end = kEditUnits;
@@ -713,9 +717,79 @@ void Session::loadTrackSample(int track) {
             return;
         }
     }
+    if (project.tracks[track].kind == TrackKind::Sampler) {
+        // One recording: EDIT works on it (S4). Kept as it came off the card, and made from that.
+        sound.recording = sound.source = std::make_shared<const std::vector<float>>(std::move(main));
+        sound.sourceSeconds = sound.seconds;
+        sound.sourcePeaks = sound.peaks;
+        shapeSampler(track);
+        return;
+    }
     std::unique_ptr<SampleData> data(new SampleData);
     data->data = std::move(main);
     engine.setTrackSample(track, std::move(data));
+}
+
+void Session::shapeSampler(int track) {
+    LaneSound& sound = sounds_[track][0];
+    if (!sound.source) return;
+    const LaneEdit& edit = project.tracks[track].samplerEdit;
+    sound.shaped = edit.shapes() ? std::make_shared<const std::vector<float>>(makeShape(*sound.source, edit, kSampleRate)) : sound.source;
+    installSampler(track);
+}
+
+void Session::installSampler(int track) {
+    LaneSound& sound = sounds_[track][0];
+    if (!sound.shaped) return;
+    const LaneEdit& edit = project.tracks[track].samplerEdit;
+    std::unique_ptr<SampleData> data(new SampleData);
+    if (edit.atRest()) {
+        data->data = *sound.shaped; // the file as it is, to the bit
+    } else {
+        data->data.resize(sound.shaped->size());
+        makeLevel(sound.shaped->data(), static_cast<int>(sound.shaped->size()), edit, kSampleRate, data->data.data());
+    }
+    sound.seconds = static_cast<float>(data->data.size()) / kSampleRate;
+    outlineOf(data->data, sound.peaks);
+    engine.setTrackSample(track, std::move(data));
+}
+
+bool Session::samplerEdits(int track) const {
+    return track >= 0 && track < kNumTracks && project.tracks[track].kind == TrackKind::Sampler && sounds_[track][0].source != nullptr;
+}
+
+void Session::setSamplerEdit(int track, const LaneEdit& wanted) {
+    if (track < 0 || track >= kNumTracks || project.tracks[track].kind != TrackKind::Sampler) return;
+    LaneEdit& edit = project.tracks[track].samplerEdit;
+    LaneEdit now = laneEditHeld(wanted, sounds_[track][0].sourceSeconds);
+    now.pitch = now.fine = 0; // (the page's PITCH and TUNE do that)
+    const LaneEdit was = edit;
+    if (now == was) return;
+    edit = now;
+    LaneEdit shapeWas = was, shapeNow = now; // what is cut or turned round: made again
+    shapeWas.gain = shapeNow.gain = shapeWas.fadeIn = shapeNow.fadeIn = shapeWas.fadeOut = shapeNow.fadeOut = 0;
+    if (shapeWas != shapeNow) shapeSampler(track);
+    else installSampler(track); // the fades and GAIN alone: on what is made already
+    ++sounds_[track][0].version; // (its picture changed: the designer page draws it again)
+}
+
+bool Session::normalizeSampler(int track) {
+    if (!samplerEdits(track)) return false;
+    const LaneSound& sound = sounds_[track][0];
+    int gain = 0;
+    if (!sound.shaped || !normalGain(sound.shaped->data(), static_cast<int>(sound.shaped->size()), gain)) return false;
+    LaneEdit edit = project.tracks[track].samplerEdit;
+    edit.gain = gain;
+    setSamplerEdit(track, edit);
+    return true;
+}
+
+bool Session::trimSamplerSilence(int track) {
+    if (!samplerEdits(track)) return false;
+    LaneEdit edit = project.tracks[track].samplerEdit;
+    if (!silenceEnds(*sounds_[track][0].source, kSampleRate, edit.start, edit.end)) return false;
+    setSamplerEdit(track, edit);
+    return true;
 }
 
 bool Session::putPresetRecording(int track, const std::string& name) {
@@ -742,6 +816,10 @@ bool Session::putPresetRecording(int track, const std::string& name) {
 void Session::setTrackSample(int track, const std::string& name) {
     if (track < 0 || track >= kNumTracks || !holdsRecording(project.tracks[track].kind)) return;
     std::snprintf(project.tracks[track].sample, sizeof project.tracks[track].sample, "%s", name.c_str());
+    // Another recording: EDIT's START and END were parts of the last one, and go back to the whole; the rest stay
+    // (a lane's rule). One step of undo with the name, as a lane's.
+    project.tracks[track].samplerEdit.start = 0;
+    project.tracks[track].samplerEdit.end = kEditUnits;
     loadTrackSample(track);
 }
 
@@ -762,8 +840,16 @@ std::string Session::catchLastBar(int track, int lane) {
     if (sampleFolder_.empty() || track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return "";
     const bool sampler = holdsRecording(project.tracks[track].kind); // its one recording; the lane does not matter
     if (!sampler && project.tracks[track].kind != TrackKind::Drums) return "";
-    int barSteps = kSteps;
-    const std::vector<float> bar = engine.lastBar(&barSteps);
+    const int from = catchFrom();
+    const Engine::Caught caught = engine.lastBars(catchBars_, from);
+    caughtBars_ = caught.bars, caughtFrom_ = from;
+    // One track with no whole bar heard since it was chosen: what there is is only that since (a step, or half a
+    // bar), not a bar; caught, it was fitted to a step or two and said as a bar (review fix, 2026-11-25). Nothing,
+    // and the line says to let a bar go by. (The mix is always heard: no whole bar there is a bar's worth, as ever.)
+    caughtNoBar_ = from >= 0 && caught.bars == 0;
+    if (caughtNoBar_) return "";
+    const std::vector<float>& bar = caught.sound;
+    const int barSteps = caught.steps;
     float peak = 0.f;
     for (float v : bar) peak = std::fabs(v) > peak ? std::fabs(v) : peak;
     if (peak < 1e-4f) return ""; // nothing was playing
@@ -780,15 +866,353 @@ std::string Session::catchLastBar(int track, int lane) {
         setTrackSample(track, name);
     } else {
         setLaneSample(track, lane, name);
-        setLaneFit(track, lane, barSteps); // it is the bar's steps long (12 in 3/4: review 2026-11-23, it was always 16), and stays so when the tempo moves
+        setLaneFit(track, lane, barSteps); // it is its bars' steps long (12 a bar in 3/4: review 2026-11-23, it was always 16), and stays so when the tempo moves
     }
     return name;
 }
 
+void Session::stepCatchBars(int by) {
+    static const int stops[3] = {1, 2, 4};
+    int at = catchBars_ >= 4 ? 2 : catchBars_ - 1;
+    at += by > 0 ? 1 : (by < 0 ? -1 : 0);
+    catchBars_ = stops[at < 0 ? 0 : (at > 2 ? 2 : at)];
+}
+
+void Session::stepCatchFrom(int by) {
+    const int to = catchFrom() + (by > 0 ? 1 : (by < 0 ? -1 : 0));
+    catchFrom_ = to < -1 ? -1 : (to >= project.trackCount() ? project.trackCount() - 1 : to);
+    engine.setCatchTrack(catchFrom()); // (and every frame, update)
+}
+
+namespace {
+// "breaks/amen" and 2: "breaks/amen 2", its name cut where the whole would not be a name (sampleNameOk: under 64).
+std::string numbered(const std::string& folder, std::string stem, int number) {
+    const std::string tail = " " + std::to_string(number), head = folder.empty() ? "" : folder + "/";
+    const std::size_t room = static_cast<std::size_t>(kSampleNameRoom - 1) - head.size() - tail.size();
+    if (stem.size() > room) stem.resize(room);
+    while (!stem.empty() && stem.back() == ' ') stem.pop_back();
+    return head + (stem.empty() ? "sound" : stem) + tail;
+}
+}
+
+Session::SaveSound Session::saveLaneSound(int track, int lane, float start, float part, std::string& name) {
+    name.clear();
+    if (sampleFolder_.empty() || track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums) return SaveSound::Failed;
+    readyLane(track, lane);
+    const TrackData& t = project.tracks[track];
+    const LaneSound& sound = sounds_[track][lane];
+    if (sound.missing) return SaveSound::Missing;
+    // What the engine plays is still on its way (a shape or a voice on the helper thread, a FIT for this tempo or
+    // this length not made yet): saved now, it would be what the lane played before.
+    const int fit = t.laneFit[lane];
+    const bool fitOwed = sound.recording && fit > 0 && (!sound.fitted || sound.fittedTempo != project.tempo || sound.fittedSteps != fit);
+    if (sound.waiting || sound.shaping || sound.making || fitOwed) return SaveSound::Making;
+    const std::shared_ptr<const std::vector<float>>& made = sound.fitted ? sound.fitted : sound.shaped;
+    if (!made || made->empty()) return SaveSound::Failed;
+    // As installLane hands it to the engine: at rest the sound itself (the built-in drum's is the kit's), else
+    // with its fades, GAIN and guard.
+    std::vector<float> plays(made->size());
+    if (t.laneEdit[lane].atRest()) plays = *made;
+    else makeLevel(made->data(), static_cast<int>(made->size()), t.laneEdit[lane], kSampleRate, plays.data());
+    // A part of it, as DrumMachine::trigger takes one: from start * length, part * length long.
+    const int length = static_cast<int>(plays.size());
+    if (!(start > 0.f)) start = 0.f;
+    const int from = start < 1.f ? static_cast<int>(start * static_cast<float>(length)) : length;
+    int end = part > 0.f && part < 1.f ? from + static_cast<int>(part * static_cast<float>(length)) : length;
+    if (end > length) end = length;
+    if (from >= end) return SaveSound::Failed;
+    std::vector<float> out(plays.begin() + from, plays.begin() + end);
+    if (end < length) { // cut short: it ends with the quick fade the engine ends a part with, so the file never clicks
+        const int fade = std::min(static_cast<int>(kEdgeMs * kSampleRate / 1000.f), static_cast<int>(out.size()));
+        for (int i = 0; i < fade; ++i) out[out.size() - 1 - static_cast<std::size_t>(i)] *= static_cast<float>(i) / static_cast<float>(fade);
+    }
+    // Its name: after its source, in its folder; a voice or the built-in drum in the samples folder.
+    std::string folder, stem;
+    if (t.laneSample[lane][0]) folder = sampleFolderOf(t.laneSample[lane]), stem = sampleLabel(t.laneSample[lane]);
+    else stem = t.laneSynth[lane].on() ? drumsynth::modelName(t.laneSynth[lane].model) : DrumKit::laneName(lane);
+    for (char& c : stem) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c); // (a model's or a drum's name is in capitals)
+    std::vector<std::string> taken = sampleNames(); // capitals not counted: a card may not tell them apart
+    for (std::string& have : taken) have = lowered(have);
+    for (int number = 1; number < 10000; ++number) {
+        const std::string candidate = numbered(folder, stem, number);
+        if (!sampleNameOk(candidate) || recordingThere(sampleFolder_, candidate)) continue;
+        if (std::find(taken.begin(), taken.end(), lowered(candidate)) != taken.end()) continue;
+        if (!writeWav(sampleFolder_ + "/" + candidate + ".wav", out, static_cast<int>(kSampleRate))) return SaveSound::Failed;
+        name = candidate;
+        return SaveSound::Saved;
+    }
+    return SaveSound::Failed;
+}
+
+std::string Session::freeSampleName(const std::string& folder, const std::string& stem) const {
+    if (sampleFolder_.empty()) return "";
+    std::vector<std::string> taken = sampleNames(); // capitals not counted: a card may not tell them apart
+    for (std::string& have : taken) have = lowered(have);
+    for (int number = 1; number < 10000; ++number) {
+        const std::string candidate = numbered(folder, lowered(stem), number);
+        if (!sampleNameOk(candidate) || recordingThere(sampleFolder_, candidate)) continue;
+        if (std::find(taken.begin(), taken.end(), lowered(candidate)) != taken.end()) continue;
+        return candidate;
+    }
+    return "";
+}
+
+std::string Session::savedLine(SaveSound how, const std::string& name) {
+    std::string said;
+    if (how == SaveSound::Saved) said = "SAVED \"" + sampleLabel(name) + "\""; // (in its source's folder: the name is enough)
+    else if (how == SaveSound::Missing) said = "NOT SAVED: ITS FILE IS NOT FOUND";
+    else if (how == SaveSound::Making) said = "NOT SAVED: IT IS STILL BEING MADE. AGAIN IN A MOMENT";
+    else said = "NOT SAVED: THE CARD REFUSED IT";
+    for (char& c : said) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+    return said;
+}
+
+int Session::evenSlices(int track, int lane) const {
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return kSteps;
+    // A slice a step of the fitted sound once FIT is over half a bar of 16: a 3/4 bar (12) is cut into 12, not 16
+    // (integration review, 2026-11-25: at 16 a 3/4 break painted in order never reached slices 13 to 16). Under
+    // that, 16, as it always was.
+    const int fit = project.tracks[track].laneFit[lane];
+    return fit > kSteps / 2 ? fit : kSteps;
+}
+
 int Session::laneSlices(int track, int lane) const {
     if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return kSteps;
-    const int fit = project.tracks[track].laneFit[lane];
-    return fit > kSteps ? fit : kSteps;
+    return slices::count(project.tracks[track].laneCuts[lane], evenSlices(track, lane));
+}
+
+// ---- SLICES AT THE HITS (batch S2; slice_rule.hpp) ----------------------------------------------
+
+namespace {
+bool laneThere(int track, int lane) { return track >= 0 && track < kNumTracks && lane >= 0 && lane < kDrumLanes; }
+} // namespace
+
+float Session::laneCutAt(int track, int lane, int k) const {
+    if (!laneThere(track, lane)) return 0.f;
+    return slices::cutStart(project.tracks[track].laneCuts[lane], evenSlices(track, lane), k);
+}
+
+int Session::laneSliceAt(int track, int lane, float start) const {
+    if (!laneThere(track, lane)) return 0;
+    return slices::sliceAt(project.tracks[track].laneCuts[lane], evenSlices(track, lane), start);
+}
+
+float Session::lanePartAt(int track, int lane, float start) const {
+    if (!laneThere(track, lane)) return 1.f / kSteps;
+    return slices::partAt(project.tracks[track].laneCuts[lane], evenSlices(track, lane), start);
+}
+
+float Session::laneCutStep(int track, int lane, float start, int by) const {
+    if (!laneThere(track, lane)) return start;
+    return slices::stepCut(project.tracks[track].laneCuts[lane], evenSlices(track, lane), start, by);
+}
+
+// The cuts to the engine, three a command (Command::SetLaneCuts); none is one command saying so.
+void Session::sendLaneCuts(int track, int lane) {
+    const LaneCuts& cuts = project.tracks[track].laneCuts[lane];
+    Command c;
+    c.type = Command::SetLaneCuts;
+    c.track = track;
+    c.a = lane;
+    c.c = cuts.count;
+    if (cuts.count == 0) {
+        engine.send(c);
+        return;
+    }
+    for (int from = 0; from < cuts.count; from += 3) {
+        c.b = from;
+        c.d = cuts.count - from < 3 ? cuts.count - from : 3;
+        c.value = cuts.at[from];
+        c.extra = c.d > 1 ? cuts.at[from + 1] : 0.f;
+        c.shift = c.d > 2 ? cuts.at[from + 2] : 0.f;
+        engine.send(c);
+    }
+}
+
+void Session::setLaneCuts(int track, int lane, const LaneCuts& cuts) {
+    if (!laneThere(track, lane) || project.tracks[track].kind != TrackKind::Drums) return;
+    const LaneCuts held = slices::cutsHeld(cuts); // (rising, the rest 0: alike byte for byte)
+    LaneCuts& now = project.tracks[track].laneCuts[lane];
+    if (now == held && std::memcmp(&now, &held, sizeof held) == 0) return;
+    now = held;
+    sendLaneCuts(track, lane);
+    sendLanePart(track, lane); // ONE SLICE's share goes by how many there are
+}
+
+void Session::moveLaneHits(int t, int lane, const std::function<float(int, int, int, float)>& to) {
+    TrackData& track = project.tracks[t];
+    struct Moved {
+        int scene, bar, step;
+        float start;
+    };
+    std::vector<Moved> moved;
+    for (int scene = 0; scene < kMaxScenes; ++scene) {
+        if (!track.drums.has(scene)) continue; // (a scene with nothing written: no hit, and no piece made for it)
+        for (int bar = 0; bar < kMaxBars; ++bar) {
+            DrumPattern& p = track.drums[scene][bar];
+            for (int step = 0; step < kSteps; ++step) {
+                if (!(p.level[lane][step] > 0.f)) continue;
+                const float was = p.start[lane][step], now = to(scene, bar, step, was);
+                if (now == was) continue;
+                p.start[lane][step] = now;
+                moved.push_back({scene, bar, step, now});
+            }
+        }
+    }
+    if (moved.empty()) return;
+    noteEdit();
+    if (moved.size() > 64) { // (a command a hit could fill the queue: the track's image, once)
+        sendTrackImage(t);
+        return;
+    }
+    for (const Moved& m : moved) {
+        Command c;
+        c.type = Command::SetStepStart;
+        c.track = t;
+        c.scene = m.scene;
+        c.bar = m.bar;
+        c.a = lane;
+        c.b = m.step;
+        c.value = m.start;
+        engine.send(c);
+    }
+}
+
+// The lane's hits as found in the shape it plays now: kept, or looked at now when `atOnce` and short enough
+// for a frame (kFindInAFrame), or when `atOnce` is "whatever it takes".
+const std::vector<slices::Found>* Session::foundHits(int track, int lane, bool atOnce) {
+    LaneSound& sound = sounds_[track][lane];
+    if (!sound.shaped || sound.shaping) return nullptr;
+    if (sound.hitsOf == sound.shaped) return &sound.hits;
+    if (hits_ && hits_->track == track && hits_->lane == lane) return nullptr; // (on its way)
+    if (!atOnce || static_cast<int>(sound.shaped->size()) > kFindInAFrame) return nullptr;
+    sound.hits = slices::findHits(sound.shaped->data(), static_cast<int>(sound.shaped->size()), kSampleRate);
+    sound.hitsOf = sound.shaped;
+    return &sound.hits;
+}
+
+bool Session::findingHits(int track, int lane) const { return hits_ && hits_->track == track && hits_->lane == lane; }
+
+int Session::senseShown(int track, int lane) const {
+    if (findingHits(track, lane)) return hitsSense_;
+    return laneThere(track, lane) ? project.tracks[track].laneCuts[lane].sense : 0;
+}
+
+Session::Cut Session::cutLaneAtHits(int track, int lane, int sense) {
+    if (!laneThere(track, lane) || project.tracks[track].kind != TrackKind::Drums) return Cut::NoSound;
+    const LaneSound& sound = sounds_[track][lane];
+    if (!sound.recording || sound.missing || !sound.shaped || sound.shaping) return Cut::NoSound;
+    sense = sense < 0 ? 0 : (sense > kSenseMost ? kSenseMost : sense);
+    // EVEN asked while this lane's hits are still being found: the job, when it lands, only keeps the hits (review
+    // fix, 2026-11-25: it put on the SENSITIVITY asked before, over the EVEN asked after).
+    if (sense == 0 && findingHits(track, lane)) hitsSense_ = 0;
+    const LaneCuts was = project.tracks[track].laneCuts[lane];
+    const int even = evenSlices(track, lane);
+    LaneCuts now; // EVEN
+    if (sense > 0) {
+        if (hits_ && !(hits_->track == track && hits_->lane == lane)) finishHits(true); // (another lane's on its way: let it land first)
+        const std::vector<slices::Found>* found = foundHits(track, lane, true);
+        if (!found) {
+            // Too long for a frame: looked at on a thread of its own, and put on when it lands (finishHits).
+            hitsSense_ = sense;
+            if (!hits_) {
+                hits_.reset(new HitsJob);
+                HitsJob* job = hits_.get();
+                job->track = track;
+                job->lane = lane;
+                job->of = sound.shaped;
+                job->thread = std::thread([job] {
+                    job->found = slices::findHits(job->of->data(), static_cast<int>(job->of->size()), kSampleRate);
+                    job->done.store(true);
+                });
+            }
+            return Cut::Finding;
+        }
+        now = slices::cutsAt(*found, static_cast<int>(sound.shaped->size()), sense, kSampleRate);
+    }
+    if (now == was) return Cut::Same;
+    // A hit in order stays in order (a break painted in order: each step its own slice, now on a hit); any other
+    // to the cut at or before where it starts (it plays from the hit it was in). In order is by the hit's place in
+    // the lane's FIT (`even` steps: a bar, or 2 or 4), so every bar painted in order is the same bar: the whole
+    // break hit at the top of bar 2, 3 or 4 is slice 1 there, not slice 17, 33 or 49 (review fix, 2026-11-25:
+    // round past the count, those came to a cut in the middle of the break).
+    // Counted in the scene's meter (a 3/4 bar is 12 steps: bar 2 of a 2-bar break at FIT 24 is slices 13 to 24),
+    // and a FILL by the bar it plays instead of, as the slice view lays it out (PatternScreen::ownStart; integration
+    // review, 2026-11-25: the stored eighth bar put a 1-bar cell's FILL at FIT 32 on slices 17 to 32).
+    moveLaneHits(track, lane, [&](int scene, int bar, int step, float start) {
+        const int ownBar = project.ownBarOf(track, scene, bar);
+        const int own = (ownBar * project.meterOf(scene) + step) % even;
+        if (std::fabs(start - slices::cutStart(was, even, own)) <= slices::kHair) return slices::cutStart(now, even, own);
+        return slices::cutStart(now, even, slices::sliceAt(now, even, start));
+    });
+    setLaneCuts(track, lane, now);
+    return Cut::Done;
+}
+
+void Session::finishHits(bool wait) {
+    if (!hits_ || (!wait && !hits_->done.load())) return;
+    if (hits_->thread.joinable()) hits_->thread.join();
+    std::unique_ptr<HitsJob> job = std::move(hits_);
+    LaneSound& sound = sounds_[job->track][job->lane];
+    if (sound.shaped != job->of) return; // the lane has moved on: looked at again when asked
+    sound.hits = std::move(job->found);
+    sound.hitsOf = job->of;
+    const int sense = hitsSense_;
+    hitsSense_ = 0;
+    if (sense > 0) cutLaneAtHits(job->track, job->lane, sense); // (0: EVEN or an undo came after the ask: kept only)
+}
+
+Session::Cut Session::moveLaneCut(int track, int lane, int k, float to) {
+    if (!laneThere(track, lane) || project.tracks[track].kind != TrackKind::Drums) return Cut::NoSound;
+    const LaneSound& sound = sounds_[track][lane];
+    if (!(sound.seconds > 0.f)) return Cut::NoSound;
+    LaneCuts own = slices::ownCuts(project.tracks[track].laneCuts[lane], evenSlices(track, lane));
+    if (k <= 0) return Cut::Top;
+    if (k >= own.count) return Cut::NoRoom;
+    const float gap = static_cast<float>(slices::kHandGapSeconds / sound.seconds);
+    const float low = own.at[k - 1] + gap, high = (k + 1 < own.count ? own.at[k + 1] : 1.f) - gap;
+    if (!(low <= high)) return Cut::NoRoom;
+    to = to < low ? low : (to > high ? high : to);
+    const float was = own.at[k];
+    if (to == was) return Cut::Same;
+    own.at[k] = to;
+    moveLaneHits(track, lane, [&](int, int, int, float start) { return std::fabs(start - was) <= slices::kHair ? to : start; });
+    setLaneCuts(track, lane, own);
+    return Cut::Done;
+}
+
+Session::Cut Session::addLaneCut(int track, int lane, int k) {
+    if (!laneThere(track, lane) || project.tracks[track].kind != TrackKind::Drums) return Cut::NoSound;
+    const LaneSound& sound = sounds_[track][lane];
+    if (!(sound.seconds > 0.f) || !sound.shaped) return Cut::NoSound;
+    LaneCuts own = slices::ownCuts(project.tracks[track].laneCuts[lane], evenSlices(track, lane));
+    if (own.count >= kMaxLaneCuts) return Cut::Full;
+    if (k < 0 || k >= own.count) return Cut::NoRoom;
+    const float from = own.at[k], to = k + 1 < own.count ? own.at[k + 1] : 1.f;
+    const float gap = static_cast<float>(slices::kHandGapSeconds / sound.seconds);
+    if (!(to - from > 2.f * gap)) return Cut::NoRoom;
+    // At the strongest hit found inside the slice (any SENSITIVITY: what a cut at the hits passed by), else its middle.
+    float at = -1.f;
+    if (const std::vector<slices::Found>* found = foundHits(track, lane, true)) at = slices::strongestBetween(*found, static_cast<int>(sound.shaped->size()), from, to, kSampleRate);
+    if (at < 0.f) at = (from + to) / 2.f;
+    for (int i = own.count; i > k + 1; --i) own.at[i] = own.at[i - 1];
+    own.at[k + 1] = at;
+    ++own.count;
+    setLaneCuts(track, lane, own);
+    return Cut::Done;
+}
+
+Session::Cut Session::deleteLaneCut(int track, int lane, int k) {
+    if (!laneThere(track, lane) || project.tracks[track].kind != TrackKind::Drums) return Cut::NoSound;
+    LaneCuts own = slices::ownCuts(project.tracks[track].laneCuts[lane], evenSlices(track, lane));
+    if (k <= 0) return Cut::Top;
+    if (k >= own.count) return Cut::NoRoom;
+    const float was = own.at[k], before = own.at[k - 1];
+    for (int i = k; i + 1 < own.count; ++i) own.at[i] = own.at[i + 1];
+    own.at[--own.count] = 0.f;
+    moveLaneHits(track, lane, [&](int, int, int, float start) { return std::fabs(start - was) <= slices::kHair ? before : start; });
+    setLaneCuts(track, lane, own);
+    return Cut::Done;
 }
 
 void Session::sendLanePart(int track, int lane) {
@@ -796,7 +1220,7 @@ void Session::sendLanePart(int track, int lane) {
     c.type = Command::SetLanePart;
     c.track = track;
     c.a = lane;
-    c.value = project.tracks[track].laneOneSlice[lane] ? 1.f / static_cast<float>(laneSlices(track, lane)) : 0.f;
+    c.value = project.tracks[track].laneOneSlice[lane] ? 1.f / static_cast<float>(laneSlices(track, lane)) : 0.f; // (with cuts of its own: above 0 says ONE SLICE, the engine ends it at the next cut)
     engine.send(c);
 }
 
@@ -832,6 +1256,22 @@ void Session::setLaneFit(int track, int lane, int steps) {
         sound.fitted.reset();
         installLane(track, lane); // back to as recorded (and edited)
     }
+}
+
+bool Session::setTempoFromLoop(int track, int lane, float bpm, int bars) {
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums) return false;
+    if (!(bpm >= kMinTempo && bpm <= kMaxTempo) || bars < 1) return false;
+    const int fit = bars * project.meterOf(project.scene);
+    if (bpm == project.tempo && project.tracks[track].laneFit[lane] == fit) return true; // (as it is: no step)
+    // Its own step: what was being edited just before is a step already, and nothing after joins this one. The
+    // step keeps the tempo to put back (no other tempo change is undone: songs-and-undo.md); only FIT moving,
+    // it keeps none, so its undo leaves the tempo where it is then.
+    beginOwnUndoStep();
+    if (undoReady_ && !undo_.empty() && bpm != project.tempo) undo_.back().tempo = project.tempo;
+    setTempo(bpm);
+    setLaneFit(track, lane, fit);
+    endOwnUndoStep();
+    return true;
 }
 
 // A lane wants work on the helper thread: a shape too costly for a frame (shapeLane), or its FIT

@@ -442,6 +442,13 @@ void putAutomation(std::string& out, const TrackData& track) {
         }
 }
 
+// fill 1 (on) or fill 0 (made, off): the cell's FILL (fill_rule.hpp), its bar the "bar 8" lines. Left out
+// where none was ever made, so a song without one is written as it always was, and a program from
+// before skips the line (and plays the cell's own bars: it never plays a short cell's eighth).
+void putFill(std::string& out, const TrackData& track, int scene) {
+    if (track.fillMade(scene)) out += track.fillOn(scene) ? "fill 1\n" : "fill 0\n";
+}
+
 // ...a drum track's scenes...
 void putDrumScenes(std::string& out, const TrackData& track) {
     // scene N, then "bars B" if the cell is longer than one, then each
@@ -450,9 +457,10 @@ void putDrumScenes(std::string& out, const TrackData& track) {
     // longer again), each after its "bar K" past the cell's end. A program from before
     // reads no line for a bar the cell does not have, so it skips them.
     for (int scene = 0; scene < kMaxScenes; ++scene) {
-        if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene)) continue;
+        if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene) && !track.fillMade(scene)) continue;
         put(out, "scene %.0f\n", scene + 1);
         if (track.bars[scene] > 1) put(out, "bars %.0f\n", track.bars[scene]);
+        putFill(out, track, scene);
         for (int bar = 0; bar < kMaxBars; ++bar) {
             const DrumPattern& p = track.drums[scene][bar];
             if (p.empty()) continue;
@@ -493,9 +501,10 @@ void putDrumScenes(std::string& out, const TrackData& track) {
 // ...and a synth track's.
 void putNoteScenes(std::string& out, const TrackData& track) {
     for (int scene = 0; scene < kMaxScenes; ++scene) { // (and the hidden bars, as a drum track's)
-        if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene)) continue;
+        if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene) && !track.fillMade(scene)) continue;
         put(out, "scene %.0f\n", scene + 1);
         if (track.bars[scene] > 1) put(out, "bars %.0f\n", track.bars[scene]);
+        putFill(out, track, scene);
         for (int bar = 0; bar < kMaxBars; ++bar) {
             const NotePattern& p = track.notes[scene][bar];
             if (p.empty()) continue;
@@ -629,6 +638,17 @@ void putKit(std::string& out, const TrackData& track) {
         put(out, "choke %.0f", lane + 1);
         put(out, " %.0f\n", track.laneChoke[lane]);
     }
+    // slices LANE SENSE AT...: a lane's own cuts (SLICES AT THE HITS, slice_rule.hpp): the SENSITIVITY they
+    // were found at (0: by hand), then where each slice after the first begins (0..1 of what the lane
+    // plays; the first is the top). Left out when its slices are EVEN.
+    for (int lane = 0; lane < kDrumLanes; ++lane) {
+        const LaneCuts& cuts = track.laneCuts[lane];
+        if (cuts.even()) continue;
+        put(out, "slices %.0f", lane + 1);
+        put(out, " %.0f", cuts.sense);
+        for (int k = 1; k < cuts.count; ++k) put(out, " %.6g", cuts.at[k]);
+        out += "\n";
+    }
 }
 
 void putTrack(std::string& out, const TrackData& track) {
@@ -648,15 +668,29 @@ void putTrack(std::string& out, const TrackData& track) {
         putDrumScenes(out, track);
     } else {
         if (track.kind == TrackKind::Sampler) {
-            // sound NAME: its recording. sampler: root tune start attack release loop level [end]. END is
-            // left out at its usual 100%, so a sampler that does not use it is written as it always was.
+            // sound NAME: its recording. sampler: root tune start attack release loop level [end [loopstart]]. END
+            // and LOOP START (appended, S4) are left out at their usual (100%, and 0: START), so a sampler that does
+            // not use them is written as it always was; one that does writes every number up to it.
             // chop: chopped into 16 slices from C1 up (left out whole).
+            // sampleredit START END GAIN FADEIN FADEOUT REVERSE: its EDIT (S4, as a lane's laneedit without PITCH
+            // and FINE), left out at rest.
             if (track.sample[0]) out += std::string("sound ") + track.sample + "\n";
             out += "sampler";
-            for (int id = 0; id < sampler::kSettings; ++id)
-                if (id < sampler::End || track.sampler[id] != sampler::settingDefault(id)) put(out, " %.0f", track.sampler[id]);
+            int upTo = sampler::End - 1;
+            for (int id = sampler::End; id < sampler::kSettings; ++id)
+                if (track.sampler[id] != sampler::settingDefault(id)) upTo = id;
+            for (int id = 0; id <= upTo; ++id) put(out, " %.0f", track.sampler[id]);
             out += "\n";
             if (track.samplerChop) out += "chop\n";
+            const LaneEdit& e = track.samplerEdit;
+            if (!e.atRest()) {
+                put(out, "sampleredit %.6g", static_cast<double>(e.start) / kEditUnits);
+                put(out, " %.6g", static_cast<double>(e.end) / kEditUnits);
+                put(out, " %.6g", e.gain / 10.0);
+                put(out, " %.0f", e.fadeIn);
+                put(out, " %.0f", e.fadeOut);
+                put(out, " %.0f\n", e.reverse);
+            }
         } else {
             if (track.kind == TrackKind::Cloud && track.sample[0]) out += std::string("sound ") + track.sample + "\n"; // (CLOUD's recording: the sampler's line)
             put(out, "preset %.0f\n", track.preset + 1);
@@ -1078,6 +1112,17 @@ void readLines(SongReading& r, const std::string& text, std::size_t from, std::s
             double lane, amount;
             if (!(in >> lane >> amount) || !(lane >= 1) || lane > kDrumLanes || !isWhole(lane)) continue;
             track->laneSwing[static_cast<int>(lane) - 1] = laneSwingOf(wholeIn(amount, 0, 100)); // (held as a double first)
+        } else if (word == "slices" && track->kind == TrackKind::Drums) {
+            // Each place held as a double first; one missing, not a number, out of order or past the room ends
+            // the cuts there (cutsHeld). A SENSITIVITY nobody knows: none (by hand).
+            double lane = 0, sense = 0;
+            if (!(in >> lane >> sense) || !(lane >= 1) || lane > kDrumLanes || !isWhole(lane)) continue;
+            LaneCuts cuts;
+            cuts.count = 1;
+            cuts.sense = static_cast<std::uint8_t>(wholeIn(sense, 0, kSenseMost + 1));
+            double at = 0;
+            while (cuts.count < kMaxLaneCuts && (in >> at)) cuts.at[cuts.count++] = static_cast<float>(at > 0.0 && at < 1.0 ? at : 0.0);
+            track->laneCuts[static_cast<int>(lane) - 1] = slices::cutsHeld(cuts);
         } else if (word == "choke" && track->kind == TrackKind::Drums) {
             double lane, group;
             if (!(in >> lane >> group) || !(lane >= 1) || lane > kDrumLanes || !isWhole(lane)) continue;
@@ -1095,6 +1140,22 @@ void readLines(SongReading& r, const std::string& text, std::size_t from, std::s
             end = std::min(sampler::playedEnd(track->sampler[sampler::Start], end), sampler::settingMax(sampler::End));
         } else if (word == "chop" && track->kind == TrackKind::Sampler) {
             track->samplerChop = true;
+        } else if (word == "sampleredit" && track->kind == TrackKind::Sampler) {
+            // As laneedit's numbers (no lane, no PITCH or FINE): one missing or not a number ends the line there.
+            double v[6] = {0, 1, 0, 0, 0, 0};
+            for (double& one : v) {
+                double read = 0;
+                if (!(in >> read)) break;
+                one = read;
+            }
+            LaneEdit e;
+            e.start = static_cast<int>(std::lround(fractionIn(v[0], 0.f, 1.f) * kEditUnits));
+            e.end = static_cast<int>(std::lround(fractionIn(v[1], 0.f, 1.f) * kEditUnits));
+            e.gain = static_cast<int>(std::lround(fractionIn(v[2], -kGainMost / 10.f, kGainMost / 10.f) * 10.f));
+            e.fadeIn = wholeIn(v[3], 0, kFadeMost);
+            e.fadeOut = wholeIn(v[4], 0, kFadeMost);
+            e.reverse = wholeIn(v[5], 0, 1);
+            track->samplerEdit = laneEditHeld(e, 0.f);
         } else if (oldSound && (word == "preset" || word == "macros" || word == "settings")) {
             continue; // an old Twin Analog or QMOD track's sound: it plays the first preset, the knobs in the middle
         } else if (word == "preset") {
@@ -1129,6 +1190,10 @@ void readLines(SongReading& r, const std::string& text, std::size_t from, std::s
         } else if (word == "bars") {
             double b;
             if (in >> b) track->bars[scene] = b < 2 ? 1 : (b < 4 ? 2 : (b < 8 ? 4 : 8));
+            if (track->bars[scene] >= kMaxBars) track->fill[scene] = kFillNone; // (a cell of eight bars has no FILL)
+        } else if (word == "fill") {
+            double on;
+            if ((in >> on) && track->bars[scene] < kMaxBars) track->fill[scene] = on == 1 ? kFillOn : kFillOff; // (a number not known: made, off)
         } else if (word == "bar") {
             double b;
             bar = (in >> b) && b >= 1 && b <= kMaxBars && isWhole(b) ? static_cast<int>(b) - 1 : -1;
@@ -1607,6 +1672,7 @@ void copyKit(const TrackData& from, TrackData& to) {
         to.laneFeel[lane] = from.laneFeel[lane];
         to.laneSwing[lane] = from.laneSwing[lane];
         to.laneChoke[lane] = from.laneChoke[lane];
+        to.laneCuts[lane] = from.laneCuts[lane];
     }
 }
 
@@ -1616,7 +1682,7 @@ bool readKit(const std::string& text, TrackData& kit) {
     if (line == std::string::npos) return false;
     // A kit holds only a kit's own lines: anything else (a scene, another track) is refused here,
     // not read as a song and silently dropped from what comes back.
-    static const char* const kitWords[] = {"lanes", "sample", "lanefit", "lanesynth", "oneslice", "laneedit", "feel", "swing", "choke"};
+    static const char* const kitWords[] = {"lanes", "sample", "lanefit", "lanesynth", "oneslice", "laneedit", "feel", "swing", "choke", "slices"};
     std::size_t at = line + 1;
     while (at < text.size()) {
         const std::size_t stop = text.find('\n', at);

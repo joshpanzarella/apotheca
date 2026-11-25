@@ -672,7 +672,7 @@ void testSamplerFromThePage() {
     }
     rig.frames(3);
     CHECK(specNumber(rig.get("/design/state").body) == before + 1); // nothing changed: the page is not sent it again
-    CHECK(has(state, "\"name\":\"SAMPLER\",") && has(state, "\"preset\":-1") && valuesOf(state) == "\"values\":[60,0,0,0,20,0,80,100]" );
+    CHECK(has(state, "\"name\":\"SAMPLER\",") && has(state, "\"preset\":-1") && valuesOf(state) == "\"values\":[60,0,0,0,20,0,80,100,0]" );
 
     // START from the page: the track has it, the engine plays from there.
     rig.loud();
@@ -680,7 +680,7 @@ void testSamplerFromThePage() {
     CHECK(rig.tell("set 2 50") && rig.track().sampler[sampler::Start] == 50);
     const float fromMiddle = rig.loud();
     CHECK(fromMiddle > 3.f * fromTop);
-    CHECK(valuesOf(rig.get("/design/state").body) == "\"values\":[60,0,50,0,20,0,80,100]");
+    CHECK(valuesOf(rig.get("/design/state").body) == "\"values\":[60,0,50,0,20,0,80,100,0]");
     // START and END never cross, from the page as on the handheld.
     CHECK(rig.tell("set 7 30") && rig.track().sampler[sampler::End] == 51);
     CHECK(rig.tell("set 2 99") && rig.track().sampler[sampler::Start] == 50);
@@ -689,6 +689,14 @@ void testSamplerFromThePage() {
     CHECK(rig.tell("set 7 -40") && rig.track().sampler[sampler::End] == 80);
     CHECK(rig.tell("set 2 -40") && rig.track().sampler[sampler::Start] == 0);
     CHECK(rig.tell("set 7 400") && rig.track().sampler[sampler::End] == 100);
+    // LOOP START (8) from the page as on the handheld (sampler::heldApart): at or before START it is 0, its usual,
+    // so the song writes no 9th number that plays as the usual; past END less a percent, that.
+    CHECK(rig.tell("set 2 20") && rig.tell("set 8 5") && rig.track().sampler[sampler::LoopStart] == 0);
+    CHECK(rig.tell("set 8 20") && rig.track().sampler[sampler::LoopStart] == 0);
+    CHECK(rig.tell("set 8 50") && rig.track().sampler[sampler::LoopStart] == 50);
+    CHECK(rig.tell("set 8 100") && rig.track().sampler[sampler::LoopStart] == 99);
+    CHECK(rig.tell("set 8 21") && rig.track().sampler[sampler::LoopStart] == 21);
+    CHECK(rig.tell("set 8 0") && rig.tell("set 2 0") && rig.track().sampler[sampler::LoopStart] == 0 && rig.track().sampler[sampler::Start] == 0);
     // PITCH, kept as the root key: 72 plays middle C an octave down.
     const int high = rig.crossings();
     CHECK(rig.tell("set 0 72") && rig.track().sampler[sampler::Root] == 72);
@@ -698,7 +706,7 @@ void testSamplerFromThePage() {
     // A setting that is not there changes nothing; nor do a synth's requests.
     int kept[sampler::kSettings];
     std::copy(rig.track().sampler, rig.track().sampler + sampler::kSettings, kept);
-    CHECK(rig.tell("set 8 5") && rig.tell("set -1 5") && rig.tell("macro 0 0.9") && rig.tell("preset 1") && rig.tell("roll 4") && rig.tell("save mine"));
+    CHECK(rig.tell("set 9 5") && rig.tell("set -1 5") && rig.tell("macro 0 0.9") && rig.tell("preset 1") && rig.tell("roll 4") && rig.tell("save mine"));
     CHECK(std::equal(kept, kept + sampler::kSettings, rig.track().sampler) && !exists(rig.root + "/presets/MINE.sampler") && !exists(rig.root + "/presets/MINE"));
 
     // Its key: down, it sounds and goes on; up, it stops.
@@ -754,7 +762,7 @@ void testSamplerFromThePage() {
     // What is turned on the handheld shows on the page; what is turned on the page is a step of undo.
     session.setSamplerSetting(track, sampler::Level, 33);
     rig.frames(1);
-    CHECK(has(valuesOf(rig.get("/design/state").body), ",33,100]"));
+    CHECK(has(valuesOf(rig.get("/design/state").body), ",33,100,0]"));
     for (int i = 0; i < 4; ++i) rig.frames(30);
     CHECK(rig.tell("set 6 70") && rig.track().sampler[sampler::Level] == 70);
     for (int i = 0; i < 4; ++i) rig.frames(30);
@@ -847,7 +855,15 @@ void testKitFromThePage() {
     CHECK(has(spec, "{\"name\":\"GAIN\",\"field\":4,\"min\":-240,\"max\":240,\"texts\":[\"-24.0 DB\",\"-23.9 DB\",") && has(spec, "\"-0.1 DB\",\"0 DB\",\"+0.1 DB\",") && has(spec, "\"+24.0 DB\"]}"));
     CHECK(has(spec, "{\"name\":\"PITCH\",\"field\":5,\"min\":-24,\"max\":24,\"texts\":[\"-24\",") && has(spec, "\"-1\",\"0\",\"+1\",") && has(spec, "{\"name\":\"FINE\",\"field\":6,\"min\":-50,\"max\":50,\"texts\":[\"-50 CENTS\","));
     CHECK(has(spec, "{\"name\":\"REVERSE\",\"field\":7,\"min\":0,\"max\":1,\"texts\":[\"OFF\",\"ON\"]}"));
-    CHECK(has(spec, "{\"name\":\"FIT TO\",\"field\":8,\"stops\":[0,1,2,4,8,16,32,64],\"texts\":[\"OFF\",\"1 STEP\",\"2 STEPS\",\"4 STEPS\",\"8 STEPS\",\"1 BAR\",\"2 BARS\",\"4 BARS\"]}"));
+    CHECK(has(spec, "{\"name\":\"FIT TO\",\"field\":8,\"stops\":[0,1,2,3,4,6,8,12,16,24,32,48,64],\"texts\":[\"OFF\",\"1 STEP\",\"2 STEPS\",\"3 STEPS\",\"4 STEPS\",\"6 STEPS\",\"8 STEPS\",\"12 STEPS\",\"1 BAR\",\"24 STEPS\",\"2 BARS\",\"3 BARS\",\"4 BARS\"]}"));
+    { // (batch S1) in the scene's meter: in 3/4, 12 is a bar
+        const int meter = rig.app.project().sceneMeter[rig.app.project().scene];
+        session.setSceneMeter(rig.app.project().scene, 12);
+        rig.frames(1); // (the handheld makes the spec again: the meter it was made in changed)
+        CHECK(has(rig.get("/design/spec").body, "\"texts\":[\"OFF\",\"1 STEP\",\"2 STEPS\",\"3 STEPS\",\"4 STEPS\",\"6 STEPS\",\"8 STEPS\",\"1 BAR\",\"16 STEPS\",\"2 BARS\",\"32 STEPS\",\"4 BARS\",\"64 STEPS\"]}"));
+        session.setSceneMeter(rig.app.project().scene, meter);
+        rig.frames(1);
+    }
     CHECK(has(spec, "{\"name\":\"CHOKE\",\"field\":9,\"min\":0,\"max\":2,\"texts\":[\"NONE\",\"1\",\"2\"]}") && has(spec, "{\"name\":\"VOLUME\",\"field\":10,\"min\":0,\"max\":100,\"texts\":[\"0%\",\"1%\","));
     CHECK(has(spec, "{\"name\":\"HUMAN TIME\",\"field\":11,\"stops\":[0,10,25,50,75,100],\"texts\":[\"OFF\",\"10%\",\"25%\",\"50%\",\"75%\",\"100%\"]}") && has(spec, "{\"name\":\"HUMAN LEVEL\",\"field\":12,"));
     CHECK(has(spec, "{\"lane\":0,\"drum\":\"KICK\",") && has(spec, "{\"lane\":3,\"drum\":\"OP HAT\",") && has(spec, "{\"lane\":7,\"drum\":\"CRASH\","));

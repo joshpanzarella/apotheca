@@ -182,7 +182,7 @@ void SettingsScreen::change(int by) {
     case kPack: session_.choosePack(session_.packIndex() + by); break;
     case kKey: session_.setScale(project_.scaleKey + by, project_.scaleKind); break; // (round: B to C)
     case kScale: session_.setScale(project_.scaleKey, project_.scaleKind + by); break; // (a choice with ends)
-    case kBounce: bounceWhat_ = ((bounceWhat_ + by) % 4 + 4) % 4; break;
+    case kBounce: bounceWhat_ = ((bounceWhat_ + by) % kBounceKinds + kBounceKinds) % kBounceKinds; break;
     case kTrackName: {
         // Through the list of names, round and round; the first is "its instrument's own".
         int now = 0;
@@ -310,7 +310,7 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
             const bool tap = aTap_ && aRow_ == row_;
             aTap_ = false;
             if (tap && row_ == kBounce && !session_.bouncing())
-                session_.startBounce(bounceWhat_ == 0 ? Session::Bounce::Song : bounceWhat_ == 1 ? Session::Bounce::EachTrack : bounceWhat_ == 2 ? Session::Bounce::ThisTrack : Session::Bounce::MidiFile);
+                session_.startBounce(bounceWhat_ == 0 ? Session::Bounce::Song : bounceWhat_ == 1 ? Session::Bounce::EachTrack : bounceWhat_ == 2 ? Session::Bounce::ThisTrack : bounceWhat_ == 3 ? Session::Bounce::MidiFile : Session::Bounce::ToSamples);
             if (tap && row_ == kTrackName) openName(false);
             return;
         }
@@ -605,7 +605,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             break;
         }
         case kBounce: {
-            static const char* what[4] = {"THE SONG", "EACH TRACK", "THIS TRACK", "MIDI FILE"};
+            static const char* what[kBounceKinds] = {"THE SONG", "EACH TRACK", "THIS TRACK", "MIDI FILE", "TRACK TO SAMPLES"};
             if (session_.bouncing()) {
                 // The song's own length is known, so that part is a percentage. A tail's is not
                 // (it runs until it has died away): it says how much of it there is so far.
@@ -616,8 +616,10 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 note = stopPart_ > 0.f || session_.bounceStopping() ? kStoppingWords : tail >= 0.f ? "until the echoes have died away" : "you can carry on meanwhile";
             } else {
                 std::snprintf(text, sizeof text, "%s", what[bounceWhat_]);
-                if (session_.bounceFiles() > 0) std::snprintf(bounced_, sizeof bounced_, "done: %d file%s, on the WiFi page", session_.bounceFiles(), session_.bounceFiles() == 1 ? "" : "s");
-                note = session_.bounceFiles() > 0 ? bounced_ : (bounceWhat_ == 3 ? "A: write it as a MIDI file" : "A: write it as a WAV file");
+                const std::string sample = session_.bounceSample();
+                if (!sample.empty()) std::snprintf(bounced_, sizeof bounced_, "done: \"%s\" in recordings", sample.c_str());
+                else if (session_.bounceFiles() > 0) std::snprintf(bounced_, sizeof bounced_, "done: %d file%s, on the WiFi page", session_.bounceFiles(), session_.bounceFiles() == 1 ? "" : "s");
+                note = session_.bounceFiles() > 0 ? bounced_ : (bounceWhat_ == 3 ? "A: write it as a MIDI file" : bounceWhat_ == 4 ? "A: this scene's loop, into recordings" : "A: write it as a WAV file");
             }
             break;
         }

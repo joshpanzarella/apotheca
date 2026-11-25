@@ -84,6 +84,10 @@ if(APOTHECA_BUILD_TESTS)
   add_executable(feel_test tests/feel_test.cpp)
   target_link_libraries(feel_test PRIVATE apotheca_engine)
   add_test(NAME feel COMMAND feel_test)
+  # The FILL (fill_rule.hpp): a cell's extra bar in the scene's last bar, its last time round.
+  add_executable(fill_test tests/fill_test.cpp)
+  target_link_libraries(fill_test PRIVATE apotheca_engine)
+  add_test(NAME fill COMMAND fill_test)
   # SWING (feel_rule.hpp): every second sixteenth of a drum lane late, up to a triplet.
   add_executable(swing_test tests/swing_test.cpp)
   target_link_libraries(swing_test PRIVATE apotheca_engine)
@@ -92,6 +96,10 @@ if(APOTHECA_BUILD_TESTS)
   add_executable(choke_test tests/choke_test.cpp)
   target_link_libraries(choke_test PRIVATE apotheca_engine)
   add_test(NAME choke COMMAND choke_test)
+  # SLICES AT THE HITS (slice_rule.hpp): the hit finder on loops built by hand, and the engine playing a lane's cuts.
+  add_executable(slices_test tests/slices_test.cpp)
+  target_link_libraries(slices_test PRIVATE apotheca_engine)
+  add_test(NAME slices COMMAND slices_test)
   # The JX-3P (docs/plans/jx3p-plan.md): the skeleton, its voices, tick, envelope and VCA. It reads
   # the synth's own parts (engine/src/jx3p/) and the shared measuring tools.
   add_executable(jx3p_test tests/jx3p_test.cpp)
@@ -162,7 +170,7 @@ if(APOTHECA_BUILD_TESTS)
   # never followed; and no test source makes one another way (33,000 left behind filled the disk).
   add_executable(temp_test tests/temp_test.cpp)
   add_test(NAME temp COMMAND temp_test ${CMAKE_SOURCE_DIR})
-  set_tests_properties(engine phazed song effects1 effects2 throw feel swing choke glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets fm6 mod physic acid cloud drumsynth morph load temp PROPERTIES TIMEOUT 120)
+  set_tests_properties(engine phazed song effects1 effects2 throw feel fill swing choke glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets fm6 mod physic acid cloud drumsynth morph load temp PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.
@@ -174,7 +182,7 @@ if(APOTHECA_BUILD_APP)
   find_package(Threads REQUIRED)
   # Everything of the app but main(): compiled ONCE, and linked by the program and by every test
   # of it. (It used to be compiled again for each of the nine tests: ten times in all.)
-  add_library(apotheca_app STATIC app/app.cpp app/lane_edit.cpp app/bench_run.cpp app/chords.cpp app/controls.cpp app/sampler_screen.cpp app/settings_screen.cpp app/samples.cpp app/stretch.cpp app/stretch_smooth.cpp app/fx_screen.cpp app/fx_picture.cpp app/icons.cpp app/stills.cpp app/input.cpp app/kit_screen.cpp app/note_screen.cpp app/pattern_screen.cpp app/pattern_slices.cpp
+  add_library(apotheca_app STATIC app/app.cpp app/lane_edit.cpp app/edit_view.cpp app/bench_run.cpp app/chords.cpp app/controls.cpp app/sampler_screen.cpp app/settings_screen.cpp app/samples.cpp app/stretch.cpp app/stretch_smooth.cpp app/fx_screen.cpp app/fx_picture.cpp app/icons.cpp app/stills.cpp app/input.cpp app/kit_screen.cpp app/catch_key.cpp app/note_screen.cpp app/pattern_screen.cpp app/pattern_slices.cpp
       app/instruments.cpp app/synth_screen.cpp app/mod_knob.cpp app/mod_screen.cpp app/recorder.cpp app/session.cpp app/session_songs.cpp app/session_synth.cpp app/session_samples.cpp app/kits.cpp app/sampler_presets.cpp app/song_file.cpp app/song_screen.cpp app/synth_spec.cpp app/presets.cpp app/drum_voices.cpp app/transfer.cpp app/wifi.cpp app/midi.cpp app/bounce.cpp app/sample_picker.cpp app/name_keys.cpp app/designer.cpp app/design_page.cpp
       app/text.cpp app/ui.cpp app/realtime.cpp app/redraw.cpp app/lights.cpp
       app/version.cpp)
@@ -200,13 +208,13 @@ if(APOTHECA_BUILD_APP)
 
   if(APOTHECA_BUILD_TESTS)
     # The app driven without a window or a sound card: one test program for each part of it.
-    foreach(name ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp chokeapp picker bench modapp modknob modtab presets laneedit copybar drumsynthapp lights easy wifi follow chordstress copyscene)
+    foreach(name ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp chokeapp picker bench modapp modknob modtab presets laneedit copybar drumsynthapp lights easy wifi follow chordstress copyscene fillapp fillscreens)
       add_executable(${name}_test tests/${name}_test.cpp)
       target_link_libraries(${name}_test PRIVATE apotheca_app)
       add_test(NAME ${name} COMMAND ${name}_test)
     endforeach()
     # A test that hangs is a failed test in two minutes, not a run that never ends.
-    set_tests_properties(ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp chokeapp picker bench modapp modknob modtab presets laneedit copybar drumsynthapp lights easy wifi follow chordstress copyscene PROPERTIES TIMEOUT 120)
+    set_tests_properties(ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp chokeapp picker bench modapp modknob modtab presets laneedit copybar drumsynthapp lights easy wifi follow chordstress copyscene fillapp fillscreens PROPERTIES TIMEOUT 120)
     # PHYSIC's added presets played through their whole sound (slots, sends, MODs), each held to a
     # loudness window, no clip, a tail that ends and MODs that move (docs/plans/physic-plan.md, section 17).
     add_test(NAME presets_heard COMMAND presets_test --heard)

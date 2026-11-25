@@ -11,9 +11,11 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 #include <memory>
 
 #include "drum_voices.hpp"
+#include "samples.hpp"
 #include "song_file.hpp"
 
 namespace apotheca {
@@ -121,6 +123,7 @@ bool Session::putKit(int track, const TrackData& kit) {
         setLaneEdit(track, lane, kit.laneEdit[lane]);
         setLaneFit(track, lane, kit.laneFit[lane]);
         setLaneOneSlice(track, lane, kit.laneOneSlice[lane]);
+        setLaneCuts(track, lane, kit.laneCuts[lane]); // (after the sound: another sound makes its slices EVEN)
         setLaneLevel(track, lane, kit.laneLevel[lane]);
         setLaneFeel(track, lane, kit.laneFeel[lane].time, kit.laneFeel[lane].level);
         setLaneSwing(track, lane, kit.laneSwing[lane]);
@@ -156,6 +159,111 @@ std::string Session::saveKit(int track) {
         return name;
     }
     return "";
+}
+
+// ---- a folder as a kit (batch S1) ---------------------------------------------------------
+
+namespace {
+
+// A recording's name by itself, as words: small letters and numbers apart, anything else a gap.
+std::vector<std::string> nameWords(const std::string& recording) {
+    std::vector<std::string> words;
+    std::string word;
+    int was = 0; // 1 a letter, 2 a number
+    for (char raw : sampleLabel(recording)) {
+        const char c = static_cast<char>(raw >= 'A' && raw <= 'Z' ? raw + 32 : raw);
+        const int kind = c >= 'a' && c <= 'z' ? 1 : (c >= '0' && c <= '9' ? 2 : 0);
+        if ((kind != was || kind == 0) && !word.empty()) words.push_back(word), word.clear();
+        if (kind) word += c;
+        was = kind;
+    }
+    if (!word.empty()) words.push_back(word);
+    return words;
+}
+
+bool hasWord(const std::vector<std::string>& words, std::initializer_list<const char*> any) {
+    for (const std::string& w : words)
+        for (const char* a : any)
+            if (w == a) return true;
+    return false;
+}
+
+enum class Kind { Other, Kick, Snare, Clap, ClosedHat, OpenHat };
+
+Kind kindOf(const std::string& recording) {
+    const std::vector<std::string> w = nameWords(recording);
+    const bool hat = hasWord(w, {"hat", "hats", "hihat", "hihats", "hh"});
+    if (hasWord(w, {"oh", "ohh", "ophat", "openhat"}) || (hat && hasWord(w, {"open"}))) return Kind::OpenHat;
+    if (hat || hasWord(w, {"ch", "chh", "clhat", "closedhat"})) return Kind::ClosedHat;
+    if (hasWord(w, {"kick", "kicks", "bd"})) return Kind::Kick;
+    if (hasWord(w, {"snare", "snares", "sd"})) return Kind::Snare;
+    if (hasWord(w, {"clap", "claps"})) return Kind::Clap;
+    return Kind::Other;
+}
+
+} // namespace
+
+bool folderKitHat(const std::string& recording) {
+    const Kind kind = kindOf(recording);
+    return kind == Kind::ClosedHat || kind == Kind::OpenHat;
+}
+
+void folderKitLanes(const std::vector<std::string>& recordings, std::string lanes[kDrumLanes]) {
+    for (int lane = 0; lane < kDrumLanes; ++lane) lanes[lane].clear();
+    std::vector<bool> used(recordings.size(), false);
+    std::vector<Kind> kinds;
+    for (const std::string& r : recordings) kinds.push_back(kindOf(r));
+    // Lanes 1 to 4 by name: each the first of its kind (lane 2 a snare before a clap).
+    const struct { int lane; Kind first, second; } wanted[] = {
+        {0, Kind::Kick, Kind::Kick}, {1, Kind::Snare, Kind::Clap}, {2, Kind::ClosedHat, Kind::ClosedHat}, {3, Kind::OpenHat, Kind::OpenHat}};
+    for (const auto& w : wanted)
+        for (Kind k : {w.first, w.second})
+            for (std::size_t i = 0; i < recordings.size() && lanes[w.lane].empty(); ++i)
+                if (!used[i] && kinds[i] == k) lanes[w.lane] = recordings[i], used[i] = true;
+    // Then every lane still empty, in order: the rest in name order.
+    std::size_t next = 0;
+    for (int lane = 0; lane < kDrumLanes; ++lane) {
+        if (!lanes[lane].empty()) continue;
+        while (next < recordings.size() && used[next]) ++next;
+        if (next == recordings.size()) break;
+        lanes[lane] = recordings[next];
+        used[next] = true;
+    }
+}
+
+std::vector<std::string> Session::kitFolders() const {
+    const std::vector<std::string> names = sampleNames();
+    std::vector<std::string> folders;
+    for (const std::string& folder : sampleFolders())
+        for (const std::string& name : names)
+            if (sampleFolderOf(name) == folder) {
+                folders.push_back(folder);
+                break;
+            }
+    return folders;
+}
+
+bool Session::loadFolderKit(int track, const std::string& folder) {
+    if (track < 0 || track >= kNumTracks || project.tracks[track].kind != TrackKind::Drums || folder.empty()) return false;
+    std::vector<std::string> here;
+    for (const std::string& name : sampleNames())
+        if (sampleFolderOf(name) == folder) here.push_back(name); // (in name order: wavNames sorts each folder's)
+    if (here.empty()) return false;
+    std::string lanes[kDrumLanes];
+    folderKitLanes(here, lanes);
+    std::unique_ptr<TrackData> kit(new TrackData); // (every lane field at a new track's)
+    for (int lane = 0; lane < kDrumLanes; ++lane) {
+        std::snprintf(kit->laneSample[lane], sizeof kit->laneSample[lane], "%s", lanes[lane].c_str());
+        kit->laneChoke[lane] = static_cast<std::uint8_t>((lane == 2 || lane == 3) && folderKitHat(lanes[lane]) ? 1 : kChokeNone);
+    }
+    if (!putKit(track, *kit)) return false;
+    folderKits_[track] = {folder, kitText(project.tracks[track])};
+    return true;
+}
+
+std::string Session::folderKitOf(int track) const {
+    if (track < 0 || track >= kNumTracks || folderKits_[track].folder.empty() || project.tracks[track].kind != TrackKind::Drums) return "";
+    return kitText(project.tracks[track]) == folderKits_[track].text ? folderKits_[track].folder : "";
 }
 
 bool Session::deleteKit(int index) {

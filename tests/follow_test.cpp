@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "apotheca/engine.hpp"
+#include "apotheca/fill_rule.hpp"
 #include "app.hpp"
 #include "follow_bar.hpp"
 
@@ -78,6 +79,88 @@ void testTheRule() {
     CHECK(f.step(true, 0, true, 5000) == -1);   // entered while held: not followed
     CHECK(f.step(false, -1, false, 9000) == -1);
     CHECK(f.step(true, 0, false, 9016) == 0);   // played again: its bar at once
+}
+
+// A cell's FILL (fill_rule.hpp): looked at by hand, the view holds still on it, however long the controls rest;
+// FOLLOW shows it when it plays, and follows on from it, unless the player works on it meanwhile.
+void testTheFillRule() {
+    BarFollow f;
+    // On the FILL by hand: no bar entered takes the view, rest or not.
+    CHECK(f.step(true, 0, false, 100, kFillSlot, true) == -1);         // Play: not its bar
+    CHECK(f.step(true, kFillSlot, false, 2100, kFillSlot, true) == -1); // the FILL plays: it is there already
+    CHECK(f.step(true, 0, false, 4100, kFillSlot, true) == -1);         // long after any touch: held
+    // Moved off by hand: followed as ever from the next bar entered.
+    CHECK(f.step(true, 0, false, 4200, 0, false) == -1);                       // (the same bar: nothing)
+    CHECK(f.step(true, kFillSlot, false, 6100, 0, false) == kFillSlot);        // FOLLOW shows the FILL as it plays
+    CHECK(f.step(true, kFillSlot, false, 6116, kFillSlot, true) == -1);        // (no new bar)
+    CHECK(f.step(true, 0, false, 8100, kFillSlot, true) == 0);                 // put there by FOLLOW: followed on
+    // Shown by FOLLOW, then worked on (a button held there): held still.
+    CHECK(f.step(true, kFillSlot, false, 10100, 0, false) == kFillSlot);
+    CHECK(f.step(true, kFillSlot, true, 10200, kFillSlot, true) == -1);
+    CHECK(f.step(true, 0, false, 14100, kFillSlot, true) == -1);
+    CHECK(f.step(true, kFillSlot, false, 16100, kFillSlot, true) == -1);
+    // Shown by FOLLOW, moved off and back by hand (no button counted): held, the player put it there.
+    BarFollow g;
+    CHECK(g.step(true, kFillSlot, false, 100, 0, false) == kFillSlot);
+    CHECK(g.step(true, kFillSlot, false, 116, 0, false) == -1);         // the view on another bar (by hand)
+    CHECK(g.step(true, kFillSlot, false, 132, kFillSlot, true) == -1);  // ...and back
+    CHECK(g.step(true, 0, false, 4000, kFillSlot, true) == -1);
+    // An eighth bar of the cell's own (no FILL) is followed off as any bar.
+    BarFollow h;
+    CHECK(h.step(true, 0, false, 100, kFillSlot, false) == 0);
+}
+
+// Both grids through the App: a one-bar cell with a FILL, REPEATS 2, the scene alone. The FILL plays on every
+// second time round: FOLLOW shows it then, and bar 1 after it; the FILL gone to by hand holds the view.
+void fillOn(Rig& rig, const char* what) {
+    Session& s = rig.app.session();
+    const int track = rig.project().track;
+    CHECK(s.makeFill(track, 0) == Session::Fill::Made);
+    rig.project().repeats[0] = 2;
+    Command c;
+    c.type = Command::SetSceneRepeats;
+    c.a = 2;
+    s.engine.send(c);
+    rig.project().bar = 0;
+    rig.frames(3);
+    s.togglePlay(false);
+    const auto until = [&](int bar) {
+        for (int i = 0; i < 400; ++i) {
+            rig.frames(1);
+            if (rig.project().playStep >= 0 && rig.project().cellBarPlaying(track) == bar) return true;
+        }
+        return false;
+    };
+    CHECK(until(kFillSlot));
+    rig.frames(1);
+    CHECK(rig.project().bar == kFillSlot); // shown as it plays
+    if (rig.project().bar != kFillSlot) std::printf("  (%s: the FILL played)\n", what);
+    CHECK(until(0));
+    rig.frames(1);
+    CHECK(rig.project().bar == 0); // ...and followed on from
+    // Gone to by hand: held through two whole times round (eight seconds, no button touched).
+    rig.project().bar = kFillSlot;
+    rig.frames(500);
+    CHECK(rig.project().bar == kFillSlot);
+    if (rig.project().bar != kFillSlot) std::printf("  (%s: the FILL by hand)\n", what);
+    // Moved off by hand: followed again.
+    rig.project().bar = 0;
+    CHECK(until(kFillSlot));
+    rig.frames(1);
+    CHECK(rig.project().bar == kFillSlot);
+    s.togglePlay(false);
+    rig.frames(5);
+}
+
+void testTheFillOnBothGrids() {
+    {
+        Rig rig;
+        fillOn(rig, "drum grid");
+    }
+    Rig rig;
+    CHECK(rig.app.session().setTrackKind(rig.project().track, TrackKind::Phazed));
+    rig.frames(5);
+    fillOn(rig, "roll");
 }
 
 // The grid shown for the current track (drum grid or roll) follows a two-bar cell.
@@ -222,6 +305,8 @@ void testTheRollsKeys() {
 
 int main() {
     testTheRule();
+    testTheFillRule();
+    testTheFillOnBothGrids();
     testTheDrumGrid();
     testTheRoll();
     testTheKeysRule();

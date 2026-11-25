@@ -499,13 +499,16 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     SONG's scene tempo with L1 (90 BPM), the mixer (24 dB, 60 pan steps), MACRO (2), a MOD's DEPTH (1.2), FX's
     and MOD's turns (0.9, 1.8), a synth's setting (1.5 of its range), the sampler's settings, EDIT's boxes and
     VOICE's knobs (their range), the roll's level (3), **the roll's note length (10 steps) and a carried note
-    slid in time (6 steps)**. A turn is now as fast at the dead zone's edge as all the way over: the fine move is
+    slid in time (6 steps)**, a slice's cut with Y held in the slice view (a quarter second of sound, `kCutSlideSeconds`;
+    SLICES AT THE HITS, on merging the sampling lane). A turn is now as fast at the dead zone's edge as all the way over: the fine move is
     the D-pad's.
   - **A choice clicks** (CLAUDE.md: "Choices (a filter type) click once per push; they are not sliders").
     **Once a push, however far and however long**: the sampler's LOOP and EDIT's REVERSE (up ON, down OFF), BARS
     on both grids (1, 2, 4, 8) and VOICE's MODEL; any push past the dead zone, though not a sideways one that
     drifts (`stickAxes`). LOOP, REVERSE and MODEL were once a push past half, the roll's BARS too, the drum
-    grid's BARS a 2.25-a-second fill. **A choice with more values, with A held** (FX's choice dials: the filter
+    grid's BARS a 2.25-a-second fill. CATCH's choice with Y held (bars and what, `CatchKey::stick`) is once a push
+    too, the larger way (past 0.6 on the sampling lane, merged after). The slice view's SENSITIVITY (A held on the
+    lane's name: EVEN, AT HITS 1 to 10) clicks at once and runs at twice the list's pace, as the choices below. **A choice with more values, with A held** (FX's choice dials: the filter
     TYPE, the delay TIME, BAND's SHAPE; a synth's choice, a wave or a type), clicks at once and, held on, runs at
     **twice the LIST's pace** (13.6 a second at 75%), not twice the cursor's its held D-pad was left at (G08's
     "not made slower", the owner's question): the only place the stick does not run at twice its D-pad. At
@@ -809,6 +812,17 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   while the song plays the scene on screen; never while a button is held or the stick pushed, nor
   `kFollowRestMs` (1.5 s) after, so a bar looked at by hand stays until the playhead next enters a bar.
   The cursor keeps its step.
+  **A cell's FILL looked at by hand holds the view still** (F2-fill-screens, 2026-11-25: the plan's question 3,
+  "Should it hold still on the FILL instead (recommended)?", approved with the plan; the rule's change is
+  Claude's, open to the owner). The rule above, quoted: "a bar looked at by hand stays until the playhead next
+  enters a bar" (and 1.5 s after the controls rest): on the FILL, which plays once in REPEATS rounds, that took
+  the view back to the bar playing a moment after the player stopped pressing, in the middle of drawing it.
+  Now, while the view is on the FILL because the player put it there, or worked on it there (anything held or
+  pushed while it is shown), no bar entered moves it, however long the rest; only the player moves it off. A
+  FILL that FOLLOW itself showed (it played) is followed on from as any bar. `BarFollow::step` takes the bar
+  shown and whether it is the FILL, and remembers the bar it last put the view on (`put_`). The playing bar is
+  `Project::cellBarPlaying` (the FILL's place while it plays). `follow_test` `testTheFillRule`,
+  `testTheFillOnBothGrids`.
   **The roll's keys follow the notes too** (owner, 2026-11-24; `keysToShow` in follow_bar.hpp, `NoteScreen::followTheNotes`):
   when FOLLOW shows a bar, the keys go to the stretch holding the most of its notes (then the most of their length,
   then centred on them, then nearest where they were); a bar with none leaves them; the cursor, if left out of view,

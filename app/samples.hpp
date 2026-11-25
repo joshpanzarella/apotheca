@@ -2,7 +2,7 @@
 // Recordings for drum lanes: reading and writing WAV files.
 //
 // Whatever the file holds (8, 16, 24 or 32-bit whole numbers or 32-bit
-// floats, any sample rate, any number of channels) comes out the way the
+// floats, 4 kHz to 192 kHz, 1 to 8 channels: parseWav) comes out the way the
 // engine plays it: one channel, 48 kHz, and no longer than kMaxSampleSeconds (twenty seconds).
 
 #include <string>

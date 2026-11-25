@@ -40,6 +40,7 @@
 #include "apotheca/acid.hpp"
 #include "apotheca/cloud.hpp"
 #include "apotheca/morph.hpp"
+#include "apotheca/sampler.hpp"
 #include "apotheca/drum_synth.hpp"
 #include "app.hpp"
 #include "bench_run.hpp"
@@ -635,16 +636,48 @@ static void busiestMods(Engine& e, int mods) {
 }
 void apotheca::sendBusiestMods(Engine& engine, int mods) { busiestMods(engine, mods); }
 
+// The three lanes merged on 2026-11-25 (integration review), on top of the busiest song: CATCH's second ring
+// following track 1 (setCatchTrack, as the app does every frame on a drum track's screens), and that track's cell
+// with a FILL on (its eighth bar busy, the other step of every lane; the scene is one bar at REPEATS 1, so the FILL
+// is the bar that plays every time round). HALL's eight bent lines are in the busiest song already (every other
+// track). `fill` false: the following ring alone, against the plain song's row.
+static void mergedLanes(Engine& e, bool fill) {
+    e.setCatchTrack(0);
+    if (!fill) return;
+    std::vector<float> scratch(512);
+    Command c;
+    for (int lane = 0; lane < kDrumLanes; ++lane)
+        for (int step = (lane + 1) % 2; step < kSteps; step += 2) {
+            c = Command();
+            c.type = Command::SetStep;
+            c.track = 0;
+            c.bar = kFillSlot;
+            c.value = 1.f;
+            c.a = lane;
+            c.b = step;
+            e.send(c);
+        }
+    e.render(scratch.data(), 256);
+    c = Command();
+    c.type = Command::SetCellFill;
+    c.track = 0;
+    c.a = 1;
+    e.send(c);
+    e.render(scratch.data(), 256);
+}
+
 // The busiest song in real time: a block is worked out, then the thread sleeps until the next
 // is due, as the sound card's thread does. On its own thread, which asks for realtime priority
 // as the program's audio thread does (`realtime`), and the helpers as the program's do.
-static WholeSongTimes playWholeSong(int helpers, double seconds, bool realtime, int mods = 0, bool heaviest = false, bool typical = false) {
+// `merged`: 0 the song alone; 1 with CATCH's ring following a track; 2 with that and a FILL too (mergedLanes).
+static WholeSongTimes playWholeSong(int helpers, double seconds, bool realtime, int mods = 0, bool heaviest = false, bool typical = false, int merged = 0) {
     WholeSongTimes times;
     std::thread player([&] {
         if (realtime) times.realtime = makeThreadRealtime(70);
         std::unique_ptr<Engine> engine(new Engine);
         if (typical) typicalSong(*engine);
         else busiestSong(*engine), busiestMods(*engine, mods);
+        if (!typical && merged > 0) mergedLanes(*engine, merged > 1);
         std::vector<float> out(512);
         for (int i = 0; i < 400; ++i) { // two seconds, so every tail and bus is going
             engine->render(out.data(), 256);
@@ -1073,6 +1106,17 @@ static void wholeSongRows() {
         sayClocks(watch);
         if (h == helpers) break; // a machine of one core has no helpers: one row
     }
+    // The same song with what came in on 2026-11-25 (integration review): CATCH's ring following a track (against
+    // none: the rows above), then that and a FILL on the track's cell. Five seconds each.
+    std::printf("the busiest song with CATCH following track 1, then that and a FILL (HALL's bent lines are in all):\n");
+    for (int merged : {1, 2})
+        for (int h : {0, helpers}) {
+            const WholeSongTimes t = playWholeSong(h, 5.0, true, 0, false, false, merged);
+            char name[48];
+            std::snprintf(name, sizeof name, "%s, %d helper%s", merged == 1 ? "CATCH 1 track" : "CATCH + FILL", t.helpers, t.helpers == 1 ? "" : "s");
+            std::printf("  %-28s %5.1f%% of a block, 1 in 100 over %.2f ms, worst %.2f ms, %d of %d too late\n", name, 100.0 * t.meanMs / (256.0 / 48.0), t.p99Ms, t.worstMs, t.over, t.blocks);
+            if (h == helpers) break;
+        }
     // A typical song beside it (8 tracks, one effect each, sends, the master): what a player meets.
     std::printf("a typical song (8 tracks: two drums, ACID, JAX-EP, FM-6, PHAZED, PHYSIC, MORPH; one effect each, sends), in real time:\n");
     for (int h : {0, helpers}) {
@@ -1137,6 +1181,38 @@ static void cloudRow(const char* name, bool full) {
         ++blocks;
     }, 600);
     std::printf("  %-28s %5.2f%% of one core, %.1f grains\n", name, 100.0 * each / (256.0 / 48.0), blocks ? static_cast<double>(grains) / blocks : 0.0);
+}
+
+// The SAMPLER with a recording (S4, 2026-11-25): eight keys of a 4 s recording, every one sounding. `how`:
+//   0  LOOP off, held: the plain read, START to END
+//   1  LOOP on round a 50 ms part (START 40, END 41): the jump back comes every few ms
+//   2  LOOP off, END at 2%: every note in its END fade (from S4) half the time, played again each block
+static void samplerRow(const char* name, int how) {
+    std::unique_ptr<Sampler> synth(new Sampler);
+    synth->prepare(48000.f);
+    std::vector<float> recording(4 * 48000);
+    std::uint32_t x = 1;
+    for (float& v : recording) {
+        x = x * 1664525u + 1013904223u;
+        v = (static_cast<float>(x >> 8) / 8388608.f - 1.f) * 0.5f;
+    }
+    synth->setSample(recording.data(), static_cast<int>(recording.size()));
+    synth->setSetting(sampler::Release, 60);
+    if (how == 1) {
+        synth->setSetting(sampler::Loop, 1);
+        synth->setSetting(sampler::Start, 40);
+        synth->setSetting(sampler::End, 41);
+    }
+    if (how == 2) synth->setSetting(sampler::End, 2);
+    for (int k = 0; k < sampler::kVoices; ++k) synth->noteOn(40 + 3 * k, 0.9f);
+    std::vector<float> l(256), r(256);
+    synth->render(l.data(), r.data(), 256);
+    const double each = ms([&] {
+        if (how == 2)
+            for (int k = 0; k < sampler::kVoices; ++k) synth->noteOn(40 + 3 * k, 0.9f);
+        synth->render(l.data(), r.data(), 256);
+    }, 600);
+    std::printf("  %-28s %5.2f%% of one core\n", name, 100.0 * each / (256.0 / 48.0));
 }
 
 // MORPH (docs/plans/wavetable-plan.md, section 4): six keys of A and B with the SUB and LOW 12, the
@@ -1260,6 +1336,9 @@ int apotheca::runBench() {
     morphRow("MORPH asleep", 2);
     std::printf("  %-28s %7.1f ms (once, the first MORPH track)\n", "MORPH's 16 tables made", 1000.0 * Morph::tablesSeconds());
     instrument("Sampler (no recording)", SynthKind::Sampler, 8);
+    samplerRow("SAMPLER, 8 notes", 0);
+    samplerRow("SAMPLER, 8 looped, 50 ms", 1);
+    samplerRow("SAMPLER, 8 at END", 2);
 
     {
         std::unique_ptr<Engine> engine(new Engine);
@@ -1323,6 +1402,7 @@ int apotheca::runBench() {
         if (kind == EffectKind::Eq) effect("EQ, MID FREQ TURNING", kind, 2, 0.f, true);
         if (kind == EffectKind::Fold) effect("FOLD, DRIVE TURNING", kind, 0, 0.f, true);
         if (kind == EffectKind::Fuzz) effect("FUZZ, TONE TURNING", kind, 1, 0.f, true);
+        if (kind == EffectKind::Fuzz) effect("FUZZ, GATE TURNING", kind, 2, 0.f, true); // its area taken twice a point
         if (kind == EffectKind::Ring) effect("RING, SQUARE", kind, 1, 0.9f);
         if (kind == EffectKind::Ring) effect("RING, FREQ TURNING", kind, 0, 0.f, true);
         if (kind == EffectKind::Wear) effect("WEAR, DIRT 100%", kind, 1, 1.f);

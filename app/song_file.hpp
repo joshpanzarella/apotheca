@@ -153,7 +153,7 @@ bool renameRecordings(std::string& text, const std::vector<std::pair<std::string
 // the text has no such track (it is then as it was).
 // KIT PRESETS (easywins batch 7). A drum track's kit as a file's text: "apotheca-kit 1", then the kit's
 // lines exactly as a song file writes them under a drum track (lanes, sample, lanesynth, oneslice,
-// laneedit, feel, swing, choke). `readKit` reads one into `kit`'s kit fields (through parseSong: the one
+// laneedit, feel, swing, choke, slices). `readKit` reads one into `kit`'s kit fields (through parseSong: the one
 // reader), leaving everything else of it alone; false if the text is not a kit. `copyKit` copies those
 // fields from one track to another.
 std::string kitText(const TrackData& track);

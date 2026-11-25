@@ -1,9 +1,13 @@
 // Engine tests. No framework: each CHECK prints its line on failure and the
 // program exits non-zero if any failed.
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <string>
@@ -2538,6 +2542,118 @@ static void testCatchingTheLastBar() {
     CHECK(bar.size() == 288000u && about(bar[0], 0.2f * kTrackLevel));
 }
 
+// CATCH of 1, 2 or 4 bars (batch S3, 2026-11-25): the last whole bars, bar line to bar line; fewer where
+// fewer were played since Play or 4 would not fit the twenty seconds; their steps added up (3/4: 12 a bar).
+static void testCatchingSeveralBars() {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.4f)));
+    engine->send(step(0, 0, 1.f));
+    engine->send(make(Command::Play, 0, 0, 1));
+    renderFrames(*engine, 16 * kStep + 3 * kStep);
+    // One whole bar played: 4 asked, 1 given (no bar's worth from before Play).
+    Engine::Caught c = engine->lastBars(4);
+    CHECK(c.bars == 1 && c.steps == 16 && c.sound.size() == 16u * kStep);
+    CHECK(c.sound == engine->lastBar());
+    renderFrames(*engine, 2 * 16 * kStep);
+    c = engine->lastBars(4);
+    CHECK(c.bars == 3 && c.steps == 48 && c.sound.size() == 48u * kStep);
+    for (int bar = 0; bar < 3; ++bar) CHECK(about(c.sound[static_cast<std::size_t>(bar * 16 * kStep)], 0.2f * kTrackLevel));
+    renderFrames(*engine, 3 * 16 * kStep);
+    c = engine->lastBars(4);
+    CHECK(c.bars == 4 && c.steps == 64 && c.sound.size() == 64u * kStep);
+    // Two bars are the last two of the four, to the sample; one is the last bar.
+    const Engine::Caught two = engine->lastBars(2);
+    CHECK(two.bars == 2 && two.steps == 32 && std::vector<float>(c.sound.begin() + 32 * kStep, c.sound.end()) == two.sound);
+    CHECK(engine->lastBars(1).sound == std::vector<float>(c.sound.begin() + 48 * kStep, c.sound.end()));
+    CHECK(engine->lastBars(3).bars == 3 && engine->lastBars(9).bars == 4); // (the screens ask 1, 2 or 4; the engine gives up to 4)
+    // A bar line drawn between: the bars move on by one.
+    engine->send(step(0, 4, 1.f));
+    renderFrames(*engine, 16 * kStep);
+    const Engine::Caught moved = engine->lastBars(4);
+    CHECK(moved.bars == 4 && std::vector<float>(moved.sound.begin(), moved.sound.begin() + 48 * kStep) == std::vector<float>(c.sound.begin() + 16 * kStep, c.sound.end()));
+    CHECK(about(moved.sound[static_cast<std::size_t>(48 * kStep + 4 * kStep)], 0.2f * kTrackLevel));
+    // Played again: the bars before are another run. Two steps in, 2 bars' worth up to now, not whole bars.
+    engine->send(make(Command::Play, 0, 0, 1));
+    renderFrames(*engine, 2 * kStep);
+    c = engine->lastBars(2);
+    CHECK(c.bars == 0 && c.steps == 32 && c.sound.size() == 32u * kStep && about(c.sound[c.sound.size() - 2 * kStep], 0.2f * kTrackLevel));
+    engine->send(make(Command::Stop));
+
+    // 3/4: two bars are 24 steps.
+    Command meter = make(Command::SetSceneMeter, 0, 12);
+    meter.scene = 0;
+    engine->send(meter);
+    engine->send(make(Command::Play, 0, 0, 1));
+    renderFrames(*engine, 3 * 12 * kStep + kStep);
+    c = engine->lastBars(2);
+    CHECK(c.bars == 2 && c.steps == 24 && c.sound.size() == 24u * kStep);
+    engine->send(make(Command::Stop));
+    meter.a = 16;
+    engine->send(meter);
+
+    // 48 BPM: 4 bars are 20 s to the frame, and fit. 40 BPM: 4 would be 24 s; the 3 that fit are given.
+    engine->send(make(Command::SetTempo, 0, 0, 0, 48.f));
+    engine->send(make(Command::Play, 0, 0, 1));
+    renderFrames(*engine, 4 * 240000 + 1000);
+    c = engine->lastBars(4);
+    CHECK(c.bars == 4 && c.sound.size() == static_cast<std::size_t>(kCatchLongest) && about(c.sound[0], 0.2f * kTrackLevel));
+    renderFrames(*engine, 239000 - kMaxBlock); // ...to the end of the bar after: still all four
+    CHECK(engine->lastBars(4).bars == 4);
+    engine->send(make(Command::SetTempo, 0, 0, 0, 40.f));
+    engine->send(make(Command::Play, 0, 0, 1));
+    renderFrames(*engine, 4 * 288000 + 1000);
+    c = engine->lastBars(4);
+    CHECK(c.bars == 3 && c.steps == 48 && c.sound.size() == 3u * 288000u && about(c.sound[0], 0.2f * kTrackLevel));
+}
+
+// CATCH of one track (batch S3): a second ring, fed by the track setCatchTrack names, from when it began
+// following it; that track alone, after its effects and level, muted or not; another track's is not there.
+static void testCatchingOneTrack() {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.4f)));
+    CHECK(engine->addDrumTrack(1));
+    CHECK(engine->setLaneSample(1, 0, twoHalves(500, 0.1f, 0.1f)));
+    engine->send(step(0, 0, 1.f));
+    engine->send(step(0, 8, 1.f, 1));
+    // Not following any: nothing of a track, and nothing spent.
+    engine->send(make(Command::Play, 0, 0, 1));
+    renderFrames(*engine, 2 * 16 * kStep + kStep);
+    CHECK(engine->lastBars(1, 1).sound.empty());
+    // Following track 1 from part-way through bar 3: its bars are counted from the first whole one after.
+    engine->setCatchTrack(1);
+    renderFrames(*engine, 16 * kStep);
+    Engine::Caught c = engine->lastBars(4, 1);
+    CHECK(c.bars == 0 && c.sound.size() == 16u * kStep); // (no whole bar of it yet: what was heard of it, a bar's worth)
+    CHECK(engine->lastBars(1, 0).sound.empty());          // another track's: not there
+    renderFrames(*engine, 2 * 16 * kStep);
+    c = engine->lastBars(4, 1);
+    CHECK(c.bars == 2 && c.steps == 32 && c.sound.size() == 32u * kStep);
+    for (int bar = 0; bar < 2; ++bar) {
+        CHECK(c.sound[static_cast<std::size_t>(bar * 16 * kStep)] == 0.f); // track 0's hit is not in it
+        CHECK(about(c.sound[static_cast<std::size_t>((bar * 16 + 8) * kStep)], 0.1f * kTrackLevel));
+    }
+    // The mix has both, the same bars.
+    const Engine::Caught mix = engine->lastBars(2);
+    CHECK(mix.bars == 2 && about(mix.sound[0], 0.2f * kTrackLevel) && about(mix.sound[8 * kStep], 0.1f * kTrackLevel));
+    // Muted, it is caught all the same (no soloing needed, and no un-muting).
+    engine->send(make(Command::SetTrackHeard, 1, 0));
+    renderFrames(*engine, 2 * 16 * kStep);
+    c = engine->lastBars(1, 1);
+    CHECK(c.bars == 1 && about(c.sound[8 * kStep], 0.1f * kTrackLevel));
+    CHECK(engine->lastBars(1).sound[8 * kStep] == 0.f); // (and the mix does not have it)
+    // A track with nothing on it: silence, not what the ring held before (the ring gone all the way round with track 1).
+    renderFrames(*engine, kCatchFrames);
+    engine->setCatchTrack(5);
+    renderFrames(*engine, 2 * 16 * kStep);
+    c = engine->lastBars(1, 5);
+    CHECK(c.bars == 1 && c.sound.size() == 16u * kStep && peakOf(c.sound) == 0.f);
+    // Followed again: from then on, not before.
+    engine->setCatchTrack(1);
+    renderFrames(*engine, kStep);
+    c = engine->lastBars(1, 1);
+    CHECK(c.bars == 0 && c.sound.size() == static_cast<std::size_t>(kStep));
+}
+
 // ---- the effects ------------------------------------------------------------------------
 
 // Run a signal through one effect by itself.
@@ -3010,7 +3126,9 @@ static void testTheSampler() {
     set(sampler::Loop, 1);
     out = play(60, 100000);
     CHECK(soundingFrames(out) == 100000);
-    CHECK(about(out[2 * 30000] / full, 0.25f + 0.5f * (24000.f + 6001.f) / 48000.f)); // round once, 6001 in (a loop is one sample short of the half)
+    // Round once, 6001 in (a loop is one sample short of the half), landing past START by the blend (S4: the last
+    // kLoopBlendMs before END fade into those after START, so the jump lands where the blend got to).
+    CHECK(about(out[2 * 30000] / full, 0.25f + 0.5f * (24000.f + 480.f + 6001.f) / 48000.f));
     engine->send(make(Command::NoteOff, 1, 60));
     CHECK(soundingFrames(renderFrames(*engine, 48000)) < 6000); // let go: it fades over the release and stops
     set(sampler::Loop, 0);
@@ -3019,7 +3137,10 @@ static void testTheSampler() {
     // END: a note stops there, on its sample (owner, 2026-11-15). Three quarters: 36000 frames.
     set(sampler::End, 75);
     out = play(60, 60000);
-    CHECK(soundingFrames(out) == 36000 && about(out[2 * 35999] / full, 0.25f + 0.5f * 35999.f / 48000.f));
+    // Its last kEndFadeMs (144 samples) fade to nothing (S4: it stopped dead; a click is now a fade).
+    CHECK(soundingFrames(out) == 36000 && about(out[2 * 35000] / full, 0.25f + 0.5f * 35000.f / 48000.f));
+    CHECK(about(out[2 * (36000 - 72)] / full, 0.5f * (0.25f + 0.5f * (36000.f - 72.f) / 48000.f)));
+    CHECK(std::fabs(out[2 * 35999]) < full * 0.01f);
     quiet();
     // ...from START to END, and with LOOP on it goes round inside the two.
     set(sampler::Start, 25);
@@ -3030,7 +3151,8 @@ static void testTheSampler() {
     set(sampler::Loop, 1);
     out = play(60, 60000);
     CHECK(soundingFrames(out) == 60000);
-    CHECK(about(out[2 * 30000] / full, 0.25f + 0.5f * (12000.f + 6000.f) / 48000.f)); // round once and half way again
+    // Round once (to START and the blend, 12480) and 6480 in again: the loop is 24000 - 12480 long (S4).
+    CHECK(about(out[2 * 30000] / full, 0.25f + 0.5f * (12480.f + 6480.f) / 48000.f));
     CHECK(peakOf(std::vector<float>(out.begin(), out.end())) <= full * (0.25f + 0.5f * 24000.f / 48000.f) + 1e-4f); // never past END
     engine->send(make(Command::NoteOff, 1, 60));
     quiet();
@@ -3446,6 +3568,7 @@ static void testTheSamplersEndInAnyBlocks() {
             s->setSetting(sampler::Start, 10);
             s->setSetting(sampler::End, 37);
             s->setSetting(sampler::Loop, loop);
+            s->setSetting(sampler::LoopStart, loop ? 20 : 0); // (S4: the blend and LOOP START too)
             s->noteOn(61, 1.f); // a semitone up: a place between samples
             std::vector<float> out, left(static_cast<std::size_t>(block)), right(static_cast<std::size_t>(block));
             for (int done = 0; done < 40000; done += block) {
@@ -3766,18 +3889,182 @@ static void testBadPrepareFallsBack() {
     }
 }
 
-int main() {
+// S4 (2026-11-25): LOOP START, the blend at the jump back, the fade at END.
+// A note that never reaches its last kEndFadeMs is the same to the bit as before S4: the sums of three
+// setups (glides, TUNE, START and END, a key let go, blocks of every size), taken with the sampler as it
+// was before (engine/src/sampler.cpp at d1b8d3b's line of fx-upgrades, built beside this one).
+static void testTheSamplerIsAsItWasBeforeItsEnd() {
+    std::vector<float> rec(2 * 48000);
+    std::uint32_t x = 7;
+    for (float& v : rec) { x = x * 1664525u + 1013904223u; v = (static_cast<float>(x >> 8) / 8388608.f - 1.f) * 0.7f; }
+    std::uint64_t h = 1469598103934665603ull;
+    for (int scene = 0; scene < 3; ++scene) {
+        std::unique_ptr<Sampler> s(new Sampler);
+        s->prepare(48000.f);
+        s->setSample(rec.data(), static_cast<int>(rec.size()));
+        s->setSetting(sampler::Start, scene == 0 ? 0 : 10);
+        s->setSetting(sampler::End, scene == 2 ? 90 : 100);
+        s->setSetting(sampler::Attack, 10);
+        s->setSetting(sampler::Release, 30);
+        s->setSetting(sampler::Tune, scene == 1 ? 17 : 0);
+        s->noteOn(60, 0.9f);
+        s->noteOn(67, 0.5f);
+        s->noteOnFrom(48, 0.7f, 52, 0.05f);
+        std::vector<float> l(300), r(300);
+        for (int b = 0; b < 60; ++b) {
+            const int n = 37 + (b * 53) % 263;
+            if (b == 40) s->noteOff(67);
+            s->render(l.data(), r.data(), n);
+            for (int i = 0; i < n; ++i) {
+                std::uint32_t bits;
+                std::memcpy(&bits, &l[static_cast<std::size_t>(i)], 4);
+                h = (h ^ bits) * 1099511628211ull;
+            }
+        }
+    }
+    CHECK(h == 0x311c90e3fc5a7c37ull);
+}
+
+static void testTheSamplersLoopStart() {
+    CHECK(sampler::LoopStart == 8 && sampler::settingDefault(sampler::LoopStart) == 0); // appended; its usual is START
+    CHECK(sampler::playedLoop(10, 0, 90) == 10 && sampler::playedLoop(10, 5, 90) == 10 && sampler::playedLoop(10, 50, 90) == 50);
+    CHECK(sampler::playedLoop(10, 95, 90) == 89 && sampler::playedLoop(60, 30, 20) == 60); // short of END; never before START
+    // A ramp, START 10%, LOOP START 50%, END 90%, LOOP on: the attack (10% to 50%) plays once, then only 50% to 90%.
+    std::vector<float> data(48000);
+    for (int i = 0; i < 48000; ++i) data[static_cast<std::size_t>(i)] = 0.25f + 0.5f * static_cast<float>(i) / 48000.f;
+    std::unique_ptr<Sampler> s(new Sampler);
+    s->prepare(48000.f);
+    s->setSample(data.data(), 48000);
+    s->setSetting(sampler::Attack, 0);
+    s->setSetting(sampler::Start, 10);
+    s->setSetting(sampler::End, 90);
+    s->setSetting(sampler::Loop, 1);
+    s->setSetting(sampler::LoopStart, 50);
+    s->noteOn(60, 1.f);
+    std::vector<float> out(120000), right(120000);
+    s->render(out.data(), right.data(), 120000);
+    const float full = sampler::kVoiceGain * 0.8f;
+    CHECK(std::fabs(out[100] / full - (0.25f + 0.5f * 4900.f / 48000.f)) < 1e-3f); // from START
+    float least = 1.f;
+    for (int i = 40000; i < 120000; ++i) least = std::fmin(least, out[static_cast<std::size_t>(i)] / full);
+    CHECK(least > 0.25f + 0.5f * 24000.f / 48000.f - 1e-3f && least < 0.25f + 0.5f * 24600.f / 48000.f); // never back before 50%
+    // At its usual (0) it goes back to START, as it always did.
+    s->setSetting(sampler::LoopStart, 0);
+    s->noteOn(60, 1.f);
+    s->render(out.data(), right.data(), 120000);
+    least = 1.f;
+    for (int i = 40000; i < 120000; ++i) least = std::fmin(least, out[static_cast<std::size_t>(i)] / full);
+    CHECK(least < 0.25f + 0.5f * 5300.f / 48000.f); // (START and the blend, 480 samples)
+}
+
+// The jump back is blended: a ramp looped from 25% to 50% jumps a quarter of its height at once without it.
+// With it no two samples in a row are further apart than the ramp's own slope and the blend's share. And a
+// loop too short to blend (a third of it under a sample) jumps as it did.
+static void testTheSamplersLoopBlend() {
+    std::vector<float> data(48000);
+    for (int i = 0; i < 48000; ++i) data[static_cast<std::size_t>(i)] = 0.25f + 0.5f * static_cast<float>(i) / 48000.f;
+    std::unique_ptr<Sampler> s(new Sampler);
+    s->prepare(48000.f);
+    s->setSample(data.data(), 48000);
+    s->setSetting(sampler::Attack, 0);
+    s->setSetting(sampler::Start, 25);
+    s->setSetting(sampler::End, 50);
+    s->setSetting(sampler::Loop, 1);
+    s->noteOn(60, 1.f);
+    std::vector<float> out(60000), right(60000);
+    s->render(out.data(), right.data(), 60000);
+    const float full = sampler::kVoiceGain * 0.8f;
+    float most = 0.f;
+    for (int i = 200; i < 60000; ++i) most = std::fmax(most, // (past the attack's millisecond)
+                                                      std::fabs(out[static_cast<std::size_t>(i)] - out[static_cast<std::size_t>(i) - 1]) / full);
+    const float slope = 0.5f / 48000.f, blendShare = 0.125f / 480.f; // 12000 samples of the ramp blended over 480
+    CHECK(most < slope + blendShare + 1e-4f && most > blendShare * 0.9f);
+    // Halfway through the blend, the two halves are heard as one: the ramp at 24000 - 240 and at 12000 + 240.
+    // (The first pass: 12000 samples to END, the blend its last 480.)
+    CHECK(std::fabs(out[12000 - 240] / full - (0.5f * (0.25f + 0.5f * 23760.f / 48000.f) + 0.5f * (0.25f + 0.5f * 12240.f / 48000.f))) < 1e-3f);
+    // The loop is 24000 - 12480 long after the first time round.
+    CHECK(std::fabs(out[12000 + 100] / full - (0.25f + 0.5f * 12580.f / 48000.f)) < 1e-3f);
+    // LOOP off: no blend (the last kEndFadeMs fade instead).
+    s->setSetting(sampler::Loop, 0);
+    s->noteOn(60, 1.f);
+    s->render(out.data(), right.data(), 60000);
+    CHECK(std::fabs(out[12000 - 240] / full - (0.25f + 0.5f * 23760.f / 48000.f)) < 1e-3f);
+    CHECK(out[12000] == 0.f && std::fabs(out[11999]) < full * 0.01f && std::fabs(out[12000 - 72] / full - 0.5f * (0.25f + 0.5f * 23928.f / 48000.f)) < 2e-3f);
+    // A loop two samples long (END 1% of 200): too short to blend (a third of it is under a sample), it goes round
+    // as it did, its two samples in turn.
+    std::vector<float> tiny(200, 0.9f);
+    tiny[0] = 0.5f, tiny[1] = -0.5f;
+    s->setSample(tiny.data(), 200);
+    s->setSetting(sampler::Start, 0);
+    s->setSetting(sampler::End, 1);
+    s->setSetting(sampler::Loop, 1);
+    s->noteOn(60, 1.f);
+    s->render(out.data(), right.data(), 2000);
+    for (int i = 1000; i < 1010; ++i) CHECK(std::fabs(out[static_cast<std::size_t>(i)] / full - (i % 2 ? -0.5f : 0.5f)) < 1e-4f);
+}
+
+// CATCH of one track's cost (batch S3; measured.md's row): two drum tracks hitting every step, 60 s of sound in
+// 128-frame blocks, no track followed against one followed (best of 5, interleaved), as a share of a core; an
+// Engine made (its two 25 s rings); lastBars(4) at 120 BPM. `engine_test --measure`: nothing is checked.
+static void measureCatchingOneTrack() {
+    using Clock = std::chrono::steady_clock;
+    const auto ms = [](Clock::time_point from) { return std::chrono::duration<double, std::milli>(Clock::now() - from).count(); };
+    double made = 1e9;
+    for (int i = 0; i < 5; ++i) {
+        const Clock::time_point t = Clock::now();
+        std::unique_ptr<Engine> engine(new Engine);
+        made = std::min(made, ms(t));
+    }
+    std::unique_ptr<Engine> engine(new Engine);
+    engine->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.4f));
+    engine->addDrumTrack(1);
+    engine->setLaneSample(1, 0, twoHalves(500, 0.1f, 0.1f));
+    for (int s = 0; s < 16; ++s) engine->send(step(0, s, 1.f)), engine->send(step(0, s, 1.f, 1));
+    engine->send(make(Command::Play, 0, 0, 1));
+    std::vector<float> block(2 * 128);
+    const int blocks = 60 * 48000 / 128;
+    double best[2] = {1e9, 1e9};
+    for (int round = 0; round < 10; ++round) {
+        const int follow = round % 2; // 0: THE MIX (no track followed), 1: track 1 followed
+        engine->setCatchTrack(follow ? 1 : -1);
+        const Clock::time_point t = Clock::now();
+        for (int b = 0; b < blocks; ++b) engine->render(block.data(), 128);
+        best[follow] = std::min(best[follow], ms(t));
+    }
+    engine->setCatchTrack(-1);
+    double last = 1e9;
+    for (int i = 0; i < 5; ++i) {
+        const Clock::time_point t = Clock::now();
+        const Engine::Caught c = engine->lastBars(4);
+        last = std::min(last, ms(t));
+        if (c.sound.empty()) std::printf("(nothing caught)\n");
+    }
+    std::printf("60 s of two drum tracks: no track followed %.4f%%, one followed %.4f%% of a core; an Engine made %.1f ms; "
+                "lastBars(4) at 120 BPM %.2f ms\n",
+                best[0] / 600.0, best[1] / 600.0, made, last);
+}
+
+int main(int argc, char** argv) {
+    if (argc > 1 && std::string(argv[1]) == "--measure") {
+        measureCatchingOneTrack();
+        return 0;
+    }
     testScenesHaveStoresWhenWritten();
     testAPresetPutsTheMacrosRestBack();
     testCellsOfSeveralBars();
     testANoteNudgedOffItsStep();
     testTheSampler();
     testTheSamplersEndInAnyBlocks();
+    testTheSamplerIsAsItWasBeforeItsEnd();
+    testTheSamplersLoopStart();
+    testTheSamplersLoopBlend();
     testTheSamplersGlideInAnyBlocks();
     testTheSamplerTakesTheOldest();
     testEffectsOneByOne();
     testEffectsInTheEngine();
     testCatchingTheLastBar();
+    testCatchingSeveralBars();
+    testCatchingOneTrack();
     testTheCatchSaysItsSteps();
     testPanic();
     testANoteEndsPartWayThroughAStep();

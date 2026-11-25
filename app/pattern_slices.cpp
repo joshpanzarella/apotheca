@@ -53,6 +53,10 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
     const float sliceW = static_cast<float>(kWaveW) / static_cast<float>(count);
     const Session::LaneSound& sound = session_.laneSound(project_.track, lane_);
     const auto xOf = [&](float start) { return kWaveX + static_cast<int>(std::round(start * kWaveW)); };
+    // SLICES AT THE HITS: a lane of its own cuts has slices of their own widths (EVEN: as it always was drawn).
+    const bool own = !trk().laneCuts[lane_].even();
+    const auto sliceX = [&](int k) { return own ? xOf(cutAt(k)) : xOf(static_cast<float>(k) / count); };
+    const auto sliceWidth = [&](int k) { return own ? (k + 1 < count ? xOf(cutAt(k + 1)) : kWaveX + kWaveW) - xOf(cutAt(k)) : static_cast<int>(std::ceil(sliceW)); };
 
     // ---- the lane: its name, its volume, and what a hit plays ------------------------
     box(r, kNameX, kWaveY, kNameW, kWaveH, kBg, kLine);
@@ -66,8 +70,11 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
     fonts.small.draw(r, static_cast<float>(kNameTextX), kWaveY + 60.f, "PLAYS", kDim);
     const char* plays = trk().laneOneSlice[lane_] ? "ONE SLICE" : "RUNS ON";
     fonts.within(&Fonts::medium, plays, kNameW - 13.f).draw(r, static_cast<float>(kNameTextX), kWaveY + 78.f, plays, trk().laneOneSlice[lane_] ? kPurple : kText);
-    std::snprintf(text, sizeof text, "%d SLICES", count);
+    std::snprintf(text, sizeof text, count == 1 ? "%d SLICE" : "%d SLICES", count);
     fonts.small.draw(r, static_cast<float>(kNameTextX), kWaveY + kWaveH - 22.f, text, kDim);
+    // ...and how they are cut, above it: EVEN, AT HITS 5, BY HAND (SLICES AT THE HITS).
+    cutsWord(text, sizeof text);
+    fonts.within(&Fonts::small, text, kNameW - 13.f).draw(r, static_cast<float>(kNameTextX), kWaveY + kWaveH - 40.f, text, own ? kPurple : kDim);
     drawFeelMark(r, kWaveY, trk().laneFeel[lane_]); // the lane's feel, as on the grid
     drawSwingMark(r, kWaveY, trk().laneSwing[lane_]); // ...its SWING
     drawChokeMark(r, kWaveY, trk().laneChoke[lane_]); // ...and its CHOKE group
@@ -76,15 +83,18 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
     bool used[64] = {};
     for (int s = 0; s < kSteps; ++s)
         if (pat().level[lane_][s] > 0.f) used[sliceOf(s)] = true;
-    const int cursorSlice = onName ? -1 : (hitHere() ? sliceOf(step_) : static_cast<int>(std::round(ownStart(step_) * count)));
-    const int playStep = project_.playScene == project_.scene && project_.playBar % trk().bars[project_.scene] == project_.bar ? project_.playStep : -1;
+    const int cursorSlice = onName ? -1 : (hitHere() ? sliceOf(step_) : own ? session_.laneSliceAt(project_.track, lane_, ownStart(step_)) : static_cast<int>(std::round(ownStart(step_) * count)));
+    const int playStep = project_.playScene == project_.scene && project_.cellBarPlaying(project_.track) == project_.bar ? project_.playStep : -1;
     int playSlice = -1;
     if (playStep >= 0) {
         // The hit that is sounding: the last one at or before the step being played. One slice of it,
         // or as far on as the recording has run since.
         for (int s = playStep; s >= 0 && playSlice < 0; --s) {
             if (pat().level[lane_][s] <= 0.f) continue;
-            if (!trk().laneOneSlice[lane_]) playSlice = sliceOf(s) + (playStep - s);
+            if (!trk().laneOneSlice[lane_] && own) { // (its own cuts: where a step at a time of the sound has got to; EVEN: a slice a step)
+                const float got = pat().start[lane_][s] + static_cast<float>(playStep - s) / static_cast<float>(session_.evenSlices(project_.track, lane_));
+                playSlice = got < 1.f ? session_.laneSliceAt(project_.track, lane_, got) : count;
+            } else if (!trk().laneOneSlice[lane_]) playSlice = sliceOf(s) + (playStep - s);
             else if (s == playStep) playSlice = sliceOf(s);
             else break;
         }
@@ -93,24 +103,53 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
 
     // ---- the recording ---------------------------------------------------------------------
     box(r, kWaveX, kWaveY, kWaveW, kWaveH, kPanel, kLine);
-    if (cursorSlice >= 0) fill(r, xOf(static_cast<float>(cursorSlice) / count), kWaveY + 1, static_cast<int>(std::ceil(sliceW)), kWaveH - 2, faded(hitHere() ? cursorColor : kDim, 60));
-    if (playSlice >= 0) fill(r, xOf(static_cast<float>(playSlice) / count), kWaveY + 1, static_cast<int>(std::ceil(sliceW)), kWaveH - 2, faded(kPurple, 76));
+    if (cursorSlice >= 0) fill(r, sliceX(cursorSlice), kWaveY + 1, sliceWidth(cursorSlice), kWaveH - 2, faded(hitHere() ? cursorColor : kDim, 60));
+    if (playSlice >= 0) fill(r, sliceX(playSlice), kWaveY + 1, sliceWidth(playSlice), kWaveH - 2, faded(kPurple, 76));
     const int peaks = static_cast<int>(sound.peaks.size());
+    int peakSlice = 0; // (its own cuts: walked along as the peaks go)
     for (int i = 0; i < peaks; ++i) {
         const int px = kWaveX + 1 + (kWaveW - 2) * i / peaks;
         const int ph = 1 + static_cast<int>(sound.peaks[static_cast<std::size_t>(i)] * (kWaveH - 14));
-        const int slice = i * count / peaks;
+        if (own)
+            while (peakSlice + 1 < count && cutAt(peakSlice + 1) * peaks <= static_cast<float>(i)) ++peakSlice;
+        const int slice = own ? peakSlice : i * count / peaks;
         fill(r, px, kWaveY + (kWaveH - ph) / 2, 1, ph, used[slice] ? kText : kDim); // brighter where a hit plays it
     }
-    // The cuts, and their numbers: every one of sixteen, every other of thirty-two, every fourth of sixty-four.
-    const int every = count / kSteps;
-    for (int i = 0; i < count; ++i) {
-        const int x = xOf(static_cast<float>(i) / count);
-        const bool beat = i % (count / 4) == 0;
-        if (i > 0) fill(r, x, kWaveY + 1, 1, kWaveH - 2, beat ? kDim : kLine);
-        if (i % every == 0) {
+    if (own) {
+        // Its own cuts, each where it is (a hit, or where the hand put it), and their numbers where there is room
+        // (the cursor's always; no number is drawn over another). A tight row: the same numbers at every text
+        // size (fonts.fixed()).
+        const Fonts& tight = fonts.fixed();
+        const auto label = [&](int i, float& middle, float& half) {
             std::snprintf(text, sizeof text, "%d", i + 1);
-            fonts.small.drawCentered(r, x + sliceW * every / 2.f, 36.f, text, i == cursorSlice ? cursorColor : (beat ? kText : kDim));
+            middle = sliceX(i) + sliceWidth(i) / 2.f;
+            half = tight.small.width(text) / 2.f;
+        };
+        float cursorMiddle = -1000.f, cursorHalf = 0.f;
+        if (cursorSlice >= 0) label(cursorSlice, cursorMiddle, cursorHalf);
+        float clearFrom = 0.f;
+        for (int i = 0; i < count; ++i) {
+            if (i > 0) fill(r, sliceX(i), kWaveY + 1, 1, kWaveH - 2, kDim);
+            float middle = 0.f, half = 0.f;
+            label(i, middle, half);
+            const bool cursor = i == cursorSlice;
+            const bool clearOfCursor = middle + half + 4.f <= cursorMiddle - cursorHalf || middle - half >= cursorMiddle + cursorHalf + 4.f;
+            if (cursor || (middle - half >= clearFrom && clearOfCursor)) {
+                tight.small.drawCentered(r, middle, 36.f, text, cursor ? cursorColor : kText);
+                clearFrom = middle + half + 4.f;
+            }
+        }
+    } else {
+        // The cuts, and their numbers: every one of sixteen, every other of thirty-two, every fourth of sixty-four.
+        const int every = count / kSteps;
+        for (int i = 0; i < count; ++i) {
+            const int x = xOf(static_cast<float>(i) / count);
+            const bool beat = i % (count / 4) == 0;
+            if (i > 0) fill(r, x, kWaveY + 1, 1, kWaveH - 2, beat ? kDim : kLine);
+            if (i % every == 0) {
+                std::snprintf(text, sizeof text, "%d", i + 1);
+                fonts.small.drawCentered(r, x + sliceW * every / 2.f, 36.f, text, i == cursorSlice ? cursorColor : (beat ? kText : kDim));
+            }
         }
     }
     // Where the hit under the cursor comes in, exactly (it need not be on a cut).
@@ -120,7 +159,7 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
     for (int s = 0; s < kSteps; ++s) {
         const int x = kGridLeft + s * kStepW;
         box(r, x, kStepsY, kCellW, kStepsH, s % 4 == 0 ? kPanel2 : kPanel, kLine);
-        if (s < project_.barSteps(project_.scene, project_.bar)) std::snprintf(text, sizeof text, "%d", project_.bar * project_.meterOf(project_.scene) + s + 1);
+        if (s < project_.barSteps(project_.scene, sceneBar())) std::snprintf(text, sizeof text, "%d", sceneBar() * project_.meterOf(project_.scene) + s + 1);
         else std::snprintf(text, sizeof text, "-");
         fonts.small.drawCentered(r, x + kCellW / 2.f, kStepsY + kStepsH + 5.f, text, s % 4 == 0 ? kText : kDim);
     }
@@ -131,14 +170,15 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
         const bool here = s == step_;
         const bool live = held && here;
         const float start = pat().start[lane_][s];
-        const bool own = std::fabs(start - ownStart(s)) < 0.0005f; // in order: the slice the step would play by itself
+        const bool inOrder = std::fabs(start - ownStart(s)) < 0.0005f; // in order: the slice the step would play by itself
         int bx = kGridLeft + s * kStepW + 4 + static_cast<int>(std::round(pat().nudge[lane_][s] * kStepW));
         bx = bx < kGridLeft ? kGridLeft : (bx + kBlockW > right ? right - kBlockW : bx);
         int h = static_cast<int>(std::round(level * kHitFull));
         h = h < 1 ? 1 : h;
         // From the slice down to the hit. A slice in order drops straight down; one out of order crosses.
-        const int fromX = xOf(start) + static_cast<int>(sliceW / 2.f), toX = kGridLeft + s * kStepW + kCellW / 2;
-        const SDL_Color wire = here ? cursorColor : (own ? kLine : faded(kPurple, 170));
+        const int half = own ? (xOf(start + slicePart(start)) - xOf(start)) / 2 : static_cast<int>(sliceW / 2.f);
+        const int fromX = xOf(start) + half, toX = kGridLeft + s * kStepW + kCellW / 2;
+        const SDL_Color wire = here ? cursorColor : (inOrder ? kLine : faded(kPurple, 170));
         line(r, fromX, kWaveY + kWaveH + 1, toX, kStepsY - 2, wire);
         if (here) line(r, fromX + 1, kWaveY + kWaveH + 1, toX + 1, kStepsY - 2, wire);
 
@@ -152,12 +192,12 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
         drawFxMarks(r, pat().fx[lane_][s], bx, by, kBlockW, h, kStepsY + 24 + kHitFull / 2, 2.2f);
         // Its slice's number: quiet when it is the step's own, purple when it has been moved.
         std::snprintf(text, sizeof text, "%d", sliceOf(s) + 1);
-        fonts.small.drawCentered(r, kGridLeft + s * kStepW + kCellW / 2.f, kStepsY + 6.f, text, here ? cursorColor : (own ? kDim : kPurple));
+        fonts.small.drawCentered(r, kGridLeft + s * kStepW + kCellW / 2.f, kStepsY + 6.f, text, here ? cursorColor : (inOrder ? kDim : kPurple));
     }
     if (!onName) outline(r, kGridLeft + step_ * kStepW - 1, kStepsY - 1, kCellW + 2, kStepsH + 2, cursorColor, 2);
     if (playStep >= 0) fill(r, kGridLeft + playStep * kStepW, kStepsY, kCellW, kStepsH, faded(kPurple, 76));
     // A scene of fewer than sixteen steps: the steps past its end are never played, and are shaded.
-    if (const int steps = project_.barSteps(project_.scene, project_.bar); steps < kSteps)
+    if (const int steps = project_.barSteps(project_.scene, sceneBar()); steps < kSteps)
         fill(r, kGridLeft + steps * kStepW - 1, kStepsY - 2, (kSteps - steps) * kStepW, kStepsH + 22, faded(kBg, 185));
 }
 

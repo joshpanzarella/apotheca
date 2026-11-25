@@ -6,9 +6,9 @@ namespace apotheca {
 
 namespace sampler {
 namespace {
-const int kMin[kSettings] = {0, -100, 0, 0, 0, 0, 0, 1};
-const int kMax[kSettings] = {127, 100, 100, 100, 100, 1, 100, 100};
-const int kDefault[kSettings] = {60, 0, 0, 0, 20, 0, 80, 100};
+const int kMin[kSettings] = {0, -100, 0, 0, 0, 0, 0, 1, 0};
+const int kMax[kSettings] = {127, 100, 100, 100, 100, 1, 100, 100, 100};
+const int kDefault[kSettings] = {60, 0, 0, 0, 20, 0, 80, 100, 0};
 }
 int settingMin(int id) { return id >= 0 && id < kSettings ? kMin[id] : 0; }
 int settingMax(int id) { return id >= 0 && id < kSettings ? kMax[id] : 0; }
@@ -139,20 +139,33 @@ void Sampler::render(float* left, float* right, int frames) {
     for (int i = 0; i < frames; ++i) left[i] = 0.f;
     for (Voice& v : voices_) {
         if (v.note < 0 || !v.data || v.length <= 0) continue;
-        // END: where a note stops (or goes round from START). At 100% the recording's last sample, as
+        // END: where a note stops (or goes round to LOOP START). At 100% the recording's last sample, as
         // before END was there (the sample after it is read between the two). Each voice reads its own
         // recording (its zone's): the percents are of that one, or of its chop's slice.
-        const double loopFrom = v.spanFrom + static_cast<double>(value_[Start]) / 100.0 * (v.spanTo - v.spanFrom);
-        const double endAt = v.spanFrom + static_cast<double>(playedEnd(value_[Start], value_[End])) / 100.0 * (v.spanTo - v.spanFrom);
+        const double span = v.spanTo - v.spanFrom;
+        const double loopFrom = v.spanFrom + static_cast<double>(playedLoop(value_[Start], value_[LoopStart], value_[End])) / 100.0 * span;
+        const double endAt = v.spanFrom + static_cast<double>(playedEnd(value_[Start], value_[End])) / 100.0 * span;
         const double last = endAt < v.spanTo - 1 ? endAt : v.spanTo - 1;
         const bool loop = value_[Loop] != 0 && loopFrom < last - 1;
+        // The blend at the jump back (LOOP on): the last `blend` samples before END fade into those after LOOP START,
+        // and the jump lands `blend` past LOOP START, where the blend has got to. The fade at END (LOOP off). Before
+        // `edge` a sample is worked out as it always was.
+        double blend = 0.0;
+        if (loop) {
+            blend = static_cast<double>(kLoopBlendMs) / 1000.0 * sampleRate_;
+            if (blend > (last - loopFrom) / 3.0) blend = (last - loopFrom) / 3.0;
+            if (blend < 1.0) blend = 0.0; // (too short a loop to blend: the jump as it was)
+        }
+        const double endFade = static_cast<double>(kEndFadeMs) / 1000.0 * sampleRate_;
+        const double edge = loop ? (blend > 0.0 ? last - blend : last) : last - endFade;
         // A glide moves a sample at a time, as JAX-EP's does (review 2026-11-23: worked out once a block,
         // it moved in steps, and a bounce was not live play: up to 0.45 apart in a song with glides).
         for (int i = 0; i < frames; ++i) {
             const double step = v.slide.semitones == 0.f ? v.step : v.step * std::exp2(static_cast<double>(v.slide.take(1)) / 12.0); // (semitones off its own pitch, at this sample)
             if (v.position >= last) {
                 if (!loop) { v.note = -1; break; }
-                v.position = loopFrom + std::fmod(v.position - loopFrom, last - loopFrom);
+                if (blend > 0.0) v.position = loopFrom + blend + std::fmod(v.position - last, last - loopFrom - blend);
+                else v.position = loopFrom + std::fmod(v.position - loopFrom, last - loopFrom);
             }
             const float envelope = v.env.next(shape_);
             if (v.env.idle()) { v.note = -1; break; }
@@ -162,7 +175,19 @@ void Sampler::render(float* left, float* right, int frames) {
             }
             const int at = static_cast<int>(v.position);
             const float part = static_cast<float>(v.position - at);
-            left[i] += (v.data[at] + part * (v.data[at + 1] - v.data[at])) * v.gain * v.fade * envelope * level_ * kVoiceGain;
+            float s = v.data[at] + part * (v.data[at + 1] - v.data[at]);
+            if (v.position >= edge) {
+                if (loop) { // blended into what follows LOOP START, by how far into the blend it is
+                    const double into = v.position - edge, from = loopFrom + into;
+                    const int to = static_cast<int>(from);
+                    const float toPart = static_cast<float>(from - to);
+                    const float head = v.data[to] + toPart * (v.data[to + 1] - v.data[to]);
+                    s += static_cast<float>(into / blend) * (head - s);
+                } else { // faded to nothing at END
+                    s *= static_cast<float>((last - v.position) / endFade);
+                }
+            }
+            left[i] += s * v.gain * v.fade * envelope * level_ * kVoiceGain;
             v.position += step;
         }
     }

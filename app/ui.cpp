@@ -158,9 +158,9 @@ TopBar topBar(SDL_Renderer* r, const Fonts& chosen, View view, const char* conte
         room -= fonts.small.width("SILENCED") + 16.f;
     } else if (project.playing && project.playScene >= 0 && project.playScene < kMaxScenes) {
         const int right = static_cast<int>(room) - 6, w = 46;
-        const int plays = project.playLoop ? 1 : project.repeats[project.playScene];
+        const int plays = project.repeats[project.playScene]; // a looped scene's too: where its FILL comes
         const int bars = project.sceneBars(project.playScene), meter = project.meterOf(project.playScene);
-        sceneProgress(r, right - w, 9, w, 8, plays, project.playRepeat, project.playBar * meter + project.playStep, bars * meter);
+        sceneProgress(r, right - w, 9, w, 8, plays, project.roundPlaying(), project.playBar * meter + project.playStep, bars * meter);
         char scene[48];
         // The scene's number, then (in a cell of several bars) which bar of it. Short, to leave the title its room.
         if (bars > 1) std::snprintf(scene, sizeof scene, "%d  %d/%d", project.playScene + 1, project.playBar + 1, bars);
@@ -263,6 +263,20 @@ void keyWords(const char* key, Each each) {
     }
 }
 } // namespace
+
+std::string cutToRoom(std::string line, const Font& font, float room) {
+    if (font.width(line.c_str()) <= room) return line;
+    const std::size_t open = line.find('"'), space = line.rfind(' ');
+    if (line.size() > 2 && line.back() == '"' && open != std::string::npos && space != std::string::npos && space > open + 1) {
+        std::string head = line.substr(0, space);
+        const std::string tail = ".." + line.substr(space);
+        while (head.size() > open + 1 && font.width((head + tail).c_str()) > room) head.pop_back();
+        while (head.size() > open + 1 && head.back() == ' ') head.pop_back(); // (no space before the dots)
+        return head + tail;
+    }
+    while (line.size() > 1 && font.width(line.c_str()) > room) line.pop_back();
+    return line;
+}
 
 std::string keyShown(const char* key) {
     static const char* const kNames[4] = {"UP", "DOWN", "LEFT", "RIGHT"};

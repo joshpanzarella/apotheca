@@ -200,6 +200,7 @@ bool Session::putSoundBack(int track) {
     if (t.kind == TrackKind::Sampler) {
         for (int id = 0; id < sampler::kSettings; ++id) setSamplerSetting(track, id, was.sampler[id]);
         if (t.samplerChop != was.samplerChop) setSamplerChop(track, was.samplerChop);
+        if (t.samplerEdit != was.samplerEdit) setSamplerEdit(track, was.samplerEdit); // (after the recording: its cut with it)
     }
     if (const SynthSpec* spec = specFor(t.kind)) {
         const std::size_t size = sizeof(int) * static_cast<std::size_t>(settingCount(t.kind));
@@ -532,7 +533,8 @@ std::string Session::kitSpec(int track) const {
         }
         out += (row ? "," : "") + kitField(laneEditName(row), row, rest.c_str());
     }
-    out += "," + kitField("FIT TO", kKitFit, (stops(kLaneFits, kLaneFitCount, [](int v, char* into) { laneFitText(v, into, 64); }) + "}").c_str());
+    const int meter = project.meterOf(project.scene); // (FIT reads bars of the scene's meter, as the KIT page's box)
+    out += "," + kitField("FIT TO", kKitFit, (stops(kLaneFits, kLaneFitCount, [meter](int v, char* into) { laneFitText(v, meter, into, 64); }) + "}").c_str());
     out += "," + kitField("CHOKE", kKitChoke, (",\"min\":0,\"max\":2" + texts(kChokeNone, kChokeGroups, [](int v, char* into) { std::snprintf(into, 64, "%s", laneChokeText(v)); }) + "}").c_str());
     out += "," + kitField("VOLUME", kKitVolume, (",\"min\":0,\"max\":100" + texts(0, 100, [](int v, char* into) { std::snprintf(into, 64, "%d%%", v); }) + "}").c_str());
     const auto feel = [](int v, char* into) { feelAmountText(v, into, 64); };
@@ -837,7 +839,7 @@ void Session::serveDesigner() {
         }
         switch (r.kind) {
         case DesignRequest::Set:
-            if (sampler) { // as its screen turns it: START and END never cross (an id it has not: nothing)
+            if (sampler) { // as its screen turns it: START and END never cross, LOOP START 0 at or before START (an id it has not: nothing)
                 const int* v = project.current().sampler;
                 setSamplerSetting(project.track, r.a, sampler::heldApart(r.a, r.b, v[sampler::Start], v[sampler::End]));
             } else {
@@ -900,7 +902,9 @@ void Session::serveDesigner() {
     for (int s = 0; s < kTrackSlots; ++s) fx = fx * 31u + static_cast<unsigned>(project.tracks[project.track].effects[s].kind);
     for (int b = 0; b < kBuses; ++b) fx = fx * 31u + static_cast<unsigned>(project.busEffects[b].kind);
     for (int s = 0; s < kMasterSlots; ++s) fx = fx * 31u + static_cast<unsigned>(project.masterEffects[s].kind);
-    if (kind != designSpecKind_ || presets != designSpecPresets_ || project.track != designSpecTrack_ || sound != designSpecSound_ || fx != designSpecFx_ || listed) {
+    const int meter = project.meterOf(project.scene); // (a kit's FIT TO reads bars of it: batch S1)
+    if (kind != designSpecKind_ || presets != designSpecPresets_ || project.track != designSpecTrack_ || sound != designSpecSound_ || fx != designSpecFx_ || meter != designSpecMeter_ || listed) {
+        designSpecMeter_ = meter;
         designSpecKind_ = kind;
         designSpecPresets_ = presets;
         designSpecTrack_ = project.track;
@@ -1040,7 +1044,7 @@ void Session::hearMidi() {
             NoteEvent& note = track.notes[rec.scene][rec.bar].notes[rec.slot];
             if (note.velocity > 0.f && note.pitch == event.note) {
                 const int bars = track.bars[rec.scene];
-                const int all = bars * kSteps, now = scene == rec.scene && step >= 0 ? (project.playBar % bars) * kSteps + step : rec.startedAt;
+                const int all = bars * kSteps, now = scene == rec.scene && step >= 0 ? project.cellBarPlaying(rec.track) * kSteps + step : rec.startedAt;
                 int held = ((now - rec.startedAt) % all + all) % all;
                 if (held < 1) held = 1;
                 if (held > kSteps - note.step) held = kSteps - note.step;
@@ -1051,7 +1055,7 @@ void Session::hearMidi() {
         }
         if (event.kind != MidiEvent::NoteOn || !midiRecord_ || !project.playing || scene < 0 || step < 0) continue;
         TrackData& track = project.current();
-        const int bar = project.playBar % track.bars[scene];
+        const int bar = project.cellBarPlaying(project.track); // the bar playing: the FILL's, where it plays
         if (kind == TrackKind::Drums) {
             DrumPattern& pattern = track.drums[scene][bar];
             const int lane = midiDrumLane(event.note);
