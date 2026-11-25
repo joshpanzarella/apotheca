@@ -13266,6 +13266,13 @@ void testSetJumpsHeadings() {
     CHECK(setup.cursorRow() == S::kWifi);
     rig.tap(R1);
     CHECK(setup.cursorRow() == S::kTempo && setup.firstShown() == 0);
+    // The manual's example: THEME is three presses from TEMPO (R1, R1, DOWN; eleven DOWNs before), CONTROLS one (UP).
+    rig.tap(R1, 2);
+    rig.tap(DOWN);
+    CHECK(setup.cursorRow() == S::kTheme);
+    setup.goTo(S::kTempo);
+    rig.tap(UP);
+    CHECK(setup.cursorRow() == S::kControls);
     // A held on CONTROLS sets the controls up again at a second: R1 on the way lets go of it, as a move does.
     setup.goTo(S::kControls);
     rig.key(A, true);
@@ -13399,6 +13406,67 @@ void testTheStickClimbsOnACursor() {
         rig.tap(A);
         CHECK(rig.project().trackCount() == 2 && rig.project().tracks[1].kind == kInstruments[(1 + 8) % kInstrumentCount].kind);
     }
+    // Every other screen's cursor climbs too, each from its own call: FX, MOD, the sampler, a synth's stops (across
+    // and down), the kit's lanes and its EDIT and VOICE boxes. At STICK SPEED 25%, so a short row is not used up: a
+    // full push (raw 1.0) against one just short of full (raw 0.9: 0.875 past the dead zone, under kStickFullPush)
+    // from the same stop. The moves are counted a frame at a time, round a row that goes round.
+    struct Climber {
+        const char* name;
+        std::function<void(Rig&)> open; // the screen, the cursor on its first stop
+        std::function<int(Rig&)> where; // the cursor's place along the way it is pushed
+        int ring;                       // the row goes round after this many (0: its ends stop)
+        bool sideways;
+        int frames, more; // how long the push is held, and how many more stops the full push makes at least
+    };
+    const auto device = [](Rig& rig, int track) {
+        rig.project().track = track;
+        rig.app.session().view = View::Device;
+    };
+    const auto synthRow = [](int c) { return c < SynthScreen::kFirstMacro ? 0 : c == SynthScreen::kAdvanced ? 3 : 1 + (c - SynthScreen::kFirstMacro) / 4; };
+    const Climber climbers[] = {
+        {"FX's lines", [](Rig& rig) { rig.app.session().view = View::Effects; rig.app.fx().goTo(0, 0); },
+         [](Rig& rig) { return rig.app.fx().cursorRow(); }, FxScreen::kRows, false, 62, 2},
+        {"MOD's lines", [](Rig& rig) { rig.app.session().view = View::Mods; rig.app.mods().goTo(0, 0); },
+         [](Rig& rig) { return rig.app.mods().cursorRow(); }, ModScreen::kRows, false, 62, 2},
+        {"the sampler's stops", [&](Rig& rig) { rig.app.session().addTrack(TrackKind::Sampler); device(rig, 1); rig.app.sampler().goTo(0); },
+         [](Rig& rig) { return rig.app.sampler().cursor(); }, 0, true, 62, 2},
+        {"a synth's macros, across", [&](Rig& rig) { addPhazed(rig); device(rig, 1); rig.app.phazed().goTo(0, SynthScreen::kFirstMacro); },
+         [](Rig& rig) { return rig.app.phazed().cursor() - SynthScreen::kFirstMacro; }, 4, true, 62, 2},
+        {"a synth's MAIN, down", [&](Rig& rig) { addPhazed(rig); device(rig, 1); rig.app.phazed().goTo(0, SynthScreen::kFirstMacro); },
+         [&](Rig& rig) { return synthRow(rig.app.phazed().cursor()); }, 4, false, 62, 2},
+        {"the kit's lanes", [&](Rig& rig) { device(rig, 0); rig.app.kit().goTo(0, KitScreen::kSound); },
+         [](Rig& rig) { return rig.app.kit().cursorLane(); }, kDrumLanes, false, 62, 2},
+        // EDIT's and VOICE's rows are four boxes: the full push reaches the end in 32 frames, the part push (and a
+        // full one at the screen's own rate) two boxes along.
+        {"EDIT's boxes", [&](Rig& rig) { device(rig, 0); rig.app.kit().goTo(0, KitScreen::kEdit); rig.app.kit().openEdit(0); },
+         [](Rig& rig) { return rig.app.kit().editRow(); }, 0, true, 32, 1},
+        {"VOICE's boxes", [&](Rig& rig) { device(rig, 0); rig.project().tracks[0].laneSynth[0].model = drumsynth::kKick; rig.app.kit().goTo(0, KitScreen::kSound); rig.app.kit().openVoice(drumsynth::kTune); },
+         [](Rig& rig) { return rig.app.kit().voicePlace(); }, 0, true, 32, 1},
+    };
+    const auto climbed = [](const Climber& c, float raw) {
+        ui::gStickSpeed = 0.25f;
+        Rig rig;
+        c.open(rig);
+        rig.frames(2);
+        int was = c.where(rig), moves = 0;
+        rig.stick(c.sideways ? raw : 0.f, c.sideways ? 0.f : raw);
+        for (int f = 0; f < c.frames; ++f) {
+            rig.frames(1);
+            const int now = c.where(rig);
+            const int by = c.ring > 0 ? ((now - was) % c.ring + c.ring) % c.ring : now - was;
+            moves += by;
+            was = now;
+        }
+        rig.stick(0.f, 0.f);
+        ui::gStickSpeed = 1.f;
+        return moves;
+    };
+    for (const Climber& c : climbers) {
+        const int full = climbed(c, 1.f), part = climbed(c, 0.9f);
+        std::printf("  the stick at 25%% on %s for %d frames: full %d, just short of full %d\n", c.name, c.frames, full, part);
+        if (full < part + c.more) std::printf("FAIL %s: a full push held did not climb\n", c.name);
+        CHECK(full >= part + c.more && part >= 2);
+    }
 }
 
 // Held keys (gesture audit G08, G32, 2026-11-25): one repeat for every screen, ui::Repeat, each counted from when
@@ -13496,15 +13564,18 @@ void testHeldKeysRunAtTheirPace() {
         rig.frames(10);
         rig.tap(A);
         CHECK(rig.project().trackCount() == 2 && rig.project().tracks[1].kind == kInstruments[(1 + 2) % kInstrumentCount].kind);
-        // A (or B) with the D-pad still held closes the list, and the run stops there: it does not go on over the cells.
-        rig.app.song().moveCursorTo(0, 2); // + TRACK
-        rig.tap(A);
-        CHECK(rig.app.song().choosing());
-        rig.key(DOWN, true);
-        rig.tap(A);
-        rig.frames(30);
-        rig.key(DOWN, false);
-        CHECK(rig.project().trackCount() == 3 && rig.app.song().cursorScene() == 0);
+        // A or B with the D-pad still held closes the list, and the run stops there: it does not go on over the cells.
+        for (SDL_Keycode closer : {A, B}) {
+            const int tracks = rig.project().trackCount();
+            rig.app.song().moveCursorTo(0, tracks); // + TRACK
+            rig.tap(A);
+            CHECK(rig.app.song().choosing());
+            rig.key(DOWN, true);
+            rig.tap(closer);
+            rig.frames(30);
+            rig.key(DOWN, false);
+            CHECK(!rig.app.song().choosing() && rig.project().trackCount() == tracks + (closer == A ? 1 : 0) && rig.app.song().cursorScene() == 0);
+        }
     }
     // The sampler's LOOP with A held clicks once a push of the stick: up ON, down OFF (it was turned as a range of
     // one: 1.3 s of push to flip it).
@@ -13654,6 +13725,29 @@ void testSongOpensOnTheCellWorkedOn() {
     rig.frames(1);
     rig.tap(R2); // the cursor is still where it was moved to on that visit: R2 takes it, as it would have
     CHECK(rig.view() == View::Pattern && p.track == 0 && p.scene == 0 && p.bar == 0);
+    // The panic puts SONG's cursor back where SONG reopening on the way moved it from: L2 first (to SET, nothing
+    // taken off a head, REPEATS or MASTER), R2 (SONG again, on the cell worked on), L1, R1. On a track's head...
+    const auto panicFromSong = [&] {
+        for (SDL_Keycode k : {L2, R2, L1, R1}) rig.key(k, true);
+        const bool back = rig.view() == View::Song && p.track == 0 && p.scene == 0;
+        for (SDL_Keycode k : {L2, R2, L1, R1}) rig.key(k, false);
+        rig.frames(1);
+        rig.tap(X); // (the first press puts the panic's notice away)
+        return back;
+    };
+    rig.tap(X); // (the panic above left its notice up: the first press puts it away)
+    rig.tap(L2);
+    rig.tap(RIGHT);
+    rig.tap(UP); // up from the top scene: track 2's head
+    CHECK(song.cursorOnHead() && song.cursorColumn() == 1);
+    CHECK(panicFromSong() && song.cursorOnHead() && song.cursorColumn() == 1);
+    // ...on REPEATS a page down (the scenes shown from the 14th)...
+    song.moveCursorTo(20, -1);
+    CHECK(song.topScene() == 13);
+    CHECK(panicFromSong() && song.cursorScene() == 20 && song.cursorColumn() == -1 && song.topScene() == 13 && !song.cursorOnHead());
+    // ...and on MASTER.
+    song.moveToMaster();
+    CHECK(panicFromSong() && song.cursorOnMaster());
 }
 
 int main(int argc, char** argv) {

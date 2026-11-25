@@ -499,10 +499,11 @@ SIZE, THEME, PIANO ROLL), **HANDHELD** (VOLUME, BRIGHTNESS, STICK LIGHT, LIGHT
 COLOUR, RING LEVEL, STICK SPEED) and **SETUP** (WIFI PAGE, NETWORK, HOTSPOT, BUTTONS, CONTROLS). The page moves
 a row at a time; a small arrow after a heading says there are rows out of sight
 that way. **L1 / R1** go to the first row of the heading before / after
-(round the ends: R1 on SETUP is TEMPO again), so CONTROLS is three presses
-from TEMPO: L1, DOWN, DOWN. **UP on the first row goes round to the last, and
-DOWN on the last to the first**, a press at a time; a held D-pad or the stick
-stops at the end. While a track's name is typed L1 and R1 are the keys'.
+(round the ends: R1 on SETUP is TEMPO again), so THEME is three presses
+from TEMPO: R1, R1, DOWN (it was eleven). **UP on the first row goes round to
+the last, and DOWN on the last to the first**, a press at a time (CONTROLS is
+one press from TEMPO: UP); a held D-pad or the stick stops at the end. While a
+track's name is typed L1 and R1 are the keys'.
 
 | Row | Left / right | A |
 | --- | --- | --- |

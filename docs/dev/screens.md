@@ -400,11 +400,13 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   `testCursorMovesAndWraps`. (The KIT page's lanes have the same one-way ring: down from lane 8 is lane 1, up from
   lane 1 the KIT stop. Not in the brief; left.)
 - **On SET, L1 / R1 go to the first row of the heading before / after the cursor's, round the ends** (gesture
-  audit G28, 2026-11-25; `SettingsScreen::jumpGroup`). TEMPO to CONTROLS was 17 presses on the stock port; it is 3
-  (L1, DOWN, DOWN). From inside a group L1 is the group BEFORE (THEME, L1: CLICK), never its own first row: one
-  meaning each way. A press, never a run; a hold of A on CONTROLS lets go as a move does (`holding_`); while a
-  name or a password is typed every button is the keys'; NETWORK's pick (A held) swallows them. **L1 / R1 kept
-  their FX and MOD meaning** (the track, owner, 2026-11-14): SET's TRACK NAME and BOUNCE THIS TRACK act on the
+  audit G28, 2026-11-25; `SettingsScreen::jumpGroup`). TEMPO to THEME was 11 presses; it is 3 (R1, R1,
+  DOWN). (TEMPO to CONTROLS, 17 presses on the stock port before the audit, is one since G35: UP from the first
+  row goes round. This note said "3 (L1, DOWN, DOWN)" until the A5 review, 2026-11-25: the slower path.) From
+  inside a group L1 is the group BEFORE (THEME, L1: CLICK), never its own first row: one meaning each way. A
+  press, never a run; a hold of A on CONTROLS lets go as a move does (`holding_`); while a name or a password
+  is typed every button is the keys'; NETWORK's pick (A held) swallows them. **L1 / R1 kept their FX and MOD
+  meaning** (the track, owner, 2026-11-14): SET's TRACK NAME and BOUNCE THIS TRACK act on the
   track worked on, and on SET L1 / R1 are the headings, as they are a page in the list of recordings. The bar
   says `L1 / R1 page` (the recordings list's word: "heading" ran 15 pixels over on NETWORK with HOLD A and HOLD B,
   "group" a fraction); it is left off while NETWORK picks or forgets, whose bars are their own. **The panic puts
@@ -419,16 +421,20 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   commit 37bcdbc, now STICK SPEED's default 75%). The quarter off stays on every rate and on every part push; only
   a FULL push HELD goes past it. Why that is more logical: at 75% the stick ran slower than a held D-pad on most
   screens (SET 5.25 rows a second against 9, FX 10.5 against 33), against "stick for big moves, D-pad for exact
-  ones"; a full push held is the one gesture that only ever means a big move, and SONG's scene 1 to 40 or SET's
-  TEMPO to CONTROLS halve (about 2.2 s to 1 s). The owner allowed reversing a decision where a method is more
-  logical (2026-11-24). **Cursors only**: SET's rows, SONG's cells, the drum grid, the roll, FX, MOD, the
+  ones"; a full push held is the one gesture that only ever means a big move, and SONG's scene 1 to 40 by the stick
+  halves (about 2.2 s to 1 s), SET's TEMPO to STICK SPEED (14 rows on the stock port) about 2.5 s to 1.2 s. (TEMPO
+  to CONTROLS is not the example: UP goes round, one press, G35.) The owner allowed reversing a decision where a
+  method is more logical (2026-11-24). **Cursors only**: SET's rows, SONG's cells, the drum grid, the roll, FX, MOD, the
   sampler's and a synth's stops, the kit's lanes and its EDIT and VOICE boxes. **Not**: a value turned (hold A,
   hold X, SET's LEFT / RIGHT: "the owner's rule: faster is better" would argue for it, but one turn time slows
   hit LEVEL from 0.44 s to 1 s), a list (the list of songs, the instruments, NETWORK's networks, the recordings
   list, which squares its push already), the name and password keys, and **the kit's sounds with A held** ("slow
   enough to hear each sound", kit_screen.cpp). A wrapping cursor (the drum grid's row, the FX list) goes round
   sooner when held full: the audit's named risk. `app_test` `testTheStickClimbsOnACursor` (the rule; SET's rows
-  part, full and at 50%; TEMPO turned; the kit's sounds; the instrument list), `testTheStickSpeedAndTheVolume`
+  part, full and at 50%; TEMPO turned; the kit's sounds; the instrument list; and, since the A5 review, every
+  other screen's own call at STICK SPEED 25%, a full push against one just short of full from the same stop: FX,
+  MOD, the sampler, a synth's MAIN across and down, the kit's lanes, EDIT's and VOICE's boxes, so dropping the
+  climb at any one of them fails), `testTheStickSpeedAndTheVolume`
   (SONG); `ui_test` (the drum grid, painting); `wifi_test` `testTheStickOverTheNetworks` (NETWORK's list, A held). **0.9 is a guess at "all the way"**: what the handheld's stick
   reads at its rim is not measured.
 - **A held key's repeats are one helper, `ui::Repeat`, on every screen** (gesture audit G08, 2026-11-25).
@@ -447,7 +453,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     MODEL (models and named voices), stay lists.
   - **The list of instruments runs when held** (it did not), at the list's pace, still going round (G35
     left it going round on every move; a held run now does too). A or B closing it ends the run, so a
-    direction still held does not run on over the cells.
+    direction still held does not run on over the cells (`testHeldKeysRunAtTheirPace` closes it with each: the
+    B half had no test until the C1 review).
   - **The sampler's LOOP clicks once a push of the stick** past half (`loopPush_`): up ON, down OFF, as
     the D-pad and a synth's choices; back in the middle, or pushed the other way (a flick across can pass
     the middle between two frames), the next push clicks. It was turned as a range of one: about 1.3 s of

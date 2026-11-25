@@ -195,4 +195,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - **The panic puts all of it back**: the scene and the bar besides the track (`App::sceneBeforeShoulders_`,
     `barBeforeShoulders_`: R2 first may have taken a cell), and SONG's cursor and where it opened
     (`SongScreen::Visit`, `visit()` / `putBack`: L2 or R2 on the way may have opened SONG and moved it). Tests:
-    `app_test` `testSongOpensOnTheCellWorkedOn`.
+    `app_test` `testSongOpensOnTheCellWorkedOn`. Its first panic case (R2 first) reopens SONG on the very cell
+    the cursor was on, so only the `moved` flag was pinned; since the A5 review (2026-11-25) three more start
+    where reopening moves the cursor (L2 to SET, R2 back to SONG on the cell worked on, L1, R1): from a track's
+    head, from REPEATS a page down (the scene, the column and the first scene shown) and from MASTER. Each of
+    `putBack`'s five places is now pinned by one of them.
