@@ -392,6 +392,26 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   `testThePickersPace`) and `textsize_test` (every place it can be, the hints at 0 over).
   **The still `picker-deleting` holds B over a real file**: main.cpp takes its picture at
   600 ms, before the second is up (`picker-folder-deleting` the same, over a real FOLDER).
+  - **Where holding B deletes, its let-go is a tap only when it is quick and alone** (gesture audit
+    G42, 2026-11-25: `SamplePicker::kTapMs` 250, timed by the presses' own times, `whenPressed`;
+    `bHolds_`). Before, letting go of a delete before the bar was full counted as a tap: the list
+    closed and the old recording went back on, against "let go early and nothing happens" (hold B's
+    rule on every screen). The bar starts the moment B goes down on a recording, so "a B that started a
+    bar is no tap" would have taken away the tap that leaves the list from the row the cursor is nearly
+    always on: hence a time. On a recording or a folder (a bar fills, or a folder not empty says why
+    not), a let-go after kTapMs does nothing, and so does one after another button went down meanwhile
+    (it called the bar off: the house's "a tap acts on its let-go, if nothing else was pressed", as
+    L1's on the grids). kHoldSaysMs is longer than kTapMs, so a folder's refusal is covered. **Where
+    holding B does nothing (the first row, + NEW FOLDER, an empty folder's no row) B is still the tap
+    however it is let go**, as `sample_test` held it before: no delete can be called off there, and B
+    there only ever goes back.
+  - **With nothing at all on the card, Y catches and R1 records** (G42): the empty list's words said
+    "catch a bar with Y, or record with R1", but Y did nothing there and R1 paged. `Jobs::catchBar` and
+    `Jobs::record` are the opening screen's own Y and R1 (`catchBar()` / `record()` on the kit, the
+    sampler and CLOUD); the list closes as B's tap does first (`putBack`), so what the screen says next
+    is seen. "Nothing" is no recording and no folder, exactly when the words are drawn; with anything
+    on the card Y and R1 are as they were. The bar says Y catch and R1 record there in place of the page.
+    `picker_test` `testBIsATapAndTheEmptyList`, `testTheEmptyListCatchesAndRecords`.
   - **It changes the card too** (batch 2, 2026-11-15): `Session::moveSample`,
     `makeSampleFolder`, `deleteSampleFolder`, each a `Session::FileJob` (Done, Same, TooLong,
     Taken, NotEmpty, Failed), reached through the list's `Jobs`. The list never touches a file.

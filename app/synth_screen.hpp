@@ -208,6 +208,8 @@ private:
     std::vector<std::string> names_; // the recordings, read as A goes down on RECORDING
     unsigned namesSeen_ = 0;        // sampleFiles() names_ was read at: behind, the next step reads it again
     void openPicker();
+    void catchBar(); // Y on CLOUD's first page: the last bar the song played, as its recording (the empty list of recordings asks too)
+    void record();   // R1 on CLOUD's RECORDING: record from the input, or stop
     void stepRecording(int by);
     void hearFromList(SamplePicker::Hear how);
 

@@ -112,12 +112,28 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     tab and the slices): the four shoulders are seldom down at once, and L1 or
     R1 first stepped the track on the way. The help card does not say L1 / R1
     here: it lists what is true on every screen, and it is full.
+    **A held on a setting is kept through L1 / R1 where the new track's line holds the same effect**
+    (gesture audit G44, 2026-11-25: turning one dial across the tracks took a fresh A per track, and
+    meanwhile the stick moved the cursor). "The same" is the same `EffectKind`, not the same family or a
+    setting of the same name: CLEAN's FEEDBACK in TAPE's place is another job, and with WRITE on it would
+    be written. Another effect, or an EMPTY slot, lets A go: an empty slot pulls the column back to the
+    list, where a held A is the list of effects and the stick's push would TRY effects on the new track.
+    SENDS keep it (the same two on every track), and a bus's or the master's line is the same whatever
+    the track. At the first or the last track nothing changes, so A stays held (it was let go before). A
+    try in the list is called off and A let go, as the owner's rule above says. The MOD tab does the same
+    (`ModScreen::stepTrack`): the same `modKind` on the line, and on a MOD's fifth setting the same job
+    (`ModKnob::moreName`: a FREE LFO's SPEED is not PHASE); a STEPS row keeps it for any two MODs of one
+    kind. `app_test` `testFxHoldKeptAcrossTracks`, `modtab_test` `testAHeldThroughTheTracks`.
   - **Hold B deletes an effect** (a slot's line or a bus's: a bar fills for
     `kDeleteHoldMs`, a second, on the line and the heading, which says
     `kDeletingWords`; a tap does nothing; any other button or a move calls it
     off; pit stop 2026-11-14; `app_test --hands` runs these tests). A tap of B on SENDS still empties both sends,
     and on a setting gives its usual value; a bus's LEVEL goes back to full
     (`effectDefault(kind, i, true)`).
+  - **A D-pad push on an amount is a twentieth, unless the effect's row says otherwise** (`EffectInfo::pushes`,
+    `effectPushes`; `pushed` in fx_screen.cpp). The twentieth keeps the arithmetic it always had (`kNotch`), so a
+    value the D-pad reaches is the same to the bit. Only BAND's FREQ has its own: thirty (gesture audit G19,
+    2026-11-24: engine.md's BAND rule). The sends stay twentieths.
   - A choice has no bar: one piece for each choice, the one it is lit
     (`wideBar`). A value is drawn in the largest lettering that fits
     `kValueRoom` (`Fonts::fit`); `app_test` (`testFxTextsFit`) draws every

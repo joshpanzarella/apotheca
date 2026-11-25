@@ -240,6 +240,18 @@ void SynthScreen::hearFromList(SamplePicker::Hear how) {
     if (how == SamplePicker::Hear::Preview) session_.hearFor(kListPreviewMs);
 }
 
+void SynthScreen::catchBar() {
+    const std::string name = session_.catchLastBar(project_.track, 0);
+    say(name.empty() ? std::string("NOTHING TO CATCH: PLAY SOMETHING FIRST") : "CAUGHT THE LAST BAR AS \"" + name + "\"", 2500);
+}
+
+// RECORD on CLOUD's RECORDING (as the sampler's R1): once to start (it waits for sound), again to stop.
+void SynthScreen::record() {
+    const Session::Rec now = session_.toggleRecording(project_.track, 0);
+    if (now == Session::Rec::NoInput) say("NO INPUT FOUND: PLUG IN A USB MICROPHONE OR INTERFACE", 3000);
+    else if (now == Session::Rec::Idle && session_.lastRecorded().empty()) say("NOTHING RECORDED: NO SOUND CAME IN", 3000);
+}
+
 void SynthScreen::openPicker() {
     const int track = project_.track;
     SamplePicker::Jobs jobs;
@@ -256,6 +268,8 @@ void SynthScreen::openPicker() {
     jobs.copied = [this] { return session_.carryResult(); };
     jobs.followFailures = [this] { return session_.followFailures(); };
     jobs.used = [this, track](const std::string& name) { return session_.sampleUses(name) - (name == project_.tracks[track].sample ? 1 : 0); };
+    jobs.catchBar = [this] { catchBar(); }; // (an empty list: as Y and R1 on RECORDING)
+    jobs.record = [this] { record(); };
     picker_.open(session_.sampleNames(), session_.sampleFolders(), trk().sample, "CLOUD: PICK ITS RECORDING", "THE BUILT-IN TONE", jobs);
     sampleFilesSeen_ = session_.sampleFiles();
 }
@@ -392,8 +406,7 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
     // and it is heard. Not with A held (turning), and on the pages nothing.
     // Y on CLOUD's first page: CATCH, the last bar the song played as this track's recording.
     if (b == Button::Y && event.down && spec_.recording && page_ == 1 && !holding_) {
-        const std::string name = session_.catchLastBar(project_.track, 0);
-        say(name.empty() ? std::string("NOTHING TO CATCH: PLAY SOMETHING FIRST") : "CAUGHT THE LAST BAR AS \"" + name + "\"", 2500);
+        catchBar();
         return;
     }
     if (b == Button::Y && event.down && spec_.roll && page_ == 0 && !holding_) {
@@ -425,10 +438,7 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
             session_.setWriting(writing);
         }
     } else if (b == Button::R1 && onRecording() && !holding_) {
-        // RECORD on CLOUD's RECORDING (as the sampler's R1): once to start (it waits for sound), again to stop.
-        const Session::Rec now = session_.toggleRecording(project_.track, 0);
-        if (now == Session::Rec::NoInput) say("NO INPUT FOUND: PLUG IN A USB MICROPHONE OR INTERFACE", 3000);
-        else if (now == Session::Rec::Idle && session_.lastRecorded().empty()) say("NOTHING RECORDED: NO SOUND CAME IN", 3000);
+        record();
     } else if (b == Button::R1 && page_ == 0 && cursor_ == kPreset && !holding_) {
         typing_ = true; // save the sound: the keys come up to name it
         typed_.clear();

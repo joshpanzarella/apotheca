@@ -260,12 +260,20 @@ void ModScreen::dice(Uint32 nowMs) {
     }
 }
 
+// L1 / R1: the track before / after (the ends stop). A list of targets open is called off. A held on a setting is
+// kept where the new track's MOD on the line is the same kind (gesture audit G44, as on FX): an LFO and an LFO, a
+// STEPPER and a STEPPER; on a MOD's fifth setting, the same job too (a FREE LFO's SPEED is not another's PHASE).
+// Anything else lets A go.
 void ModScreen::stepTrack(int by) {
+    const bool turning = holding_ && !picking() && column_ > 0;
+    const ModSettings was = mod(modOf(row_));
     pickRow_ = -1;
     holding_ = false;
     const int to = project_.track + by;
-    if (to < 0 || to >= project_.trackCount()) return;
-    project_.track = to;
+    if (to >= 0 && to < project_.trackCount()) project_.track = to;
+    const ModSettings& now = mod(modOf(row_));
+    const bool sameJob = stepsLine(row_) || column_ != kMore || std::strcmp(ModKnob::moreName(now), ModKnob::moreName(was)) == 0;
+    holding_ = turning && modKind(now.kind) == modKind(was.kind) && sameJob; // (an OFF MOD is never turned: A on its TARGET is the list)
 }
 
 // ---- the list of targets -----------------------------------------------------------------------

@@ -18,6 +18,18 @@ using namespace ui;
 namespace {
 constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs;
 constexpr float kMovesPerSecond = 14.f, kKindsPerSecond = 5.f, kTurnPerSecond = 0.9f, kNotch = 0.05f;
+static_assert(kEffectPushes == 20, "kNotch is a push of the usual twenty");
+
+// One push of the D-pad on an amount: to the next of its points, `pushes` across the range. The usual twenty keep
+// the arithmetic they always had (a value the D-pad reaches is the same to the bit); BAND's FREQ has thirty.
+float pushed(float now, int by, int pushes) {
+    if (pushes == kEffectPushes) {
+        const float notches = now / kNotch;
+        return (by > 0 ? std::floor(notches + 1.001f) : std::ceil(notches - 1.001f)) * kNotch;
+    }
+    const float points = now * static_cast<float>(pushes);
+    return (by > 0 ? std::floor(points + 1.001f) : std::ceil(points - 1.001f)) / static_cast<float>(pushes);
+}
 }
 
 // Nothing here spells an effect out: its name, its family and type, its
@@ -504,9 +516,7 @@ void FxScreen::press(Button b) {
         if (which < 0 || which >= count) return;
         session_.setEffectParam(trackOf(row_), slotOf(row_), index, (static_cast<float>(which) + 0.5f) / static_cast<float>(count));
     } else {
-        const float notches = now / kNotch;
-        const float to = (by > 0 ? std::floor(notches + 1.001f) : std::ceil(notches - 1.001f)) * kNotch;
-        session_.setEffectParam(trackOf(row_), slotOf(row_), index, to);
+        session_.setEffectParam(trackOf(row_), slotOf(row_), index, pushed(now, by, effectPushes(kind, index)));
     }
 }
 
@@ -627,13 +637,20 @@ const char* FxScreen::typeKey() const {
 }
 
 // L1 / R1: the track before / after, on the same line and setting. It stops at the first and the last, as the
-// SONG screen's columns do. An effect being tried is called off first (it is the old track's).
+// SONG screen's columns do. An effect being tried is called off first (it is the old track's). A held on a
+// setting is kept where the new track's line holds the same effect (gesture audit G44: one dial turned across
+// the tracks, a press each), so the stick and the D-pad turn the same setting there; another effect, or none,
+// lets A go: its setting under the cursor could be a choice, another job, or the list (an empty slot), where a
+// push would try effects. The sends are the same two on every track, and a bus's or the master's line is the
+// same whatever the track.
 void FxScreen::stepTrack(int by) {
+    const bool turning = holding_ && tryRow_ < 0 && column_ > 0;
+    const int was = sends(row_) ? -1 : data(row_).kind;
     callOff();
     holding_ = false;
     const int to = project_.track + by;
-    if (to < 0 || to >= project_.trackCount()) return;
-    project_.track = to; // (the line stays; a setting it no longer has: the nearest, in update())
+    if (to >= 0 && to < project_.trackCount()) project_.track = to; // (the line stays; a setting it no longer has: the nearest, in update())
+    holding_ = turning && (sends(row_) ? -1 : data(row_).kind) == was;
 }
 
 void FxScreen::update(const Input& input, Uint32 nowMs) {

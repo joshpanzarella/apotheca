@@ -219,12 +219,13 @@ column. It opens in the folder of the recording that is on, on it.
 | Up / down | The next in the column. A recording goes on **at once**: with the song playing you hear it in the beat; stopped, **half of it plays** (from where it plays from: the sampler's START), and it stops as soon as the cursor moves on. Held: a steady pace, faster after a second and a half |
 | The stick | Big moves: up to fifteen rows a second pushed all the way. Going by that fast, the one you stop on goes on, not each one passed |
 | Left / right | Out to the folder this one is in / into the folder under the cursor |
-| **L1 / R1** | A page up / down |
+| **L1 / R1** | A page up / down. (With nothing at all on the card, R1 records: below) |
 | **Hold R1** | On a recording: **carry it**. Keep R1 down and steer (D-pad, stick, L1) to a folder, or into one; let go and it is there. The top line says where it would go. Let go on a row of SAMPLES that is no folder: out of every folder. **B with R1 held calls it off** |
 | A | On a recording: keep it (one step of SELECT + B, however many you passed on the way). On a folder: into it. On **+ NEW FOLDER**: type its name (A types, Y deletes a letter, **B makes the folder and leaves**, as START does; with nothing typed B leaves and makes none) |
-| B | A tap: put back what was there before the list opened |
+| B | **A tap**: put back what was there before the list opened. On a recording or a folder (where holding B deletes), only a quick tap does: held longer than a quarter of a second, or with another button pressed meanwhile, letting go does nothing and the list stays where it is |
 | X | **While it is still playing: it plays on to its end.** Nothing playing: hear it again; **held, it plays until you let go**, or to its end; a tap plays a moment |
-| **Hold B** | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. Or an **empty folder**: one with anything in it is never deleted |
+| **Hold B** | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. Or an **empty folder**: one with anything in it is never deleted. Let go before the bar is full and nothing happens |
+| Y / R1 | **With nothing on the card at all** (no recording, no folder), the list says where recordings come from: **Y catches the last bar and R1 records**, as on the page it was opened from. The list closes as a tap of B closes it |
 | START | Play / stop, with the list still open |
 
 **Folders.** Folders inside `samples` (kicks, breaks, vocals...), and
@@ -291,7 +292,7 @@ to the sound just now.
 | The settings | Up / down | The next setting |
 | | Left | Back to the list, on the same line, from any setting. (Right does nothing here.) |
 | | **Hold A + left / right** | **The TYPE before / after** (COMP to DUCK), at once, in the same grip that turns the value: the cursor stays on its row. The first and the last type stop. |
-| | Hold A + up / down | The stick turns it. The D-pad moves it a twentieth, or to the next choice. |
+| | Hold A + up / down | The stick turns it. The D-pad moves it a twentieth, or to the next choice (BAND's FREQ: a third of an octave). |
 | | B | Its usual value. A send: nothing sent. |
 
 **A slot remembers each type's own settings.** Turn a COMP, switch to the
@@ -315,6 +316,10 @@ brings it back).
 **L1 / R1** is the track before / after, from the list or from a setting: the
 cursor stays on the same line and setting, and the top bar names the new
 track. It stops at the first and the last track, as the SONG screen does.
+**With A held on a setting, A stays held** when the new track has the same
+effect in that slot (and always on SENDS): hold A, turn, R1, turn, R1... turns
+one dial across the tracks in one grip. Another effect there, or none, lets A
+go; press it again. An effect being tried in the list is called off, as before.
 
 X hears the track and START plays, as everywhere (a recording, on lane 1 or
 the sampler, plays for as long as X is held). Y does nothing here.
@@ -413,7 +418,7 @@ song file calls each by the name it has always had.
 | PLATE | A plate reverb: a dense wash from its first moment, with no early echoes to pick out, bright and smooth, and an even fall. **Pre** (a gap before it answers: 0 to 100 ms), **decay** (how long the tail lasts, in seconds: 0.3 to 20, as HALL's), **tone** (low is dark; high is bright; at any setting the lowest notes die a little sooner than the rest), **mix**. Left and right go in together, as on a real plate, and come out wide. Turning PRE while it sounds bends its pitch for a moment. |
 | REVERB (the type ROOM) | The older, plainer reverb. Size, damping, mix |
 | CHORUS | Rate, depth, type, mix. Copies of the sound, a little late and wavering, which makes one sound into several and spreads it left and right. RATE is how fast they waver (0.1 to 8 times a second), DEPTH how far. Types: CHORUS (three copies a side), ENSEMBLE (three copies, each at its own speed: thicker, less regular), VIBRATO (the pitch itself wavers; at full mix there is no plain sound), FLANGE (one very short copy fed back into itself: the jet sweep). |
-| BAND (a FILTER type) | Freq, gain, Q, shape. **One band of an EQ, put anywhere**: for a bump or a cut exactly where you want it, or to take one ringing note right out. FREQ is where, 20 HZ to 20 KHZ. GAIN is how much, -12 to +12 DB. Q is how narrow: Q 0.3 is some three octaves wide, Q 30 a single note; it starts at 1.5. SHAPE: BELL (up or down around FREQ), NOTCH (FREQ taken right out, as narrow as Q; GAIN does nothing and reads "-"), LOW SHELF (everything under FREQ up or down alike) and HIGH SHELF (everything over it). A shelf's Q stops at 2 (past that it only rings) and reads so. It starts flat (0 DB), so adding it changes nothing until GAIN or SHAPE is turned. Changing SHAPE while it sounds fades from one to the other, with no click. Put two in a track's slots for two bands. |
+| BAND (a FILTER type) | Freq, gain, Q, shape. **One band of an EQ, put anywhere**: for a bump or a cut exactly where you want it, or to take one ringing note right out. FREQ is where, 20 HZ to 20 KHZ; **the D-pad moves it a third of an octave a push** (50, 63, 80, 100 HZ ... 1.0 KHZ ...), so mains hum at 50 HZ and the 1.0 KHZ it starts on are each a push away (60 HZ is between two: the stick gets there). GAIN is how much, -12 to +12 DB. Q is how narrow: Q 0.3 is some three octaves wide, Q 30 a single note; it starts at 1.5. SHAPE: BELL (up or down around FREQ), NOTCH (FREQ taken right out, as narrow as Q; GAIN does nothing and reads "-"), LOW SHELF (everything under FREQ up or down alike) and HIGH SHELF (everything over it). A shelf's Q stops at 2 (past that it only rings) and reads so. It starts flat (0 DB), so adding it changes nothing until GAIN or SHAPE is turned. Changing SHAPE while it sounds fades from one to the other, with no click. Put two in a track's slots for two bands. |
 | WAH (a FILTER type) | Sense, speed, resonance, mix. An auto-wah: **a filter that opens as you play.** A hit opens it and it closes as the sound dies away: the "quack" of a funk bass or a clavinet. Nothing turns it but the playing. SENSE is how far a sound opens it (low: only the loudest hits open it a little; high: a quiet one opens it all the way, 250 HZ shut to 3.5 KHZ open). SPEED is how fast it follows, read as two times: 2/60 MS (in fast, back fast: a quack on every note) to 30/600 MS (a slow swell). RESONANCE is how much it sings at the top of its sweep; it reads as FILTER's does, and stays where it was when TYPE changes from FILTER or VOWEL. MIX at 0 is the sound untouched. |
 | PITCH (a MOD type) | Pitch, fine, grain, mix. **The sound again, higher or lower**: an octave under a bass, a fifth over a lead. PITCH is -12 to +12 semitones (ST), one click each. FINE is -50 to +50 cents on top (a cent is a hundredth of a semitone): a few either way at half MIX thickens a sound, as two players a hair apart. GRAIN is how long each piece it reads is, 20 to 120 MS: short follows fast playing but buzzes on low notes; long is smooth but blurs fast playing. MIX at 0 is the sound untouched; at 100% only the shifted sound is left. At PITCH 0 and FINE 0 the shifted sound is the sound a GRAIN late, so with MIX part way it sounds hollow (a comb), as any shifter does. It starts an octave up at half MIX. |
 | COMP | Threshold, ratio, speed, mix. A compressor: it turns the loud parts down and then the whole up, so a sound is more even and sits forward. THRESHOLD is how loud "loud" is (-48 to 0 dB: lower catches more). RATIO is how hard (1.5:1, 2:1, 3:1, 4:1, 8:1, 20:1). **While sound passes, a thin line under the THRESHOLD bar shows how far it is turning the sound down**, and the heading says it in words (TURNING DOWN 7 DB): it grows from the right, and the whole width is 24 dB. No line: the sound is under the threshold and nothing is done to it. SPEED is how fast it acts and lets go, as one knob: it reads both, from 1/50 MS (it catches every hit) to 30/400 MS (hits get through, the whole is held together). MIX part way keeps the plain sound beside the squashed one. The level comes back up by itself. It does not listen below 60 Hz, so a kick's thump does not pull everything down. **On the master it glues a mix together.** |
@@ -918,7 +923,7 @@ the step playing.
 | **Hold B** on a MOD's line | Deletes the MOD (a second; undo brings it back) |
 | Y | The dice: on a MOD's line as on the knob; on STEPS, the row |
 | X | Hear the track. Held on a MOD's line with the song stopped, that MOD runs |
-| L1 / R1 | The track before / after |
+| L1 / R1 | The track before / after. **With A held on a setting, A stays held** where the new track's MOD on that line is the same kind (an LFO and an LFO, a STEPPER and a STEPPER; on the fifth setting, PHASE and PHASE or SPEED and SPEED): one DEPTH turned across the tracks in one grip. Anything else lets A go |
 
 A MOD's settings: TARGET, SHAPE (SINE ... DRIFT, then STEPPER), DEPTH, RATE,
 and PHASE (an LFO), SPEED (an LFO at RATE FREE) or LENGTH (a STEPPER). Its STEPS: the row of 16 (steps past

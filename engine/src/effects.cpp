@@ -362,6 +362,11 @@ int effectChoices(EffectKind kind, int index) {
     return index < 0 || index >= info.params ? 0 : info.choices[index];
 }
 
+int effectPushes(EffectKind kind, int index) {
+    const EffectInfo& info = effectInfo(kind);
+    return index < 0 || index >= info.params || info.pushes[index] <= 0 ? kEffectPushes : info.pushes[index];
+}
+
 void effectParamText(EffectKind kind, int index, float value, char* out, int size, const float* all) {
     if (!out || size <= 0) return;
     const EffectInfo& info = effectInfo(kind);

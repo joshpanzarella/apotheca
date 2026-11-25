@@ -1987,12 +1987,16 @@ void testTheSamplePicker() {
     rig.frames(80);
     rig.key(Y, false);
     CHECK(list.count() == 22 && list.isOpen() && std::string(track.laneSample[5]) == "take 05");
-    // B let go before the second is up: a tap. The list shuts with the lane as it was, and nothing is deleted.
+    // B let go before the second is up: nothing happens (gesture audit G42: it was B's tap, which shut the list).
+    // The list stays on the row, with it on the lane, and nothing is deleted. A quick tap still shuts it, as it was.
     rig.tap(DOWN);
     rig.key(B, true);
     rig.frames(30);
     CHECK(list.isOpen() && list.deletePart() > 0.3f);
     rig.key(B, false);
+    rig.frames(1);
+    CHECK(list.isOpen() && list.cursor() == 6 && list.deletePart() == 0.f && std::string(track.laneSample[5]) == "take 06" && session.sampleNames().size() == 20);
+    rig.tap(B);
     rig.frames(1);
     CHECK(!list.isOpen() && std::string(track.laneSample[5]) == "take 05" && session.sampleNames().size() == 20);
     rig.tap(A);
