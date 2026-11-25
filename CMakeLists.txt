@@ -92,6 +92,10 @@ if(APOTHECA_BUILD_TESTS)
   add_executable(choke_test tests/choke_test.cpp)
   target_link_libraries(choke_test PRIVATE apotheca_engine)
   add_test(NAME choke COMMAND choke_test)
+  # SLICES AT THE HITS (slice_rule.hpp): the hit finder on loops built by hand, and the engine playing a lane's cuts.
+  add_executable(slices_test tests/slices_test.cpp)
+  target_link_libraries(slices_test PRIVATE apotheca_engine)
+  add_test(NAME slices COMMAND slices_test)
   # The JX-3P (docs/plans/jx3p-plan.md): the skeleton, its voices, tick, envelope and VCA. It reads
   # the synth's own parts (engine/src/jx3p/) and the shared measuring tools.
   add_executable(jx3p_test tests/jx3p_test.cpp)

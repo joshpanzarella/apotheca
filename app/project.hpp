@@ -14,6 +14,7 @@
 #include "apotheca/cloud.hpp"
 #include "apotheca/morph.hpp"
 #include "apotheca/drum_synth.hpp"
+#include "apotheca/slice_rule.hpp"
 #include "lane_edit.hpp"
 
 namespace apotheca {
@@ -334,6 +335,8 @@ struct TrackFields {
                                           // third of a step late. The track's, live, as FEEL
     std::uint8_t laneChoke[kDrumLanes] = {}; // CHOKE: each lane's group, kChokeNone, 1 or 2 (drums.hpp). The track's; a new kit
                                           // has its hats in CHOKE 1 (Session::chokeNewKit), a blank TrackData none
+    LaneCuts laneCuts[kDrumLanes];        // SLICES AT THE HITS: each lane's own cuts (apotheca/slice_rule.hpp); none (count 0) is EVEN,
+                                          // 16 or FIT's steps. Fractions of what the lane plays, as a hit's start; set by Session::setLaneCuts
     int preset = 0;              // a synth's preset, patch and macros
     PhazedPatch patch;           // when the track is Phazed
     Jx3pPatch jx3p = Jx3p::presetPatch(0); // when it is JAX-EP. Ids 32 and 33, VELOCITY and

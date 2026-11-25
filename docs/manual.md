@@ -2114,7 +2114,11 @@ Everything the grid does works the same here. What is added:
 | X | Hear one slice: the hit's, or on an empty step the one a hit would get |
 | Up / down on the lane's name | **Up: ONE SLICE**, each hit plays its slice and stops. **Down: RUNS ON**, through the recording until the next hit. Held, it stays where it was pushed |
 | Hold Y + right on the name | Roll every hit's slice. Left: back in order. |
-| **Hold Y on a hit, R1** | **Save the slice** as a new recording: the slice the hit plays (from where it starts, one slice long), as the lane plays it (EDIT and FIT made), beside the lane's file, named after it with the next free number (`amen 1`, `amen 2`...; never over a file). The strip says SAVED "AMEN 1". The hit, its chance and the lane stay as they were. |
+| **Hold Y on a hit, R1** | **Save the slice** as a new recording: the slice the hit plays (from where it starts, to the end of its slice), as the lane plays it (EDIT and FIT made), beside the lane's file, named after it with the next free number (`amen 1`, `amen 2`...; never over a file). The strip says SAVED "AMEN 1". The hit, its chance and the lane stay as they were. |
+| **Hold A + right / left on the lane's name** | **Cut at the hits**: the slices are cut where the recording's drums land, not evenly. Each push is a step of SENSITIVITY, from EVEN (sixteen even slices, as before) through AT HITS 1 (only the loudest hits) to AT HITS 10 (soft ghost notes too). See "Slices at the hits" below. |
+| **Hold Y on a hit, left / right** | **Move its slice's cut** a millisecond earlier or later (the stick slides it), and every hit that starts on that cut with it. Heard as it moves. |
+| **Hold Y on a hit, A** | **Add a cut** inside its slice: where a hit was passed by (the strongest one there), or else in its middle |
+| **Hold Y on a hit, B** | **Delete its slice's cut**: the slice joins the one before, and the hits on it start there |
 
 So, to chop a break: put it on a lane, FIT it to 1 bar, L1, hold R1 and
 sweep the stick across. That is the break as it was, in sixteen hits. Now
@@ -2125,10 +2129,41 @@ move to a step and press up or down until it plays the slice you want.
   slice out of order is heard as a cut.
 - **ONE SLICE** is for beats with gaps: take a hit out and its step is
   silent. With **RUNS ON** the recording plays on through the gap.
-- A hit's start can still be slid off the cuts (hold Y, stick left / right).
-  The strip then reads `9 + 40%`: slice 9, and 40% of a slice further in.
+- A hit's start can still be slid off the cuts on the plain drum grid (hold
+  Y, stick left / right). In the slice view the strip then reads `9 + 40%`:
+  slice 9, and 40% of a slice further in. (In the slice view, hold Y + left /
+  right moves the slice's cut instead: below.)
 - A slice change is undone by SELECT + B like any other edit. ONE SLICE /
   RUNS ON is kept in the song.
+
+### Slices at the hits
+
+A break is rarely even: its drums do not land on sixteen equal pieces. **Hold
+A on the lane's name and push right**, and the slices are cut where its hits
+land instead. The name's box says **AT HITS 1** and how many slices it found;
+each push right is a step more SENSITIVITY (it finds softer hits, up to AT HITS
+10), each push left a step less, back to **EVEN**. Every hit on the lane
+follows: a break laid out in order (hold R1 and drag) stays in order, now with
+each step starting on a hit; a hit moved out of order starts on the hit it was
+playing in. The picture draws each cut where it is.
+
+- Each cut sits a millisecond before its hit, so the hit's attack is heard
+  whole.
+- **ONE SLICE** now plays each hit to the next cut, so a slice is one clean
+  drum.
+- **Fix one by hand**: hold Y on a hit and press left / right to move its cut
+  a millisecond at a time (the stick slides it); hold Y and press **A** to add a
+  cut inside its slice (where a softer hit was passed by), or **B** to delete
+  its cut. The first slice always starts at the top of the sound. Moving,
+  adding or deleting a cut on EVEN slices makes them the lane's own: the box
+  says **BY HAND**. Up to 64 slices.
+- A long recording (over 4 seconds) is looked at while you carry on: the box
+  says FINDING... for a moment.
+- Another recording on the lane makes its slices EVEN again. A change of
+  START or END in its EDIT keeps the cuts where they were: cut at the hits
+  again after it.
+- It is all undone by SELECT + B, and kept in the song and in a kit.
+- The sampler's CHOP still cuts its recording into 16 even slices.
 
 ## DEVICE, drums: the kit
 

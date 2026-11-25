@@ -629,6 +629,17 @@ void putKit(std::string& out, const TrackData& track) {
         put(out, "choke %.0f", lane + 1);
         put(out, " %.0f\n", track.laneChoke[lane]);
     }
+    // slices LANE SENSE AT...: a lane's own cuts (SLICES AT THE HITS, slice_rule.hpp): the SENSITIVITY they
+    // were found at (0: by hand), then where each slice after the first begins (0..1 of what the lane
+    // plays; the first is the top). Left out when its slices are EVEN.
+    for (int lane = 0; lane < kDrumLanes; ++lane) {
+        const LaneCuts& cuts = track.laneCuts[lane];
+        if (cuts.even()) continue;
+        put(out, "slices %.0f", lane + 1);
+        put(out, " %.0f", cuts.sense);
+        for (int k = 1; k < cuts.count; ++k) put(out, " %.6g", cuts.at[k]);
+        out += "\n";
+    }
 }
 
 void putTrack(std::string& out, const TrackData& track) {
@@ -1078,6 +1089,17 @@ void readLines(SongReading& r, const std::string& text, std::size_t from, std::s
             double lane, amount;
             if (!(in >> lane >> amount) || !(lane >= 1) || lane > kDrumLanes || !isWhole(lane)) continue;
             track->laneSwing[static_cast<int>(lane) - 1] = laneSwingOf(wholeIn(amount, 0, 100)); // (held as a double first)
+        } else if (word == "slices" && track->kind == TrackKind::Drums) {
+            // Each place held as a double first; one missing, not a number, out of order or past the room ends
+            // the cuts there (cutsHeld). A SENSITIVITY nobody knows: none (by hand).
+            double lane = 0, sense = 0;
+            if (!(in >> lane >> sense) || !(lane >= 1) || lane > kDrumLanes || !isWhole(lane)) continue;
+            LaneCuts cuts;
+            cuts.count = 1;
+            cuts.sense = static_cast<std::uint8_t>(wholeIn(sense, 0, kSenseMost + 1));
+            double at = 0;
+            while (cuts.count < kMaxLaneCuts && (in >> at)) cuts.at[cuts.count++] = static_cast<float>(at > 0.0 && at < 1.0 ? at : 0.0);
+            track->laneCuts[static_cast<int>(lane) - 1] = slices::cutsHeld(cuts);
         } else if (word == "choke" && track->kind == TrackKind::Drums) {
             double lane, group;
             if (!(in >> lane >> group) || !(lane >= 1) || lane > kDrumLanes || !isWhole(lane)) continue;
@@ -1607,6 +1629,7 @@ void copyKit(const TrackData& from, TrackData& to) {
         to.laneFeel[lane] = from.laneFeel[lane];
         to.laneSwing[lane] = from.laneSwing[lane];
         to.laneChoke[lane] = from.laneChoke[lane];
+        to.laneCuts[lane] = from.laneCuts[lane];
     }
 }
 
@@ -1616,7 +1639,7 @@ bool readKit(const std::string& text, TrackData& kit) {
     if (line == std::string::npos) return false;
     // A kit holds only a kit's own lines: anything else (a scene, another track) is refused here,
     // not read as a song and silently dropped from what comes back.
-    static const char* const kitWords[] = {"lanes", "sample", "lanefit", "lanesynth", "oneslice", "laneedit", "feel", "swing", "choke"};
+    static const char* const kitWords[] = {"lanes", "sample", "lanefit", "lanesynth", "oneslice", "laneedit", "feel", "swing", "choke", "slices"};
     std::size_t at = line + 1;
     while (at < text.size()) {
         const std::size_t stop = text.find('\n', at);

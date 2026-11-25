@@ -123,6 +123,7 @@ bool Session::putKit(int track, const TrackData& kit) {
         setLaneEdit(track, lane, kit.laneEdit[lane]);
         setLaneFit(track, lane, kit.laneFit[lane]);
         setLaneOneSlice(track, lane, kit.laneOneSlice[lane]);
+        setLaneCuts(track, lane, kit.laneCuts[lane]); // (after the sound: another sound makes its slices EVEN)
         setLaneLevel(track, lane, kit.laneLevel[lane]);
         setLaneFeel(track, lane, kit.laneFeel[lane].time, kit.laneFeel[lane].level);
         setLaneSwing(track, lane, kit.laneSwing[lane]);

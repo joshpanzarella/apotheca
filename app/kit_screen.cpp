@@ -181,11 +181,14 @@ void KitScreen::openPicker() {
     // mark then differed: a step of undo, and the redo steps gone (review of G04). Nothing is done where the cut
     // is as it was. A recording deleted meanwhile takes its cut with it: the drum goes back as it is.
     // (No voice to put back: on a DRUM SYNTH lane A's tap opens its knobs, never this list.)
+    // Its own cuts likewise (SLICES AT THE HITS: every recording put on makes them EVEN).
     const LaneEdit edit = trk().laneEdit[lane_];
+    const LaneCuts cuts = trk().laneCuts[lane_];
     const bool recorded = trk().laneSample[lane_][0] != 0;
-    jobs.putBack = [this, track, lane, edit, recorded](const std::string& original) {
-        if ((original.empty() && recorded) || project_.tracks[track].laneEdit[lane] == edit) return;
-        session_.setLaneEdit(track, lane, edit);
+    jobs.putBack = [this, track, lane, edit, cuts, recorded](const std::string& original) {
+        if (original.empty() && recorded) return;
+        if (project_.tracks[track].laneEdit[lane] != edit) session_.setLaneEdit(track, lane, edit);
+        if (project_.tracks[track].laneCuts[lane] != cuts) session_.setLaneCuts(track, lane, cuts);
     };
     char title[48];
     std::snprintf(title, sizeof title, "LANE %d: PICK ITS SOUND", lane + 1);

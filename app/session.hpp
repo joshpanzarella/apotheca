@@ -5,6 +5,7 @@
 #include <SDL.h>
 
 #include <atomic>
+#include <functional>
 #include <cstdint>
 #include <memory>
 #include <thread>
@@ -320,10 +321,39 @@ public:
     bool setTempoFromLoop(int track, int lane, float bpm, int bars);
     // A lane's sound as slices, for chopping a break. How many there are: sixteen,
     // or one to a step if the recording is fitted to more than a bar (32 for two
-    // bars, 64 for four). And whether a hit plays just its slice and stops, or
-    // runs on until the next hit on the lane.
+    // bars, 64 for four), EVEN; or its own cuts (below). And whether a hit plays just its
+    // slice and stops, or runs on until the next hit on the lane.
     int laneSlices(int track, int lane) const;
+    int evenSlices(int track, int lane) const; // ...as EVEN: 16, or FIT's steps past a bar
     void setLaneOneSlice(int track, int lane, bool on);
+    // SLICES AT THE HITS (batch S2, sampling-gaps.md #2; apotheca/slice_rule.hpp): a lane's own cuts in
+    // place of its EVEN slices, found where its hits land or moved, added and deleted by hand. Parts of
+    // what the lane plays (0..1), as a hit's start is; the first is the top. laneSlices counts them.
+    float laneCutAt(int track, int lane, int k) const;        // where slice k begins (round again past the last)
+    int laneSliceAt(int track, int lane, float start) const;  // the slice a start falls in
+    float lanePartAt(int track, int lane, float start) const; // what ONE SLICE plays from a start
+    float laneCutStep(int track, int lane, float start, int by) const; // the next cut up (by > 0) or down, round the ends
+    // As they are, no hit moved (a song read, undo, a kit put on): the engine told, and ONE SLICE's share.
+    void setLaneCuts(int track, int lane, const LaneCuts& cuts);
+    enum class Cut { Done, Same, Finding, NoSound, Top, Full, NoRoom };
+    // The SENSITIVITY: 0 EVEN, 1..10 cut where the lane's hits land. Every hit of the lane (each scene, each
+    // bar) follows: one in order (its step's own slice) stays in order, each step its own slice of the new cuts
+    // (round again past the last); any other goes to the cut at or before where it starts (a hit, if it was
+    // playing one). The hits are found once a sound
+    // (a shape): at once on a short one, else on a thread of their own (Finding: put on, at the SENSITIVITY
+    // last asked, when found; `update` collects it). NoSound: no recording there, or its shape still made.
+    Cut cutLaneAtHits(int track, int lane, int sense);
+    bool findingHits(int track, int lane) const; // the lane's hits are being found meanwhile
+    int senseShown(int track, int lane) const;   // ...the SENSITIVITY last asked for then, else the lane's
+    static constexpr int kFindInAFrame = 192000; // a sound this long (4 s) or shorter is looked at at once (about 1.4 ms on the desk)
+    // By hand. Cut k moved to `to` (held kHandGapSeconds inside its neighbours), every hit on it with it; a
+    // cut added in slice k (at the strongest hit found there, else its middle), no hit moved; cut k deleted,
+    // its slice joined to the one before and the hits on it moved to that one's cut. EVEN slices become the
+    // lane's own first. The first cut is the top: never moved or deleted (Top). Full: 64 already. NoRoom: no
+    // room inside its neighbours. Each a change like any (soundMark sees the cuts: undo).
+    Cut moveLaneCut(int track, int lane, int k, float to);
+    Cut addLaneCut(int track, int lane, int k);
+    Cut deleteLaneCut(int track, int lane, int k);
     void setSamplerChop(int track, bool on); // chopped or whole: 16 even slices from C1 up, or the one recording
     // Asked for from another screen (the kit's): the drum grid opens on this lane's slices.
     int wantSlices = -1; // a lane, or -1
@@ -371,6 +401,9 @@ public:
         int zones = 0;            // a sampler's multisample: how many recordings play (0: one, as always)
         int layers = 0;           // ...and the most velocity layers on one of its notes (1: none)
         unsigned version = 0;     // goes up whenever the lane's sound changes
+        // SLICES AT THE HITS: its hits as found (slice_rule.hpp), once a shape: `hitsOf` is the shape they were found in.
+        std::vector<slices::Found> hits;
+        std::shared_ptr<const std::vector<float>> hitsOf;
     };
     const LaneSound& laneSound(int track, int lane) const { return sounds_[track][lane]; }
     // A sampler track's one recording, and its settings (sampler.hpp).
@@ -1136,6 +1169,22 @@ private:
         std::thread thread;
     };
     std::unique_ptr<CarryJob> carry_;
+    // SLICES AT THE HITS: a long sound's hits found on a thread of their own (cutLaneAtHits), one at a time.
+    struct HitsJob {
+        int track = 0, lane = 0;
+        std::shared_ptr<const std::vector<float>> of; // the shape looked at
+        std::vector<slices::Found> found;
+        std::atomic<bool> done{false};
+        std::thread thread;
+    };
+    std::unique_ptr<HitsJob> hits_;
+    int hitsSense_ = 0; // the SENSITIVITY last asked for while it runs: put on when it lands
+    void finishHits(bool wait); // a job done (or waited for) is kept as its lane's hits, and its SENSITIVITY put on
+    const std::vector<slices::Found>* foundHits(int track, int lane, bool atOnce); // the lane's, found for its shape now (nullptr: not yet)
+    void sendLaneCuts(int track, int lane);
+    // Every hit of a lane, each scene and bar, its start through `to(bar, step, start)`; the engine told (a start a
+    // command, or the track's image when many moved). Undo sees it with the cuts.
+    void moveLaneHits(int track, int lane, const std::function<float(int, int, float)>& to);
     FileJob carryResult_ = FileJob::Done;
     unsigned carriesDone_ = 0;
     void finishCarry(); // the copy has ended: the open song follows, as a rename does

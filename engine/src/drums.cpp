@@ -193,6 +193,18 @@ void DrumMachine::setLanePart(int lane, float part) {
     lanePart_[lane] = part; // trigger() takes anything that is not a share of the sound as "all of it"
 }
 
+void DrumMachine::setLaneCuts(int lane, int count, int from, int places, const float* at) {
+    if (lane < 0 || lane >= kDrumLanes) return;
+    cutCount_[lane] = count <= 0 ? 0 : (count > kMaxCuts ? kMaxCuts : count);
+    cuts_[lane][0] = 0.f; // (the first is always the top)
+    for (int i = 0; i < places && i < 3 && at; ++i) {
+        const int k = from + i;
+        if (k <= 0 || k >= kMaxCuts) continue;
+        const float v = at[i];
+        cuts_[lane][k] = v > 0.f && v < 1.f ? v : 1.f; // (nonsense, NaN too: past the end, so nothing ends there)
+    }
+}
+
 void DrumMachine::setLaneChoke(int lane, int group) {
     if (lane < 0 || lane >= kDrumLanes) return;
     choke_[lane] = chokeGroupOf(group);
@@ -235,8 +247,22 @@ void DrumMachine::trigger(int lane, float velocity, float start, float part, con
     if (length == 0) return;
     if (!(start > 0.f)) start = 0.f; // also NaN
     const int from = static_cast<int>(start * static_cast<float>(length)); // at or past the end: nothing plays
-    if (!(part >= 0.f)) part = lanePart_[lane]; // below zero (or NaN): as the lane is set
-    const int end = part > 0.f && part < 1.f ? from + static_cast<int>(part * static_cast<float>(length)) : length;
+    const bool lanes = !(part >= 0.f);
+    if (lanes) part = lanePart_[lane]; // below zero (or NaN): as the lane is set
+    int end = part > 0.f && part < 1.f ? from + static_cast<int>(part * static_cast<float>(length)) : length;
+    if (lanes && part > 0.f && cutCount_[lane] > 0) {
+        // ONE SLICE with the lane's own cuts (SLICES AT THE HITS): to the next cut past where it starts. A
+        // cut within the carry-on's millisecond and a half of the start is the one it starts on (a start
+        // heard by hand comes in ten-thousandths of the sound: a few samples short of its cut).
+        end = length;
+        for (int k = 1; k < cutCount_[lane]; ++k) {
+            const int at = static_cast<int>(cuts_[lane][k] * static_cast<float>(length));
+            if (at > from + joinFrames_) {
+                end = at;
+                break;
+            }
+        }
+    }
     const double rate = how.rate > 0.f ? static_cast<double>(how.rate) : 1.0; // nonsense (NaN too): as it is. The engine keeps it within an octave.
 
     Voice& fresh = voices_[lane][next_[lane]];

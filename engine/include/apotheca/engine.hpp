@@ -263,10 +263,15 @@ struct Command {
                         //   0: the lane plays as it always did.
         GiveScene,      // internal: sent by send() before the first command that writes into a scene with
                         //   nothing in it (scenes-plan.md): track, scene, pointer = its store, made here
-        SetClick        // the METRONOME (easywins batch 2): a = 1 on, 0 off. On, every beat the song plays (steps 1,
+        SetClick,       // the METRONOME (easywins batch 2): a = 1 on, 0 off. On, every beat the song plays (steps 1,
                         //   5, 9, 13 of a bar; step 1 higher) begins a short click on its first sample, added after
                         //   Catch and before the volume. Off and no click sounding: the output is as it always was,
                         //   to the bit. A bounce's engine is never told it. (Play's `d` is the COUNT IN.)
+        SetLaneCuts     // SLICES AT THE HITS (slice_rule.hpp, batch S2): a drum lane's own cuts, three at most a
+                        //   command: track, a = lane, c = how many the lane has (0: none, its ONE SLICE the even
+                        //   share as it always was), b = the first place this command writes, d = how many (0..3),
+                        //   value, extra, shift = the places b, b + 1, b + 2 (0..1 of the sound, rising). With
+                        //   some, a hit that plays ONE SLICE plays from its start to the next cut.
     };
     Type type = Trigger;
     int track = 0;
@@ -277,8 +282,8 @@ struct Command {
     int c = 0;
     int d = 0;
     float value = 0.f;
-    float extra = 0.f;       // SetNote only
-    float shift = 0.f;       // SetNote only: the note early or late, -0.5..0.5 of a step
+    float extra = 0.f;       // SetNote only (and SetLaneCuts: its second place)
+    float shift = 0.f;       // SetNote only: the note early or late, -0.5..0.5 of a step (SetLaneCuts: its third place)
     int e = 0;               // SetNote (and Trigger: 1, a held audition): what the note does besides play. Its low byte: a ratchet (2..4:
                              //   that many notes, evenly, inside its first step). 256 added: it glides to its
                              //   pitch from the note before it. 512 added: it is thrown to ECHO; 1024: to

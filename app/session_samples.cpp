@@ -16,6 +16,7 @@
 #include <sstream>
 #include <cstdlib>
 #include <ctime>
+#include <functional>
 #include <memory>
 
 #include "samples.hpp"
@@ -391,6 +392,8 @@ void Session::setLaneSample(int track, int lane, const std::string& name) {
     edit.start = 0;
     edit.end = kEditUnits;
     t.laneSynth[lane] = drumsynth::Voice();
+    // Its own cuts were the last sound's: EVEN again (SLICES AT THE HITS; in the same step of undo, as the cut).
+    setLaneCuts(track, lane, LaneCuts());
     loadLane(track, lane);
 }
 
@@ -401,6 +404,7 @@ void Session::setLaneSynth(int track, int lane, const drumsynth::Voice& wanted) 
     if (now == was && (now.on() || !t.laneSample[lane][0])) return;
     t.laneSynth[lane] = now;
     t.laneSample[lane][0] = 0; // a synth, or the built-in drum: no recording
+    setLaneCuts(track, lane, LaneCuts()); // (no recording, no slices: SLICES AT THE HITS)
     if (now.model != was.model) { // another sound: START and END go back to the whole (the rest of EDIT stays)
         t.laneEdit[lane].start = 0;
         t.laneEdit[lane].end = kEditUnits;
@@ -855,10 +859,237 @@ std::string Session::savedLine(SaveSound how, const std::string& name) {
     return said;
 }
 
-int Session::laneSlices(int track, int lane) const {
+int Session::evenSlices(int track, int lane) const {
     if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return kSteps;
     const int fit = project.tracks[track].laneFit[lane];
     return fit > kSteps ? fit : kSteps;
+}
+
+int Session::laneSlices(int track, int lane) const {
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return kSteps;
+    return slices::count(project.tracks[track].laneCuts[lane], evenSlices(track, lane));
+}
+
+// ---- SLICES AT THE HITS (batch S2; slice_rule.hpp) ----------------------------------------------
+
+namespace {
+bool laneThere(int track, int lane) { return track >= 0 && track < kNumTracks && lane >= 0 && lane < kDrumLanes; }
+} // namespace
+
+float Session::laneCutAt(int track, int lane, int k) const {
+    if (!laneThere(track, lane)) return 0.f;
+    return slices::cutStart(project.tracks[track].laneCuts[lane], evenSlices(track, lane), k);
+}
+
+int Session::laneSliceAt(int track, int lane, float start) const {
+    if (!laneThere(track, lane)) return 0;
+    return slices::sliceAt(project.tracks[track].laneCuts[lane], evenSlices(track, lane), start);
+}
+
+float Session::lanePartAt(int track, int lane, float start) const {
+    if (!laneThere(track, lane)) return 1.f / kSteps;
+    return slices::partAt(project.tracks[track].laneCuts[lane], evenSlices(track, lane), start);
+}
+
+float Session::laneCutStep(int track, int lane, float start, int by) const {
+    if (!laneThere(track, lane)) return start;
+    return slices::stepCut(project.tracks[track].laneCuts[lane], evenSlices(track, lane), start, by);
+}
+
+// The cuts to the engine, three a command (Command::SetLaneCuts); none is one command saying so.
+void Session::sendLaneCuts(int track, int lane) {
+    const LaneCuts& cuts = project.tracks[track].laneCuts[lane];
+    Command c;
+    c.type = Command::SetLaneCuts;
+    c.track = track;
+    c.a = lane;
+    c.c = cuts.count;
+    if (cuts.count == 0) {
+        engine.send(c);
+        return;
+    }
+    for (int from = 0; from < cuts.count; from += 3) {
+        c.b = from;
+        c.d = cuts.count - from < 3 ? cuts.count - from : 3;
+        c.value = cuts.at[from];
+        c.extra = c.d > 1 ? cuts.at[from + 1] : 0.f;
+        c.shift = c.d > 2 ? cuts.at[from + 2] : 0.f;
+        engine.send(c);
+    }
+}
+
+void Session::setLaneCuts(int track, int lane, const LaneCuts& cuts) {
+    if (!laneThere(track, lane) || project.tracks[track].kind != TrackKind::Drums) return;
+    const LaneCuts held = slices::cutsHeld(cuts); // (rising, the rest 0: alike byte for byte)
+    LaneCuts& now = project.tracks[track].laneCuts[lane];
+    if (now == held && std::memcmp(&now, &held, sizeof held) == 0) return;
+    now = held;
+    sendLaneCuts(track, lane);
+    sendLanePart(track, lane); // ONE SLICE's share goes by how many there are
+}
+
+void Session::moveLaneHits(int t, int lane, const std::function<float(int, int, float)>& to) {
+    TrackData& track = project.tracks[t];
+    struct Moved {
+        int scene, bar, step;
+        float start;
+    };
+    std::vector<Moved> moved;
+    for (int scene = 0; scene < kMaxScenes; ++scene) {
+        if (!track.drums.has(scene)) continue; // (a scene with nothing written: no hit, and no piece made for it)
+        for (int bar = 0; bar < kMaxBars; ++bar) {
+            DrumPattern& p = track.drums[scene][bar];
+            for (int step = 0; step < kSteps; ++step) {
+                if (!(p.level[lane][step] > 0.f)) continue;
+                const float was = p.start[lane][step], now = to(bar, step, was);
+                if (now == was) continue;
+                p.start[lane][step] = now;
+                moved.push_back({scene, bar, step, now});
+            }
+        }
+    }
+    if (moved.empty()) return;
+    noteEdit();
+    if (moved.size() > 64) { // (a command a hit could fill the queue: the track's image, once)
+        sendTrackImage(t);
+        return;
+    }
+    for (const Moved& m : moved) {
+        Command c;
+        c.type = Command::SetStepStart;
+        c.track = t;
+        c.scene = m.scene;
+        c.bar = m.bar;
+        c.a = lane;
+        c.b = m.step;
+        c.value = m.start;
+        engine.send(c);
+    }
+}
+
+// The lane's hits as found in the shape it plays now: kept, or looked at now when `atOnce` and short enough
+// for a frame (kFindInAFrame), or when `atOnce` is "whatever it takes".
+const std::vector<slices::Found>* Session::foundHits(int track, int lane, bool atOnce) {
+    LaneSound& sound = sounds_[track][lane];
+    if (!sound.shaped || sound.shaping) return nullptr;
+    if (sound.hitsOf == sound.shaped) return &sound.hits;
+    if (hits_ && hits_->track == track && hits_->lane == lane) return nullptr; // (on its way)
+    if (!atOnce || static_cast<int>(sound.shaped->size()) > kFindInAFrame) return nullptr;
+    sound.hits = slices::findHits(sound.shaped->data(), static_cast<int>(sound.shaped->size()), kSampleRate);
+    sound.hitsOf = sound.shaped;
+    return &sound.hits;
+}
+
+bool Session::findingHits(int track, int lane) const { return hits_ && hits_->track == track && hits_->lane == lane; }
+
+int Session::senseShown(int track, int lane) const {
+    if (findingHits(track, lane)) return hitsSense_;
+    return laneThere(track, lane) ? project.tracks[track].laneCuts[lane].sense : 0;
+}
+
+Session::Cut Session::cutLaneAtHits(int track, int lane, int sense) {
+    if (!laneThere(track, lane) || project.tracks[track].kind != TrackKind::Drums) return Cut::NoSound;
+    const LaneSound& sound = sounds_[track][lane];
+    if (!sound.recording || sound.missing || !sound.shaped || sound.shaping) return Cut::NoSound;
+    sense = sense < 0 ? 0 : (sense > kSenseMost ? kSenseMost : sense);
+    const LaneCuts was = project.tracks[track].laneCuts[lane];
+    const int even = evenSlices(track, lane);
+    LaneCuts now; // EVEN
+    if (sense > 0) {
+        if (hits_ && !(hits_->track == track && hits_->lane == lane)) finishHits(true); // (another lane's on its way: let it land first)
+        const std::vector<slices::Found>* found = foundHits(track, lane, true);
+        if (!found) {
+            // Too long for a frame: looked at on a thread of its own, and put on when it lands (finishHits).
+            hitsSense_ = sense;
+            if (!hits_) {
+                hits_.reset(new HitsJob);
+                HitsJob* job = hits_.get();
+                job->track = track;
+                job->lane = lane;
+                job->of = sound.shaped;
+                job->thread = std::thread([job] {
+                    job->found = slices::findHits(job->of->data(), static_cast<int>(job->of->size()), kSampleRate);
+                    job->done.store(true);
+                });
+            }
+            return Cut::Finding;
+        }
+        now = slices::cutsAt(*found, static_cast<int>(sound.shaped->size()), sense, kSampleRate);
+    }
+    if (now == was) return Cut::Same;
+    // A hit in order stays in order (a break painted in order: each step its own slice, now on a hit); any other
+    // to the cut at or before where it starts (it plays from the hit it was in).
+    moveLaneHits(track, lane, [&](int bar, int step, float start) {
+        const int own = bar * kSteps + step;
+        if (std::fabs(start - slices::cutStart(was, even, own)) <= slices::kHair) return slices::cutStart(now, even, own);
+        return slices::cutStart(now, even, slices::sliceAt(now, even, start));
+    });
+    setLaneCuts(track, lane, now);
+    return Cut::Done;
+}
+
+void Session::finishHits(bool wait) {
+    if (!hits_ || (!wait && !hits_->done.load())) return;
+    if (hits_->thread.joinable()) hits_->thread.join();
+    std::unique_ptr<HitsJob> job = std::move(hits_);
+    LaneSound& sound = sounds_[job->track][job->lane];
+    if (sound.shaped != job->of) return; // the lane has moved on: looked at again when asked
+    sound.hits = std::move(job->found);
+    sound.hitsOf = job->of;
+    cutLaneAtHits(job->track, job->lane, hitsSense_);
+}
+
+Session::Cut Session::moveLaneCut(int track, int lane, int k, float to) {
+    if (!laneThere(track, lane) || project.tracks[track].kind != TrackKind::Drums) return Cut::NoSound;
+    const LaneSound& sound = sounds_[track][lane];
+    if (!(sound.seconds > 0.f)) return Cut::NoSound;
+    LaneCuts own = slices::ownCuts(project.tracks[track].laneCuts[lane], evenSlices(track, lane));
+    if (k <= 0) return Cut::Top;
+    if (k >= own.count) return Cut::NoRoom;
+    const float gap = static_cast<float>(slices::kHandGapSeconds / sound.seconds);
+    const float low = own.at[k - 1] + gap, high = (k + 1 < own.count ? own.at[k + 1] : 1.f) - gap;
+    if (!(low <= high)) return Cut::NoRoom;
+    to = to < low ? low : (to > high ? high : to);
+    const float was = own.at[k];
+    if (to == was) return Cut::Same;
+    own.at[k] = to;
+    moveLaneHits(track, lane, [&](int, int, float start) { return std::fabs(start - was) <= slices::kHair ? to : start; });
+    setLaneCuts(track, lane, own);
+    return Cut::Done;
+}
+
+Session::Cut Session::addLaneCut(int track, int lane, int k) {
+    if (!laneThere(track, lane) || project.tracks[track].kind != TrackKind::Drums) return Cut::NoSound;
+    const LaneSound& sound = sounds_[track][lane];
+    if (!(sound.seconds > 0.f) || !sound.shaped) return Cut::NoSound;
+    LaneCuts own = slices::ownCuts(project.tracks[track].laneCuts[lane], evenSlices(track, lane));
+    if (own.count >= kMaxLaneCuts) return Cut::Full;
+    if (k < 0 || k >= own.count) return Cut::NoRoom;
+    const float from = own.at[k], to = k + 1 < own.count ? own.at[k + 1] : 1.f;
+    const float gap = static_cast<float>(slices::kHandGapSeconds / sound.seconds);
+    if (!(to - from > 2.f * gap)) return Cut::NoRoom;
+    // At the strongest hit found inside the slice (any SENSITIVITY: what a cut at the hits passed by), else its middle.
+    float at = -1.f;
+    if (const std::vector<slices::Found>* found = foundHits(track, lane, true)) at = slices::strongestBetween(*found, static_cast<int>(sound.shaped->size()), from, to, kSampleRate);
+    if (at < 0.f) at = (from + to) / 2.f;
+    for (int i = own.count; i > k + 1; --i) own.at[i] = own.at[i - 1];
+    own.at[k + 1] = at;
+    ++own.count;
+    setLaneCuts(track, lane, own);
+    return Cut::Done;
+}
+
+Session::Cut Session::deleteLaneCut(int track, int lane, int k) {
+    if (!laneThere(track, lane) || project.tracks[track].kind != TrackKind::Drums) return Cut::NoSound;
+    LaneCuts own = slices::ownCuts(project.tracks[track].laneCuts[lane], evenSlices(track, lane));
+    if (k <= 0) return Cut::Top;
+    if (k >= own.count) return Cut::NoRoom;
+    const float was = own.at[k], before = own.at[k - 1];
+    for (int i = k; i + 1 < own.count; ++i) own.at[i] = own.at[i + 1];
+    own.at[--own.count] = 0.f;
+    moveLaneHits(track, lane, [&](int, int, float start) { return std::fabs(start - was) <= slices::kHair ? before : start; });
+    setLaneCuts(track, lane, own);
+    return Cut::Done;
 }
 
 void Session::sendLanePart(int track, int lane) {
@@ -866,7 +1097,7 @@ void Session::sendLanePart(int track, int lane) {
     c.type = Command::SetLanePart;
     c.track = track;
     c.a = lane;
-    c.value = project.tracks[track].laneOneSlice[lane] ? 1.f / static_cast<float>(laneSlices(track, lane)) : 0.f;
+    c.value = project.tracks[track].laneOneSlice[lane] ? 1.f / static_cast<float>(laneSlices(track, lane)) : 0.f; // (with cuts of its own: above 0 says ONE SLICE, the engine ends it at the next cut)
     engine.send(c);
 }
 

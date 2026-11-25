@@ -1028,6 +1028,44 @@ void testTheDrumGridsRows() {
     holds(rig, "the slice view, a lane that plays one slice", kDrumStrip);
     CHECK(drew("ONE SLICE") && capAtXl("ONE SLICE") == screens().at[kTextLarge]->medium.capHeight());
     CHECK(screens().at[kTextXl]->medium.capHeight() > screens().at[kTextLarge]->medium.capHeight());
+    // SLICES AT THE HITS (batch S2): the lane's own cuts, at the widest word (AT HITS 10), by the name and on the
+    // strip with A held; Y held on a hit (move, add, delete its cut); and the longest of what is said.
+    {
+        LaneCuts cuts;
+        cuts.count = 12;
+        cuts.sense = kSenseMost;
+        for (int k = 1; k < cuts.count; ++k) cuts.at[k] = static_cast<float>(k) / 13.f;
+        rig.session().setLaneCuts(0, 5, cuts);
+        rig.frames(1);
+        holds(rig, "the slice view, cut at the hits", kDrumStrip);
+        CHECK(drew("AT HITS 10") && drew("12 SLICES"));
+        rig.key(A, true);
+        rig.frames(2);
+        holds(rig, "the slice view, A held on the name: the slices", kDrumStrip);
+        CHECK(ui::gHintsOver == 0);
+        rig.key(A, false);
+        cuts.sense = 0;
+        rig.session().setLaneCuts(0, 5, cuts);
+        rig.frames(1);
+        holds(rig, "the slice view, cut by hand", kDrumStrip);
+        CHECK(drew("BY HAND"));
+        drums.moveCursorTo(5, 3);
+        drums.setStep(5, 3, 0.9f);
+        rig.key(SDLK_a, true);
+        rig.frames(2);
+        holds(rig, "the slice view, Y held on a hit of its own cuts", kDrumStrip);
+        CHECK(ui::gHintsOver == 0);
+        drums.moveCursorTo(5, 0);
+        drums.setStep(5, 0, 0.9f);
+        rig.tap(SDLK_z); // B on slice 1: SLICE 1 ALWAYS STARTS AT THE TOP
+        rig.key(SDLK_a, false);
+        rig.frames(2);
+        CHECK(std::string(drums.said()) == "SLICE 1 ALWAYS STARTS AT THE TOP");
+        holds(rig, "the slice view, slice 1 stays at the top", kDrumStrip);
+        rig.session().setLaneCuts(0, 5, LaneCuts());
+        rig.project().tracks[0].laneOneSlice[5] = true;
+        rig.frames(1);
+    }
     // WRITE on, a scene of several bars, a twelfth track with the longest name: the top bar at its fullest.
     rig.tap(L1);
     rig.session().setTrackName(0, "WWWWWWWWWW");

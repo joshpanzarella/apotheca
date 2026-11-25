@@ -109,7 +109,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
 - **The slice view is a mode of the drum grid** (`PatternScreen::slicing()`,
   drawn by `pattern_slices.cpp`), not a screen of its own, so every grid
   gesture works in it unchanged. A hit's slice is its `start`; there is no
-  separate slice data. A lane has 16 slices, or its FIT in steps if longer.
+  separate slice data per hit. A lane has 16 slices, or its FIT in steps if longer (EVEN), or cuts of its own
+  (SLICES AT THE HITS, batch S2, below: `TrackFields::laneCuts`).
 - **On the slice view's lane name, UP sets ONE SLICE and DOWN sets RUNS ON** (gesture audit G09,
   2026-11-25; `PatternScreen::sliceUpDown`). Either key flipped it (Claude's slice view, commit 966202f,
   no owner tag), and a held key or the stick runs on (up to 33 and 18 flips a second), so where it
@@ -756,7 +757,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   against what a hit sounds, the numbering and capitals, MAKING for a FIT and for a shape, a voice, the built-in
   drum, a name at its longest), `textsize` (the said line at its longest, cut to the room).
 - **SAVE A SLICE: in the slice view, Y held on a hit, R1** (batch S1, 2026-11-25; `PatternScreen::saveSlice`, the
-  same `saveLaneSound` with the hit's `start` and one slice, `1 / slices()`). The part of what the lane plays that
+  same `saveLaneSound` with the hit's `start` and one slice, `slicePart(start)`: `1 / slices()` on EVEN slices, to the
+  next cut on the lane's own since batch S2). The part of what the lane plays that
   the hit plays with ONE SLICE (from `start * length`, `part * length` long, as `DrumMachine::trigger` takes it),
   its end faded over `kEdgeMs` (1 ms, the quick fade the engine ends a part with) where it is cut short, its
   start as the engine starts it (a hit is not faded in). The last slice runs to the sound's own end, unfaded.
@@ -766,8 +768,115 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   copies the bar, L1 + Y is the FILL bar's (another batch), every SELECT pair is taken; with Y held on a hit, R1
   did nothing (`!dicing_` kept the brush off) and Y held there already has hold of where the hit's sound starts.
   Not on the plain grid (Y + R1 on a hit there is as it was), not on the lane's name (EVEN), not with L1 held.
-  The hint with Y held on a hit says R1 save the slice in place of TAP Y's chance steps. `sample_test`
-  `testSaveASlice`; `textsize` (Y held on a hit, the line said).
+  The hint with Y held on a hit says R1 save slice in place of TAP Y's chance steps (it said "save the slice" until
+  batch S2's three cut hints took the room). `sample_test` `testSaveASlice`; `textsize` (Y held on a hit, the line said).
+- **SLICES AT THE HITS: a lane's own cuts, found where its hits land** (batch S2, 2026-11-25; sampling-gaps.md item 2;
+  the owner: "I like all of it, let's build all of that in"). `engine/include/apotheca/slice_rule.hpp` (the finder and the
+  cuts' arithmetic, no SDL, no engine), `Session::cutLaneAtHits` / `moveLaneCut` / `addLaneCut` / `deleteLaneCut` /
+  `setLaneCuts`, `PatternScreen::senseTurn` / `moveCut` / `addCut` / `deleteCut`, `DrumMachine::setLaneCuts`.
+  - **What a lane keeps** (`TrackFields::laneCuts`, `LaneCuts`): none (count 0) is EVEN, as it always was; else up to 64
+    cuts, where each slice begins as a part of what the lane plays (0..1, the unit a hit's `start` is in), rising, the
+    first 0 (the top of the sound), and the SENSITIVITY they were found at (0: made by hand from EVEN). Bytes past
+    `count` are 0 and there is no padding (`spare`, a `static_assert`): TrackFields is compared and hashed whole.
+    `laneSlices` counts them; `laneCutAt`, `laneSliceAt`, `lanePartAt` (what ONE SLICE plays), `laneCutStep` (UP / DOWN)
+    answer for EVEN and own alike, so the slice view, the brushes, the dice and the strip ask one place.
+  - **The finder** (`slices::findHits`, then `cutsAt` for a SENSITIVITY): a hit is a sudden rise in loudness, looked at
+    every 64 samples in three bands, all of the sound and the lows (one pole, 200 Hz) over 21 ms windows and the highs
+    (the second difference: 12 dB an octave, so a kick's tail is under the floor there) over 5.3 ms; a band's rise is
+    this window over the loudest of the few windows just before it (a short window's level swings with where a low wave
+    falls; the loudest of a few does not), the lows' counted half (a narrow band swings most in noise: at full weight
+    plain noise was found as hits). The floor is the loudest window of any band, 60 dB down. A peak of the biggest rise
+    is a candidate; where it begins is the first 16 samples (looked at every 4) standing 3 dB over the window before and
+    over a 36th of the hit's loudest (a sixth of its peak), the middle of them, read in the band it rose in (the lows less
+    their pole's lag); the cut goes 1 ms before it (`kLeadSeconds`: the engine fades a slice in over a millisecond, and
+    the fade then lies before the attack). A per-sample test at four times the window before was tried first: a snare 5 dB
+    under a ringing snare was cut 15 samples after it began.
+    SENSITIVITY 1..10 is how big a rise counts (`senseRise`: 24, 19, 15, 12, 9.5, 7.5, 6, 4.75, 3.75, 3 dB); two hits
+    closer than 30 ms are one, the stronger (the earlier on a tie); one within 30 ms of the top is the top's; at most
+    64, the strongest. Tried first and dropped: windows compared one to the next alone (a kick's 50 Hz tail rose 5 dB
+    every half wave: 37 slices for an 8-hit break); the lows over short windows (plain noise found). `slices_test`: a
+    clean break, the same under noise at -50, -40 and -30 dB, twenty seconds of noise alone (nothing), a hat 24 dB and
+    a snare 18 dB under a kick's tail, a ghost snare 15 dB under a loud one a sixteenth after it (the most SENSITIVITY
+    only), a kick 24 dB under a ringing hat (the lows), graded snares over hiss (each step finds at least the one below),
+    a flam, the gaps, the 64.
+  - **Where the work is done: never the audio thread.** The candidates are found once a shape (`LaneSound::hits`,
+    `hitsOf`: the `shaped` sound they were found in; a new shape finds them again), on the app thread for a sound of
+    4 s or less (`Session::kFindInAFrame`, about 1.5 ms on the desk), else on a thread of their own (`HitsJob`, one at
+    a time; another lane's asked meanwhile lets it land first): the lane reads FINDING..., the SENSITIVITY last asked is
+    put on when it lands (`finishHits`, from `update`), and the redraw is told (`kStirFitting`, with a part in
+    `idle_test`). A SENSITIVITY once found is a pick from them: microseconds. What is looked at is the lane's shape
+    (EDIT's cut, turned and pitched), not its FIT: a stretch keeps parts of the sound where they were, and the shape does
+    not change with the tempo.
+  - **The engine** (`Command::SetLaneCuts`, appended after `SetClick`: three places a command, `c` the count; none is one
+    command saying so): a hit that plays the lane's ONE SLICE (`part` below zero and the lane's share above 0) plays from
+    its start to the next cut more than the carry-on's 1.5 ms past it (a start heard by hand comes in ten-thousandths of
+    the sound, a few samples short of its cut), the last to the end; a part given by the hit (an audition) wins. RUNS ON
+    is untouched, and **a lane with no cuts takes the old path to the bit** (`slices_test` plays one with and without
+    the "none" command: the same samples; `effects` passes). A place that is nonsense is 1 (never an end; a NaN cast to
+    an int is undefined). A track taken away keeps none. `sendSong` tells every drum lane's, none too.
+  - **The gestures** (all in the slice view; the buttons' standards):
+    - **Hold A + LEFT / RIGHT on the lane's name: EVEN, then AT HITS 1 to 10** (`senseTurn`), a click a press, the ends
+      stopping, a list's pace held (a choice: each is the hits found again), the stick a click at once then the clicks'
+      pace. From BY HAND, LEFT is EVEN. Hold A + UP / DOWN is still the lane's volume. While A is held the strip's EACH
+      HIT PLAYS field is SLICES and the word (what A turns there). Claude's pick, 2026-11-25, open to the owner: "Hold
+      A + a direction shapes or turns what is under the cursor", and A + LEFT / RIGHT on the name did nothing.
+    - **Y held on a hit, LEFT / RIGHT: its slice's cut a millisecond earlier or later** (`kCutNudgeSeconds`; the stick by
+      the square of its push, a quarter second of sound a second at full, `kCutSlideSeconds`), every hit on that cut with
+      it, held 5 ms inside its neighbours (`kHandGapSeconds`), heard as it moves. EVEN slices become the lane's own first
+      (BY HAND). **This reverses what Y + sideways did in the slice view** (the owner: "Any of my decisions can be
+      reversed if there is a more logical method", 2026-11-24; this one had no owner mark): it was "A hit's start can
+      still be slid off the cuts (hold Y, stick left / right). The strip then reads `9 + 40%`" (the manual), and its
+      D-pad "the next slice of the sound, exactly", which UP / DOWN already did there. In a view of slices the slice's
+      edge is the thing to move, and every hit on it should follow; a hit slid by itself stays a job of the plain grid,
+      where Y + sideways is as it was (its D-pad now stops at the ends as before, the next of the lane's own cuts where it
+      has them). A hit already off its cut keeps its place when its cut moves; the strip still reads `9 + 40%` (of its
+      slice, uneven or not).
+    - **Y held on a hit, A: a cut added inside its slice** (at the strongest candidate there, any SENSITIVITY: the hit a cut
+      at the hits passed by; else the slice's middle), no hit moved; **B: its slice's cut deleted**, the slice joined to the
+      one before and the hits on that cut moved to its cut. As X + B empties what X shows (G11): a tap with the modifier,
+      a step of undo, no bar (nothing is lost that SEL + B cannot bring back). The first cut is the top and is never moved
+      or deleted: SLICE 1 ALWAYS STARTS AT THE TOP. 64 SLICES ARE THE MOST; NO ROOM FOR A CUT THERE under 10 ms. Y's let go
+      is then no tap (the chance stays) and A's press is spent. Not on the plain grid, not with L1 held. Claude's pick,
+      2026-11-25, open to the owner (the brief: "hold B deletes"; hold B on a hit already deletes hits as it is dragged,
+      so the cut's delete is Y + B, X + B's precedent): **an owner question**.
+  - **The hits follow** (`moveLaneHits`: every scene and bar of the track; a start a command, or the track's image when
+    more than 64 move): a new SENSITIVITY (or EVEN) keeps a hit **in order** in order (its step's own slice, now on a hit:
+    a break painted with R1 stays the break, each step a clean hit) and puts **any other** on the cut at or before where it
+    starts (the hit it was playing in). A moved cut takes the hits on it; a deleted one's go to the cut before; an added
+    one moves none (what is heard stays). Claude's pick, 2026-11-25, open to the owner: by number alone, a break painted
+    in order lost its second half to the first going EVEN, AT HITS 1 (8 slices) and back.
+  - **What is kept**: in a song file `slices LANE SENSE AT...` (every cut after the top, `%.6g` as a hit's start, so the
+    two round alike), left out when EVEN; a place out of order, out of range or not a number ends the cuts there
+    (`cutsHeld`), a SENSITIVITY nobody knows is BY HAND. In a kit (`putKit` writes it, `copyKit` copies it, `readKit` takes
+    the word, `Session::putKit` puts it on after the sound). In undo: `soundMark` mixes the cuts (a cut added moves no
+    hit and is still a step), `restoreSounds` puts them back without moving a hit (the patterns come back as they were).
+    **Another recording, or a DRUM SYNTH voice, makes a lane EVEN** (its cuts were the last sound's; one step of undo
+    with the name, as START and END), and the kit's list of recordings puts them back with B (`Jobs::putBack`, as the
+    cut). An EDIT change keeps them (parts of what the lane plays, as the hits' starts are): cut at the hits again after a
+    new START or END. Copy a bar and copy a cell copy the hits' starts as they are: onto a lane of other cuts they play
+    from where they say, as they always did onto a lane of another FIT's count.
+  - **The picture** (`drawSlices`): each of the lane's own cuts is a line where it is, their numbers where there is room
+    (the cursor's always, none over another: a tight row, `fonts.fixed()`), the outline lit by slice, the cursor's and the
+    playing slice shaded their own widths. Above "N SLICES" in the name's box a word: EVEN (dim), AT HITS 5, BY HAND or
+    FINDING... (purple). EVEN lanes are drawn as before, but that word. Stills `slices-hits`, `slices-hits-name-held`,
+    `slices-hits-y`, `slices-hits-64`.
+  - **The sampler's CHOP does not use them**: it is other code (16 even slices from C1, `sampler.cpp`), with no slice view.
+    An owner question.
+  - **Cost** (desk, `slices_test --measure`, load 3 to 7, several runs): the finder 7.0 to 8.4 ms for a 20 s loop (x13 to
+    20: about 0.1 to 0.17 s on the handheld, on its own thread), so about 1.5 ms for the 4 s looked at on a frame (20 to 30
+    ms on the handheld: a frame or two, once a sound, as a shape is); a SENSITIVITY picked from them 3 to 5 us. **The audio
+    thread**: a hit of ONE SLICE 19 to 24 ns even, 58 to 85 ns to the next of 64 cuts (its worst), so at most about 60 ns
+    more a hit, and only on a lane of its own cuts playing ONE SLICE: a hit on every lane of twelve such drum tracks every
+    step at 240 BPM (1,536 a second) is 0.01% of a core (about 0.2% on the handheld, an estimate). Nothing per sample.
+  - Tests: `slices_test` (above, and the engine: to the next cut, from between cuts, the last, backwards, RUNS ON, a part
+    given, the same to the bit, a track taken away, nonsense), `sample_test --hits` (`testSlicesAtTheHits`,
+    `testCutsByHand`, `testCutsAreKept`, `testFindingHitsOnAThread`: the gestures, the paces, the hits following in two
+    scenes, ONE SLICE heard by X and in the bar, the lines drawn where the cuts are, undo and redo, the song file and its
+    nonsense, a song opened afresh, another recording, a voice, a kit, the list's B, the thread), `textsize` (the words at
+    XL, the hints), `idle_test` (FINDING landing with no button held). Mutants: 44 killed, 2 left standing and kept as
+    they are: the finder's "first of a flat top" (two peaks of one hit are one cut by the 30 ms gap anyway) and the
+    engine's nonsense place made 1 (a place at or past the end, or below 0, ends nothing either way; it guards a NaN
+    cast to an int). **Nobody has heard it; not run on the handheld.**
 - **A FOLDER AS A KIT: on the KIT stop, after the kits, the samples folders** (batch S1, 2026-11-25;
   sampling-gaps.md item 3; `Session::kitFolders`, `loadFolderKit`, `folderKitOf`, `folderKitLanes`). Hold A + UP
   past the last kit steps through the folders that hold a recording themselves (`wavFolders`' order; an empty one

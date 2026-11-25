@@ -27,6 +27,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -440,6 +441,25 @@ void theSession(Rig& rig, const std::string& samples) {
     rig.press(B); // (TUNE at its usual value: back to the kit)
     rig.run(300);
 
+    rig.part = "the slice view: a long break's hits found on a thread of their own (SLICES AT THE HITS)";
+    rig.byHand([&] {
+        s.setLaneSample(0, 0, "breaks/long break"); // (over 4 s: not looked at in a frame)
+        s.view = View::Pattern;
+        rig.app->drums().moveCursorTo(0, -1);
+        rig.app->drums().setSlicing(true);
+    });
+    rig.run(500);
+    rig.key(A, true);
+    rig.tap(RIGHT); // FINDING..., then AT HITS 1 when found: with no button held
+    rig.key(A, false);
+    rig.run(2000);
+    CHECK(!s.findingHits(0, 0) && s.project.tracks[0].laneCuts[0].sense == 1);
+    rig.byHand([&] {
+        rig.app->drums().setSlicing(false);
+        s.view = View::Device;
+    });
+    rig.run(300);
+
     rig.part = "the sampler: a recording heard";
     rig.byHand([&] {
         s.addTrack(TrackKind::Sampler);
@@ -718,6 +738,13 @@ int main(int argc, char** argv) {
     const std::string samples = tempFolder("idle-samples");
     writeWav(samples + "/long.wav", tone(3.f, 0.25f), 48000);
     writeWav(samples + "/short.wav", tone(0.4f, 0.25f), 48000);
+    { // a break longer than a frame's look (Session::kFindInAFrame): a short tone every half second for six
+        mkdir((samples + "/breaks").c_str(), 0755);
+        std::vector<float> wave(6 * 48000, 0.f);
+        const std::vector<float> hit = tone(0.1f, 0.25f);
+        for (int at = 0; at + static_cast<int>(hit.size()) <= static_cast<int>(wave.size()); at += 24000) std::copy(hit.begin(), hit.end(), wave.begin() + at);
+        writeWav(samples + "/breaks/long break.wav", wave, 48000);
+    }
     for (int i = 0; i < 40; ++i) { // rows enough that the stick is still among them when let go
         char name[32];
         std::snprintf(name, sizeof name, "/row%02d.wav", i);

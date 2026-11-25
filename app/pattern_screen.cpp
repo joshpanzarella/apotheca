@@ -24,6 +24,8 @@ constexpr int kFirstRoll = 4;         // hits a tap of Y gives an empty lane
 constexpr int kFullRoll = 8;          // ...and a full one (half the steps)
 constexpr float kDiceHitsPerSecond = 24.f; // stick fully over
 constexpr Uint32 kHearStartEveryMs = 90;  // a sliding start is played this often
+constexpr float kCutNudgeSeconds = 0.001f; // the slice view: Y + LEFT / RIGHT moves a hit's cut this much (SLICES AT THE HITS)
+constexpr float kCutSlideSeconds = 0.25f;  // ...and Y + the stick, pushed full, this much of the sound a second (by the square of the push)
 
 
 float clampTo(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
@@ -192,15 +194,18 @@ void PatternScreen::swingTurn(int by) {
 void PatternScreen::saveSlice() {
     if (!hitHere()) return;
     std::string name;
-    const Session::SaveSound how = session_.saveLaneSound(project_.track, lane_, pat().start[lane_][step_], 1.f / static_cast<float>(slices()), name);
+    const Session::SaveSound how = session_.saveLaneSound(project_.track, lane_, pat().start[lane_][step_], slicePart(pat().start[lane_][step_]), name);
     std::snprintf(said_, sizeof said_, "%s", Session::savedLine(how, name).c_str());
     saidUntil_ = lastMs_ + 2500;
 }
 
 void PatternScreen::hearHit() {
     if (!hitHere()) return;
-    audition(lane_, pat().level[lane_][step_], pat().start[lane_][step_], slicing_ ? 1.f / static_cast<float>(slices()) : 0.f, pat().fx[lane_][step_]);
+    audition(lane_, pat().level[lane_][step_], pat().start[lane_][step_], slicing_ ? slicePart(pat().start[lane_][step_]) : 0.f, pat().fx[lane_][step_]);
 }
+
+// What ONE SLICE plays from a start, of the cursor's lane: an EVEN slice's share, or to the next of its own cuts.
+float PatternScreen::slicePart(float start) const { return session_.lanePartAt(project_.track, lane_, start); }
 
 void PatternScreen::setNudge(int lane, int step, float nudge) {
     if (lane < 0 || lane >= kDrumLanes || step < 0 || step >= kSteps) return;
@@ -267,9 +272,8 @@ void PatternScreen::audition(int lane, float level, float start, float part, con
 // Where in the lane's sound a hit begins. Never so late that nothing is left.
 void PatternScreen::setStart(int lane, int step, float start) {
     if (lane < 0 || lane >= kDrumLanes || step < 0 || step >= kSteps) return;
-    // The last slice is always left to hear: a sixteenth, or less of a recording cut finer.
-    const float slices = static_cast<float>(session_.laneSlices(project_.track, lane));
-    start = clampTo(start, 0.f, (slices - 1.f) / slices);
+    // The last slice is always left to hear: a sixteenth, or less of a recording cut finer (or the last of its own cuts).
+    start = clampTo(start, 0.f, session_.laneCutAt(project_.track, lane, session_.laneSlices(project_.track, lane) - 1));
     if (start == pat().start[lane][step]) return;
     pat().start[lane][step] = start;
     Command c;
@@ -297,7 +301,7 @@ void PatternScreen::turnStart(float amount) {
             if (pat().level[lane_][step] <= 0.f) continue;
             dice_ = dice_ * 1664525u + 1013904223u;
             const std::uint32_t count = static_cast<std::uint32_t>(slices());
-            setStart(lane_, step, amount > 0.f ? static_cast<float>((dice_ >> 12) % count) / static_cast<float>(count) : slicing_ ? ownStart(step) : 0.f);
+            setStart(lane_, step, amount > 0.f ? cutAt(static_cast<int>((dice_ >> 12) % count)) : slicing_ ? ownStart(step) : 0.f);
         }
         return;
     }
@@ -335,9 +339,71 @@ void PatternScreen::setSlicing(bool on) {
     saidUntil_ = lastMs_ + 3000;
 }
 
-float PatternScreen::ownStart(int step) const {
-    const int count = slices();
-    return static_cast<float>((project_.bar * kSteps + step) % count) / static_cast<float>(count);
+float PatternScreen::ownStart(int step) const { return cutAt(project_.bar * kSteps + step); } // (round again past the last)
+
+float PatternScreen::cutAt(int k) const { return session_.laneCutAt(project_.track, lane_, k); }
+
+// SLICES AT THE HITS (batch S2): the slice under a hit, its cut moved by `by` (parts of the sound), every hit on
+// that cut with it (Session::moveLaneCut), heard as it goes. The first is the top, and stays there.
+void PatternScreen::moveCut(float by) {
+    if (!hitHere() || by == 0.f) return;
+    const int k = sliceOf(step_);
+    const Session::Cut done = session_.moveLaneCut(project_.track, lane_, k, cutAt(k) + by);
+    turning_ = Turning::Start;
+    yDidSomething_ = true;
+    if (done != Session::Cut::Done && done != Session::Cut::Same) sayCut(done);
+    if (done == Session::Cut::Done && !project_.playing && lastMs_ - heardStartAt_ >= kHearStartEveryMs) {
+        heardStartAt_ = lastMs_;
+        hearHit();
+    }
+}
+
+// ...Y held on a hit, A: a cut added inside its slice (at the strongest hit there, else its middle); B: its own
+// cut deleted, the slice joined to the one before (its hits with it).
+void PatternScreen::addCut() {
+    if (!hitHere()) return;
+    sayCut(session_.addLaneCut(project_.track, lane_, sliceOf(step_)));
+}
+
+void PatternScreen::deleteCut() {
+    if (!hitHere()) return;
+    const Session::Cut done = session_.deleteLaneCut(project_.track, lane_, sliceOf(step_));
+    sayCut(done);
+    if (done == Session::Cut::Done && !project_.playing) hearHit();
+}
+
+// ...hold A on the lane's name, LEFT / RIGHT: EVEN, then AT HITS 1 to 10 (the SENSITIVITY), a click each; the ends
+// stop. From BY HAND, LEFT is EVEN. The lane's hits follow (Session::cutLaneAtHits: in order stays in order).
+void PatternScreen::senseTurn(int by) {
+    if (!slicing_ || onTempo_ || onBars_ || step_ != kLaneName) return;
+    const int now = session_.senseShown(project_.track, lane_);
+    int to = now + by;
+    to = to < 0 ? 0 : (to > kSenseMost ? kSenseMost : to);
+    const bool byHand = now == 0 && !trk().laneCuts[lane_].even() && !session_.findingHits(project_.track, lane_);
+    if (to == now && !(to == 0 && by < 0 && byHand)) return;
+    sayCut(session_.cutLaneAtHits(project_.track, lane_, to));
+}
+
+// Why a cut was not made, for a moment on the strip's line (nothing when it was).
+void PatternScreen::sayCut(Session::Cut why) {
+    const char* words = why == Session::Cut::Top ? "SLICE 1 ALWAYS STARTS AT THE TOP"
+                        : why == Session::Cut::Full ? "64 SLICES ARE THE MOST"
+                        : why == Session::Cut::NoRoom ? "NO ROOM FOR A CUT THERE"
+                        : why == Session::Cut::NoSound ? "ITS SOUND IS STILL BEING MADE. AGAIN IN A MOMENT"
+                                                       : nullptr;
+    if (!words) return;
+    std::snprintf(said_, sizeof said_, "%s", words);
+    saidUntil_ = lastMs_ + 2500;
+}
+
+// The word for a lane's slices: EVEN, AT HITS 5 (its SENSITIVITY), BY HAND, or FINDING... while its hits are found.
+const char* PatternScreen::cutsWord(char* text, int size) const {
+    const LaneCuts& cuts = trk().laneCuts[lane_];
+    if (session_.findingHits(project_.track, lane_)) std::snprintf(text, static_cast<std::size_t>(size), "FINDING...");
+    else if (cuts.even()) std::snprintf(text, static_cast<std::size_t>(size), "EVEN");
+    else if (cuts.sense == 0) std::snprintf(text, static_cast<std::size_t>(size), "BY HAND");
+    else std::snprintf(text, static_cast<std::size_t>(size), "AT HITS %d", cuts.sense);
+    return text;
 }
 
 void PatternScreen::stepBars(int by) {
@@ -356,11 +422,7 @@ void PatternScreen::moveBar(int by) {
     project_.bar = (project_.bar + by + bars) % bars;
 }
 
-int PatternScreen::sliceOf(int step) const {
-    const int count = slices();
-    const int slice = static_cast<int>(pat().start[lane_][step] * static_cast<float>(count)); // exact: there are 16, 32 or 64
-    return slice < 0 ? 0 : (slice >= count ? count - 1 : slice);
-}
+int PatternScreen::sliceOf(int step) const { return session_.laneSliceAt(project_.track, lane_, pat().start[lane_][step]); } // (EVEN: exact, 16, 32 or 64)
 
 // Up and down in the slice view. On a hit: the next slice, or the one before,
 // round and round, heard as it goes. On the lane's name: UP sets ONE SLICE (a hit plays
@@ -374,12 +436,8 @@ void PatternScreen::sliceUpDown(int by) {
         return;
     }
     if (!hitHere()) return;
-    const int count = slices();
-    const float now = pat().start[lane_][step_] * static_cast<float>(count);
-    // From between two lines, up is the next line and down is the one just passed.
-    int to = static_cast<int>(by > 0 ? std::floor(now + 1.001f) : std::ceil(now - 1.001f));
-    to = (to % count + count) % count;
-    setStart(lane_, step_, static_cast<float>(to) / static_cast<float>(count));
+    // From between two cuts, up is the next cut and down is the one just passed; round the ends.
+    setStart(lane_, step_, session_.laneCutStep(project_.track, lane_, pat().start[lane_][step_], by));
     if (!project_.playing && lastMs_ - heardStartAt_ >= kHearStartEveryMs) {
         heardStartAt_ = lastMs_;
         hearHit();
@@ -402,7 +460,7 @@ void PatternScreen::placeHit(float chance) {
     setChance(lane_, step_, chance);
     // In the slice view a new hit plays its step's own slice: step 5, slice 5.
     if (slicing_) setStart(lane_, step_, ownStart(step_));
-    if (!project_.playing) audition(lane_, kNewHitLevel, pat().start[lane_][step_], slicing_ ? 1.f / static_cast<float>(slices()) : 0.f);
+    if (!project_.playing) audition(lane_, kNewHitLevel, pat().start[lane_][step_], slicing_ ? slicePart(pat().start[lane_][step_]) : 0.f);
 }
 
 // ---- painting ----------------------------------------------------------------
@@ -421,12 +479,11 @@ void PatternScreen::paintHere() {
         // (the break, in order), or with R2 on a slice picked at random (the break,
         // shuffled). A hit that is there keeps its level.
         const float level = hitHere() ? pat().level[lane_][step_] : brush_;
-        const float count = static_cast<float>(slices());
         dice_ = dice_ * 1664525u + 1013904223u;
-        const float start = paint_ == Paint::OneLevel ? ownStart(step_) : static_cast<float>((dice_ >> 12) % static_cast<std::uint32_t>(slices())) / count;
+        const float start = paint_ == Paint::OneLevel ? ownStart(step_) : cutAt(static_cast<int>((dice_ >> 12) % static_cast<std::uint32_t>(slices())));
         if (!hitHere()) setStep(lane_, step_, level);
         setStart(lane_, step_, start);
-        if (!project_.playing) audition(lane_, level, pat().start[lane_][step_], 1.f / count);
+        if (!project_.playing) audition(lane_, level, pat().start[lane_][step_], slicePart(pat().start[lane_][step_]));
         return;
     }
     const float level = paint_ == Paint::OneLevel ? brush_ : randomLevel();
@@ -679,13 +736,21 @@ void PatternScreen::nudgeExact(Button direction, bool withY) {
             rolled_ = false;
             turnStart(sign); // roll the lane's starts, or put them back
             rolled_ = false; // each press of the D-pad is its own roll
-        } else if (!vertical && hitHere()) {
-            // Sideways: the next slice of the sound, exactly.
-            const float count = static_cast<float>(slices());
-            const float now = pat().start[lane_][step_] * count;
-            const float to = sign > 0.f ? std::floor(now + 1.001f) : std::ceil(now - 1.001f);
+        } else if (!vertical && hitHere() && slicing_) {
+            // The slice view, sideways: its slice's cut a millisecond earlier or later (SLICES AT THE HITS), every
+            // hit on it with it. (UP / DOWN already step to the next slice there.)
+            const float seconds = session_.laneSound(project_.track, lane_).seconds;
             heardStartAt_ = 0;
-            turnStart(to / count - pat().start[lane_][step_]);
+            if (seconds > 0.f) moveCut(sign * kCutNudgeSeconds / seconds);
+        } else if (!vertical && hitHere()) {
+            // Sideways: the next slice of the sound, exactly (the next of its own cuts, where it has them). The
+            // ends stop (UP / DOWN in the slice view go round).
+            const float now = pat().start[lane_][step_];
+            float to = session_.laneCutStep(project_.track, lane_, now, sign > 0.f ? 1 : -1);
+            if (sign > 0.f && to <= now) to = 1.f; // (setStart holds it to the last cut)
+            if (sign < 0.f && to >= now) to = 0.f;
+            heardStartAt_ = 0;
+            turnStart(to - now);
         }
     } else if (onTempo_) {
         setTempo(project_.tempo + sign * (vertical ? 1.f : 10.f));
@@ -693,6 +758,7 @@ void PatternScreen::nudgeExact(Button direction, bool withY) {
         if (vertical) stepBars(sign > 0.f ? 1 : -1); // (sideways never reaches: the bar moves instead)
     } else if (step_ == kLaneName) {
         if (vertical) setLaneLevel(nextTenth(trk().laneLevel[lane_], sign));
+        else senseTurn(sign > 0.f ? 1 : -1); // (the slice view: SLICES AT THE HITS' SENSITIVITY)
     } else if (hitHere()) {
         if (vertical) {
             setStep(lane_, step_, clampTo(nextTenth(pat().level[lane_][step_], sign), kMinHitLevel, 1.f));
@@ -756,6 +822,17 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         // go is then no tap: the hit's chance stays.
         if (event.down) {
             saveSlice();
+            yDidSomething_ = true;
+        }
+        return;
+    }
+    if (slicing_ && dicing_ && !ySpent_ && hitHere() && (b == Button::A || b == Button::B) && !input.held(Button::L1)) {
+        // SLICES AT THE HITS (batch S2): with Y held on a hit (where its sound starts is Y's), A adds a cut inside
+        // its slice and B deletes the cut its slice begins at (as X + B empties what X shows). Y's let go is then
+        // no tap: the hit's chance stays. A's press is spent (its hold shapes nothing).
+        if (event.down) {
+            if (b == Button::A) addCut(), aSpent_ = true;
+            else deleteCut();
             yDidSomething_ = true;
         }
         return;
@@ -835,7 +912,7 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         // On the lane's name or an empty step it sounds for as long as X is held (the Session lets it
         // go). A hit is heard as the pattern plays it: X held there is the step effects' hold.
         if (hitHere()) hearHit();
-        else if (slicing_ && onStep()) session_.hearLaneHeld(project_.track, lane_, kNewHitLevel, this, ownStart(step_), 1.f / static_cast<float>(slices())); // the slice a hit placed here would play
+        else if (slicing_ && onStep()) session_.hearLaneHeld(project_.track, lane_, kNewHitLevel, this, ownStart(step_), slicePart(ownStart(step_))); // the slice a hit placed here would play
         else session_.hearLaneHeld(project_.track, lane_, kNewHitLevel, this);
         return;
     }
@@ -996,13 +1073,23 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
         const float up = -y * std::fabs(y) * feel.fillPerSecond * dt;
         const float right = x * std::fabs(x) * feel.fillPerSecond * dt;
         if (dicing_) {
+            const float seconds = session_.laneSound(project_.track, lane_).seconds;
             if (axis_ == Axis::UpDown) turnChance(up);
-            else if (axis_ == Axis::Sideways) turnStart(right * 0.5f);
+            else if (axis_ == Axis::Sideways && slicing_ && hitHere()) { // the slice view: its cut slides (SLICES AT THE HITS)
+                if (seconds > 0.f) moveCut(x * std::fabs(x) * kCutSlideSeconds * dt / seconds);
+            } else if (axis_ == Axis::Sideways) turnStart(right * 0.5f);
         } else if (axis_ == Axis::UpDown) {
             turnUpDown(up);
+        } else if (axis_ == Axis::Sideways && slicing_ && !onTempo_ && !onBars_ && step_ == kLaneName) {
+            // The slice view's lane name: SLICES AT THE HITS' SENSITIVITY, a click at once and then at the clicks'
+            // pace while pushed (a choice, not a slider: each is the hits found again).
+            senseSaved_ += senseWas_ ? std::fabs(x) * ui::kStickClicksPerSecond * dt : 1.f;
+            senseWas_ = true;
+            for (; senseSaved_ >= 1.f; senseSaved_ -= 1.f) senseTurn(x > 0.f ? 1 : -1);
         } else if (axis_ == Axis::Sideways) {
             turnSideways(right * 0.5f); // the whole range is one step wide: half the speed is plenty
         }
+        if (axis_ != Axis::Sideways) senseSaved_ = 0.f, senseWas_ = false;
         stickX_ = stickY_ = 0.f;
         stickWasX_ = stickWasY_ = false;
     } else {
@@ -1027,7 +1114,9 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
 
     // A held D-pad direction repeats what its press did: the cursor's pace, and with X held the clicks' (clicks,
     // not a slide: slower than the cursor runs).
-    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), feelHeld_ || fxHeld_ ? Pace::Click : Pace::Cursor)) direction(repeating_, input);
+    // (The SENSITIVITY of SLICES AT THE HITS, A held on the slice view's lane name, is a choice: a list's pace.)
+    const bool choosing = slicing_ && shaping_ && !onTempo_ && !onBars_ && step_ == kLaneName && (repeating_ == Button::Left || repeating_ == Button::Right);
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), feelHeld_ || fxHeld_ ? Pace::Click : choosing ? Pace::List : Pace::Cursor)) direction(repeating_, input);
 }
 
 // A press of the D-pad, and each of its held repeats: the same job (gesture audit G21: on BARS, A or Y held +
@@ -1244,7 +1333,10 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(trk().laneLevel[lane_] * 100.f)));
         field(134.f, "DRUM VOLUME", text, dicing_ ? kText : cursorColor);
         bar(244, trk().laneLevel[lane_], dicing_ ? kDim : cursorColor);
-        if (slicing_) {
+        if (slicing_ && shaping_) {
+            // A held: what it turns here, the volume (UP / DOWN) and how the slices are cut (LEFT / RIGHT: SLICES AT THE HITS).
+            field(430.f, "SLICES", cutsWord(text, sizeof text), cursorColor);
+        } else if (slicing_) {
             field(430.f, "EACH HIT PLAYS", trk().laneOneSlice[lane_] ? "ONE SLICE" : "RUNS ON", trk().laneOneSlice[lane_] ? kPurple : kText);
         } else {
             std::snprintf(text, sizeof text, "%d", diceHits(lane_));
@@ -1286,8 +1378,8 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             // Where in the sound it begins, with a picture of the sound when there is one.
             const float start = pat().start[lane_][step_];
             if (slicing_) {
-                // Which slice, and how far past its cut if the start has been slid off it.
-                const float into = start * slices() - sliceOf(step_);
+                // Which slice, and how far past its cut if the start has been slid off it (a share of the slice).
+                const float into = trk().laneCuts[lane_].even() ? start * slices() - sliceOf(step_) : (start - cutAt(sliceOf(step_))) / slicePart(cutAt(sliceOf(step_)));
                 if (into > 0.01f) std::snprintf(text, sizeof text, "%d + %d%%", sliceOf(step_) + 1, static_cast<int>(std::round(into * 100.f)));
                 else std::snprintf(text, sizeof text, "%d OF %d", sliceOf(step_) + 1, slices());
             } else if (start <= 0.f) std::snprintf(text, sizeof text, "THE TOP");
@@ -1379,11 +1471,17 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("UP / DOWN", "level");
         hint("LEFT / RIGHT", "nudge");
         hint("L2 / R2", "nudge early / late");
+    } else if (dicing_ && onStep() && slicing_ && hitHere()) {
+        // The slice view, Y held on a hit: its slice's cut (SLICES AT THE HITS, batch S2) and SAVE THE SLICE (S1).
+        hint("UP / DOWN", "chance");
+        hint("LEFT / RIGHT", "move cut");
+        hint("A", "add cut");
+        hint("B", "delete cut");
+        hint("R1", "save slice");
     } else if (dicing_ && onStep()) {
         hint("UP / DOWN", "chance");
         hint("LEFT / RIGHT", "where the sound starts");
-        if (slicing_ && hitHere()) hint("R1", "save the slice"); // (batch S1)
-        else hint("TAP Y", "100 > 75 > 50 > 25");
+        hint("TAP Y", "100 > 75 > 50 > 25");
     } else if (dicing_ && onName && evening_) {
         hint("R1 / L1", "more / fewer, even");
         hint("LEFT / RIGHT", "turn it a step");
@@ -1395,6 +1493,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("TAP Y", "reshuffle");
     } else if (shaping_) {
         hint("UP / DOWN", onTempo_ ? "tempo" : onBars_ ? "more / fewer" : "drum volume");
+        if (slicing_ && onName) hint("LEFT / RIGHT", "cut at the hits"); // (SLICES AT THE HITS: EVEN, AT HITS 1..10)
     } else if (onBars_) {
         hint("LEFT / RIGHT", "bar");
         hint("HOLD A", "more / fewer");

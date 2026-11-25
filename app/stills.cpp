@@ -827,6 +827,28 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
             app.drums().moveCursorTo(5, std::strncmp(view, "slices-name", 11) == 0 ? -1 : 5);
             if (std::strcmp(view, "slices-name-feel") == 0) app.session().setLaneFeel(0, 5, 25, 50), app.session().setLaneSwing(0, 5, 75); // the lane's feel and swing: their marks by the name, their line on the strip
             app.drums().setSlicing(true);
+            if (std::strncmp(view, "slices-hits", 11) == 0) {
+                // SLICES AT THE HITS: cuts of the lane's own, uneven, as a break's hits fall (put by hand here, so the
+                // still is the same whatever recording it is given), at the widest word, AT HITS 10. -64: the most,
+                // their numbers where there is room. -name-held: A held on the name (the strip's SLICES); -y: Y held on a hit.
+                LaneCuts cuts;
+                cuts.sense = kSenseMost;
+                if (std::strcmp(view, "slices-hits-64") == 0) {
+                    cuts.count = kMaxLaneCuts;
+                    for (int k = 1; k < kMaxLaneCuts; ++k) cuts.at[k] = (static_cast<float>(k) + 0.4f * static_cast<float>(k % 3)) / (kMaxLaneCuts + 1.f);
+                } else {
+                    const float at[] = {0.f, 0.062f, 0.125f, 0.19f, 0.25f, 0.31f, 0.375f, 0.5f, 0.56f, 0.625f, 0.75f, 0.81f, 0.875f};
+                    cuts.count = sizeof at / sizeof at[0];
+                    for (int k = 0; k < cuts.count; ++k) cuts.at[k] = at[k];
+                }
+                app.session().setLaneCuts(0, 5, cuts);
+                for (int step = 0; step < kSteps; ++step) app.drums().setStart(5, step, app.drums().ownStart(step));
+                app.drums().setStart(5, 5, app.drums().cutAt(9));
+                app.drums().setStart(5, 6, app.drums().cutAt(2));
+                app.drums().moveCursorTo(5, std::strcmp(view, "slices-hits-name-held") == 0 ? -1 : 5);
+                if (std::strcmp(view, "slices-hits-name-held") == 0) pushKey(SDLK_x, true); // A held
+                if (std::strcmp(view, "slices-hits-y") == 0) pushKey(SDLK_a, true); // Y held
+            }
             if (std::strcmp(view, "slices-throw") == 0) { // slices thrown to a bus, and X held on one
                 StepFx f;
                 f.throwTo = kThrowSpace;

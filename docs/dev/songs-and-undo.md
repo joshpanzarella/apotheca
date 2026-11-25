@@ -82,8 +82,10 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     (`strlen + 1`: what lies past a name is what a longer one left there). `setLaneSample` no longer
     takes the mark again.
   - `restoreSounds` puts a lane's sound back as `putKit` does (a voice through `setLaneSynth`, else a
-    name or the drum through `setLaneSample`), then its EDIT, LEVEL, FIT and ONE SLICE; a sampler's or
-    CLOUD's name through `setTrackSample`.
+    name or the drum through `setLaneSample`), then its EDIT, LEVEL, FIT and ONE SLICE, and since batch S2 its
+    own cuts (SLICES AT THE HITS, `setLaneCuts`: no hit moved, the patterns come back as they were; drums-and-samples.md);
+    a sampler's or CLOUD's name through `setTrackSample`. `soundMark` mixes the cuts, so a cut added (which moves no
+    hit) is a step too.
   - **A step keeps only the NAME, as the song file does: no sample data is copied or kept per step.**
     Putting it back reads the file again, as a pick does (the app thread; the old sound goes to the
     engine's trash as any). A file deleted since is missing, as in a song opened. Undo's text is no

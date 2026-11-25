@@ -1252,6 +1252,12 @@ bool Engine::applyDrums(const Command& c) {
     case Command::SetLaneChoke:
         if (validTrack(c.track)) tracks_[c.track].drums.setLaneChoke(c.a, c.b);
         break;
+    case Command::SetLaneCuts:
+        if (validTrack(c.track)) {
+            const float at[3] = {c.value, c.extra, c.shift};
+            tracks_[c.track].drums.setLaneCuts(c.a, c.c, c.b, c.d, at);
+        }
+        break;
     case Command::SetLaneSwing:
         if (validTrack(c.track) && c.a >= 0 && c.a < kDrumLanes) tracks_[c.track].swing[c.a] = laneSwingOf(c.b);
         break;
@@ -2282,6 +2288,7 @@ void Engine::takeAway(int t) {
         bin(trash);
     }
     for (int lane = 0; lane < kDrumLanes; ++lane) track.drums.setLaneLevel(lane, 1.f), track.drums.setLaneChoke(lane, kChokeNone); // (the next kit here is in no group until told)
+    for (int lane = 0; lane < kDrumLanes; ++lane) track.drums.setLaneCuts(lane, 0, 0, 0, nullptr); // ...and has no cuts of its own (SLICES AT THE HITS)
     // Its patterns: every scene back to the blank store, nothing written, nothing copied. The stores
     // go back in the holder RemoveInstrument brought (one thing in the trash), or one by one.
     SceneSet* const holder = track.goneSet;
