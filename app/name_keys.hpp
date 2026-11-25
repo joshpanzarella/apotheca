@@ -7,7 +7,7 @@
 //   the stick, the D-pad   move over forty keys (they come round at the edges); a held D-pad runs at a
 //                          list's pace (ui::kListDelayMs, kListEveryMs), the stick kMovesPerSecond
 //   A       types the key under the cursor: no space first, never two together, `most` at most
-//   Y       deletes the last letter
+//   Y       deletes the last letter; held, deletes on at a list's pace (gesture audit G48, 2026-11-25)
 //   B       keeps what is typed and leaves (owner, 2026-11-15: "I find myself pressing B to back out of
 //           the track naming"). With nothing typed it leaves, and nothing changes.
 //   START   keeps it too. (With nothing typed, what the screen says: a track gets its instrument's name.)
@@ -55,13 +55,14 @@ public:
 
 private:
     void move(Button direction);
+    void deleteLast();
     bool open_ = false;
     std::string typed_;
     int key_ = 0, most_ = 0;
     float saved_ = 0.f;     // part-moves saved up while the stick is pushed
     bool stickWas_ = false; // the stick was pushed last frame (the first frame's push moves one at once)
-    Button repeating_ = Button::None;
-    ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
+    Button repeating_ = Button::None; // the held direction, or Y
+    ui::Repeat repeat_; // the held key's repeats (ui.hpp)
 };
 
 } // namespace apotheca

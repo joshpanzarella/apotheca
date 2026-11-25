@@ -753,9 +753,13 @@ void testTheRow() {
     CHECK(session.textSize() == kTextSmall);
     rig.tap(LEFT, 3);
     CHECK(session.textSize() == kTextSmall);
-    // A, B, X and Y do nothing to it.
-    for (SDL_Keycode other : {A, B, X, Y}) rig.tap(other);
+    // A, X and Y do nothing to it; B gives it its usual, LARGE (gesture audit G17: it did nothing).
+    for (SDL_Keycode other : {A, X, Y}) rig.tap(other);
     CHECK(session.textSize() == kTextSmall && setup.cursorRow() == S::kTextSize && !setup.typing() && !setup.testing());
+    rig.tap(B);
+    CHECK(session.textSize() == kTextLarge && setup.cursorRow() == S::kTextSize);
+    rig.tap(LEFT, 2);
+    CHECK(session.textSize() == kTextSmall);
     // A held D-pad goes at the speed of a list (one seen at a time), not a cursor's.
     rig.key(RIGHT, true);
     rig.frames(1);

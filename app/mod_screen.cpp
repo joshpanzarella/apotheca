@@ -431,7 +431,7 @@ void ModScreen::update(const Input& input, Uint32 nowMs) {
     if (!input.held(Button::A)) holding_ = false;
     if (picking() && (!holding_ || pickTrack_ != track())) pickRow_ = -1, holding_ = false; // A let go unseen, or another track: nothing goes in
     if (!input.held(Button::X)) xHeld_ = false;
-    // B held on a MOD's line: the bar fills for a second, then the MOD is deleted (undo brings it back).
+    // B held on a MOD's line: the bar fills for half a second (G29), then the MOD is deleted (undo brings it back).
     if (!input.held(Button::B) || holding_ || column_ != 0 || row_ != deleteRow_) deleting_ = false;
     if (!deleting_) {
         deletePart_ = 0.f;

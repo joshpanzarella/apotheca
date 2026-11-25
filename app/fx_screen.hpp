@@ -33,7 +33,7 @@
 //                    the track, and the effect that was there is back as it
 //                    was, every setting and all its automation.
 //                    Hold B on an effect's line: a bar fills, and when it
-//                    is full (a second) the effect is deleted, with its
+//                    is full (half a second, G29) the effect is deleted, with its
 //                    settings and its automation. It cannot be undone, and
 //                    the heading says so while the bar fills. Let go sooner
 //                    and nothing goes. (On SENDS a tap of B: nothing sent.)
@@ -133,7 +133,7 @@ public:
     // another track). The App calls it whenever this is not the screen up.
     void callOff();
     // B held on an effect's line: how far the bar has filled, 0..1. Full, the effect is deleted.
-    static constexpr Uint32 kDeleteHoldMs = 1000;
+    static constexpr Uint32 kDeleteHoldMs = ui::kHoldUndoneMs; // (undo brings an effect back: G29)
     // In the heading while the bar fills. Effects are in undo (since 2026-11-14: Session::soundMark), so
     // SEL + B brings one back: the MOD screen's words, not CANNOT BE UNDONE (gesture audit G10).
     static constexpr const char* kDeletingWords = "DELETING THIS EFFECT";

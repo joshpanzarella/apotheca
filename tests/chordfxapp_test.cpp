@@ -64,7 +64,7 @@ struct Spy : Instrument {
 
 // Keyboard stand-ins (see app/input.cpp).
 const SDL_Keycode A = SDLK_x, B = SDLK_z, X = SDLK_s, Y = SDLK_a;
-const SDL_Keycode R1 = SDLK_w, SELECT = SDLK_BACKSPACE;
+const SDL_Keycode L1 = SDLK_q, R1 = SDLK_w, L2 = SDLK_1, R2 = SDLK_2, SELECT = SDLK_BACKSPACE;
 const SDL_Keycode UP = SDLK_UP, DOWN = SDLK_DOWN, LEFT = SDLK_LEFT, RIGHT = SDLK_RIGHT;
 const SDL_Keycode STICK_LEFT = SDLK_j, STICK_RIGHT = SDLK_l, STICK_UP = SDLK_i, STICK_DOWN = SDLK_k;
 
@@ -744,7 +744,7 @@ void testSwapBreakAndDrag() {
     rig.tap(RIGHT, 2);
     rig.key(R1, false);
     CHECK(c.step == 5 && c.root == root + 2 && rig.pattern().used() == c.pitches(keys) && samePlay(c.play, set) && c.ratchet == 2 && c.throwTo == 1);
-    // Broken into notes (hold Y, B): the notes are plain notes. A strum is the chord's; they keep
+    // Broken into notes (hold Y, A; it was B until G26): the notes are plain notes. A strum is the chord's; they keep
     // its ratchet, its THROW and its nudge, as they always did, and nothing of the five.
     const int n = c.pitches(keys);
     c.play = chordPlayOf(kStrumWide, 0, 0, 0, 0);
@@ -753,7 +753,7 @@ void testSwapBreakAndDrag() {
     std::vector<Began> heard = rig.playBar();
     CHECK(static_cast<int>(heard.size()) == n && heard.back().frame > heard.front().frame); // strummed
     rig.key(Y, true);
-    rig.tap(B);
+    rig.tap(A);
     rig.key(Y, false);
     NotePattern& p = rig.pattern();
     CHECK(p.chords[0].velocity <= 0.f && p.used() == n);
@@ -767,6 +767,95 @@ void testSwapBreakAndDrag() {
     heard = rig.playBar();
     CHECK(static_cast<int>(heard.size()) == n);
     for (const Began& b : heard) CHECK(b.frame == 5 * kStep); // all at once now
+}
+
+// B while Y is held on a chord puts it back as Y found it (gesture audit G26, 2026-11-25: B broke it into
+// notes): its shape, inversion and length, the song's pack and the chord in hand, its effects untouched,
+// nothing broken. Y held + A breaks it up now. A new chord's B still only calls it off.
+void testBPutsTheChordBack() {
+    Rig rig;
+    rig.roll();
+    Session& session = rig.app.session();
+    NoteScreen& roll = rig.app.notes();
+    ChordEvent& c = rig.chord(0, 60, 2);
+    c.play = chordPlayOf(kStrumTight, kOrderDown, 25, 10, 50);
+    c.ratchet = 2;
+    session.sendNoteBar(1, 0, 0);
+    rig.frames(50);
+    const ChordEvent was = c;
+    const int pack = session.packIndex(), hand = roll.handIndex(), inversion = roll.handInversion();
+    const float handLength = roll.handLength();
+    const int steps = session.undoSteps();
+    // Swapped, turned over, another pack, twice as long: each heard and seen as it goes.
+    rig.key(Y, true);
+    rig.frames(1);
+    rig.tap(RIGHT, 2);
+    rig.tap(UP);
+    rig.tap(R1);
+    rig.tap(R2); // (the App sends L2 / R2 to the roll while Y is held)
+    rig.frames(1);
+    CHECK(std::memcmp(&c, &was, sizeof c) != 0 && session.packIndex() != pack);
+    // The hints say so, and fit at XL.
+    Canvas canvas, scratch;
+    if (canvas.ok && scratch.ok) {
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(barSays(canvas, scratch, "as it was") && barSays(canvas, scratch, "notes") && !barSays(canvas, scratch, "cancel"));
+        const std::vector<unsigned char> ttf = loadFontFile();
+        Fonts xl;
+        xl.fixedSet = canvas.fonts.get();
+        CHECK(xl.load(canvas.r, ttf, kTextXl));
+        canvas.clear();
+        rig.app.draw(canvas.r, xl);
+        CHECK(ui::gHintsOver == 0.f);
+    }
+    rig.tap(B);
+    CHECK(!roll.picking());
+    rig.key(Y, false);
+    rig.frames(1);
+    CHECK(std::memcmp(&rig.pattern().chords[0], &was, sizeof was) == 0); // as it was, to the byte: shape, inversion, length, effects
+    int keys[kChordNotes];
+    CHECK(rig.pattern().used() == was.pitches(keys) && roll.chordCount() == 1 && roll.noteCount() == 0); // not broken up
+    CHECK(session.packIndex() == pack && roll.handIndex() == hand && roll.handInversion() == inversion && roll.handLength() == handLength);
+    // The swaps were live, so undo has a step for them (as the KIT stop's put back leaves one); undone,
+    // it changes nothing.
+    rig.frames(50);
+    CHECK(session.undoSteps() <= steps + 1);
+    if (session.undoSteps() > steps) CHECK(session.undo() && std::memcmp(&rig.pattern().chords[0], &was, sizeof was) == 0);
+    // B straight away (nothing stepped): still the chord.
+    rig.key(Y, true);
+    rig.tap(B);
+    rig.key(Y, false);
+    rig.frames(1);
+    CHECK(std::memcmp(&rig.pattern().chords[0], &was, sizeof was) == 0);
+    // Y held + A breaks it into loose notes, as the chord is now (a swap first: the swapped chord's keys).
+    rig.key(Y, true);
+    rig.tap(RIGHT);
+    const ChordEvent swapped = rig.pattern().chords[0];
+    rig.tap(A);
+    CHECK(!roll.picking());
+    rig.key(Y, false);
+    rig.frames(1);
+    const int n = swapped.pitches(keys);
+    CHECK(rig.pattern().chords[0].velocity <= 0.f && roll.chordCount() == 0 && roll.noteCount() == n);
+    for (int i = 0; i < n; ++i) CHECK(rig.pattern().at(keys[i], swapped.step) >= 0);
+    // On a new chord (no chord at the cursor): A does nothing, B calls it off and the pack stepped stays.
+    roll.moveCursorTo(60, 10);
+    const int before = rig.pattern().used();
+    rig.key(Y, true);
+    rig.tap(A);
+    CHECK(roll.picking());
+    if (canvas.ok && scratch.ok) {
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(barSays(canvas, scratch, "cancel") && !barSays(canvas, scratch, "notes") && !barSays(canvas, scratch, "as it was"));
+    }
+    rig.tap(R1);
+    const int stepped = session.packIndex();
+    rig.tap(B);
+    rig.key(Y, false);
+    rig.frames(1);
+    CHECK(rig.pattern().used() == before && session.packIndex() == stepped && stepped != pack);
 }
 
 void testScenes() {
@@ -1158,7 +1247,7 @@ int main(int argc, char** argv) {
     const Named all[] = {
         {"testTheList", testTheList}, {"testTheLine", testTheLine}, {"testTheDice", testTheDice}, {"testTheGesture", testTheGesture},
         {"testThroughTheSession", testThroughTheSession}, {"testTheSongFile", testTheSongFile}, {"testUndo", testUndo},
-        {"testSwapBreakAndDrag", testSwapBreakAndDrag}, {"testScenes", testScenes}, {"testTheScreen", testTheScreen}, {"testABounce", testABounce}, {"testTheStripsEdges", testTheStripsEdges},
+        {"testSwapBreakAndDrag", testSwapBreakAndDrag}, {"testBPutsTheChordBack", testBPutsTheChordBack}, {"testScenes", testScenes}, {"testTheScreen", testTheScreen}, {"testABounce", testABounce}, {"testTheStripsEdges", testTheStripsEdges},
     };
     for (const Named& t : all) {
         bool wanted = argc < 2;

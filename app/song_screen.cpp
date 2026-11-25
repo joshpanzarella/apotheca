@@ -14,7 +14,7 @@ namespace apotheca {
 using namespace ui;
 
 namespace {
-constexpr Uint32 kDeleteHoldMs = 1000; // B held this long on a song deletes it
+constexpr Uint32 kDeleteHoldMs = ui::kHoldForGoodMs; // B held this long on a song deletes it
 
 constexpr int kGridTop = 34, kHeadH = 40, kRowH = 44, kRowsTop = kGridTop + kHeadH + 6;
 constexpr int kNumberW = 26, kRepeatW = 38, kColumnsLeft = 8 + kNumberW + kRepeatW; // (kRepeatW was 34: the column's word, REPEATS, is 67 wide at LARGE)
@@ -322,9 +322,7 @@ void SongScreen::pasteCellHere(int toTrack, int toScene) {
     }
     session_.beginOwnUndoStep();
     copyCell(cellCopy_, toTrack, toScene);
-    cellCopied_ = false; // spent: a paste clears the copy
-    cellCopy_.has = false;
-    session_.endOwnUndoStep();
+    session_.endOwnUndoStep(); // the copy stays, brass-marked, for another paste (G23); R1 on its cell clears it
     session_.say("CELL PASTED");
 }
 
@@ -628,11 +626,16 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             cellPasteTrack_ = column_;
             cellPasteScene_ = scene_;
         } else if (event.down && column_ == kRepeatColumn) {
-            // COPY A SCENE: nothing copied, or this one already, and it copies now (the AT END row
-            // too: it is an empty scene like any). Else the paste waits for R1's let go (as DUPLICATE
-            // A TRACK's: on the way to a panic nothing pastes).
-            if (session_.copiedScene() < 0 || session_.copiedScene() == scene_) session_.copySceneHere(scene_);
-            else {
+            // COPY A SCENE: nothing copied, and it copies now (the AT END row too: it is an empty scene
+            // like any). The copied scene again: the copy is cleared, as a cell's (G23, 2026-11-25: it
+            // copied it again; a paste no longer spends a copy, so this is the way to put one down).
+            // Else the paste waits for R1's let go (as DUPLICATE A TRACK's: on the way to a panic
+            // nothing pastes).
+            if (session_.copiedScene() < 0) session_.copySceneHere(scene_);
+            else if (session_.copiedScene() == scene_) {
+                session_.clearSceneCopy();
+                session_.say("COPY CLEARED");
+            } else {
                 scenePasteArmed_ = true;
                 scenePaste_ = scene_;
             }
@@ -646,7 +649,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (b == Button::B && !input.held(Button::A) && column_ == kRepeatColumn && !onSongEnd()) {
-        // On a repeat count: the press arms the hold (update() empties the scene at the second),
+        // On a repeat count: the press arms the hold (update() empties the scene at half a second, G29),
         // and letting go first is a tap back to 1. Above the early return for a let go, as R1's paste.
         // With L1 held it puts the scene's own tempo back to the song's instead.
         if (event.down && l1OnRepeat_) {
@@ -758,7 +761,7 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
             if (session_.removeTrack(column_)) moveCursorTo(scene_, column_ >= project_.trackCount() ? project_.trackCount() - 1 : column_);
         }
     }
-    // B kept held on a repeat count: the box fills red, and at the second the whole scene is emptied.
+    // B kept held on a repeat count: the box fills red, and at half a second (G29) the whole scene is emptied.
     if (!input.held(Button::B) || input.held(Button::A) || column_ != kRepeatColumn || scene_ != sceneHoldScene_ || listing_ || choosing_) sceneHold_ = false, sceneHoldPart_ = 0.f;
     if (sceneHold_) {
         if (!sceneHoldTimed_) sceneHoldTimed_ = true, sceneHoldSince_ = nowMs;
@@ -1349,7 +1352,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             hint("HOLD A", "repeats");
             hint("TAP A", "1 > 2 > 4 > 8");
         }
-        hint("R1", session_.copiedScene() < 0 ? "copy" : "paste"); // (which scene: its brass mark)
+        hint("R1", session_.copiedScene() < 0 ? "copy" : session_.copiedScene() == scene_ ? "clear" : "paste"); // (which scene: its brass mark)
         if (!onSongEnd()) hint("HOLD B", "empty"); // the scene's cells are emptied, one step of undo (no START: with it the bar runs over, as on a cell)
     } else if (column_ == addColumn()) {
         hint("A", "add a track");
@@ -1360,7 +1363,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("A", "open");
         hint("B", "empty");
         hint("HOLD B", "delete track");
-        hint("R1", cellCopied_ ? "paste" : "copy"); // (which cell: its brass mark)
+        hint("R1", !cellCopied_ ? "copy" : copyTrack_ == column_ && copyScene_ == scene_ ? "clear" : "paste"); // (which cell: its brass mark)
         hint("SELECT", "songs");
     }
     hints(r, fonts, list, count);

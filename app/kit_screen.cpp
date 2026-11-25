@@ -461,6 +461,8 @@ void KitScreen::editPress(Button b) {
 
 void KitScreen::editButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
+    const bool afterY = event.down && b == Button::B && bLeavesAfterY(editRow_);
+    if (event.down) yJust_ = false; // (any press: Y is no longer the last)
     if (b == Button::A) {
         holding_ = event.down;
         turned_ = 0.f;
@@ -471,7 +473,7 @@ void KitScreen::editButton(const ButtonEvent& event, const Input& input) {
     if (event.down && b != Button::B) deleting_ = bBack_ = false; // any other button calls a held B off
     if (!event.down) {
         if (b == Button::B) {
-            if (deleting_ && bBack_) editing_ = false; // a tap on a box at its usual value: back to the kit
+            if (deleting_ && bBack_) editing_ = false; // a tap on a box at its usual value, or just after Y: back to the kit
             deleting_ = bBack_ = false;
         }
         if (b == repeating_) repeating_ = Button::None;
@@ -483,9 +485,10 @@ void KitScreen::editButton(const ButtonEvent& event, const Input& input) {
         repeating_ = b;
         repeat_.restart();
     } else if (b == Button::B && !holding_) {
-        // The box to its usual value at once; held on, the bar fills and every edit goes (update).
+        // The box to its usual value at once; held on, the bar fills and every edit goes (update). Straight
+        // after Y on this box: nothing put back, and the tap goes back to the kit with the trim kept (G16).
         const int usual = laneEditValue(LaneEdit(), editRow_);
-        bBack_ = laneEditValue(e, editRow_) == usual;
+        bBack_ = afterY || laneEditValue(e, editRow_) == usual;
         if (!bBack_) setEdit(laneEditWith(e, editRow_, usual));
         deleting_ = true;
         deleteTimed_ = false;
@@ -503,6 +506,7 @@ void KitScreen::editButton(const ButtonEvent& event, const Input& input) {
         }
         saidUntil_ = lastMs_ + 2500;
         if (!project_.playing) { hearOwed_ = true; changedAt_ = lastMs_ - kHearAfterMs; } // heard once it is made
+        yJust_ = true, yBox_ = editRow_;
     } else if (b == Button::X) {
         hear(true);
     } else if (b == Button::Start && !input.held(Button::Select)) {
@@ -511,7 +515,7 @@ void KitScreen::editButton(const ButtonEvent& event, const Input& input) {
 }
 
 void KitScreen::editUpdate(const Input& input, Uint32 nowMs, float dt) {
-    // B held: the bar fills for a second, then every edit of the lane goes (undo brings them back).
+    // B held: the bar fills for half a second (kDeleteHoldMs: undo brings it back, G29), then every edit of the lane goes (undo brings them back).
     if (!input.held(Button::B) || holding_) deleting_ = bBack_ = false;
     if (!deleting_) {
         deletePart_ = 0.f;
@@ -635,6 +639,7 @@ void KitScreen::openVoice(int place) {
     session_.readyLane(project_.track, lane_);
     voicing_ = true;
     editing_ = false;
+    yJust_ = false;
     hearOwed_ = false;
     const int model = trk().laneSynth[lane_].model, named = voicePlaceOf(trk().laneSynth[lane_]);
     voicePlace_ = drumsynth::shown(model, place) ? place : kVoiceModel;
@@ -703,6 +708,8 @@ void KitScreen::voicePress(Button b) {
 
 void KitScreen::voiceButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
+    const bool afterY = event.down && b == Button::B && bLeavesAfterY(voicePlace_);
+    if (event.down) yJust_ = false; // (any press: Y is no longer the last)
     if (b == Button::A) {
         holding_ = event.down;
         turnedVoice_ = 0.f;
@@ -713,7 +720,7 @@ void KitScreen::voiceButton(const ButtonEvent& event, const Input& input) {
     if (event.down && b != Button::B) deleting_ = bBack_ = false; // any other button calls a held B off
     if (!event.down) {
         if (b == Button::B) {
-            if (deleting_ && bBack_) voicing_ = false; // a tap on MODEL, or on a knob at its usual value: back to the kit
+            if (deleting_ && bBack_) voicing_ = false; // a tap on MODEL, on a knob at its usual value, or just after Y: back to the kit
             deleting_ = bBack_ = false;
         }
         if (b == repeating_) repeating_ = Button::None;
@@ -730,8 +737,8 @@ void KitScreen::voiceButton(const ButtonEvent& event, const Input& input) {
         repeat_.restart();
     } else if (b == Button::B && !holding_) {
         // The knob to its usual value at once; held on, the bar fills and every knob goes back (update).
-        if (voicePlace_ == kVoiceModel) {
-            bBack_ = true;
+        if (voicePlace_ == kVoiceModel || afterY) {
+            bBack_ = true; // (straight after Y's roll: the roll kept, G16)
         } else {
             const int usual = drumsynth::usualVoice(v.model).dial[voicePlace_];
             bBack_ = v.dial[voicePlace_] == usual;
@@ -753,6 +760,7 @@ void KitScreen::voiceButton(const ButtonEvent& event, const Input& input) {
                     v.dial[p] = static_cast<std::uint8_t>(dial > kRollHigh ? kRollHigh : dial);
                 }
         setVoice(v);
+        yJust_ = true, yBox_ = voicePlace_;
     } else if ((b == Button::L1 || b == Button::R1) && !holding_ && !input.held(Button::Select)) {
         // The synth lane before / after; the ends stop.
         const int by = b == Button::L1 ? -1 : 1;
@@ -775,7 +783,7 @@ void KitScreen::voiceUpdate(const Input& input, Uint32 nowMs, float dt) {
         voicing_ = false;
         return;
     }
-    // B held: the bar fills for a second, then every knob goes back to the model's usual.
+    // B held: the bar fills for half a second (G29), then every knob goes back to the model's usual.
     if (!input.held(Button::B) || holding_) deleting_ = bBack_ = false;
     if (!deleting_) {
         deletePart_ = 0.f;
@@ -893,7 +901,7 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             hint("UP / DOWN", editRow_ == kEditReverse ? "on / off" : "turn it");
         } else {
             hint("HOLD A", "turn");
-            hint("B", laneEditValue(trk().laneEdit[lane_], editRow_) == laneEditValue(LaneEdit(), editRow_) ? "back" : "default");
+            hint("B", bLeavesAfterY(editRow_) || laneEditValue(trk().laneEdit[lane_], editRow_) == laneEditValue(LaneEdit(), editRow_) ? "back" : "default");
             hint("Y", editRow_ == kEditStart || editRow_ == kEditEnd ? "trim silence" : "normalize");
             hint("START", project_.playing ? "stop" : "play");
         }
@@ -915,7 +923,7 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             if (onModel) hint("LEFT / RIGHT", "voice");
         } else {
             hint("HOLD A", onModel ? "model" : "turn");
-            hint("B", onModel || v.dial[voicePlace_] == drumsynth::usualVoice(v.model).dial[voicePlace_] ? "back" : "default");
+            hint("B", onModel || bLeavesAfterY(voicePlace_) || v.dial[voicePlace_] == drumsynth::usualVoice(v.model).dial[voicePlace_] ? "back" : "default");
             hint("Y", "roll");
             hint("L1 / R1", "lane");
             hint("START", project_.playing ? "stop" : "play");

@@ -496,7 +496,7 @@ void testHoldBDeletes() {
     rig.tap(B);
     rig.frames(80);
     CHECK(rig.mod(t, 1).kind == kModStepper);
-    rig.key(B, true), rig.frames(30);
+    rig.key(B, true), rig.frames(15); // 240 ms of the half second (G29)
     CHECK(tab.deletePart() > 0.2f && tab.deletePart() < 0.8f);
     rig.tap(Y);
     rig.frames(50);
@@ -816,15 +816,17 @@ void testAHeldThroughTheTracks() {
     rig.key(A, false), rig.frames(1);
 }
 
-// Hold B deletes at a second, not sooner.
+// Hold B deletes at half a second, not sooner (gesture audit G29, 2026-11-25: undo brings a MOD back, so it is
+// the shorter hold; it was a second).
 void testHoldBTakesASecond() {
     Rig rig;
     const int t = rig.phazed;
     rig.session().setMod(t, 0, lfo(kModFirstMacro));
     ModScreen& tab = rig.at(t, 0, 0);
-    rig.key(B, true), rig.frames(50); // 800 ms
+    CHECK(ModScreen::kDeleteHoldMs == 500);
+    rig.key(B, true), rig.frames(26); // 400 ms (the clock starts on the frame after the press)
     CHECK(rig.mod(t, 0).kind == kModLfo && tab.deletePart() > 0.7f && tab.deletePart() < 0.95f);
-    rig.frames(15);
+    rig.frames(8);
     CHECK(rig.mod(t, 0).kind == kModOff);
     rig.key(B, false), rig.frames(1);
 }

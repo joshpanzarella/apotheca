@@ -125,7 +125,7 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     (`ModKnob::moreName`: a FREE LFO's SPEED is not PHASE); a STEPS row keeps it for any two MODs of one
     kind. `app_test` `testFxHoldKeptAcrossTracks`, `modtab_test` `testAHeldThroughTheTracks`.
   - **Hold B deletes an effect** (a slot's line or a bus's: a bar fills for
-    `kDeleteHoldMs`, a second, on the line and the heading, which says
+    `kDeleteHoldMs`, half a second since G29 below (it was a second), on the line and the heading, which says
     `kDeletingWords`; a tap does nothing; any other button or a move calls it
     off; pit stop 2026-11-14; `app_test --hands` runs these tests). A tap of B on SENDS still empties both sends,
     and on a setting gives its usual value; a bus's LEVEL goes back to full
@@ -334,6 +334,34 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   bounce under way stops it** (`stopping_`, `kStopHoldMs`, a red bar as NETWORK's forget, the note
   `kStoppingWords`, the hint HOLD B stop it in place of A (working); any other press calls it off). The box
   above the bar then says `kBounceStoppedWords`. `app_test` `testSetActsOnTheLetGo`.
+- **One hold length a kind: half a second where undo brings it back, a second where nothing can**
+  (gesture audit G29, 2026-11-25, under the owner's "any of my decisions can be reversed if there is a
+  more logical method", 2026-11-24; `ui::kHoldUndoneMs`, `ui::kHoldForGoodMs`). Each screen had its own
+  1000 ms; the effect's was recorded as "a bar fills for `kDeleteHoldMs`, a second" (pit stop
+  2026-11-14, above), and the manual said 1 s for all but the track. An undoable hold waited as long
+  as a permanent one, though SEL + B brings it back, and it is what is done most (an effect, a MOD):
+  **0.5 s** for an effect (`FxScreen`), a MOD (`ModScreen`, `ModKnob`), EDIT's and VOICE's every box
+  back (`KitScreen::kDeleteHoldMs`) and a scene emptied (`SongScreen::kSceneHoldMs`); **1 s** for a
+  recording or folder (`SamplePicker`), a song, an own preset (`SynthScreen`, `SamplerScreen`) or kit
+  (`kKitDeleteMs`), a network forgotten and a bounce stopped (`SettingsScreen`). **A track keeps its
+  two seconds, red only after a quiet half second** (commit 0852245, 2026-11-11: the B tap that empties
+  a cell never flashes red), and the update's hold over WiFi its own second (`App::kUpdateHoldMs`, A's
+  too). **The bars keep their looks** ("the look is settled": the song row's brass, the KIT stop's 1 px
+  line between the name and lane 1, the sampler PRESET's 2 px line). A shorter hold fires more easily;
+  undo is what makes that safe, which is why only the undoable ones are shorter. The stills of the
+  undoable bars are taken at 300 ms (`stills.cpp`). `app_test testTheHoldLengths`, `modtab_test
+  testHoldBTakesASecond`, `copyscene_test testClearGesture`.
+- **B on a SET row under PLAYING, LOOK or HANDHELD gives it its usual value** (gesture audit G17,
+  2026-11-25; `SettingsScreen::hasUsual`, `usual`): B did nothing on SET's value rows, where B on an
+  effect's dial, a sampler setting or a MOD is its usual value, so VOLUME or STICK SPEED had no
+  one-press way back. The usual values are the program's own starting ones, named where they start
+  (`Session::kVolumeAsBuilt`, `kOctavesAsBuilt`, `kTextSizeAsBuilt`, `kThemeAsBuilt`,
+  `ui::kStickSpeedAsBuilt`, `kBrightUsual`, `kRingOn`, `kLightTheme`, `kClickOff`, `kMutesAtOnce`).
+  **Not the SONG rows** (TEMPO, CHORD PACK, KEY, SCALE, TRACK NAME): they are the song, not settings,
+  and BOUNCE's B is its stop; whether B there should give 120 BPM and the rest is the owner's call.
+  The bar says `B default` (fits at XL). **A synth page keeps "B goes back to MAIN"** (the standard's
+  "B goes back"; G17's proposal to make it a usual value was not taken). `app_test
+  testBOnASettingIsItsUsual`.
 - **The tabs go round** (gesture audit G35, 2026-11-25; `App::onButton`, `showTab`): L2 on SONG is SET, R2 on
   SET is SONG. They stopped at both ends, so SONG to SET was R2 five times and L2 on SONG did nothing; no owner
   decision was found for the ends. A quick run of L2 can now carry on past SONG into SET (the audit's trade-off).

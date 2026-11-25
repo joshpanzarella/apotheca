@@ -196,7 +196,13 @@ void testMakingAFolder() {
         CHECK(list.typed().empty() && list.typing());
         rig.type("ABCDEFGHIJKLMNOP", &at);
         CHECK(list.typed() == "ABCDEFGHIJKL" && SamplePicker::kFolderNameLength == 12);
-        rig.tap(Y, 12);
+        // Y held deletes on at a list's pace, as wherever a name is typed (gesture audit G48): one at
+        // once, the rest in one hold.
+        rig.key(Y, true);
+        CHECK(list.typed() == "ABCDEFGHIJK");
+        rig.frames(90);
+        rig.key(Y, false);
+        CHECK(list.typed().empty() && list.typing());
         // The keys go round at their edges; the stick moves over them, and a held direction runs.
         rig.tap(B); // (leave, and come back: the first key again)
         rig.tap(A);

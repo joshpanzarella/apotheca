@@ -13,7 +13,7 @@
 //     L1 / R1         an LFO's PHASE (a FREE one's SPEED, a click of mod_rule.hpp's list), a
 //                     STEPPER's LENGTH (the ends stop)
 //     Y               the dice (call F): a STEPPER's row; an LFO's shape, rate and depth
-//     hold B          deletes the MOD (a bar fills for a second; undo brings it back)
+//     hold B          deletes the MOD (a bar fills for half a second; undo brings it back)
 //   X held while the song is stopped runs the MOD (call E: Session::hearMods), and the screen's
 //   own note is held as long as X is, so the wobble is heard. Everything X held changes is a step
 //   of undo through Session::setMod (soundMark sees it).
@@ -73,7 +73,7 @@ public:
     // Every frame while held: the stick, a held D-pad, B's bar, and the audition while stopped.
     void update(const Input& input, Uint32 nowMs, float dt);
     // B held: how far its bar has filled, 0..1. Full, the MOD is deleted.
-    static constexpr Uint32 kDeleteHoldMs = 1000;
+    static constexpr Uint32 kDeleteHoldMs = ui::kHoldUndoneMs; // (undo brings a MOD back: G29)
     float deletePart() const { return deletePart_; }
 
     // The fields, at `places` (FX: moved down by `top`), in a box x..x+w, y..y+h the screen has drawn.

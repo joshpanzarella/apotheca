@@ -440,6 +440,11 @@ void NoteScreen::showChord(const ChordEvent& chord) {
 void NoteScreen::beginPick() {
     picking_ = true;
     editing_ = pat().chordAt(step_);
+    // As it all was when Y went down: B puts it back (G26).
+    pickWas_.packIndex = session_.packIndex();
+    pickWas_.hand = hand_, pickWas_.inversion = inversion_;
+    pickWas_.handLength = handLength_;
+    if (editing_ >= 0) pickWas_.chord = pat().chords[editing_];
     const int count = static_cast<int>(pack().chords.size());
     hand_ = ((hand_ % count) + count) % count;
     if (editing_ >= 0) {
@@ -533,6 +538,23 @@ void NoteScreen::doubleHand(int way) {
     if (here < whole) std::snprintf(text, sizeof text, "CHORD %d STEPS, %d FIT HERE", whole, here);
     else std::snprintf(text, sizeof text, whole == 1 ? "CHORD %d STEP" : "CHORD %d STEPS", whole);
     session_.say(text);
+}
+
+// B while Y is held on a chord (gesture audit G26, 2026-11-25): the chord as it was when Y went down, its
+// shape, inversion and length, and the pack and the chord in hand with it, as B with A held puts back what
+// the KIT stop, the list of effects and a MOD's target were stepped through. It broke the chord into
+// loose notes; that is Y held + A now.
+// (A new chord's B only calls it off, as before: nothing landed, and the pack and chord stepped to stay
+// in hand for the next tap of Y.)
+void NoteScreen::putPickBack() {
+    if (editing_ < 0) return;
+    if (session_.packIndex() != pickWas_.packIndex) session_.choosePack(pickWas_.packIndex);
+    hand_ = pickWas_.hand, inversion_ = pickWas_.inversion;
+    handLength_ = pickWas_.handLength;
+    ChordEvent& c = pat().chords[editing_];
+    if (std::memcmp(&c, &pickWas_.chord, sizeof c) == 0) return; // nothing was changed
+    c = pickWas_.chord;
+    resend();
 }
 
 void NoteScreen::breakUp(int chord) {
@@ -757,7 +779,10 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         } else if (b == Button::X) {
             hearChord(editing_ >= 0 ? pat().chords[editing_] : inHand());
         } else if (b == Button::B) {
-            if (editing_ >= 0) breakUp(editing_);
+            putPickBack(); // as it was when Y went down (G26: it broke the chord up)
+            picking_ = false;
+        } else if (b == Button::A && editing_ >= 0) {
+            breakUp(editing_); // Y held + A: into loose notes, as the chord is now (G26: it was B)
             picking_ = false;
         }
         return;
@@ -1533,10 +1558,11 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char brushText[40];
     if (picking_) {
         hint("LEFT / RIGHT", "chord");
-        hint("UP / DOWN", "inversion");
+        hint("UP / DOWN", "invert"); // (G26: "inversion" with A's chip added ran 13 pixels over at XL)
         hint("L1 R1", "pack");
         hint("L2 R2", "length");
-        hint("B", editing_ >= 0 ? "break into notes" : "cancel");
+        if (editing_ >= 0) hint("A", "notes"); // into loose notes
+        hint("B", editing_ >= 0 ? "as it was" : "cancel");
     } else if (fxHeld_ && !under && chordUnder) {
         // Each button under what it changes, with no word: LEFT / RIGHT sets the one picked, under
         // its large value at the left (right whichever of the six is picked); UP / DOWN picks one,

@@ -27,6 +27,10 @@ void NameKeys::close() {
     stickWas_ = false;
 }
 
+void NameKeys::deleteLast() {
+    if (!typed_.empty()) typed_.pop_back();
+}
+
 void NameKeys::move(Button direction) {
     const int rows = kCount / kColumns;
     int col = key_ % kColumns, row = key_ / kColumns;
@@ -48,7 +52,9 @@ NameKeys::Asked NameKeys::press(Button b) {
         const bool space = c == ' ';
         if (static_cast<int>(typed_.size()) < most_ && !(space && (typed_.empty() || typed_.back() == ' '))) typed_ += c;
     } else if (b == Button::Y) {
-        if (!typed_.empty()) typed_.pop_back(); // the last letter goes
+        deleteLast(); // the last letter goes; held, the letters go at a list's pace (G48)
+        repeating_ = b;
+        repeat_.restart();
     } else if (b == Button::B) {
         return Asked::Keep;
     } else if (b == Button::Start) {
@@ -75,8 +81,12 @@ void NameKeys::update(const Input& input, Uint32 nowMs, float dt) {
         stickWas_ = true;
         for (; saved_ >= 1.f; saved_ -= 1.f) move(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
     }
-    // A held D-pad direction runs, at a list's pace: each key is seen go by.
-    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::List)) move(repeating_);
+    // A held D-pad direction runs, at a list's pace: each key is seen go by. A held Y deletes at the same
+    // pace, one letter at a time, so an old name goes in one hold and each letter is seen go (G48).
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::List)) {
+        if (repeating_ == Button::Y) deleteLast();
+        else move(repeating_);
+    }
 }
 
 void NameKeys::draw(SDL_Renderer* r, const Fonts& fonts, const std::string& title, SDL_Color titleColour, const char* emptyNote, const char* bDoes, const char* startDoes) const {

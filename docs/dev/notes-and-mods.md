@@ -118,6 +118,20 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     dice and they stay swallowed. The hint is `L2 R2 length` (fits at XL, the swap's longer B
     included). **A panic begun with L2 or R2 while Y is held changes the length and does not put it
     back**, as the A-held nudge does not. `easy_test chordlength`.
+  - **B while Y is held on a chord puts it back as Y found it; Y held + A breaks it into loose notes**
+    (gesture audit G26, 2026-11-25, under the owner's "any of my decisions can be reversed if there is
+    a more logical method", 2026-11-24). Since the first chords (d213631, 2026-11-10) B on a swap
+    broke the chord up ("B while Y is held breaks it up into loose notes instead") and dropped its five
+    effects: no owner call is recorded, and it predates the standard that B in a held pick is "as it
+    was" (the KIT stop, the list of effects, a MOD's target). So browsing chords on a placed chord was
+    not safe: only SEL + B got the old one back. `beginPick` keeps `pickWas_` (the whole `ChordEvent`,
+    the song's pack, the hand and inversion, `handLength_`); `putPickBack` writes them back. **A new
+    chord's B only calls it off, as before** (nothing landed; the pack and chord stepped stay in hand
+    for the next tap of Y, which `chord_test` leans on). A was free while Y is held. The swaps were
+    live, so a put back leaves a step of undo that changes nothing, as the KIT stop's does. The bar:
+    `A notes`, `B as it was`, and UP / DOWN reads `invert` (with A's chip "inversion" ran 13 pixels over
+    at XL). `chordfxapp_test testBPutsTheChordBack`, `testSwapBreakAndDrag`; `chord_test
+    testBreakingAChordIntoNotes`.
   - Its tests are their own two programs: `tests/chordfx_test.cpp` (the
     engine, with a listening synth) and `tests/chordfxapp_test.cpp` (the
     gesture, the strip off the drawn screen, the dice, the song file, undo,
@@ -193,7 +207,7 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   nothing), the stick DEPTH smoothly / RATE a click, LEFT / RIGHT RATE, A the SHAPE (after DRIFT a
   STEPPER, its row rolled if it was never written; then SINE), L1 / R1 PHASE or LENGTH (the ends
   stop), Y the dice (`ModKnob::rolled`: a STEPPER's row; an LFO's SHAPE and RATE, never both as
-  they were, DEPTH kept), hold B deletes it (a second; undo brings it back). Both MODs on other
+  they were, DEPTH kept), hold B deletes it (half a second since G29; undo brings it back). Both MODs on other
   knobs: MODS FULL, nothing is made.
   - **The X-held check comes before every other button's own job** (`modKnob_.onButton` right
     after X in `onButton`): L1 / R1 not FX's track, B not the default, the

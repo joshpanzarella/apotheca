@@ -734,7 +734,7 @@ void testBreakingAChordIntoNotes() {
         rig->notes().moveCursorTo(60, 1);
     }
     broken.key(Y, true);
-    broken.tap(B);
+    broken.tap(SDLK_x); // A (G26: it was B)
     broken.key(Y, false);
     CHECK(broken.notes().chordCount() == 0 && broken.notes().noteCount() == 4 && broken.pat().used() == 4);
     CHECK(whole.notes().chordCount() == 1 && whole.notes().noteCount() == 0 && whole.pat().used() == 4);

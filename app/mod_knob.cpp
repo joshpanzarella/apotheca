@@ -246,7 +246,7 @@ bool ModKnob::onButton(const ButtonEvent& event, Uint32 nowMs) {
 
 void ModKnob::update(const Input& input, Uint32 nowMs, float dt) {
     if (!held()) return;
-    // B held: the bar fills for a second, then the MOD is deleted (undo brings it back).
+    // B held: the bar fills for half a second (G29), then the MOD is deleted (undo brings it back).
     if (!input.held(Button::B)) deleting_ = false;
     if (!deleting_) {
         deletePart_ = 0.f;

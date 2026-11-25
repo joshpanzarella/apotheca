@@ -567,6 +567,48 @@ void testTheVoiceView() {
     CHECK(!kit.voicing());
 }
 
+// VOICE: a B straight after Y's roll goes back to the kit and keeps the roll (gesture audit G16, 2026-11-25:
+// it put the knob under the cursor back to the model's usual). Any press between and B is B as ever.
+void testBAfterARollKeepsIt() {
+    Rig rig;
+    Session& session = rig.session();
+    session.view = View::Device;
+    session.setLaneSynth(0, 2, voiceOf(drumsynth::kKick));
+    rig.frames(2);
+    KitScreen& kit = rig.app.kit();
+    kit.goTo(2, KitScreen::kSound);
+    kit.openVoice(drumsynth::kTune);
+    rig.tap(Y);
+    const drumsynth::Voice rolled = rig.kit().laneSynth[2];
+    CHECK(rolled != voiceOf(drumsynth::kKick) && rolled.dial[drumsynth::kTune] != voiceOf(drumsynth::kKick).dial[drumsynth::kTune]);
+    {
+        Canvas canvas, scratch;
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(barSays(canvas, scratch, "back") && !barSays(canvas, scratch, "default"));
+    }
+    rig.tap(B);
+    CHECK(!kit.voicing() && rig.kit().laneSynth[2] == rolled);
+    // A move between: B puts that knob back, and the view stays.
+    kit.openVoice(drumsynth::kTune);
+    rig.tap(Y);
+    const drumsynth::Voice again = rig.kit().laneSynth[2];
+    rig.tap(Right);
+    rig.tap(Left);
+    rig.tap(B);
+    CHECK(kit.voicing() && rig.kit().laneSynth[2].dial[drumsynth::kTune] == voiceOf(drumsynth::kKick).dial[drumsynth::kTune]);
+    CHECK(rig.kit().laneSynth[2].dial[drumsynth::kDecay] == again.dial[drumsynth::kDecay]);
+    // Another lane (R1 / L1) between: the same.
+    session.setLaneSynth(0, 3, voiceOf(drumsynth::kSnare));
+    rig.frames(1);
+    kit.openVoice(drumsynth::kTune);
+    rig.tap(Y);
+    rig.tap(R1);
+    CHECK(kit.cursorLane() == 3);
+    rig.tap(L1);
+    rig.tap(B);
+    CHECK(kit.voicing() && rig.kit().laneSynth[2].dial[drumsynth::kTune] == voiceOf(drumsynth::kKick).dial[drumsynth::kTune]);
+}
+
 // ---- the named voices (batch 3) ------------------------------------------------------------------------
 
 // What a sound is like, in three numbers: how long it lasts (to 40 dB under its peak), how bright it is
@@ -885,7 +927,7 @@ int main(int argc, char** argv) {
     const Test tests[] = {
         {"testTheEnginePlaysIt", testTheEnginePlaysIt}, {"testOneOrTheOther", testOneOrTheOther}, {"testEditAndFit", testEditAndFit},
         {"testALongVoiceWaits", testALongVoiceWaits}, {"testTheSongFile", testTheSongFile}, {"testASongOpens", testASongOpens}, {"testUndo", testUndo},
-        {"testTheSoundColumn", testTheSoundColumn}, {"testTheVoiceView", testTheVoiceView}, {"testTheNamedVoices", testTheNamedVoices},
+        {"testTheSoundColumn", testTheSoundColumn}, {"testTheVoiceView", testTheVoiceView}, {"testBAfterARollKeepsIt", testBAfterARollKeepsIt}, {"testTheNamedVoices", testTheNamedVoices},
         {"testPickingAVoice", testPickingAVoice}, {"testHeardWhenTheTurnIsDone", testHeardWhenTheTurnIsDone},
         {"testHeldKeysOnTheKitPage", testHeldKeysOnTheKitPage},
     };

@@ -37,6 +37,8 @@ void SettingsScreen::passwordButton(Button b) {
         if (c != '\x01' && static_cast<int>(typed_.size()) < kWifiPasswordMost) typed_ += c;
     } else if (b == Button::Y) {
         if (!typed_.empty()) typed_.pop_back();
+        repeating_ = b; // held, it deletes on at a list's pace, as the name keys do (G48)
+        repeat_.restart();
     } else if (b == Button::X) {
         keySet_ = (keySet_ + 1) % 3;
     } else if (b == Button::B || b == Button::Start) {
@@ -208,6 +210,30 @@ void SettingsScreen::change(int by) {
     }
 }
 
+// B on a setting's row (PLAYING, LOOK, HANDHELD): its usual value, as B gives one on an effect's dial, a
+// sampler setting or a MOD (gesture audit G17, 2026-11-25: B did nothing here). The SONG rows are the song's,
+// not settings: B does nothing there (BOUNCE's B is its stop).
+bool SettingsScreen::hasUsual(int row) { return row >= kClick && row < kWifi; }
+
+void SettingsScreen::usual() {
+    switch (row_) {
+    case kClick: session_.setClick(Session::kClickOff); break;
+    case kCountIn: session_.setCountIn(false); break;
+    case kMutes: session_.setMutes(Session::kMutesAtOnce); break;
+    case kMidi: session_.setMidiRecording(false); break;
+    case kTextSize: session_.setTextSize(Session::kTextSizeAsBuilt); break;
+    case kTheme: session_.setTheme(Session::kThemeAsBuilt); break;
+    case kOctaves: session_.setOctavesShown(Session::kOctavesAsBuilt); break;
+    case kVolume: session_.setVolume(Session::kVolumeAsBuilt); break;
+    case kBrightness: session_.setBrightness(kBrightUsual); break;
+    case kLight: session_.setStickLight(kRingOn); break;
+    case kLightColour: session_.setLightColour(kLightTheme); break;
+    case kRingLevel: session_.setRingLevel(kBrightUsual); break;
+    case kStick: session_.setStickSpeed(ui::kStickSpeedAsBuilt); break;
+    default: break;
+    }
+}
+
 void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
     if (testing_) {
@@ -309,6 +335,10 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
         holdPart_ = 0.f;
         repeating_ = b;
         repeat_.restart();
+    } else if (b == Button::B && hasUsual(row_)) {
+        usual();
+        holding_ = false;
+        holdPart_ = 0.f;
     } else if (b == Button::Start && !input.held(Button::Select)) {
         session_.togglePlay(false);
     }
@@ -396,7 +426,13 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
             stickWas_ = true;
             for (; saved_ >= 1.f; saved_ -= 1.f) moveKey(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
         }
-        while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::List)) moveKey(repeating_);
+        while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::List)) {
+            if (repeating_ == Button::Y) {
+                if (!typed_.empty()) typed_.pop_back(); // a held Y deletes on (G48)
+            } else {
+                moveKey(repeating_);
+            }
+        }
         return;
     }
     if (holding_) {
@@ -770,6 +806,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     hint("UP / DOWN", "choose");
     if (row_ < kWifi) hint("LEFT / RIGHT", "change");
+    if (hasUsual(row_)) hint("B", "default");
     if (row_ == kBounce) {
         if (!session_.bouncing()) hint("A", "bounce");
         else hint("HOLD B", stopPart_ > 0.f ? "stopping" : "stop it");

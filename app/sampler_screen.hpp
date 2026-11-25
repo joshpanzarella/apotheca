@@ -138,7 +138,7 @@ private:
     bool nameTaken() const; // what is typed names one of the presets already: B or START replaces it
     NameKeys keys_;
     // Deleting one's own preset: B held a second on it (as a kit's).
-    static constexpr Uint32 kPresetDeleteMs = 1000;
+    static constexpr Uint32 kPresetDeleteMs = ui::kHoldForGoodMs;
     bool presetDeleting_ = false, presetDeleteTimed_ = false;
     Uint32 presetDeleteSince_ = 0;
     float presetDeletePart_ = 0.f;

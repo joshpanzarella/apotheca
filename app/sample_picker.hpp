@@ -123,7 +123,7 @@ public:
     static constexpr Uint32 kHoldSaysMs = 400;                          // B held this long on a folder that is not empty: it says why not
     static constexpr Uint32 kTapMs = 250;                               // B let go sooner on a row it deletes (nothing else pressed) is a tap; later, nothing
     static constexpr Uint32 kAtOnceMs = 90;                             // rows arrived at closer together than this: the one rested on goes on
-    static constexpr Uint32 kDeleteHoldMs = 1000;
+    static constexpr Uint32 kDeleteHoldMs = ui::kHoldForGoodMs; // (a recording or a folder on the card: for good)
     static constexpr Uint32 kCarryHoldMs = 300;  // R1 held this long on a recording carries it; let go sooner, it is a page
     static constexpr Uint32 kSaidMs = 2500;      // how long the top line says what was done, or why not
     static constexpr int kFolderNameLength = 12; // the longest a folder's name is typed

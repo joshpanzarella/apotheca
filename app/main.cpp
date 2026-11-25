@@ -15,7 +15,7 @@
 //   --view NAME    with --demo, open on: song, drums, notes, phazed, kit,
 //                  add-track, change-instrument, song-deleting, song-head, song-mixer, song-mixer-master
 //                  (A held on a head: the mixer; with -12 on the end, twelve tracks), fx-deleting (B held: take
-//                  the still before a second, --still-ms 500), page1 .. page9 (Phazed's advanced pages), or
+//                  the still before half a second, --still-ms 300), page1 .. page9 (Phazed's advanced pages), or
 //                  jaxep, jaxep0 .. jaxep5 (JAX-EP's main panel, a macro lit; and its pages, MAIN first),
 //                  jaxep-bank (MAIN on B7, in BANK B: the longest of the 32 names), jaxep-held (a knob, A held, turned)
 //                  fm6, fm6-1 .. fm6-8 (FM-6's main panel, a macro lit; and its pages), fm6-long (MAIN on the

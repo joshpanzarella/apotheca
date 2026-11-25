@@ -466,6 +466,8 @@ public:
     // at, and what a handheld with nothing kept gets), 3 XL. Only the number is held here: the
     // program loads the fonts again when it sees it change (main.cpp), between two frames.
     static constexpr int kTextSizeCount = 4, kTextSizeAsBuilt = 2;
+    static constexpr float kVolumeAsBuilt = 1.f;
+    static constexpr int kOctavesAsBuilt = 2; // PIANO ROLL's usual
     int textSize() const { return textSize_; }
     void setTextSize(int size);
     // And the colours: a THEME (ui.hpp's kThemeTable; 0 is the look as it was built, and what a
@@ -819,6 +821,7 @@ public:
     // SCENE 1 COPIED, PASTED ON SCENE 2, and why not.
     SceneCopy copySceneHere(int scene);
     SceneCopy pasteSceneHere(int scene);
+    void clearSceneCopy(); // nothing copied any more (R1 on the copied scene)
     static std::string sceneCopyWords(SceneCopy answer, bool paste, int scene); // (scene from 0)
     enum class SceneClear { Done, AlreadyEmpty, NoScene };
     SceneClear clearScene(int scene);
@@ -827,7 +830,7 @@ public:
     int copiedScene() const { return sceneClip_->has ? sceneClip_->scene : -1; }
     const SceneClip& sceneClip() const { return *sceneClip_; }
     void setSceneClip(const SceneClip& clip) { *sceneClip_ = clip; } // (the App, putting it back after a panic begun with R1)
-    unsigned sceneCopies() const { return sceneCopies_; }           // how many copies have been made (the App: did one come in a panic?)
+    unsigned sceneCopies() const { return sceneCopies_; }           // how many copies have been made or cleared (the App: did one come in a panic?)
     const BarClip& barClip() const { return clip_; }
     void setBarClip(const BarClip& clip) { clip_ = clip; } // (the App, putting it back after a panic began with L1 + R1)
     unsigned barCopies() const { return barCopies_; }      // how many copies have been made (the App: did one come in a panic?)
@@ -914,8 +917,8 @@ private:
     void loadLane(int track, int lane);
     void sendLanePart(int track, int lane); // tell the engine how much of its sound a hit on the lane plays
     void finishRecording();
-    float volume_ = 1.f;
-    int octaves_ = 2;
+    float volume_ = kVolumeAsBuilt;
+    int octaves_ = kOctavesAsBuilt;
     int textSize_ = kTextSizeAsBuilt;
     int theme_ = kThemeAsBuilt;
     Lights lights_;

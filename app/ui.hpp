@@ -123,7 +123,8 @@ constexpr int kTopBarH = 26, kHintsH = 24;
 // default of the SET page's STICK SPEED (Session::setStickSpeed). A variable,
 // so the tests can measure the screens at their own speeds. (A full push held
 // on a cursor climbs past it: StickClimb, below.)
-inline float gStickSpeed = 0.75f;
+constexpr float kStickSpeedAsBuilt = 0.75f; // STICK SPEED's usual (B on its SET row: G17)
+inline float gStickSpeed = kStickSpeedAsBuilt;
 
 // What the end of the hint bar says about the help card: "MENU: HELP", or
 // "HLD SEL: HELP" on a handheld whose MENU button the firmware keeps.
@@ -187,6 +188,14 @@ void drawPlayhead(SDL_Renderer* r, const Playhead& head, Uint32 nowMs, int x, in
 void wavePicture(SDL_Renderer* r, const std::vector<float>& peaks, int x, int y, int w, int h, float start, float end, const std::vector<float>* lit = nullptr);
 // END's mark, inside a picture `w` wide.
 inline int waveEndMarkX(float end, int w) { const int x = static_cast<int>(end * w) - 2; return x < 0 ? 0 : (x > w - 2 ? w - 2 : x); }
+
+// How long B is held to delete, one length a kind (gesture audit G29, 2026-11-25; each screen had its own
+// 1000 ms). Where undo (SEL + B) brings it back: an effect, a MOD, EDIT's or VOICE's every box back, a scene
+// emptied. Where nothing can: a recording, a folder, a song, a preset or a kit of the player's own, a network
+// forgotten, a bounce stopped. A TRACK keeps its own (song_screen.hpp: two seconds, red only after a quiet half
+// second, so the B tap that empties a cell never flashes). The bars keep their own looks.
+constexpr Uint32 kHoldUndoneMs = 500;   // undo brings it back
+constexpr Uint32 kHoldForGoodMs = 1000; // it cannot be undone
 
 // How a held D-pad runs, the same on every screen. Two speeds: a cursor (grids, and a
 // cursor among boxes) runs fast; a list, or a choice being stepped through, runs slowly

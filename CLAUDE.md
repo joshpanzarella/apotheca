@@ -38,9 +38,9 @@ never "rub out".
 New screens and gestures keep these; do not invent a variant.
 
 - **A** places, opens, picks. **Hold A + a direction** shapes or turns what is under the cursor.
-- **B** deletes, empties, goes back. **Hold B deletes for good** (with a bar that fills): never another button. Typing a name, B keeps it and leaves; Y deletes a letter.
+- **B** deletes, empties, goes back. **Hold B deletes for good** (with a bar that fills: `ui::kHoldUndoneMs`, half a second, where undo brings it back; `ui::kHoldForGoodMs`, a second, where it cannot; a track two): never another button. Typing a name, B keeps it and leaves; Y deletes a letter (held, on).
 - **X** hears (on SONG it solos the track: owner, 2026-11-15). **Hold X** is "what it does": step effects on a drum hit, ratchet and glide on a note.
-- **Hold R1** drags: paint from an empty step, carry from a note, copy on SONG. R1 tapped on a scene's REPEATS box copies the whole scene; tapped on another row, it pastes.
+- **Hold R1** drags: paint from an empty step, carry from a note. **On SONG R1 is a tap**: on a cell or a scene's REPEATS box it copies; on another it pastes, and the copy stays (brass) until R1 on it clears it.
 - **Hold L1 on the grids** (drum grid, slices, roll) is the bar key: **+ R1 copies the bar, + A pastes it**.
   So L1's own tap (the slices, the roll's zoom) acts on its LET GO, and only if nothing else was pressed meanwhile.
 - **Y** is the screen's special (chance, chord, mute, catch, roll).

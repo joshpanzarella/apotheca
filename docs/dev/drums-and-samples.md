@@ -118,6 +118,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - **The clipboard is memory only**, never in the song file; a new song keeps it. It holds a drum
     bar (`DrumPattern`, every field) or a note bar (`NotePattern`, chords and their effects), the bar's
     16 steps of every automation lane, and where it came from.
+  - **The copy stays after a paste** (gesture audit G23, 2026-11-25: a paste spent it; reasons in
+    `song-screen.md`), so one bar goes on bar after bar with L1 + A each; L1 + R1 copies afresh.
   - **A paste REPLACES the bar** and is **one step of undo of its own** (as NEXT SCENE: the burst
     before it ends, and `settled_` is taken after it, so an edit straight after is a step too). Onto a
     bar that is already the same (compared field by field; automation too on the same track): nothing,
@@ -360,10 +362,23 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     opens the view (`editing()`, `openEdit`), laid out as the sampler's page (`kEdit...` in
     kit_screen.hpp), the file's picture drawn by `ui::wavePicture`, which the sampler shares. Hold A
     + up / down turns a box, the stick by the square of its push (`laneEditRange` a second); B its
-    usual value, B on a box at its usual value back to the kit (on letting go); hold B a second,
+    usual value, B on a box at its usual value back to the kit (on letting go); hold B half a second (G29),
     every edit to none (any other button or a move calls it off); Y on START / END trims, elsewhere
     normalizes; X hears. Stills `kit-edit`, `kit-edit-held`, `kit-edit-deleting`,
     `kit-edit-column`; `textsize` holds the view at its widest; `idle_test` has a part.
+  - **A B straight after Y goes back to the kit and keeps what Y set, in EDIT and VOICE** (gesture
+    audit G16, 2026-11-25, under the owner's "any of my decisions can be reversed if there is a more
+    logical method", 2026-11-24). The rule above ("B its usual value, B on a box at its usual value
+    back to the kit"; no owner mark) left Y's box under the cursor: TRIM SILENCE leaves it on START,
+    NORMALIZE on GAIN, ROLL on a knob, so the B meant to leave put START back to 0 or GAIN to 0 dB,
+    half undoing Y, and leaving took a move to an untouched box and B (3 presses). The exit the audit
+    proposed first, LEFT from a row's first box, is the one the owner turned down on FX ("LEFT doing
+    two jobs was awkward", 2026-11-14), so B carries it: `yJust_` / `yBox_` (`bLeavesAfterY`), set by
+    Y on its box and cleared by ANY press (a move, X, L1 / R1) or by opening the view; the stick
+    moves no button, so the box is checked too (on another box B is that box's own). That B sets
+    `bBack_` and puts nothing back. Held, it still deletes every
+    edit at the bar's end. The bar says `B back` while it is so. `laneedit_test testBAfterYKeepsIt`,
+    `drumsynthapp_test testBAfterARollKeepsIt`.
   - Tests: `tests/laneedit_test.cpp` (each step against a sound made by hand, the engine beside a
     second engine handed the hand-made sound, blocks, FIT, slices in order as one hit, the built-in
     drums, the helper thread, the file's bytes, the song file, undo, the gestures and their hints).
@@ -492,9 +507,20 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     keeps it too** (owner, 2026-11-15: "I find myself pressing B to back out of the track naming"; it
     was B delete, Y or START keep). With nothing typed B leaves and changes nothing (the track's name
     stays, no folder is made), and START gives a track its instrument's own name. A folder
-    refused (taken, too long) keeps the keys up, whichever of B or START asked. Y does not repeat
-    (B never did). The still `typing` showed the SET page, not the keys, until then: the demo's START
-    kept the name.
+    refused (taken, too long) keeps the keys up, whichever of B or START asked. The still `typing`
+    showed the SET page, not the keys, until then: the demo's START kept the name.
+  - **Y held deletes on, at a list's pace, wherever a name or a password is typed** (gesture audit G48,
+    2026-11-25, under the owner's "any of my decisions can be reversed if there is a more logical
+    method", 2026-11-24). It was "Y does not repeat (B never did)", written in the rule above; that
+    recorded how the old key behaved, the owner's ask was about B. An old name opens typed (SET, a
+    SONG head, R1 on an own preset), so clearing it cost a Y a letter: ten for a track, up to 24 for
+    a preset, 63 for a password. Held, the first letter goes at once and the rest one each
+    `kListEveryMs` after `kListDelayMs` (200 + 9 x 110 = about 1.2 s for ten), slow enough to let
+    go on the letter wanted; a tap is still one. Y is NOT a "hold deletes for good": nothing typed
+    is kept until B or START. `NameKeys` (`repeating_` is the held direction or Y) and the PASSWORD
+    keys (`SettingsScreen::passwordButton`, its own keys) both. `app_test` `testAHeldYDeletesOn`
+    (the track's name and both preset keys), `picker_test` `testMakingAFolder`, `wifi_test`
+    `password`.
   - **One set of name keys, `NameKeys` (`app/name_keys.hpp`), in all four places** (gesture audit G01,
     2026-11-24): a track's name (`SettingsScreen`, from SET or a SONG head), a new folder
     (`SamplePicker`), a synth's preset and the sampler's (R1 on PRESET). The preset keys came in on

@@ -649,7 +649,21 @@ void testThePassword() {
     open();
     for (int i = 0; i < 70; ++i) rig.tap(A);
     CHECK(static_cast<int>(setup.typed().size()) == 63);
-    rig.tap(Y, 63);
+    // Y held deletes on at a list's pace, as on the name keys (gesture audit G48): one at once, the next
+    // after 200 ms, then one each 110 ms; let go, it stops. Held on, all sixty-three go in one hold.
+    rig.key(Y, true);
+    CHECK(static_cast<int>(setup.typed().size()) == 62);
+    rig.frames(13); // 208 ms
+    CHECK(static_cast<int>(setup.typed().size()) == 62);
+    rig.frames(17); // 480 ms
+    rig.key(Y, false);
+    CHECK(static_cast<int>(setup.typed().size()) == 59);
+    rig.frames(30);
+    CHECK(static_cast<int>(setup.typed().size()) == 59 && setup.typingPassword());
+    rig.key(Y, true);
+    rig.frames(420); // 6.7 s: the rest
+    rig.key(Y, false);
+    CHECK(setup.typed().empty() && setup.typingPassword());
     rig.tap(B);
     CHECK(!setup.typing());
     // A draft is this network's: back to it, it is still there; another network starts empty.

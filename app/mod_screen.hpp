@@ -14,7 +14,7 @@
 //
 //   in the list      up / down: the next line (round the ends). Right: into the line's settings,
 //                    at the one last used there. Hold A on a MOD's line: the list of targets (as
-//                    on TARGET). Hold B on either of a MOD's lines: a bar fills, and at a second
+//                    on TARGET). Hold B on either of a MOD's lines: a bar fills, and at half a second (G29)
 //                    the MOD is deleted (SEL + B brings it back). Y: the dice (a MOD's line: a
 //                    STEPPER's row, an LFO's shape, rate and depth; STEPS: the row).
 //   in the settings  up / down: the next setting (the ends stop); left: back to the list. On the
@@ -83,7 +83,7 @@ public:
     // targets, so both MODs are not aimed at one knob by mistake (X held there reaches MOD 1 only).
     int otherTarget() const;
     // B held on a MOD's line: how far its bar has filled, 0..1. Full, the MOD is deleted.
-    static constexpr Uint32 kDeleteHoldMs = 1000;
+    static constexpr Uint32 kDeleteHoldMs = ui::kHoldUndoneMs; // (undo brings a MOD back: G29)
     float deletePart() const { return deletePart_; }
 
     // What a target is called on screen: "TONE", "CUTOFF, FX 2", "ECHO SEND"; "NOTHING" for none.

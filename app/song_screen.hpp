@@ -70,7 +70,7 @@ public:
     static constexpr int kHueMarkH = 2, kHueMarkFoot = 1, kHueMarkInset = 3;
     // B held this long on a track deletes it; the warning bar starts after the wait.
     static constexpr Uint32 kTrackHoldWaitMs = 500, kTrackHoldMs = 2000;
-    static constexpr Uint32 kSceneHoldMs = 1000; // B held this long on a repeat count empties the whole scene
+    static constexpr Uint32 kSceneHoldMs = ui::kHoldUndoneMs; // B held this long on a repeat count empties the whole scene (one step of undo: G29)
     // A held this long on a head is the mixer, not a tap: its card comes up, and letting go then never
     // taps, turned or not (owner, 2026-11-14: a look at the level must not tap).
     static constexpr Uint32 kMixCardMs = 300;

@@ -61,6 +61,7 @@ public:
     static const char* groupName(int group);
 
     explicit SettingsScreen(Session& session) : session_(session), project_(session.project) {}
+    static bool hasUsual(int row); // B gives the row its usual value (a setting's row, G17)
 
     void onButton(const ButtonEvent& event, const Input& input) override;
     void update(const Input& input, Uint32 nowMs) override;
@@ -125,10 +126,10 @@ public:
     // second forgets the network joined.
     static const char* const kPasswordKeys[3]; // each forty; '\x01' is a key with nothing on it
     static const char* const kPasswordSetNames[3];
-    static constexpr Uint32 kForgetHoldMs = 1000;
+    static constexpr Uint32 kForgetHoldMs = ui::kHoldForGoodMs;
     // BOUNCE while one is under way: hold B a second stops it (G15). Nothing of it is kept, as when
     // Apotheca is closed during one (Session::cancelBounce); the box above the bar says so.
-    static constexpr Uint32 kStopHoldMs = 1000;
+    static constexpr Uint32 kStopHoldMs = ui::kHoldForGoodMs;
     static constexpr const char* kStoppingWords = "STOPPING IT: NOTHING IS KEPT";
     static constexpr const char* kBounceStoppedWords = "BOUNCE STOPPED: NOTHING KEPT";
     float stopPart() const { return stopPart_; }
@@ -150,6 +151,7 @@ public:
 
 private:
     void change(int by);
+    void usual(); // B on a setting's row: its usual value (G17)
 
     Session& session_;
     Project& project_;

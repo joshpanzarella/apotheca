@@ -28,8 +28,23 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   copy puts both back to what the one was; the copy itself is not undone. **It is done on R1's LET GO
   with L1 still held**, and the App tells the screen when all four shoulders are down
   (`SongScreen::shouldersPressed`): a panic begun L1, R1 on a head copies nothing. A let go the SONG
-  screen never saw copies nothing either (`update`). A cell is emptied by B and copied by HOLD R1 and
-  drag, as before: nothing was added there.
+  screen never saw copies nothing either (`update`). A cell is emptied by B and copied by a TAP of R1
+  (below): nothing was added there.
+- **A copy stays after a paste: a cell, a scene and a bar** (gesture audit G23, 2026-11-25, under the
+  owner's "any of my decisions can be reversed if there is a more logical method", 2026-11-24). It was
+  "A copy clears on paste (scene, cell, bar)", an item of the owner's feature queue in commit e7b847d
+  (2026-11-21). One part into the next scenes cost a copy before every paste (R1 copy, move, R1 paste:
+  3 presses a scene, or copying the cell just pasted); with the copy kept it is move, R1 (2). The
+  brass mark stays on the copied cell or REPEATS box, so a copy still armed is seen, and each paste is
+  its own step of undo. **R1 on the copied cell or scene clears it** ("COPY CLEARED"; the bar's R1
+  says `clear` there, `paste` elsewhere). A scene gained this: R1 on the copied scene used to copy it
+  again (a fresh snapshot); now that is R1 twice (clear, copy). `Session::clearSceneCopy` counts in
+  `sceneCopies()`, so a panic begun with that R1 puts the copy back, as it does a copy. A bar's copy
+  (hold L1 + R1 / A) stays too; it has no mark on the grids (it never had one, and the look is
+  settled), and L1 + R1 copies afresh. **SONG's copy is a TAP of R1, not a drag** (the drag went on
+  2026-11-19, `docs/plans/easywins-plan.md`); CLAUDE.md and the manual said "hold R1 and drag" until
+  G23. `copyscene_test` `testTheCopyStays`, `testTheGesture`, `testTheMarkAndHints`; `copybar_test`
+  `testTheCopyStaysForAnotherPaste`.
 - **The owner's five of 2026-11-18** (`easy_test looks`). SONG's column word is REPEATS (`SongScreen::
   kRepeatsWord`, low in the heads' row, 10 above the first box; `kRepeatW` 38, it was 34, so the word
   fits at LARGE: the columns start 4 further right). **A lane's volume in its name's box is `kPanel2`,

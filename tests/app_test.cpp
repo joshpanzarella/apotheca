@@ -11,6 +11,7 @@
 #include <stdlib.h>
 
 #include <cmath>
+#include <functional>
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -371,13 +372,9 @@ void testCopyingABar() {
     rig.app.song().moveCursorTo(0, 0);
     rig.tap(R1); // copy
     rig.app.song().moveCursorTo(1, 0);
-    rig.tap(R1); // paste: the copy is spent
-    rig.app.song().moveCursorTo(0, 0);
-    rig.tap(R1); // copy again
+    rig.tap(R1); // paste: the copy stays (G23)
     rig.app.song().moveCursorTo(2, 0);
-    rig.tap(R1); // paste
-    rig.app.song().moveCursorTo(0, 0);
-    rig.tap(R1); // copy the drum cell again
+    rig.tap(R1); // paste again, with no copy between
     rig.app.song().moveCursorTo(2, 1);
     rig.tap(R1); // onto the synth: a drum bar cannot go there
     CHECK(!rig.project().tracks[1].notes[2][0].empty()); // and it did not wipe the synth's bar
@@ -444,9 +441,7 @@ void testTheCellCopyStaysPut() {
     rig.tap(DOWN, 3); // moving on pastes nothing more
     CHECK(!rig.project().tracks[0].drums[1][0].empty());
     for (int scene = 2; scene <= 4; ++scene) CHECK(rig.project().tracks[0].drums[scene][0].empty());
-    // R1 on a repeat count or on + TRACK leaves the cell copy alone.
-    rig.app.song().moveCursorTo(0, 0);
-    rig.tap(R1); // copy again: the paste before spent it
+    // R1 on a repeat count or on + TRACK leaves the cell copy alone (the paste before kept it: G23).
     rig.app.song().moveCursorTo(0, -1);
     rig.tap(R1); // that copies the scene, another clipboard
     rig.tap(RIGHT, 2); // onto + TRACK
@@ -4286,6 +4281,89 @@ void testThePianoRollZooms() {
     CHECK(session.octavesShown() == 3);
 }
 
+// B on a setting's row on SET gives its usual value (gesture audit G17, 2026-11-25: B did nothing there), as B
+// does on an effect's dial or a MOD. The SONG rows are the song's: B leaves them (BOUNCE's B is its stop). The bar
+// says "B default" on a setting's row, and fits at XL.
+void testBOnASettingIsItsUsual() {
+    const float stickWas = ui::gStickSpeed;
+    ui::gStickSpeed = ui::kStickSpeedAsBuilt; // (the tests before set it as they need)
+    Rig rig;
+    Session& session = rig.app.session();
+    SettingsScreen& set = rig.app.settings();
+    session.view = View::Settings;
+    rig.frames(1);
+    struct Row { int row; std::function<int()> now; int usual; };
+    const std::vector<Row> rows = {
+        {SettingsScreen::kClick, [&] { return session.click(); }, Session::kClickOff},
+        {SettingsScreen::kCountIn, [&] { return session.countIn() ? 1 : 0; }, 0},
+        {SettingsScreen::kMutes, [&] { return session.mutes(); }, Session::kMutesAtOnce},
+        {SettingsScreen::kMidi, [&] { return session.midiRecording() ? 1 : 0; }, 0},
+        {SettingsScreen::kTextSize, [&] { return session.textSize(); }, Session::kTextSizeAsBuilt},
+        {SettingsScreen::kTheme, [&] { return session.theme(); }, Session::kThemeAsBuilt},
+        {SettingsScreen::kOctaves, [&] { return session.octavesShown(); }, Session::kOctavesAsBuilt},
+        {SettingsScreen::kVolume, [&] { return static_cast<int>(std::lround(session.volume() * 100.f)); }, 100},
+        {SettingsScreen::kBrightness, [&] { return session.brightness(); }, kBrightUsual},
+        {SettingsScreen::kLight, [&] { return session.stickLight(); }, kRingOn},
+        {SettingsScreen::kLightColour, [&] { return session.lightColour(); }, kLightTheme},
+        {SettingsScreen::kRingLevel, [&] { return session.ringLevel(); }, kBrightUsual},
+        {SettingsScreen::kStick, [&] { return static_cast<int>(std::lround(session.stickSpeed() * 100.f)); }, 75},
+    };
+    int tried = 0;
+    for (const Row& r : rows) {
+        if (!set.here(r.row)) continue; // (the lights' rows only where the handheld has them)
+        ++tried;
+        set.goTo(r.row);
+        rig.frames(1);
+        CHECK(r.now() == r.usual);
+        rig.tap(RIGHT, 2);
+        if (r.now() == r.usual) rig.tap(LEFT, 4); // (at the top end already: the other way)
+        CHECK(r.now() != r.usual);
+        rig.tap(B);
+        CHECK(r.now() == r.usual);
+        if (r.now() != r.usual) std::printf("    row %d: B left %d, its usual is %d\n", r.row, r.now(), r.usual);
+        CHECK(set.cursorRow() == r.row); // (B moves nothing)
+    }
+    CHECK(tried >= 9);
+    // The SONG rows keep what they are.
+    set.goTo(SettingsScreen::kTempo);
+    rig.tap(RIGHT, 3);
+    const float tempo = rig.project().tempo;
+    rig.tap(B);
+    CHECK(rig.project().tempo == tempo && tempo != 120.f);
+    set.goTo(SettingsScreen::kScale);
+    rig.tap(RIGHT);
+    const int scale = rig.project().scaleKind;
+    rig.tap(B);
+    CHECK(rig.project().scaleKind == scale && scale != 0);
+    // The bar: "B default" on a setting's row (fitting at XL), not on a song's.
+    Canvas canvas, scratch;
+    if (canvas.ok && scratch.ok) {
+        set.goTo(SettingsScreen::kVolume);
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(barSays(canvas, scratch, "default"));
+        const std::vector<unsigned char> ttf = loadFontFile();
+        Fonts xl;
+        xl.fixedSet = canvas.fonts.get();
+        CHECK(xl.load(canvas.r, ttf, kTextXl));
+        for (int row = SettingsScreen::kClick; row < SettingsScreen::kWifi; ++row) {
+            if (!set.here(row)) continue;
+            set.goTo(row);
+            rig.frames(1);
+            canvas.clear();
+            rig.app.draw(canvas.r, xl);
+            CHECK(ui::gHintsOver == 0.f);
+        }
+        set.goTo(SettingsScreen::kTempo);
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(!barSays(canvas, scratch, "default"));
+    }
+    ui::gStickSpeed = stickWas;
+}
+
 void testTheStickSpeedAndTheVolume() {
     // ---- one number slows everything the stick does -----------------------------------
     const auto travel = [](float speed) {
@@ -7765,6 +7843,59 @@ void testTheNameKeysRunAtAListsPace() {
     }
 }
 
+// Y held on the name keys deletes on at a list's pace (gesture audit G48, 2026-11-25): one letter at once,
+// then one each kListEveryMs after kListDelayMs, so an old name goes in one hold. A tap is still one. The
+// track's name and both preset keys (the folder's is picker_test's, the password's wifi_test's).
+void testAHeldYDeletesOn() {
+    for (int place = 0; place < 3; ++place) {
+        Rig rig;
+        Session& session = rig.app.session();
+        if (place == 0) {
+            session.view = View::Settings;
+            rig.app.settings().goTo(SettingsScreen::kTrackName);
+            rig.tap(A);
+        } else {
+            CHECK(session.addTrack(place == 1 ? TrackKind::Phazed : TrackKind::Sampler));
+            rig.project().track = 1;
+            session.view = View::Device;
+            if (place == 1) rig.app.phazed().goTo(0, SynthScreen::kPreset);
+            else rig.app.sampler().goTo(SamplerScreen::kPresetStop);
+            rig.frames(1);
+            rig.tap(R1);
+        }
+        const auto typed = [&]() -> std::string { return place == 0 ? rig.app.settings().typed() : place == 1 ? rig.app.phazed().typed() : rig.app.sampler().typed(); };
+        rig.tap(Y, 12); // (the track's own name, if any)
+        rig.tap(A, 10);
+        CHECK(typed() == "AAAAAAAAAA");
+        rig.tap(Y);
+        CHECK(typed() == "AAAAAAAAA"); // a tap: one
+        rig.key(Y, true);
+        CHECK(typed().size() == 8u); // one at once
+        rig.frames(13); // 208 ms: still that one
+        CHECK(typed().size() == 8u);
+        rig.frames(17); // 480 ms in all: three more at the list's pace
+        rig.key(Y, false);
+        CHECK(typed().size() == 5u);
+        if (typed().size() != 5u) std::printf("    place %d: Y held 480 ms left %d letters\n", place, static_cast<int>(typed().size()));
+        rig.frames(30);
+        CHECK(typed().size() == 5u); // (let go: it stops)
+        rig.key(Y, true);
+        rig.frames(60); // held on: every letter goes, and nothing more happens at none
+        rig.key(Y, false);
+        CHECK(typed().empty());
+        const bool typing = place == 0 ? rig.app.settings().typing() : place == 1 ? rig.app.phazed().typing() : rig.app.sampler().typing();
+        CHECK(typing); // (still typing: a held Y never leaves)
+        // A held direction, then Y: Y's run, not the direction's.
+        rig.tap(A, 3);
+        rig.key(RIGHT, true);
+        rig.key(Y, true);
+        rig.frames(20);
+        rig.key(Y, false);
+        rig.key(RIGHT, false);
+        CHECK(typed().size() == 1u);
+    }
+}
+
 // Hold A on SOUND and step while WiFi deletes a recording: the step goes through what is there
 // now, and nothing missing goes on the track (audit #42).
 void testHeldAStepsThroughLiveSamples() {
@@ -9496,12 +9627,12 @@ void testNoteEffectsHoldUp() {
     rig.key(Y, false);
     rig.frames(2);
     CHECK(nameWas != p.chords[0].name && p.chords[0].ratchet == 3 && p.chords[0].nudge == 0.2f);
-    // 3. Broken into notes, each note plays as the chord did: the ratchet and the nudge go with them.
+    // 3. Broken into notes (hold Y, A; G26: it was B), each note plays as the chord did: the ratchet and the nudge go with them.
     int keys[kChordNotes];
     const int count = p.chords[0].pitches(keys);
     rig.key(Y, true);
     rig.frames(2);
-    rig.tap(B);
+    rig.tap(A);
     rig.key(Y, false);
     rig.frames(2);
     CHECK(p.chords[0].velocity <= 0.f && count >= 3);
@@ -10271,6 +10402,34 @@ bool hintedOn(const Canvas& canvas, Canvas& scratch, const char* words) {
 // HOLD B deletes an effect, with a bar that fills and says DELETING THIS EFFECT. A tap does nothing. Effects are
 // in undo (since 2026-11-14), so SEL + B brings it back, settings and automation too: the words do not say
 // CANNOT BE UNDONE (gesture audit G10; they did).
+// One hold length a kind (gesture audit G29, 2026-11-25; each screen had its own second): half a second where
+// undo brings it back (an effect, a MOD, EDIT's and VOICE's every box back, a scene emptied), a second where it
+// cannot (a recording or folder, a song, an own preset or kit, a network forgotten, a bounce stopped). A track
+// keeps its two seconds, red only after a quiet half second. An effect held 400 ms stays; at 560 ms it is gone.
+void testTheHoldLengths() {
+    CHECK(ui::kHoldUndoneMs == 500 && ui::kHoldForGoodMs == 1000);
+    CHECK(FxScreen::kDeleteHoldMs == ui::kHoldUndoneMs && ModScreen::kDeleteHoldMs == ui::kHoldUndoneMs && ModKnob::kDeleteHoldMs == ui::kHoldUndoneMs);
+    CHECK(KitScreen::kDeleteHoldMs == ui::kHoldUndoneMs && SongScreen::kSceneHoldMs == ui::kHoldUndoneMs);
+    CHECK(SamplePicker::kDeleteHoldMs == ui::kHoldForGoodMs && KitScreen::kKitDeleteMs == ui::kHoldForGoodMs);
+    CHECK(SynthScreen::kPresetDeleteMs == ui::kHoldForGoodMs); // (the sampler's is private: the same constant)
+    CHECK(SettingsScreen::kForgetHoldMs == ui::kHoldForGoodMs && SettingsScreen::kStopHoldMs == ui::kHoldForGoodMs);
+    CHECK(SongScreen::kTrackHoldWaitMs == 500 && SongScreen::kTrackHoldMs == 2000);
+    Rig rig;
+    Session& session = rig.app.session();
+    session.view = View::Effects;
+    session.setEffect(0, 0, EffectKind::Tape);
+    rig.app.fx().goTo(0, 0);
+    rig.frames(1);
+    const EffectData& first = rig.project().tracks[0].effects[0];
+    rig.key(B, true);
+    rig.frames(26); // 400 ms (its clock starts on the frame after the press)
+    CHECK(first.kind == static_cast<int>(EffectKind::Tape));
+    rig.frames(10); // 560 ms
+    CHECK(first.kind == 0);
+    rig.key(B, false);
+    rig.frames(1);
+}
+
 void testHoldBDeletesAnEffect() {
     Canvas canvas, scratch;
     CHECK(canvas.ok && scratch.ok);
@@ -10301,7 +10460,7 @@ void testHoldBDeletesAnEffect() {
     // Held: the bar fills, and the heading says so; let go before it is full and it stays.
     CHECK(std::string(F::kDeletingWords) == "DELETING THIS EFFECT");
     rig.key(B, true);
-    rig.frames(40);
+    rig.frames(20); // 320 ms of the half second (G29: undo brings an effect back; it was a second)
     CHECK(fx.deletePart() > 0.5f && fx.deletePart() < 1.f && first.kind == static_cast<int>(EffectKind::Tape));
     draw();
     CHECK(inked(canvas, scratch, 0, F::kPaneX + 12.f, F::kPaneY + 10.f, F::kDeletingWords, ui::kText));
@@ -10313,14 +10472,14 @@ void testHoldBDeletesAnEffect() {
     CHECK(!inked(canvas, scratch, 0, F::kPaneX + 12.f, F::kPaneY + 10.f, F::kDeletingWords, ui::kText) && canvas.is(F::kListX + 4, F::lineY(0) + F::kLineH / 2, ui::kPanel2));
     // Held and moved off the line, by the D-pad or by the stick: nothing goes.
     rig.key(B, true);
-    rig.frames(30);
+    rig.frames(15);
     rig.tap(DOWN);
     rig.frames(60);
     rig.key(B, false);
     rig.tap(UP);
     CHECK(first.kind == static_cast<int>(EffectKind::Tape) && fx.cursorRow() == 0);
     rig.key(B, true);
-    rig.frames(30);
+    rig.frames(15);
     rig.key(STICK_DOWN, true);
     rig.frames(1);
     rig.key(STICK_DOWN, false);
@@ -10331,12 +10490,12 @@ void testHoldBDeletesAnEffect() {
     CHECK(first.kind == static_cast<int>(EffectKind::Tape) && fx.cursorRow() == 0);
     // Any other button pressed while it fills calls it off (X: heard, not deleted).
     rig.key(B, true);
-    rig.frames(30);
+    rig.frames(15);
     rig.tap(X);
     rig.frames(60);
     CHECK(first.kind == static_cast<int>(EffectKind::Tape) && fx.deletePart() == 0.f);
     rig.key(B, false);
-    // Held the whole second: the effect, its settings and its automation go.
+    // Held the whole half second: the effect, its settings and its automation go.
     rig.key(B, true);
     rig.frames(70);
     rig.key(B, false);
@@ -13371,6 +13530,7 @@ int main(int argc, char** argv) {
         testDeletingOwnSynthPresets();
         testThePresetKeysHaveEveryButton();
         testTheNameKeysRunAtAListsPace();
+        testAHeldYDeletesOn();
         testDeletingAPresetSaysItCannotBeUndone();
         testHoldBDeletesAnEffect();
         testTheHintsFitAndSayWhatTheyDo();
@@ -13386,6 +13546,7 @@ int main(int argc, char** argv) {
         testSongOpensOnTheCellWorkedOn();
         testTheSetupScreen();
         testTheStickSpeedAndTheVolume();
+        testBOnASettingIsItsUsual();
         if (failures == 0) std::printf("app tests passed (navigation only)\n");
         return failures == 0 ? 0 : 1;
     }
@@ -13395,6 +13556,16 @@ int main(int argc, char** argv) {
         testStepEffects();
         testSettingsWaitToStandStill();
         if (failures == 0) std::printf("app tests passed (held keys only)\n");
+        return failures == 0 ? 0 : 1;
+    }
+    if (argc > 1 && std::string(argv[1]) == "--holds") { // just the gesture audit's batch C3: held Y, B on SET, the hold lengths, the copy kept
+        testAHeldYDeletesOn();
+        testBOnASettingIsItsUsual();
+        testTheHoldLengths();
+        testHoldBDeletesAnEffect();
+        testCopyingABar();
+        testTheCellCopyStaysPut();
+        if (failures == 0) std::printf("app tests passed (holds only)\n");
         return failures == 0 ? 0 : 1;
     }
     if (argc > 1 && std::string(argv[1]) == "--hands") { // just the button standards of the pit stop
@@ -13416,6 +13587,7 @@ int main(int argc, char** argv) {
     testUndoLeavesWhatTheTextRounds();
     testUndoCoversABusAndASampler();
     testHoldBDeletesAnEffect();
+    testTheHoldLengths();
     testHoldYMovesAnEffect();
     testTheHintsFitAndSayWhatTheyDo();
     testDeletingATrackSaysItCannotBeUndone();
@@ -13487,6 +13659,7 @@ int main(int argc, char** argv) {
     testThePianoRollZooms();
     testTheRollsZoomIsATapOnly();
     testTheStickSpeedAndTheVolume();
+    testBOnASettingIsItsUsual();
     testTheEndsOfSetsRows();
     testSetJumpsHeadings();
     testTheStickClimbsOnACursor();
@@ -13529,6 +13702,7 @@ int main(int argc, char** argv) {
     testDeletingOwnSynthPresets();
     testThePresetKeysHaveEveryButton();
     testTheNameKeysRunAtAListsPace();
+    testAHeldYDeletesOn();
     testDeletingAPresetSaysItCannotBeUndone();
     testHeldAStepsThroughLiveSamples();
     testABuiltInPresetRestsTheMacrosWhereTheyShow();

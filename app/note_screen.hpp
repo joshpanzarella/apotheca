@@ -69,12 +69,13 @@
 //   let go of Y           the chord lands at the cursor, and the cursor moves
 //                         on past it. So a tap of Y places the chord in hand
 //                         again; hold, flick, let go places a different one.
-//     B first             ...or nothing lands
+//     B first             ...or nothing lands (on a chord swapped: it is put back as it was, and
+//                         the pack too)
 //
 // A chord stays a chord. With the cursor on any of its notes, hold A and the
 // stick sets the level and length of the whole chord, and B removes it. With
 // the cursor anywhere in its steps, hold Y to swap it for another chord in
-// place; B while Y is held breaks it up into loose notes instead.
+// place; A while Y is held breaks it up into loose notes instead (G26: it was B).
 
 #include "chord_effects.hpp"
 #include "follow_bar.hpp"
@@ -155,6 +156,7 @@ private:
     void endPick();
     void doubleHand(int way); // Y held, L2 (-1) / R2 (+1): the chord in hand half or twice as long
     void breakUp(int chord);
+    void putPickBack(); // B while Y is held on a chord: the chord, the pack and the hand as Y found them
     void showChord(const ChordEvent& chord);
     bool placeNote(float velocity);
     void setLevel(float level);
@@ -191,6 +193,11 @@ private:
     int hand_ = 0;          // the chord in hand: its place in the pack
     int inversion_ = 0;
     float handLength_ = 4.f;    // new chords are as long as the last one set
+    struct PickWas {            // what Y found when it went down (B puts it back)
+        ChordEvent chord;       // the chord being swapped, as it was
+        int packIndex = 0, hand = 0, inversion = 0;
+        float handLength = 4.f;
+    } pickWas_;
     bool painting_ = false; // R1 is held
     // X is held on a note or a chord: the cursor carries it.
     enum class Carry { Nothing, Note, Chord };

@@ -166,7 +166,7 @@ public:
     int keyAt() const { return keys_.keyAt(); }
     static constexpr int kTypeColumns = NameKeys::kColumns, kPresetNameLength = 24; // the grid, and a name's most (the page's too)
     // Hold B on PRESET, on one of the player's own: its file is deleted when the bar is full (as a kit's).
-    static constexpr Uint32 kPresetDeleteMs = 1000;
+    static constexpr Uint32 kPresetDeleteMs = ui::kHoldForGoodMs;
     static constexpr const char* kPresetDeletingWords = "DELETING THE PRESET: CANNOT BE UNDONE";
     float presetDeletePart() const { return presetDeletePart_; }
     bool onOwnPreset() const; // the track is on one of the player's own presets (USER)

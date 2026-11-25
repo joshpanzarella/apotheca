@@ -678,7 +678,7 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
     // The RIGHT (D-pad or stick) that came in from the list is let go: RIGHT switches the TYPE from now.
     // Trying an effect with A held: A let go unseen, or the track changed under it: nothing goes in.
     if (tryRow_ >= 0 && (!holding_ || trackOf(tryRow_) != tryTrack_ || row_ != tryRow_)) callOff(), holding_ = false;
-    // B held on an effect's line: the bar fills for a second, then the effect is deleted. Let go,
+    // B held on an effect's line: the bar fills for half a second (G29), then the effect is deleted. Let go,
     // moved off the line, or A held: nothing is deleted.
     if (!input.held(Button::B) || holding_ || column_ != 0 || row_ != deleteRow_ || sends(row_)) deleting_ = false;
     if (!deleting_) deletePart_ = 0.f;

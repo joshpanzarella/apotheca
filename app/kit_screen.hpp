@@ -44,7 +44,7 @@
 //   the stick or D-pad moves among the boxes
 //   hold A + up / down: turns the box (the stick through its range in about a second, by the square
 //           of the push; the D-pad a millisecond of the file, half a dB, a fade's stop, a semitone, a cent)
-//   B       the box back to its usual value; on a box already there, back to the kit.
+//   B       the box back to its usual value; on a box already there, or straight after Y, back to the kit (G16).
 //           HELD: every edit of the lane back to none, as the bar fills (undo brings them back)
 //   Y       on START or END: TRIM SILENCE (START and END at the first and last sound). Elsewhere
 //           NORMALIZE: GAIN so the part played peaks at -1 dB
@@ -58,7 +58,7 @@
 //           the square of its push). On MODEL: the model before / after, at its usual knobs.
 //           Hold A + left / right on MODEL: the model's named voice before / after (drum_voices.hpp:
 //           CLASSIC, then the built-in data's), written in brass after the model while the dials are its
-//   B       the box to its usual value; on a box already there, or on MODEL, back to the kit.
+//   B       the box to its usual value; on a box already there, on MODEL, or straight after Y, back to the kit.
 //           HELD: every knob to the model's usual, as the bar fills (undo brings them back)
 //   Y       ROLL: the knobs shown rolled, each inside the middle of its range (25 to 75); the model stays
 //   L1 / R1 the synth lane before / after (the ends stop)
@@ -120,13 +120,13 @@ public:
     // The EDIT view. Laid out as the sampler's page: the sound's box at the top (its picture as tall
     // as the box allows), then two rows of four boxes down to the SIGNAL strip.
     bool editing() const { return editing_; }
-    void openEdit(int row = 0) { session_.readyLane(project_.track, lane_); editing_ = true; editRow_ = row < 0 ? 0 : (row >= kEditRows ? kEditRows - 1 : row); }
+    void openEdit(int row = 0) { session_.readyLane(project_.track, lane_); editing_ = true, yJust_ = false; editRow_ = row < 0 ? 0 : (row >= kEditRows ? kEditRows - 1 : row); }
     int editRow() const { return editRow_; }
     float deletePart() const { return deletePart_; } // the hold-B bar, 0..1
     static constexpr int kEditY = 36, kEditH = 136, kEditWaveY = kEditY + 48, kEditWaveH = kEditH - 56;
     static constexpr int kEditRowY = kEditY + kEditH + 10, kEditRowGap = 6, kEditRowH = (ui::kAboveScope - kEditRowY - kEditRowGap) / 2;
     static constexpr int kEditBoxX = 8, kEditBoxStep = 157, kEditBoxW = 153;
-    static constexpr Uint32 kDeleteHoldMs = 1000;
+    static constexpr Uint32 kDeleteHoldMs = ui::kHoldUndoneMs; // EDIT's and VOICE's every box back: undo brings them back (G29)
     static constexpr const char* kDeletingWords = "PUTTING EVERY EDIT BACK TO NONE"; // in the heading while the bar fills
     // A box turned is heard ONCE, when the turning is done (owner, 2026-11-17: heard at every step it
     // "sounds odd and you can't really hear what has changed"): A let go, the D-pad and the stick at
@@ -147,7 +147,7 @@ public:
     bool onKit() const { return onKit_; }
     void goToKit() { onKit_ = true, lane_ = 0; }
     float kitDeletePart() const { return kitDeletePart_; }
-    static constexpr Uint32 kKitDeleteMs = 1000;
+    static constexpr Uint32 kKitDeleteMs = ui::kHoldForGoodMs; // (a kit's file: for good)
     static constexpr const char* kKitDeletingWords = "DELETING THE KIT: CANNOT BE UNDONE";
 
 private:
@@ -207,6 +207,11 @@ private:
     float turned_ = 0.f;        // the stick's part-turned box
     bool reversePushed_ = false; // the stick is pushed on REVERSE: it clicks once a push
     bool deleting_ = false, deleteTimed_ = false, bBack_ = false; // B held; bBack_: its tap goes back to the kit
+    // Y (EDIT's trim or normalize, VOICE's roll) was the last press, on this box: a B straight after it goes back
+    // to the kit and keeps what Y set (gesture audit G16, 2026-11-25: it put the box under the cursor back).
+    bool yJust_ = false;
+    int yBox_ = 0;
+    bool bLeavesAfterY(int box) const { return yJust_ && yBox_ == box; }
     Uint32 deleteSince_ = 0, changedAt_ = 0;
     bool hearOwed_ = false; // a box was turned and its sound is not heard yet
     int hears_ = 0;

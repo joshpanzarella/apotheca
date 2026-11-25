@@ -910,6 +910,84 @@ void testTheGestures() {
     CHECK(kit.editing()); // (A let go on EDIT opens it)
 }
 
+// A B straight after Y goes back to the kit and keeps what Y set (gesture audit G16, 2026-11-25): it put the box
+// under the cursor back to its usual value, half undoing TRIM SILENCE or NORMALIZE, and only a box at its usual
+// value went back. Any press between (a move, X) and B is B as ever. The bar says "back" while it is so.
+void testBAfterYKeepsIt() {
+    TempFolder folder;
+    Rig rig(folder.path);
+    Session& session = rig.session();
+    session.setLaneSample(0, kLane, "quiet");
+    session.view = View::Device;
+    rig.frames(2);
+    KitScreen& kit = rig.app.kit();
+    kit.goTo(kLane, KitScreen::kSound);
+    rig.tap(Right, 3);
+    rig.tap(A);
+    CHECK(kit.editing() && kit.editRow() == kEditStart);
+    // TRIM SILENCE on START, then B: back to the kit, START and END as Y set them.
+    rig.tap(Y);
+    const LaneEdit trimmed = rig.kit().laneEdit[kLane];
+    CHECK(trimmed.start > 20000 && trimmed.end < 70000);
+    {
+        Canvas canvas, scratch;
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(barSays(canvas, scratch, "back") && !barSays(canvas, scratch, "default"));
+    }
+    rig.tap(B);
+    CHECK(!kit.editing() && rig.kit().laneEdit[kLane] == trimmed);
+    // NORMALIZE on GAIN, then B: the same.
+    kit.openEdit(kEditGain);
+    rig.tap(Y);
+    const LaneEdit normalized = rig.kit().laneEdit[kLane];
+    CHECK(normalized.gain > 100);
+    rig.tap(B);
+    CHECK(!kit.editing() && rig.kit().laneEdit[kLane] == normalized);
+    // A move between: B is B again, the box to its usual value, and the view stays.
+    kit.openEdit(kEditGain);
+    rig.tap(Y);
+    rig.tap(Right);
+    rig.tap(Left);
+    {
+        Canvas canvas, scratch;
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(barSays(canvas, scratch, "default"));
+    }
+    rig.tap(B);
+    CHECK(kit.editing() && rig.kit().laneEdit[kLane].gain == LaneEdit().gain);
+    // X between (hearing it): the same.
+    rig.tap(Y);
+    CHECK(rig.kit().laneEdit[kLane].gain > 100);
+    rig.tap(X);
+    rig.tap(B);
+    CHECK(kit.editing() && rig.kit().laneEdit[kLane].gain == LaneEdit().gain);
+    // Y on GAIN, then a move to START (trimmed above): B there is START's own B, START back to 0, GAIN kept.
+    rig.tap(Y);
+    rig.tap(Up);
+    CHECK(kit.editRow() == kEditStart && rig.kit().laneEdit[kLane].start > 0);
+    rig.tap(B);
+    CHECK(kit.editing() && rig.kit().laneEdit[kLane].start == 0 && rig.kit().laneEdit[kLane].gain > 100);
+    // Y on START (a trim), then the stick to END (no button): B on END is END's own B, END back, the view stays.
+    rig.tap(Y);
+    CHECK(rig.kit().laneEdit[kLane].start > 0 && rig.kit().laneEdit[kLane].end < LaneEdit().end);
+    rig.stick(1, 0);
+    rig.frames(1);
+    rig.stick(0, 0);
+    rig.frames(1);
+    CHECK(kit.editRow() == kEditEnd);
+    rig.tap(B);
+    CHECK(kit.editing() && rig.kit().laneEdit[kLane].end == LaneEdit().end && rig.kit().laneEdit[kLane].start > 0);
+    // Held, B straight after Y still deletes every edit at the bar's end (a hold deletes; undo brings it back).
+    kit.openEdit(kEditStart);
+    rig.tap(Y);
+    CHECK(!rig.kit().laneEdit[kLane].atRest());
+    rig.key(B, true);
+    rig.frames(70);
+    rig.key(B, false);
+    rig.frames(2);
+    CHECK(rig.kit().laneEdit[kLane].atRest() && kit.editing());
+}
+
 } // namespace
 
 // A song sent whole (another song opened, a resync, a track deleted) does not wait for the helper
@@ -957,7 +1035,7 @@ int main(int argc, char** argv) {
         {"testNormalizeAndTrim", testNormalizeAndTrim}, {"testTheRows", testTheRows}, {"testTheEnginePlaysIt", testTheEnginePlaysIt},
         {"testTheBuiltInDrums", testTheBuiltInDrums}, {"testALongShapeWaits", testALongShapeWaits}, {"testASongSentDoesNotWait", testASongSentDoesNotWait}, {"testFitAndSlices", testFitAndSlices}, {"testTheFileIsUntouched", testTheFileIsUntouched},
         {"testNormalizeAndTrimOnALane", testNormalizeAndTrimOnALane}, {"testTheSongFile", testTheSongFile}, {"testUndoAndANewRecording", testUndoAndANewRecording},
-        {"testTheGestures", testTheGestures},
+        {"testTheGestures", testTheGestures}, {"testBAfterYKeepsIt", testBAfterYKeepsIt},
     };
     for (const Test& test : tests) {
         bool wanted = argc < 2;

@@ -200,7 +200,7 @@ void testDrums() {
     rig.frames(1);
     CHECK(rig.said() == "PASTED ON BAR 2");
     CHECK(sameDrums(rig.track(0).drums[0][1], rig.track(0).drums[0][0]));
-    CHECK(!rig.session().barClip().has); // spent: a paste clears the copy
+    CHECK(rig.session().barClip().has); // kept for another paste (G23, 2026-11-25: a paste spent it)
     CHECK(drums.level(4, 2) == 0.f);
     // A's hold is not A's: the D-pad does not nudge or level anything while it is down.
     const float level = drums.level(0, 8);
@@ -222,7 +222,7 @@ void testDrums() {
     rig.redo();
     CHECK(sameDrums(rig.track(0).drums[0][1], rig.track(0).drums[0][0]) && rig.track(0).automation[0][20][kSteps + 3] == 0.7f);
     rig.settle();
-    // Pasted again on the same: nothing changes, no step of undo (a fresh copy: the paste spent it).
+    // Pasted again on the same: nothing changes, no step of undo (a fresh copy of bar 1).
     rig.project().bar = 0;
     rig.frames(1);
     rig.withL1(R1);
@@ -251,7 +251,7 @@ void testDrums() {
     rig.settle();
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // again: the paste spent it
+    rig.withL1(R1); // a fresh copy, of the bar as it is now
     rig.project().bar = 1;
     rig.frames(1);
     rig.withL1(A);
@@ -289,7 +289,7 @@ void testDrums() {
     // A paste and an edit straight after are two steps, not one burst.
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // again: the paste spent it
+    rig.withL1(R1); // a fresh copy, of the bar as it is now
     rig.project().bar = 1;
     rig.frames(1);
     drums.setStep(0, 0, 0.f);
@@ -307,7 +307,7 @@ void testDrums() {
     // An edit and a paste straight after it (no still moment between): two steps too.
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // again: the paste spent it
+    rig.withL1(R1); // a fresh copy, of the bar as it is now
     rig.project().bar = 1;
     rig.frames(1);
     const int beforeBoth = rig.session().undoSteps();
@@ -336,7 +336,7 @@ void testDrums() {
     // Another scene, another drum track: the hits; automation only on the same track.
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // again: the paste spent it
+    rig.withL1(R1); // a fresh copy, of the bar as it is now
     rig.project().scene = 1;
     rig.project().bar = 0;
     rig.frames(1);
@@ -345,7 +345,7 @@ void testDrums() {
     rig.project().track = 0;
     rig.project().scene = 0;
     rig.frames(1);
-    rig.withL1(R1); // again: the paste spent it
+    rig.withL1(R1); // a fresh copy, of the bar as it is now
     CHECK(rig.session().addTrack(TrackKind::Drums));
     rig.project().track = 1;
     rig.project().scene = 0;
@@ -356,7 +356,7 @@ void testDrums() {
     // Onto a synth track: refused, nothing placed.
     rig.project().track = 0;
     rig.frames(1);
-    rig.withL1(R1); // again: the paste spent it (the refusal keeps it)
+    rig.withL1(R1); // a fresh copy (the refusal kept the copy too)
     CHECK(rig.session().addTrack(TrackKind::Phazed));
     rig.project().track = 2;
     rig.frames(1);
@@ -371,6 +371,29 @@ void testDrums() {
     rig.session().newSong();
     rig.frames(4);
     CHECK(rig.session().barClip().has);
+}
+
+// A bar's copy stays after a paste (gesture audit G23, 2026-11-25: a paste spent it): one copy goes on
+// bar after bar, each paste its own step of undo; a new copy replaces it.
+void testTheCopyStaysForAnotherPaste() {
+    Rig rig;
+    writeDrumBar(rig);
+    Session& session = rig.session();
+    rig.settle();
+    CHECK(session.copyBar(0, 0, 0) == Session::BarCopy::Done);
+    const int steps = session.undoSteps();
+    for (int scene = 1; scene <= 3; ++scene) {
+        CHECK(session.pasteBar(0, scene, 0) == Session::BarCopy::Done && session.barClip().has);
+        CHECK(sameDrums(rig.track(0).drums[scene][0], rig.track(0).drums[0][0]));
+        rig.settle();
+    }
+    CHECK(session.undoSteps() == steps + 3);
+    // Through the grid: hold L1, A on bar 2 of scene 1 pastes the same copy, with no R1 between.
+    rig.project().scene = 0;
+    rig.project().bar = 1;
+    rig.frames(1);
+    rig.withL1(A);
+    CHECK(rig.said() == "PASTED ON BAR 2" && sameDrums(rig.track(0).drums[0][1], rig.track(0).drums[0][0]) && session.barClip().has);
 }
 
 // ---- notes -------------------------------------------------------------------------------------
@@ -466,7 +489,7 @@ void testNotes() {
     // Another synth track, a cell of four bars: the long note keeps its length. No automation.
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // again: the paste spent it
+    rig.withL1(R1); // a fresh copy, of the bar as it is now
     CHECK(rig.session().addTrack(TrackKind::Jx3p));
     rig.session().setCellBars(2, 0, 4);
     rig.project().track = 2;
@@ -478,7 +501,7 @@ void testNotes() {
     rig.project().track = 1;
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // again: the paste spent it
+    rig.withL1(R1); // a fresh copy, of the bar as it is now
     CHECK(rig.session().addTrack(TrackKind::Sampler));
     rig.project().track = 3;
     rig.frames(1);
@@ -488,7 +511,7 @@ void testNotes() {
     rig.project().track = 1;
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // again: the paste spent it (the refusal keeps it)
+    rig.withL1(R1); // a fresh copy (the refusal kept the copy too)
     rig.project().track = 0;
     rig.frames(1);
     rig.withL1(A);
@@ -1059,7 +1082,7 @@ int main(int argc, char** argv) {
         {"testDrums", testDrums}, {"testNotes", testNotes}, {"testTheSlicesAndL1", testTheSlicesAndL1}, {"testTheEngineHearsIt", testTheEngineHearsIt}, {"testTheWordsFit", testTheWordsFit},
         {"testRollBarsLength", testRollBarsLength}, {"testDrumBarsLength", testDrumBarsLength},
         {"testBarCopyTracksItsTrack", testBarCopyTracksItsTrack}, {"testPasteSeparatesUnmarkedDrift", testPasteSeparatesUnmarkedDrift},
-        {"testAStickMoveIsAUseOfL1", testAStickMoveIsAUseOfL1},
+        {"testAStickMoveIsAUseOfL1", testAStickMoveIsAUseOfL1}, {"testTheCopyStaysForAnotherPaste", testTheCopyStaysForAnotherPaste},
     };
     for (const Test& test : tests) {
         bool wanted = argc < 2;
