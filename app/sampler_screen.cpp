@@ -377,7 +377,7 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
     }
     if (!said_.empty() && nowMs >= saidUntil_) said_.clear();
     if (stickWait_ && input.stickX() == 0.f && input.stickY() == 0.f) stickWait_ = false;
-    const bool choosing = catchKey_.stick(input, session_); // Y held: the stick chooses CATCH's bars and what, a push at a time
+    const bool choosing = catchKey_.stick(input, session_, nowMs); // Y held: the stick chooses CATCH's bars and what, a push at a time
     const float x = stickWait_ || choosing ? 0.f : input.stickX(), y = stickWait_ || choosing ? 0.f : input.stickY();
 
     if (holding_ && stop_ > 0 && settingAt(stop_ - 1) == sampler::Loop) {

@@ -24,6 +24,7 @@ constexpr int kFirstRoll = 4;         // hits a tap of Y gives an empty lane
 constexpr int kFullRoll = 8;          // ...and a full one (half the steps)
 constexpr float kDiceHitsPerSecond = 24.f; // stick fully over
 constexpr Uint32 kHearStartEveryMs = 90;  // a sliding start is played this often
+constexpr const char* kCutDeletingWords = "DELETING THE CUT..."; // hold B with Y on a hit in the slice view
 constexpr float kCutNudgeSeconds = 0.001f; // the slice view: Y + LEFT / RIGHT moves a hit's cut this much (SLICES AT THE HITS)
 constexpr float kCutSlideSeconds = 0.25f;  // ...and Y + the stick, pushed full, this much of the sound a second (by the square of the push)
 
@@ -358,8 +359,8 @@ void PatternScreen::moveCut(float by) {
     }
 }
 
-// ...Y held on a hit, A: a cut added inside its slice (at the strongest hit there, else its middle); B: its own
-// cut deleted, the slice joined to the one before (its hits with it).
+// ...Y held on a hit, A: a cut added inside its slice (at the strongest hit there, else its middle); hold B: its own
+// cut deleted when the bar has filled (update), the slice joined to the one before (its hits with it).
 void PatternScreen::addCut() {
     if (!hitHere()) return;
     sayCut(session_.addLaneCut(project_.track, lane_, sliceOf(step_)));
@@ -399,7 +400,7 @@ void PatternScreen::sayCut(Session::Cut why) {
 // The word for a lane's slices: EVEN, AT HITS 5 (its SENSITIVITY), BY HAND, or FINDING... while its hits are found.
 const char* PatternScreen::cutsWord(char* text, int size) const {
     const LaneCuts& cuts = trk().laneCuts[lane_];
-    if (session_.findingHits(project_.track, lane_)) std::snprintf(text, static_cast<std::size_t>(size), "FINDING...");
+    if (session_.findingHits(project_.track, lane_) && session_.senseShown(project_.track, lane_) > 0) std::snprintf(text, static_cast<std::size_t>(size), "FINDING..."); // (EVEN asked meanwhile: EVEN)
     else if (cuts.even()) std::snprintf(text, static_cast<std::size_t>(size), "EVEN");
     else if (cuts.sense == 0) std::snprintf(text, static_cast<std::size_t>(size), "BY HAND");
     else std::snprintf(text, static_cast<std::size_t>(size), "AT HITS %d", cuts.sense);
@@ -826,13 +827,27 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         return;
     }
+    if (event.down && b != Button::B) cutDeleting_ = false; // any other press calls a held B off
+    if (!event.down && b == Button::B && cutDeleting_) { // let go before the bar filled: nothing deleted
+        cutDeleting_ = false;
+        std::snprintf(said_, sizeof said_, "HOLD B TO DELETE THE CUT");
+        saidUntil_ = lastMs_ + 2500;
+        return;
+    }
     if (slicing_ && dicing_ && !ySpent_ && hitHere() && (b == Button::A || b == Button::B) && !input.held(Button::L1)) {
         // SLICES AT THE HITS (batch S2): with Y held on a hit (where its sound starts is Y's), A adds a cut inside
-        // its slice and B deletes the cut its slice begins at (as X + B empties what X shows). Y's let go is then
-        // no tap: the hit's chance stays. A's press is spent (its hold shapes nothing).
+        // its slice and a held B deletes the cut its slice begins at, once its bar has filled (review fix,
+        // 2026-11-25: it was a tap, "never another button" in the buttons' standards). Y's let go is then no tap:
+        // the hit's chance stays. A's press is spent (its hold shapes nothing).
         if (event.down) {
-            if (b == Button::A) addCut(), aSpent_ = true;
-            else deleteCut();
+            if (b == Button::A) {
+                addCut(), aSpent_ = true;
+            } else {
+                cutDeleting_ = true;
+                cutDeleteSince_ = lastMs_;
+                cutDeletePart_ = 0.f;
+                cutDeleteLane_ = lane_, cutDeleteStep_ = step_;
+            }
             yDidSomething_ = true;
         }
         return;
@@ -1005,6 +1020,25 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
     if (!input.held(Button::A)) aSpent_ = false;
     if (!input.held(Button::Y)) ySpent_ = false;
     if (!input.held(Button::L1)) l1First_ = false;
+
+    // Y held on a hit in the slice view, B held: the bar fills, then the slice's cut is deleted. B let go early is
+    // said by onButton; Y let go, the cursor or the view moved: called off without a word.
+    if (cutDeleting_ && (!input.held(Button::Y) || !slicing_ || lane_ != cutDeleteLane_ || step_ != cutDeleteStep_ || !hitHere())) cutDeleting_ = false;
+    if (cutDeleting_ && !input.held(Button::B)) { // let go before the bar filled (whichever this screen hears first)
+        cutDeleting_ = false;
+        std::snprintf(said_, sizeof said_, "HOLD B TO DELETE THE CUT");
+        saidUntil_ = nowMs + 2500;
+    }
+    if (!cutDeleting_) {
+        cutDeletePart_ = 0.f;
+    } else {
+        cutDeletePart_ = static_cast<float>(nowMs - cutDeleteSince_) / static_cast<float>(kCutDeleteMs);
+        if (cutDeletePart_ >= 1.f) {
+            cutDeleting_ = false;
+            cutDeletePart_ = 0.f;
+            deleteCut();
+        }
+    }
 
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
@@ -1387,7 +1421,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             field(520.f, slicing_ ? "SLICE" : "START", text, shade(Turning::Start));
             // Its step effects, in a line: what X held would show in full.
             const StepFx& fx = pat().fx[lane_][step_];
-            if (fx.any()) {
+            if (fx.any() && !said()[0]) { // (the said line has the row while it shows: SAVED, as the feel's summary)
                 std::string summary;
                 const auto add = [&](const char* word) { summary += (summary.empty() ? "" : "   ") + std::string(word); };
                 if (fx.pitch) std::snprintf(text, sizeof text, "PITCH %+d", fx.pitch), add(text);
@@ -1412,7 +1446,13 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     }
 
     // Something said for a moment (why L1 did not open the slices).
-    if (said()[0]) tight.small.draw(r, 8.f, stripY + 44.f, said(), kBrass);
+    // (SAVED with a long name: its stem cut to the strip, its number kept, as the kit's EDIT does)
+    if (cutDeletePart_ > 0.f) { // hold B on a slice's cut: the words, and the bar filling under them
+        tight.small.draw(r, 8.f, stripY + 44.f, kCutDeletingWords, kText);
+        fill(r, 8, stripY + 60, static_cast<int>(624.f * (cutDeletePart_ > 1.f ? 1.f : cutDeletePart_)), 3, faded(kStop, 150));
+    } else if (said()[0]) {
+        tight.small.draw(r, 8.f, stripY + 44.f, cutToRoom(said(), tight.small, 624.f).c_str(), kBrass);
+    }
 
     // ---- hints -------------------------------------------------------------------
     // Only what does something here, and what the ONE stick does right now.
@@ -1476,7 +1516,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("UP / DOWN", "chance");
         hint("LEFT / RIGHT", "move cut");
         hint("A", "add cut");
-        hint("B", "delete cut");
+        hint("HOLD B", "delete it"); // (the cut: "delete cut" ran 6 pixels over)
         hint("R1", "save slice");
     } else if (dicing_ && onStep()) {
         hint("UP / DOWN", "chance");

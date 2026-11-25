@@ -45,8 +45,11 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   track deletes are not undone, **but for THE TEMPO FROM THIS LOOP** (batch S1, 2026-11-25:
   `Session::setTempoFromLoop`, hold A + LEFT / RIGHT on a kit lane's FIT): it sets the tempo and the lane's
   FIT as one step, and the brief asked for one step of undo. Its own step (`beginOwnUndoStep` /
-  `endOwnUndoStep`) is marked `UndoStep::tempo`, and undo and redo of a marked step set the tempo the step's
-  text holds (`step_.head.tempo`, read by `restorePatterns`), the mark carried to the step pushed the other way.
+  `endOwnUndoStep`) keeps the tempo it stood at in `UndoStep::tempo` (0: leave the tempo alone), and undo and
+  redo of such a step set that tempo, the step pushed the other way keeping the tempo then. **Not the tempo of
+  the step's text**: a tempo change is not an edit, so the text holds whatever stood at the last settle (SEL +
+  UP to 150 after a settle at 100, then the gesture: undo is 150, not 100; review fix, 2026-11-25). When the
+  gesture moves only FIT (the tempo was already the nearest), the step keeps no tempo.
   Any other step leaves the tempo alone, as before (`sample_test testTheTempoFromALoop`). After a restore the marks are taken again
   (putting back is not an edit).
   **Only another song clears undo** (`applyProject`). A resync after a full

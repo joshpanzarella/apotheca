@@ -381,6 +381,7 @@ public:
     void stepCatchFrom(int by);  // the mix, then track 1, 2... to the last there is: the ends stop
     int caughtBars() const { return caughtBars_; } // the last catch: its whole bars (0: a bar's worth up to now)
     int caughtFrom() const { return caughtFrom_; } // ...and what it was of (-1: the mix)
+    bool caughtNoWholeBar() const { return caughtNoBar_; } // ...nothing: one track, no whole bar heard since it was chosen
     // SAVE AS A RECORDING (batch S1, 2026-11-25; sampling-gaps.md 1): what the lane plays, as EDIT and FIT make it (a
     // DRUM SYNTH voice, the built-in drum too: not its VOLUME, a hit's level or step effects, or the track's
     // effects), written as a new recording, 16-bit mono 48 kHz as CATCH writes, on this (the app) thread. Of it,
@@ -1048,6 +1049,7 @@ private:
     float bounceCap_ = kBounceCapSeconds;
     int catchBars_ = 1, catchFrom_ = -1; // CATCH's choice (catchLastBar)
     int caughtBars_ = 0, caughtFrom_ = -1;
+    bool caughtNoBar_ = false;
     std::string patternsNow() const;                 // the patterns as text: a step of undo
     // (moved: a "next scene" lies between; see moveScenesHere). Only undo and redo call it, each just
     // after patternsNow(): readStep takes the text of each track now from what that made.
@@ -1104,8 +1106,10 @@ private:
     void restoreSounds(const StepRead& was, const bool same[kNumTracks]);
     void restoreEffect(int track, int slot, const EffectData& then);
     void sendMod(int track, int mod); // the project's MOD told to the engine (OFF: one command)
-    // `tempo`: the step puts the song's tempo back as well (THE TEMPO FROM THIS LOOP: setTempoFromLoop).
-    struct UndoStep { std::string text; int nextScene = -1; bool tempo = false; };
+    // `tempo`: the step puts this tempo back as well (THE TEMPO FROM THIS LOOP: setTempoFromLoop); 0 leaves
+    // the tempo alone. Kept in the step, not read from its text: a tempo change is not an edit, so the text's
+    // tempo is whatever stood at the last settle.
+    struct UndoStep { std::string text; int nextScene = -1; float tempo = 0.f; };
     std::vector<UndoStep> undo_, redo_;
     // A recording renamed, moved or found elsewhere (recordingChanged, findMissing): every step of
     // undo and redo, and settled_, name it where it is now (renameRecordings).
@@ -1208,7 +1212,7 @@ private:
         std::thread thread;
     };
     std::unique_ptr<HitsJob> hits_;
-    int hitsSense_ = 0; // the SENSITIVITY last asked for while it runs: put on when it lands
+    int hitsSense_ = 0; // the SENSITIVITY last asked for while it runs: put on when it lands (0: EVEN or an undo came after: none)
     void finishHits(bool wait); // a job done (or waited for) is kept as its lane's hits, and its SENSITIVITY put on
     const std::vector<slices::Found>* foundHits(int track, int lane, bool atOnce); // the lane's, found for its shape now (nullptr: not yet)
     void sendLaneCuts(int track, int lane);

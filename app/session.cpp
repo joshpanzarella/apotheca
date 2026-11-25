@@ -1681,10 +1681,11 @@ bool Session::undo() {
     if (undo_.empty()) return false;
     const UndoStep back = undo_.back();
     undo_.pop_back();
-    redo_.push_back({patternsNow(), back.nextScene, back.tempo}); // as things are, to come forward to again
+    hitsSense_ = 0; // an AT HITS still being found is called off: what is put back stands when the hits land
+    redo_.push_back({patternsNow(), back.nextScene, back.tempo > 0.f ? project.tempo : 0.f}); // as things are, to come forward to again
     if (back.nextScene < 0) {
         restorePatterns(back.text);
-        if (back.tempo) setTempo(step_.head.tempo); // (THE TEMPO FROM THIS LOOP: its step's tempo, as read back)
+        if (back.tempo > 0.f) setTempo(back.tempo); // (THE TEMPO FROM THIS LOOP: the tempo it stood at)
         return true;
     }
     // A "next scene" taken back: the scene goes, the playing leaves it for the one it was
@@ -1700,10 +1701,11 @@ bool Session::redo() {
     if (redo_.empty()) return false;
     const UndoStep forward = redo_.back();
     redo_.pop_back();
-    undo_.push_back({patternsNow(), forward.nextScene, forward.tempo});
+    hitsSense_ = 0; // (as undo)
+    undo_.push_back({patternsNow(), forward.nextScene, forward.tempo > 0.f ? project.tempo : 0.f});
     if (forward.nextScene < 0) {
         restorePatterns(forward.text);
-        if (forward.tempo) setTempo(step_.head.tempo);
+        if (forward.tempo > 0.f) setTempo(forward.tempo);
         return true;
     }
     // A "next scene" put back.

@@ -243,10 +243,13 @@ bool KitScreen::fitsByTap() const {
 }
 
 // A tap of A on FIT (gesture audit G45): the bars what the lane plays unfitted (its cut) fills at the
-// tempo, rounded to FIT's stops in the scene's meter. A step of undo, as FIT is.
+// tempo of the scene being worked on (its own, else the song's), rounded to FIT's stops in its meter. A step
+// of undo, as FIT is. (The scene's: a TRACK TO SAMPLES bounce is made at it, so a 4-bar bounce of a 90 BPM
+// scene in a 120 BPM song is 4 bars, not 5 and a third rounded to 4 or 8: review fix, 2026-11-25.)
 void KitScreen::fitToItsBars() {
     if (!fitsByTap()) return;
-    const int fit = laneFitFor(session_.laneSound(project_.track, lane_).seconds, project_.tempo, project_.meterOf(project_.scene));
+    const float own = project_.sceneTempo[project_.scene], tempo = own > 0.f ? own : project_.tempo;
+    const int fit = laneFitFor(session_.laneSound(project_.track, lane_).seconds, tempo, project_.meterOf(project_.scene));
     if (fit > 0) session_.setLaneFit(project_.track, lane_, fit);
 }
 
@@ -258,8 +261,13 @@ void KitScreen::tempoFromLoop(int by) {
     if (!fitsByTap()) return; // (a built-in drum, a voice, a file not found: a hit, not a loop, as A's tap)
     const float seconds = session_.laneSound(project_.track, lane_).seconds;
     const int meter = project_.meterOf(project_.scene);
+    // Steps from where the gesture has been only: the song at the nearest tempo but FIT not at its bars (a loop
+    // at the song's tempo, loaded with FIT OFF) is not there yet, so the first press gives the nearest.
+    int nearBars = 0;
+    const float nearBpm = loopTempo(seconds, project_.tempo, meter, 0, &nearBars);
+    const bool reached = nearBpm > 0.f && nearBpm == project_.tempo && trk().laneFit[lane_] == nearBars * meter;
     int bars = 0;
-    float bpm = loopTempo(seconds, project_.tempo, meter, by, &bars);
+    float bpm = loopTempo(seconds, project_.tempo, meter, reached ? by : 0, &bars);
     if (bpm <= 0.f) bpm = loopTempo(seconds, project_.tempo, meter, 0, &bars); // at the end already: where it is (FIT to it)
     char text[80];
     if (bpm <= 0.f) {
@@ -499,7 +507,7 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
     if (!said_.empty() && nowMs >= saidUntil_) said_.clear();
     // One move at once, then at a steady rate. With A held only up / down counts.
     if (stickWait_ && input.stickX() == 0.f && input.stickY() == 0.f) stickWait_ = false; // (back in the middle after a put-back)
-    const bool choosing = catchKey_.stick(input, session_); // Y held: the stick chooses CATCH's bars and what, a push at a time
+    const bool choosing = catchKey_.stick(input, session_, nowMs); // Y held: the stick chooses CATCH's bars and what, a push at a time
     const float x = holding_ || stickWait_ || choosing ? 0.f : input.stickX(), y = stickWait_ || choosing ? 0.f : input.stickY();
     const bool sideways = std::fabs(x) > std::fabs(y);
     const float push = sideways ? x : y;
@@ -697,9 +705,10 @@ void KitScreen::drawEdit(SDL_Renderer* r, const Fonts& fonts) const {
         fill(r, sx + 1, sy + sh - 6, static_cast<int>((sw - 2) * (deletePart_ > 1.f ? 1.f : deletePart_)), 5, faded(kStop, 150));
         fonts.within(&Fonts::small, kDeletingWords, sw - 120.f).draw(r, sx + 7.f, sy + 7.f, kDeletingWords, kText);
     } else if (!said_.empty()) {
-        std::string line = said_; // (a name saved as long as a name may be: cut where it would run past the room)
+        // A name saved as long as a name may be: its stem cut where it would run past the room, its number kept. Cut
+        // at LARGE (the same words at every size), 20 short of the room: at XL PLAYS 12.34 S, on the right, is wider.
+        const std::string line = cutToRoom(said_, fonts.fixed().small, sw - 140.f);
         const Font& f = fonts.within(&Fonts::small, line.c_str(), sw - 120.f);
-        while (line.size() > 1 && f.width(line.c_str()) > sw - 120) line.pop_back();
         f.draw(r, sx + 7.f, sy + 7.f, line.c_str(), kBrass);
     } else {
         std::snprintf(text, sizeof text, "LANE %d. THE FILE ITSELF IS NEVER CHANGED", lane_ + 1);

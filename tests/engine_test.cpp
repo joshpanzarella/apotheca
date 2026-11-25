@@ -1,6 +1,8 @@
 // Engine tests. No framework: each CHECK prints its line on failure and the
 // program exits non-zero if any failed.
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -3878,7 +3880,52 @@ static void testBadPrepareFallsBack() {
     }
 }
 
-int main() {
+// CATCH of one track's cost (batch S3; measured.md's row): two drum tracks hitting every step, 60 s of sound in
+// 128-frame blocks, no track followed against one followed (best of 5, interleaved), as a share of a core; an
+// Engine made (its two 25 s rings); lastBars(4) at 120 BPM. `engine_test --measure`: nothing is checked.
+static void measureCatchingOneTrack() {
+    using Clock = std::chrono::steady_clock;
+    const auto ms = [](Clock::time_point from) { return std::chrono::duration<double, std::milli>(Clock::now() - from).count(); };
+    double made = 1e9;
+    for (int i = 0; i < 5; ++i) {
+        const Clock::time_point t = Clock::now();
+        std::unique_ptr<Engine> engine(new Engine);
+        made = std::min(made, ms(t));
+    }
+    std::unique_ptr<Engine> engine(new Engine);
+    engine->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.4f));
+    engine->addDrumTrack(1);
+    engine->setLaneSample(1, 0, twoHalves(500, 0.1f, 0.1f));
+    for (int s = 0; s < 16; ++s) engine->send(step(0, s, 1.f)), engine->send(step(0, s, 1.f, 1));
+    engine->send(make(Command::Play, 0, 0, 1));
+    std::vector<float> block(2 * 128);
+    const int blocks = 60 * 48000 / 128;
+    double best[2] = {1e9, 1e9};
+    for (int round = 0; round < 10; ++round) {
+        const int follow = round % 2; // 0: THE MIX (no track followed), 1: track 1 followed
+        engine->setCatchTrack(follow ? 1 : -1);
+        const Clock::time_point t = Clock::now();
+        for (int b = 0; b < blocks; ++b) engine->render(block.data(), 128);
+        best[follow] = std::min(best[follow], ms(t));
+    }
+    engine->setCatchTrack(-1);
+    double last = 1e9;
+    for (int i = 0; i < 5; ++i) {
+        const Clock::time_point t = Clock::now();
+        const Engine::Caught c = engine->lastBars(4);
+        last = std::min(last, ms(t));
+        if (c.sound.empty()) std::printf("(nothing caught)\n");
+    }
+    std::printf("60 s of two drum tracks: no track followed %.4f%%, one followed %.4f%% of a core; an Engine made %.1f ms; "
+                "lastBars(4) at 120 BPM %.2f ms\n",
+                best[0] / 600.0, best[1] / 600.0, made, last);
+}
+
+int main(int argc, char** argv) {
+    if (argc > 1 && std::string(argv[1]) == "--measure") {
+        measureCatchingOneTrack();
+        return 0;
+    }
     testScenesHaveStoresWhenWritten();
     testAPresetPutsTheMacrosRestBack();
     testCellsOfSeveralBars();

@@ -561,7 +561,7 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
     if (dt > 0.05f) dt = 0.05f;
     dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number
     lastMs_ = nowMs;
-    const bool choosing = catchKey_.stick(input, session_); // Y held on CLOUD: the stick chooses CATCH's bars and what
+    const bool choosing = catchKey_.stick(input, session_, nowMs); // Y held on CLOUD: the stick chooses CATCH's bars and what
     const float x = choosing ? 0.f : input.stickX(), y = choosing ? 0.f : input.stickY();
     if (keys_.isOpen()) {
         keys_.update(input, nowMs, dt);
@@ -727,7 +727,9 @@ void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
     trackName(project_, project_.track, name, sizeof name);
     std::snprintf(text, sizeof text, "%s / %s", name, spec_.pageNames[page_]);
     if (!said_.empty()) std::snprintf(text, sizeof text, "%s", said_.c_str()); // (CATCH, RECORD: for a moment)
-    if (catchKey_.held()) std::snprintf(text, sizeof text, "%s", catchChoiceLine(session_).c_str()); // (Y held: what its let go catches)
+    // (Y held: what its let go catches is said on the page's heading row, below: the top bar's room, after the tabs,
+    // the tempo and the scene playing, cut "CATCH THE LAST 4 BARS OF THE MIX" to its first words. The top bar keeps
+    // the track and the page.)
     topBar(r, fonts, View::Device, text, project_);
     if (keys_.isOpen()) {
         drawTyping(r, fonts); // naming a preset to save: the keys instead of the rows
@@ -822,9 +824,15 @@ void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
     }
 
     // ---- ADVANCED ----------------------------------------------------------------------
-    std::snprintf(text, sizeof text, "PAGE %d OF %d", page_, spec_.pages - 1);
-    fonts.small.drawRight(r, 632.f, 38.f, text, kDim);
     fonts.medium.draw(r, 8.f, 36.f, spec_.pageNames[page_], kText);
+    if (catchKey_.held()) { // CLOUD, Y held: CATCH's choice, where PAGE 1 OF N was (the whole line: what is caught, of what)
+        const std::string line = catchChoiceLine(session_);
+        const float room = 632.f - 8.f - fonts.medium.width(spec_.pageNames[page_]) - 16.f;
+        fonts.within(&Fonts::small, line.c_str(), room).drawRight(r, 632.f, 38.f, line.c_str(), kBrass);
+    } else {
+        std::snprintf(text, sizeof text, "PAGE %d OF %d", page_, spec_.pages - 1);
+        fonts.small.drawRight(r, 632.f, 38.f, text, kDim);
+    }
 
     if (!envelopePage()) {
         const int rows = (itemCount() + 3) / 4, rowH = settingH(rows);

@@ -32,6 +32,7 @@ std::string catchChoiceLine(const Session& session) {
 
 std::string caughtLine(const Session& session, const std::string& name) {
     const int got = session.caughtBars(), asked = session.catchBars();
+    if (name.empty() && session.caughtNoWholeBar()) return upper("NO WHOLE BAR" + fromWords(session) + " YET: LET ONE GO BY");
     if (name.empty())
         return session.caughtFrom() < 0 ? "NOTHING TO CATCH: PLAY SOMETHING FIRST" : upper("NOTHING" + fromWords(session) + " TO CATCH: PLAY IT FIRST");
     std::string line;

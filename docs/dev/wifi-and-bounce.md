@@ -138,7 +138,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   4 whole bars** (`samplesBounceSteps`: the most the scene has within `kCatchLongest`, 20 s; a scene under a bar,
   all of it). Claude's pick, 2026-11-25, open to the owner: the scene and not the song, since a recording is 20 s at
   most and FIT 64 steps; 1, 2 or 4 bars so a tap of A on FIT (G45, `laneFitFor`) fits it to its bars exactly (3 bars
-  would be fitted to 4). **Named after the track** (`bounces/bass 1`, the next free number, `freeSampleName`),
+  would be fitted to 4), at the scene's own tempo where it has one, which the bounce is made at (review fix,
+  2026-11-25: the tap read the song's; `bounceSampleSteps` is still read only by the test). **Named after the track** (`bounces/bass 1`, the next free number, `freeSampleName`),
   chosen on the app thread when it starts, in `samples/bounces` where the list sees it: the app thread bumps
   `sampleFiles_` the frame after it is done (`BounceJob::seen`), so an open list reads the card again. It needs no
   `bounces` folder beside the program. **It is not put on a lane by itself** (SET has no lane): pick it, then a tap

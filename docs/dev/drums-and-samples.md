@@ -689,7 +689,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   `laneFitFor`, `KitScreen::fitToItsBars`): FIT started at OFF, so the usual 1 BAR was the fifth click.
   The length is what the lane plays unfitted (`LaneSound::seconds`: the cut, turned round and pitched
   shape, which is what FIT stretches; the review's note said `sourceSeconds`, the whole file, which a
-  trimmed loop would get wrong), the steps it fills at the tempo (a step is 15 / tempo seconds),
+  trimmed loop would get wrong), the steps it fills at the tempo (a step is 15 / tempo seconds; **the scene's own
+  tempo where it has one**, else the song's: a TRACK TO SAMPLES bounce is made at the scene's, and at the song's a
+  4-bar bounce of a 90 BPM scene in a 120 song came to 5.3 bars; review fix, 2026-11-25),
   rounded to FIT's stops **in the scene's meter**: 1, 2, 4 or 8 steps (those under a bar; since batch S1 also 3,
   6 and 12, FIT's new stops, below), or 1, 2 or
   4 bars of `meterOf` (12 a bar in 3/4, as CATCH sets; FIT's most is 4 bars, so not 8 as first proposed). The
@@ -721,7 +723,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   `KitScreen::tempoFromLoop`, `Session::setTempoFromLoop`). The song's tempo set so the lane's recording, as it
   plays unfitted (`LaneSound::seconds`, as the tap's), fills 1, 2 or 4 bars of the scene's meter, whole BPM (as
   `setTempo` keeps it) within `kMinTempo`..`kMaxTempo`: the nearest to the tempo now by ratio first; then, from a
-  tempo that is one of them, RIGHT twice the bars (faster) and LEFT half (slower), the ends stopping. FIT goes to
+  tempo the gesture has reached (the nearest, with FIT at its bars), RIGHT twice the bars (faster) and LEFT half
+  (slower), the ends stopping. The tempo alone is not "reached": a loop at the song's 120 with FIT OFF gave 240 or
+  60 on the first press, never the nearest (review fix, 2026-11-25: the first press now keeps 120 and sets FIT). FIT goes to
   those bars with it, so the loop is not stretched (or only by the whole-BPM rounding) and stays in time when the
   tempo moves later. **One step of undo, which puts the tempo back too** (`UndoStep::tempo`, songs-and-undo.md);
   as it is already, no step. A built-in drum, a voice or a file not found: nothing (a hit, not a loop, as the
@@ -803,7 +807,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     `hitsOf`: the `shaped` sound they were found in; a new shape finds them again), on the app thread for a sound of
     4 s or less (`Session::kFindInAFrame`, about 1.5 ms on the desk), else on a thread of their own (`HitsJob`, one at
     a time; another lane's asked meanwhile lets it land first): the lane reads FINDING..., the SENSITIVITY last asked is
-    put on when it lands (`finishHits`, from `update`), and the redraw is told (`kStirFitting`, with a part in
+    put on when it lands (`finishHits`, from `update`); **EVEN asked meanwhile, or an undo or redo, calls that off**
+    (`hitsSense_` 0: the hits are only kept, and the lane reads EVEN; review fix, 2026-11-25: the earlier ask was put
+    on over them when the job landed), and the redraw is told (`kStirFitting`, with a part in
     `idle_test`). A SENSITIVITY once found is a pick from them: microseconds. What is looked at is the lane's shape
     (EDIT's cut, turned and pitched), not its FIT: a stretch keeps parts of the sound where they were, and the shape does
     not change with the tempo.
@@ -817,7 +823,11 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - **The gestures** (all in the slice view; the buttons' standards):
     - **Hold A + LEFT / RIGHT on the lane's name: EVEN, then AT HITS 1 to 10** (`senseTurn`), a click a press, the ends
       stopping, a list's pace held (a choice: each is the hits found again), the stick a click at once then the clicks'
-      pace. From BY HAND, LEFT is EVEN. Hold A + UP / DOWN is still the lane's volume. While A is held the strip's EACH
+      pace. **On merging with main** (owner, 2026-11-25, main's 638b977: the stick runs at full speed at once, however
+      far it is pushed): this stick is scaled by its push (`|x| * kStickClicksPerSecond`) and the cut's slide below by
+      the square of it; on the merge they become a click at once then `ui::stickPerSecond(Pace::List)`, and
+      `kCutSlideSeconds` times STICK SPEED, the push ignored, both in screens.md's table of rates (review, 2026-11-25:
+      main's helper is not on this branch, so it is not done here). From BY HAND, LEFT is EVEN. Hold A + UP / DOWN is still the lane's volume. While A is held the strip's EACH
       HIT PLAYS field is SLICES and the word (what A turns there). Claude's pick, 2026-11-25, open to the owner: "Hold
       A + a direction shapes or turns what is under the cursor", and A + LEFT / RIGHT on the name did nothing.
     - **Y held on a hit, LEFT / RIGHT: its slice's cut a millisecond earlier or later** (`kCutNudgeSeconds`; the stick by
@@ -830,21 +840,31 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
       edge is the thing to move, and every hit on it should follow; a hit slid by itself stays a job of the plain grid,
       where Y + sideways is as it was (its D-pad now stops at the ends as before, the next of the lane's own cuts where it
       has them). A hit already off its cut keeps its place when its cut moves; the strip still reads `9 + 40%` (of its
-      slice, uneven or not).
+      slice, uneven or not). **An owner question** (review, 2026-11-25): the brief did not ask for this reversal, and in
+      the slice view there is now no way to slide one hit off its cut; CLAUDE.md's standards line says it, marked open.
     - **Y held on a hit, A: a cut added inside its slice** (at the strongest candidate there, any SENSITIVITY: the hit a cut
-      at the hits passed by; else the slice's middle), no hit moved; **B: its slice's cut deleted**, the slice joined to the
-      one before and the hits on that cut moved to its cut. As X + B empties what X shows (G11): a tap with the modifier,
-      a step of undo, no bar (nothing is lost that SEL + B cannot bring back). The first cut is the top and is never moved
+      at the hits passed by; else the slice's middle), no hit moved; **hold B: its slice's cut deleted** once a bar has
+      filled (`kCutDeleteMs` = `ui::kHoldUndoneMs`, half a second: SEL + B brings it back; the words DELETING THE CUT...
+      on the strip's line, the bar under them), the slice joined to the one before and the hits on that cut moved to its
+      cut. A tap deletes nothing and says HOLD B TO DELETE THE CUT; Y let go, another press, the cursor moved or the
+      view left call it off. **It was a tap** (Y + B, X + B's precedent, written as an owner question); the review
+      (2026-11-25) held it to the buttons' standards, "Hold B deletes, with a bar that fills ... never another button",
+      which the brief named: the hold is the standard, the modifier (Y) only says what B is on. The hint is HOLD B
+      "delete it" ("delete cut" ran 6 pixels over). The first cut is the top and is never moved
       or deleted: SLICE 1 ALWAYS STARTS AT THE TOP. 64 SLICES ARE THE MOST; NO ROOM FOR A CUT THERE under 10 ms. Y's let go
-      is then no tap (the chance stays) and A's press is spent. Not on the plain grid, not with L1 held. Claude's pick,
-      2026-11-25, open to the owner (the brief: "hold B deletes"; hold B on a hit already deletes hits as it is dragged,
-      so the cut's delete is Y + B, X + B's precedent): **an owner question**.
+      is then no tap (the chance stays) and A's press is spent. Not on the plain grid, not with L1 held.
   - **The hits follow** (`moveLaneHits`: every scene and bar of the track; a start a command, or the track's image when
     more than 64 move): a new SENSITIVITY (or EVEN) keeps a hit **in order** in order (its step's own slice, now on a hit:
     a break painted with R1 stays the break, each step a clean hit) and puts **any other** on the cut at or before where it
     starts (the hit it was playing in). A moved cut takes the hits on it; a deleted one's go to the cut before; an added
     one moves none (what is heard stays). Claude's pick, 2026-11-25, open to the owner: by number alone, a break painted
-    in order lost its second half to the first going EVEN, AT HITS 1 (8 slices) and back.
+    in order lost its second half to the first going EVEN, AT HITS 1 (8 slices) and back. **In order is by the hit's
+    place in the lane's FIT** (`(bar * 16 + step) % evenSlices`: in a bar, or across 2 or 4 bars for a longer FIT), so
+    every bar painted in order is the same; by its place in the whole cell (review fix, 2026-11-25) the whole break hit
+    at the top of bars 2 to 4 was slice 17, 33, 49, round past the count a cut mid-break at nine cuts, and an in-order
+    bar 2 was renumbered. What stays ambiguous: a hit at the top on the step whose place goes round to slice 1 (step 13
+    at 12 cuts) is read as in order, so it goes to that step's slice; going back and forth keeps a break in order, which
+    is what the rule is for (`testSlicesAtTheHitsInEveryBar`).
   - **What is kept**: in a song file `slices LANE SENSE AT...` (every cut after the top, `%.6g` as a hit's start, so the
     two round alike), left out when EVEN; a place out of order, out of range or not a number ends the cuts there
     (`cutsHeld`), a SENSITIVITY nobody knows is BY HAND. In a kit (`putKit` writes it, `copyKit` copies it, `readKit` takes
@@ -924,7 +944,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   of it"). It was always the last bar of everything.
   - **The gesture** (`app/catch_key.hpp`, one `CatchKey` on the kit's lanes, the sampler and CLOUD's first page): **a
     tap of Y catches, on its LET GO** (it was on the press); **hold Y + LEFT / RIGHT: 1, 2, 4 bars; hold Y + UP /
-    DOWN: THE MIX, then track 1 to the last** (the ends stop: tracks stop at the ends, owner 2026-11-14). The stick,
+    DOWN: THE MIX, then track 1 to the last** (the ends stop: tracks stop at the ends, owner 2026-11-14; **held, UP /
+    DOWN runs on at a list's pace**, `ui::Repeat` in `CatchKey::stick`, a list of up to thirteen: review fix,
+    2026-11-25; LEFT / RIGHT's three stops are a press each). The stick,
     Y held, is one choice a push ("choices click once per push"), and moves no cursor. A let go after a choice, or
     after any other button, catches nothing (as L1's own tap on the grids). The line at the top says what a let go
     would catch (`catchChoiceLine`: "CATCH THE LAST 2 BARS OF THE MIX", "... OF 3 BASS"), the hints LEFT / RIGHT
@@ -940,7 +962,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     steps added up (FIT goes to them: 2 bars of 3/4 are 24). **Fewer where fewer were played** (4 asked after 2:
     2, and the line says CAUGHT ONLY 2 BARS: Claude's pick, 2026-11-25, open to the owner; the other way was to
     refuse) or where they would pass **20 s** (`kCatchLongest`, the longest recording, owner 2026-11-18: 4 bars
-    down to 48 BPM, 3 at 40). None whole: `bars` bars' worth up to now, as before. The lines are read with a
+    down to 48 BPM, 3 at 40). None whole: of THE MIX, `bars` bars' worth up to now, as before; **of one track,
+    nothing** (`caughtNoWholeBar`, NO WHOLE BAR OF 3 BASS YET: LET ONE GO BY; review fix, 2026-11-25: its ring holds
+    only what came since it was chosen, a step or half a bar, which was fitted to a step or two and said as a bar). The lines are read with a
     check (read again if a line was drawn meanwhile), never a lock.
   - **The rings are 25 s** (`kCatchFrames` 1,200,000; it was 480,000): the last whole bars end at the last bar line
     and up to a bar has gone by since, so 4 bars at 48 BPM (20 s) need 25 s behind the press. **Two rings**, the

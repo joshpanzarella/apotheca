@@ -45,8 +45,8 @@ New screens and gestures keep these; do not invent a variant.
 - **Hold R1** drags: paint from an empty step, carry from a note. **On SONG R1 is a tap**: on a cell or a scene's REPEATS box it copies; on another it pastes, and the copy stays (brass) until R1 on it clears it.
 - **Hold L1 on the grids** (drum grid, slices, roll) is the bar key: **+ R1 copies the bar, + A pastes it** (the copy stays for the next paste).
   So L1's own tap (the slices, the roll's zoom) acts on its LET GO, and only if nothing else was pressed meanwhile (a stick move included).
-- **Y** is the screen's special (chance, chord, mute, catch, roll).
-- **Hold Y + a direction moves a line where R1 is taken** (FX's effects: R1 is its track key). Not on the drum grid, where hold Y + a direction sets chance, a hit's slice and the lane dice.
+- **Y** is the screen's special (chance, chord, mute, catch, roll). **On the kit's lanes, the sampler and CLOUD's SOURCE a tap of Y catches, on its LET GO; hold Y + LEFT / RIGHT the bars (1, 2, 4), + UP / DOWN the mix or a track** (`catch_key.hpp`; batch S3, open to the owner).
+- **Hold Y + a direction moves a line where R1 is taken** (FX's effects: R1 is its track key). Not on the drum grid, where hold Y + a direction sets chance, a hit's start and the lane dice; **in the slice view hold Y + sideways moves the slice's cut**, every hit on it with it (batch S2, open to the owner; a hit's own start is slid on the plain grid).
 - **SELECT + something** is for whole-song things, on every tab; no screen sees a SELECT-held Y but the open song list's (a rev). **L2 / R2** are the tabs, and go round.
 - **A long list goes round on a press**; a held run and the stick stop at its end (`ui::listStep`). Tracks and FX's TYPE stop at the ends (owner, 2026-11-14).
 - **A held key runs at one of three paces** (`ui::Pace` through `ui::Repeat`, in `ui.hpp`): Cursor for cursors and values turned, List for lists and choices, Click for what hold X clicks. The list of recordings is the one named exception. **A full push of the stick held climbs on a cursor** (`ui::StickClimb`), nowhere else.

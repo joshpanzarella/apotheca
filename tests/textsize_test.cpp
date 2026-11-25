@@ -1018,6 +1018,47 @@ void testTheDrumGridsRows() {
     rig.frames(2);
     CHECK(std::string(drums.said()).find("SAVED \"") == 0);
     holds(rig, "the slice view, a slice saved", kDrumStrip);
+    // Saved on a hit with step effects: the said line has the row, the effects' summary waits (it ran into it).
+    StepFx full;
+    full.pitch = -12, full.ratchet = 4, full.reverse = true, full.cut = 2, full.throwTo = 3;
+    drums.setFx(5, 2, full);
+    rig.key(SDLK_a, true);
+    rig.tap(SDLK_w);
+    rig.key(SDLK_a, false);
+    rig.frames(2);
+    CHECK(std::string(drums.said()).find("SAVED \"") == 0);
+    holds(rig, "the slice view, a slice saved on a hit with step effects", kDrumStrip);
+    for (const textfit::Frame* f : {&lastLarge, &lastXl})
+        for (const textfit::Text& said : f->texts)
+            if (said.words.find("SAVED") == 0)
+                for (const textfit::Text& t : f->texts)
+                    if (&t != &said && t.y < said.y + said.h && said.y < t.y + t.h) CHECK(t.x >= said.x + said.w || t.x + t.w <= said.x);
+    drums.setFx(5, 2, StepFx());
+    // Saved from a recording whose name is as long as a saved one's may be (61 letters and " 1"): the stem is cut to
+    // the strip, never the number, at every size.
+    const std::string longest = "a very long " + std::string(49, 'w'); // (61, of the widest letter; the lane's name, its first nine, fits)
+    CHECK(longest.size() == 61 && writeWav(folder + "/" + longest + ".wav", sound, 48000) && sampleNameOk(longest + " 1"));
+    rig.session().setLaneSample(0, 5, longest);
+    rig.session().finishStretching();
+    rig.frames(2);
+    rig.key(SDLK_a, true);
+    rig.tap(SDLK_w);
+    rig.key(SDLK_a, false);
+    rig.frames(2);
+    CHECK(std::string(drums.said()) == "SAVED \"A VERY LONG " + std::string(49, 'W') + " 1\"");
+    holds(rig, "the slice view, a slice saved with the longest name", kDrumStrip);
+    int cut = 0;
+    for (const textfit::Frame* f : {&lastLarge, &lastXl})
+        for (const textfit::Text& t : f->texts)
+            if (t.words.find("SAVED") == 0) {
+                ++cut;
+                CHECK(t.words.size() > 4 && t.words.compare(t.words.size() - 5, 5, ".. 1\"") == 0 && t.x + t.w <= 632.f);
+            }
+    CHECK(cut == 2);
+    CHECK(std::remove((folder + "/" + longest + " 1.wav").c_str()) == 0);
+    rig.session().setLaneSample(0, 5, "a very long recording name");
+    rig.session().finishStretching();
+    rig.frames(2);
     drums.moveCursorTo(5, -1);
     rig.frames(2);
     holds(rig, "the slice view, on the lane's name", kDrumStrip);
@@ -1057,7 +1098,12 @@ void testTheDrumGridsRows() {
         CHECK(ui::gHintsOver == 0);
         drums.moveCursorTo(5, 0);
         drums.setStep(5, 0, 0.9f);
-        rig.tap(SDLK_z); // B on slice 1: SLICE 1 ALWAYS STARTS AT THE TOP
+        rig.key(SDLK_z, true); // hold B on slice 1: the bar fills, then SLICE 1 ALWAYS STARTS AT THE TOP
+        rig.frames(15);
+        holds(rig, "the slice view, B held on a hit's cut: the bar filling", kDrumStrip);
+        CHECK(drew("DELETING THE CUT..."));
+        rig.frames(25);
+        rig.key(SDLK_z, false);
         rig.key(SDLK_a, false);
         rig.frames(2);
         CHECK(std::string(drums.said()) == "SLICE 1 ALWAYS STARTS AT THE TOP");
@@ -1344,6 +1390,40 @@ void testTheOtherScreens() {
         rig.frames(1);
     }
     CHECK(pagesSeen == 10 + 6 + 9 + 6 + 3 + 4 + 6);
+    {
+        // Batch S3 (review): CLOUD's first page, Y held, the song playing: CATCH's choice at its longest (4 bars of a
+        // track with a ten-letter name), drawn whole on the page's heading row (the top bar's room cut it short).
+        for (int t = 0; t < kNumTracks; ++t)
+            if (project.tracks[t].kind == TrackKind::Cloud) project.track = t;
+        SynthScreen& cloud = rig.app.cloud();
+        cloud.goTo(1, 0);
+        char before[sizeof project.tracks[0].name];
+        std::memcpy(before, project.tracks[0].name, sizeof before);
+        session.setTrackName(0, "WWWWWWWWWW");
+        rig.tap(SDLK_RETURN); // START
+        rig.frames(2);
+        rig.key(Y, true);
+        rig.tap(RIGHT, 2);
+        rig.tap(DOWN);
+        rig.frames(1);
+        holds(rig, "CLOUD, Y held: CATCH's choice at its longest, playing");
+        CHECK(drew("CATCH THE LAST 4 BARS OF 1 WWWWWWWWWW") && ui::gHintsOver == 0);
+        int whole = 0;
+        for (const textfit::Frame* frame : {&lastLarge, &lastXl})
+            for (const textfit::Text& t : frame->texts)
+                if (t.words == "CATCH THE LAST 4 BARS OF 1 WWWWWWWWWW") {
+                    ++whole;
+                    CHECK(t.x + t.w <= 632.5f && t.y > ui::kTopBarH);
+                }
+        CHECK(whole == 2);
+        rig.key(Y, false);
+        rig.tap(SDLK_RETURN);
+        session.stepCatchFrom(-1);
+        session.stepCatchBars(-1);
+        session.stepCatchBars(-1);
+        session.setTrackName(0, before);
+        rig.frames(1);
+    }
 
     // A synth's own preset (gesture audit G01, G30): the name keys at their longest, saying save and then replace;
     // what is said in the top bar after, a long own name on MAIN, and the bar while B deletes it.
@@ -1844,6 +1924,31 @@ void testTheOtherScreens() {
         CHECK(ui::gHintsOver == 0);
         for (const textfit::Text& t : lastXl.texts)
             if (t.words.find("SAVED") == 0) CHECK(t.x + t.w <= ui::kScreenW - 8);
+        // From a recording in the samples folder itself with a 61-letter name: SAVED "QQQ... 1", its stem cut, its number kept.
+        rig.tap(SDLK_z);
+        const std::string longest = "a very long " + std::string(49, 'w'); // (61, of the widest letter)
+        std::vector<float> tenSeconds(480000, 0.f); // (PLAYS 10.00 S on the right: wider at XL than PLAYS 0.50 S)
+        for (std::size_t i = 0; i < tenSeconds.size(); ++i) tenSeconds[i] = 0.4f * std::sin(static_cast<float>(i) * 0.05f);
+        CHECK(longest.size() == 61 && writeWav(samples + "/" + longest + ".wav", tenSeconds, 48000));
+        session.setLaneSample(0, 6, longest);
+        session.finishStretching();
+        rig.app.kit().goTo(6, KitScreen::kEdit);
+        rig.app.kit().openEdit(kEditGain);
+        rig.frames(2);
+        rig.tap(SDLK_w); // R1
+        CHECK(rig.app.kit().said() == "SAVED \"A VERY LONG " + std::string(49, 'W') + " 1\"");
+        holds(rig, "a lane's EDIT, SAVED said with a 61-letter name");
+        int cut = 0;
+        for (const textfit::Frame* f : {&lastLarge, &lastXl})
+            for (const textfit::Text& t : f->texts)
+                if (t.words.find("SAVED") == 0) {
+                    ++cut;
+                    CHECK(t.words.compare(t.words.size() - 5, 5, ".. 1\"") == 0 && t.x + t.w <= 8.f + 7.f + 624.f - 120.f + 0.5f);
+                }
+        CHECK(cut == 2);
+        CHECK(std::remove((samples + "/" + longest + " 1.wav").c_str()) == 0 && std::remove((samples + "/" + longest + ".wav").c_str()) == 0);
+        session.setLaneSample(0, 6, deep);
+        session.finishStretching();
         rig.tap(SDLK_z);
         rig.app.kit().goTo(6, KitScreen::kFit);
         rig.key(SDLK_x, true); // A held

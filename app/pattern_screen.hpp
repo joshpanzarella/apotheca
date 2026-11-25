@@ -261,7 +261,7 @@ private:
     // SLICES AT THE HITS (batch S2): the slice view's own cuts.
     void moveCut(float by);          // Y held on a hit, sideways: its slice's cut, the hits on it with it
     void addCut();                   // ...A: a cut added inside its slice
-    void deleteCut();                // ...B: its slice's cut deleted
+    void deleteCut();                // ...hold B: its slice's cut deleted, once the bar has filled
     void senseTurn(int by);          // hold A on the lane's name, LEFT / RIGHT: EVEN, AT HITS 1..10
     void sayCut(Session::Cut why);   // why a cut was not made, for a moment
     const char* cutsWord(char* text, int size) const; // EVEN, AT HITS 5, BY HAND, FINDING...
@@ -295,6 +295,14 @@ private:
     bool evening_ = false;  // ...and R1 or L1 made the lane EVEN in this hold: LEFT / RIGHT turn it
     int evenHits_ = 0, evenTurn_ = 0;
     bool yDidSomething_ = false; // this hold of Y already placed or turned, so letting go is not a tap
+    // Y held on a hit in the slice view, B held: the bar fills for kCutDeleteMs, then its slice's cut is deleted
+    // (the buttons' standards: hold B deletes; SEL + B brings it back). Let go early, or Y, the hit or the view
+    // gone from under it: nothing is deleted.
+    static constexpr Uint32 kCutDeleteMs = ui::kHoldUndoneMs;
+    bool cutDeleting_ = false;
+    Uint32 cutDeleteSince_ = 0;
+    float cutDeletePart_ = 0.f;
+    int cutDeleteLane_ = -1, cutDeleteStep_ = -1;
     Axis axis_ = Axis::None; // the stick does one job at a time until it is let go
     Turning turning_ = Turning::Nothing;
 

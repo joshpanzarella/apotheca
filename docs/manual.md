@@ -131,7 +131,8 @@ TYPE changed comes back with its old settings and automation), its sends,
 its sound (preset, settings, macros, and a recording: a kit lane's with its
 FIT, cut and synth voice, a sampler's, a CLOUD's), its GLIDE FROM, the
 master's effects and the buses' (their LEVEL too). So a Catch, a take or a B
-on SOUND is put back with SELECT + B. Tempo, mutes, names, a recording
+on SOUND is put back with SELECT + B. Tempo (but for the tempo from a loop:
+hold A + left / right on FIT), mutes, names, a recording
 deleted from the card and a track deleted or given another instrument are
 not. The song keeps playing while you undo.
 
@@ -2121,7 +2122,7 @@ Everything the grid does works the same here. What is added:
 | **Hold A + right / left on the lane's name** | **Cut at the hits**: the slices are cut where the recording's drums land, not evenly. Each push is a step of SENSITIVITY, from EVEN (sixteen even slices, as before) through AT HITS 1 (only the loudest hits) to AT HITS 10 (soft ghost notes too). See "Slices at the hits" below. |
 | **Hold Y on a hit, left / right** | **Move its slice's cut** a millisecond earlier or later (the stick slides it), and every hit that starts on that cut with it. Heard as it moves. |
 | **Hold Y on a hit, A** | **Add a cut** inside its slice: where a hit was passed by (the strongest one there), or else in its middle |
-| **Hold Y on a hit, B** | **Delete its slice's cut**: the slice joins the one before, and the hits on it start there |
+| **Hold Y on a hit, hold B** | **Delete its slice's cut** once the bar under the strip has filled (half a second; SELECT + B brings it back): the slice joins the one before, and the hits on it start there. A tap of B deletes nothing. |
 
 So, to chop a break: put it on a lane, FIT it to 1 bar, L1, hold R1 and
 sweep the stick across. That is the break as it was, in sixteen hits. Now
@@ -2156,8 +2157,8 @@ playing in. The picture draws each cut where it is.
   drum.
 - **Fix one by hand**: hold Y on a hit and press left / right to move its cut
   a millisecond at a time (the stick slides it); hold Y and press **A** to add a
-  cut inside its slice (where a softer hit was passed by), or **B** to delete
-  its cut. The first slice always starts at the top of the sound. Moving,
+  cut inside its slice (where a softer hit was passed by), or hold **B** to
+  delete its cut (a bar fills for half a second). The first slice always starts at the top of the sound. Moving,
   adding or deleting a cut on EVEN slices makes them the lane's own: the box
   says **BY HAND**. Up to 64 slices.
 - A long recording (over 4 seconds) is looked at while you carry on: the box
@@ -2201,7 +2202,7 @@ again: then YOUR OWN).
 | On | Hold A + stick up / down | B |
 | --- | --- | --- |
 | SOUND | From the built-in drum: UP each recording by name, DOWN the twelve synth models. Heard as it changes. **B with A still held: the lane as it was when A went down** (its EDIT and FIT too) | The drum back |
-| FIT TO | Off, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64 steps, read as bars of the scene's meter where they are whole (16 is 1 BAR in 4/4; 12 is 1 BAR in 3/4, 24 two, 48 four). **A tap of A on a recording: the bars it fills at the tempo** (1, 2 or 4 bars in the scene's meter, or one of the stops under a bar for a short one). From a count between those (20 steps, two bars of a 10-step meter), hold A + down goes to the one below it (16), up to the one above (24). **Hold A + left / right on a recording: the tempo from it** (below) | Off |
+| FIT TO | Off, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64 steps, read as bars of the scene's meter where they are whole (16 is 1 BAR in 4/4; 12 is 1 BAR in 3/4, 24 two, 48 four). **A tap of A on a recording: the bars it fills at the tempo** (the scene's own, if it has one) (1, 2 or 4 bars in the scene's meter, or one of the stops under a bar for a short one). From a count between those (20 steps, two bars of a 10-step meter), hold A + down goes to the one below it (16), up to the one above (24). **Hold A + left / right on a recording: the tempo from it** (below) | Off |
 | CHOKE | None, 1, 2 | None |
 | EDIT | (A opens the lane's EDIT view, below) | |
 
@@ -2342,7 +2343,7 @@ synth voice with it (the catch's file stays in `catches`).
 | Hold Y + | Does |
 | --- | --- |
 | LEFT / RIGHT | **1, 2 or 4 bars** (the ends stop) |
-| UP / DOWN | **THE MIX** (everything, as it was heard), or **one track alone**, 1 to the last (the ends stop) |
+| UP / DOWN | **THE MIX** (everything, as it was heard), or **one track alone**, 1 to the last (the ends stop; hold it to run through them) |
 
 The stick does the same, one choice a push. Let go of Y after choosing and nothing is caught; tap it
 to catch. The choice stays until you change it (it is not saved with the song).
@@ -2354,7 +2355,8 @@ to catch. The choice stays until you change it (it is not saved with the song).
 - **One track alone**: what that track puts out after its own effects and level, **muted or not, with
   no soloing**: a muted bass can be caught while the rest plays on. Not its pan, and not what it sends
   to the buses. The handheld starts remembering a track when you choose it, so its bars count from
-  then: choose, let a bar or more go by, then tap Y.
+  then: choose, let a bar or more go by, then tap Y. Before a whole bar of it has gone by nothing is
+  caught, and the line says `NO WHOLE BAR OF 3 BASS YET: LET ONE GO BY`.
 
 **R1 is Record.** With a USB microphone or audio interface plugged into the
 USB-C port: R1 on a lane starts it waiting for sound, so there is no silence
@@ -2371,15 +2373,16 @@ second after the tempo stops moving. The work is done ahead of time on
 another thread and swapped in when ready, so it never costs the sound
 anything while playing. Until it is ready the lane plays what it had.
 **A tap of A on FIT** picks the length for you: the bars the recording (as
-EDIT cuts it) lasts at the tempo, rounded to 1, 2 or 4 bars of the scene's
+EDIT cuts it) lasts at the tempo (the scene's own, if it has one), rounded to 1, 2 or 4 bars of the scene's
 meter (or 1, 2, 3, 4, 6, 8 or 12 steps for a short one, those under a bar). Hold A + up / down still
 moves it one stop at a time. Nothing happens on the built-in drum or a synth
 voice.
 
 **The tempo from a loop: hold A + right (or left) on FIT.** The other way
 round: the song's tempo is set so the recording (as EDIT cuts it) fills 1, 2
-or 4 bars of the scene's meter, the nearest to the tempo now first, as a
-whole number between 40 and 240. Again with A held: **right** doubles the
+or 4 bars of the scene's meter, the nearest to the tempo now first (either
+way: a loop already at the song's tempo with FIT OFF keeps the tempo and
+gets FIT), as a whole number between 40 and 240. Again with A held: **right** doubles the
 bars (a faster tempo), **left** halves them. FIT goes to those bars with it,
 so the loop plays as it is and stays in time if the tempo moves later. The
 line at the top says TEMPO 123: IT FILLS 2 BARS. **One step of undo, the

@@ -264,6 +264,20 @@ void keyWords(const char* key, Each each) {
 }
 } // namespace
 
+std::string cutToRoom(std::string line, const Font& font, float room) {
+    if (font.width(line.c_str()) <= room) return line;
+    const std::size_t open = line.find('"'), space = line.rfind(' ');
+    if (line.size() > 2 && line.back() == '"' && open != std::string::npos && space != std::string::npos && space > open + 1) {
+        std::string head = line.substr(0, space);
+        const std::string tail = ".." + line.substr(space);
+        while (head.size() > open + 1 && font.width((head + tail).c_str()) > room) head.pop_back();
+        while (head.size() > open + 1 && head.back() == ' ') head.pop_back(); // (no space before the dots)
+        return head + tail;
+    }
+    while (line.size() > 1 && font.width(line.c_str()) > room) line.pop_back();
+    return line;
+}
+
 std::string keyShown(const char* key) {
     static const char* const kNames[4] = {"UP", "DOWN", "LEFT", "RIGHT"};
     std::string shown;

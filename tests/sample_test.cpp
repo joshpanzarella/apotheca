@@ -973,8 +973,8 @@ void testCatchingBarsAndATrack() {
     rig.tap(LEFT);
     rig.key(Y, false);
     CHECK(session.catchBars() == 2);
-    rig.tap(LEFT, 3); // (Y let go: the cursor moves again)
-    CHECK(kit.cursorColumn() != KitScreen::kSound || kit.cursorLane() == 6);
+    rig.tap(LEFT, 3); // (Y let go: the cursor moves again, round the four columns from SOUND to FIT)
+    CHECK(kit.cursorColumn() == KitScreen::kFit && kit.cursorLane() == 6);
     kit.goTo(7, KitScreen::kSound);
     rig.tap(Y);
     CHECK(track.laneFit[7] == 32 && session.caughtBars() == 2 && kit.said().find("CAUGHT THE LAST 2 BARS AS") == 0);
@@ -1035,6 +1035,21 @@ void testCatchingBarsAndATrack() {
     session.stepCatchFrom(-1);
     session.stepCatchFrom(-1);
     CHECK(session.catchFrom() == -1);
+    // One track chosen half a bar ago: no whole bar of it since, so nothing is caught (a sliver fitted to a few steps
+    // and called a bar was), and the line says to let one go by.
+    session.stepCatchFrom(1);
+    rig.frames(1);
+    rig.render(8 * kStep);
+    kit.goTo(2, KitScreen::kSound);
+    const std::size_t before = wavNames(folder).size();
+    rig.tap(Y);
+    CHECK(track.laneSample[2][0] == 0 && track.laneFit[2] == 0 && wavNames(folder).size() == before && session.caughtNoWholeBar());
+    CHECK(kit.said().find("NO WHOLE BAR OF 1 ") == 0 && kit.said().find(" YET: LET ONE GO BY") != std::string::npos);
+    // Two bars later it is caught (a whole bar, bar line to bar line, has gone by).
+    rig.render(32 * kStep);
+    rig.tap(Y);
+    CHECK(std::string(track.laneSample[2]).find("catches/") == 0 && !session.caughtNoWholeBar() && session.caughtBars() >= 1);
+    session.stepCatchFrom(-1);
     rig.tap(START);
 
     // The sampler: the same Y.
@@ -1052,6 +1067,28 @@ void testCatchingBarsAndATrack() {
     CHECK(std::string(rig.project().tracks[2].sample).find("catches/") == 0 && session.caughtBars() == 2);
     CHECK(rig.app.sampler().said().find("CAUGHT") == 0);
     rig.tap(START);
+    // Y held, DOWN held: it runs on through the tracks at a list's pace (three here), stopping at the last.
+    CHECK(session.catchFrom() == -1 && rig.project().trackCount() == 3);
+    const std::size_t caught = wavNames(folder).size();
+    rig.key(Y, true);
+    rig.key(DOWN, true);
+    rig.frames(11); // (176 ms: the press's one; a list waits 200 before it runs, a cursor 170)
+    CHECK(session.catchFrom() == 0);
+    rig.frames(4); // (240 ms: the first run, at 200)
+    CHECK(session.catchFrom() == 1);
+    rig.key(DOWN, false); // let go: it stops there
+    rig.frames(20);
+    CHECK(session.catchFrom() == 1);
+    rig.key(DOWN, true);
+    rig.frames(25);
+    CHECK(session.catchFrom() == 2); // (the end stops)
+    rig.key(DOWN, false);
+    rig.key(UP, true);
+    rig.frames(30);
+    rig.key(UP, false);
+    CHECK(session.catchFrom() == -1); // (UP held back to THE MIX, the end)
+    rig.key(Y, false);
+    CHECK(wavNames(folder).size() == caught); // (a choice: nothing caught)
 }
 
 // BOUNCE THIS TRACK INTO SAMPLES (batch S3; Session::Bounce::ToSamples): the track alone, muted or not, its scene
@@ -1105,10 +1142,24 @@ void testBouncingIntoSamples() {
     rig.frames(2);
     rig.tap(A);
     CHECK(rig.project().tracks[0].laneFit[3] == 16);
-    // The next is "drums 2"; a named track goes by its name.
+    // A scene with its own tempo (60 in a 120 song): the bounce is made at 60 (a bar is 4 s), and the tap fits it
+    // to that bar at the scene's tempo, not 2 bars at the song's.
+    session.setSceneTempo(rig.project().scene, 60.f);
+    rig.frames(2);
     CHECK(session.startBounce(Session::Bounce::ToSamples));
     session.finishBounce();
-    CHECK(session.bounceSample() == "bounces/drums 2");
+    CHECK(session.bounceSampleSteps() == 16 && readWav(folder + "/" + session.bounceSample() + ".wav", file) && file.size() == 32u * kStep);
+    session.setLaneSample(0, 4, session.bounceSample());
+    rig.app.kit().goTo(4, KitScreen::kFit);
+    rig.frames(2);
+    rig.tap(A);
+    CHECK(rig.project().tracks[0].laneFit[4] == 16);
+    session.setSceneTempo(rig.project().scene, 0.f);
+    rig.frames(2);
+    // The next is "drums 3"; a named track goes by its name.
+    CHECK(session.startBounce(Session::Bounce::ToSamples));
+    session.finishBounce();
+    CHECK(session.bounceSample() == "bounces/drums 3");
     session.setTrackName(0, "BEAT");
     CHECK(session.startBounce(Session::Bounce::ToSamples));
     session.finishBounce();
@@ -3300,6 +3351,47 @@ bool sameCuts(const LaneCuts& a, const LaneCuts& b) {
     return true;
 }
 
+// In order is by a hit's place in the lane's FIT, the same in every bar: the whole break hit at the top of bars 1, 3
+// and 4 stays at the top, and a bar painted in order in bar 2 is in order there as in bar 1 (review fix, 2026-11-25:
+// bar 2 step 1 was read as slice 17, round past the count, and bars 3 and 4 came to cuts mid-break).
+void testSlicesAtTheHitsInEveryBar() {
+    const std::string folder = tempFolder("samples-hits-bars");
+    CHECK(writeWav(folder + "/break.wav", theBreak(), 48000));
+    Rig rig(folder);
+    Session& session = rig.session();
+    TrackData& track = rig.project().tracks[0];
+    session.setLaneSample(0, 2, "break");
+    session.setLaneFit(0, 2, 16);
+    CHECK(rig.settle());
+    for (int bar = 0; bar < 4; ++bar) {
+        DrumPattern& p = track.drums[0][bar];
+        for (int s = 0; s < kSteps; ++s) {
+            const bool hit = bar == 1 || s == 0;
+            p.level[2][s] = hit ? 0.9f : 0.f;
+            p.start[2][s] = bar == 1 ? s / 16.f : 0.f;
+        }
+    }
+    // Nine cuts (the ghost counted): 16, 32 and 48 round past nine are not the top, as they are round past eight.
+    CHECK(session.cutLaneAtHits(0, 2, kSenseMost) == Session::Cut::Done && track.laneCuts[2].count == 9);
+    for (int bar : {0, 2, 3}) CHECK(track.drums[0][bar].start[2][0] == 0.f);
+    for (int s = 0; s < kSteps; ++s) CHECK(track.drums[0][1].start[2][s] == session.laneCutAt(0, 2, s % 9));
+    CHECK(session.cutLaneAtHits(0, 2, 1) == Session::Cut::Done && track.laneCuts[2].count == 8); // (another SENSITIVITY: the tops stay)
+    for (int bar : {0, 2, 3}) CHECK(track.drums[0][bar].start[2][0] == 0.f);
+    for (int s = 0; s < kSteps; ++s) CHECK(track.drums[0][1].start[2][s] == session.laneCutAt(0, 2, s % 8));
+    CHECK(session.cutLaneAtHits(0, 2, 0) == Session::Cut::Done && track.laneCuts[2].even());
+    for (int bar : {0, 2, 3}) CHECK(track.drums[0][bar].start[2][0] == 0.f);
+    for (int s = 0; s < kSteps; ++s) CHECK(track.drums[0][1].start[2][s] == s / 16.f);
+    // FIT of 2 bars (32 even slices): bar 2 is the second half of the break, in order there.
+    session.setLaneFit(0, 2, 32);
+    CHECK(rig.settle());
+    for (int s = 0; s < kSteps; ++s) track.drums[0][1].start[2][s] = (16 + s) / 32.f;
+    CHECK(session.cutLaneAtHits(0, 2, kSenseMost) == Session::Cut::Done);
+    for (int s = 0; s < kSteps; ++s) CHECK(track.drums[0][1].start[2][s] == session.laneCutAt(0, 2, 16 + s));
+    for (int bar : {0, 2, 3}) CHECK(track.drums[0][bar].start[2][0] == 0.f);
+    CHECK(session.cutLaneAtHits(0, 2, 0) == Session::Cut::Done);
+    for (int s = 0; s < kSteps; ++s) CHECK(track.drums[0][1].start[2][s] == (16 + s) / 32.f);
+}
+
 // Hold A on the slice view's lane name, LEFT / RIGHT: EVEN, AT HITS 1..10. The hits follow: in order stays in
 // order, each on a hit; any other to the cut at or before it (in every scene). ONE SLICE plays to the next cut.
 void testSlicesAtTheHits() {
@@ -3507,19 +3599,37 @@ void testCutsByHand() {
     rig.tap(A);
     rig.key(Y, false);
     CHECK(drums.slices() == 10 && near(session.laneCutAt(0, 2, 2), (session.laneCutAt(0, 2, 1) + session.laneCutAt(0, 2, 3)) / 2.f));
-    // Y + B on step 2 (slice 4 now: the hit at 0.5 s): its cut deleted, the hits on it to the cut before (the
-    // middle one just added).
+    // Y + hold B on step 2 (slice 4 now: the hit at 0.5 s): the bar fills for half a second (the buttons'
+    // standards: hold B deletes), then its cut is deleted, the hits on it to the cut before (the middle one just added).
     drums.moveCursorTo(2, 2);
     const float middle = session.laneCutAt(0, 2, 2);
     CHECK(drums.sliceOf(2) == 3);
     rig.key(Y, true);
-    rig.tap(B);
+    rig.frames(1);
+    CHECK(hintsFit(rig)); // (HOLD B delete it)
+    rig.tap(B); // a tap: nothing deleted, and said why
+    CHECK(drums.slices() == 10 && std::string(drums.said()) == "HOLD B TO DELETE THE CUT");
+    rig.key(B, true);
+    rig.frames(20); // (320 ms: under the half second)
+    CHECK(drums.slices() == 10);
+    rig.key(Y, false); // Y let go: called off
+    rig.frames(20);
+    rig.key(B, false);
+    CHECK(drums.slices() == 10);
+    rig.key(Y, true);
+    rig.key(B, true);
+    rig.frames(20);
+    CHECK(drums.slices() == 10);
+    rig.frames(15); // (560 ms)
+    rig.key(B, false);
     rig.key(Y, false);
     CHECK(drums.slices() == 9 && drums.start(2, 2) == middle && drums.start(2, 10) == middle && drums.level(2, 2) > 0.f && drums.chance(2, 2) == 1.f);
     // ...and on slice 1: the top stays.
     drums.moveCursorTo(2, 0);
     rig.key(Y, true);
-    rig.tap(B);
+    rig.key(B, true);
+    rig.frames(35);
+    rig.key(B, false);
     rig.key(Y, false);
     CHECK(drums.slices() == 9 && std::string(drums.said()) == "SLICE 1 ALWAYS STARTS AT THE TOP");
     // Not on the plain grid: Y + B there deletes nothing and adds nothing.
@@ -3705,6 +3815,37 @@ void testFindingHitsOnAThread() {
         SDL_Delay(2);
     }
     CHECK(track.laneCuts[2].sense == 2 && track.laneCuts[2].count == 24);
+    // Back to EVEN while FINDING...: EVEN stands when the hits land (review fix, 2026-11-25: AT HITS 1 was put on).
+    session.setLaneSample(0, 2, "short");
+    session.setLaneSample(0, 2, "long");
+    CHECK(track.laneCuts[2].even());
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    CHECK(session.findingHits(0, 2) && session.senseShown(0, 2) == 1);
+    rig.tap(LEFT);
+    CHECK(session.findingHits(0, 2) && session.senseShown(0, 2) == 0);
+    rig.key(A, false);
+    for (int i = 0; i < 500 && session.findingHits(0, 2); ++i) {
+        rig.frames(1);
+        SDL_Delay(2);
+    }
+    CHECK(!session.findingHits(0, 2) && track.laneCuts[2].even() && track.laneCuts[2].sense == 0);
+    // ...and an undo while FINDING...: what it put back stands.
+    session.setLaneSample(0, 2, "short");
+    session.setLaneSample(0, 2, "long");
+    rig.frames(60);
+    CHECK(session.addLaneCut(0, 2, 0) == Session::Cut::Done && track.laneCuts[2].count == 17); // (BY HAND: what the undo keeps)
+    rig.frames(60);
+    session.setLaneOneSlice(0, 2, true);
+    rig.frames(60);
+    CHECK(session.cutLaneAtHits(0, 2, 3) == Session::Cut::Finding);
+    CHECK(session.undo() && !track.laneOneSlice[2]);
+    for (int i = 0; i < 500 && session.findingHits(0, 2); ++i) {
+        rig.frames(1);
+        SDL_Delay(2);
+    }
+    CHECK(!session.findingHits(0, 2) && track.laneCuts[2].count == 17 && track.laneCuts[2].sense == 0);
+    CHECK(session.cutLaneAtHits(0, 2, 3) == Session::Cut::Done && track.laneCuts[2].sense == 3); // (the hits were kept: at once)
 }
 
 // Recordings kept in folders: the list shows a folder at a time, L1 and R1 turn them.
@@ -4929,6 +5070,30 @@ void testTheTempoFromALoop() {
     rig.tap(LEFT);
     rig.key(A, false);
     CHECK(rig.project().tempo == 120.f && track.laneFit[1] == 32);
+    // Its undo puts back the tempo that stood at the gesture (150, set with no edit after the last settle), not the
+    // tempo of the step's text; its redo the tempo it set.
+    rig.frames(60);
+    CHECK(session.undo() && rig.project().tempo == 150.f && track.laneFit[1] == 0);
+    CHECK(session.redo() && rig.project().tempo == 120.f && track.laneFit[1] == 32);
+    // The song at one of the loop's tempos with FIT OFF: the first press is the nearest (FIT to its bars), either way.
+    session.setLaneFit(0, 1, 0);
+    rig.frames(60);
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    rig.key(A, false);
+    CHECK(rig.project().tempo == 120.f && track.laneFit[1] == 32 && kit.said() == "TEMPO 120: IT FILLS 2 BARS");
+    session.setLaneFit(0, 1, 0);
+    rig.frames(60);
+    rig.key(A, true);
+    rig.tap(LEFT);
+    rig.key(A, false);
+    CHECK(rig.project().tempo == 120.f && track.laneFit[1] == 32);
+    // Only FIT moved: its undo leaves the tempo where it is then (130, set after).
+    session.setTempo(130.f);
+    rig.frames(60);
+    CHECK(session.undo() && track.laneFit[1] == 0 && rig.project().tempo == 130.f);
+    CHECK(session.redo() && track.laneFit[1] == 32 && rig.project().tempo == 130.f);
+    session.setTempo(120.f);
     // At an end, as it is already: no step.
     session.setTempo(240.f);
     session.setLaneFit(0, 1, 64);
@@ -5109,6 +5274,7 @@ int main(int argc, char** argv) {
     }
     if (argc > 1 && std::strcmp(argv[1], "--hits") == 0) { // SLICES AT THE HITS alone (batch S2)
         testSlicesAtTheHits();
+        testSlicesAtTheHitsInEveryBar();
         testCutsByHand();
         testCutsAreKept();
         testFindingHitsOnAThread();
@@ -5124,6 +5290,7 @@ int main(int argc, char** argv) {
     testTheSliceView();
     testOneSliceIsKeptInTheSong();
     testSlicesAtTheHits();
+    testSlicesAtTheHitsInEveryBar();
     testCutsByHand();
     testCutsAreKept();
     testFindingHitsOnAThread();

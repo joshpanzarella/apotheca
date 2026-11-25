@@ -769,6 +769,11 @@ std::string Session::catchLastBar(int track, int lane) {
     const int from = catchFrom();
     const Engine::Caught caught = engine.lastBars(catchBars_, from);
     caughtBars_ = caught.bars, caughtFrom_ = from;
+    // One track with no whole bar heard since it was chosen: what there is is only that since (a step, or half a
+    // bar), not a bar; caught, it was fitted to a step or two and said as a bar (review fix, 2026-11-25). Nothing,
+    // and the line says to let a bar go by. (The mix is always heard: no whole bar there is a bar's worth, as ever.)
+    caughtNoBar_ = from >= 0 && caught.bars == 0;
+    if (caughtNoBar_) return "";
     const std::vector<float>& bar = caught.sound;
     const int barSteps = caught.steps;
     float peak = 0.f;
@@ -1021,6 +1026,9 @@ Session::Cut Session::cutLaneAtHits(int track, int lane, int sense) {
     const LaneSound& sound = sounds_[track][lane];
     if (!sound.recording || sound.missing || !sound.shaped || sound.shaping) return Cut::NoSound;
     sense = sense < 0 ? 0 : (sense > kSenseMost ? kSenseMost : sense);
+    // EVEN asked while this lane's hits are still being found: the job, when it lands, only keeps the hits (review
+    // fix, 2026-11-25: it put on the SENSITIVITY asked before, over the EVEN asked after).
+    if (sense == 0 && findingHits(track, lane)) hitsSense_ = 0;
     const LaneCuts was = project.tracks[track].laneCuts[lane];
     const int even = evenSlices(track, lane);
     LaneCuts now; // EVEN
@@ -1047,9 +1055,12 @@ Session::Cut Session::cutLaneAtHits(int track, int lane, int sense) {
     }
     if (now == was) return Cut::Same;
     // A hit in order stays in order (a break painted in order: each step its own slice, now on a hit); any other
-    // to the cut at or before where it starts (it plays from the hit it was in).
+    // to the cut at or before where it starts (it plays from the hit it was in). In order is by the hit's place in
+    // the lane's FIT (`even` steps: a bar, or 2 or 4), so every bar painted in order is the same bar: the whole
+    // break hit at the top of bar 2, 3 or 4 is slice 1 there, not slice 17, 33 or 49 (review fix, 2026-11-25:
+    // round past the count, those came to a cut in the middle of the break).
     moveLaneHits(track, lane, [&](int bar, int step, float start) {
-        const int own = bar * kSteps + step;
+        const int own = (bar * kSteps + step) % even;
         if (std::fabs(start - slices::cutStart(was, even, own)) <= slices::kHair) return slices::cutStart(now, even, own);
         return slices::cutStart(now, even, slices::sliceAt(now, even, start));
     });
@@ -1065,7 +1076,9 @@ void Session::finishHits(bool wait) {
     if (sound.shaped != job->of) return; // the lane has moved on: looked at again when asked
     sound.hits = std::move(job->found);
     sound.hitsOf = job->of;
-    cutLaneAtHits(job->track, job->lane, hitsSense_);
+    const int sense = hitsSense_;
+    hitsSense_ = 0;
+    if (sense > 0) cutLaneAtHits(job->track, job->lane, sense); // (0: EVEN or an undo came after the ask: kept only)
 }
 
 Session::Cut Session::moveLaneCut(int track, int lane, int k, float to) {
@@ -1170,9 +1183,10 @@ bool Session::setTempoFromLoop(int track, int lane, float bpm, int bars) {
     const int fit = bars * project.meterOf(project.scene);
     if (bpm == project.tempo && project.tracks[track].laneFit[lane] == fit) return true; // (as it is: no step)
     // Its own step: what was being edited just before is a step already, and nothing after joins this one. The
-    // step is marked to put the tempo back (no other tempo change is undone: songs-and-undo.md).
+    // step keeps the tempo to put back (no other tempo change is undone: songs-and-undo.md); only FIT moving,
+    // it keeps none, so its undo leaves the tempo where it is then.
     beginOwnUndoStep();
-    if (undoReady_ && !undo_.empty()) undo_.back().tempo = true;
+    if (undoReady_ && !undo_.empty() && bpm != project.tempo) undo_.back().tempo = project.tempo;
     setTempo(bpm);
     setLaneFit(track, lane, fit);
     endOwnUndoStep();
