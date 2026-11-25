@@ -74,6 +74,7 @@
 //   hold X, left / right     RATCHET  the hit played 2, 3 or 4 times inside its step
 //   hold X, L1               REVERSE  backwards, on and off
 //   hold X, R1               CUT      stopped after a step, half a step, a quarter; off
+//   hold X, B                all of them (and THROW) emptied: the hit stays, plain. One step of undo
 //
 // They combine, and each hit has its own. Marks on the block: slits for a
 // ratchet, an arrow for backwards, a red edge for a cut, and a dash beside
@@ -88,6 +89,7 @@
 //   hold X, up / down        HUMAN LEVEL  each hit up to 15% louder or quieter
 //   hold X, Y                the dice: a small feel (10 or 25%)
 //   hold X, A                this lane's feel onto every lane of the kit
+//   hold X, B                this lane's feel and SWING back to OFF
 //
 // A lane with a feel wears a purple mark at the left of its name.
 //
@@ -242,6 +244,7 @@ private:
     void fxTurn(Button direction);   // with X held: one click of pitch (up / down) or ratchet (left / right)
     void fxRoll();                   // with X held, Y: the dice set the hit's step effects
     void fxThrow();                  // with X held, A: its THROW a step round (off, ECHO, SPACE, both)
+    void fxEmpty();                  // with X held, B: what X shows emptied (a hit's effects; a lane's FEEL and SWING), the hit kept
     void hearHit();                  // the hit under the cursor, as the pattern would play it
     void feelTurn(Button direction); // with X held on a lane's name: one click of HUMAN TIME (left / right) or HUMAN LEVEL (up / down)
     void feelRoll();                 // ...Y: the dice set the lane's feel, small amounts
@@ -283,6 +286,8 @@ private:
     float fxSaved_ = 0.f;  // part-clicks saved up while the stick is held over
     bool fxWas_ = false;
     bool fxWait_ = false; // the stick was already over when X went down: it does nothing until it has been let go
+    bool fxLastFrame_ = false; // X was held on a hit or a lane's name last frame (its hit can go from under it)
+    bool stickWait_ = false;   // X let go with the stick still pushed: the stick does nothing until it comes back (as FX and DEVICE)
     bool slicing_ = false; // the slice view is showing
     char said_[96] = "";   // a line said for a moment (why a lane cannot be sliced)
     Uint32 saidUntil_ = 0;

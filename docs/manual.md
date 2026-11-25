@@ -720,7 +720,9 @@ length they had for one-bar scenes.)
 
 Every scene plays at the song's tempo in 4/4 until it is given its own. On
 the scene's `x2` box on SONG, **hold L1: up / down is its tempo in BPM, left /
-right the steps in its bars** (a bar of 12 is 3/4, of 8 is 2/4). **B** puts
+right the steps in its bars** (a bar of 12 is 3/4, of 8 is 2/4), with the
+D-pad or the stick (the stick turns the tempo fast, and the steps a click at
+once, then slowly; one job a push). **B** puts
 both back (the tempo follows the song, 16 steps). A line says each as it is
 turned. Only the first steps of a pattern bar play in a short bar; the rest
 are shaded on the grids and kept, as past a cut. The metronome clicks the
@@ -1452,7 +1454,7 @@ The track columns share the width of the screen: with few tracks they are wide.
 | A track's head (up from the top scene, with the D-pad) | **A** (a quick tap) changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go (the list warns UNSAVED PATCHES WILL BE LOST). This cannot be undone. Held, it is the mixer: once its card is up, letting go never changes it, turned or not. While it is held the head fills with the level, as a lane's name does. **R1**, on its let go, types its name. **Hold L1 and press R1** copies the track: a new track right after it with the same instrument, sound, effects, sends, MODs, mixer, name and every scene's patterns (the tracks after it move a place along; twelve is the most). The copy is not soloed. It is not undone by SELECT + B: hold B on the copy deletes it. **Hold B** two seconds deletes the track. Y and X work there as on its cells. | | | |
 | A track (any of its cells) | **Y** mutes it and **X** solos it, each a tap, at once, playing or not; again to undo. X does not hear the track here: on its DEVICE page it does. L1 does nothing on a track. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. | | | |
 | A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted. The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
-| A repeat count | Tap: 1, 2, 4, 8. **R1** copies the whole scene; **R1** on another row pastes it there, on its let go, and the copy is cleared | Times the scene plays, 1 to 16 | Back to 1; held, empties the whole scene (one step of undo) | |
+| A repeat count | Tap: 1, 2, 4, 8. **R1** copies the whole scene; **R1** on another row pastes it there, on its let go, and the copy is cleared | Up / down: times the scene plays, 1 to 16. Left / right: how many steps the scene's bars have, 16 or fewer (as the D-pad's). One job a push | Back to 1; held, empties the whole scene (one step of undo) | |
 | The song's end (the REPEATS box of the first empty row, just past the last scene) | Switches what the song does at its end: LOOP (a loop arrow) or STOP (a square) | | Back to LOOP | |
 | + TRACK | Pick DRUMS, PHAZED, JAX-EP, SAMPLER, FM-6, PHYSIC, ACID, CLOUD or MORPH | | | |
 | MASTER (the head at the right-hand end, right of + TRACK) | | Its level and pan, as a track's (below) | | |
@@ -1831,6 +1833,7 @@ it changes:
 | R1 | **CUT**: stopped after a step, half a step, a quarter; off | A red edge |
 | A | **THROW**: this hit alone goes to ECHO, to SPACE, to both; off (see below) | A short bar above it: over its left half for ECHO, its right for SPACE |
 | Y | **Dice**: rolls the first four for this hit. Mostly one effect, sometimes two. Always something, and never what it was. The dice leave THROW as it is. | |
+| B | **Empty**: all five go off and the hit plays plain (heard at once). The hit stays, its level, nudge and chance as they were. One step of undo. Let go of X and B deletes the hit, as ever | Plain again |
 
 - They combine, and every hit has its own. The strip under the grid spells
   them out; with X held it shows all five.
@@ -1840,6 +1843,9 @@ it changes:
   from its start to the end) from the end to the start.
 - A cut hit lasts its time whatever its pitch. In a ratchet each hit also
   stops when the next one comes.
+- **Let go of X with the stick still pushed and the cursor waits** for the
+  stick to come back to the middle, so it does not run off the hit (on a
+  lane's name too).
 - Kept in the song, undone by SELECT + B, and gone with the hit when it is
   deleted.
 - A synth's notes have their own: see "Note effects" under PATTERN, a
@@ -1862,6 +1868,7 @@ the drum), and:
 | L1 / R1 | **SWING**: OFF, 10, 25, 50, 75, 100% (L1 less, R1 more) | Every second sixteenth a third of a step late: a triplet |
 | Y | **Dice**: a small feel, OFF, 10 or 25% of each. Always something, never what it was. It leaves SWING alone | |
 | A | **This lane's feel onto every lane** of the kit, its SWING too. From a lane at OFF, that clears them all | |
+| B | **This lane back to OFF**: HUMAN TIME, HUMAN LEVEL and SWING. The other lanes keep theirs. One step of undo | |
 
 - With X held the strip under the grid shows SWING, HUMAN TIME, HUMAN LEVEL
   and EVERY LANE (COPY, or THE SAME once they are), each button under its field.
@@ -1953,7 +1960,9 @@ or the note and press **A**: OFF, ECHO, SPACE, BOTH, and round again.
 **L1 on a lane that plays a recording** zooms the grid into that one lane.
 L1 again goes back. (L1 on the kit screen goes straight there too.) It acts
 when L1 is let go: held, L1 is the key a bar is copied and pasted with (see
-"Copy a bar, paste it on another"), and then letting go opens nothing.
+"Copy a bar, paste it on another"), and then letting go opens nothing. Nor
+does it after anything else done while L1 was held: another button, or the
+stick moved.
 
 The recording is drawn large and cut into **slices**: sixteen of them, or
 one to a step if it is fitted to more than a bar (32 for two bars, 64 for
@@ -2184,8 +2193,9 @@ is loud; holding A shapes it the way it is drawn.
 | **Hold X on a note**, up / down | **GLIDE**: up is one length longer, down one shorter, down to OFF. The note slides in from the note before it |
 | **Hold X on a note**, A | **THROW**: the note goes to ECHO, to SPACE, to both; off |
 | **Hold X on a note**, L1 / R1 | **GLIDE FROM**, for the whole track: which key of a chord its glides come from. R1 is the next of TOP, PAIRED, NEAREST, RANDOM; L1 the one before. It stops at each end |
-| **Hold R1 on a note** and move | Carry the note (or the whole chord) under the cursor. **D-pad:** to another key, or a whole step. **Stick up / down:** it slides freely in time, off the grid. **L1 held:** left / right go an octave at a time. It stops at the ends of the bar and will not land on another note. |
-| L1 | Zoom: a tap goes closer (2 octaves, 1, then round to 3) |
+| **Hold X on a note**, B | **Empty** what X shows: RATCHET, GLIDE and THROW go off. The note stays, its level, length and nudge as they were (the track's GLIDE FROM too). One step of undo. Let go of X and B deletes, as ever |
+| **Hold R1 on a note** and move | Carry the note (or the whole chord) under the cursor. **D-pad or stick left / right:** to another key (with a SCALE on, a note goes to the scale's next key). **D-pad up / down:** a whole step. **Stick up / down:** it slides freely in time, off the grid. One job a push: pushed up or down first, the stick slides in time only until it comes back. **L1 held:** left / right go an octave at a time, the stick one octave a push. It stops at the ends of the bar and will not land on another note. |
+| L1 | Zoom: a tap goes closer (2 octaves, 1, then round to 3). Only a tap: anything done while L1 is held, a stick move included, zooms nothing |
 | Hold L1, up / down | The bar before or after, round the ends, from anywhere on the grid |
 | Hold L1, left / right | The cell's count, more or fewer (1, 2, 4 or 8, as the SONG screen's hold A). One step of undo |
 | BARS (up from step 1 of bar 1) | Left / right: the bar before or after, round the ends. **Hold A, up / down**: the cell's count, more or fewer (1, 2, 4 or 8, as the SONG screen's hold A). One step of undo |
@@ -2210,12 +2220,16 @@ play, one click per push. The strip at the bottom shows the values.
 | **GLIDE** (up = longer, down = shorter) | The note starts at the pitch of the note before it and slides to its own. How long the slide takes is the setting: OFF, 1/4 STEP, 1/2 STEP, 1 STEP, 2 STEPS or FULL. | No: a chord has no one note to slide from |
 | **THROW** (A) | The track is sent in full to ECHO, SPACE or both for as long as the note lasts (see "THROW" under PATTERN, drums). A foot at the note's end: on the left for ECHO, the right for SPACE. | Yes: the whole chord |
 | **Dice** (Y) | Rolls a ratchet, a glide of some length, or both. Always something, and never what it was. THROW is left as it is. | Rolls among the chord's six |
+| **Empty** (B) | RATCHET, GLIDE and THROW off; the note stays. One step of undo. | All six and THROW off |
 
 - A note with an effect carries a mark, so it can be told from a plain one.
 - **On a chord the directions are shared out differently**: up / down pick
   one of six effects, left / right set it. See "Chord effects".
 - With both set, only the first of the ratchet glides.
 - A note too short for its ratchet plays as many as fit.
+- **Let go of X with the stick still pushed and the cursor waits** for the
+  stick to come back to the middle, so it does not run off the note. (The
+  drum grid does the same, as do the knobs' MODs.)
 - Kept in the song, undone by SELECT + B, gone with the note.
 
 **GLIDE, in full.** You set it on the note you slide *to*.
@@ -2272,6 +2286,7 @@ Y is the chord button. Chords come from the song's chord pack.
 | ...left / right | The next chord (stick or D-pad, either) |
 | ...up / down | Inversion: the bottom note goes up an octave, or the top one comes down |
 | ...L1 / R1 | Another pack |
+| ...L2 / R2 | **Half or twice as long**: 1, 2, 4, 8 or 16 steps (from a length between two, the next one that way). The box above the bar says it, and where it does not fit here: CHORD 16 STEPS, 3 FIT HERE |
 | ...X | Hear it again |
 | Let go of Y | The chord lands at the cursor, and the cursor moves on past it |
 | ...B first | Nothing lands |
@@ -2285,8 +2300,11 @@ name. Chords never overlap in time.
 - Cursor on one of its notes: hold A to set the level and length of the
   whole chord, B to remove it.
 - Cursor anywhere in its steps: hold Y to swap it for another chord in
-  place. B while Y is held breaks it into loose notes instead.
-- A new chord is as long as the last one you set.
+  place. B while Y is held breaks it into loose notes instead. L2 / R2
+  while Y is held halve or double the chord's own length, up to the next
+  chord or the end of the cell.
+- A new chord is as long as the last one you set: with hold A, or with
+  L2 / R2 while Y is held.
 
 **Twenty packs come with the program**, all in C (nobody has heard the
 thirteen added on 2026-11-17; their notes are checked by the tests):
@@ -2328,7 +2346,9 @@ A bar holds 64 notes, chords' notes included, and 16 chords.
 **A chord that sounds played by a hand, or an arpeggio.** Hold **X** on any
 note of a chord. **Up / down picks the effect, left / right sets it**, one
 click per push, stick or D-pad. The strip lists all six and marks the one
-picked. X + A is still THROW, X + Y still the dice.
+picked. X + A is still THROW, X + Y still the dice. **X + B empties them**:
+all six back to OFF (ORDER to UP) and THROW off, the chord kept as it is
+otherwise. One step of undo.
 
 | Effect | Values | Does |
 | --- | --- | --- |

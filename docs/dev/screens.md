@@ -290,6 +290,10 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   brushes on an empty step). JAX-EP's MAIN and five pages are held to 0 at
   every stop, A held and not (`testJaxepsHintsFit`). **The piano roll on a note is still 48 to 69
   pixels over** (its help is not drawn): not mended.
+- **The help card's B line reads "delete, empty, or go back. X held: empty the effects"** (gesture
+  audit G11, 2026-11-24): X + B empties what X shows on a hit, a lane's name, a note and a chord,
+  and no held strip has room for its chip (next rule). It fits the card at every size (held at LARGE
+  at XL, as the card's other lines); `testTheHelpCardDrawsSel` reads it.
 - **With X held on a hit, a note or a chord, each button's chip stands under
   the field it sets** (owner, 2026-11-12; `ui::hintsUnder`): no word, the
   field's label says it; the dice alone at the left (a chord: at the right). On a note the

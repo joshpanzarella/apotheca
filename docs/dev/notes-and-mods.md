@@ -97,11 +97,53 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     nudged early), and the name is drawn again on top. THROW's foot is on
     every key. `chordfxapp_test` reads it off the drawn screen.
   - X hears a chord plain. The effects are the step clock's.
+  - **X held + B empties what X shows** (gesture audit G11, 2026-11-24; `NoteScreen::fxEmpty`): a
+    note's RATCHET, GLIDE and THROW; a chord's six (STRUM OFF, ORDER UP, the three amounts 0,
+    RATCHET OFF) and its THROW. The note or chord stays, its level, length and nudge as they were;
+    GLIDE FROM is the track's and stays. **A step of undo of its own** (`beginOwnUndoStep` /
+    `endOwnUndoStep`, as a paste): a turn just before it is a step by itself. Nothing to empty
+    (ORDER alone counts, the strip shows it): nothing happens, no step. Plain B deletes once X is let
+    go, as ever. **No chip**: the held strips put each chip under the field it sets (owner,
+    2026-11-12, `screens.md`) and an "empty all" has no field; the help card's B line says it
+    ("X held: empty the effects") and the manual. On a knob, X + hold B still DELETES the MOD (a
+    hold: it deletes, it does not empty). `easy_test xempty`.
+  - **Y held, L2 / R2: the chord in hand half or twice as long** (gesture audit G27, 2026-11-24;
+    `NoteScreen::doubleHand`). Along 1, 2, 4, 8, 16 steps; a length between two (the stick sets any)
+    goes to the next rung that way; the ends stop. A new chord: `handLength_`, which inHand holds to
+    the room where it lands as ever. A chord being swapped: its own length, held to the cell's end
+    and the next chord as `setLength` holds it, the cursor kept inside it, and `handLength_` takes it
+    too (as hold A on a chord sets it). The App's box says what lands (`CHORD 8 STEPS`, `CHORD 16
+    STEPS, 3 FIT HERE`); nothing is said where nothing changes. **The App sends L2 / R2 to the roll
+    while Y is held on a synth track** (as it does while A is held); on the drum grid Y held is the
+    dice and they stay swallowed. The hint is `L2 R2 length` (fits at XL, the swap's longer B
+    included). **A panic begun with L2 or R2 while Y is held changes the length and does not put it
+    back**, as the A-held nudge does not. `easy_test chordlength`.
   - Its tests are their own two programs: `tests/chordfx_test.cpp` (the
     engine, with a listening synth) and `tests/chordfxapp_test.cpp` (the
     gesture, the strip off the drawn screen, the dice, the song file, undo,
     swap, break, drag, scenes). `chordfx_test testStrum testArpeggio` runs
     just those.
+- **The stick carries as the D-pad does** (gesture audit G14, 2026-11-24). With R1 holding a note or
+  a chord, the stick's sideways steps go through `carry()`: a SCALE's next key for a note (a chord a
+  semitone), and with L1 held an octave **once a push** (at `kCarryKeysPerSecond`, ten a second, an
+  octave a click would fly off the keyboard). **One job a push**, as with A held (`axis_`, set afresh
+  when R1 goes down): pushed up or down first it slides in time (`carryFree`) and moves no key until
+  it comes back. It was `carryBy(+-1, 0)` straight, chromatic, with no lock, though the hints said
+  "LEFT / RIGHT another key, L1 octave" and `docs/plans/easywins-plan.md` asked for the scale "the
+  stick too". `easy_test stick`.
+- **X let go with the stick still pushed: the cursor waits on the grids too** (gesture audit G14,
+  2026-11-24). It extends the owner's call for FX and DEVICE (`stickWait_`, under "X HELD on a knob" below) to the roll
+  and the drum grid (a hit and a lane's name), where the cursor jumped off at once. The stick's state
+  is taken **at X's let go** (the event's `Input`), not from frames: a push that came after the let
+  go is the cursor's. A hold lost with X still down (an undo took the note or hit) waits the same
+  (`fxLastFrame_`). While it waits the stick does nothing at all; the D-pad is not affected.
+- **A stick move with L1 held is a use of L1** (gesture audit G31, 2026-11-24): its let go then
+  zooms nothing on the roll (`zoomUsed_`) and opens no slices on the drum grid (`l1Used_`, with L1
+  held first), as any button pressed meanwhile already did. `copybar_test testAStickMoveIsAUseOfL1`.
+  The two grids' COPY timings stay as they are (the drums on R1's press, the roll on its unmoved let
+  go): on the roll R1 on a note is also the carry, so only an unmoved let go can mean copy; the
+  drums have no carry, and the manual says both. The roll's L1 tap still zooms from BARS (the zoom
+  is a view of the whole roll; the drums skip L1 there because slices need a lane).
 - **A glide is a length, and its number is not its place** (owner,
   2026-11-12; `engine/include/apotheca/glide_rule.hpp`). The numbers are in
   songs, appended: 0 off, **1 half a step (what ON was, so old songs sound as
@@ -158,7 +200,7 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     D-pad and the stick not the cursor (`update` returns after `modKnob_.update`). A pressed while
     held is the MOD's; let go after X it does nothing. **X is not taken with A held** (turning).
     X let go with the stick pushed: the cursor waits for it to come back (`stickWait_`, both
-    screens; the knob's own `stickWait_` the same when X goes down with the stick pushed).
+    screens, and the roll and the drum grid since 2026-11-24, gesture audit G14; the knob's own `stickWait_` the same when X goes down with the stick pushed).
   - **Where the fields go** (call B): DEVICE in SIGNAL's strip, FX in the heading's place, on
     SENDS in the OTHER send's row (`FxScreen::modPanelY`: the held send stays in full view), only
     while X is held. **They are a tight row** (`fonts.fixed()`, the same at every TEXT SIZE:

@@ -28,10 +28,14 @@
 //                                          come from (TOP, PAIRED, NEAREST, RANDOM). It stops at each end.
 //                         A chord has six effects (chord_effects.hpp): up / down pick one,
 //                         left / right set it. The strip lists them.
+//                           B              empty what X shows: a note's RATCHET, GLIDE and THROW, a
+//                                          chord's six and its THROW. The note or chord stays. One step of undo.
 //   hold R1 on a note     carry the note (or the whole chord) under the cursor.
 //                         The D-pad: to another key, or a whole step. The
 //                         stick up / down: it slides freely in time, off
-//                         the grid. It stops at the ends of the bar and
+//                         the grid; sideways, key by key as the D-pad goes
+//                         (a SCALE's keys; with L1 held an octave a push).
+//                         It stops at the ends of the bar and
 //                         will not land on another note.
 //   hold R1 on an empty step, and drag    paint a note on every step crossed
 //   L1                    zoom: a tap goes closer (2 octaves, 1, round to 3)
@@ -60,6 +64,7 @@
 //     up / down           inversion: the bottom note goes up an octave, or
 //                         the top one comes down
 //     L1 / R1             another pack
+//     L2 / R2             half or twice as long: 1, 2, 4, 8 or 16 steps
 //     X                   hear it again
 //   let go of Y           the chord lands at the cursor, and the cursor moves
 //                         on past it. So a tap of Y places the chord in hand
@@ -128,6 +133,7 @@ public:
     int nextKey(int from, int way) const; // the next stop that way from `from`, or `from` at the keyboard's end
     void zoomTo(int octaves);
     void stepBars(int by); // the cell's bars: 1, 2, 4 or 8, one step along that row
+    float handLength() const { return handLength_; } // (for tests) the length a new chord takes
 
 private:
     enum class Axis { None, UpDown, Sideways };
@@ -147,6 +153,7 @@ private:
     void beginPick();
     void pickChanged(); // a new chord, inversion or pack: hear it, and swap it in if one is being changed
     void endPick();
+    void doubleHand(int way); // Y held, L2 (-1) / R2 (+1): the chord in hand half or twice as long
     void breakUp(int chord);
     void showChord(const ChordEvent& chord);
     bool placeNote(float velocity);
@@ -192,6 +199,7 @@ private:
     void fxRoll();                      // with X held, Y: the dice set the ratchet and the glide
     void fxThrow();                     // with X held, A: the note's or the chord's THROW a step round
     void fxFrom(int by);                // with X held on a note, L1 (-1) / R1 (+1): the track's GLIDE FROM, a click
+    void fxEmpty();                     // with X held, B: what X shows emptied, the note or chord kept
     std::uint32_t dice_ = 0x9E3779B9u;
     void fxTurn(Button direction);      // with X held: one click of ratchet (left / right) or glide (up / down);
                                         // on a chord, up / down pick one of its six effects and left / right set it
@@ -201,6 +209,8 @@ private:
     float fxSaved_ = 0.f;
     bool fxWas_ = false;
     bool fxWait_ = false; // the stick was already over when X went down: it does nothing until it has been let go
+    bool fxLastFrame_ = false; // X was held on a note or chord last frame (its note can go from under it)
+    bool stickWait_ = false;   // X let go with the stick still pushed: the stick does nothing until it comes back (as FX and DEVICE)
     void carry(Button direction);       // the D-pad: a whole step, or a key
     bool carryBy(int keys, int steps);  // false if it cannot go there
     void carryFree(float steps);        // the stick: any distance in time, off the grid

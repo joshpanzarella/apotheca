@@ -81,10 +81,13 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     the cell it lands in** (as the roll's `room`). **Automation only onto the SAME track** (another
     track's lanes are other knobs; its own are left).
   - **The gesture**: L1 must go down FIRST, with nothing else held (`l1First_`; not with X held: X's
-    L1 / R1 are the step effects, GLIDE FROM, the feel). R1 then copies (no brush, no carry), A pastes
+    L1 / R1 are the step effects, GLIDE FROM, the feel). R1 then copies (on the drums at once, no
+    brush; on the roll R1 on a note still carries, and only its let go where it went down copies), A pastes
     (no hit or note placed; on the grid `aSpent_`, so A's hold nudges nothing). **L1's own tap acts on
     its let go**: the drum grid's slices (`l1Used_`: any other button pressed while L1 was held cancels
-    it) and the roll's zoom (`zoomUsed_`, set by a copy or a paste). The App tells both screens when
+    it) and the roll's zoom (`zoomUsed_`, set by a copy or a paste). **A stick move with L1 held
+    cancels it too** (gesture audit G31, 2026-11-24: it moved the cursor and the let go still opened
+    the slices or zoomed; `copybar_test testAStickMoveIsAUseOfL1`). The App tells both screens when
     another shoulder goes down with L1 held (`shouldersPressed`), so a panic's let go of L1 opens no
     slices; **a panic begun L1, R1 puts the copy back** (`clipBeforeShoulders_`, `barCopies`).
   - What was done is said in the App's box above the bar (`Session::say`, taken by
@@ -104,6 +107,11 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   pitch, ratchet, reverse, cut. Hold X on a hit sets them. In a song file they
   are `stepfx` lines (`fx` is an effect in a slot: the first try clashed).
   A ratchet waits in one `Pending` slot that re-arms itself.
+  - **X held + B empties them** (gesture audit G11, 2026-11-24; `PatternScreen::fxEmpty`): pitch,
+    ratchet, reverse, cut and THROW. The hit stays, its level, nudge, chance and start as they were,
+    and is heard plain at once (stopped). It deleted the hit and all of it before (B was blocked only
+    by A or Y); a hit is no longer lost to a B pressed while setting its effects. **A step of undo of
+    its own**; nothing to empty, nothing and no step. Plain B deletes once X is let go.
 - **FEEL is two amounts on each drum LANE, and it is live** (owner, 2026-11-14; built on branch
   `feel`, 2026-11-15; `engine/include/apotheca/feel_rule.hpp`, `LaneFeel`): HUMAN TIME and
   HUMAN LEVEL, 0..100, a chord's six clicks (`kAmountAt`) and a chord's two "mosts"
@@ -181,6 +189,14 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     `ySpent_`, until the button comes up; a hit's THROW and dice too): with A still down the
     D-pad turned the lane's volume, with Y it rolled the lane's hits (review, 2026-11-15;
     `testXLetGoFirst`). The directions move the cursor meanwhile.
+  - **X + B puts this lane's FEEL and SWING back to OFF** (gesture audit G11, 2026-11-24;
+    `PatternScreen::fxEmpty`): HUMAN TIME, HUMAN LEVEL and SWING, that lane only (X + A from a lane
+    at OFF still does every lane). **A step of undo of its own** (`beginOwnUndoStep`, the turns of
+    the hold before it a step by themselves); a lane already plain: nothing, no step. No chip (the
+    strip's chips stand under their fields; an "all off" has none): the help card and the manual.
+    `easy_test xempty`.
+  - **X let go with the stick pushed: the cursor waits for it to come back** (gesture audit G14, a
+    hit or a lane's name; see `notes-and-mods.md`).
   - **The name's one-line summary gives way to what is said on its row** (`said()`: why L1 opened
     no slices on a built-in drum): the two were drawn one over the other.
   - The strip's fields and their chips share `kFeelTimeX`, `kFeelLevelX`, `kFeelAllX`

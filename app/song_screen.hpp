@@ -191,6 +191,12 @@ private:
     bool holding_ = false;  // A is held on a repeat count
     bool turned_ = false;   // ...and the stick or D-pad changed it, so letting go is not a tap
     float saved_ = 0.f;     // part-steps of the repeat count saved up
+    // The stick on a repeat count, A or L1 held (gesture audit G14): one job a push, as on the grids.
+    enum class RepeatAxis { None, UpDown, Sideways };
+    RepeatAxis repeatAxis_ = RepeatAxis::None;
+    float repeatSideSaved_ = 0.f; // part-steps of the scene's steps (A) or its meter (L1) saved up
+    bool repeatSideWas_ = false;  // ...and the stick was over last frame
+    void repeatStick(float x, float y, float dt); // A or L1 held on a repeat count: the stick does what the D-pad does
     // TRANSPOSE (easywins batch 3): A held on a cell, UP / DOWN a semitone, the stick up / down an octave.
     int transposed_ = 0;    // how far this hold has moved the cell, for what is said
     float savedY_ = 0.f;

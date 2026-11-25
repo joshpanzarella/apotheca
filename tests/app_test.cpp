@@ -2482,7 +2482,8 @@ void testTheHelpCardDrawsSel() {
         return canvas.part(190, top - 3, 408, 17) == plain.part(190, top - 3, 408, 17);
     };
     CHECK(says(0, "hear it (SONG: solo). Held: a step's effects, a knob's MOD")); // (SONG: owner, 2026-11-15)
-    CHECK(says(3, "delete, empty, or go back") && !says(0, "delete, empty, or go back")); // (the check can tell)
+    CHECK(says(3, "delete, empty, or go back. X held: empty the effects") && !says(0, "delete, empty, or go back. X held: empty the effects")); // (the check can tell)
+    CHECK(!says(3, "delete, empty, or go back")); // (X held + B: on the card, as no strip has room for its chip)
     for (int top : tops)
         for (Uint32 px : canvas.part(583, top - 3, 15, 17)) CHECK(px == Canvas::colour(ui::kPanel));
 }
@@ -8228,10 +8229,14 @@ void testStepEffects() {
     }
     drums.setStep(0, 4, 0.8f);
     drums.setFx(0, 4, StepFx());
-    // If the hit goes while X is held (deleted), the hold is over.
+    // B with X held empties the hit's effects and keeps the hit (gesture audit G11: easy_test xempty).
     rig.key(X, true);
     CHECK(drums.effecting());
     rig.tap(B);
+    rig.frames(1);
+    CHECK(drums.effecting() && drums.level(0, 4) == 0.8f);
+    // If the hit goes while X is held (deleted, here from outside), the hold is over.
+    drums.setStep(0, 4, 0.f);
     rig.frames(1);
     CHECK(!drums.effecting() && drums.level(0, 4) == 0.f);
     rig.key(X, false);

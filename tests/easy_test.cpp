@@ -16,6 +16,14 @@
 //   mutes      QUEUED MUTES: the engine's waiting gate (on the bar's first sample, to the bit; Stop, called
 //              off, a track gone), the Session's waiting marks, Y and X on a SONG head, SET's MUTES row.
 //
+// And the gesture audit's (docs/plans/gesture-audit.md), batch B2:
+//   stick      G14: the stick means what the D-pad means. A carry on the roll keeps to a SCALE and goes an
+//              octave a push with L1; one job a push; X let go with the stick pushed moves nothing on either
+//              grid; L1 or A held on SONG's REPEATS turns what the D-pad turns there.
+//   xempty     G11: X held + B empties what X shows (a hit's, a note's, a chord's effects; a lane's FEEL and
+//              SWING), keeps the hit or note, one step of undo of its own, nothing to empty no step.
+//   chordlength G27: Y held on the roll, L2 / R2 halve or double the chord in hand (or the one swapped).
+//
 // `easy_test NAME...` runs just those sections.
 
 #include <SDL.h>
@@ -54,6 +62,7 @@ namespace {
 
 const SDL_Keycode A = SDLK_x, B = SDLK_z, X = SDLK_s, Y = SDLK_a, L1 = SDLK_q, R1 = SDLK_w, UP = SDLK_UP, DOWN = SDLK_DOWN, LEFT = SDLK_LEFT,
                   RIGHT = SDLK_RIGHT, SELECT = SDLK_BACKSPACE, START = SDLK_RETURN;
+const SDL_Keycode STICK_UP = SDLK_i, STICK_DOWN = SDLK_k, STICK_LEFT = SDLK_j, STICK_RIGHT = SDLK_l, TRIGGER_L2 = SDLK_1, TRIGGER_R2 = SDLK_2;
 
 struct Rig {
     std::unique_ptr<Engine> engine{new Engine};
@@ -1785,6 +1794,525 @@ struct Section {
 
 } // namespace
 
+// ---- the gesture audit, batch B2 ---------------------------------------------------------------------
+
+// A Phazed track on the roll (track 1), its bar 1 empty.
+NoteScreen& rollOnPhazed(Rig& rig) {
+    CHECK(rig.session().addTrack(TrackKind::Phazed));
+    rig.project().track = 1;
+    rig.session().view = View::Pattern;
+    rig.frames(2);
+    return rig.app.notes();
+}
+
+// G14: a carry by the stick goes through the D-pad's code: a SCALE's keys, an octave a push with L1, one job a push.
+void testTheStickCarriesAsTheDpad() {
+    Rig rig;
+    Session& session = rig.session();
+    NoteScreen& roll = rollOnPhazed(rig);
+    NotePattern& bar = rig.track(1).notes[0][0];
+    NoteEvent n;
+    n.step = 4, n.pitch = 62, n.length = 1.f, n.velocity = 0.9f;
+    bar.notes[0] = n;
+    session.sendNotePattern(1, 0);
+    session.setScale(2, kScaleMajor); // D major: D E F# G A B C#
+    roll.moveCursorTo(62, 4);
+    rig.key(R1, true);
+    rig.frames(1);
+    CHECK(roll.carrying());
+    // One push right: the scale's next key, E, not D#.
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(bar.notes[0].pitch == 64 && roll.cursorPitch() == 64);
+    // Held over, it runs on through the scale's keys and lands on no other.
+    rig.key(STICK_RIGHT, true);
+    int moves = 0, last = bar.notes[0].pitch;
+    for (int f = 0; f < 30; ++f) {
+        rig.frames(1);
+        CHECK(inScale(2, kScaleMajor, bar.notes[0].pitch));
+        moves += bar.notes[0].pitch != last ? 1 : 0;
+        last = bar.notes[0].pitch;
+    }
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(moves >= 3 && moves <= 8); // (at the carry's own pace, ten keys a second at full push)
+    // L1 held: an octave, ONCE a push, however long it is held over.
+    const int from = bar.notes[0].pitch, octaves = session.octavesShown();
+    rig.key(L1, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(30);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(bar.notes[0].pitch == from + 12 && roll.cursorPitch() == from + 12);
+    rig.key(STICK_LEFT, true);
+    rig.frames(30);
+    rig.key(STICK_LEFT, false);
+    rig.frames(1);
+    CHECK(bar.notes[0].pitch == from);
+    rig.key(L1, false);
+    rig.frames(1);
+    CHECK(session.octavesShown() == octaves); // (L1 was the octave: no zoom)
+    // One job a push: pushed up first (sliding in time), sideways as well does not change the key.
+    rig.key(STICK_UP, true);
+    rig.frames(2);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(10);
+    rig.key(STICK_UP, false);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(bar.notes[0].pitch == from);
+    rig.key(R1, false);
+    rig.frames(1);
+}
+
+// G14: X let go with the stick still pushed for what X did: the cursor waits for the stick to come back,
+// on the roll and on the drum grid (as FX and DEVICE do for a MOD).
+void testXLetGoWithTheStickPushed() {
+    Rig rig;
+    PatternScreen& drums = rig.app.drums();
+    drums.setStep(0, 4, 0.8f);
+    drums.moveCursorTo(0, 4);
+    rig.frames(1);
+    rig.key(X, true);
+    rig.frames(1);
+    rig.key(STICK_UP, true);
+    rig.frames(2);
+    CHECK(drums.effecting() && drums.fx(0, 4).pitch >= 1);
+    rig.key(X, false);
+    rig.frames(10);
+    CHECK(drums.cursorLane() == 0 && drums.cursorStep() == 4 && !drums.cursorOnTempo() && !drums.cursorOnBars()); // still on the hit
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(drums.cursorStep() == 5); // pushed again: the cursor
+    // X let go first and the stick pushed after it, before a frame: that push is the cursor's.
+    drums.moveCursorTo(0, 4);
+    rig.key(X, true);
+    rig.frames(1);
+    rig.key(X, false);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(drums.cursorStep() == 5);
+    // The hit gone from under X (deleted from elsewhere) with the stick pushed for it: the same wait.
+    drums.moveCursorTo(0, 4);
+    rig.key(X, true);
+    rig.frames(1);
+    rig.key(STICK_LEFT, true);
+    rig.frames(1);
+    drums.setStep(0, 4, 0.f);
+    rig.frames(5);
+    CHECK(!drums.effecting() && drums.cursorStep() == 4);
+    rig.key(STICK_LEFT, false);
+    rig.key(X, false);
+    rig.frames(1);
+    // ...and on a lane's name, for its FEEL.
+    drums.moveCursorTo(1, -1);
+    rig.key(X, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    CHECK(drums.feeling() && drums.laneFeel(1).time > 0);
+    rig.key(X, false);
+    rig.frames(10);
+    CHECK(drums.cursorLane() == 1 && drums.cursorStep() == -1);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+
+    // The roll.
+    NoteScreen& roll = rollOnPhazed(rig);
+    NotePattern& bar = rig.track(1).notes[0][0];
+    NoteEvent n;
+    n.step = 4, n.pitch = 60, n.length = 1.f, n.velocity = 0.9f;
+    bar.notes[0] = n;
+    rig.session().sendNotePattern(1, 0);
+    roll.moveCursorTo(60, 4);
+    rig.key(X, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    CHECK(roll.effecting() && bar.notes[0].ratchet == 2);
+    rig.key(X, false);
+    rig.frames(10);
+    CHECK(roll.cursorPitch() == 60 && roll.cursorStep() == 4);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    rig.key(STICK_DOWN, true);
+    rig.frames(1);
+    rig.key(STICK_DOWN, false);
+    rig.frames(1);
+    CHECK(roll.cursorStep() == 5);
+    // The note gone from under X with the stick pushed for it: the same wait.
+    roll.moveCursorTo(60, 4);
+    rig.key(X, true);
+    rig.frames(1);
+    rig.key(STICK_UP, true);
+    rig.frames(1);
+    bar.notes[0] = NoteEvent();
+    rig.frames(5);
+    CHECK(!roll.effecting() && roll.cursorStep() == 4);
+    rig.key(STICK_UP, false);
+    rig.key(X, false);
+    rig.frames(1);
+}
+
+// G14: L1 held on a scene's REPEATS, the stick turns its tempo (up / down) and its meter (sideways), as
+// the D-pad does, and the cursor stays; hold A there, sideways is the scene's steps as LEFT / RIGHT are.
+void testTheStickOnRepeats() {
+    Rig rig;
+    Session& session = rig.session();
+    session.setTempo(120.f);
+    rig.track(0).drums[0][0].level[0][0] = 0.9f; // scene 1 has something: the cursor stands on it, not AT END
+    session.view = View::Song;
+    rig.frames(1);
+    SongScreen& song = rig.app.song();
+    song.moveCursorTo(0, -1); // (REPEATS: the column left of the tracks)
+    rig.key(L1, true);
+    rig.frames(1);
+    rig.key(STICK_UP, true);
+    rig.frames(20); // 0.32 s at 90 BPM a second: about 29
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    const float tempo = rig.project().sceneTempo[0];
+    CHECK(tempo >= 140.f && tempo <= 160.f && song.cursorScene() == 0 && song.cursorColumn() == -1);
+    rig.key(STICK_DOWN, true);
+    rig.frames(4);
+    rig.key(STICK_DOWN, false);
+    rig.frames(1);
+    CHECK(rig.project().sceneTempo[0] < tempo && rig.project().sceneTempo[0] > tempo - 10.f);
+    // Sideways: the meter, a click at once and then slowly. One job a push: up as well turns no tempo.
+    const float kept = rig.project().sceneTempo[0];
+    rig.key(STICK_LEFT, true);
+    rig.frames(1);
+    CHECK(rig.project().meterOf(0) == kSteps - 1);
+    rig.key(STICK_UP, true);
+    rig.frames(10); // 0.16 s at three a second: no second click yet
+    rig.key(STICK_UP, false);
+    rig.key(STICK_LEFT, false);
+    rig.frames(1);
+    CHECK(rig.project().meterOf(0) == kSteps - 1 && rig.project().sceneTempo[0] == kept && rig.said() == "15 STEPS IN A BAR");
+    rig.key(L1, false);
+    rig.frames(1);
+    session.setSceneMeter(0, kSteps);
+    // Hold A on REPEATS: sideways, the scene's steps; letting go is then no tap (the count stays).
+    const int repeats = rig.project().repeats[0];
+    rig.key(A, true);
+    rig.frames(1);
+    rig.key(STICK_LEFT, true);
+    rig.frames(1);
+    rig.key(STICK_LEFT, false);
+    rig.frames(1);
+    CHECK(rig.project().sceneSteps(0) == kSteps - 1);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(rig.project().sceneSteps(0) == kSteps && rig.project().repeats[0] == repeats);
+    // ...and up and down still the repeat count.
+    rig.key(A, true);
+    rig.frames(1);
+    rig.key(STICK_UP, true);
+    rig.frames(10);
+    rig.key(STICK_UP, false);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(rig.project().repeats[0] > repeats && rig.project().sceneSteps(0) == kSteps);
+}
+
+// G11: X held on a hit, B empties its effects: pitch, ratchet, reverse, cut and THROW. The hit stays,
+// with its level, nudge and chance, and is heard plain. One step of undo of its own.
+void testXAndBEmptyAHit() {
+    Rig rig;
+    Session& session = rig.session();
+    PatternScreen& drums = rig.app.drums();
+    drums.setStep(0, 4, 0.7f);
+    drums.setNudge(0, 4, 0.2f);
+    drums.setChance(0, 4, 0.5f);
+    StepFx fx;
+    fx.pitch = 7, fx.ratchet = 3, fx.reverse = 1, fx.cut = 2, fx.throwTo = 1;
+    drums.setFx(0, 4, fx);
+    drums.moveCursorTo(0, 4);
+    rig.settle();
+    const int steps = session.undoSteps();
+    rig.key(X, true);
+    rig.frames(1);
+    std::vector<float> out(2 * 48000);
+    for (int i = 0; i < 4; ++i) rig.engine->render(out.data(), 48000); // what X heard has died away
+    rig.key(STICK_UP, true); // a turn first: pitch 8, a burst of edits of its own
+    rig.frames(1);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    CHECK(drums.fx(0, 4).pitch == 8);
+    for (int i = 0; i < 4; ++i) rig.engine->render(out.data(), 48000);
+    rig.key(B, true);
+    rig.engine->render(out.data(), 4000);
+    float heard = 0.f;
+    for (int i = 0; i < 2 * 4000; ++i) heard = std::max(heard, std::fabs(out[i]));
+    CHECK(heard > 0.01f); // heard, plain
+    rig.frames(1);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(!drums.fx(0, 4).any() && drums.effecting());
+    CHECK(drums.level(0, 4) == 0.7f && std::fabs(drums.nudge(0, 4) - 0.2f) < 1e-6f && drums.chance(0, 4) == 0.5f);
+    CHECK(rig.track(0).drums[0][0].fx[0][4].pitch == 0); // (the pattern's own)
+    rig.key(X, false);
+    rig.settle();
+    CHECK(session.undoSteps() == steps + 2); // the turn, then the emptying
+    rig.undo();
+    const StepFx& back = drums.fx(0, 4);
+    CHECK(back.pitch == 8 && back.ratchet == 3 && back.reverse == 1 && back.cut == 2 && back.throwTo == 1 && drums.level(0, 4) == 0.7f);
+    rig.undo();
+    CHECK(drums.fx(0, 4).pitch == 7);
+    // Nothing to empty: nothing, and no step.
+    drums.setFx(0, 4, StepFx());
+    rig.settle();
+    const int none = session.undoSteps();
+    rig.key(X, true);
+    rig.frames(1);
+    rig.tap(B);
+    rig.key(X, false);
+    rig.settle();
+    CHECK(session.undoSteps() == none && drums.level(0, 4) == 0.7f);
+    // X let go, B is the delete it always was.
+    rig.tap(B);
+    CHECK(drums.level(0, 4) == 0.f);
+}
+
+// G11: X held on a lane's name, B puts its HUMAN TIME, HUMAN LEVEL and SWING back to OFF: that lane only.
+void testXAndBEmptyALanesFeel() {
+    Rig rig;
+    Session& session = rig.session();
+    PatternScreen& drums = rig.app.drums();
+    session.setLaneFeel(0, 2, 50, 25);
+    session.setLaneSwing(0, 2, 75);
+    session.setLaneFeel(0, 3, 10, 10);
+    session.setLaneSwing(0, 3, 10);
+    drums.moveCursorTo(2, -1);
+    rig.settle();
+    const int steps = session.undoSteps();
+    rig.key(X, true);
+    rig.frames(1);
+    CHECK(drums.feeling());
+    rig.tap(B);
+    CHECK(drums.laneFeel(2).time == 0 && drums.laneFeel(2).level == 0 && rig.track(0).laneSwing[2] == 0 && drums.feeling());
+    CHECK(drums.laneFeel(3).time == 10 && drums.laneFeel(3).level == 10 && rig.track(0).laneSwing[3] == 10);
+    rig.key(X, false);
+    rig.settle();
+    CHECK(session.undoSteps() == steps + 1);
+    rig.undo();
+    CHECK(drums.laneFeel(2).time == 50 && drums.laneFeel(2).level == 25 && rig.track(0).laneSwing[2] == 75);
+    // A lane with only SWING: that too goes.
+    session.setLaneFeel(0, 2, 0, 0);
+    rig.settle();
+    rig.key(X, true);
+    rig.frames(1);
+    rig.tap(B);
+    rig.key(X, false);
+    rig.frames(1);
+    CHECK(rig.track(0).laneSwing[2] == 0);
+}
+
+// G11: X held on a note, B empties its RATCHET, GLIDE and THROW; on a chord its six effects and THROW. The
+// note or the chord stays as it is otherwise; the track's GLIDE FROM stays. One step of undo each.
+void testXAndBEmptyANoteAndAChord() {
+    Rig rig;
+    Session& session = rig.session();
+    NoteScreen& roll = rollOnPhazed(rig);
+    NotePattern& bar = rig.track(1).notes[0][0];
+    NoteEvent n;
+    n.step = 4, n.pitch = 60, n.length = 2.f, n.velocity = 0.6f, n.nudge = 0.2f, n.ratchet = 3, n.glide = 3, n.throwTo = 2;
+    bar.notes[0] = n;
+    bar.chords[0] = makeChord(builtInPack().chords[0], 48, 8, 3.f, 0.7f, 0);
+    bar.chords[0].ratchet = 2;
+    bar.chords[0].throwTo = 3;
+    bar.chords[0].play = chordPlayOf(kStrumWide, kOrderDown, 25, 10, 25);
+    session.sendNotePattern(1, 0);
+    session.setGlideFrom(1, 2);
+    roll.moveCursorTo(60, 4);
+    rig.settle();
+    const int steps = session.undoSteps();
+    rig.key(X, true);
+    rig.frames(1);
+    CHECK(roll.effecting());
+    rig.tap(B);
+    const NoteEvent& now = bar.notes[0];
+    CHECK(now.ratchet == 0 && now.glide == 0 && now.throwTo == 0 && roll.effecting());
+    CHECK(now.velocity == 0.6f && now.length == 2.f && std::fabs(now.nudge - 0.2f) < 1e-6f && now.pitch == 60 && now.step == 4 && roll.noteCount() == 1);
+    rig.key(X, false);
+    rig.settle();
+    CHECK(session.undoSteps() == steps + 1);
+    rig.undo();
+    CHECK(bar.notes[0].ratchet == 3 && bar.notes[0].glide == 3 && bar.notes[0].throwTo == 2);
+    // A turn just before it is a step of its own: the emptying is one step, whatever came before.
+    rig.key(X, true);
+    rig.frames(1);
+    rig.tap(RIGHT); // x4
+    rig.tap(B);
+    rig.key(X, false);
+    rig.settle();
+    rig.undo();
+    CHECK(bar.notes[0].ratchet == 4 && bar.notes[0].glide == 3);
+    rig.undo();
+    CHECK(bar.notes[0].ratchet == 3);
+    // The chord.
+    int keys[kChordNotes];
+    bar.chords[0].pitches(keys);
+    roll.moveCursorTo(keys[1], 9);
+    rig.key(X, true);
+    rig.frames(1);
+    CHECK(roll.effecting() && roll.chordHere());
+    rig.tap(B);
+    const ChordEvent& c = bar.chords[0];
+    CHECK(c.velocity == 0.7f && c.length == 3.f && c.step == 8 && roll.chordCount() == 1);
+    CHECK(c.ratchet == 0 && c.throwTo == 0 && c.play.strum == kStrumOff && c.play.order == kOrderUp && c.play.time == 0 && c.play.level == 0 && c.play.lengths == 0);
+    CHECK(rig.track(1).glideFrom == 2);
+    rig.key(X, false);
+    rig.settle();
+    rig.undo();
+    CHECK(bar.chords[0].ratchet == 2 && bar.chords[0].play.strum == kStrumWide && bar.chords[0].play.order == kOrderDown && bar.chords[0].throwTo == 3);
+    // ORDER alone is still something X shows: it goes back to UP.
+    bar.chords[0].ratchet = 0, bar.chords[0].throwTo = 0, bar.chords[0].play = chordPlayOf(kStrumOff, kOrderRandom, 0, 0, 0);
+    session.sendNotePattern(1, 0);
+    rig.key(X, true);
+    rig.frames(1);
+    rig.tap(B);
+    rig.key(X, false);
+    rig.frames(1);
+    CHECK(bar.chords[0].play.order == kOrderUp);
+    // Nothing to empty: nothing, and no step.
+    roll.moveCursorTo(60, 4);
+    bar.notes[0].ratchet = bar.notes[0].glide = bar.notes[0].throwTo = 0;
+    rig.settle();
+    const int none = session.undoSteps();
+    rig.key(X, true);
+    rig.frames(1);
+    rig.tap(B);
+    rig.key(X, false);
+    rig.settle();
+    CHECK(session.undoSteps() == none && roll.noteCount() == 1);
+    // X let go, B is the delete it always was.
+    rig.tap(B);
+    CHECK(roll.noteCount() == 0);
+}
+
+// G27: Y held on the roll, L2 / R2 halve or double the chord in hand: 1, 2, 4, 8, 16 steps.
+void testTheTriggersSetTheChordsLength() {
+    Rig rig;
+    Session& session = rig.session();
+    NoteScreen& roll = rollOnPhazed(rig);
+    NotePattern& bar = rig.track(1).notes[0][0];
+    CHECK(roll.handLength() == 4.f);
+    roll.moveCursorTo(60, 0);
+    rig.key(Y, true);
+    rig.frames(1);
+    CHECK(roll.picking());
+    rig.tap(TRIGGER_R2);
+    CHECK(roll.handLength() == 8.f && rig.said() == "CHORD 8 STEPS" && session.view == View::Pattern);
+    rig.tap(TRIGGER_R2);
+    CHECK(roll.handLength() == 16.f);
+    rig.tap(TRIGGER_R2);
+    CHECK(roll.handLength() == 16.f); // the end stops
+    rig.tap(TRIGGER_L2, 4);
+    CHECK(roll.handLength() == 1.f && rig.said() == "CHORD 1 STEP");
+    rig.tap(TRIGGER_L2);
+    CHECK(roll.handLength() == 1.f && session.view == View::Pattern);
+    rig.tap(TRIGGER_R2);
+    CHECK(roll.handLength() == 2.f && roll.picking());
+    rig.key(Y, false);
+    rig.frames(1);
+    CHECK(roll.chordCount() == 1 && bar.chords[0].length == 2.f && bar.chords[0].step == 0 && roll.cursorStep() == 2);
+    // A length between two goes to the next one that way: hold A on the chord, DOWN twice (3 steps).
+    int keys[kChordNotes];
+    bar.chords[0].pitches(keys);
+    roll.moveCursorTo(keys[0], 0);
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(DOWN);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(bar.chords[0].length == 3.f && roll.handLength() == 3.f);
+    roll.moveCursorTo(60, 8);
+    rig.key(Y, true);
+    rig.frames(1);
+    rig.tap(TRIGGER_L2);
+    CHECK(roll.handLength() == 2.f);
+    rig.key(Y, false);
+    rig.frames(1);
+    CHECK(bar.chords[1].length == 2.f || bar.chords[0].length == 2.f);
+    // Where it does not fit, the box says so: 16 at step 13 of a one-bar cell lands 3 long.
+    roll.moveCursorTo(60, 13);
+    rig.key(Y, true);
+    rig.frames(1);
+    rig.tap(TRIGGER_R2, 3);
+    CHECK(roll.handLength() == 16.f && rig.said() == "CHORD 16 STEPS, 3 FIT HERE");
+    rig.tap(B); // (called off: nothing lands)
+    rig.key(Y, false);
+    rig.frames(1);
+    CHECK(roll.chordCount() == 2);
+    // A chord being swapped (Y held in its steps): its own length, held to its room, and the cursor stays inside it.
+    roll.moveCursorTo(60, 1);
+    rig.key(Y, true);
+    rig.frames(1);
+    rig.tap(TRIGGER_R2); // 3 -> 4
+    CHECK(bar.chords[0].length == 4.f && roll.handLength() == 4.f);
+    rig.tap(TRIGGER_R2); // 8, but the next chord starts at step 8: it fills to there
+    CHECK(bar.chords[0].length == 8.f);
+    rig.tap(TRIGGER_R2); // no more room: as it was, nothing said
+    CHECK(bar.chords[0].length == 8.f);
+    rig.key(Y, false);
+    rig.frames(1);
+    roll.moveCursorTo(60, 6);
+    rig.key(Y, true);
+    rig.frames(1);
+    rig.tap(TRIGGER_L2, 2); // 8 -> 4 -> 2: the cursor comes back inside it
+    CHECK(bar.chords[0].length == 2.f && roll.cursorStep() == 1 && roll.handLength() == 2.f);
+    rig.key(Y, false);
+    rig.frames(1);
+    CHECK(roll.chordCount() == 2);
+    // The hints while Y is held fit the bar.
+    Canvas canvas;
+    if (canvas.ok) {
+        roll.moveCursorTo(60, 12);
+        rig.key(Y, true);
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(ui::gHintsOver == 0.f);
+        rig.tap(B);
+        rig.key(Y, false);
+        rig.frames(1);
+    }
+    // On the drum grid Y held is the dice: L2 / R2 stay swallowed, and turn no tab. Nor do they reach
+    // the roll, though it still thinks Y is held there (the track changed under a held Y).
+    roll.moveCursorTo(60, 12);
+    rig.key(Y, true);
+    rig.frames(1);
+    CHECK(roll.picking());
+    const float hand = roll.handLength();
+    rig.project().track = 0;
+    rig.frames(1);
+    rig.tap(TRIGGER_R2);
+    CHECK(roll.handLength() == hand && session.view == View::Pattern);
+    rig.key(Y, false);
+    rig.frames(1);
+    rig.app.drums().moveCursorTo(0, -1);
+    rig.key(Y, true);
+    rig.frames(1);
+    rig.tap(TRIGGER_R2);
+    CHECK(session.view == View::Pattern);
+    rig.key(Y, false);
+    rig.frames(1);
+}
+
 int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     const Section sections[] = {
@@ -1797,6 +2325,9 @@ int main(int argc, char** argv) {
         {"looks", [] { testTheLooks(); }},
         {"mutes", [] { testTheWaitingGate(), testQueuedMutesInTheApp(); }},
         {"kits", [] { testTheKitsText(), testKitsInTheSession(), testTheKitStop(); }},
+        {"stick", [] { testTheStickCarriesAsTheDpad(), testXLetGoWithTheStickPushed(), testTheStickOnRepeats(); }},
+        {"xempty", [] { testXAndBEmptyAHit(), testXAndBEmptyALanesFeel(), testXAndBEmptyANoteAndAChord(); }},
+        {"chordlength", [] { testTheTriggersSetTheChordsLength(); }},
     };
     for (const Section& s : sections) {
         bool wanted = argc < 2;

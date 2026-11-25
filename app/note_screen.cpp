@@ -492,6 +492,49 @@ void NoteScreen::endPick() {
     moveCursorTo(pitch_, step_ + static_cast<int>(std::ceil(c.length))); // on to where the next one goes
 }
 
+// With Y held, L2 / R2 (gesture audit G27, 2026-11-24): the chord in hand half or twice as long, along
+// 1, 2, 4, 8 and 16 steps. A length between two (the stick sets any) goes to the next one that way; the
+// ends stop. A new chord: the length it and the ones after it take (handLength_, as hold A sets it), held
+// to the room where it lands as ever (inHand). A chord being swapped: its own length, held to the end of
+// the cell and the next chord as hold A holds it (setLength), and the next chord placed takes it too. The
+// box above the bar says what lands.
+void NoteScreen::doubleHand(int way) {
+    static const float ladder[] = {1.f, 2.f, 4.f, 8.f, 16.f};
+    constexpr int rungs = static_cast<int>(sizeof ladder / sizeof ladder[0]);
+    const float now = editing_ >= 0 ? pat().chords[editing_].length : handLength_;
+    float to = -1.f;
+    if (way > 0) {
+        for (int i = 0; i < rungs && to < 0.f; ++i)
+            if (ladder[i] > now + 0.001f) to = ladder[i];
+    } else {
+        for (int i = rungs - 1; i >= 0 && to < 0.f; --i)
+            if (ladder[i] < now - 0.001f) to = ladder[i];
+    }
+    if (to < 0.f) return;
+    float lands = to;
+    if (editing_ >= 0) {
+        ChordEvent& c = pat().chords[editing_];
+        float room = static_cast<float>((cellBars() - project_.bar) * kSteps - c.step); // to the end of the cell
+        for (const ChordEvent& other : pat().chords)
+            if (other.velocity > 0.f && other.step > c.step && static_cast<float>(other.step - c.step) < room) room = static_cast<float>(other.step - c.step);
+        lands = to > room ? room : to;
+        if (lands == c.length) return; // (it fills its room already)
+        c.length = lands;
+        handLength_ = lands;
+        const int last = c.step + static_cast<int>(std::ceil(lands)) - 1; // the cursor stays inside it
+        if (step_ > last) step_ = last < c.step ? c.step : last;
+        resend();
+    } else {
+        handLength_ = to;
+        lands = inHand().length;
+    }
+    char text[48];
+    const int whole = static_cast<int>(std::lround(to)), here = static_cast<int>(std::lround(lands));
+    if (here < whole) std::snprintf(text, sizeof text, "CHORD %d STEPS, %d FIT HERE", whole, here);
+    else std::snprintf(text, sizeof text, whole == 1 ? "CHORD %d STEP" : "CHORD %d STEPS", whole);
+    session_.say(text);
+}
+
 void NoteScreen::breakUp(int chord) {
     const ChordEvent c = pat().chords[chord];
     pat().chords[chord] = ChordEvent();
@@ -568,6 +611,38 @@ void NoteScreen::fxFrom(int by) {
     const int to = glideFromKind(project_.current().glideFrom) + by;
     if (to < 0 || to >= kGlideFroms) return;
     session_.setGlideFrom(project_.track, to);
+}
+
+// With X held on a note or a chord, B empties what X shows (gesture audit G11, 2026-11-24): a note's
+// RATCHET, GLIDE and THROW; a chord's six effects and its THROW. The note or the chord stays, its level,
+// length and nudge as they were (plain B still deletes it, once X is let go). One step of undo of its
+// own; with nothing to empty, nothing happens and there is no step. GLIDE FROM is the track's: it stays.
+void NoteScreen::fxEmpty() {
+    const int slot = pat().at(pitch_, step_), chord = chordSlotHere();
+    if (slot < 0 && chord < 0) return;
+    if (slot >= 0) {
+        const NoteEvent& n = pat().notes[slot];
+        if (n.ratchet == 0 && n.glide == 0 && n.throwTo == 0) return;
+    } else {
+        const ChordEvent& c = pat().chords[chord];
+        if (c.ratchet == 0 && c.throwTo == 0 && c.play.atRest() && c.play.order == kOrderUp) return;
+    }
+    session_.beginOwnUndoStep();
+    if (slot >= 0) {
+        NoteEvent& n = pat().notes[slot];
+        n.ratchet = 0;
+        n.glide = 0;
+        n.throwTo = 0;
+    } else {
+        ChordEvent& c = pat().chords[chord];
+        c.ratchet = 0;
+        c.throwTo = 0;
+        c.play.strum = kStrumOff;
+        c.play.order = kOrderUp;
+        c.play.time = c.play.level = c.play.lengths = 0;
+    }
+    session_.sendNoteBar(project_.track, project_.scene, project_.bar);
+    session_.endOwnUndoStep();
 }
 
 // With X held on a note or a chord, Y rolls the dice for it: a ratchet, a glide of some length
@@ -656,6 +731,10 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down) fxFrom(b == Button::R1 ? 1 : -1); // GLIDE FROM, a click. (Zoom and carry wait until X is let go.)
         return;
     }
+    if (fxHeld_ && b == Button::B) {
+        if (event.down) fxEmpty(); // what X shows, emptied. (B's own delete waits until X is let go.)
+        return;
+    }
     if (b == Button::Y) {
         if (event.down && !shaping_ && !painting_ && !onBars_) beginPick();
         else if (!event.down) endPick();
@@ -673,6 +752,8 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
             session_.choosePack(session_.packIndex() + (b == Button::R1 ? 1 : -1));
             hand_ = 0;
             pickChanged();
+        } else if (b == Button::L2 || b == Button::R2) {
+            doubleHand(b == Button::R2 ? 1 : -1); // (the App sends them here while Y is held on the roll)
         } else if (b == Button::X) {
             hearChord(editing_ >= 0 ? pat().chords[editing_] : inHand());
         } else if (b == Button::B) {
@@ -743,6 +824,7 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down && !shaping_ && !erasing_ && !onBars_ && (slot >= 0 || chord >= 0)) {
             carrying_ = slot >= 0 ? Carry::Note : Carry::Chord;
             carried_ = slot >= 0 ? slot : chord;
+            axis_ = Axis::None; // a new hold is a new choice of job for the stick
             if (barTap) {
                 copyBarArmed_ = true;
                 copyBarPitch_ = pitch_;
@@ -765,6 +847,9 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (!event.down) {
         if (b == repeating_) repeating_ = Button::None;
         if (b == Button::B) erasing_ = false;
+        // X let go with the stick still pushed for what it does: the stick moves nothing until it has come
+        // back, as on FX and DEVICE (gesture audit G14), so the cursor does not jump off the note.
+        if (b == Button::X && fxHeld_) stickWait_ = input.stickX() != 0.f || input.stickY() != 0.f;
         if (b == Button::X) fxHeld_ = false;
         return;
     }
@@ -815,7 +900,7 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
     dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number
     lastMs_ = nowMs;
     if (project_.bar >= cellBars()) project_.bar = 0; // the cell was shortened, or it is another cell
-    const float x = input.stickX(), y = input.stickY();
+    float x = input.stickX(), y = input.stickY();
     {
         // The view follows the bar playing, unless the player is at the controls (follow_bar.hpp).
         const int bars = cellBars();
@@ -826,6 +911,13 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
             followTheNotes();
         }
     }
+    // The note went from under X (an undo) with the stick pushed for it: the same wait as X let go (onButton).
+    if (fxLastFrame_ && !fxHeld_ && input.held(Button::X) && (x != 0.f || y != 0.f)) stickWait_ = true;
+    fxLastFrame_ = fxHeld_;
+    if (stickWait_ && x == 0.f && y == 0.f) stickWait_ = false;
+    if (stickWait_) x = y = 0.f;
+    // A stick move with L1 held is a use of L1, as a button is: its let go zooms nothing (gesture audit G31).
+    if (zooming_ && (x != 0.f || y != 0.f)) zoomUsed_ = true;
     // A key played on a USB keyboard: the cursor goes to it, so A places there.
     if (const int key = session_.takeMidiKey(); key >= 0 && !shaping_ && !picking_ && !painting_) moveCursorTo(key, step_);
     keepInView(); // the zoom can be changed from SETUP too
@@ -893,16 +985,23 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
         stickX_ = stickY_ = 0.f;
         stickWasX_ = stickWasY_ = false;
     } else if (carrying_ != Carry::Nothing) {
-        // X has hold of a note. Sideways it goes key by key (a key is a key);
-        // up and down it slides freely in time. Squared: a small push is a fine move.
-        axis_ = Axis::None;
-        if (x == 0.f) stickX_ = 0.f, stickWasX_ = false;
-        else {
+        // R1 has hold of a note or a chord. One job per push, as with A held: whichever way the stick
+        // leaves the centre is the job until it comes back. Sideways it goes as the D-pad does
+        // (carry(): a SCALE's next key; with L1 held an octave, once a push: at the stick's pace an
+        // octave would fly); up and down it slides freely in time, squared, so a small push is a fine move.
+        if (x == 0.f && y == 0.f) axis_ = Axis::None;
+        else if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
+        if (axis_ != Axis::Sideways || x == 0.f) {
+            stickX_ = 0.f, stickWasX_ = false;
+        } else if (zooming_) {
+            if (!stickWasX_) carry(x > 0.f ? Button::Right : Button::Left);
+            stickX_ = 0.f, stickWasX_ = true;
+        } else {
             stickX_ += stickWasX_ ? std::fabs(x) * kCarryKeysPerSecond * dt : 1.f;
             stickWasX_ = true;
-            for (; stickX_ >= 1.f; stickX_ -= 1.f) carryBy(x > 0.f ? 1 : -1, 0);
+            for (; stickX_ >= 1.f; stickX_ -= 1.f) carry(x > 0.f ? Button::Right : Button::Left);
         }
-        if (std::fabs(y) > std::fabs(x)) carryFree(y * std::fabs(y) * kCarryStepsPerSecond * dt);
+        if (axis_ == Axis::UpDown) carryFree(y * std::fabs(y) * kCarryStepsPerSecond * dt);
         stickY_ = 0.f;
         stickWasY_ = false;
     } else {
@@ -1438,6 +1537,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("LEFT / RIGHT", "chord");
         hint("UP / DOWN", "inversion");
         hint("L1 R1", "pack");
+        hint("L2 R2", "length");
         hint("B", editing_ >= 0 ? "break into notes" : "cancel");
     } else if (fxHeld_ && !under && chordUnder) {
         // Each button under what it changes, with no word: LEFT / RIGHT sets the one picked, under
