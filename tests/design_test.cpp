@@ -855,7 +855,15 @@ void testKitFromThePage() {
     CHECK(has(spec, "{\"name\":\"GAIN\",\"field\":4,\"min\":-240,\"max\":240,\"texts\":[\"-24.0 DB\",\"-23.9 DB\",") && has(spec, "\"-0.1 DB\",\"0 DB\",\"+0.1 DB\",") && has(spec, "\"+24.0 DB\"]}"));
     CHECK(has(spec, "{\"name\":\"PITCH\",\"field\":5,\"min\":-24,\"max\":24,\"texts\":[\"-24\",") && has(spec, "\"-1\",\"0\",\"+1\",") && has(spec, "{\"name\":\"FINE\",\"field\":6,\"min\":-50,\"max\":50,\"texts\":[\"-50 CENTS\","));
     CHECK(has(spec, "{\"name\":\"REVERSE\",\"field\":7,\"min\":0,\"max\":1,\"texts\":[\"OFF\",\"ON\"]}"));
-    CHECK(has(spec, "{\"name\":\"FIT TO\",\"field\":8,\"stops\":[0,1,2,4,8,16,32,64],\"texts\":[\"OFF\",\"1 STEP\",\"2 STEPS\",\"4 STEPS\",\"8 STEPS\",\"1 BAR\",\"2 BARS\",\"4 BARS\"]}"));
+    CHECK(has(spec, "{\"name\":\"FIT TO\",\"field\":8,\"stops\":[0,1,2,3,4,6,8,12,16,24,32,48,64],\"texts\":[\"OFF\",\"1 STEP\",\"2 STEPS\",\"3 STEPS\",\"4 STEPS\",\"6 STEPS\",\"8 STEPS\",\"12 STEPS\",\"1 BAR\",\"24 STEPS\",\"2 BARS\",\"3 BARS\",\"4 BARS\"]}"));
+    { // (batch S1) in the scene's meter: in 3/4, 12 is a bar
+        const int meter = rig.app.project().sceneMeter[rig.app.project().scene];
+        session.setSceneMeter(rig.app.project().scene, 12);
+        rig.frames(1); // (the handheld makes the spec again: the meter it was made in changed)
+        CHECK(has(rig.get("/design/spec").body, "\"texts\":[\"OFF\",\"1 STEP\",\"2 STEPS\",\"3 STEPS\",\"4 STEPS\",\"6 STEPS\",\"8 STEPS\",\"1 BAR\",\"16 STEPS\",\"2 BARS\",\"32 STEPS\",\"4 BARS\",\"64 STEPS\"]}"));
+        session.setSceneMeter(rig.app.project().scene, meter);
+        rig.frames(1);
+    }
     CHECK(has(spec, "{\"name\":\"CHOKE\",\"field\":9,\"min\":0,\"max\":2,\"texts\":[\"NONE\",\"1\",\"2\"]}") && has(spec, "{\"name\":\"VOLUME\",\"field\":10,\"min\":0,\"max\":100,\"texts\":[\"0%\",\"1%\","));
     CHECK(has(spec, "{\"name\":\"HUMAN TIME\",\"field\":11,\"stops\":[0,10,25,50,75,100],\"texts\":[\"OFF\",\"10%\",\"25%\",\"50%\",\"75%\",\"100%\"]}") && has(spec, "{\"name\":\"HUMAN LEVEL\",\"field\":12,"));
     CHECK(has(spec, "{\"lane\":0,\"drum\":\"KICK\",") && has(spec, "{\"lane\":3,\"drum\":\"OP HAT\",") && has(spec, "{\"lane\":7,\"drum\":\"CRASH\","));

@@ -136,7 +136,8 @@ TYPE changed comes back with its old settings and automation), its sends,
 its sound (preset, settings, macros, and a recording: a kit lane's with its
 FIT, cut and synth voice, a sampler's, a CLOUD's), its GLIDE FROM, the
 master's effects and the buses' (their LEVEL too). So a Catch, a take or a B
-on SOUND is put back with SELECT + B. Tempo, mutes, names, a recording
+on SOUND is put back with SELECT + B. Tempo (but for the tempo from a loop:
+hold A + left / right on FIT), mutes, names, a recording
 deleted from the card and a track deleted or given another instrument are
 not. The song keeps playing while you undo.
 
@@ -257,8 +258,9 @@ recording; let go and it stops (its RELEASE runs). A tap plays a moment
 (0.35 s), as before. Pressed again, it starts again from the top. A setting
 is also heard as it is changed, when the song is stopped.
 
-**Y is Catch** here too: the last bar the song played becomes this track's
-recording. Eight notes at a time. SELECT + B puts back the one it had.
+**Y is Catch** here too: the last bars the song played become this track's
+recording (hold Y + a direction for 1, 2 or 4 bars, of the mix or one track:
+see Catch under the kit). Eight notes at a time. SELECT + B puts back the one it had.
 
 ## The list of recordings
 
@@ -282,7 +284,7 @@ column. It opens in the folder of the recording that is on, on it.
 | B | **A tap**: put back what was there before the list opened, a lane's cut (EDIT's START and END) with it. On a recording or a folder (where holding B deletes), only a quick tap does: held longer than a quarter of a second, or with another button pressed meanwhile, letting go does nothing and the list stays where it is |
 | X | **While it is still playing: it plays on to its end.** Nothing playing: hear it again; **held, it plays until you let go**, or to its end; a tap plays a moment |
 | **Hold B** | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. Or an **empty folder**: one with anything in it is never deleted. Let go before the bar is full and nothing happens |
-| Y / R1 | **With nothing on the card at all** (no recording, no folder), the list says where recordings come from: **Y catches the last bar and R1 records**, as on the page it was opened from. The list closes as a tap of B closes it |
+| Y / R1 | **With nothing on the card at all** (no recording, no folder), the list says where recordings come from: **Y catches the last bars and R1 records**, as on the page it was opened from. The list closes as a tap of B closes it |
 | START | Play / stop, with the list still open |
 
 **Folders.** Folders inside `samples` (kicks, breaks, vocals...), and
@@ -895,6 +897,7 @@ and A starts nothing meanwhile.
 | THE SONG | One WAV of the whole song: every scene as many times as it plays, then **for as long as its echoes and tails take to die away**. Muted tracks are left out. |
 | EACH TRACK | One WAV for every track by itself (stems), all the same length (the longest one's), so they line up in any other program |
 | THIS TRACK | The track being worked on, by itself |
+| TRACK TO SAMPLES | **A loop of this track, made into a recording** (to put on a lane or a sampler, and to free the handheld's work: a busy synth played back as a recording costs little). The track being worked on by itself (muted or not), the scene you are on played round once and then **the second time round kept**, so whatever rings past its end is heard at its start, as when it loops. **1, 2 or 4 whole bars** (the most the scene has, within twenty seconds: 4 bars at 120 BPM, 2 at 40); a scene under a bar, all of it. One channel, 16-bit 48 kHz, in `samples/bounces` ("bounces/bass 1", after the track's name), where the list of recordings sees it at once. On a lane, **a tap of A on FIT fits it to its bars**. The row says `done: "bounces/bass 1" in recordings` |
 | MIDI FILE | One MIDI file of the whole song (Type 1): every scene as many times as it plays, one track per track, at the song's tempo. Notes and chords as written, with ratchets and nudges; drums as General MIDI on channel 10. Muted tracks are left out. Chance, swing and feel, strum, glide and automation have no MIDI in them and are left out |
 
 A bounce is **not recorded as the song plays**. A second engine works the
@@ -927,7 +930,8 @@ far. Nobody knows how long a tail will be until it ends, so there is no
 percentage to give.
 
 Files are 48 kHz, 16-bit stereo, in a `bounces` folder beside the program.
-The WiFi page lists them under BOUNCES, to play, download or delete.
+The WiFi page lists them under BOUNCES, to play, download or delete. (TRACK TO
+SAMPLES is the exception: its one file is a recording, in `samples/bounces`.)
 
 ## Automation
 
@@ -1352,9 +1356,9 @@ track makes a sound at once.
   R1; elsewhere R1 turns the page). ADVANCED opens on POSITION the first time,
   and a page turn never lands on RECORDING, so R1 records only once you have
   moved onto it. **While a take waits or runs, R1 stops it** on any page and
-  any box (but with X held on a macro, R1 is its MOD's, as ever). **Y on SOURCE is CATCH**: the last bar the
-  song played becomes this track's recording (SELECT + B puts back the one it
-  had). B in the list leaves the
+  any box (but with X held on a macro, R1 is its MOD's, as ever). **Y on SOURCE is CATCH**: the last bars the
+  song played become this track's recording, as the kit's Catch (hold Y + a direction picks the bars and what;
+  SELECT + B puts back the one it had). B in the list leaves the
   recording as it was. "THE BUILT-IN TONE" at the top of the list is none.
 - **MAIN shows the recording**, between PRESET and the macros: its outline,
   the part the grains come from lit (POSITION give or take SPRAY), POSITION a
@@ -2204,6 +2208,11 @@ Everything the grid does works the same here. What is added:
 | X | Hear one slice: the hit's, or on an empty step the one a hit would get |
 | Up / down on the lane's name | **Up: ONE SLICE**, each hit plays its slice and stops. **Down: RUNS ON**, through the recording until the next hit. Held, it stays where it was pushed |
 | Hold Y + right on the name | Roll every hit's slice. Left: back in order. |
+| **Hold Y on a hit, R1** | **Save the slice** as a new recording: the slice the hit plays (from where it starts, to the end of its slice), as the lane plays it (EDIT and FIT made), beside the lane's file, named after it with the next free number (`amen 1`, `amen 2`...; never over a file). The strip says SAVED "AMEN 1". The hit, its chance and the lane stay as they were. |
+| **Hold A + right / left on the lane's name** | **Cut at the hits**: the slices are cut where the recording's drums land, not evenly. Each push is a step of SENSITIVITY, from EVEN (sixteen even slices, as before) through AT HITS 1 (only the loudest hits) to AT HITS 10 (soft ghost notes too). See "Slices at the hits" below. |
+| **Hold Y on a hit, left / right** | **Move its slice's cut** a millisecond earlier or later (the stick slides it), and every hit that starts on that cut with it. Heard as it moves. |
+| **Hold Y on a hit, A** | **Add a cut** inside its slice: where a hit was passed by (the strongest one there), or else in its middle |
+| **Hold Y on a hit, hold B** | **Delete its slice's cut** once the bar under the strip has filled (half a second; SELECT + B brings it back): the slice joins the one before, and the hits on it start there. A tap of B deletes nothing. |
 
 So, to chop a break: put it on a lane, FIT it to 1 bar, L1, hold R1 and
 sweep the stick across. That is the break as it was, in sixteen hits. Now
@@ -2214,10 +2223,41 @@ move to a step and press up or down until it plays the slice you want.
   slice out of order is heard as a cut.
 - **ONE SLICE** is for beats with gaps: take a hit out and its step is
   silent. With **RUNS ON** the recording plays on through the gap.
-- A hit's start can still be slid off the cuts (hold Y, stick left / right).
-  The strip then reads `9 + 40%`: slice 9, and 40% of a slice further in.
+- A hit's start can still be slid off the cuts on the plain drum grid (hold
+  Y, stick left / right). In the slice view the strip then reads `9 + 40%`:
+  slice 9, and 40% of a slice further in. (In the slice view, hold Y + left /
+  right moves the slice's cut instead: below.)
 - A slice change is undone by SELECT + B like any other edit. ONE SLICE /
   RUNS ON is kept in the song.
+
+### Slices at the hits
+
+A break is rarely even: its drums do not land on sixteen equal pieces. **Hold
+A on the lane's name and push right**, and the slices are cut where its hits
+land instead. The name's box says **AT HITS 1** and how many slices it found;
+each push right is a step more SENSITIVITY (it finds softer hits, up to AT HITS
+10), each push left a step less, back to **EVEN**. Every hit on the lane
+follows: a break laid out in order (hold R1 and drag) stays in order, now with
+each step starting on a hit; a hit moved out of order starts on the hit it was
+playing in. The picture draws each cut where it is.
+
+- Each cut sits a millisecond before its hit, so the hit's attack is heard
+  whole.
+- **ONE SLICE** now plays each hit to the next cut, so a slice is one clean
+  drum.
+- **Fix one by hand**: hold Y on a hit and press left / right to move its cut
+  a millisecond at a time (the stick slides it); hold Y and press **A** to add a
+  cut inside its slice (where a softer hit was passed by), or hold **B** to
+  delete its cut (a bar fills for half a second). The first slice always starts at the top of the sound. Moving,
+  adding or deleting a cut on EVEN slices makes them the lane's own: the box
+  says **BY HAND**. Up to 64 slices.
+- A long recording (over 4 seconds) is looked at while you carry on: the box
+  says FINDING... for a moment.
+- Another recording on the lane makes its slices EVEN again. A change of
+  START or END in its EDIT keeps the cuts where they were: cut at the hits
+  again after it.
+- It is all undone by SELECT + B, and kept in the song and in a kit.
+- The sampler's CHOP still cuts its recording into 16 even slices.
 
 ## DEVICE, drums: the kit
 
@@ -2232,16 +2272,27 @@ picture, EDIT (round the ends).
 **Kits.** UP from lane 1 is the kit's own stop, at the top left: KIT and its
 name. Hold A + UP / DOWN there puts on the next / previous kit: seven
 built-in kits (DRUMS, SYNTH, TIGHT, BIG, ELECTRO, DUSTY, HAND DRUMS), then
-your own. B with A still held gives back the kit you had (and plays it). Y saves the kit as
+your own, **then each folder of `samples` that holds recordings**. B with A still held gives back the kit you had (and plays it). Y saves the kit as
 it is now as KIT 1, KIT 2... (a file `kit 1.kit` beside the presets). Hold B
 a second deletes one of your own; the track keeps its sound. A kit is each
 lane's sound with its EDIT, FIT, VOLUME, CHOKE, FEEL and SWING, not the
 patterns or the effects. A changed kit reads YOUR OWN until it is saved.
 
+**A folder as a kit.** A folder puts its recordings on the eight lanes in one
+go, by name where it helps: lane 1 the first KICK or BD, lane 2 the first
+SNARE or SD (else a CLAP), lane 3 the first closed hat (CH, HH, or a HAT that
+is not OPEN), lane 4 the first open hat (OH, or OPEN with HAT); then the
+lanes still empty take the rest in name order. A lane left over plays its
+built-in drum. Each lane's sound comes with nothing done to it (no EDIT, no
+FIT, full VOLUME), and a hat on lane 3 or 4 is in CHOKE 1. It is one step of
+undo, and B with A still held gives back the kit you had. The stop reads
+FOLDER and the folder's name until a lane is changed (or the song is opened
+again: then YOUR OWN).
+
 | On | Hold A + stick up / down | B |
 | --- | --- | --- |
 | SOUND | From the built-in drum: UP each recording by name, DOWN the twelve synth models. Heard as it changes. **B with A still held: the lane as it was when A went down** (its EDIT and FIT too) | The drum back |
-| FIT TO | Off, 1, 2, 4, 8 steps, 1 bar, 2 bars, 4 bars. **A tap of A on a recording: the bars it fills at the tempo** (1, 2 or 4 bars in the scene's meter, or 1 to 8 steps for a short one). From a count between those (24 steps, two bars of 3/4), hold A + down goes to the one below it (16), up to the one above (32) | Off |
+| FIT TO | Off, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64 steps, read as bars of the scene's meter where they are whole (16 is 1 BAR in 4/4; 12 is 1 BAR in 3/4, 24 two, 48 four). **A tap of A on a recording: the bars it fills at the tempo** (the scene's own, if it has one) (1, 2 or 4 bars in the scene's meter, or one of the stops under a bar for a short one). From a count between those (20 steps, two bars of a 10-step meter), hold A + down goes to the one below it (16), up to the one above (24). **Hold A + left / right on a recording: the tempo from it** (below) | Off |
 | CHOKE | None, 1, 2 | None |
 | EDIT | (A opens the lane's EDIT view, below) | |
 
@@ -2313,6 +2364,16 @@ the edits make it, and eight boxes laid out as the sampler's.
   sound, END after the last: under 40 dB below its loudest is silence).
   **Y anywhere else: NORMALIZE**: GAIN so the part played peaks at about
   -1 dB, never over it. Both only set the boxes, and are undone like any edit.
+- **R1: SAVE A COPY.** What the lane plays, as its EDIT and FIT make it, is
+  written as a new recording (16-bit, one channel, 48 kHz, as Catch writes),
+  beside the lane's file and named after it with the next free number:
+  `amen 1`, `amen 2`... (never over a file). A synth voice or a built-in drum
+  goes in `samples` itself, after its model or drum (`kick 1`). The line at
+  the top says SAVED "AMEN 1", and it is in the list at once. The lane keeps
+  its sound; nothing else changes. Not the lane's VOLUME, a hit's level or
+  step effects, or the track's effects: the sound itself. Just after a FIT
+  or a tempo change it says NOT SAVED: IT IS STILL BEING MADE; press again
+  in a moment.
 - **The file on the card is never written.** The lane plays a copy made from
   it whenever an edit changes, so FIT stretches the edited sound, slices cut
   it (a trimmed break slices into its trimmed part), and slices in order still
@@ -2362,13 +2423,31 @@ screen, another track, Play or a new song stops it.
 **L1 is Slices**: the PATTERN tab, zoomed into this lane's recording cut
 into slices (see "Slices: chopping a break").
 
-**Y is Catch.** The engine remembers the last ten seconds it played. Y on a
-lane takes the last whole bar the song played, everything as it was heard,
-saves it as `catch 1.wav`, `catch 2.wav`... in `samples/catches`, and puts
-it on that lane fitted to one bar. It works just after stopping too. With no
-whole bar to take (the first bar, or after playing by hand), it takes the
-last bar's worth of sound. SELECT + B puts back what the lane had, its FIT,
-cut and synth voice with it (the catch's file stays in `catches`).
+**Y is Catch.** The engine remembers the last 25 seconds it played. A tap of Y on a
+lane takes the last whole bars the song played, saves them as `catch 1.wav`, `catch 2.wav`... in
+`samples/catches`, and puts them on that lane **fitted to their steps** (2 bars: 32). It catches when Y
+is let go. It works just after stopping too. SELECT + B puts back what the lane had, its FIT, cut and
+synth voice with it (the catch's file stays in `catches`).
+
+**Hold Y to choose what it catches**; the line at the top says it, e.g. `CATCH THE LAST 2 BARS OF THE MIX`:
+
+| Hold Y + | Does |
+| --- | --- |
+| LEFT / RIGHT | **1, 2 or 4 bars** (the ends stop) |
+| UP / DOWN | **THE MIX** (everything, as it was heard), or **one track alone**, 1 to the last (the ends stop; hold it to run through them) |
+
+The stick does the same, one choice a push. Let go of Y after choosing and nothing is caught; tap it
+to catch. The choice stays until you change it (it is not saved with the song).
+
+- **Fewer bars than asked**: since Play only 2 whole bars have gone by, so 4 asked gives 2, and the
+  line says `CAUGHT ONLY 2 BARS`. With no whole bar at all (the first bar, or after playing by hand) it
+  takes that many bars' worth of the sound up to now.
+- **Twenty seconds at most**, the longest recording: 4 bars fit down to 48 BPM; at 40 BPM, 3.
+- **One track alone**: what that track puts out after its own effects and level, **muted or not, with
+  no soloing**: a muted bass can be caught while the rest plays on. Not its pan, and not what it sends
+  to the buses. The handheld starts remembering a track when you choose it, so its bars count from
+  then: choose, let a bar or more go by, then tap Y. Before a whole bar of it has gone by nothing is
+  caught, and the line says `NO WHOLE BAR OF 3 BASS YET: LET ONE GO BY`.
 
 **R1 is Record.** With a USB microphone or audio interface plugged into the
 USB-C port: R1 on a lane starts it waiting for sound, so there is no silence
@@ -2385,13 +2464,25 @@ second after the tempo stops moving. The work is done ahead of time on
 another thread and swapped in when ready, so it never costs the sound
 anything while playing. Until it is ready the lane plays what it had.
 **A tap of A on FIT** picks the length for you: the bars the recording (as
-EDIT cuts it) lasts at the tempo, rounded to 1, 2 or 4 bars of the scene's
-meter (or 1, 2, 4 or 8 steps for a short one). Hold A + up / down still
+EDIT cuts it) lasts at the tempo (the scene's own, if it has one), rounded to 1, 2 or 4 bars of the scene's
+meter (or 1, 2, 3, 4, 6, 8 or 12 steps for a short one, those under a bar). Hold A + up / down still
 moves it one stop at a time. Nothing happens on the built-in drum or a synth
 voice.
 
-- WAV files of 8, 16, 24 or 32 bits or 32-bit float, any sample rate, any
-  number of channels. They are played as one channel at 48 kHz.
+**The tempo from a loop: hold A + right (or left) on FIT.** The other way
+round: the song's tempo is set so the recording (as EDIT cuts it) fills 1, 2
+or 4 bars of the scene's meter, the nearest to the tempo now first (either
+way: a loop already at the song's tempo with FIT OFF keeps the tempo and
+gets FIT), as a whole number between 40 and 240. Again with A held: **right** doubles the
+bars (a faster tempo), **left** halves them. FIT goes to those bars with it,
+so the loop plays as it is and stays in time if the tempo moves later. The
+line at the top says TEMPO 123: IT FILLS 2 BARS. **One step of undo, the
+tempo with it** (SELECT + B puts the tempo and FIT back; no other change of
+tempo is undone). A scene with its own tempo still plays at its own.
+Nothing happens on the built-in drum or a synth voice.
+
+- WAV files of 8, 16, 24 or 32 bits or 32-bit float, at 4 kHz to 192 kHz,
+  with 1 to 8 channels. They are played as one channel at 48 kHz.
 - **Twenty seconds** of each is used; a longer file is cut there, with a short fade so it does not click.
 - The song file keeps each lane's file by name and each hit's start. If the
   file is not on the card, the lane plays its drum and says so (FILE NOT

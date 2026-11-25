@@ -4,6 +4,8 @@
 #include <SDL.h>
 
 #include <stdlib.h>
+#include <algorithm>
+#include <chrono>
 #include <sys/stat.h>
 
 #include <cmath>
@@ -14,10 +16,12 @@
 #include <vector>
 
 #include "app.hpp"
+#include "catch_key.hpp"
 #include "apotheca/cloud.hpp"
 #include "drum_voices.hpp"
 #include "presets.hpp"
 #include "canvas.hpp"
+#include "pattern_layout.hpp"
 #include "samples.hpp"
 #include "song_file.hpp"
 #include "stretch.hpp"
@@ -808,15 +812,15 @@ void testTheKitScreen() {
     CHECK(std::strcmp(track.laneSample[2], "beta") == 0 && Rig::sounding(rig.render(4000)) == 0);
     rig.tap(START);
 
-    // FIT: off, then 1, 2, 4, 8, 16, 32, 64 steps.
+    // FIT: off, then 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64 steps (3, 6, 12, 24 and 48 since batch S1).
     rig.tap(RIGHT);
     rig.key(A, true);
-    const int want[] = {1, 2, 4, 8, 16, 32, 64, 64};
+    const int want[] = {1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 64};
     for (int w : want) {
         rig.tap(UP);
         CHECK(track.laneFit[2] == w);
     }
-    rig.tap(DOWN, 3);
+    rig.tap(DOWN, 6);
     CHECK(track.laneFit[2] == 8);
     rig.key(A, false);
     CHECK(rig.settle());
@@ -926,6 +930,257 @@ void testCatch() {
     bare.tap(START);
     bare.render(20 * kStep);
     CHECK(bare.session().catchLastBar(0, 5).empty() && bare.project().tracks[0].laneSample[5][0] == 0);
+}
+
+// CATCH of 1, 2 or 4 bars, of the mix or one track (batch S3, 2026-11-25; catch_key.hpp): a tap of Y catches on
+// its let go; hold Y + LEFT / RIGHT the bars, + UP / DOWN of what; a let go after a choice catches nothing.
+void testCatchingBarsAndATrack() {
+    const std::string folder = tempFolder("samples") + "/caught";
+    Rig rig(folder);
+    Session& session = rig.session();
+    KitScreen& kit = rig.app.kit();
+    TrackData& track = rig.project().tracks[0];
+    rig.app.drums().setStep(0, 0, 1.f);
+    rig.app.drums().setStep(0, 8, 1.f);
+    session.view = View::Device;
+    kit.goTo(5, KitScreen::kSound);
+    rig.frames(2);
+    CHECK(session.catchBars() == 1 && session.catchFrom() == -1);
+
+    // Y held: RIGHT twice is 4 bars (the ends stop), and the line says so; its let go catches nothing.
+    rig.key(Y, true);
+    CHECK(kit.choosingCatch());
+    rig.tap(RIGHT);
+    CHECK(session.catchBars() == 2 && catchChoiceLine(session) == "CATCH THE LAST 2 BARS OF THE MIX");
+    rig.tap(RIGHT, 2);
+    CHECK(session.catchBars() == 4 && kit.cursorLane() == 5 && kit.cursorColumn() == KitScreen::kSound); // (the cursor stays)
+    rig.key(Y, false);
+    CHECK(!kit.choosingCatch() && wavNames(folder).empty());
+    // Two and a half bars played: 4 asked, the 2 whole ones given, and it says ONLY; FIT is their 32 steps.
+    rig.tap(START);
+    rig.render(2 * 16 * kStep + 8 * kStep);
+    rig.tap(Y);
+    CHECK(std::strcmp(track.laneSample[5], "catches/catch 1") == 0 && track.laneFit[5] == 32 && session.caughtBars() == 2);
+    CHECK(kit.said() == "CAUGHT ONLY 2 BARS AS \"CATCHES/CATCH 1\"");
+    std::vector<float> file;
+    CHECK(readWav(folder + "/catches/catch 1.wav", file) && file.size() == 32u * kStep);
+    // Four whole bars, then LEFT to 2: the last 2 of them.
+    rig.render(2 * 16 * kStep);
+    kit.goTo(6, KitScreen::kSound);
+    rig.tap(Y);
+    CHECK(track.laneFit[6] == 64 && session.caughtBars() == 4 && kit.said().find("CAUGHT THE LAST 4 BARS AS") == 0);
+    rig.key(Y, true);
+    rig.tap(LEFT);
+    rig.key(Y, false);
+    CHECK(session.catchBars() == 2);
+    rig.tap(LEFT, 3); // (Y let go: the cursor moves again, round the four columns from SOUND to FIT)
+    CHECK(kit.cursorColumn() == KitScreen::kFit && kit.cursorLane() == 6);
+    kit.goTo(7, KitScreen::kSound);
+    rig.tap(Y);
+    CHECK(track.laneFit[7] == 32 && session.caughtBars() == 2 && kit.said().find("CAUGHT THE LAST 2 BARS AS") == 0);
+    // Another button while Y is held: its let go catches nothing.
+    const std::size_t files = wavNames(folder).size();
+    rig.key(Y, true);
+    rig.tap(X);
+    rig.key(Y, false);
+    CHECK(wavNames(folder).size() == files);
+
+    // The stick, with Y held, is one choice a push, however long it is held; the cursor stays.
+    session.stepCatchBars(-1);
+    CHECK(session.catchBars() == 1);
+    rig.key(Y, true);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(30);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(2);
+    CHECK(session.catchBars() == 2 && kit.cursorColumn() == KitScreen::kSound);
+    rig.key(STICK_DOWN, true);
+    rig.frames(30);
+    CHECK(session.catchFrom() == 0 && kit.cursorLane() == 7);
+    rig.key(STICK_DOWN, false);
+    rig.frames(2);
+    rig.key(STICK_DOWN, true);
+    rig.frames(2);
+    rig.key(STICK_DOWN, false);
+    CHECK(session.catchFrom() == 0); // (only one track: the end stops)
+    rig.frames(1);
+    CHECK(catchChoiceLine(session).find("CATCH THE LAST 2 BARS OF 1 ") == 0);
+    rig.key(Y, false);
+    // One track, muted: caught alone all the same, from when it was chosen (no soloing). The mix has nothing now.
+    session.addTrack(TrackKind::Jx3p);
+    session.setMuted(0, true);
+    rig.frames(2);
+    rig.render(3 * 16 * kStep);
+    rig.frames(1);
+    kit.goTo(4, KitScreen::kSound);
+    rig.tap(Y);
+    CHECK(std::string(track.laneSample[4]).find("catches/") == 0 && session.caughtFrom() == 0 && session.caughtBars() == 2);
+    CHECK(kit.said().find("CAUGHT THE LAST 2 BARS OF 1 ") == 0);
+    CHECK(readWav(folder + "/" + track.laneSample[4] + ".wav", file) && file.size() == 32u * kStep);
+    CHECK(std::fabs(file[0]) > 0.05f && std::fabs(file[16 * kStep]) > 0.05f); // its kicks, though muted
+    CHECK(rig.engine->lastBars(2).bars == 2);
+    float mixPeak = 0.f;
+    for (float v : rig.engine->lastBars(2).sound) mixPeak = std::fmax(mixPeak, std::fabs(v));
+    CHECK(mixPeak < 1e-4f);
+    // A track with nothing playing: nothing to catch, and it says of what.
+    session.stepCatchFrom(1);
+    CHECK(session.catchFrom() == 1);
+    rig.frames(1);
+    rig.render(3 * 16 * kStep);
+    kit.goTo(3, KitScreen::kSound);
+    rig.tap(Y);
+    CHECK(track.laneSample[3][0] == 0 && kit.said().find("NOTHING OF 2 ") == 0);
+    // UP back past the first track: the mix; the ends stop.
+    session.stepCatchFrom(-1);
+    session.stepCatchFrom(-1);
+    session.stepCatchFrom(-1);
+    CHECK(session.catchFrom() == -1);
+    // One track chosen half a bar ago: no whole bar of it since, so nothing is caught (a sliver fitted to a few steps
+    // and called a bar was), and the line says to let one go by.
+    session.stepCatchFrom(1);
+    rig.frames(1);
+    rig.render(8 * kStep);
+    kit.goTo(2, KitScreen::kSound);
+    const std::size_t before = wavNames(folder).size();
+    rig.tap(Y);
+    CHECK(track.laneSample[2][0] == 0 && track.laneFit[2] == 0 && wavNames(folder).size() == before && session.caughtNoWholeBar());
+    CHECK(kit.said().find("NO WHOLE BAR OF 1 ") == 0 && kit.said().find(" YET: LET ONE GO BY") != std::string::npos);
+    // Two bars later it is caught (a whole bar, bar line to bar line, has gone by).
+    rig.render(32 * kStep);
+    rig.tap(Y);
+    CHECK(std::string(track.laneSample[2]).find("catches/") == 0 && !session.caughtNoWholeBar() && session.caughtBars() >= 1);
+    session.stepCatchFrom(-1);
+    rig.tap(START);
+
+    // The sampler: the same Y.
+    session.setMuted(0, false);
+    CHECK(session.addTrack(TrackKind::Sampler));
+    rig.project().track = 2;
+    rig.frames(2);
+    rig.tap(START);
+    rig.render(2 * 16 * kStep + 100);
+    rig.key(Y, true);
+    rig.tap(RIGHT); // (2 to 4: 2 whole bars played, so ONLY 2)
+    rig.key(Y, false);
+    CHECK(rig.project().tracks[2].sample[0] == 0);
+    rig.tap(Y);
+    CHECK(std::string(rig.project().tracks[2].sample).find("catches/") == 0 && session.caughtBars() == 2);
+    CHECK(rig.app.sampler().said().find("CAUGHT") == 0);
+    rig.tap(START);
+    // Y held, DOWN held: it runs on through the tracks at a list's pace (three here), stopping at the last.
+    CHECK(session.catchFrom() == -1 && rig.project().trackCount() == 3);
+    const std::size_t caught = wavNames(folder).size();
+    rig.key(Y, true);
+    rig.key(DOWN, true);
+    rig.frames(11); // (176 ms: the press's one; a list waits 200 before it runs, a cursor 170)
+    CHECK(session.catchFrom() == 0);
+    rig.frames(4); // (240 ms: the first run, at 200)
+    CHECK(session.catchFrom() == 1);
+    rig.key(DOWN, false); // let go: it stops there
+    rig.frames(20);
+    CHECK(session.catchFrom() == 1);
+    rig.key(DOWN, true);
+    rig.frames(25);
+    CHECK(session.catchFrom() == 2); // (the end stops)
+    rig.key(DOWN, false);
+    rig.key(UP, true);
+    rig.frames(30);
+    rig.key(UP, false);
+    CHECK(session.catchFrom() == -1); // (UP held back to THE MIX, the end)
+    rig.key(Y, false);
+    CHECK(wavNames(folder).size() == caught); // (a choice: nothing caught)
+}
+
+// BOUNCE THIS TRACK INTO SAMPLES (batch S3; Session::Bounce::ToSamples): the track alone, muted or not, its scene
+// gone round once first (a sound ringing past the end is in its start), 1, 2 or 4 whole bars, mono, in samples'
+// "bounces" folder, where the list sees it; a tap of A on FIT fits it to its bars.
+void testBouncingIntoSamples() {
+    const std::string folder = tempFolder("samples") + "/into";
+    mkdir(folder.c_str(), 0755);
+    writeWav(folder + "/long.wav", steady(1.f, 0.2f), 48000); // a second: 8 steps at 120 BPM
+    Rig rig(folder);
+    Session& session = rig.session();
+    session.setLaneSample(0, 1, "long");
+    rig.app.drums().setStep(1, 12, 1.f); // the long one on step 13, ringing 4 steps past the bar's end
+    session.setMuted(0, true);           // muted: bounced all the same
+    CHECK(session.addTrack(TrackKind::Jx3p)); // another track, playing: not in it
+    NotePattern& bar = rig.project().tracks[1].notes[0][0];
+    bar.notes[0].step = 4;
+    bar.notes[0].pitch = 57;
+    bar.notes[0].length = 2.f;
+    bar.notes[0].velocity = 0.8f;
+    session.sendNotePattern(1, 0);
+    rig.project().track = 0;
+    rig.frames(2);
+    const unsigned lists = session.sampleFiles();
+    CHECK(session.startBounce(Session::Bounce::ToSamples)); // (no bounces folder needed)
+    session.finishBounce();
+    CHECK(session.bounceFiles() == 1 && session.bounceSampleSteps() == 16);
+    const std::string name = session.bounceSample();
+    CHECK(name == "bounces/drums 1");
+    std::vector<float> file;
+    CHECK(readWav(folder + "/" + name + ".wav", file) && file.size() == 16u * kStep);
+    // The second time round: the long one from the bar before rings in its first 4 steps (the first time round, silence).
+    CHECK(file.size() == 16u * kStep && std::fabs(std::fabs(file[100]) - 0.2f * kTrackLevel) < 0.01f);
+    CHECK(file.size() == 16u * kStep && std::fabs(std::fabs(file[static_cast<std::size_t>(3 * kStep)]) - 0.2f * kTrackLevel) < 0.01f);
+    CHECK(file.size() == 16u * kStep && std::fabs(std::fabs(file[static_cast<std::size_t>(14 * kStep)]) - 0.2f * kTrackLevel) < 0.01f);
+    float between = 0.f; // steps 5 to 8, where only the JAX-EP's note would sound: nothing
+    for (int i = 5 * kStep; i < 8 * kStep && file.size() == 16u * kStep; ++i) between = std::fmax(between, std::fabs(file[static_cast<std::size_t>(i)]));
+    CHECK(between < 1e-3f);
+    // The open lists hear of it on the next frame; it is in the list.
+    rig.frames(1);
+    CHECK(session.sampleFiles() == lists + 1);
+    const std::vector<std::string> names = session.sampleNames();
+    CHECK(std::find(names.begin(), names.end(), name) != names.end());
+    rig.frames(1);
+    CHECK(session.sampleFiles() == lists + 1); // (once)
+    // On a lane, a tap of A on FIT fits it to its bar.
+    session.setMuted(0, false);
+    session.setLaneSample(0, 3, name);
+    session.view = View::Device;
+    rig.app.kit().goTo(3, KitScreen::kFit);
+    rig.frames(2);
+    rig.tap(A);
+    CHECK(rig.project().tracks[0].laneFit[3] == 16);
+    // A scene with its own tempo (60 in a 120 song): the bounce is made at 60 (a bar is 4 s), and the tap fits it
+    // to that bar at the scene's tempo, not 2 bars at the song's.
+    session.setSceneTempo(rig.project().scene, 60.f);
+    rig.frames(2);
+    CHECK(session.startBounce(Session::Bounce::ToSamples));
+    session.finishBounce();
+    CHECK(session.bounceSampleSteps() == 16 && readWav(folder + "/" + session.bounceSample() + ".wav", file) && file.size() == 32u * kStep);
+    session.setLaneSample(0, 4, session.bounceSample());
+    rig.app.kit().goTo(4, KitScreen::kFit);
+    rig.frames(2);
+    rig.tap(A);
+    CHECK(rig.project().tracks[0].laneFit[4] == 16);
+    session.setSceneTempo(rig.project().scene, 0.f);
+    rig.frames(2);
+    // The next is "drums 3"; a named track goes by its name.
+    CHECK(session.startBounce(Session::Bounce::ToSamples));
+    session.finishBounce();
+    CHECK(session.bounceSample() == "bounces/drums 3");
+    session.setTrackName(0, "BEAT");
+    CHECK(session.startBounce(Session::Bounce::ToSamples));
+    session.finishBounce();
+    CHECK(session.bounceSample() == "bounces/beat 1");
+    // How long: 4, 2 or 1 whole bars within twenty seconds; under a bar, all of it.
+    Project song;
+    song.tracks[0].kind = TrackKind::Drums;
+    song.tracks[0].bars[0] = 4;
+    song.tempo = 120.f;
+    CHECK(samplesBounceSteps(song, 0, 48000.f) == 64);
+    song.tempo = 40.f; // 4 bars 24 s: 2
+    CHECK(samplesBounceSteps(song, 0, 48000.f) == 32);
+    song.tempo = 48.f; // 4 bars 20 s exactly: 4
+    CHECK(samplesBounceSteps(song, 0, 48000.f) == 64);
+    song.tracks[0].bars[0] = 3; // 3 bars: 2 of them
+    CHECK(samplesBounceSteps(song, 0, 48000.f) == 32);
+    song.steps[0] = 8; // cut to 8 steps: all of it
+    CHECK(samplesBounceSteps(song, 0, 48000.f) == 8);
+    // Nowhere to put it: no bounce.
+    Rig bare;
+    CHECK(!bare.session().startBounce(Session::Bounce::ToSamples));
 }
 
 // A recording is a step of undo (gesture audit G04): CATCH, B on SOUND, a pick or a take is put back
@@ -1940,12 +2195,12 @@ void testBWithAHeldPutsTheSoundBack() {
     rig.tap(UP);
     rig.tap(B);
     rig.key(A, false);
-    CHECK(drums.laneFit[2] == 32);
+    CHECK(drums.laneFit[2] == 24);
     // ...and with no step first, A's let go after B is still no tap: FIT is not set to the recording's bars.
     rig.key(A, true);
     rig.tap(B);
     rig.key(A, false);
-    CHECK(drums.laneFit[2] == 32);
+    CHECK(drums.laneFit[2] == 24);
     // The stick still pushed when B puts the sound back moves nothing until it comes back to the middle (it was
     // stepping the sounds: it would move the cursor off the lane at once).
     kit.goTo(2, KitScreen::kSound);
@@ -2169,7 +2424,9 @@ void testATapOnFitFitsItsBars() {
     CHECK(laneFitFor(30.f, 120.f, 16) == 64);  // past four bars: FIT's most
     CHECK(laneFitFor(1.9f, 120.f, 16) == 16 && laneFitFor(2.2f, 120.f, 16) == 16);
     CHECK(laneFitFor(3.f, 120.f, 16) == 32);   // 24 steps: nearer 32 by ratio (4 / 3) than 16 (3 / 2)
-    CHECK(laneFitFor(2.f, 90.f, 16) == 16);    // 12 steps: nearer 16 (4 / 3) than 8 (3 / 2)
+    CHECK(laneFitFor(2.f, 90.f, 16) == 12);    // 12 steps: a stop under a bar since batch S1 (it was 16, the nearer of 8 and 16)
+    CHECK(laneFitFor(1.8f, 90.f, 16) == 12 && laneFitFor(0.38f, 120.f, 16) == 3 && laneFitFor(0.75f, 120.f, 16) == 6); // 10.8, 3.04, 6 steps
+    CHECK(laneFitFor(1.5f, 120.f, 12) == 12 && laneFitFor(0.75f, 120.f, 12) == 6); // 3/4: 12 is a bar, not a stop under one
     CHECK(laneFitFor(0.5f, 120.f, 16) == 4 && laneFitFor(0.13f, 120.f, 16) == 1 && laneFitFor(0.25f, 120.f, 16) == 2 && laneFitFor(1.f, 120.f, 16) == 8);
     CHECK(laneFitFor(1.5f, 120.f, 12) == 12 && laneFitFor(3.f, 120.f, 12) == 24 && laneFitFor(6.f, 120.f, 12) == 48); // 3/4
     CHECK(laneFitFor(2.f, 120.f, 12) == 12);   // 16 steps in 3/4: a bar (4 / 3), not 24 (3 / 2)
@@ -2204,7 +2461,7 @@ void testATapOnFitFitsItsBars() {
     rig.key(A, true);
     rig.tap(DOWN);
     rig.key(A, false);
-    CHECK(track.laneFit[1] == 16);
+    CHECK(track.laneFit[1] == 24); // (24 a stop since batch S1)
     // What the lane plays: cut to its first half, a second, 8 steps.
     LaneEdit edit = track.laneEdit[0];
     edit.end = kEditUnits / 2;
@@ -2217,17 +2474,36 @@ void testATapOnFitFitsItsBars() {
     kit.goTo(1, KitScreen::kFit);
     rig.tap(A);
     CHECK(track.laneFit[1] == 24);
-    // 24 is no stop of FIT's: hold A + DOWN lands on the stop below it (16, not 8), UP on the one above (32).
+    // ...and back to it from either side: 24 and 12 are stops since batch S1 (a 3/4 CATCH stepped off 12 could not
+    // get back to it).
+    rig.key(A, true);
+    rig.tap(DOWN);
+    CHECK(track.laneFit[1] == 16);
+    rig.tap(UP);
+    CHECK(track.laneFit[1] == 24);
+    rig.tap(DOWN, 2);
+    CHECK(track.laneFit[1] == 12);
+    rig.tap(DOWN);
+    CHECK(track.laneFit[1] == 8);
+    rig.tap(UP);
+    CHECK(track.laneFit[1] == 12);
+    rig.key(A, false);
+    // A count between FIT's stops (2 bars of a 10-step meter, 20): hold A + DOWN lands on the stop below it (16, not
+    // 12), UP on the one above (24).
+    session.setSceneMeter(rig.project().scene, 10);
+    rig.tap(A);
+    CHECK(track.laneFit[1] == 40); // (four seconds at 120: 32 steps, nearer 4 bars of 10 than 2)
+    session.setLaneFit(0, 1, 20);
     rig.key(A, true);
     rig.tap(DOWN);
     rig.key(A, false);
     CHECK(track.laneFit[1] == 16);
-    rig.tap(A);
-    CHECK(track.laneFit[1] == 24);
+    session.setLaneFit(0, 1, 20);
     rig.key(A, true);
     rig.tap(UP);
     rig.key(A, false);
-    CHECK(track.laneFit[1] == 32);
+    CHECK(track.laneFit[1] == 24);
+    session.setSceneMeter(rig.project().scene, 12);
     // A built-in drum, a synth voice, a file not found: nothing (and the bar keeps HOLD A fit to steps).
     CHECK(kit.fitsByTap()); // (on "long", a recording found)
     for (int lane : {2, 3, 4}) {
@@ -3038,6 +3314,543 @@ void testOneSliceIsKeptInTheSong() {
     int frames = opened.hit(2);
     CHECK(frames >= kStep && frames <= kStep + 60);
     CHECK(opened.hit(3) > 2000);
+}
+
+// ---- SLICES AT THE HITS (batch S2, sampling-gaps.md #2) ----------------------------------------------
+
+// A break built by hand: a burst of falling noise at each time (in seconds), starting at full as a sampled
+// drum does, `gain` each. Its hits are known to the sample.
+std::vector<float> builtBreak(double seconds, const std::vector<double>& at, const std::vector<float>& gain) {
+    std::vector<float> out(static_cast<std::size_t>(seconds * 48000.0), 0.f);
+    std::uint32_t noise = 99u;
+    for (std::size_t h = 0; h < at.size(); ++h) {
+        const int from = static_cast<int>(std::lround(at[h] * 48000.0));
+        for (int i = 0; i < 12000 && from + i < static_cast<int>(out.size()); ++i) {
+            noise = noise * 1664525u + 1013904223u;
+            const float v = static_cast<float>(noise >> 8) * (2.f / 16777216.f) - 1.f;
+            out[static_cast<std::size_t>(from + i)] += gain[h] * v * std::exp(-30.f * static_cast<float>(i) / 48000.f);
+        }
+    }
+    return out;
+}
+// Two seconds, eight hits (one at the top), and a ghost at 1.125 s that only the most SENSITIVITY counts.
+const std::vector<double> kBreakHits = {0.0, 0.25, 0.5, 0.75, 1.0, 1.375, 1.5, 1.75};
+std::vector<float> theBreak() {
+    std::vector<double> at = kBreakHits;
+    std::vector<float> gain(at.size(), 0.8f);
+    at.push_back(1.125);
+    gain.push_back(0.12f);
+    return builtBreak(2.0, at, gain);
+}
+// Is the lane's cut k just before the hit at `seconds` (1 ms, give or take the few samples noise starts quiet for)?
+bool cutJustBefore(Session& session, int lane, int k, double seconds) {
+    const long at = std::lround(static_cast<double>(session.laneCutAt(0, lane, k)) * 96000.0);
+    const long want = std::lround(seconds * 48000.0) - 48;
+    return at >= want - 6 && at <= want + 16;
+}
+// Two lanes' cuts alike as the song file keeps them (six figures: what a song saved and read, or undo, puts back).
+bool sameCuts(const LaneCuts& a, const LaneCuts& b) {
+    if (a.count != b.count || a.sense != b.sense) return false;
+    for (int k = 0; k < a.count; ++k)
+        if (std::fabs(a.at[k] - b.at[k]) > 1e-6f) return false;
+    return true;
+}
+
+// In order is by a hit's place in the lane's FIT, the same in every bar: the whole break hit at the top of bars 1, 3
+// and 4 stays at the top, and a bar painted in order in bar 2 is in order there as in bar 1 (review fix, 2026-11-25:
+// bar 2 step 1 was read as slice 17, round past the count, and bars 3 and 4 came to cuts mid-break).
+void testSlicesAtTheHitsInEveryBar() {
+    const std::string folder = tempFolder("samples-hits-bars");
+    CHECK(writeWav(folder + "/break.wav", theBreak(), 48000));
+    Rig rig(folder);
+    Session& session = rig.session();
+    TrackData& track = rig.project().tracks[0];
+    session.setLaneSample(0, 2, "break");
+    session.setLaneFit(0, 2, 16);
+    CHECK(rig.settle());
+    for (int bar = 0; bar < 4; ++bar) {
+        DrumPattern& p = track.drums[0][bar];
+        for (int s = 0; s < kSteps; ++s) {
+            const bool hit = bar == 1 || s == 0;
+            p.level[2][s] = hit ? 0.9f : 0.f;
+            p.start[2][s] = bar == 1 ? s / 16.f : 0.f;
+        }
+    }
+    // Nine cuts (the ghost counted): 16, 32 and 48 round past nine are not the top, as they are round past eight.
+    CHECK(session.cutLaneAtHits(0, 2, kSenseMost) == Session::Cut::Done && track.laneCuts[2].count == 9);
+    for (int bar : {0, 2, 3}) CHECK(track.drums[0][bar].start[2][0] == 0.f);
+    for (int s = 0; s < kSteps; ++s) CHECK(track.drums[0][1].start[2][s] == session.laneCutAt(0, 2, s % 9));
+    CHECK(session.cutLaneAtHits(0, 2, 1) == Session::Cut::Done && track.laneCuts[2].count == 8); // (another SENSITIVITY: the tops stay)
+    for (int bar : {0, 2, 3}) CHECK(track.drums[0][bar].start[2][0] == 0.f);
+    for (int s = 0; s < kSteps; ++s) CHECK(track.drums[0][1].start[2][s] == session.laneCutAt(0, 2, s % 8));
+    CHECK(session.cutLaneAtHits(0, 2, 0) == Session::Cut::Done && track.laneCuts[2].even());
+    for (int bar : {0, 2, 3}) CHECK(track.drums[0][bar].start[2][0] == 0.f);
+    for (int s = 0; s < kSteps; ++s) CHECK(track.drums[0][1].start[2][s] == s / 16.f);
+    // FIT of 2 bars (32 even slices): bar 2 is the second half of the break, in order there.
+    session.setLaneFit(0, 2, 32);
+    CHECK(rig.settle());
+    for (int s = 0; s < kSteps; ++s) track.drums[0][1].start[2][s] = (16 + s) / 32.f;
+    CHECK(session.cutLaneAtHits(0, 2, kSenseMost) == Session::Cut::Done);
+    for (int s = 0; s < kSteps; ++s) CHECK(track.drums[0][1].start[2][s] == session.laneCutAt(0, 2, 16 + s));
+    for (int bar : {0, 2, 3}) CHECK(track.drums[0][bar].start[2][0] == 0.f);
+    CHECK(session.cutLaneAtHits(0, 2, 0) == Session::Cut::Done);
+    for (int s = 0; s < kSteps; ++s) CHECK(track.drums[0][1].start[2][s] == (16 + s) / 32.f);
+}
+
+// Hold A on the slice view's lane name, LEFT / RIGHT: EVEN, AT HITS 1..10. The hits follow: in order stays in
+// order, each on a hit; any other to the cut at or before it (in every scene). ONE SLICE plays to the next cut.
+void testSlicesAtTheHits() {
+    const std::string folder = tempFolder("samples-hits");
+    CHECK(writeWav(folder + "/break.wav", theBreak(), 48000));
+    Rig rig(folder);
+    Session& session = rig.session();
+    PatternScreen& drums = rig.app.drums();
+    TrackData& track = rig.project().tracks[0];
+    session.view = View::Pattern;
+    session.setLaneSample(0, 2, "break");
+    session.setLaneFit(0, 2, 16); // (2 s at 120 BPM: the fit is the file as it is)
+    CHECK(rig.settle());
+    rig.frames(2);
+    drums.moveCursorTo(2, 0);
+    drums.setSlicing(true);
+    CHECK(drums.slicing() && drums.slices() == 16 && track.laneCuts[2].even());
+    // The break laid out in order with R1, and one hit put out of order: slice 14 (13/16 = 1.625 s in).
+    rig.key(R1, true);
+    rig.tap(RIGHT, 15);
+    rig.key(R1, false);
+    drums.setStart(2, 3, 13.f / 16.f);
+    // A hit of the lane in another scene (scene 2, out of order too): it follows as well.
+    rig.project().scene = 1;
+    drums.setStep(2, 5, 0.9f);
+    drums.setStart(2, 5, 9.f / 16.f); // 1.125 s: the ghost
+    rig.project().scene = 0;
+    rig.frames(60); // (a burst of undo of its own)
+
+    // Hold A, RIGHT: AT HITS 1. Eight slices, each cut 1 ms before a hit; the ghost is not one of them.
+    drums.moveCursorTo(2, -1);
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    CHECK(track.laneCuts[2].count == 8 && track.laneCuts[2].sense == 1 && drums.slices() == 8 && session.laneSlices(0, 2) == 8);
+    for (int k = 1; k < 8; ++k) CHECK(cutJustBefore(session, 2, k, kBreakHits[static_cast<std::size_t>(k)]));
+    CHECK(session.laneCutAt(0, 2, 0) == 0.f);
+    // The picture the slice view draws shows each cut where it is: a line at the top of the recording's box
+    // (over its outline's reach), and none a few pixels either side.
+    {
+        Canvas canvas;
+        if (canvas.ok) {
+            rig.app.draw(canvas.r, *canvas.fonts);
+            const int waveX = pattern_layout::kGridLeft, waveW = kSteps * pattern_layout::kStepW - 2, top = pattern_layout::kGridTop + 3;
+            for (int k = 1; k < 8; ++k) {
+                const int x = waveX + static_cast<int>(std::round(session.laneCutAt(0, 2, k) * waveW));
+                CHECK(canvas.is(x, top, ui::kDim) && !canvas.is(x - 4, top, ui::kDim) && !canvas.is(x + 4, top, ui::kDim));
+            }
+        }
+    }
+    // In order stays in order: step s on slice s, round again past the eighth. Out of order: the cut before it.
+    for (int s = 0; s < kSteps; ++s)
+        if (s != 3) CHECK(drums.start(2, s) == session.laneCutAt(0, 2, s % 8));
+    CHECK(drums.start(2, 3) == session.laneCutAt(0, 2, 6)); // 1.625 s: in the hit at 1.5
+    CHECK(track.drums[1][0].start[2][5] == session.laneCutAt(0, 2, 4)); // the ghost (1.125 s): in the hit at 1.0
+    // The ends stop: RIGHT up to AT HITS 10 (the ghost counted there), no further.
+    rig.tap(RIGHT, 12);
+    CHECK(track.laneCuts[2].sense == kSenseMost && track.laneCuts[2].count == 9);
+    // Back down to EVEN: the hits in order are each step's own sixteenth again.
+    rig.tap(LEFT, 9);
+    CHECK(track.laneCuts[2].sense == 1);
+    rig.tap(LEFT);
+    CHECK(track.laneCuts[2].even() && track.laneCuts[2].sense == 0 && drums.slices() == 16);
+    for (int s = 0; s < kSteps; ++s)
+        if (s != 3) CHECK(drums.start(2, s) == s / 16.f);
+    CHECK(drums.start(2, 3) == 11.f / 16.f); // (the hit at 1.5 s was in sixteenth 12)
+    rig.tap(LEFT); // EVEN is the end
+    CHECK(track.laneCuts[2].even());
+    // The stick: a click at once, then at the clicks' pace while pushed.
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    CHECK(track.laneCuts[2].sense == 1);
+    rig.frames(40);
+    CHECK(track.laneCuts[2].sense > 2);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    // Held, LEFT runs on at a list's pace (a choice: the hits found again each time), not a cursor's.
+    rig.key(A, false);
+    session.cutLaneAtHits(0, 2, kSenseMost);
+    rig.frames(1);
+    rig.key(A, true);
+    rig.key(LEFT, true);
+    rig.frames(11); // 176 ms: a cursor's first repeat (170) would have come, a list's (200) not
+    CHECK(track.laneCuts[2].sense == kSenseMost - 1);
+    rig.frames(10); // 336 ms: a list's at 200 and 310
+    CHECK(track.laneCuts[2].sense == kSenseMost - 3);
+    rig.key(LEFT, false);
+    rig.key(A, false);
+    while (track.laneCuts[2].sense != 1) session.cutLaneAtHits(0, 2, 1);
+    CHECK(hintsFit(rig));
+
+    // ONE SLICE: a hit plays to the next cut, not a sixteenth (the engine was told the cuts).
+    rig.tap(UP); // (on the name: ONE SLICE)
+    CHECK(track.laneOneSlice[2]);
+    int frames = rig.hit(2); // from the top: to the hit at 0.25 s
+    CHECK(frames >= 11952 && frames <= 11952 + 60);
+    // X on a hit: its slice, to the next cut.
+    drums.moveCursorTo(2, 5); // slice 6 (1.375 s) to slice 7 (1.5 s)
+    rig.render(100000);
+    rig.tap(X);
+    frames = Rig::sounding(rig.render(100000));
+    CHECK(frames >= 6000 - 60 && frames <= 6000 + 60);
+    // Played in the bar: the same.
+    for (int s = 0; s < kSteps; ++s)
+        if (s != 5) drums.setStep(2, s, 0.f);
+    rig.render(200000);
+    rig.tap(START);
+    const std::vector<float> bar = rig.render(16 * kStep);
+    rig.tap(START);
+    frames = Rig::sounding(bar);
+    CHECK(frames >= 6000 - 60 && frames <= 6000 + 60);
+    rig.render(200000);
+    // A song with nothing new: no slices line, and the lane's hits play the even sixteenth as ever.
+    CHECK(songText(rig.project()).find("\nslices 3 1 ") != std::string::npos);
+    session.cutLaneAtHits(0, 2, 0);
+    CHECK(songText(rig.project()).find("slices") == std::string::npos);
+    frames = rig.hit(2);
+    CHECK(frames >= kStep && frames <= kStep + 60);
+}
+
+// By hand, in the slice view, Y held on a hit: LEFT / RIGHT move its slice's cut (every hit on it with it), A adds a
+// cut inside its slice, B deletes its cut. The first is the top and stays. Undo takes each back.
+void testCutsByHand() {
+    const std::string folder = tempFolder("samples-hand");
+    CHECK(writeWav(folder + "/break.wav", theBreak(), 48000));
+    Rig rig(folder);
+    Session& session = rig.session();
+    PatternScreen& drums = rig.app.drums();
+    TrackData& track = rig.project().tracks[0];
+    session.view = View::Pattern;
+    session.setLaneSample(0, 2, "break");
+    rig.frames(2);
+    drums.moveCursorTo(2, 0);
+    drums.setSlicing(true);
+    rig.key(R1, true);
+    rig.tap(RIGHT, 15);
+    rig.key(R1, false);
+    CHECK(session.cutLaneAtHits(0, 2, 1) == Session::Cut::Done && drums.slices() == 8);
+    rig.frames(60);
+    // Y + RIGHT on step 2 (slice 3, the hit at 0.5 s): its cut a millisecond later, and step 10's hit (slice 3
+    // too) with it; step 1's not.
+    const float cut2 = session.laneCutAt(0, 2, 2), cut1 = session.laneCutAt(0, 2, 1);
+    drums.moveCursorTo(2, 2);
+    rig.key(Y, true);
+    rig.tap(RIGHT);
+    CHECK(std::fabs(session.laneCutAt(0, 2, 2) - cut2 - 1.f / 2000.f) < 1e-6f && drums.start(2, 2) == session.laneCutAt(0, 2, 2) && drums.start(2, 10) == session.laneCutAt(0, 2, 2));
+    CHECK(drums.start(2, 1) == cut1 && session.laneCutAt(0, 2, 1) == cut1 && track.laneCuts[2].sense == 1);
+    rig.tap(LEFT, 2);
+    CHECK(std::fabs(session.laneCutAt(0, 2, 2) - cut2 + 1.f / 2000.f) < 1e-6f);
+    // It stops 5 ms short of its neighbours.
+    rig.tap(LEFT, 400);
+    CHECK(near(session.laneCutAt(0, 2, 2), cut1 + 0.005f / 2.f) && drums.start(2, 2) == session.laneCutAt(0, 2, 2));
+    // None of that was a tap of Y: the chance is as it was.
+    rig.key(Y, false);
+    CHECK(drums.chance(2, 2) == 1.f);
+    // The stick slides it (a full push: a quarter second of sound a second).
+    const float before = session.laneCutAt(0, 2, 2);
+    rig.key(Y, true);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(20);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    rig.key(Y, false);
+    const float slid = (session.laneCutAt(0, 2, 2) - before) * 2.f; // in seconds
+    CHECK(slid > 0.02f && slid < 0.12f && drums.start(2, 2) == session.laneCutAt(0, 2, 2));
+    // Slice 1 starts at the top, always: its cut does not move, and the strip says why.
+    drums.moveCursorTo(2, 0);
+    rig.key(Y, true);
+    rig.tap(RIGHT);
+    rig.key(Y, false);
+    CHECK(session.laneCutAt(0, 2, 0) == 0.f && drums.start(2, 0) == 0.f && std::string(drums.said()) == "SLICE 1 ALWAYS STARTS AT THE TOP");
+    // Undo puts the cut back where it was found (as the song's text keeps it), and the hits on it.
+    rig.frames(60);
+    rig.key(SELECT, true);
+    rig.tap(B);
+    rig.key(SELECT, false);
+    CHECK(std::fabs(session.laneCutAt(0, 2, 2) - cut2) < 1e-6f && drums.start(2, 2) == session.laneCutAt(0, 2, 2) && drums.start(2, 10) == session.laneCutAt(0, 2, 2));
+
+    // Y + A on step 4 (slice 5, the hit at 1.0 s): a cut at the ghost (1.125 s), the strongest inside it. No hit moves.
+    rig.frames(60);
+    drums.moveCursorTo(2, 4);
+    const float four = drums.start(2, 4), twelve = drums.start(2, 12);
+    rig.key(Y, true);
+    rig.key(A, true);
+    CHECK(drums.slices() == 9 && cutJustBefore(session, 2, 5, 1.125) && track.laneCuts[2].sense == 1);
+    CHECK(drums.start(2, 4) == four && drums.start(2, 12) == twelve && drums.level(2, 4) > 0.f);
+    // A's press is spent: Y let go first, A still down, the D-pad nudges nothing (it is the cursor's).
+    rig.key(Y, false);
+    rig.tap(RIGHT);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(drums.nudge(2, 4) == 0.f && drums.chance(2, 4) == 1.f && drums.cursorStep() == 5);
+    // A cut added moves no hit, yet is a step of undo of its own (the sound's mark sees the cuts).
+    rig.frames(60);
+    rig.key(SELECT, true);
+    rig.tap(B);
+    rig.key(SELECT, false);
+    CHECK(drums.slices() == 8);
+    rig.key(SELECT, true);
+    rig.tap(A); // (redo)
+    rig.key(SELECT, false);
+    CHECK(drums.slices() == 9 && cutJustBefore(session, 2, 5, 1.125));
+    // Y + A in a slice with no hit found in it: its middle.
+    drums.moveCursorTo(2, 1); // slice 2: 0.25 to 0.5 s
+    rig.key(Y, true);
+    rig.tap(A);
+    rig.key(Y, false);
+    CHECK(drums.slices() == 10 && near(session.laneCutAt(0, 2, 2), (session.laneCutAt(0, 2, 1) + session.laneCutAt(0, 2, 3)) / 2.f));
+    // Y + hold B on step 2 (slice 4 now: the hit at 0.5 s): the bar fills for half a second (the buttons'
+    // standards: hold B deletes), then its cut is deleted, the hits on it to the cut before (the middle one just added).
+    drums.moveCursorTo(2, 2);
+    const float middle = session.laneCutAt(0, 2, 2);
+    CHECK(drums.sliceOf(2) == 3);
+    rig.key(Y, true);
+    rig.frames(1);
+    CHECK(hintsFit(rig)); // (HOLD B delete it)
+    rig.tap(B); // a tap: nothing deleted, and said why
+    CHECK(drums.slices() == 10 && std::string(drums.said()) == "HOLD B TO DELETE THE CUT");
+    rig.key(B, true);
+    rig.frames(20); // (320 ms: under the half second)
+    CHECK(drums.slices() == 10);
+    rig.key(Y, false); // Y let go: called off
+    rig.frames(20);
+    rig.key(B, false);
+    CHECK(drums.slices() == 10);
+    rig.key(Y, true);
+    rig.key(B, true);
+    rig.frames(20);
+    CHECK(drums.slices() == 10);
+    rig.frames(15); // (560 ms)
+    rig.key(B, false);
+    rig.key(Y, false);
+    CHECK(drums.slices() == 9 && drums.start(2, 2) == middle && drums.start(2, 10) == middle && drums.level(2, 2) > 0.f && drums.chance(2, 2) == 1.f);
+    // ...and on slice 1: the top stays.
+    drums.moveCursorTo(2, 0);
+    rig.key(Y, true);
+    rig.key(B, true);
+    rig.frames(35);
+    rig.key(B, false);
+    rig.key(Y, false);
+    CHECK(drums.slices() == 9 && std::string(drums.said()) == "SLICE 1 ALWAYS STARTS AT THE TOP");
+    // Not on the plain grid: Y + B there deletes nothing and adds nothing.
+    drums.setSlicing(false);
+    drums.moveCursorTo(2, 4);
+    rig.key(Y, true);
+    rig.tap(A);
+    rig.tap(B);
+    rig.key(Y, false);
+    CHECK(drums.slices() == 9 && drums.level(2, 4) > 0.f);
+    rig.frames(1);
+    drums.setSlicing(true);
+    // EVEN slices made the lane's own by a move: BY HAND, sixteen cuts, one moved.
+    session.cutLaneAtHits(0, 2, 0);
+    drums.moveCursorTo(2, 3);
+    rig.key(Y, true);
+    rig.tap(RIGHT);
+    rig.key(Y, false);
+    rig.frames(1);
+    CHECK(track.laneCuts[2].count == 16 && track.laneCuts[2].sense == 0 && near(session.laneCutAt(0, 2, 3), 3.f / 16.f + 0.0005f) && session.laneCutAt(0, 2, 4) == 4.f / 16.f);
+    // From BY HAND, hold A + LEFT on the name is EVEN.
+    drums.moveCursorTo(2, -1);
+    rig.key(A, true);
+    rig.tap(LEFT);
+    rig.key(A, false);
+    CHECK(track.laneCuts[2].even());
+    // Sixty-four is the most: one more is refused, and said.
+    LaneCuts full;
+    full.count = kMaxLaneCuts;
+    for (int k = 1; k < kMaxLaneCuts; ++k) full.at[k] = static_cast<float>(k) / kMaxLaneCuts;
+    session.setLaneCuts(0, 2, full);
+    drums.moveCursorTo(2, 4);
+    rig.key(Y, true);
+    rig.tap(A);
+    rig.key(Y, false);
+    CHECK(drums.slices() == kMaxLaneCuts && std::string(drums.said()) == "64 SLICES ARE THE MOST");
+    // No room: a slice under 10 ms takes no cut.
+    LaneCuts tight;
+    tight.count = 3;
+    tight.at[1] = 0.25f, tight.at[2] = 0.25f + 0.008f / 2.f;
+    session.setLaneCuts(0, 2, tight);
+    drums.setStart(2, 4, 0.25f);
+    rig.key(Y, true);
+    rig.tap(A);
+    rig.key(Y, false);
+    CHECK(drums.slices() == 3 && std::string(drums.said()) == "NO ROOM FOR A CUT THERE");
+}
+
+// The cuts are the song's: written and read back, put back by undo, gone with another recording (and back
+// with B in the list), carried by a kit; a long sound's hits found on a thread of their own.
+void testCutsAreKept() {
+    const std::string folder = tempFolder("samples-kept");
+    CHECK(writeWav(folder + "/break.wav", theBreak(), 48000));
+    CHECK(writeWav(folder + "/other.wav", theBreak(), 48000));
+    Rig rig(folder);
+    Session& session = rig.session();
+    TrackData& track = rig.project().tracks[0];
+    session.setLaneSample(0, 2, "break");
+    rig.frames(60);
+    CHECK(songText(rig.project()).find("slices") == std::string::npos);
+    CHECK(session.cutLaneAtHits(0, 2, 3) == Session::Cut::Done);
+    const LaneCuts found = track.laneCuts[2];
+    const std::string text = songText(rig.project());
+    CHECK(text.find("\nslices 3 3 0.") != std::string::npos);
+    std::unique_ptr<Project> back(new Project), again(new Project);
+    CHECK(parseSong(text, *back) && songText(*back) == text && sameCuts(back->tracks[0].laneCuts[2], found));
+    CHECK(parseSong(songText(*back), *again) && std::memcmp(&back->tracks[0].laneCuts[2], &again->tracks[0].laneCuts[2], sizeof found) == 0); // (byte for byte: undo's mark)
+    // Nonsense: out of order, past the end or not a number ends the cuts there; a SENSITIVITY nobody knows is BY HAND.
+    const auto read = [&](const std::string& line) {
+        std::string odd = text;
+        const std::size_t at = odd.find("\nslices 3 ");
+        const std::size_t end = odd.find('\n', at + 1);
+        odd.replace(at + 1, end - at - 1, line);
+        std::unique_ptr<Project> p(new Project);
+        CHECK(parseSong(odd, *p));
+        return p->tracks[0].laneCuts[2];
+    };
+    LaneCuts c = read("slices 3 4 0.2 0.5 0.4 0.9");
+    CHECK(c.count == 3 && c.sense == 4 && c.at[1] == 0.2f && c.at[2] == 0.5f && c.at[3] == 0.f);
+    c = read("slices 3 12 0.2 1.5 0.7");
+    CHECK(c.count == 2 && c.sense == 0);
+    c = read("slices 3 2 0.3 x 0.6");
+    CHECK(c.count == 2 && c.at[1] == 0.3f);
+    c = read("slices 3 2");
+    CHECK(c.count == 1 && c.sense == 2);
+    c = read("slices 9 2 0.3");
+    CHECK(c.even());
+    // Opened afresh, the lane plays ONE SLICE to its cut: the song took the cuts to the engine.
+    session.setLaneOneSlice(0, 2, true);
+    std::unique_ptr<Project> saved(new Project);
+    CHECK(parseSong(songText(rig.project()), *saved));
+    Rig opened(folder);
+    opened.project() = *saved;
+    opened.session().applyProject();
+    const int frames = opened.hit(2);
+    const int first = static_cast<int>(found.at[1] * 96000.f);
+    CHECK(frames >= first && frames <= first + 60);
+
+    // Undo: a turn of the SENSITIVITY is a step, the cuts and the hits put back.
+    rig.frames(60);
+    session.cutLaneAtHits(0, 2, kSenseMost);
+    CHECK(track.laneCuts[2].sense == kSenseMost);
+    rig.frames(60);
+    CHECK(session.undo() && sameCuts(track.laneCuts[2], found));
+    // Another recording: EVEN (its cuts were the last sound's), in the one step with the name.
+    rig.frames(60);
+    session.setLaneSample(0, 2, "other");
+    CHECK(track.laneCuts[2].even());
+    rig.frames(60);
+    CHECK(session.undo() && std::string(track.laneSample[2]) == "break" && sameCuts(track.laneCuts[2], found));
+    // A DRUM SYNTH voice put on: EVEN too.
+    drumsynth::Voice voice = drumsynth::usualVoice(1);
+    session.setLaneSynth(0, 2, voice);
+    CHECK(track.laneCuts[2].even());
+    session.setLaneSample(0, 2, "break");
+    session.setLaneCuts(0, 2, found);
+    // The kit carries them: its text has the line, and a kit put on puts them on.
+    const std::string kit = kitText(track);
+    CHECK(kit.find("\nslices 3 3 ") != std::string::npos);
+    std::unique_ptr<TrackData> other(new TrackData);
+    CHECK(readKit(kit, *other) && sameCuts(other->laneCuts[2], found));
+    session.setLaneCuts(0, 2, LaneCuts());
+    CHECK(session.putKit(0, *other) && sameCuts(track.laneCuts[2], found));
+    const LaneCuts put = track.laneCuts[2];
+    // The kit's list of recordings: one stepped onto makes them EVEN; B puts them back with the cut.
+    session.view = View::Device;
+    KitScreen& screen = rig.app.kit();
+    screen.goTo(2, KitScreen::kSound);
+    rig.frames(2);
+    rig.tap(A);
+    CHECK(screen.picker().isOpen());
+    rig.tap(DOWN);
+    rig.frames(2);
+    CHECK(std::string(track.laneSample[2]) != "break" && track.laneCuts[2].even());
+    rig.tap(B);
+    rig.frames(2);
+    CHECK(!screen.picker().isOpen() && std::string(track.laneSample[2]) == "break" && track.laneCuts[2] == put);
+}
+
+// A long sound's hits are found on a thread of their own: the lane says FINDING, the SENSITIVITY asked for
+// meanwhile is the one put on, and the screen is told to draw (the redraw's "fitting").
+void testFindingHitsOnAThread() {
+    const std::string folder = tempFolder("samples-finding");
+    std::vector<double> at;
+    std::vector<float> gain;
+    for (int i = 0; i < 24; ++i) at.push_back(0.25 * i), gain.push_back(0.8f);
+    CHECK(writeWav(folder + "/long.wav", builtBreak(6.0, at, gain), 48000));
+    CHECK(writeWav(folder + "/short.wav", theBreak(), 48000));
+    Rig rig(folder);
+    Session& session = rig.session();
+    PatternScreen& drums = rig.app.drums();
+    TrackData& track = rig.project().tracks[0];
+    session.view = View::Pattern;
+    session.setLaneSample(0, 2, "long");
+    session.setLaneSample(0, 3, "short");
+    rig.frames(2);
+    CHECK(session.cutLaneAtHits(0, 2, 2) == Session::Cut::Finding && session.findingHits(0, 2) && track.laneCuts[2].even());
+    CHECK((session.stirring() & kStirFitting) != 0);
+    // Asked again meanwhile: the last asked is shown, and is what is put on.
+    CHECK(session.cutLaneAtHits(0, 2, 4) == Session::Cut::Finding && session.senseShown(0, 2) == 4 && !session.findingHits(0, 3));
+    // A short sound meanwhile: at once (another lane's job lets it land first).
+    CHECK(session.cutLaneAtHits(0, 3, 1) == Session::Cut::Done && track.laneCuts[3].count == 8);
+    for (int i = 0; i < 500 && session.findingHits(0, 2); ++i) {
+        rig.frames(1);
+        SDL_Delay(2);
+    }
+    CHECK(!session.findingHits(0, 2) && track.laneCuts[2].sense == 4 && track.laneCuts[2].count == 24 && (session.stirring() & kStirFitting) == 0);
+    // Found once a sound: another SENSITIVITY is at once.
+    CHECK(session.cutLaneAtHits(0, 2, 6) == Session::Cut::Done && track.laneCuts[2].sense == 6);
+    // The slice view says it while it looks: FINDING... (its own word), then AT HITS.
+    session.setLaneSample(0, 2, "short");
+    session.setLaneSample(0, 2, "long"); // (a new shape: found again)
+    drums.moveCursorTo(2, -1);
+    drums.setSlicing(true);
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    CHECK(session.findingHits(0, 2) && session.senseShown(0, 2) == 1 && track.laneCuts[2].even());
+    rig.tap(RIGHT);
+    CHECK(session.senseShown(0, 2) == 2);
+    rig.key(A, false);
+    for (int i = 0; i < 500 && session.findingHits(0, 2); ++i) {
+        rig.frames(1);
+        SDL_Delay(2);
+    }
+    CHECK(track.laneCuts[2].sense == 2 && track.laneCuts[2].count == 24);
+    // Back to EVEN while FINDING...: EVEN stands when the hits land (review fix, 2026-11-25: AT HITS 1 was put on).
+    session.setLaneSample(0, 2, "short");
+    session.setLaneSample(0, 2, "long");
+    CHECK(track.laneCuts[2].even());
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    CHECK(session.findingHits(0, 2) && session.senseShown(0, 2) == 1);
+    rig.tap(LEFT);
+    CHECK(session.findingHits(0, 2) && session.senseShown(0, 2) == 0);
+    rig.key(A, false);
+    for (int i = 0; i < 500 && session.findingHits(0, 2); ++i) {
+        rig.frames(1);
+        SDL_Delay(2);
+    }
+    CHECK(!session.findingHits(0, 2) && track.laneCuts[2].even() && track.laneCuts[2].sense == 0);
+    // ...and an undo while FINDING...: what it put back stands.
+    session.setLaneSample(0, 2, "short");
+    session.setLaneSample(0, 2, "long");
+    rig.frames(60);
+    CHECK(session.addLaneCut(0, 2, 0) == Session::Cut::Done && track.laneCuts[2].count == 17); // (BY HAND: what the undo keeps)
+    rig.frames(60);
+    session.setLaneOneSlice(0, 2, true);
+    rig.frames(60);
+    CHECK(session.cutLaneAtHits(0, 2, 3) == Session::Cut::Finding);
+    CHECK(session.undo() && !track.laneOneSlice[2]);
+    for (int i = 0; i < 500 && session.findingHits(0, 2); ++i) {
+        rig.frames(1);
+        SDL_Delay(2);
+    }
+    CHECK(!session.findingHits(0, 2) && track.laneCuts[2].count == 17 && track.laneCuts[2].sense == 0);
+    CHECK(session.cutLaneAtHits(0, 2, 3) == Session::Cut::Done && track.laneCuts[2].sense == 3); // (the hits were kept: at once)
 }
 
 // Recordings kept in folders: the list shows a folder at a time, L1 and R1 turn them.
@@ -4177,7 +4990,531 @@ void testTheSamplersLoopStartOnThePage() {
     CHECK(screen.editing());
 }
 
-int main(int, char**) {
+
+// ---- batch S1 (2026-11-25, sampling-gaps.md): save as a recording, a folder as a kit, FIT's new stops, the tempo
+// from a loop ------------------------------------------------------------------------------------------------------
+
+namespace {
+// The 16-bit file's samples against `want`: as close as a 16-bit number can be.
+bool sameAs16Bit(const std::vector<float>& got, const std::vector<float>& want) {
+    if (got.size() != want.size()) return false;
+    for (std::size_t i = 0; i < got.size(); ++i)
+        if (std::fabs(got[i] - (want[i] > 1.f ? 1.f : want[i] < -1.f ? -1.f : want[i])) > 1.5f / 32767.f) return false;
+    return true;
+}
+bool fileThere(const std::string& path) {
+    struct stat info;
+    return stat(path.c_str(), &info) == 0;
+}
+std::vector<float> wavAt(const std::string& path) {
+    std::vector<float> out;
+    readWav(path, out);
+    return out;
+}
+// What a lane plays, as installLane makes it: the fitted (or shaped) sound, with its level where it is edited.
+std::vector<float> lanePlays(Session& session, const TrackData& track, int lane) {
+    const Session::LaneSound& sound = session.laneSound(0, lane);
+    const std::vector<float>& made = sound.fitted ? *sound.fitted : *sound.shaped;
+    if (track.laneEdit[lane].atRest()) return made;
+    std::vector<float> out(made.size());
+    makeLevel(made.data(), static_cast<int>(made.size()), track.laneEdit[lane], 48000.f, out.data());
+    return out;
+}
+}
+
+// SAVE AS A RECORDING: R1 in a lane's EDIT view writes what the lane plays (EDIT and FIT made) as a new recording
+// beside its file, named after it with the next free number, and nothing else changes.
+void testSaveAsARecording() {
+    const std::string folder = tempFolder("samples-save");
+    mkdir((folder + "/breaks").c_str(), 0755);
+    CHECK(writeWav(folder + "/breaks/amen.wav", tone(1.5f, 0.3f), 48000));
+    const std::string longName = "x/" + std::string(61, 'a'); // (63 letters: the longest a name may be)
+    mkdir((folder + "/x").c_str(), 0755);
+    CHECK(writeWav(folder + "/" + longName + ".wav", tone(0.2f, 0.3f), 48000));
+    Rig rig(folder);
+    Session& session = rig.session();
+    session.view = View::Device;
+    KitScreen& kit = rig.app.kit();
+    TrackData& track = rig.project().tracks[0];
+    session.setLaneSample(0, 0, "breaks/amen");
+    session.setLaneFit(0, 0, 16);
+    LaneEdit edit;
+    edit.gain = 60, edit.fadeOut = 50;
+    session.setLaneEdit(0, 0, edit);
+    CHECK(rig.settle());
+    rig.frames(60);
+    const int steps = session.undoSteps();
+    kit.goTo(0, KitScreen::kEdit);
+    rig.tap(A);
+    CHECK(kit.editing() && hintsFit(rig)); // (R1 save a copy)
+    rig.tap(R1);
+    CHECK(kit.said() == "SAVED \"AMEN 1\"");
+    const std::vector<float> saved = wavAt(folder + "/breaks/amen 1.wav");
+    CHECK(saved.size() == 96000 && sameAs16Bit(saved, lanePlays(session, track, 0))); // (a bar at 120, gained and faded)
+    CHECK(std::abs(rig.hit(0) - static_cast<int>(saved.size())) <= 64); // ...as long as the engine plays it
+    // Nothing else changes: the lane, its edits, its FIT; no step of undo.
+    rig.frames(60);
+    CHECK(std::string(track.laneSample[0]) == "breaks/amen" && track.laneEdit[0] == edit && track.laneFit[0] == 16 && session.undoSteps() == steps);
+    // The next free number, never over a file: capitals not counted.
+    rig.tap(R1);
+    CHECK(kit.said() == "SAVED \"AMEN 2\"");
+    CHECK(writeWav(folder + "/breaks/AMEN 3.wav", tone(0.1f, 0.1f), 48000));
+    rig.tap(R1);
+    CHECK(kit.said() == "SAVED \"AMEN 4\"" && wavAt(folder + "/breaks/AMEN 3.wav").size() == 4800);
+    // ...and it is in the list.
+    bool listed = false;
+    for (const std::string& name : session.sampleNames()) listed = listed || name == "breaks/amen 4";
+    CHECK(listed);
+    // A FIT still being made for a new tempo: not saved, and said so; once made, saved as it is now.
+    session.setTempo(100.f);
+    rig.frames(1);
+    rig.tap(R1);
+    CHECK(kit.said() == "NOT SAVED: IT IS STILL BEING MADE. AGAIN IN A MOMENT" && !fileThere(folder + "/breaks/amen 5.wav"));
+    rig.frames(30); // (the tempo settles a quarter of a second before the new FIT starts)
+    CHECK(rig.settle());
+    rig.tap(R1);
+    CHECK(kit.said() == "SAVED \"AMEN 5\"" && wavAt(folder + "/breaks/amen 5.wav").size() == 115200); // (16 steps at 100)
+    session.setTempo(120.f);
+    CHECK(rig.settle());
+    // A shape still being made on the helper thread (PITCH on a long sound): the same.
+    {
+        const std::string longOne = "long";
+        CHECK(writeWav(folder + "/long.wav", tone(10.f, 0.3f), 48000));
+        session.setLaneSample(0, 1, longOne);
+        LaneEdit low;
+        low.pitch = -24;
+        session.setLaneEdit(0, 1, low);
+        CHECK(session.laneSound(0, 1).shaping);
+        std::string name;
+        CHECK(session.saveLaneSound(0, 1, 0.f, 1.f, name) == Session::SaveSound::Making && name.empty());
+        CHECK(rig.settle());
+        session.setLaneSample(0, 1, "");
+    }
+    // A file not found: said, nothing written.
+    session.setLaneSample(0, 4, "gone");
+    kit.goTo(4, KitScreen::kEdit);
+    kit.openEdit();
+    rig.tap(R1);
+    CHECK(kit.said() == "NOT SAVED: ITS FILE IS NOT FOUND" && !fileThere(folder + "/gone 1.wav"));
+    // A DRUM SYNTH voice and a built-in drum: after the model's or the drum's name, in the samples folder.
+    session.setLaneSynth(0, 3, drumsynth::usualVoice(drumsynth::kKick));
+    CHECK(rig.settle());
+    kit.goTo(3, KitScreen::kEdit);
+    kit.openEdit();
+    rig.tap(R1);
+    CHECK(kit.said() == "SAVED \"KICK 1\"" && sameAs16Bit(wavAt(folder + "/kick 1.wav"), *session.laneSound(0, 3).shaped));
+    kit.goTo(5, KitScreen::kEdit);
+    kit.openEdit();
+    rig.tap(R1);
+    CHECK(kit.said() == "SAVED \"TOM 1\"" && sameAs16Bit(wavAt(folder + "/tom 1.wav"), DrumKit::builtIn(48000.f).samples[5]));
+    // A name as long as a name may be: cut so the new one is a name too.
+    session.setLaneSample(0, 6, longName);
+    std::string name;
+    CHECK(session.saveLaneSound(0, 6, 0.f, 1.f, name) == Session::SaveSound::Saved && sampleNameOk(name) && name == "x/" + std::string(59, 'a') + " 1");
+    // With A held R1 does nothing; B goes back to the kit as ever.
+    kit.goTo(3, KitScreen::kEdit);
+    kit.openEdit();
+    rig.key(A, true);
+    rig.tap(R1);
+    rig.key(A, false);
+    CHECK(!fileThere(folder + "/kick 2.wav"));
+    // No samples folder: nothing to save into.
+    Rig bare;
+    CHECK(bare.session().saveLaneSound(0, 0, 0.f, 1.f, name) == Session::SaveSound::Failed);
+}
+
+// ...and in the slice view, with Y held on a hit, R1 saves the slice it plays (from its start, one slice long), its
+// end faded as the engine ends a part; Y's let go is then no tap (the chance stays). Not on the plain grid.
+void testSaveASlice() {
+    const std::string folder = tempFolder("samples-saveslice");
+    mkdir((folder + "/breaks").c_str(), 0755);
+    CHECK(writeWav(folder + "/breaks/amen.wav", tone(1.5f, 0.3f), 48000));
+    Rig rig(folder);
+    Session& session = rig.session();
+    PatternScreen& drums = rig.app.drums();
+    TrackData& track = rig.project().tracks[0];
+    session.view = View::Pattern;
+    session.setLaneSample(0, 2, "breaks/amen");
+    session.setLaneFit(0, 2, 16);
+    CHECK(rig.settle());
+    rig.frames(2);
+    drums.moveCursorTo(2, 4);
+    drums.setSlicing(true);
+    CHECK(drums.slicing());
+    rig.tap(A); // a hit on its own slice, 5
+    CHECK(drums.start(2, 4) == 4.f / 16.f);
+    const std::vector<float> plays = lanePlays(session, track, 2);
+    rig.key(Y, true);
+    rig.frames(1);
+    CHECK(hintsFit(rig)); // (R1 save the slice)
+    rig.tap(R1);
+    rig.key(Y, false);
+    rig.frames(1);
+    CHECK(std::string(drums.said()) == "SAVED \"AMEN 1\"" && drums.chance(2, 4) == 1.f);
+    std::vector<float> want(plays.begin() + 24000, plays.begin() + 30000);
+    for (int i = 0; i < 48; ++i) want[want.size() - 1 - static_cast<std::size_t>(i)] *= static_cast<float>(i) / 48.f; // (1 ms)
+    CHECK(sameAs16Bit(wavAt(folder + "/breaks/amen 1.wav"), want));
+    // The last slice runs to the sound's own end: nothing faded there.
+    drums.moveCursorTo(2, 15);
+    rig.tap(A);
+    rig.key(Y, true);
+    rig.tap(R1);
+    rig.key(Y, false);
+    CHECK(sameAs16Bit(wavAt(folder + "/breaks/amen 2.wav"), std::vector<float>(plays.begin() + 90000, plays.end())));
+    // An empty step: Y places a maybe hit, and R1 then saves its slice.
+    drums.moveCursorTo(2, 8);
+    rig.key(Y, true);
+    rig.tap(R1);
+    rig.key(Y, false);
+    CHECK(fileThere(folder + "/breaks/amen 3.wav") && drums.level(2, 8) > 0.f);
+    // Not on the plain grid: Y held and R1 on a hit save nothing (and paint nothing), as before.
+    drums.setSlicing(false);
+    drums.moveCursorTo(2, 4);
+    rig.key(Y, true);
+    rig.tap(R1);
+    rig.key(Y, false);
+    CHECK(!fileThere(folder + "/breaks/amen 4.wav"));
+    // Nor with L1 held first (L1 + R1 copies the bar, as ever). Since the FILL (merged with the fill lane), L1 held
+    // first + Y makes the cell's FILL and goes to it: the bar shown is put back to the first after.
+    drums.setSlicing(true);
+    drums.moveCursorTo(2, 4);
+    const unsigned copies = session.barCopies();
+    rig.key(L1, true);
+    rig.key(Y, true);
+    rig.tap(R1);
+    rig.key(Y, false);
+    rig.key(L1, false);
+    CHECK(!fileThere(folder + "/breaks/amen 4.wav") && session.barCopies() == copies + 1 && drums.slicing());
+    CHECK(rig.app.project().tracks[0].fillMade(0));
+    rig.app.project().bar = 0;
+    // Nor with X held on a hit (R1 is CUT there), nor on the lane's name (EVEN).
+    drums.setSlicing(true);
+    drums.moveCursorTo(2, 4);
+    rig.key(X, true);
+    rig.tap(R1);
+    rig.key(X, false);
+    CHECK(!fileThere(folder + "/breaks/amen 4.wav") && rig.app.project().tracks[0].drums[0][0].fx[2][4].cut == 1);
+}
+
+// FIT's stops 3, 6, 12, 24 and 48, and its box in bars of the scene's meter (12 in 3/4 reads 1 BAR).
+void testFitInTheMeter() {
+    char text[32];
+    const auto reads = [&](int fit, int meter) { laneFitText(fit, meter, text, sizeof text); return std::string(text); };
+    CHECK(reads(0, 16) == "OFF" && reads(1, 16) == "1 STEP" && reads(12, 16) == "12 STEPS" && reads(16, 16) == "1 BAR" && reads(48, 16) == "3 BARS");
+    CHECK(reads(12, 12) == "1 BAR" && reads(24, 12) == "2 BARS" && reads(48, 12) == "4 BARS" && reads(16, 12) == "16 STEPS" && reads(64, 12) == "64 STEPS");
+    CHECK(reads(16, 0) == "1 BAR"); // (a meter of nothing reads as 16, as meterOf holds it)
+    // A 3/4 CATCH's 12, stepped off, comes back (it went 12 > 16 > 8 and never back).
+    const std::string folder = tempFolder("samples-fitmeter");
+    CHECK(writeWav(folder + "/loop.wav", tone(1.5f, 0.3f), 48000));
+    Rig rig(folder);
+    Session& session = rig.session();
+    session.view = View::Device;
+    KitScreen& kit = rig.app.kit();
+    TrackData& track = rig.project().tracks[0];
+    session.setSceneMeter(rig.project().scene, 12);
+    session.setLaneSample(0, 0, "loop");
+    session.setLaneFit(0, 0, 12);
+    kit.goTo(0, KitScreen::kFit);
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(track.laneFit[0] == 16);
+    rig.tap(DOWN);
+    CHECK(track.laneFit[0] == 12);
+    rig.key(A, false);
+    // The box says 1 BAR.
+    Canvas canvas, scratch;
+    if (canvas.ok) {
+        rig.frames(1);
+        rig.app.draw(canvas.r, *canvas.fonts);
+        const int y = KitScreen::kLaneTop, h = KitScreen::kLaneRowH - KitScreen::kLaneGap;
+        const float textY = y + (h - canvas.fonts->medium.capHeight()) / 2.f;
+        CHECK(inked(canvas, scratch, 1, KitScreen::kFitX + 9.f, textY, "1 BAR", ui::kPurple));
+        session.setSceneMeter(rig.project().scene, 16);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(inked(canvas, scratch, 1, KitScreen::kFitX + 9.f, textY, "12 STEPS", ui::kPurple) && !inked(canvas, scratch, 1, KitScreen::kFitX + 9.f, textY, "1 BAR", ui::kPurple));
+    }
+}
+
+// THE TEMPO FROM THIS LOOP: hold A + LEFT / RIGHT on FIT sets the song's tempo so the loop fills 1, 2 or 4 bars of
+// the scene's meter (the nearest first, then RIGHT more bars, LEFT fewer), within 40..240, FIT to those bars, as one
+// step of undo that puts the tempo back too.
+void testTheTempoFromALoop() {
+    int bars = 0;
+    CHECK(loopTempo(2.f, 100.f, 16, 0, &bars) == 120.f && bars == 1); // 1 bar 120, 2 bars 240, 4 bars 480 (out)
+    CHECK(loopTempo(2.f, 200.f, 16, 0, &bars) == 240.f && bars == 2);
+    CHECK(loopTempo(2.f, 100.f, 16, 1, &bars) == 120.f && bars == 1); // (not one of them yet: the nearest)
+    CHECK(loopTempo(2.f, 120.f, 16, 1, &bars) == 240.f && bars == 2);
+    CHECK(loopTempo(2.f, 240.f, 16, -1, &bars) == 120.f && bars == 1);
+    CHECK(loopTempo(2.f, 240.f, 16, 1) == 0.f && loopTempo(2.f, 120.f, 16, -1) == 0.f); // (the ends)
+    CHECK(loopTempo(8.f, 100.f, 16, 0, &bars) == 120.f && bars == 4); // 30, 60, 120: the nearest by ratio
+    CHECK(loopTempo(8.f, 45.f, 16, 0, &bars) == 60.f && bars == 2);
+    CHECK(loopTempo(8.f, 42.f, 16, 0, &bars) == 60.f && bars == 2); // (30 is under 40: out of range)
+    CHECK(loopTempo(2.f, 120.f, 12, 0, &bars) == 90.f && bars == 1); // 3/4: 12 steps a bar
+    CHECK(loopTempo(3.9f, 120.f, 16, 0, &bars) == 123.f && bars == 2); // 123.08: whole, as the tempo is
+    CHECK(loopTempo(30.f, 120.f, 16, 0) == 0.f && loopTempo(0.1f, 120.f, 16, 0) == 0.f); // too long, too short
+    CHECK(loopTempo(0.f, 120.f, 16, 0) == 0.f && loopTempo(2.f, 120.f, 0, 0) == 0.f);
+
+    const std::string folder = tempFolder("samples-looptempo");
+    CHECK(writeWav(folder + "/loop.wav", tone(4.f, 0.3f), 48000));
+    Rig rig(folder);
+    Session& session = rig.session();
+    session.view = View::Device;
+    KitScreen& kit = rig.app.kit();
+    TrackData& track = rig.project().tracks[0];
+    session.setTempo(100.f);
+    session.setLaneSample(0, 1, "loop");
+    kit.goTo(1, KitScreen::kFit);
+    rig.frames(60);
+    const int steps = session.undoSteps();
+    rig.key(A, true);
+    rig.frames(1);
+    CHECK(hintsFit(rig)); // (LEFT / RIGHT tempo from it)
+    rig.tap(RIGHT); // four seconds: 60, 120 or 240; 120 is the nearest 100
+    CHECK(rig.project().tempo == 120.f && track.laneFit[1] == 32 && kit.said() == "TEMPO 120: IT FILLS 2 BARS");
+    rig.tap(RIGHT);
+    CHECK(rig.project().tempo == 240.f && track.laneFit[1] == 64 && kit.said() == "TEMPO 240: IT FILLS 4 BARS");
+    rig.tap(RIGHT); // the end: as it is
+    CHECK(rig.project().tempo == 240.f && track.laneFit[1] == 64);
+    rig.tap(LEFT), rig.tap(LEFT);
+    CHECK(rig.project().tempo == 60.f && track.laneFit[1] == 16 && kit.said() == "TEMPO 60: IT FILLS 1 BAR");
+    rig.key(A, false); // (no tap: FIT is not set to its bars at 60, which it is anyway)
+    rig.tap(LEFT); // A let go: the cursor
+    CHECK(kit.cursorColumn() == KitScreen::kSound && rig.project().tempo == 60.f);
+    rig.tap(RIGHT);
+    // One step of undo each, which puts the tempo back too, and its redo.
+    rig.frames(60);
+    CHECK(session.undoSteps() > steps);
+    CHECK(session.undo() && rig.project().tempo == 120.f && track.laneFit[1] == 32); // (the last step: 120 to 60)
+    CHECK(session.redo() && rig.project().tempo == 60.f && track.laneFit[1] == 16);
+    CHECK(session.undo() && rig.project().tempo == 120.f && track.laneFit[1] == 32); // (the step redo put back keeps its tempo)
+    CHECK(session.redo() && rig.project().tempo == 60.f);
+    while (session.undoSteps() > steps) session.undo();
+    CHECK(rig.project().tempo == 100.f && track.laneFit[1] == 0);
+    // Any other step leaves the tempo alone, as ever.
+    session.setTempo(150.f);
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    rig.frames(60);
+    CHECK(track.laneFit[1] == 1 && session.undo() && track.laneFit[1] == 0 && rig.project().tempo == 150.f);
+    // From 150 the nearest is 120 (2 bars).
+    rig.key(A, true);
+    rig.tap(LEFT);
+    rig.key(A, false);
+    CHECK(rig.project().tempo == 120.f && track.laneFit[1] == 32);
+    // Its undo puts back the tempo that stood at the gesture (150, set with no edit after the last settle), not the
+    // tempo of the step's text; its redo the tempo it set.
+    rig.frames(60);
+    CHECK(session.undo() && rig.project().tempo == 150.f && track.laneFit[1] == 0);
+    CHECK(session.redo() && rig.project().tempo == 120.f && track.laneFit[1] == 32);
+    // The song at one of the loop's tempos with FIT OFF: the first press is the nearest (FIT to its bars), either way.
+    session.setLaneFit(0, 1, 0);
+    rig.frames(60);
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    rig.key(A, false);
+    CHECK(rig.project().tempo == 120.f && track.laneFit[1] == 32 && kit.said() == "TEMPO 120: IT FILLS 2 BARS");
+    session.setLaneFit(0, 1, 0);
+    rig.frames(60);
+    rig.key(A, true);
+    rig.tap(LEFT);
+    rig.key(A, false);
+    CHECK(rig.project().tempo == 120.f && track.laneFit[1] == 32);
+    // Only FIT moved: its undo leaves the tempo where it is then (130, set after).
+    session.setTempo(130.f);
+    rig.frames(60);
+    CHECK(session.undo() && track.laneFit[1] == 0 && rig.project().tempo == 130.f);
+    CHECK(session.redo() && track.laneFit[1] == 32 && rig.project().tempo == 130.f);
+    session.setTempo(120.f);
+    // At an end, as it is already: no step.
+    session.setTempo(240.f);
+    session.setLaneFit(0, 1, 64);
+    rig.frames(60);
+    const int now = session.undoSteps();
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    rig.key(A, false);
+    rig.frames(60);
+    CHECK(rig.project().tempo == 240.f && track.laneFit[1] == 64 && session.undoSteps() == now && kit.said() == "TEMPO 240: IT FILLS 4 BARS");
+    // In 3/4: four seconds are 2 bars of 12 at 90.
+    session.setSceneMeter(rig.project().scene, 12);
+    session.setTempo(100.f);
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    rig.key(A, false);
+    CHECK(rig.project().tempo == 90.f && track.laneFit[1] == 24 && kit.said() == "TEMPO 90: IT FILLS 2 BARS");
+    session.setSceneMeter(rig.project().scene, 16);
+    // A loop no tempo fits: said, nothing changes.
+    CHECK(writeWav(folder + "/tiny.wav", tone(0.05f, 0.3f), 48000));
+    session.setLaneSample(0, 2, "tiny");
+    kit.goTo(2, KitScreen::kFit);
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    rig.key(A, false);
+    CHECK(rig.project().tempo == 90.f && track.laneFit[2] == 0 && kit.said() == "NO TEMPO FITS IT IN 1, 2 OR 4 BARS");
+    // A built-in drum (the crash, 1.8 s: a bar at 133 if it were a loop), a voice: nothing (a hit, not a loop).
+    kit.goTo(7, KitScreen::kFit);
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    rig.key(A, false);
+    CHECK(rig.project().tempo == 90.f && track.laneFit[7] == 0);
+    session.setLaneSynth(0, 6, drumsynth::usualVoice(drumsynth::kCymbal));
+    CHECK(rig.settle());
+    kit.goTo(6, KitScreen::kFit);
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    rig.key(A, false);
+    CHECK(rig.project().tempo == 90.f && track.laneFit[6] == 0);
+    CHECK(!session.setTempoFromLoop(0, 1, 300.f, 1) && !session.setTempoFromLoop(0, 1, 120.f, 0) && !session.setTempoFromLoop(-1, 1, 120.f, 1));
+}
+
+// A FOLDER AS A KIT: on the KIT stop, after the kits, the samples folders; one puts its recordings on the lanes by
+// name, the hats in CHOKE 1, as one step of undo, and B with A held puts the kit back.
+void testAFolderAsAKit() {
+    std::string lanes[kDrumLanes];
+    folderKitLanes({"808 bd 01", "808 bd 02", "808 ch", "808 clap", "808 oh", "808 sd", "808 tom", "cowbell", "rim"}, lanes);
+    CHECK(lanes[0] == "808 bd 01" && lanes[1] == "808 sd" && lanes[2] == "808 ch" && lanes[3] == "808 oh");
+    CHECK(lanes[4] == "808 bd 02" && lanes[5] == "808 clap" && lanes[6] == "808 tom" && lanes[7] == "cowbell"); // (rim: past 8)
+    folderKitLanes({"a", "b", "c"}, lanes);
+    CHECK(lanes[0] == "a" && lanes[1] == "b" && lanes[2] == "c" && lanes[3].empty() && lanes[7].empty());
+    folderKitLanes({"k/Clap", "k/HiHat Open", "k/Kick01", "k/hihat", "k/chord"}, lanes);
+    CHECK(lanes[0] == "k/Kick01" && lanes[1] == "k/Clap" && lanes[2] == "k/hihat" && lanes[3] == "k/HiHat Open" && lanes[4] == "k/chord");
+    folderKitLanes({"SNARE-2", "clap", "OpenHat", "HH_closed", "BD"}, lanes);
+    CHECK(lanes[0] == "BD" && lanes[1] == "SNARE-2" && lanes[2] == "HH_closed" && lanes[3] == "OpenHat" && lanes[4] == "clap");
+    folderKitLanes({"oh", "ch", "kick", "sd"}, lanes);
+    CHECK(lanes[0] == "kick" && lanes[1] == "sd" && lanes[2] == "ch" && lanes[3] == "oh");
+    folderKitLanes({"a tom", "bd01", "sd2"}, lanes); // (letters and numbers apart: BD01 is BD 01)
+    CHECK(lanes[0] == "bd01" && lanes[1] == "sd2" && lanes[2] == "a tom");
+    folderKitLanes({"a", "b", "clap"}, lanes); // (a clap on lane 2 with no snare)
+    CHECK(lanes[0] == "a" && lanes[1] == "clap" && lanes[2] == "b");
+    folderKitLanes({"kicks 1", "snares 2", "hats 3"}, lanes);
+    CHECK(lanes[0] == "kicks 1" && lanes[1] == "snares 2" && lanes[2] == "hats 3");
+    CHECK(folderKitHat("x/CH 2") && folderKitHat("oh") && folderKitHat("hh") && !folderKitHat("chord") && !folderKitHat("kick") && !folderKitHat(""));
+
+    const std::string folder = tempFolder("samples-folderkit");
+    for (const char* dir : {"/drums", "/empty", "/loops", "/drums/inner"}) mkdir((folder + dir).c_str(), 0755);
+    for (const char* file : {"/drums/808 bd.wav", "/drums/808 sd.wav", "/drums/808 ch.wav", "/drums/808 oh.wav", "/drums/cowbell.wav", "/loops/amen.wav", "/loose.wav", "/drums/inner/deep.wav"})
+        CHECK(writeWav(folder + file, tone(0.1f, 0.3f), 48000));
+    Rig rig(folder);
+    Session& session = rig.session();
+    const std::vector<std::string> folders = session.kitFolders();
+    CHECK(folders.size() == 3 && folders[0] == "drums" && folders[1] == "drums/inner" && folders[2] == "loops"); // (not the empty one)
+    session.chokeNewKit(0);
+    session.view = View::Device;
+    rig.frames(2);
+    KitScreen& kit = rig.app.kit();
+    TrackData& track = rig.project().tracks[0];
+    const int kits = static_cast<int>(session.kits().size());
+    kit.goToKit();
+    rig.key(A, true);
+    rig.frames(1);
+    CHECK(hintsFit(rig)); // (kits, then folders)
+    rig.tap(UP, kits - 1);
+    CHECK(session.kitOf(0) == kits - 1);
+    rig.tap(UP); // the first folder: drums
+    CHECK(std::string(track.laneSample[0]) == "drums/808 bd" && std::string(track.laneSample[1]) == "drums/808 sd" && std::string(track.laneSample[2]) == "drums/808 ch");
+    CHECK(std::string(track.laneSample[3]) == "drums/808 oh" && std::string(track.laneSample[4]) == "drums/cowbell" && track.laneSample[5][0] == 0 && !track.laneSynth[5].on());
+    CHECK(track.laneChoke[2] == 1 && track.laneChoke[3] == 1 && track.laneChoke[0] == kChokeNone && track.laneChoke[4] == kChokeNone);
+    CHECK(session.kitOf(0) == -1 && session.folderKitOf(0) == "drums");
+    rig.tap(UP);
+    CHECK(session.folderKitOf(0) == "drums/inner" && std::string(track.laneSample[0]) == "drums/inner/deep" && track.laneChoke[2] == kChokeNone);
+    rig.tap(UP);
+    CHECK(session.folderKitOf(0) == "loops" && std::string(track.laneSample[0]) == "loops/amen");
+    rig.tap(UP); // past the last: nothing
+    CHECK(session.folderKitOf(0) == "loops");
+    rig.tap(DOWN, 2);
+    CHECK(session.folderKitOf(0) == "drums");
+    rig.tap(DOWN); // back to the last kit
+    CHECK(session.kitOf(0) == kits - 1);
+    rig.tap(UP);
+    CHECK(session.folderKitOf(0) == "drums");
+    // B with A held: the kit as it was when A went down (DRUMS).
+    rig.tap(B);
+    CHECK(session.kitOf(0) == 0 && track.laneSample[0][0] == 0);
+    rig.key(A, false);
+    rig.frames(2);
+    // The stop reads FOLDER and its name while the kit is as it was put on; YOUR OWN once a lane changes.
+    rig.frames(60);
+    const int steps = session.undoSteps();
+    CHECK(session.loadFolderKit(0, "drums"));
+    rig.frames(60);
+    CHECK(session.undoSteps() == steps + 1); // one step of undo
+    Canvas canvas, scratch;
+    if (canvas.ok) {
+        rig.app.draw(canvas.r, *canvas.fonts);
+        const float x = 8 + 2.f + canvas.fonts->small.width("KIT") + 8.f;
+        CHECK(inked(canvas, scratch, 0, x, 34.f, "FOLDER DRUMS", ui::kTeal));
+    }
+    session.setLaneLevel(0, 4, 0.5f);
+    CHECK(session.folderKitOf(0).empty());
+    session.setLaneLevel(0, 4, 1.f);
+    CHECK(session.folderKitOf(0) == "drums");
+    rig.frames(60);
+    while (session.undoSteps() > steps) session.undo();
+    CHECK(session.kitOf(0) == 0 && track.laneSample[0][0] == 0 && session.folderKitOf(0).empty());
+    // A hat on another lane is in no group: only lanes 3 and 4 are, as a new kit's.
+    mkdir((folder + "/hats").c_str(), 0755);
+    for (const char* file : {"/hats/ch 1.wav", "/hats/ch 2.wav", "/hats/oh 1.wav"}) CHECK(writeWav(folder + file, tone(0.1f, 0.3f), 48000));
+    CHECK(session.loadFolderKit(0, "hats") && std::string(track.laneSample[0]) == "hats/ch 2" && std::string(track.laneSample[2]) == "hats/ch 1");
+    CHECK(track.laneChoke[0] == kChokeNone && track.laneChoke[2] == 1 && track.laneChoke[3] == 1);
+    // Not on a synth track, nor a folder with nothing in it.
+    CHECK(!session.loadFolderKit(0, "empty") && !session.loadFolderKit(0, "") && !session.loadFolderKit(5, "drums"));
+}
+
+// `sample_test --measure` (batch S1, measured.md): what a save and a folder put on as a kit cost the app thread, on
+// the desk. Nothing of either is on the audio thread.
+void measureSaveAndFolderKit() {
+    const auto ms = [](std::chrono::steady_clock::time_point from) {
+        return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - from).count();
+    };
+    const std::string folder = tempFolder("samples-measure");
+    mkdir((folder + "/long").c_str(), 0755);
+    mkdir((folder + "/short").c_str(), 0755);
+    const char* const names[] = {"kick", "snare", "ch", "oh", "clap", "tom", "rim", "crash"};
+    for (const char* name : names) {
+        CHECK(writeWav(folder + "/long/" + name + ".wav", tone(20.f, 0.3f), 48000));
+        CHECK(writeWav(folder + "/short/" + name + ".wav", tone(0.5f, 0.3f), 48000));
+    }
+    Rig rig(folder);
+    Session& session = rig.session();
+    session.setLaneSample(0, 0, "long/kick");
+    LaneEdit edit;
+    edit.gain = 30;
+    std::string name;
+    double best[4] = {1e9, 1e9, 1e9, 1e9};
+    for (int round = 0; round < 5; ++round) {
+        session.setLaneEdit(0, 0, LaneEdit());
+        auto t = std::chrono::steady_clock::now();
+        CHECK(session.saveLaneSound(0, 0, 0.f, 1.f, name) == Session::SaveSound::Saved);
+        best[0] = std::min(best[0], ms(t));
+        session.setLaneEdit(0, 0, edit);
+        t = std::chrono::steady_clock::now();
+        CHECK(session.saveLaneSound(0, 0, 0.f, 1.f, name) == Session::SaveSound::Saved);
+        best[1] = std::min(best[1], ms(t));
+        t = std::chrono::steady_clock::now();
+        CHECK(session.loadFolderKit(0, round % 2 ? "long" : "short"));
+        best[round % 2 ? 2 : 3] = std::min(best[round % 2 ? 2 : 3], ms(t));
+        session.setLaneSample(0, 0, "long/kick");
+    }
+    std::printf("save 20 s at rest %.1f ms, 20 s with GAIN %.1f ms; a folder of 8 x 20 s %.1f ms, of 8 x 0.5 s %.1f ms\n", best[0], best[1], best[2], best[3]);
+}
+
+int main(int argc, char** argv) {
+    if (argc > 1 && std::strcmp(argv[1], "--measure") == 0) {
+        measureSaveAndFolderKit();
+        return failures ? 1 : 0;
+    }
+    if (argc > 1 && std::strcmp(argv[1], "--hits") == 0) { // SLICES AT THE HITS alone (batch S2)
+        testSlicesAtTheHits();
+        testSlicesAtTheHitsInEveryBar();
+        testCutsByHand();
+        testCutsAreKept();
+        testFindingHitsOnAThread();
+        testWhereAHitStarts();
+        std::printf(failures ? "%d check(s) failed\n" : "the hits' tests passed\n", failures);
+        return failures ? 1 : 0;
+    }
     testThePlayhead();
     testTheSamplePicker();
     testTheColumnsStandStill();
@@ -4185,6 +5522,11 @@ int main(int, char**) {
     testThePickersPace();
     testTheSliceView();
     testOneSliceIsKeptInTheSong();
+    testSlicesAtTheHits();
+    testSlicesAtTheHitsInEveryBar();
+    testCutsByHand();
+    testCutsAreKept();
+    testFindingHitsOnAThread();
     testReadingWavFiles();
     testStretching();
     testFittingWithSignalsmith();
@@ -4196,6 +5538,8 @@ int main(int, char**) {
     testRollingALanesStarts();
     testTheKitScreen();
     testCatch();
+    testCatchingBarsAndATrack();
+    testBouncingIntoSamples();
     testUndoPutsBackARecording();
     testTheSamplerTrack();
     testTheSamplersPictureIsTall();
@@ -4220,6 +5564,11 @@ int main(int, char**) {
     testVelocityLayersCap();
     testSamplerChop();
     testSamplerChopFile();
+    testSaveAsARecording();
+    testSaveASlice();
+    testFitInTheMeter();
+    testTheTempoFromALoop();
+    testAFolderAsAKit();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

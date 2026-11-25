@@ -779,3 +779,7 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   is still the sound untouched to the sample. The first block after it is
   made or reset starts where the settings are (`snap`), with no slide. The
   old five do not glide and must not start to.
+- **CATCH's memory** (batch S3, 2026-11-25; the whole of it in `drums-and-samples.md`): two 25 s rings made with the
+  engine (the mix, and one track named by `setCatchTrack`, fed in `renderTrack` beside the scope), and the last 8 bar
+  lines (`barLine`). Nothing is allocated on the audio thread; following no track costs nothing; following one is one
+  store a frame (`measured.md`).

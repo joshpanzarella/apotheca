@@ -12,6 +12,8 @@
 //           HELD: every edit back to none, as the bar fills (undo brings them back)
 //   Y       on START or END: TRIM SILENCE (START and END at the first and last sound). Elsewhere
 //           NORMALIZE: GAIN so the part played peaks at -1 dB
+//   R1      SAVE A COPY where the Target has `save` (the KIT's lanes, batch S1): what it plays, written as
+//           a new recording beside its file; the sound keeps its own
 //   X       hear it as edited (held: to its end). A box turned is heard once it is done, with the song stopped
 //   START   play / stop
 //
@@ -40,6 +42,7 @@ public:
         std::function<float()> heardAt;                     // where its line has got to, 0..1 of what plays (below 0: none)
         std::function<void(const std::string&)> say;        // a line said for a moment, in the heading
         std::function<const std::string&()> said;           // ...what is said now ("" for none)
+        std::function<void()> save;                         // R1: SAVE A COPY (empty: R1 does nothing; batch S1)
         unsigned rows = (1u << kEditRows) - 1;              // the boxes it has, a bit each (LaneEditRow)
         std::string quiet;   // the heading when nothing is said
         std::string title;   // the sound's name, as the box writes it

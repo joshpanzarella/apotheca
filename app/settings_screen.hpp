@@ -159,7 +159,8 @@ private:
     int row_ = 0;
     int first_ = 0; // the row at the top of the page
     mutable char bounced_[64] = "";
-    int bounceWhat_ = 0; // 0 the song, 1 each track, 2 this track
+    int bounceWhat_ = 0; // 0 the song, 1 each track, 2 this track, 3 a MIDI file, 4 this track into samples (batch S3)
+    static constexpr int kBounceKinds = 5;
     NameKeys keys_;         // a track's name being typed
     bool fromSong_ = false; // the keyboard was asked for from the SONG screen, and goes back there
     void openName(bool fromSong); // the name keys, with the track's name typed in

@@ -399,6 +399,11 @@ void Session::update(Uint32 nowMs) {
     // QUEUED MUTES: the engine has set (or called off) every gate of the last asking.
     if (mutesWaiting_ && engine.heardDone() == mutesAsked_) mutesWaiting_ = false;
     now_ = nowMs;
+    engine.setCatchTrack(catchFrom()); // CATCH of one track: the engine remembers the one chosen (-1: none, nothing spent)
+    if (bounce_ && bounce_->done.load() && bounce_->what == Bounce::ToSamples && !bounce_->seen) { // a bounce into samples: open lists see it
+        bounce_->seen = true;
+        if (bounce_->files > 0) ++sampleFiles_;
+    }
     if (wifi_.here()) wifi_.update(nowMs, transferOn(), view == View::Settings && wifiLooking); // (each call on the WiFi's own thread)
     engine.collectGarbage();
     {
@@ -525,6 +530,7 @@ void Session::update(Uint32 nowMs) {
     collectJob(false);
     reapJobs(false);
     finishCarry();
+    finishHits(false); // a lane's hits found: its SENSITIVITY put on (SLICES AT THE HITS)
     if (!job_ && steadyTempo_ > 0.f) {
         for (int track = 0; track < kNumTracks && !job_; ++track)
             for (int lane = 0; lane < kDrumLanes && !job_; ++lane)
@@ -541,7 +547,7 @@ void Session::update(Uint32 nowMs) {
 
 unsigned Session::stirring() const {
     unsigned stirs = 0;
-    if (stretching()) stirs |= kStirFitting; // (a fit starts in update() when the tempo has settled: stretching() from that pass)
+    if (stretching() || hits_) stirs |= kStirFitting; // (a fit starts in update() when the tempo has settled: stretching() from that pass; a lane's hits being found land by themselves too)
     if (rec_ == Rec::Waiting || rec_ == Rec::Recording) stirs |= kStirRecording;
     if (bouncing()) stirs |= kStirBouncing;
     if (transferOn()) stirs |= kStirWifi;
@@ -1359,7 +1365,7 @@ std::uint64_t Session::soundMark() const {
         mix(track.send, sizeof track.send);
         mix(&track.glideFrom, sizeof track.glideFrom);
         mix(track.mods, sizeof track.mods);
-        if (track.kind == TrackKind::Drums) mix(track.laneFeel, sizeof track.laneFeel), mix(track.laneSwing, sizeof track.laneSwing), mix(track.laneChoke, sizeof track.laneChoke), mix(track.laneEdit, sizeof track.laneEdit), mix(track.laneSynth, sizeof track.laneSynth), mix(track.laneLevel, sizeof track.laneLevel), mix(track.laneFit, sizeof track.laneFit), mix(track.laneOneSlice, sizeof track.laneOneSlice);
+        if (track.kind == TrackKind::Drums) mix(track.laneFeel, sizeof track.laneFeel), mix(track.laneSwing, sizeof track.laneSwing), mix(track.laneChoke, sizeof track.laneChoke), mix(track.laneEdit, sizeof track.laneEdit), mix(track.laneSynth, sizeof track.laneSynth), mix(track.laneLevel, sizeof track.laneLevel), mix(track.laneFit, sizeof track.laneFit), mix(track.laneOneSlice, sizeof track.laneOneSlice), mix(track.laneCuts, sizeof track.laneCuts);
         // A recording's name, to its end (what lies past it is whatever a longer name left there): a lane's
         // with its FIT, cut and voice above, and a sampler's or a CLOUD's (gesture audit G04).
         if (track.kind == TrackKind::Drums)
@@ -1497,6 +1503,7 @@ void Session::restoreSounds(const StepRead& was, const bool same[kNumTracks]) {
                 if (!sameAsText(now.laneLevel[lane], then.laneLevel[lane])) setLaneLevel(t, lane, then.laneLevel[lane]);
                 if (now.laneFit[lane] != then.laneFit[lane]) setLaneFit(t, lane, then.laneFit[lane]);
                 if (now.laneOneSlice[lane] != then.laneOneSlice[lane]) setLaneOneSlice(t, lane, then.laneOneSlice[lane]);
+                if (now.laneCuts[lane] != then.laneCuts[lane]) setLaneCuts(t, lane, then.laneCuts[lane]); // (the hits are the patterns', put back with them)
             }
         // (After the slots: the step's MODs fit the step's effects. Compared as the file writes them.)
         for (int m = 0; m < kModsPerTrack; ++m) {
@@ -1873,9 +1880,11 @@ bool Session::undo() {
     if (undo_.empty()) return false;
     const UndoStep back = undo_.back();
     undo_.pop_back();
-    redo_.push_back({patternsNow(), back.nextScene}); // as things are, to come forward to again
+    hitsSense_ = 0; // an AT HITS still being found is called off: what is put back stands when the hits land
+    redo_.push_back({patternsNow(), back.nextScene, back.tempo > 0.f ? project.tempo : 0.f}); // as things are, to come forward to again
     if (back.nextScene < 0) {
         restorePatterns(back.text);
+        if (back.tempo > 0.f) setTempo(back.tempo); // (THE TEMPO FROM THIS LOOP: the tempo it stood at)
         return true;
     }
     // A "next scene" taken back: the scene goes, the playing leaves it for the one it was
@@ -1892,9 +1901,11 @@ bool Session::redo() {
     if (redo_.empty()) return false;
     const UndoStep forward = redo_.back();
     redo_.pop_back();
-    undo_.push_back({patternsNow(), forward.nextScene});
+    hitsSense_ = 0; // (as undo)
+    undo_.push_back({patternsNow(), forward.nextScene, forward.tempo > 0.f ? project.tempo : 0.f});
     if (forward.nextScene < 0) {
         restorePatterns(forward.text);
+        if (forward.tempo > 0.f) setTempo(forward.tempo);
         return true;
     }
     // A "next scene" put back.
@@ -2266,6 +2277,7 @@ Session::~Session() {
     cancelBounce();
     if (input_ && rec_ != Rec::Idle && rec_ != Rec::NoInput) input_->stop();
     if (job_ && job_->thread.joinable()) job_->thread.join();
+    if (hits_ && hits_->thread.joinable()) hits_->thread.join(); // (a sound's hits being found: let finish, not kept)
     reapJobs(true);
     if (carry_ && carry_->thread.joinable()) {
         carry_->thread.join(); // a copy under way is let finish (the file is whole, or not there)...
@@ -2526,6 +2538,11 @@ void Session::sendSong() {
             c.b = project.tracks[track].laneChoke[lane];
             engine.send(c);
         }
+    }
+    // Every drum lane's own cuts (SLICES AT THE HITS), none too.
+    for (int track = 0; track < kNumTracks; ++track) {
+        if (project.tracks[track].kind != TrackKind::Drums) continue;
+        for (int lane = 0; lane < kDrumLanes; ++lane) sendLaneCuts(track, lane);
     }
     // Every track's two MODs, the ones that are OFF too.
     for (int track = 0; track < project.trackCount(); ++track)

@@ -80,6 +80,7 @@ struct SampleData {
 // and must not change while audio runs.
 class DrumMachine {
 public:
+    static constexpr int kMaxCuts = 64; // a lane's own cuts at most (kMaxLaneCuts, slice_rule.hpp)
     void setKit(const DrumKit* kit) { kit_ = kit; }
     void prepare(float sampleRate);
     void reset();
@@ -108,6 +109,14 @@ public:
     // How much of the sound every hit on a lane plays (see trigger). 0, the
     // default: all of it. Survives reset().
     void setLanePart(int lane, float part);
+
+    // SLICES AT THE HITS (slice_rule.hpp): a lane's own cuts, where each of its slices begins (0..1 of
+    // the sound, rising, the first 0). With some, a hit that plays the lane's ONE SLICE (setLanePart above
+    // 0, and `part` below zero) plays from its start to the next cut (more than the carry-on's 1.5 ms
+    // past it), the last to the end, in place of the even share. `count` 0: none, the share as it always was. `from` is the first place written,
+    // `places` how many of `at` (up to three, one command's worth); a number past the lane's room or
+    // out of order is not taken. Survives reset().
+    void setLaneCuts(int lane, int count, int from, int places, const float* at);
 
     // Play this recording on a lane in place of the kit's drum; nullptr goes
     // back to the kit's. What was ringing on the lane stops. The samples
@@ -184,6 +193,8 @@ private:
     int ownLength_[kDrumLanes] = {};
     float laneLevel_[kDrumLanes] = {1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
     float lanePart_[kDrumLanes] = {};
+    float cuts_[kDrumLanes][kMaxCuts] = {}; // SLICES AT THE HITS: each lane's own cuts (setLaneCuts)...
+    int cutCount_[kDrumLanes] = {};         // ...and how many it has (0: none)
     int choke_[kDrumLanes] = {};    // CHOKE: each lane's group (kChokeNone, 1, 2)
     std::uint32_t renders_ = 0;     // renders that wrote a sample: which voices have been heard
     float chokeStep_ = 1.f / 144.f; // 3 ms at 48 kHz

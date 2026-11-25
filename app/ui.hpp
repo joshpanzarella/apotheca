@@ -301,6 +301,11 @@ float keyWidth(const Fonts& fonts, const char* key);
 std::string keyShown(const char* key);
 void drawKey(SDL_Renderer* r, const Fonts& fonts, float x, float textY, const char* key, SDL_Color color);
 
+// A line cut to `room` in `font`. A name in quotes that ends with its number (SAVED "BREAKS/AMEN 12") loses
+// letters from the end of its stem, marked "..", so the number and the closing quote always show; any other line
+// loses them from its end.
+std::string cutToRoom(std::string line, const Font& font, float room);
+
 // The bar across the bottom: button names in cream boxes, each with what it does.
 struct Hint { const char* key; const char* does; };
 // What is true everywhere (X hears what is under the cursor; the stick or

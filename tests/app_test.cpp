@@ -12654,6 +12654,15 @@ void testCloudOnATrack() {
     rig.tap(A);
     rig.frames(2);
     CHECK(!screen.picker().isOpen() && std::string(track.sample) == "buzz");
+    // Y held + a direction (batch S3): the choice, and its let go catches nothing; the line says what a tap would catch.
+    const int cursorWas = screen.cursor();
+    rig.key(Y, true);
+    rig.tap(RIGHT);
+    CHECK(screen.cursor() == cursorWas && session.catchBars() == 2);
+    rig.tap(LEFT);
+    CHECK(session.catchBars() == 1);
+    rig.key(Y, false);
+    CHECK(std::string(track.sample) == "buzz");
     // Y on the page: CATCH, the last bar the engine played (the keys heard above) as this track's recording.
     rig.tap(Y);
     CHECK(screen.said().find("CAUGHT THE LAST BAR AS") == 0 && std::string(track.sample).find("catches/") == 0 && session.trackSound(1).seconds > 0.f);

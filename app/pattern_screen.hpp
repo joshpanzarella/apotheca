@@ -110,6 +110,20 @@
 //                       through the recording until the next hit.
 //                       Hold Y + right rolls every hit's slice; left puts
 //                       them back in order.
+//   hold Y on a hit, R1 SAVE THE SLICE (batch S1): the slice the hit plays, as
+//                       a new recording beside the lane's file ("amen 1");
+//                       the hit and the lane are as they were
+//
+// SLICES AT THE HITS (batch S2, apotheca/slice_rule.hpp): the slices cut where the
+// recording's hits land, not evenly.
+//
+//   hold A, left / right   on the lane's name: EVEN, AT HITS 1 .. 10 (the
+//                          SENSITIVITY). Every hit follows: in order stays in order
+//   hold Y, left / right   on a hit: its slice's cut a millisecond earlier or later
+//                          (the stick slides it), every hit on that cut with it.
+//                          (On the plain grid Y + sideways is still the hit's own start.)
+//   hold Y, A              on a hit: a cut added inside its slice
+//   hold Y, B              on a hit: its slice's cut deleted (the first stays: the top)
 //
 // Slices that follow each other in order play as one unbroken sound; only a
 // slice out of order is heard as a cut (drums.hpp).
@@ -195,6 +209,8 @@ public:
     int slices() const { return session_.laneSlices(project_.track, lane_); } // the cursor's lane
     int sliceOf(int step) const;      // the slice a hit plays, from 0: the one its start falls in
     float ownStart(int step) const;   // where a step's own slice begins: step 5 of bar 1 is slice 5
+    float cutAt(int k) const;         // where slice k of the cursor's lane begins, EVEN or its own (round again past the last)
+    float slicePart(float start) const; // what ONE SLICE plays from a start, of the cursor's lane
     const char* said() const { return lastMs_ < saidUntil_ ? said_ : ""; }
     // COPY A BAR: hold L1, then R1 copies the bar shown (every lane), A pastes over it (Session::copyBar).
     // L1's own job, the slices, is then done on its LET GO, and only if nothing else was pressed while it was held.
@@ -246,6 +262,14 @@ private:
     void setTempo(float bpm);
     void audition(int lane, float level, float start = 0.f, float part = 0.f, const StepFx& fx = StepFx()); // part: this much of the sound (0: as the lane is set)
     void sliceUpDown(int by);        // the slice view's up / down
+    void saveSlice();                // ...Y held on a hit, R1: its slice saved as a new recording (batch S1)
+    // SLICES AT THE HITS (batch S2): the slice view's own cuts.
+    void moveCut(float by);          // Y held on a hit, sideways: its slice's cut, the hits on it with it
+    void addCut();                   // ...A: a cut added inside its slice
+    void deleteCut();                // ...hold B: its slice's cut deleted, once the bar has filled
+    void senseTurn(int by);          // hold A on the lane's name, LEFT / RIGHT: EVEN, AT HITS 1..10
+    void sayCut(Session::Cut why);   // why a cut was not made, for a moment
+    const char* cutsWord(char* text, int size) const; // EVEN, AT HITS 5, BY HAND, FINDING...
     void fxTurn(Button direction);   // with X held: one click of pitch (up / down) or ratchet (left / right)
     void fxRoll();                   // with X held, Y: the dice set the hit's step effects
     void fxThrow();                  // with X held, A: its THROW a step round (off, ECHO, SPACE, both)
@@ -276,12 +300,22 @@ private:
     bool evening_ = false;  // ...and R1 or L1 made the lane EVEN in this hold: LEFT / RIGHT turn it
     int evenHits_ = 0, evenTurn_ = 0;
     bool yDidSomething_ = false; // this hold of Y already placed or turned, so letting go is not a tap
+    // Y held on a hit in the slice view, B held: the bar fills for kCutDeleteMs, then its slice's cut is deleted
+    // (the buttons' standards: hold B deletes; SEL + B brings it back). Let go early, or Y, the hit or the view
+    // gone from under it: nothing is deleted.
+    static constexpr Uint32 kCutDeleteMs = ui::kHoldUndoneMs;
+    bool cutDeleting_ = false;
+    Uint32 cutDeleteSince_ = 0;
+    float cutDeletePart_ = 0.f;
+    int cutDeleteLane_ = -1, cutDeleteStep_ = -1;
     Axis axis_ = Axis::None; // the stick does one job at a time until it is let go
     Turning turning_ = Turning::Nothing;
 
     bool rolled_ = false;        // this push of the stick has already rolled the lane's starts
     Uint32 heardStartAt_ = 0;    // when a sliding start was last played
     float diceSaved_ = 0.f; // part-hits saved up while the stick turns
+    float senseSaved_ = 0.f; // ...part-clicks of the SENSITIVITY (A held on the slice view's lane name, sideways)
+    bool senseWas_ = false;
 
     bool fxHeld_ = false;  // X is held on a hit: the stick sets its step effects
     bool feelHeld_ = false; // X is held on a lane's name: the stick sets the lane's feel

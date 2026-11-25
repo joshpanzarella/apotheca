@@ -499,13 +499,16 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     SONG's scene tempo with L1 (90 BPM), the mixer (24 dB, 60 pan steps), MACRO (2), a MOD's DEPTH (1.2), FX's
     and MOD's turns (0.9, 1.8), a synth's setting (1.5 of its range), the sampler's settings, EDIT's boxes and
     VOICE's knobs (their range), the roll's level (3), **the roll's note length (10 steps) and a carried note
-    slid in time (6 steps)**. A turn is now as fast at the dead zone's edge as all the way over: the fine move is
+    slid in time (6 steps)**, a slice's cut with Y held in the slice view (a quarter second of sound, `kCutSlideSeconds`;
+    SLICES AT THE HITS, on merging the sampling lane). A turn is now as fast at the dead zone's edge as all the way over: the fine move is
     the D-pad's.
   - **A choice clicks** (CLAUDE.md: "Choices (a filter type) click once per push; they are not sliders").
     **Once a push, however far and however long**: the sampler's LOOP and EDIT's REVERSE (up ON, down OFF), BARS
     on both grids (1, 2, 4, 8) and VOICE's MODEL; any push past the dead zone, though not a sideways one that
     drifts (`stickAxes`). LOOP, REVERSE and MODEL were once a push past half, the roll's BARS too, the drum
-    grid's BARS a 2.25-a-second fill. **A choice with more values, with A held** (FX's choice dials: the filter
+    grid's BARS a 2.25-a-second fill. CATCH's choice with Y held (bars and what, `CatchKey::stick`) is once a push
+    too, the larger way (past 0.6 on the sampling lane, merged after). The slice view's SENSITIVITY (A held on the
+    lane's name: EVEN, AT HITS 1 to 10) clicks at once and runs at twice the list's pace, as the choices below. **A choice with more values, with A held** (FX's choice dials: the filter
     TYPE, the delay TIME, BAND's SHAPE; a synth's choice, a wave or a type), clicks at once and, held on, runs at
     **twice the LIST's pace** (13.6 a second at 75%), not twice the cursor's its held D-pad was left at (G08's
     "not made slower", the owner's question): the only place the stick does not run at twice its D-pad. At

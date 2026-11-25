@@ -42,7 +42,15 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   that differ; `SetSend`, `setGlideFrom`, `sendSynthPatch`), never a track
   image and never an `Effect` from this thread. Automation is a pattern, so a
   TYPE change taken back has its lanes back with it. Tempo, mutes, names and
-  track deletes are not undone. After a restore the marks are taken again
+  track deletes are not undone, **but for THE TEMPO FROM THIS LOOP** (batch S1, 2026-11-25:
+  `Session::setTempoFromLoop`, hold A + LEFT / RIGHT on a kit lane's FIT): it sets the tempo and the lane's
+  FIT as one step, and the brief asked for one step of undo. Its own step (`beginOwnUndoStep` /
+  `endOwnUndoStep`) keeps the tempo it stood at in `UndoStep::tempo` (0: leave the tempo alone), and undo and
+  redo of such a step set that tempo, the step pushed the other way keeping the tempo then. **Not the tempo of
+  the step's text**: a tempo change is not an edit, so the text holds whatever stood at the last settle (SEL +
+  UP to 150 after a settle at 100, then the gesture: undo is 150, not 100; review fix, 2026-11-25). When the
+  gesture moves only FIT (the tempo was already the nearest), the step keeps no tempo.
+  Any other step leaves the tempo alone, as before (`sample_test testTheTempoFromALoop`). After a restore the marks are taken again
   (putting back is not an edit).
   **Only another song clears undo** (`applyProject`). A resync after a full
   queue, a track deleted and a track given another instrument send the song
@@ -77,8 +85,10 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     (`strlen + 1`: what lies past a name is what a longer one left there). `setLaneSample` no longer
     takes the mark again.
   - `restoreSounds` puts a lane's sound back as `putKit` does (a voice through `setLaneSynth`, else a
-    name or the drum through `setLaneSample`), then its EDIT, LEVEL, FIT and ONE SLICE; a sampler's or
-    CLOUD's name through `setTrackSample`.
+    name or the drum through `setLaneSample`), then its EDIT, LEVEL, FIT and ONE SLICE, and since batch S2 its
+    own cuts (SLICES AT THE HITS, `setLaneCuts`: no hit moved, the patterns come back as they were; drums-and-samples.md);
+    a sampler's or CLOUD's name through `setTrackSample`. `soundMark` mixes the cuts, so a cut added (which moves no
+    hit) is a step too.
   - **A step keeps only the NAME, as the song file does: no sample data is copied or kept per step.**
     Putting it back reads the file again, as a pick does (the app thread; the old sound goes to the
     engine's trash as any). A file deleted since is missing, as in a song opened. Undo's text is no

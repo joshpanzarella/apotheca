@@ -133,6 +133,8 @@ void EditView::onButton(const ButtonEvent& event, const Input& input) {
         }
         if (!project_.playing) { hearOwed_ = true; changedAt_ = lastMs_ - kHearAfterMs; } // heard once it is made
         yJust_ = true, yBox_ = row_;
+    } else if (b == Button::R1 && !holding_ && target_.save) {
+        target_.save(); // (batch S1: R1 saves, as on the preset stops)
     } else if (b == Button::X) {
         hearNow(true);
     } else if (b == Button::Start && !input.held(Button::Select)) {
@@ -215,7 +217,10 @@ void EditView::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fill(r, sx + 1, sy + sh - 6, static_cast<int>((sw - 2) * (deletePart_ > 1.f ? 1.f : deletePart_)), 5, faded(kStop, 150));
         fonts.within(&Fonts::small, kDeletingWords, sw - 120.f).draw(r, sx + 7.f, sy + 7.f, kDeletingWords, kText);
     } else if (!said.empty()) {
-        fonts.within(&Fonts::small, said.c_str(), sw - 120.f).draw(r, sx + 7.f, sy + 7.f, said.c_str(), kBrass);
+        // A name saved as long as a name may be (R1, batch S1): its stem cut where it would run past the room, its
+        // number kept. Cut at LARGE (the same words at every size), 20 short of the room: at XL PLAYS 12.34 S is wider.
+        const std::string line = cutToRoom(said, fonts.fixed().small, sw - 140.f);
+        fonts.within(&Fonts::small, line.c_str(), sw - 120.f).draw(r, sx + 7.f, sy + 7.f, line.c_str(), kBrass);
     } else {
         fonts.within(&Fonts::small, target_.quiet.c_str(), sw - 120.f).draw(r, sx + 7.f, sy + 7.f, target_.quiet.c_str(), kDim);
     }
@@ -260,6 +265,7 @@ void EditView::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("HOLD A", "turn");
         hint("B", bLeavesAfterY(row_) || laneEditValue(e, row_) == laneEditValue(LaneEdit(), row_) ? "back" : "default");
         hint("Y", row_ == kEditStart || row_ == kEditEnd ? "trim silence" : "normalize");
+        if (target_.save) hint("R1", "save a copy");
         hint("START", project_.playing ? "stop" : "play");
     }
     hints(r, fonts, list, count);

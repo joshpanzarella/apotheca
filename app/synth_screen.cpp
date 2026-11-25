@@ -270,7 +270,7 @@ void SynthScreen::hearFromList(SamplePicker::Hear how) {
 
 void SynthScreen::catchBar() {
     const std::string name = session_.catchLastBar(project_.track, 0);
-    say(name.empty() ? std::string("NOTHING TO CATCH: PLAY SOMETHING FIRST") : "CAUGHT THE LAST BAR AS \"" + name + "\"", 2500);
+    say(caughtLine(session_, name), 2500);
 }
 
 // RECORD on CLOUD's RECORDING (as the sampler's R1): once to start (it waits for sound), again to stop.
@@ -419,6 +419,18 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (modKnob_.held() && modKnob_.onButton(event, lastMs_)) return;
+    // CLOUD's CATCH (catch_key.hpp): a tap of Y catches on its let go; held, the directions choose the bars and what.
+    if (spec_.recording && b == Button::Y && !event.down) {
+        if (catchKey_.up()) catchBar();
+        return;
+    }
+    if (event.down && b != Button::Y) {
+        if (catchKey_.held() && isDirection(b)) {
+            catchKey_.direction(b, session_);
+            return;
+        }
+        catchKey_.spoil();
+    }
     // CLOUD: while a take waits or runs, R1 stops it from any page and stop, before SAVE on PRESET and a page
     // turned (gesture audit G34: off RECORDING R1 turned the page and the take ran on). Not while X holds a
     // macro's MOD: R1 is the MOD's there (its PHASE, LENGTH or SPEED), as the kit's EDIT and VOICE keep theirs.
@@ -452,7 +464,7 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
     // and it is heard. Not with A held (turning), and on the pages nothing.
     // Y on CLOUD's first page: CATCH, the last bar the song played as this track's recording.
     if (b == Button::Y && event.down && spec_.recording && page_ == 1 && !holding_) {
-        catchBar();
+        catchKey_.down(); // (CATCH on its let go, if nothing was chosen meanwhile)
         return;
     }
     if (b == Button::Y && event.down && spec_.roll && page_ == 0 && !holding_) {
@@ -548,7 +560,8 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
     if (dt > 0.05f) dt = 0.05f;
     dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number
     lastMs_ = nowMs;
-    const float x = input.stickX(), y = input.stickY();
+    const bool choosing = catchKey_.stick(input, session_, nowMs); // Y held on CLOUD: the stick chooses CATCH's bars and what
+    const float x = choosing ? 0.f : input.stickX(), y = choosing ? 0.f : input.stickY();
     if (keys_.isOpen()) {
         keys_.update(input, nowMs, dt);
         return;
@@ -715,6 +728,9 @@ void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
     trackName(project_, project_.track, name, sizeof name);
     std::snprintf(text, sizeof text, "%s / %s", name, spec_.pageNames[page_]);
     if (!said_.empty()) std::snprintf(text, sizeof text, "%s", said_.c_str()); // (CATCH, RECORD: for a moment)
+    // (Y held: what its let go catches is said on the page's heading row, below: the top bar's room, after the tabs,
+    // the tempo and the scene playing, cut "CATCH THE LAST 4 BARS OF THE MIX" to its first words. The top bar keeps
+    // the track and the page.)
     topBar(r, fonts, View::Device, text, project_);
     if (keys_.isOpen()) {
         drawTyping(r, fonts); // naming a preset to save: the keys instead of the rows
@@ -809,9 +825,15 @@ void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
     }
 
     // ---- ADVANCED ----------------------------------------------------------------------
-    std::snprintf(text, sizeof text, "PAGE %d OF %d", page_, spec_.pages - 1);
-    fonts.small.drawRight(r, 632.f, 38.f, text, kDim);
     fonts.medium.draw(r, 8.f, 36.f, spec_.pageNames[page_], kText);
+    if (catchKey_.held()) { // CLOUD, Y held: CATCH's choice, where PAGE 1 OF N was (the whole line: what is caught, of what)
+        const std::string line = catchChoiceLine(session_);
+        const float room = 632.f - 8.f - fonts.medium.width(spec_.pageNames[page_]) - 16.f;
+        fonts.within(&Fonts::small, line.c_str(), room).drawRight(r, 632.f, 38.f, line.c_str(), kBrass);
+    } else {
+        std::snprintf(text, sizeof text, "PAGE %d OF %d", page_, spec_.pages - 1);
+        fonts.small.drawRight(r, 632.f, 38.f, text, kDim);
+    }
 
     if (!envelopePage()) {
         const int rows = (itemCount() + 3) / 4, rowH = settingH(rows);
@@ -891,7 +913,11 @@ void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
         }
     }
 
-    if (holding_) {
+    if (catchKey_.held()) {
+        hint("LEFT / RIGHT", "bars");
+        hint("UP / DOWN", "mix or a track");
+        hint("Y", "catch"); // (on its let go)
+    } else if (holding_) {
         hint("STICK UP / DOWN", onRecording() ? "next recording" : "change it");
         hint("D-PAD UP / DOWN", "by one");
         if (onRecording()) hint("B", "as it was");
