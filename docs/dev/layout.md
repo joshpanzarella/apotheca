@@ -56,6 +56,7 @@ Where effects are, in the engine:
 | `engine/src/fx/echo.hpp` | what DELAY's newer types share (DUB, REVERSE, STUTTER): TAPE's eight TIMEs, a crossfade's curve, the 4 s rest |
 | `engine/src/fx/tank.hpp` | what REVERB's newer types share (BLOOM, SHIMMER): one tank of eight lines mixed eight into eight, DECAY a real time per line, PLATE's TONE, the sway; BLOOM's 64-tap swell and SHIMMER's octave shifter |
 | `engine/src/fx/bend.hpp` | what the newer DRIVE types share (FOLD, FUZZ): a side bent at twice the rate (`BendSide`; FOLD at four, `BendSide4`) a sample at a time (so the TICK holds), back on centre, the plain sound made as late; `bendLevel` |
+| `engine/src/fx/most.hpp` | `SlidingMost`: the most of the last N, in a fixed array (LIMITER's hold, SNAP's 14 ms window) |
 | `engine/include/apotheca/denormals.hpp` | flush-to-zero |
 | `tests/effects_test.cpp` | the pinned sound of the old five, and the tools that drive an effect |
 | `tests/measure.hpp` | the measuring tools every sound test shares: level, spectrum (`harmonicsIn`), pitch, checksum, no click |

@@ -9952,6 +9952,24 @@ static void testWear() {
 
 // ---- LIMITER ----
 
+// A low note's bend, quickly: harmonics 2 to 9 of a sine at `hz` (settled, as harmonicShare reads it) against the note
+// itself, in dB. harmonicShare adds up every harmonic to 24 kHz for its "all", 1,200 of them at 20 Hz: seconds of work.
+static double underTheNote(Effect& effect, int hz, double amp) {
+    const std::size_t n = 48000;
+    Stereo io(2 * n);
+    io.l = io.r = sineOf(hz, amp, 2 * n);
+    effect.reset();
+    through(effect, io);
+    const float* out = io.l.data() + n;
+    const double note = partAt(out, n, hz);
+    double some = 0.0;
+    for (int k = 2; k <= 9; ++k) {
+        const double a = partAt(out, n, static_cast<double>(k) * hz);
+        some += a * a;
+    }
+    return 10.0 * std::log10(some / (note * note) + 1e-60);
+}
+
 static float limiterGain(double db) { return static_cast<float>(db / 20.0); }
 static float limiterCeiling(double db) { return static_cast<float>((db + 10.0) / 10.0); }
 
@@ -10019,15 +10037,96 @@ static void testLimiter() {
         SAY("limiter  a click: comes out at %.6f of the ceiling; the sound 1.5 ms before it turned down to %.3f, 3.1 ms before %.6f\n", io.l[click + 144] / top, gainAt(before), gainAt(wayBefore));
         CHECK(std::fabs(io.l[click + 144] / top - 1.0) < 1e-5 && gainAt(before) < 0.8 && gainAt(before) > 0.3 && gainAt(wayBefore) == 1.0);
     }
-    // NO CORNERS: a 100 Hz sine at half scale pushed 12 dB into a ceiling 6 dB down. Clipped it would be a square
-    // (harmonics 3 to 9 together -13 dB); held down ahead of time, the shape is kept (testLimiter's table).
+    // NO CORNERS: a sine at half scale pushed 12 dB into a ceiling 6 dB down (heavy limiting). Clipped it would be a
+    // square (harmonics 3 to 9 together -13 dB); held down ahead of time, the shape is kept.
+    // THE HOLD (2026-11-25, effect-quality.md): the turn-down is held 10 ms after each peak before it lets go. A wave
+    // whose peaks (either way up) come closer than that is never let go between them, so it is not bent at any
+    // RELEASE. Before the hold every wave was let go and caught again each half turn, more the shorter the RELEASE:
+    // 100 Hz read -52.7 dB (RELEASE 96 ms), -71.8 (1 s), -41.8 (20 ms), and 50 Hz at 20 ms -26.9 (4.5% of it: a buzz on
+    // a sub). A wave slower than the hold (20 Hz: a peak every 25 ms) is still let go between its peaks as fast as
+    // RELEASE says, so there a short RELEASE bends it more than a long one, as it did every note before the hold (that
+    // was this check's `shareFast > share`): -31.8 dB (96 ms), -48.3 (1 s), -25.5 (20 ms); before the hold -24.9,
+    // -42.0, -17.2. (Harmonics 2 to 9 against the note: `underTheNote`.)
     {
-        std::unique_ptr<Effect> e = fresh(lim, limiterGain(12.0), limiterCeiling(-6.0), 0.4f);
-        const double share = harmonicShare(*e, 100, 0.5, 2, 9);
-        std::unique_ptr<Effect> slow = fresh(lim, limiterGain(12.0), limiterCeiling(-6.0), 1.f), fast = fresh(lim, limiterGain(12.0), limiterCeiling(-6.0), 0.f);
-        const double shareSlow = harmonicShare(*slow, 100, 0.5, 2, 9), shareFast = harmonicShare(*fast, 100, 0.5, 2, 9);
-        SAY("limiter  a 100 Hz sine 12 dB into the ceiling: harmonics 2 to 9 %.1f dB of it (RELEASE 96 ms), %.1f (1 s), %.1f (20 ms)\n", share, shareSlow, shareFast);
-        CHECK(share < -35.0 && shareSlow < -50.0 && shareFast < -18.0 && shareFast > share);
+        double shares[3][3] = {}; // 100, 50, 20 Hz; RELEASE 96 ms, 1 s, 20 ms
+        const int notes[3] = {100, 50, 20};
+        const float releases[3] = {0.4f, 1.f, 0.f};
+        for (int n = 0; n < 3; ++n)
+            for (int r = 0; r < 3; ++r) {
+                std::unique_ptr<Effect> e = fresh(lim, limiterGain(12.0), limiterCeiling(-6.0), releases[r]);
+                shares[n][r] = underTheNote(*e, notes[n], 0.5);
+            }
+        for (int n = 0; n < 3; ++n)
+            SAY("limiter  a %3d Hz sine 12 dB into the ceiling: harmonics 2 to 9 %.1f dB under the note (RELEASE 96 ms), %.1f (1 s), %.1f (20 ms)\n", notes[n], shares[n][0], shares[n][1], shares[n][2]);
+        for (int n = 0; n < 2; ++n)
+            for (int r = 0; r < 3; ++r) CHECK(shares[n][r] < -100.0);
+        CHECK(shares[2][2] > shares[2][0] + 3.0 && shares[2][0] > shares[2][1] + 6.0 && shares[2][2] > -40.0);
+    }
+    // ...THE HOLD ITSELF: a steady level of 0.1 (an offset: every sample shows the gain) and one click of 1, 6 dB over
+    // a ceiling at -6 dB, RELEASE 20 ms. What is under the click is turned down to make room for it and stays turned
+    // down EXACTLY as far for 10 ms after it (480 samples), then lets go. Without the hold it let go from the sample
+    // after the click (0.7038 5 ms on, 0.8476 20 ms on; now 0.5599 and 0.7608).
+    {
+        std::unique_ptr<Effect> e = fresh(lim, 0.f, limiterCeiling(-6.0), 0.f);
+        Stereo io(48000);
+        io.l.assign(io.frames(), 0.1f), io.r.assign(io.frames(), 0.1f);
+        const std::size_t click = 24000;
+        io.l[click] = io.r[click] = 1.f;
+        const Stereo in = io;
+        through(*e, io);
+        const auto gainAt = [&](std::size_t i) { return static_cast<double>(io.l[i + 144]) / in.l[i]; };
+        const double atClick = gainAt(click - 1); // (the click itself comes out at the ceiling)
+        std::size_t heldTo = click;
+        while (heldTo < click + 2000 && std::fabs(gainAt(heldTo + 1) / atClick - 1.0) < 1e-6) ++heldTo;
+        const double after = gainAt(click + 480 + 240), later = gainAt(click + 480 + 960);
+        SAY("limiter  the hold: the click at %.6f of the ceiling, what is under it turned to %.4f; held there %zu samples (%.2f ms), then %.4f 5 ms on, %.4f 20 ms on\n",
+            io.l[click + 144] / std::pow(10.0, -6.0 / 20.0), atClick, heldTo - click, static_cast<double>(heldTo - click) / 48.0, after, later);
+        CHECK(std::fabs(atClick - std::pow(10.0, -6.0 / 20.0)) < 1e-4 && heldTo == click + 480 && after > 1.05 * atClick && later > after);
+    }
+    // reset() IS THE SAME AS NEW, the hold included: one reset while it is turning a loud sound down (the hold full of
+    // it) plays a quiet sine as one fresh from the box does, to the bit.
+    {
+        std::unique_ptr<Effect> used = fresh(lim, 1.f, limiterCeiling(-6.0), 0.f), made = fresh(lim, 1.f, limiterCeiling(-6.0), 0.f);
+        Stereo loud(4800), a(9600), b(9600);
+        loud.l = loud.r = sineOf(50.0, 0.5, loud.frames());
+        through(*used, loud);
+        CHECK(used->meter() > 10.f);
+        used->reset();
+        a.l = a.r = b.l = b.r = sineOf(220.0, 0.01, a.frames());
+        through(*used, a);
+        through(*made, b);
+        CHECK(a.l == b.l && a.r == b.r && peakOf(b.l) > 0.09f);
+    }
+    // ...AND WHAT IT COSTS: the turn-down let go 10 ms later after every peak makes the whole a little quieter at the
+    // same GAIN, with the same top. GAIN +6 dB, CEILING -2 dB: a dark mix (noise through a gentle low-pass) and bright
+    // hits (noise falling away in 30 ms, four a second), each peaking at full scale, how loud they come out against
+    // what went in. Before the hold: dark +0.39 dB (RELEASE 20 ms), -0.03 (96 ms); hits +1.57, -0.77. With it: -0.21,
+    // -0.34; +0.25, -1.25. So the hold gives up 0.60 and 0.31 dB on the dark mix, 1.32 and 0.48 on the hits: the
+    // shorter the RELEASE and the more spaced the peaks, the more (a GAIN a click higher wins it back).
+    {
+        Stereo dark(4 * 48000), hits(4 * 48000);
+        Noise a(1u), b(3u);
+        float p = 0.f;
+        for (std::size_t i = 0; i < dark.frames(); ++i) {
+            p += 0.3f * (a.next() - p);
+            dark.l[i] = p;
+            hits.l[i] = static_cast<float>(std::exp(-static_cast<double>(i % 12000) / 48000.0 / 0.03)) * b.next();
+        }
+        const float darkTop = peakOf(dark.l), hitsTop = peakOf(hits.l);
+        for (std::size_t i = 0; i < dark.frames(); ++i) dark.r[i] = dark.l[i] /= darkTop, hits.r[i] = hits.l[i] /= hitsTop;
+        double got[2][2] = {}; // dark, hits; RELEASE 20 ms, 96 ms
+        for (int m = 0; m < 2; ++m)
+            for (int r = 0; r < 2; ++r) {
+                Stereo io = m ? hits : dark;
+                std::unique_ptr<Effect> e = fresh(lim, limiterGain(6.0), limiterCeiling(-2.0), r ? 0.4f : 0.f);
+                through(*e, io);
+                got[m][r] = dB(rmsOf(io.l, 4800 + 144) / rmsOf(m ? hits.l : dark.l, 4800, io.frames() - 144));
+            }
+        SAY("limiter  +6 dB into -2 dB, how loud it comes out: dark %+.2f dB (RELEASE 20 ms), %+.2f (96 ms); hits %+.2f, %+.2f\n", got[0][0], got[0][1], got[1][0], got[1][1]);
+        const double was[2][2] = {{0.39, -0.03}, {1.57, -0.77}}, now[2][2] = {{-0.21, -0.34}, {0.25, -1.25}};
+        SAY("limiter  ...given up to the hold: dark %.2f dB (RELEASE 20 ms), %.2f (96 ms); hits %.2f, %.2f\n", was[0][0] - got[0][0], was[0][1] - got[0][1], was[1][0] - got[1][0], was[1][1] - got[1][1]);
+        for (int m = 0; m < 2; ++m)
+            for (int r = 0; r < 2; ++r) CHECK(std::fabs(got[m][r] - now[m][r]) < 0.05);
     }
     // THE METER says how far it is turning down: a sine at half scale, +20 dB, ceiling 0 dB: 20 log 5 = 14 dB.
     {
@@ -10149,6 +10248,78 @@ static double snapOnAHit(float attack, float sustain, double fromMs, double toMs
     return 10.0 * std::log10(got / was);
 }
 
+// How much a gain moves within each turn of a falling low note (0.5, falling 29 dB a second), in dB, averaged over
+// the turns from 0.2 s to 0.83 s: the straight line through the gain over each turn (the note's own fall, and how the
+// effect follows it) taken out first, and the samples near the zero crossings left out (a gain says nothing there).
+static double wobbleOnAFallingNote(Effect& e, double hz) {
+    const std::size_t n = 48000;
+    Stereo io(n);
+    for (std::size_t i = 0; i < n; ++i)
+        io.l[i] = io.r[i] = static_cast<float>(0.5 * std::exp(-static_cast<double>(i) / 48000.0 / 0.3) * std::sin(2.0 * kPi * hz * static_cast<double>(i) / 48000.0));
+    const Stereo in = io;
+    through(e, io);
+    const std::size_t per = static_cast<std::size_t>(48000.0 / hz);
+    double sum = 0.0;
+    int count = 0;
+    for (std::size_t w = 9600; w + per < 40000; w += per) {
+        double top = 0.0, sx = 0.0, sy = 0.0, sxx = 0.0, sxy = 0.0, lo = 1e9, hi = -1e9;
+        int m = 0;
+        for (std::size_t i = w; i < w + per; ++i) top = std::fmax(top, std::fabs(in.l[i]));
+        for (std::size_t i = w; i < w + per; ++i) {
+            if (std::fabs(in.l[i]) < 0.1 * top) continue;
+            const double g = dB(std::fabs(static_cast<double>(io.l[i]) / in.l[i])), x = static_cast<double>(i - w);
+            sx += x, sy += g, sxx += x * x, sxy += x * g, ++m;
+        }
+        const double slope = (m * sxy - sx * sy) / (m * sxx - sx * sx), at0 = (sy - slope * sx) / m;
+        for (std::size_t i = w; i < w + per; ++i) {
+            if (std::fabs(in.l[i]) < 0.1 * top) continue;
+            const double g = dB(std::fabs(static_cast<double>(io.l[i]) / in.l[i])) - (at0 + slope * static_cast<double>(i - w));
+            lo = std::fmin(lo, g), hi = std::fmax(hi, g);
+        }
+        sum += hi - lo, ++count;
+    }
+    return sum / count;
+}
+// A busy pattern: snapOnAHit's drum (noise falling 60 dB in 0.3 s) every `everyMs`, ATTACK `attack`: what SNAP does to
+// the first millisecond of hits 2 to 8 (each over the tail of the one before), in dB.
+static double snapOnARoll(float attack, double everyMs) {
+    std::unique_ptr<Effect> e = fresh(EffectKind::Snap, attack, 0.5f, 1.f);
+    const std::size_t per = static_cast<std::size_t>(everyMs * 48.0), first = 4800;
+    Stereo io(first + 10 * per);
+    Noise noise(17u);
+    for (std::size_t i = first; i < io.frames(); ++i) {
+        const double t = static_cast<double>((i - first) % per) / 48000.0;
+        io.l[i] = io.r[i] = static_cast<float>(0.8 * std::pow(10.0, -3.0 * t / 0.3)) * noise.next();
+    }
+    const Stereo in = io;
+    through(*e, io);
+    double got = 0.0, was = 0.0;
+    for (std::size_t hit = 1; hit < 8; ++hit)
+        for (std::size_t i = first + hit * per; i < first + hit * per + 48; ++i) got += static_cast<double>(io.l[i]) * io.l[i], was += static_cast<double>(in.l[i]) * in.l[i];
+    return 10.0 * std::log10(got / was);
+}
+// Two hits `apartMs` apart (each 3 ms of noise falling away, from silence), ATTACK +100%: how far the second one turns
+// the sound up in its first millisecond, in dB, beyond what SNAP does there to the first hit alone.
+static double snapOnTwoHits(double apartMs) {
+    const std::size_t first = 4800, second = first + static_cast<std::size_t>(apartMs * 48.0);
+    double gain[2] = {};
+    for (int both = 0; both < 2; ++both) {
+        std::unique_ptr<Effect> e = fresh(EffectKind::Snap, 1.f, 0.5f, 1.f);
+        Stereo io(24000);
+        Noise noise(5u);
+        for (std::size_t i = first; i < io.frames(); ++i) {
+            double v = std::exp(-static_cast<double>(i - first) / 144.0);
+            if (both && i >= second) v += std::exp(-static_cast<double>(i - second) / 144.0);
+            io.l[i] = io.r[i] = static_cast<float>(0.5 * v) * noise.next();
+        }
+        const Stereo in = io;
+        through(*e, io);
+        const double was = rmsOf(in.l, second, second + 48);
+        gain[both] = was > 1e-12 ? dB(rmsOf(io.l, second, second + 48) / was) : 0.0; // (the first long gone: nothing to turn)
+    }
+    return gain[1] - gain[0];
+}
+
 static void testSnap() {
     const EffectKind snap = EffectKind::Snap;
     const EffectInfo& info = effectInfo(snap);
@@ -10167,7 +10338,14 @@ static void testSnap() {
         for (Row& r : rows) {
             r.first = snapOnAHit(r.attack, r.sustain, 0.0, 1.0), r.early = snapOnAHit(r.attack, r.sustain, 4.0, 6.0);
             r.later = snapOnAHit(r.attack, r.sustain, 20.0, 40.0), r.tail = snapOnAHit(r.attack, r.sustain, 100.0, 250.0);
-            SAY("snap     ATTACK %-5s SUSTAIN %-5s a hit: first ms %+.1f dB, 4-6 ms %+.1f, 20-40 ms %+.1f, 100-250 ms %+.1f\n", reads(snap, 0, r.attack).c_str(), reads(snap, 1, r.sustain).c_str(), r.first, r.early, r.later, r.tail);
+            SAY("snap     ATTACK %-5s SUSTAIN %-5s a hit: first ms %+.2f dB, 4-6 ms %+.2f, 20-40 ms %+.2f, 100-250 ms %+.2f\n", reads(snap, 0, r.attack).c_str(), reads(snap, 1, r.sustain).c_str(), r.first, r.early, r.later, r.tail);
+        }
+        // Read over 14 ms (2026-11-25), a hit is shaped within 0.3 dB of what it was before, each stretch of each row
+        // (the most, 0.27 dB, at 20 to 40 ms with ATTACK +100%: the start is followed 14 ms longer; at 15 ms it was 0.32):
+        const double before[5][4] = {{12.00, 7.37, 0.73, 0.00}, {-12.96, -7.32, -0.65, 0.00}, {0.00, 0.00, 0.12, 6.01}, {0.00, 0.00, -0.11, -5.98}, {0.0, 0.0, 0.0, 0.0}};
+        for (int k = 0; k < 5; ++k) {
+            const double now[4] = {rows[k].first, rows[k].early, rows[k].later, rows[k].tail};
+            for (int j = 0; j < 4; ++j) CHECK(std::fabs(now[j] - before[k][j]) < 0.3);
         }
         CHECK(rows[0].first > 11.0 && rows[0].first < 12.8 && rows[0].early > 6.5 && rows[0].early < 8.5 && rows[0].later < rows[0].early - 2.0 && std::fabs(rows[0].tail) < 0.5);
         CHECK(rows[1].first < -12.5 && rows[1].first > -14.0 && rows[1].early < -6.5 && rows[1].early > -8.5 && std::fabs(rows[1].tail) < 0.5);
@@ -10200,17 +10378,90 @@ static void testSnap() {
         SAY("snap     MIX %.0f%%: left and right %s; the right off the plain and the shaped laid together by %.1e\n", mix * 100.0, io.l == io.r ? "the same" : "APART", worst);
         CHECK(io.l == io.r && worst < 1e-5);
     }
-    // A STEADY SOUND IS LEFT ALONE: a 100 Hz and a 1 kHz sine at half scale, every end of ATTACK and SUSTAIN,
-    // after its first half second, within 0.5 dB of what went in, and hardly bent (harmonics 2 to 9).
-    for (double hz : {100.0, 1000.0})
+    // A STEADY SOUND IS LEFT ALONE: a sine at half scale, every end of ATTACK and SUSTAIN, after its first half
+    // second, within 0.5 dB of what went in, and not bent (harmonics 2 to 9). Since the level is read over 14 ms
+    // (2026-11-25) a note's peaks are always in view, so on any note over 36 Hz the reading holds still and nothing is
+    // bent. Before, it fell between the peaks: 40 Hz read -22.7 to -28.5 dB under the note, 50 Hz -24.7 to -30.1
+    // (SUSTAIN +100%: -27.5, about 4%, a buzz), 100 Hz -32.5 to -36.2, 1 kHz -69 to -71. Under 36 Hz the peaks are
+    // further apart than the window: bent there, less than before (30 Hz at SUSTAIN +100%: -23.6 before, -49 now).
+    for (double hz : {40.0, 50.0, 100.0, 1000.0})
         for (float a : {0.f, 1.f})
             for (float s : {0.f, 1.f}) {
                 std::unique_ptr<Effect> e = fresh(snap, a, s, 1.f);
                 const double level = levelAt(*e, hz, 0.5);
-                const double bent = harmonicShare(*e, static_cast<int>(hz), 0.5, 2, 9);
+                const double bent = underTheNote(*e, static_cast<int>(hz), 0.5);
                 SAY("snap     a steady %4.0f Hz sine, ATTACK %-5s SUSTAIN %-5s: %+.2f dB, harmonics %.1f dB\n", hz, reads(snap, 0, a).c_str(), reads(snap, 1, s).c_str(), level, bent);
-                CHECK(std::fabs(level) < 0.5 && bent < (hz < 500.0 ? -25.0 : -45.0));
+                CHECK(std::fabs(level) < 0.5 && bent < -100.0);
             }
+    {
+        std::unique_ptr<Effect> held = fresh(snap, 0.5f, 1.f, 1.f);
+        const double at50 = underTheNote(*held, 50, 0.5), at30 = underTheNote(*held, 30, 0.5);
+        SAY("snap     SUSTAIN +100%%: a 50 Hz sine's harmonics %.1f dB (-27.5 before the window); 30 Hz, past it, %.1f (-23.6)\n", at50, at30);
+        CHECK(at50 < -100.0 && at30 > -90.0);
+    }
+    // AN 808'S TAIL: a 50 Hz note at half scale falling 29 dB a second, SUSTAIN +100%. SNAP follows its fall, but should
+    // not move within a turn: how far the gain moves within each turn, the straight line through it (the fall itself)
+    // taken out, averaged over the turns from 0.2 to 0.83 s. Before the window: 2.26 dB (100 Hz 0.93), a wobble at the
+    // note's own rate; now 0.19 (0.07): the reading steps down once a turn as the note falls.
+    for (double hz : {50.0, 100.0}) {
+        std::unique_ptr<Effect> e = fresh(snap, 0.5f, 1.f, 1.f);
+        const double wobble = wobbleOnAFallingNote(*e, hz);
+        SAY("snap     SUSTAIN +100%%, a falling %3.0f Hz note: the gain moves %.3f dB within each turn\n", hz, wobble);
+        CHECK(wobble < (hz < 75.0 ? 0.3 : 0.1));
+    }
+    // A FAST ROLL: two hits (each 3 ms of noise falling away, as loud) some way apart, ATTACK +100%. How far the second
+    // one turns the sound up in its first millisecond, beyond what SNAP does there to the first alone. Under 14 ms apart
+    // it is in the window of the first and is read as part of it (a flam, a very fast roll): next to nothing. Further
+    // apart it is a hit of its own, if less of one than before the window: the first is read 14 ms longer, so the
+    // second starts from higher. Before: 5 ms +0.51 dB, 10 ms +0.70, 15 ms +1.37, 20 ms +1.70, 31 ms (a ratchet of four
+    // at 120 BPM) +1.75, 40 ms +2.19, 125 ms (sixteenths at 120 BPM) +9.52. Now: +0.21, +0.08, +0.24, +0.44, +0.67,
+    // +0.84, +8.10.
+    {
+        const double apart[7] = {5.0, 10.0, 15.0, 20.0, 31.25, 40.0, 125.0};
+        double second[7] = {};
+        for (int k = 0; k < 7; ++k) second[k] = snapOnTwoHits(apart[k]);
+        SAY("snap     ATTACK +100%%, the second of two hits turns its first ms up: %+.2f dB 5 ms after the first, %+.2f 10 ms, %+.2f 15 ms, %+.2f 20 ms, %+.2f 31 ms, %+.2f 40 ms, %+.2f 125 ms\n",
+            second[0], second[1], second[2], second[3], second[4], second[5], second[6]);
+        CHECK(second[0] < 0.3 && second[1] < 0.3 && second[3] > 0.3 && second[4] > 0.5 && second[6] > 7.5 && second[6] < 9.0);
+    }
+    // ...AND A BUSY PATTERN, each hit over the tail of the one before: the tail is read 14 ms late, so a little higher,
+    // and the next hit starts from there. The first ms of each hit, ATTACK +100% / +50%: sixteenths at 120 BPM (125 ms)
+    // +3.33 dB / +1.58 (before the window +4.33 / +2.07), eighths (250 ms) +10.52 / +5.20 (+11.00 / +5.45). A hit on its
+    // own (the rows above) is shaped as before.
+    {
+        const double sixteenths = snapOnARoll(1.f, 125.0), half = snapOnARoll(0.75f, 125.0), eighths = snapOnARoll(1.f, 250.0);
+        SAY("snap     a busy pattern, the first ms of each hit: sixteenths %+.2f dB (ATTACK +100%%), %+.2f (+50%%); eighths %+.2f (+100%%)\n", sixteenths, half, eighths);
+        CHECK(std::fabs(sixteenths - 3.33) < 0.1 && std::fabs(half - 1.58) < 0.1 && std::fabs(eighths - 10.52) < 0.1);
+    }
+    // reset() IS THE SAME AS NEW, the window included: one reset in the middle of a loud low note (the window full of
+    // its peaks) shapes quiet hits as one fresh from the box does, to the bit.
+    {
+        std::unique_ptr<Effect> used = fresh(snap, 1.f, 1.f, 1.f), made = fresh(snap, 1.f, 1.f, 1.f);
+        Stereo loud(4800), a(9600), b(9600);
+        loud.l = loud.r = sineOf(50.0, 0.5, loud.frames());
+        through(*used, loud);
+        used->reset();
+        Noise noise(9u);
+        for (std::size_t i = 0; i < a.frames(); ++i) a.l[i] = a.r[i] = static_cast<float>(0.01 * std::exp(-static_cast<double>(i % 2400) / 144.0)) * noise.next();
+        b = a;
+        through(*used, a);
+        through(*made, b);
+        CHECK(a.l == b.l && a.r == b.r && rmsOf(b.l) > 1e-4);
+    }
+    // ...AND ASLEEP IT FORGETS THE WINDOW: it can fall asleep within 14 ms of sound too faint to keep (under kQuiet), so
+    // the window still holds it; woken by a sound fainter still, it plays as one fresh from the box, to the bit.
+    {
+        std::unique_ptr<Effect> slept = fresh(snap, 1.f, 1.f, 1.f), box = fresh(snap, 1.f, 1.f, 1.f);
+        Stereo before(160), a(2400), b(2400);
+        for (std::size_t i = 0; i < 128; ++i) before.l[i] = before.r[i] = 9e-13f; // then 32 zeros: asleep at the tick's end
+        through(*slept, before);
+        Noise noise(4u);
+        for (std::size_t i = 0; i < a.frames(); ++i) a.l[i] = a.r[i] = 3e-13f * noise.next();
+        b = a;
+        through(*slept, a);
+        through(*box, b);
+        CHECK(a.l == b.l && a.r == b.r && before.l[159] == 0.f);
+    }
     // LEFT AND RIGHT TOGETHER: a hit on one side turns a steady other side up with it (either way round).
     for (int side = 0; side < 2; ++side) {
         std::unique_ptr<Effect> e = fresh(snap, 1.f, 0.5f, 1.f);
@@ -10269,7 +10520,7 @@ static void testSnap() {
     CHECK(seen.lastAfterClick < 0.001); // nothing late, no tail
     for (int p = 0; p < 3; ++p) SAY("snap     turned at once %-9s down: step %.2f corner %.2f   up: step %.2f corner %.2f\n", info.paramNames[p], seen.stepDown[p], seen.cornerDown[p], seen.stepUp[p], seen.cornerUp[p]);
     // Each setting turned at once, end to end (down: step, corner; up: step, corner), against the steady sound:
-    const double was[3][4] = {{1.00, 1.00, 1.00, 0.92}, {1.00, 0.86, 1.00, 1.00}, {1.00, 0.94, 1.00, 1.00}};
+    const double was[3][4] = {{1.00, 1.00, 1.00, 1.00}, {1.00, 1.00, 1.00, 1.00}, {1.00, 0.99, 1.00, 1.00}}; // (before the 14 ms window, 2026-11-25: {1.00, 1.00, 1.00, 0.92}, {1.00, 0.86, 1.00, 1.00}, {1.00, 0.94, 1.00, 1.00}: the steady sound wobbled more)
     for (int p = 0; p < 3; ++p) {
         CHECK(seen.stepDown[p] < 1.1 * was[p][0] && seen.cornerDown[p] < 1.1 * was[p][1]);
         CHECK(seen.stepUp[p] < 1.1 * was[p][2] && seen.cornerUp[p] < 1.1 * was[p][3]);

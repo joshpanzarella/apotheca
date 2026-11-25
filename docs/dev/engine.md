@@ -519,6 +519,62 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     a hair off, which reads the same, steps the same (the push's 0.001 slack) and is `sameAsText` to undo.
     The picture's fallback reads the table's default (it was a copy of 0.5663). No other row has `pushes`, so
     no other setting's push moved.
+- **LIMITER's hold and SNAP's window, 2026-11-25** (`docs/plans/effect-quality.md`; the owner approved the change
+  to old songs and presets that use them). Both read a level through `SlidingMost` (`fx/most.hpp`): the most of the
+  last N pushes, a queue of the ones that could still be the most, in a fixed array that is the effect's own (made
+  with it, never on the audio thread); each push the same work on average. LIMITER's own queue was that code; it
+  moved there unchanged: with the hold at 0 it renders the old LIMITER to the bit (that mutant gives back every old
+  figure in testLimiter).
+  - **LIMITER holds the turn-down 10 ms after each peak** (`kHoldSeconds`): the need is held at its most over the
+    3 ms look ahead, one more and 480 samples, then lets go at RELEASE. **Still exactly 3 ms late** (the line is not
+    touched). A wave with its peaks (either way up) under 13 ms apart, any note over about 39 Hz, is never let go between
+    them. A sine at half scale 12 dB into a ceiling at -6 dB, harmonics 2 to 9 under the note: 50 Hz at RELEASE 20 ms
+    -26.9 dB (4.5%, a buzz on a sub) before, -171 after; 100 Hz -41.8 / -52.7 / -71.8 (20 ms / 96 ms / 1 s) before,
+    -165 at all three. A note slower than the hold is still let go between its peaks, so RELEASE still bends it, less:
+    20 Hz -17.2 / -24.9 / -42.0 before, -25.5 / -31.8 / -48.3. **testLimiter's `shareFast > share` was rewritten to
+    what the hold means**: at 100 and 50 Hz every RELEASE is clean; at 20 Hz, past the hold, the short RELEASE still
+    bends more than 96 ms, and 96 ms more than 1 s. The hold is pinned to the sample (480, an offset under one click).
+    **The price, at the same GAIN** (+6 dB into -2 dB): a dark mix 0.60 dB quieter at RELEASE 20 ms, 0.31 at 96 ms;
+    bright hits four a second 1.32 and 0.48 (the model said 0.3 to 1.3). `kHoldRing` 4096 (the 3 ms and the hold up
+    to 315 kHz): the queue is 32 KB a LIMITER where it was 8 KB. Its sleep is as it was: `down_` at 0 means all the
+    hold holds is zeros; `clear()` (sleep and `reset()`) empties it.
+  - **SNAP reads the level as the biggest of the last 14 ms** (`kWindowSeconds`; its peak reading lets go, 20 ms,
+    only after that). On a note over 36 Hz the reading holds still: harmonics 2 to 9 of a steady 50 Hz sine at
+    SUSTAIN +100% -27.5 dB before, -175 after (40 Hz -22.7 to -28.5 before at the four corners, -169 to -171 after;
+    100 Hz -32.5 to -36.2, now -165 to -167; 1 kHz -69 to -71, now -151 to -160). An 808's tail (50 Hz at half scale falling
+    29 dB a second, SUSTAIN +100%) moved 2.26 dB within each turn, now 0.19 (100 Hz 0.93, now 0.07). Under 36 Hz it
+    still bends, less (30 Hz -23.6 before, -49 now). A hit on its own is within 0.27 dB of before at every stretch
+    (testSnap's table, now to 0.01 dB). **14 ms is Claude's pick, 2026-11-25, open to the owner**: the research named
+    15 to 20; at 15 the 20 to 40 ms stretch of a hit at ATTACK +100% moved 0.32 dB, over the 0.3 the brief pinned, and
+    at 14 every stretch is within 0.27 and a note's peaks are in view down to D1 (36.7 Hz); 12 and 13 ms gave 0.20 and
+    0.24 dB but reach only 42 and 38 Hz. **What it costs a player**: hits under 14 ms apart are read as one (the second
+    of two equal 3 ms bursts turns its first ms up 0.08 to 0.24 dB beyond the first's, where it was 0.51 to 1.37); and
+    in a busy pattern each hit starts over a tail read 14 ms late, so a little louder, and cracks less. Sixteenths at
+    120 BPM of a drum falling 60 dB in 0.3 s, the first ms of each hit: +3.33 dB at ATTACK +100% (+4.33 before), +1.58
+    at +50% (+2.07); eighths +10.52 (+11.00). The manual's SNAP line says so. `kWindowRing` 2048 (up to 136 kHz):
+    16 KB a SNAP. Asleep it forgets the window: it can fall asleep within 14 ms of sound under kQuiet, so `endTick`
+    clears it, and so does `reset()` (testSnap wakes one with sound fainter still and holds it to a fresh one).
+  - **Nothing else moved**: `effects_test --print` the same before and after (the 40 pinned renders, the maths line,
+    the song). `--measure` before and after: only LIMITER's and SNAP's lines moved (testLimiter, testSnap, their
+    glide, sweep and swept rows, and each fade into SNAP in testSwapFade, 0.01 of a step more: from NONE 1.34 now
+    1.35, held still 1.04), besides the clock's timings. Pinned figures that moved: testSnap's "turned at once" table (corners 0.86 to
+    0.94 now 0.99 to 1.00: the steady sound under them no longer wobbles), LIMITER's GAIN turned at once (down
+    1.02 / 1.03 now 1.00 / 1.00, up 1.07 now 1.09; within testLimiter's 10%).
+  - **Factory presets whose sound changes**: the three with a SNAP, HARD / Snap Acid (ACID), BASS / Slap Snap
+    (FM-6), PREPARED / Rubber Mute (PHYSIC); not measured one by one. No preset holds a LIMITER; `bench`'s typical
+    song has one on its master (a timing only). Any song with a SNAP or a LIMITER turning down changes.
+  - **Cost** (`bench`'s `effect()` in a scratch program linked against the engine before and after, 60 rounds in
+    turns, best / middle, % of one desk core): LIMITER at its defaults 0.050 / 0.057 before, 0.047 / 0.057 after; at
+    +20 dB 0.13 / 0.15 and 0.12 / 0.15; on a 55 Hz bass at +20 dB 0.175 / 0.196 and 0.171 / 0.197: **no change** (the queue was there;
+    a longer one does the same work a sample). SNAP 0.084 / 0.093 before, 0.108 / 0.123 after (ATTACK turned all the
+    while the same); on a 55 Hz bass 0.118 / 0.132, 0.143 / 0.174: **+0.025 to 0.04%**, so +0.3 to 0.8% of a handheld
+    core a SNAP (x13 to 20; not timed there). Both stay under the 0.15% line.
+  - testLimiter and testSnap together run in about a second, as before (`underTheNote` reads harmonics 2 to 9 against
+    the note; harmonicShare sums every harmonic to 24 kHz for its "all", 1,200 of them at 20 Hz, and with it the new
+    low notes took the two to 10 s). 13 mutants, 13 killed
+    (the hold at 0, at half, doubled, without the look ahead; the window at 0, 10 and 20 ms; `clear()` without the hold,
+    `reset()` and the sleep without the window; the queue's window one shorter, its back not popped, its front not
+    returned); the sleep one lived until the faint-wake check was written.
 - **A per-sample loop works on locals** (WEAR's `stretch`: up to the tick's
   end, everything the samples change copied in, worked on, copied back).
   Written straight on the effect's own numbers WEAR cost 0.40% of a core; the
