@@ -175,6 +175,41 @@ These are findings, or parts of findings, that the code check did not confirm:
 - **G31, "one copy timing on both grids" and "no zoom on BARS":** both deliberate (section 4).
 - **G18, stick sideways = FREQ:** collides with TYPE; it was moved to section 3 as the option not recommended.
 
+## 6. Open questions after the fixes (2026-11-25)
+
+The batches left these for the owner. Each is in its docs/dev file too. Nothing below was felt on the handheld.
+
+**Speed and feel**
+- **Click pace** (G32): the drum ratchet, lane FEEL and the roll's ratchet and glide now click twice as fast (8 a second after 170 ms; they were 4 a second or 220 ms). Raise `ui::kClickEveryMs` if they overshoot; above 125 ms the drum pitch gets slower than it was.
+- **Lists at list pace** (G08): the song list, presets, folders, CLOUD's RECORDING, FX's TIME, the filter TYPE and BAND SHAPE dials and BARS kept the cursor's 33 a second ("faster is better"). The standard says 9 a second. Four lists wait 170 ms, not the standard's 200.
+- **The stick's full push** (G07) is set at 0.9 of its travel: a guess, the RG40XXV's rim is not measured. Should the name keys climb too?
+- **Lists that go round on every move** (G35: the FX list, KIT rows, synth MAIN, presets) still go round on a held run. Stop them at the ends on a run, as SET and the song list now do?
+
+**Gestures**
+- **"How many bars"** (G21): A, always something held + LEFT / RIGHT (BARS too); or B, on the drum grid L1 + LEFT / RIGHT changes the bar.
+- **SONG** (G46): Y or X on another track's cell counts as a move, so R2 opens that track. Leave the cell being worked on alone?
+- **KIT lanes** (G35): down from lane 8 goes to lane 1, up from lane 1 goes to the KIT stop. Make it go both ways, as the drum grid now does?
+- **BAND's grip** (G18): on a NOTCH, up / down moves GAIN, which does nothing there. Make it Q? The bar has no room for "HOLD Y": only the manual says it.
+- **One save button on every preset stop** (G22): no button is free on all three.
+- **Hold Y moves a line** (G37) only on FX, where R1 is taken. Is that the standard?
+
+**Words and marks**
+- SET's hint says "L1 / R1 page" ("heading" ran 15 px over).
+- The chord picker reads "A notes", "B as it was", "UP / DOWN invert" (G26).
+- A bar's copy (L1 + R1) now stays after a paste but has no mark (G23). Add one?
+- "Hold B deletes for good" now reads "Hold B deletes": the half-second holds can be undone.
+- The words test now checks the manual and README for erase, remove and rub out, comments and all.
+
+**Undo and values**
+- A held pick put back with B (a chord swap, the KIT stop) leaves an undo step that changes nothing. Drop such steps?
+- B on SET's SONG rows (TEMPO, KEY, SCALE, CHORD PACK, TRACK NAME) does nothing. Give them a usual value too (G17)?
+
+**BAND and PITCH** (fx-quality, merged)
+- A/B a high bell before calling it done? Keep the plain numbers at exactly 0 dB?
+- PITCH: keep the new head-strip picture? Sums of 8 or 4 in the splice search (a bell tone -12.3 dB against -17)? The GRAIN wording? The extra 25 ms of delay?
+
+**Not done, still yours** (section 2): G24, G20, G41, G21's direction, G22's save button.
+
 ## Appendix: file:line references
 
 - **G01** app/synth_screen.cpp:120-123, 432-435, 474-479, 566; app/sampler_screen.cpp:224-227, 271-274, 334-339, 418; app/settings_screen.cpp:19, 114-120, 271, 366-371; app/sample_picker.cpp:339-342, 492-497; app/app.hpp:115-118; app/app.cpp:153-158, 180-234, 253-270, 348; app/session_synth.cpp:231; docs/dev/drums-and-samples.md:396-401; docs/manual.md:690-692
