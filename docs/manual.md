@@ -169,6 +169,7 @@ plays the recording as it was made; an octave up, twice as fast.
 | --- | --- | --- |
 | SOUND | **Tap A: the list of recordings.** Or hold A + up / down: one at a time. **B with A still held: the sound as it was when A went down** | None |
 | PITCH, TUNE, START, END, ATTACK, RELEASE, LOOP, LEVEL | The stick turns it; the D-pad moves it by one. **LOOP is a click a push of the stick**: up ON, down OFF | Its usual value |
+| The recording's picture (right from SOUND, left from PITCH) | **LOOP START**: where LOOP goes back to. **Tap A: EDIT** (below) | LOOP START back to START |
 | PRESET | The preset after / before, **heard as it goes on** when the song is stopped (as a synth's preset and a kit are): the ends stop. **B with A still held: the sound as it was when A went down**, its effects too | Held a second, on one of your own: deletes its file (the bar says CANNOT BE UNDONE; the track keeps its sound) |
 
 **PRESET is the sound kept as a preset of its own** (or "-"): the
@@ -221,7 +222,32 @@ percent of it: a note plays from START to END and stops, and with LOOP on it
 goes round between the two. END is beside START and starts at 100% (the
 recording's end). **They never cross**: turned toward each other, each stops a
 percent short of the other. The recording's picture marks both in purple and
-lights only what a note plays.
+lights only what a note plays. **A note that reaches END fades out over its
+last 3 ms**, so it never stops with a click. (Before, it stopped dead: an old
+song's notes that run to END now end in that short fade.)
+
+**LOOP START makes a pad**: with LOOP on, a held note plays from START once,
+then goes round from LOOP START to END, so the attack is heard only once. Its
+usual is START (it reads START), so a sound that never moved it loops as it
+always did. Move the cursor onto the recording's picture (right from SOUND)
+and hold A + up / down: it moves from START to a percent short of END, and the
+heading says LOOP START 40%. With LOOP on, a dashed purple line marks it. B
+puts it back to START. **The jump back is blended**: the last 10 ms before
+END fade into what follows LOOP START (less on a very short loop), so it does
+not click. That is new for old songs with LOOP on too: their jump is now
+blended.
+
+**EDIT (tap A on the picture)** is the KIT's EDIT, on the sampler's one
+recording: START and END to the millisecond (the page's START and END are
+whole percents: 1% of a 20 s file is 200 ms), FADE IN, FADE OUT, GAIN and
+REVERSE, with Y for TRIM SILENCE (on START or END) and NORMALIZE (elsewhere),
+B back, hold B for every edit back to none. **The file itself is never
+changed.** PITCH and FINE are empty boxes: the page's PITCH and TUNE do that.
+The page's START, END, LOOP START and CHOP then work on the edited sound (CHOP
+cuts what EDIT made into 16). Another recording puts EDIT's START and END
+back to the whole; the rest stay. A preset keeps the EDIT. **A multisample has
+no EDIT**: each note is its own file, and A on the picture says so (NO EDIT FOR
+A MULTISAMPLE). Nor does CLOUD.
 
 **PITCH is semitones up or down, and up is higher.** (It used to be ROOT, a
 key, which ran the other way. Old songs open as they were.) **X hears it at
@@ -363,12 +389,12 @@ first three dials (above).
 | Family | Types |
 | --- | --- |
 | FILTER | FILTER |
-| DRIVE | **DRIVE**, **SATURATE** |
+| DRIVE | **DRIVE**, **SATURATE**, **FOLD**, **FUZZ** |
 | CRUSH | CRUSH |
 | MOD | **CHORUS** |
 | DELAY | **CLEAN**, **TAPE**, **PING** |
 | REVERB | **ROOM**, **HALL**, **SPRING**, **PLATE** |
-| LEVEL | **COMP**, **DUCK** |
+| LEVEL | **COMP**, **DUCK**, **LIMITER**, **SNAP** |
 
 Each family's line names its types ("clean, tape, ping"), and the one in the
 slot is lit, so you see what is inside before you pick. FILTER and CRUSH
@@ -444,10 +470,11 @@ song file calls each by the name it has always had.
 | FILTER | Cutoff, resonance, type, mix. Types: LOW 12 DB (two poles, gentle), LOW 24 DB (four poles, steep), BAND PASS, HIGH PASS, and DJ: one knob, nothing in the middle, turned down it closes from the top, turned up it clears out the bottom. |
 | SATURATE | Drive, type, tone, mix. Clean drive: the newer of the two, far smoother on high notes than DRIVE. DRIVE is how hard the sound is pushed; **the loudness stays about level as it rises**, so it is the grit that changes and not the volume (a quiet sound comes up, a loud one comes down). Types: TAPE (soft and even), TUBE (lopsided: warmer, with a touch of the octave), FOLD (past the top the wave folds back down: hollow, then metallic), HARD (straight, then flat: a clipper). TONE takes the top off afterwards. |
 | DRIVE | Drive, tone, mix, output. The older one: rougher up high, and louder as it is driven. Songs made with it sound as they did. |
+| FUZZ (a DRIVE type) | Fuzz, tone, gate, mix. **A fuzz pedal**: the sound pushed so far it comes out nearly square, one side clipped harder than the other. FUZZ is how far, 6 to 48 dB (it starts at 70%); the loudness stays about level as it rises, and quiet and loud notes come out at about one level. TONE: down is dark and woolly, the middle scooped, up thin and cutting. GATE makes quiet sound sputter and stop instead of hissing on (0 is no gate). **High notes, slides and vibrato stay clean**: the clip is worked out so that far less of the fizz that does not follow the pitch is left (on an 887 Hz saw, 19 dB less than before; 7 dB less where the saw itself reaches past 19 KHZ). The very top is a touch softer for it (2 dB at 20 KHZ). |
 | TAPE | A tape echo: each repeat is duller, thinner and a little bent. **Time** (1/16, 1/8 triplet, 1/8, 1/4 triplet, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; a triplet, shown as TRIP, is three in the space of two; a dotted one, shown as DOT, is half as long again), **feedback** (to 120%), **age**, **mix**. Turn TIME while it sounds and the echoes swoop in pitch, as tape does when its speed changes. FEEDBACK past 100% howls and holds there; it does not blow up. **It does not howl for ever either**: while sound is coming in, and for 30 seconds after the last of it, FEEDBACK is what it reads; left alone longer than that, a FEEDBACK over 90% eases back to 90% and the echoes die away. Play into it again and it is back at once. A FEEDBACK that reads 90% or less is never touched. AGE is how worn the tape is: more wobble in pitch, duller and thinner repeats, a lower ceiling on the howl. MIX is how loud the echoes are; the sound itself stays as it is. |
 | PING | A clean echo that bounces from side to side: the first repeat on the left, the next on the right, and so on. **Time** (TAPE's eight choices), **feedback** (0 to 100%, as CLEAN's: how much of each repeat is in the next. Like CLEAN it does nine tenths of what it reads, so it cannot ring for ever), **tone** (how bright the repeats stay: low is duller each time across), **mix**. A sound in the middle, or on one side only, bounces all the same. The first repeat is the sound exactly as it was. Turn TIME while it sounds and the echoes swoop in pitch, as TAPE's do. |
 | DELAY (the type CLEAN) | Time (1/16, 1/8, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; dotted is shown as DOT), feedback, tone, mix |
-| HALL | A reverb with a dense tail that keeps moving. **Size** (the room, and the gap before it answers: 2 to 30 ms), **decay** (how long the tail lasts, in seconds: 0.3 to 20), **tone** (low is dark: the highs die soon; above the middle it is bright and the lows are thinned), **mix** (from the sound alone to the room alone). Turning SIZE while it sounds bends the room's pitch for a moment. |
+| HALL | A reverb with a dense tail that keeps moving. **Size** (the room, and the gap before it answers: 2 to 30 ms), **decay** (how long the tail lasts, in seconds: 0.3 to 20), **tone** (low is dark: the highs die soon; above the middle it is bright and the lows are thinned), **mix** (from the sound alone to the room alone). Its notes drift a hair all the while, so a long tail on a pad or a piano is a smooth wash, never the same few notes ringing on; a note held into it swells and dips a little, as in a real room. Turning SIZE while it sounds bends the room's pitch for a moment. |
 | SPRING | A spring tank: the boing. In a spring the high notes travel slower than the low ones, so a click comes back as a quick sweep, low first, and each time round it is longer. **Drip** (how strong that sweep is; at none, plain echoes), **decay** (how long the tail lasts, in seconds: 0.4 to 4), **tone** (low is dark: the highs die soon), **mix**. Like a real one it passes little under 100 Hz or over about 4.5 kHz, takes the left in at one spring and the right at the other, and gives it back a little different on each side. Changing TYPE from HALL keeps DECAY as the seconds it reads, or the nearest SPRING has. |
 | PLATE | A plate reverb: a dense wash from its first moment, with no early echoes to pick out, bright and smooth, and an even fall. **Pre** (a gap before it answers: 0 to 100 ms), **decay** (how long the tail lasts, in seconds: 0.3 to 20, as HALL's), **tone** (low is dark; high is bright; at any setting the lowest notes die a little sooner than the rest), **mix**. Left and right go in together, as on a real plate, and come out wide. Turning PRE while it sounds bends its pitch for a moment. |
 | REVERB (the type ROOM) | The older, plainer reverb. Size, damping, mix |
@@ -457,6 +484,8 @@ song file calls each by the name it has always had.
 | PITCH (a MOD type) | Pitch, fine, grain, mix. **The sound again, higher or lower**: an octave under a bass, a fifth over a lead. PITCH is -12 to +12 semitones (ST), one click each. FINE is -50 to +50 cents on top (a cent is a hundredth of a semitone): a few either way at half MIX thickens a sound, as two players a hair apart. GRAIN is how long each piece it reads is, 20 to 120 MS: short follows fast playing; long blurs it. Each piece is joined on where the sound lines up (up to 25 MS further on), so a held note stays at one level; the shifted sound comes up to a GRAIN and 30 MS late. Shifted up, the very top of the sound is cut first, so a bright sound does not fizz. MIX at 0 is the sound untouched; at 100% only the shifted sound is left. At PITCH 0 and FINE 0 the shifted sound is the sound half a GRAIN late (or where it stood when PITCH passed 0), so with MIX part way it sounds hollow (a comb), as any shifter does. It starts an octave up at half MIX. |
 | COMP | Threshold, ratio, speed, mix. A compressor: it turns the loud parts down and then the whole up, so a sound is more even and sits forward. THRESHOLD is how loud "loud" is (-48 to 0 dB: lower catches more). RATIO is how hard (1.5:1, 2:1, 3:1, 4:1, 8:1, 20:1). **While sound passes, a thin line under the THRESHOLD bar shows how far it is turning the sound down**, and the heading says it in words (TURNING DOWN 7 DB): it grows from the right, and the whole width is 24 dB. No line: the sound is under the threshold and nothing is done to it. SPEED is how fast it acts and lets go, as one knob: it reads both, from 1/50 MS (it catches every hit) to 30/400 MS (hits get through, the whole is held together). MIX part way keeps the plain sound beside the squashed one. The level comes back up by itself. It does not listen below 60 Hz, so a kick's thump does not pull everything down. **On the master it glues a mix together.** |
 | DUCK | Amount, release, source. **The track dips each time a drum is hit**, and comes back up: the pumping sound, or room made for the kick. SOURCE is which drum: a lane, 1 to 8, of the **first drum track** in the song (lane 1 is the kick in the built-in kit). AMOUNT is how far it dips (100%: right down to nothing). RELEASE is how long it takes to come back, 20 ms to 1 second. It goes by the hit itself, not by the drum's sound: it works with the drums muted or that lane turned right down, every hit counts whatever its level (each hit of a ratchet, and a drum played by hand), and a step that its chance leaves out does nothing. **A thin line under the AMOUNT bar shows how far it is dipping**, and the heading says DIPPING 3 DB, as COMP's does. On the master it dips the whole song. Not for ECHO or SPACE. |
+| LIMITER (a LEVEL type) | Gain, ceiling, release. **A hard top: nothing comes out over the CEILING**, to the sample. GAIN pushes the sound into it (0 to +20 dB): the peaks are held down, so the whole sounds louder for the same top. CEILING is the top, -10 to 0 dB. RELEASE is how fast it lets go after a peak, 20 ms to 1 second: short is loud and pumps, long is smooth. **It keeps the sound turned down for 10 ms after each peak before it lets go**, so a low note (a sub, a kick's boom) is not made rough even at a short RELEASE; the price is a little loudness at the same GAIN (up to about 1.3 dB at the shortest RELEASE on spaced hits, 0.6 dB on a full mix; a click more GAIN wins little of it back, because the extra goes into the turn-down). It sees each peak coming and turns down before it, so the sound comes out 3 ms late: it is meant for the master, where everything is late alike (on one track it puts that track 3 ms behind the others). No MIX. A thin line under the GAIN bar shows how far it is turning down, and the heading says it in words, as COMP's does. |
+| SNAP (a LEVEL type) | Attack, sustain, mix. **It shapes each hit**: it listens not for how loud the sound is but for how it moves. ATTACK (-100 to +100%) turns the start of each hit down (a brush instead of a stick) or up (it cracks). SUSTAIN (-100 to +100%) turns each hit's tail down (dry, tight) or up (big, roomy). A steady sound is left alone. **It reads the level over the last 14 ms**, so a low note or an 808's tail is not made rough. So hits closer together than that (a flam, a very fast roll) are shaped as one hit, and in a busy pattern each hit starts over the tail of the one before, read 14 ms late, so it cracks less than a hit from silence (sixteenths at 120 BPM, ATTACK +100%: its first ms about +3 dB, where a hit on its own gets +12). Nothing is late, so MIX part way lays it under the plain sound; MIX at 0 is the sound untouched. |
 | CRUSH | Bits, rate, mix |
 
 Effects are kept in the song. They can be changed while it plays. Stopping

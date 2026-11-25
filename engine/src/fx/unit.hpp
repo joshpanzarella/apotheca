@@ -127,6 +127,8 @@ double combHz(float pitch);
 float foldCurve(float x);
 // FUZZ's clip by itself, past a gate's step `gate`, for `x` after FUZZ.
 float fuzzCurve(float x, float gate);
+// Its area from 0 to `x` (its antiderivative, in double): what FUZZ averages the curve between two points by.
+double fuzzCurveArea(double x, float gate);
 // RING's carrier: 0 SINE, 1 TRIANGLE, 2 SQUARE, at `at` of its turn (0 to 1), `dt` a sample's share of a turn.
 float ringCarrier(int wave, float at, float dt);
 // FLANGER's delay in ms for DEPTH and RATE settings, at `at` of the sweep's turn (0: its start, the longest).

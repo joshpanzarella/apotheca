@@ -1024,6 +1024,48 @@ void testASongSentDoesNotWait() {
     std::remove(longFile.c_str());
 }
 
+// EDIT stays open across a tab, and its jobs name the track and lane it opened on: another track picked on SONG
+// meanwhile (or the tracks changed under it, their numbers shifting) closes it, so the page never shows one track's
+// name over another's sound, nor edits the old track from the new one's page.
+void testEditClosesOnAnotherTrack() {
+    TempFolder folder;
+    Rig rig(folder.path);
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Drums));
+    session.setLaneSample(0, kLane, "quiet");
+    session.setLaneSample(1, kLane, "quiet");
+    rig.app.project().track = 0;
+    session.view = View::Device;
+    rig.frames(2);
+    KitScreen& kit = rig.app.kit();
+    kit.goTo(kLane, KitScreen::kEdit);
+    rig.tap(A);
+    CHECK(kit.editing());
+    session.view = View::Song; // L2 / R2 away, another drum track picked, and back
+    rig.frames(2);
+    rig.app.project().track = 1;
+    session.view = View::Device;
+    rig.frames(2);
+    CHECK(!kit.editing());
+    rig.key(A, true); // ...so hold A + up on it now edits nothing on track 1's lane (nor track 0's)
+    rig.tap(Up);
+    rig.key(A, false);
+    CHECK(rig.app.project().tracks[0].laneEdit[kLane].atRest() && rig.app.project().tracks[1].laneEdit[kLane].atRest());
+    // The same track, but the tracks changed under it (a duplicate put in): closed too.
+    rig.app.project().track = 0;
+    rig.frames(2);
+    kit.goTo(kLane, KitScreen::kEdit);
+    rig.tap(A);
+    CHECK(kit.editing());
+    CHECK(session.duplicateTrack(1) == 2);
+    rig.frames(2);
+    CHECK(!kit.editing());
+    // Nothing changed: it stays open.
+    rig.tap(A);
+    rig.frames(4);
+    CHECK(kit.editing());
+}
+
 int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     struct Test {
@@ -1035,7 +1077,7 @@ int main(int argc, char** argv) {
         {"testNormalizeAndTrim", testNormalizeAndTrim}, {"testTheRows", testTheRows}, {"testTheEnginePlaysIt", testTheEnginePlaysIt},
         {"testTheBuiltInDrums", testTheBuiltInDrums}, {"testALongShapeWaits", testALongShapeWaits}, {"testASongSentDoesNotWait", testASongSentDoesNotWait}, {"testFitAndSlices", testFitAndSlices}, {"testTheFileIsUntouched", testTheFileIsUntouched},
         {"testNormalizeAndTrimOnALane", testNormalizeAndTrimOnALane}, {"testTheSongFile", testTheSongFile}, {"testUndoAndANewRecording", testUndoAndANewRecording},
-        {"testTheGestures", testTheGestures}, {"testBAfterYKeepsIt", testBAfterYKeepsIt},
+        {"testTheGestures", testTheGestures}, {"testBAfterYKeepsIt", testBAfterYKeepsIt}, {"testEditClosesOnAnotherTrack", testEditClosesOnAnotherTrack},
     };
     for (const Test& test : tests) {
         bool wanted = argc < 2;

@@ -27,6 +27,7 @@ Where things are in the app:
 | `session_songs.cpp` | songs on disk, revisions, settings files |
 | `session_synth.cpp` | sounds, presets, the designer page, USB keyboard |
 | `session_samples.cpp` | recordings, fitting to tempo, the WiFi page, updates |
+| `lane_edit.hpp/.cpp`, `edit_view.hpp/.cpp` | EDIT: what is done to a recording without writing its file (the sums), and **the one EDIT view**, a drum lane's and the sampler's (S4: `EditView::Target` says what it edits) |
 | `name_keys.hpp/.cpp` | **the one set of keys a name is typed with**: a track's, a new folder's, a preset's (`NameKeys`) |
 
 **Adding an instrument**: a `TrackKind` (project.hpp), a row in
@@ -55,10 +56,11 @@ Where effects are, in the engine:
 | `engine/src/fx/mod.hpp` | what MOD's newer types share (FLANGER, ENSEMBLE, PHASER, TREMOLO): CHORUS's RATE scale, a signed amount, a sine from a place in a turn, a delay line read between samples, the 4 s rest rule |
 | `engine/src/fx/echo.hpp` | what DELAY's newer types share (DUB, REVERSE, STUTTER): TAPE's eight TIMEs, a crossfade's curve, the 4 s rest |
 | `engine/src/fx/tank.hpp` | what REVERB's newer types share (BLOOM, SHIMMER): one tank of eight lines mixed eight into eight, DECAY a real time per line, PLATE's TONE, the sway; BLOOM's 64-tap swell and SHIMMER's octave shifter |
-| `engine/src/fx/bend.hpp` | what the newer DRIVE types share (FOLD, FUZZ): a side bent at twice the rate (`BendSide`; FOLD at four, `BendSide4`) a sample at a time (so the TICK holds), back on centre, the plain sound made as late; `bendLevel` |
+| `engine/src/fx/bend.hpp` | what the newer DRIVE types share (FOLD, FUZZ): a side bent at twice the rate (`BendSide`, FUZZ's, by the curve's average from one point to the next: its `Curve` gives the area; FOLD at four, `BendSide4`) a sample at a time (so the TICK holds), back on centre, the plain sound made as late; `bendLevel` |
+| `engine/src/fx/most.hpp` | `SlidingMost`: the most of the last N, in a fixed array (LIMITER's hold, SNAP's 14 ms window) |
 | `engine/include/apotheca/denormals.hpp` | flush-to-zero |
 | `tests/effects_test.cpp` | the pinned sound of the old five, and the tools that drive an effect |
-| `tests/measure.hpp` | the measuring tools every sound test shares: level, spectrum (`harmonicsIn`), pitch, checksum, no click |
+| `tests/measure.hpp` | the measuring tools every sound test shares: level, spectrum (`harmonicsIn`), pitch, checksum, no click, a tail ringing on the same notes (`ringOnOf`) |
 
 **Adding an effect**:
 1. an `EffectKind` at the **end** of the list in `effects.hpp`;

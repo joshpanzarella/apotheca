@@ -15,12 +15,32 @@
 //
 // How it works. Two level followers listen to the louder of left and right
 // (both sides are turned together, so the picture does not lean): a QUICK one
-// (1 ms) and a SLOW one (25 ms), both following the same peak reading. On a
-// steady sound they agree, and SNAP does nothing to it. When a hit starts the
+// (1 ms) and a SLOW one (25 ms), both following the same peak reading. That
+// reading is the biggest peak of the last 14 ms (kWindowSeconds, a sliding
+// most: most.hpp), and it lets go only once that has passed. On a steady
+// sound they agree, and SNAP does nothing to it. When a hit starts the
 // quick one is ahead: that is the attack, and how far ahead (in dB) times
 // ATTACK is the turn (half of it, at 100%). As it dies away the quick one falls first: that is the
 // sustain, turned by SUSTAIN (all of it, at 100%). The turn is held between -24 and +12 dB.
 // Nothing is late: no lookahead, so MIX can lay it under the plain sound.
+//
+// THE WINDOW (2026-11-25, effect-quality.md). The peak reading used to start
+// falling the moment it was set, so on a low note it fell between the wave's
+// peaks and caught up at each: the quick follower rose and fell with the wave,
+// and SNAP turned the wave up and down within each turn (a 50 Hz sine at
+// SUSTAIN +100%: harmonics 27.5 dB under it, about 4%, a buzz; a falling 808
+// tail moved 2.3 dB within each turn). Read over 14 ms, a note's peaks (both
+// ways up: any note over 36 Hz) are always in view, so the reading holds still
+// through a steady note and steps down only as the note dies away. A hit is
+// read as before (its start is the biggest yet, so it is there at once); its
+// tail is followed 14 ms later. So two hits closer than 14 ms (a flam, a very
+// fast roll) are read as one: the second, if no louder, is not shaped as a
+// start of its own. And in a busy pattern each hit starts over the tail of the
+// one before read 14 ms late (so a little louder), and is turned up a little
+// less: sixteenths at 120 BPM, ATTACK +100%, +3.3 dB in each hit's first ms
+// where it was +4.3. 14 ms, not the 15 to 20 the research named: at 15 one
+// stretch of a hit (20 to 40 ms in, ATTACK +100%) moved 0.32 dB from before,
+// at 14 every stretch is within 0.27 (testSnap).
 //
 // Every setting glides on the TICK (svf.hpp), so the sound is the same to the
 // bit however it is cut into blocks. It sleeps (exact zeros, no work) once
@@ -28,6 +48,7 @@
 // it is a fresh one.
 
 #include "glide.hpp"
+#include "most.hpp"
 #include "svf.hpp"
 #include "unit.hpp"
 
@@ -37,6 +58,8 @@ namespace fx {
 namespace {
 
 constexpr float kPeakRelease = 0.02f;  // seconds: the peak reading both followers listen to lets go this fast
+constexpr float kWindowSeconds = 0.014f; // ...once the biggest peak of this long has passed
+constexpr int kWindowRing = 2048;      // room for the window at up to 146 kHz; a power of two
 constexpr float kQuickSeconds = 0.001f;
 constexpr float kSlowSeconds = 0.025f;
 constexpr float kAttackShare = 0.5f;   // of how far the quick follower is ahead, in dB, at ATTACK 100%
@@ -56,11 +79,14 @@ public:
         peakKeep_ = std::exp(-1.f / (kPeakRelease * sr_));
         quick_ = 1.f - std::exp(-1.f / (kQuickSeconds * sr_));
         slow_ = 1.f - std::exp(-1.f / (kSlowSeconds * sr_));
+        back_ = static_cast<int>(std::round(kWindowSeconds * sr_));
+        if (back_ > kWindowRing - 2) back_ = kWindowRing - 2; // SlidingMost's most
         changed();
         reset();
     }
     void reset() override {
         peak_ = fast_ = lag_ = 0.f;
+        window_.clear();
         quietIn_ = 0;
         asleep_ = true;
         arrive();
@@ -80,7 +106,7 @@ public:
             }
             if (tick_ == 0) beginTick();
             const float attack = attack_.next(), sustain = sustain_.next(), mix = mix_.next();
-            const float level = std::fmax(std::fabs(x[0]), std::fabs(x[1]));
+            const float level = window_.push(std::fmax(std::fabs(x[0]), std::fabs(x[1])), static_cast<unsigned>(back_)); // the biggest of the last 14 ms
             peak_ = level > peak_ ? level : peak_ * peakKeep_;
             fast_ += quick_ * (peak_ - fast_);
             lag_ += slow_ * (peak_ - lag_);
@@ -122,6 +148,7 @@ private:
         attack_.done(), sustain_.done(), mix_.done();
         if (quietIn_ >= kTick && peak_ < kQuiet && fast_ < kQuiet && lag_ < kQuiet) { // nothing came in all this tick, and nothing is left
             peak_ = fast_ = lag_ = 0.f;
+            window_.clear(); // (all it holds is under kQuiet: peak_ is never less than it)
             asleep_ = true;
         }
     }
@@ -134,6 +161,8 @@ private:
 
     float peak_ = 0.f, fast_ = 0.f, lag_ = 0.f;
     float peakKeep_ = 0.f, quick_ = 0.f, slow_ = 0.f;
+    SlidingMost<kWindowRing> window_; // the level, at its most over the last back_ + 1 samples
+    int back_ = 672;
     Glide attack_, sustain_, mix_;
     int tick_ = 0, quietIn_ = 0;
     bool asleep_ = true;

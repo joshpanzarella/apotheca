@@ -6,6 +6,7 @@
 //   sound NAME.wav
 //   sampler PITCH TUNE START END ATTACK RELEASE LOOP LEVEL
 //   chop
+//   edit START END GAIN FADEIN FADEOUT REVERSE   (its EDIT, S4: as the song's sampleredit; left out at rest)
 //   whole
 //   fx/send/glidefrom/mod... (soundText's lines)
 //
@@ -18,6 +19,7 @@
 #include <sys/stat.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <sstream>
@@ -43,6 +45,12 @@ std::string samplerPresetText(const TrackData& t, const TrackSound& sound) {
     }
     out += "\n";
     if (t.samplerChop) out += "chop\n";
+    if (!t.samplerEdit.atRest()) {
+        char line[160];
+        const LaneEdit& e = t.samplerEdit;
+        std::snprintf(line, sizeof line, "edit %.6g %.6g %.6g %d %d %d\n", static_cast<double>(e.start) / kEditUnits, static_cast<double>(e.end) / kEditUnits, e.gain / 10.0, e.fadeIn, e.fadeOut, e.reverse);
+        out += line;
+    }
     out += "whole\n" + soundText(TrackKind::Sampler, sound.effects, sound.send, sound.glideFrom, sound.mods);
     return out;
 }
@@ -56,6 +64,7 @@ bool readSamplerPreset(const std::string& text, Session::SamplerPreset& out) {
     for (int id = 0; id < sampler::kSettings; ++id) out.settings[id] = sampler::settingDefault(id);
     out.sample.clear();
     out.chop = false;
+    out.edit = LaneEdit();
     out.sound = TrackSound();
     while (std::getline(lines, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back(); // (kept with Windows' line ends)
@@ -73,6 +82,22 @@ bool readSamplerPreset(const std::string& text, Session::SamplerPreset& out) {
                     : (v < sampler::settingMin(id) ? sampler::settingMin(id) : (v > sampler::settingMax(id) ? sampler::settingMax(id) : static_cast<int>(v)));
         } else if (word == "chop") {
             out.chop = true;
+        } else if (word == "edit") { // (a number missing or not one ends it there, the rest at rest)
+            double v[6] = {0, 1, 0, 0, 0, 0};
+            for (double& one : v) {
+                double read = 0;
+                if (!(in >> read) || !std::isfinite(read)) break;
+                one = read;
+            }
+            const auto within = [](double x, double lo, double hi) { return x < lo ? lo : (x > hi ? hi : x); };
+            LaneEdit e;
+            e.start = static_cast<int>(std::lround(within(v[0], 0.0, 1.0) * kEditUnits));
+            e.end = static_cast<int>(std::lround(within(v[1], 0.0, 1.0) * kEditUnits));
+            e.gain = static_cast<int>(std::lround(within(v[2], -kGainMost / 10.0, kGainMost / 10.0) * 10.0));
+            e.fadeIn = static_cast<int>(within(v[3], 0, kFadeMost));
+            e.fadeOut = static_cast<int>(within(v[4], 0, kFadeMost));
+            e.reverse = v[5] >= 0.5 ? 1 : 0;
+            out.edit = laneEditHeld(e, 0.f);
         } else if (word == "whole") {
             out.sound.whole = true;
         } else if (readSoundLine(word, in, SoundParts{TrackKind::Sampler, out.sound.effects, out.sound.send, &out.sound.glideFrom, out.sound.mods}) == SoundLine::Taken) {
@@ -122,7 +147,7 @@ int Session::samplerPresetOf(int track) {
     const std::vector<SamplerPreset>& all = samplerPresets();
     for (std::size_t i = 0; i < all.size(); ++i) {
         const SamplerPreset& p = all[i];
-        bool same = p.sample == t.sample && p.chop == t.samplerChop;
+        bool same = p.sample == t.sample && p.chop == t.samplerChop && p.edit == t.samplerEdit;
         for (int id = 0; same && id < sampler::kSettings; ++id) same = p.settings[id] == t.sampler[id];
         if (same) return static_cast<int>(i);
     }
@@ -137,6 +162,7 @@ bool Session::loadSamplerPreset(int track, int index) {
     setTrackSample(track, p.sample);
     for (int id = 0; id < sampler::kSettings; ++id) setSamplerSetting(track, id, p.settings[id]);
     setSamplerChop(track, p.chop);
+    setSamplerEdit(track, p.edit); // (after the recording, which puts START and END back to the whole)
     putPresetSound(track, p.sound.whole ? &p.sound : nullptr);
     return true;
 }

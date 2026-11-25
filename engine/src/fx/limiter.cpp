@@ -22,13 +22,24 @@
 //
 // How it works. The turn-down each sample needs, in dB (how far the louder of
 // left and right is over the CEILING), is held at its most for the 3 ms ahead
-// plus one sample; then it lets go at the RELEASE speed (in dB, with a least
-// speed so it ARRIVES at 0 and does not creep for ever); then it is averaged
-// over the 3 ms, so the turn-down sets off 3 ms before a peak and slides,
-// never jumps. A peak is in every average that reaches it, at its full need,
-// so the average is never less than it needs. Last, anything still over the
-// CEILING by a rounding is put on it (the ceiling each sample was given with).
-// Left and right are turned down together, so the picture does not lean.
+// plus one sample and 10 ms more (kHoldSeconds); then it lets go at the
+// RELEASE speed (in dB, with a least speed so it ARRIVES at 0 and does not
+// creep for ever); then it is averaged over the 3 ms, so the turn-down sets
+// off 3 ms before a peak and slides, never jumps. A peak is in every average
+// that reaches it, at its full need, so the average is never less than it
+// needs. Last, anything still over the CEILING by a rounding is put on it (the
+// ceiling each sample was given with). Left and right are turned down
+// together, so the picture does not lean.
+//
+// THE HOLD (2026-11-25, effect-quality.md): the turn-down stays where a peak
+// put it for 10 ms after the peak has played, and only then lets go. A low
+// note's peaks come closer than that (50 Hz: a peak every 10 ms, either way
+// up), so it is never let go between them: without the hold a short RELEASE
+// let go and caught again every half turn, which bends the wave (50 Hz at
+// RELEASE 20 ms, 12 dB into the ceiling: harmonics 4.5% of it, a buzz on a
+// sub; with it, none). The price is a little loudness at the same GAIN (the
+// turn-down is let go 10 ms later after every peak: 0.3 to 1.3 dB, testLimiter
+// has the numbers). It is still exactly 3 ms late: the hold is after the peak.
 //
 // meter() is how many dB it is turning down, for the screen
 // (Engine::effectMeter, on the GAIN box), as COMP's.
@@ -40,6 +51,7 @@
 // waking is exact.
 
 #include "glide.hpp"
+#include "most.hpp"
 #include "svf.hpp"
 #include "unit.hpp"
 
@@ -49,7 +61,9 @@ namespace fx {
 namespace {
 
 constexpr float kLookSeconds = 0.003f;
+constexpr float kHoldSeconds = 0.010f; // the turn-down held this long after a peak before it lets go
 constexpr int kRing = 1024;         // room for 3 ms at up to 340 kHz; a power of two
+constexpr int kHoldRing = 4096;     // room for the 3 ms and the hold at up to 314 kHz; a power of two
 constexpr float kDbPerLog = 8.6858896f; // 20 / ln(10)
 constexpr float kSettle = 0.02f;    // seconds for a turned setting to get most of the way
 constexpr float kLeastDb = 0.01f;   // dB: the last stretch of letting go takes at most one RELEASE
@@ -67,6 +81,8 @@ public:
         if (look_ < 1) look_ = 1;
         if (look_ > kRing - 2) look_ = kRing - 2;
         invLook_ = 1.f / static_cast<float>(look_);
+        hold_ = static_cast<int>(std::round(kHoldSeconds * sr_));
+        if (look_ + hold_ > kHoldRing - 2) hold_ = kHoldRing - 2 - look_; // SlidingMost's most
         changed();
         reset();
     }
@@ -96,10 +112,10 @@ public:
             const float s0 = x[0] * gain, s1 = x[1] * gain;
             const int at = at_, out = (at_ - look_) & (kRing - 1);
             line_[0][at] = s0, line_[1][at] = s1, top_[at] = ceiling;
-            // What this sample needs, held at its most over the look ahead and one more.
+            // What this sample needs, held at its most over the look ahead, one more and the hold.
             const float peak = std::fmax(std::fabs(s0), std::fabs(s1));
             const float need = peak > ceiling ? kDbPerLog * std::log(peak / ceiling) : 0.f;
-            const float held = holdMost(need);
+            const float held = held_.push(need, static_cast<unsigned>(look_ + hold_));
             // Let go at the RELEASE speed, arriving at 0.
             const float fallen = down_ * release_ - least_;
             down_ = held > fallen ? held : (fallen > 0.f ? fallen : 0.f);
@@ -133,17 +149,6 @@ protected:
     }
 
 private:
-    // The most of `need` over the last look_ + 1 samples (this one included): a queue of the samples that
-    // could still be the most, each smaller than the one before it.
-    float holdMost(float need) {
-        while (count_ > 0 && queue_[(head_ + count_ - 1) & (kRing - 1)] <= need) --count_;
-        const int back = (head_ + count_) & (kRing - 1);
-        queue_[back] = need, when_[back] = n_;
-        ++count_;
-        while (n_ - when_[head_] > static_cast<unsigned>(look_)) head_ = (head_ + 1) & (kRing - 1), --count_;
-        ++n_;
-        return queue_[head_];
-    }
     void beginTick() {
         const float k = glideK(kTick, kSettle, sr_);
         gain_.to = gainSet_.to, ceiling_.to = ceilingSet_.to, releaseNow_.to = releaseSet_.to;
@@ -157,7 +162,8 @@ private:
         gain_.done();
         ceiling_.done();
         // Asleep once nothing has come in for the look ahead (what is in the line is silence), and it has let
-        // go entirely: everything it holds is then as a fresh one's.
+        // go entirely (so the hold holds nothing: what is held is never more than down_): everything it holds is
+        // then as a fresh one's.
         if (quietIn_ > look_ && down_ == 0.f && busy_ == 0) {
             clear();
             asleep_ = true;
@@ -174,7 +180,7 @@ private:
         for (float& v : avg_) v = 0.f;
         for (float& v : top_) v = 1.f;
         sum_ = 0.0, busy_ = 0, down_ = 0.f;
-        head_ = count_ = 0, n_ = 0u, at_ = 0;
+        held_.clear(), at_ = 0;
     }
     void wake() {
         asleep_ = false;
@@ -187,11 +193,10 @@ private:
         speed();
     }
 
-    float line_[2][kRing] = {}, avg_[kRing] = {}, top_[kRing] = {}, queue_[kRing] = {};
-    unsigned when_[kRing] = {};
+    float line_[2][kRing] = {}, avg_[kRing] = {}, top_[kRing] = {};
+    SlidingMost<kHoldRing> held_; // the need, at its most over the look ahead, one more and the hold
     double sum_ = 0.0;
-    int busy_ = 0, head_ = 0, count_ = 0, at_ = 0, look_ = 144;
-    unsigned n_ = 0u;
+    int busy_ = 0, at_ = 0, look_ = 144, hold_ = 480;
     float down_ = 0.f, release_ = 0.f, least_ = 0.f, meter_ = 0.f;
     float invLook_ = 1.f / 144.f;
     Glide gain_, ceiling_, releaseNow_;

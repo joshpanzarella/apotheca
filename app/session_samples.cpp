@@ -713,9 +713,79 @@ void Session::loadTrackSample(int track) {
             return;
         }
     }
+    if (project.tracks[track].kind == TrackKind::Sampler) {
+        // One recording: EDIT works on it (S4). Kept as it came off the card, and made from that.
+        sound.recording = sound.source = std::make_shared<const std::vector<float>>(std::move(main));
+        sound.sourceSeconds = sound.seconds;
+        sound.sourcePeaks = sound.peaks;
+        shapeSampler(track);
+        return;
+    }
     std::unique_ptr<SampleData> data(new SampleData);
     data->data = std::move(main);
     engine.setTrackSample(track, std::move(data));
+}
+
+void Session::shapeSampler(int track) {
+    LaneSound& sound = sounds_[track][0];
+    if (!sound.source) return;
+    const LaneEdit& edit = project.tracks[track].samplerEdit;
+    sound.shaped = edit.shapes() ? std::make_shared<const std::vector<float>>(makeShape(*sound.source, edit, kSampleRate)) : sound.source;
+    installSampler(track);
+}
+
+void Session::installSampler(int track) {
+    LaneSound& sound = sounds_[track][0];
+    if (!sound.shaped) return;
+    const LaneEdit& edit = project.tracks[track].samplerEdit;
+    std::unique_ptr<SampleData> data(new SampleData);
+    if (edit.atRest()) {
+        data->data = *sound.shaped; // the file as it is, to the bit
+    } else {
+        data->data.resize(sound.shaped->size());
+        makeLevel(sound.shaped->data(), static_cast<int>(sound.shaped->size()), edit, kSampleRate, data->data.data());
+    }
+    sound.seconds = static_cast<float>(data->data.size()) / kSampleRate;
+    outlineOf(data->data, sound.peaks);
+    engine.setTrackSample(track, std::move(data));
+}
+
+bool Session::samplerEdits(int track) const {
+    return track >= 0 && track < kNumTracks && project.tracks[track].kind == TrackKind::Sampler && sounds_[track][0].source != nullptr;
+}
+
+void Session::setSamplerEdit(int track, const LaneEdit& wanted) {
+    if (track < 0 || track >= kNumTracks || project.tracks[track].kind != TrackKind::Sampler) return;
+    LaneEdit& edit = project.tracks[track].samplerEdit;
+    LaneEdit now = laneEditHeld(wanted, sounds_[track][0].sourceSeconds);
+    now.pitch = now.fine = 0; // (the page's PITCH and TUNE do that)
+    const LaneEdit was = edit;
+    if (now == was) return;
+    edit = now;
+    LaneEdit shapeWas = was, shapeNow = now; // what is cut or turned round: made again
+    shapeWas.gain = shapeNow.gain = shapeWas.fadeIn = shapeNow.fadeIn = shapeWas.fadeOut = shapeNow.fadeOut = 0;
+    if (shapeWas != shapeNow) shapeSampler(track);
+    else installSampler(track); // the fades and GAIN alone: on what is made already
+    ++sounds_[track][0].version; // (its picture changed: the designer page draws it again)
+}
+
+bool Session::normalizeSampler(int track) {
+    if (!samplerEdits(track)) return false;
+    const LaneSound& sound = sounds_[track][0];
+    int gain = 0;
+    if (!sound.shaped || !normalGain(sound.shaped->data(), static_cast<int>(sound.shaped->size()), gain)) return false;
+    LaneEdit edit = project.tracks[track].samplerEdit;
+    edit.gain = gain;
+    setSamplerEdit(track, edit);
+    return true;
+}
+
+bool Session::trimSamplerSilence(int track) {
+    if (!samplerEdits(track)) return false;
+    LaneEdit edit = project.tracks[track].samplerEdit;
+    if (!silenceEnds(*sounds_[track][0].source, kSampleRate, edit.start, edit.end)) return false;
+    setSamplerEdit(track, edit);
+    return true;
 }
 
 bool Session::putPresetRecording(int track, const std::string& name) {
@@ -742,6 +812,10 @@ bool Session::putPresetRecording(int track, const std::string& name) {
 void Session::setTrackSample(int track, const std::string& name) {
     if (track < 0 || track >= kNumTracks || !holdsRecording(project.tracks[track].kind)) return;
     std::snprintf(project.tracks[track].sample, sizeof project.tracks[track].sample, "%s", name.c_str());
+    // Another recording: EDIT's START and END were parts of the last one, and go back to the whole; the rest stay
+    // (a lane's rule). One step of undo with the name, as a lane's.
+    project.tracks[track].samplerEdit.start = 0;
+    project.tracks[track].samplerEdit.end = kEditUnits;
     loadTrackSample(track);
 }
 

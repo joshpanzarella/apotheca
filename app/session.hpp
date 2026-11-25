@@ -362,6 +362,15 @@ public:
     void setTrackSample(int track, const std::string& name); // "" for none
     void setSamplerSetting(int track, int id, int value);
     const LaneSound& trackSound(int track) const { return sounds_[track][0]; }
+    // The SAMPLER's EDIT (S4, 2026-11-25): the lane EDIT's tools on its one recording (START and END to the
+    // millisecond, the fades, GAIN, REVERSE; never PITCH or FINE, which its page has), made here from the file and
+    // handed to the engine as its recording, so CHOP's slices are of the edited sound. The file is never written.
+    // Another recording puts START and END back to the whole, as on a lane. Not for a multisample (each note is its
+    // own file) or a CLOUD: there it is kept and does nothing.
+    bool samplerEdits(int track) const; // EDIT is offered: a sampler track whose one recording was found
+    void setSamplerEdit(int track, const LaneEdit& edit); // held to its limits (laneEditHeld; PITCH and FINE 0)
+    bool normalizeSampler(int track);   // GAIN so what is played peaks at kNormalDb. False: silence (or no EDIT)
+    bool trimSamplerSilence(int track); // START and END at the first and last sound. False: silence (or no EDIT)
     bool stretching() const;  // some lane is still waiting for its fitted version
     void finishStretching();  // wait for them all. For tests, and before leaving.
 
@@ -704,6 +713,7 @@ public:
         std::string name, file, sample;
         int settings[sampler::kSettings];
         bool chop = false;
+        LaneEdit edit;    // its EDIT (S4; none in a file that has no `edit` line)
         TrackSound sound; // the whole sound, when the file holds it
     };
     const std::vector<SamplerPreset>& samplerPresets();
@@ -1177,6 +1187,8 @@ private:
     void madeLane(int track, int lane, std::vector<float> made); // a synth voice made: the lane's recording, then shapeLane
     void shapeLane(int track, int lane);   // the lane's sound made again from its source, from the cut on (then FIT, then installLane)
     void installLane(int track, int lane); // the fades, GAIN and the guard on what is shaped (or fitted), into the engine
+    void shapeSampler(int track);   // the sampler's sound made again from its source (EDIT's cut and REVERSE), then installSampler
+    void installSampler(int track); // ...its fades, GAIN and the guard, into the engine (at rest: the file, to the bit)
     bool wantsFitting(int track, int lane) const;
     void startJob(int track, int lane);
     void collectJob(bool wait);

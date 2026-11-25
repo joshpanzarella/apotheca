@@ -378,6 +378,18 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         app.session().setSamplerSetting(app.project().track, sampler::End, 80); // (its mark too)
         app.session().view = View::Device;
         app.sampler().goTo(std::strcmp(view, "sampler-end") == 0 ? 4 : 3); // START; sampler-end: END, beside it
+        if (std::strcmp(view, "sampler-loop") == 0) { // S4: the picture, LOOP on and LOOP START at 50%: its dashed mark
+            app.session().setSamplerSetting(app.project().track, sampler::Loop, 1);
+            app.session().setSamplerSetting(app.project().track, sampler::LoopStart, 50);
+            app.sampler().goTo(SamplerScreen::kPictureStop);
+        }
+        if (std::strcmp(view, "sampler-edit") == 0) { // S4: its EDIT view, START 10%, END 70%, a fade out and REVERSE
+            LaneEdit e;
+            e.start = 10000, e.end = 70000, e.fadeOut = 200, e.reverse = 1, e.gain = -30;
+            app.session().setSamplerEdit(app.project().track, e);
+            app.sampler().goTo(SamplerScreen::kPictureStop);
+            tapKey(SDLK_x);
+        }
         if (std::strcmp(view, "sampler-picker") == 0) { // its list of recordings, open on the one that is on
             app.sampler().goTo(0);
             tapKey(SDLK_x);

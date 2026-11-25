@@ -21,12 +21,15 @@
 //   phaseAt, centsOff         a part's phase, and its pitch read by how its phase
 //                             moves over 60 periods (PHYSIC: 0.5 cent and finer)
 //   sizeAt, t60At             a part's size at a time, and its T60 (PHYSIC)
+//   ringOnOf                  how much a reverb's tail rings on the same notes: the
+//                             fine structure of its spectrum, second after second
 //
 // Header only; no framework, no CHECK (each test program keeps its own).
 
 #ifndef APOTHECA_TESTS_MEASURE_HPP
 #define APOTHECA_TESTS_MEASURE_HPP
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -198,6 +201,85 @@ inline std::vector<double> spectrumOf(const float* v, std::size_t count) {
     std::vector<double> size(count / 2);
     for (std::size_t i = 0; i < count / 2; ++i) size[i] = std::sqrt(re[i] * re[i] + im[i] * im[i]);
     return size;
+}
+
+// HOW MUCH A TAIL RINGS ON THE SAME NOTES (HALL, 2026-11-25). A reverb that stands still is a set of notes (its
+// modes), each falling at its own rate: the same few stand out of its spectrum second after second, and are heard
+// ringing on. Bent lines move the notes, and which stand out changes. `count` windows of a second each, from
+// `first` seconds on (Hann, 65536 bins: 0.73 Hz each), each bin against the mean of its neighbours within 40 Hz
+// (so only which notes stand out is left, not the tail's tone), between `lo` and `hi`. Every two windows:
+//   alike      how alike the two are, in dB (a correlation: 1 the same notes stand out, 0 unrelated ones)
+//   standing   the 20 notes that stood out most in the earlier, how far over their neighbours they still stand in
+//              the later (dB; unrelated windows give about 1.5)
+// Each the mean over every two windows. (The loudest note against its neighbours in one window says nothing: it
+// is 10 to 13 dB in any tail, standing still or not: the effects plan found that.)
+struct RingOn {
+    double alike = 0.0, standing = 0.0;
+};
+inline RingOn ringOnOf(const std::vector<float>& v, double first, int count, double lo, double hi, double rate = 48000.0) {
+    const std::size_t n = 65536, width = static_cast<std::size_t>(rate);
+    const double bin = rate / static_cast<double>(n);
+    const int from = static_cast<int>(lo / bin), to = static_cast<int>(hi / bin), near = static_cast<int>(40.0 / bin);
+    std::vector<std::vector<double>> fine; // each window's bins against their neighbours, from `from` to `to`
+    for (int w = 0; w < count; ++w) {
+        const std::size_t at = static_cast<std::size_t>((first + w) * rate);
+        std::vector<double> re(n, 0.0), im(n, 0.0);
+        for (std::size_t i = 0; i < width && at + i < v.size(); ++i)
+            re[i] = v[at + i] * (0.5 - 0.5 * std::cos(2.0 * kPi * static_cast<double>(i) / static_cast<double>(width - 1)));
+        for (std::size_t i = 1, j = 0; i < n; ++i) { // the bit-reversed order, then the butterflies (as spectrumOf)
+            std::size_t b = n >> 1;
+            for (; j & b; b >>= 1) j ^= b;
+            j ^= b;
+            if (i < j) std::swap(re[i], re[j]), std::swap(im[i], im[j]);
+        }
+        for (std::size_t len = 2; len <= n; len <<= 1) {
+            const double a = -2.0 * kPi / static_cast<double>(len);
+            for (std::size_t i = 0; i < n; i += len)
+                for (std::size_t k = 0; k < len / 2; ++k) {
+                    const double c = std::cos(a * static_cast<double>(k)), s = std::sin(a * static_cast<double>(k));
+                    const std::size_t u = i + k, t = i + k + len / 2;
+                    const double tr = re[t] * c - im[t] * s, ti = re[t] * s + im[t] * c;
+                    re[t] = re[u] - tr, im[t] = im[u] - ti;
+                    re[u] += tr, im[u] += ti;
+                }
+        }
+        std::vector<double> power(n / 2), out;
+        for (std::size_t i = 0; i < n / 2; ++i) power[i] = re[i] * re[i] + im[i] * im[i] + 1e-300;
+        for (int i = from; i < to; ++i) {
+            double around = 0.0;
+            for (int j = i - near; j <= i + near; ++j) around += power[static_cast<std::size_t>(j)];
+            out.push_back(power[static_cast<std::size_t>(i)] / (around / (2 * near + 1)));
+        }
+        fine.push_back(out);
+    }
+    RingOn r;
+    int pairs = 0;
+    for (int a = 0; a < count; ++a)
+        for (int b = a + 1; b < count; ++b) {
+            const std::vector<double>&x = fine[static_cast<std::size_t>(a)], &y = fine[static_cast<std::size_t>(b)];
+            const double m = static_cast<double>(x.size());
+            double sx = 0.0, sy = 0.0, sxx = 0.0, syy = 0.0, sxy = 0.0;
+            for (std::size_t i = 0; i < x.size(); ++i) {
+                const double p = 10.0 * std::log10(x[i]), q = 10.0 * std::log10(y[i]);
+                sx += p, sy += q, sxx += p * p, syy += q * q, sxy += p * q;
+            }
+            r.alike += (sxy / m - sx / m * sy / m) / std::sqrt((sxx / m - sx / m * sx / m) * (syy / m - sy / m * sy / m));
+            std::vector<std::pair<double, std::size_t>> peaks; // the notes of the earlier: bins over both neighbours
+            for (std::size_t i = 1; i + 1 < x.size(); ++i)
+                if (x[i] > x[i - 1] && x[i] >= x[i + 1]) peaks.push_back(std::make_pair(x[i], i));
+            std::sort(peaks.begin(), peaks.end(), [](const std::pair<double, std::size_t>& p, const std::pair<double, std::size_t>& q) { return p.first > q.first; });
+            double stand = 0.0;
+            for (std::size_t k = 0; k < 20 && k < peaks.size(); ++k) {
+                const std::size_t c = peaks[k].second;
+                double most = 0.0; // (a note may slide a bin either way)
+                for (std::size_t j = c - 1; j <= c + 1; ++j) most = y[j] > most ? y[j] : most;
+                stand += 10.0 * std::log10(most) / 20.0;
+            }
+            r.standing += stand;
+            ++pairs;
+        }
+    r.alike /= pairs, r.standing /= pairs;
+    return r;
 }
 
 // AN OSCILLATOR'S ALIASING: the loudest part of `count` samples (a power of two) that is not a

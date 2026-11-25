@@ -3,10 +3,10 @@
 // time. At its ROOT key the recording plays as it was made; an octave up it
 // plays twice as fast and half as long.
 //
-// A key plays the recording from START to END and stops (or, with LOOP on,
-// goes round from START to END for as long as the key is held). Letting go
-// fades it over RELEASE. END is never before START: a note plays at least
-// kLeastSpan percent of the recording (playedEnd).
+// A key plays the recording from START to END and stops, the last kEndFadeMs faded out (or, with LOOP on,
+// goes round from LOOP START to END for as long as the key is held, the jump blended over kLoopBlendMs; LOOP
+// START is START until it is moved past it, so the attack plays once). Letting go fades it over RELEASE.
+// END is never before START: a note plays at least kLeastSpan percent of the recording (playedEnd).
 //
 // A multisample: up to kMaxZones recordings, each with the key it was made
 // at (its root) and the keys it plays (lo..hi, which cover every key between
@@ -36,19 +36,36 @@ enum Setting {
     Loop,    // 0 off, 1 on
     Level,   // 0..100
     End,     // where a note ends in the recording: 1..100 percent (owner, 2026-11-15). Appended: ids are in songs
+    LoopStart, // where LOOP goes back to: 0..100 percent, never before START (0: START itself, as before it was; S4, 2026-11-25)
     kSettings
 };
 constexpr int kLeastSpan = 1; // END is at least this many percent after START (the screen holds them so)
 // Where a note ends, as played: END, or kLeastSpan after START where END is not after it (a song
 // file may say so; the screen never does).
 inline int playedEnd(int start, int end) { return end < start + kLeastSpan ? start + kLeastSpan : end; }
-// START or END turned to `value`, held kLeastSpan short of the other, so they never cross. The one
-// rule for whatever turns them: the device's screen and the sound-designer page.
+// Where LOOP goes back to, as played: LOOP START, but never before START (so 0, its usual, is START itself, to
+// the bit) and never closer to END than kLeastSpan.
+inline int playedLoop(int start, int loopStart, int end) {
+    const int last = playedEnd(start, end) - kLeastSpan;
+    const int at = loopStart < last ? loopStart : last;
+    return at > start ? at : start;
+}
+// A setting turned to `value`, as it is kept. START or END: held kLeastSpan short of the other, so they never
+// cross. LOOP START: at or before START it is 0 (its usual, START itself, so the song writes no 9th number that
+// plays as the usual), else where it plays (playedLoop). The one rule for whatever turns them: the device's
+// screen and the sound-designer page.
 inline int heldApart(int id, int value, int start, int end) {
     if (id == Start && value > end - kLeastSpan) return end - kLeastSpan;
     if (id == End && value < start + kLeastSpan) return start + kLeastSpan;
+    if (id == LoopStart) return value <= start ? 0 : playedLoop(start, value, end);
     return value;
 }
+// At the jump back, the end of the part looped is blended into what follows LOOP START over this long (or a third of
+// the part looped, if that is shorter), so the jump never clicks: only with LOOP on (S4, 2026-11-25).
+constexpr float kLoopBlendMs = 10.f;
+// A note that reaches END (LOOP off) fades over this much of the recording before it, so it never stops dead
+// (S4, 2026-11-25; the drum lanes' end fades too). Only the last few ms of a note: the rest is as it was, to the bit.
+constexpr float kEndFadeMs = 3.f;
 int settingMin(int id);
 int settingMax(int id);
 int settingDefault(int id);

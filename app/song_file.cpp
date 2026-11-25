@@ -657,15 +657,29 @@ void putTrack(std::string& out, const TrackData& track) {
         putDrumScenes(out, track);
     } else {
         if (track.kind == TrackKind::Sampler) {
-            // sound NAME: its recording. sampler: root tune start attack release loop level [end]. END is
-            // left out at its usual 100%, so a sampler that does not use it is written as it always was.
+            // sound NAME: its recording. sampler: root tune start attack release loop level [end [loopstart]]. END
+            // and LOOP START (appended, S4) are left out at their usual (100%, and 0: START), so a sampler that does
+            // not use them is written as it always was; one that does writes every number up to it.
             // chop: chopped into 16 slices from C1 up (left out whole).
+            // sampleredit START END GAIN FADEIN FADEOUT REVERSE: its EDIT (S4, as a lane's laneedit without PITCH
+            // and FINE), left out at rest.
             if (track.sample[0]) out += std::string("sound ") + track.sample + "\n";
             out += "sampler";
-            for (int id = 0; id < sampler::kSettings; ++id)
-                if (id < sampler::End || track.sampler[id] != sampler::settingDefault(id)) put(out, " %.0f", track.sampler[id]);
+            int upTo = sampler::End - 1;
+            for (int id = sampler::End; id < sampler::kSettings; ++id)
+                if (track.sampler[id] != sampler::settingDefault(id)) upTo = id;
+            for (int id = 0; id <= upTo; ++id) put(out, " %.0f", track.sampler[id]);
             out += "\n";
             if (track.samplerChop) out += "chop\n";
+            const LaneEdit& e = track.samplerEdit;
+            if (!e.atRest()) {
+                put(out, "sampleredit %.6g", static_cast<double>(e.start) / kEditUnits);
+                put(out, " %.6g", static_cast<double>(e.end) / kEditUnits);
+                put(out, " %.6g", e.gain / 10.0);
+                put(out, " %.0f", e.fadeIn);
+                put(out, " %.0f", e.fadeOut);
+                put(out, " %.0f\n", e.reverse);
+            }
         } else {
             if (track.kind == TrackKind::Cloud && track.sample[0]) out += std::string("sound ") + track.sample + "\n"; // (CLOUD's recording: the sampler's line)
             put(out, "preset %.0f\n", track.preset + 1);
@@ -1104,6 +1118,22 @@ void readLines(SongReading& r, const std::string& text, std::size_t from, std::s
             end = std::min(sampler::playedEnd(track->sampler[sampler::Start], end), sampler::settingMax(sampler::End));
         } else if (word == "chop" && track->kind == TrackKind::Sampler) {
             track->samplerChop = true;
+        } else if (word == "sampleredit" && track->kind == TrackKind::Sampler) {
+            // As laneedit's numbers (no lane, no PITCH or FINE): one missing or not a number ends the line there.
+            double v[6] = {0, 1, 0, 0, 0, 0};
+            for (double& one : v) {
+                double read = 0;
+                if (!(in >> read)) break;
+                one = read;
+            }
+            LaneEdit e;
+            e.start = static_cast<int>(std::lround(fractionIn(v[0], 0.f, 1.f) * kEditUnits));
+            e.end = static_cast<int>(std::lround(fractionIn(v[1], 0.f, 1.f) * kEditUnits));
+            e.gain = static_cast<int>(std::lround(fractionIn(v[2], -kGainMost / 10.f, kGainMost / 10.f) * 10.f));
+            e.fadeIn = wholeIn(v[3], 0, kFadeMost);
+            e.fadeOut = wholeIn(v[4], 0, kFadeMost);
+            e.reverse = wholeIn(v[5], 0, 1);
+            track->samplerEdit = laneEditHeld(e, 0.f);
         } else if (oldSound && (word == "preset" || word == "macros" || word == "settings")) {
             continue; // an old Twin Analog or QMOD track's sound: it plays the first preset, the knobs in the middle
         } else if (word == "preset") {

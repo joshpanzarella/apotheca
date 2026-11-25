@@ -13464,7 +13464,9 @@ void testTheStickIsTwiceTheDpad() {
         {"MOD's lines", [](Rig& rig) { rig.app.session().view = View::Mods; rig.app.mods().goTo(0, 0); },
          [](Rig& rig) { return rig.app.mods().cursorRow(); }, ModScreen::kRows, 0, false, cursor, DOWN, nullptr, 0},
         {"the sampler's stops", [&](Rig& rig) { rig.app.session().addTrack(TrackKind::Sampler); device(rig, 1); rig.app.sampler().goTo(0); },
-         [](Rig& rig) { return rig.app.sampler().cursor(); }, 0, SamplerScreen::kPresetStop, true, cursor, RIGHT, nullptr, 0},
+         // (Along the row: SOUND, its picture (S4: right from SOUND), PITCH... to PRESET; the picture's stop is numbered last.)
+         [](Rig& rig) { const int c = rig.app.sampler().cursor(); return c == SamplerScreen::kPictureStop ? 1 : (c == 0 ? 0 : c + 1); },
+         0, SamplerScreen::kPresetStop + 1, true, cursor, RIGHT, nullptr, 0},
         {"a synth's stops", [&](Rig& rig) { addPhazed(rig); device(rig, 1); rig.app.phazed().goTo(0, SynthScreen::kFirstMacro); },
          [](Rig& rig) { return rig.app.phazed().cursor() - SynthScreen::kFirstMacro; }, 4, 0, true, cursor, RIGHT,
          [&](Rig& rig) { return synthRow(rig.app.phazed().cursor()); }, 4, 2}, // (two rows of macros: down twice is ADVANCED)

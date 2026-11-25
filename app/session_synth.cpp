@@ -200,6 +200,7 @@ bool Session::putSoundBack(int track) {
     if (t.kind == TrackKind::Sampler) {
         for (int id = 0; id < sampler::kSettings; ++id) setSamplerSetting(track, id, was.sampler[id]);
         if (t.samplerChop != was.samplerChop) setSamplerChop(track, was.samplerChop);
+        if (t.samplerEdit != was.samplerEdit) setSamplerEdit(track, was.samplerEdit); // (after the recording: its cut with it)
     }
     if (const SynthSpec* spec = specFor(t.kind)) {
         const std::size_t size = sizeof(int) * static_cast<std::size_t>(settingCount(t.kind));
@@ -837,7 +838,7 @@ void Session::serveDesigner() {
         }
         switch (r.kind) {
         case DesignRequest::Set:
-            if (sampler) { // as its screen turns it: START and END never cross (an id it has not: nothing)
+            if (sampler) { // as its screen turns it: START and END never cross, LOOP START 0 at or before START (an id it has not: nothing)
                 const int* v = project.current().sampler;
                 setSamplerSetting(project.track, r.a, sampler::heldApart(r.a, r.b, v[sampler::Start], v[sampler::End]));
             } else {

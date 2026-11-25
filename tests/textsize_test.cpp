@@ -1626,10 +1626,42 @@ void testTheOtherScreens() {
     session.setTrackSample(project.track, longest);
     rig.frames(2);
     holds(rig, "the sampler, the longest name");
-    for (int stop = 0; stop <= sampler::kSettings; ++stop) {
+    for (int stop = 0; stop <= SamplerScreen::kPictureStop; ++stop) { // (the picture too, S4)
         rig.app.sampler().goTo(stop);
         rig.frames(1);
         holds(rig, "the sampler, each setting");
+        CHECK(ui::gHintsOver == 0);
+    }
+    // S4: its EDIT, with the longest name a file can have, and A held; the picture saying LOOP START.
+    {
+        SamplerScreen& screen = rig.app.sampler();
+        session.setTrackSample(project.track, deep); // (the longest name a file can have: EDIT needs the file)
+        screen.goTo(SamplerScreen::kPictureStop);
+        rig.frames(1);
+        rig.tap(A);
+        rig.frames(2);
+        CHECK(screen.editing());
+        {
+            CHECK(holds(rig, "the sampler's EDIT, the longest name") > 6);
+            CHECK(drew("FADE OUT") && drew("REVERSE") && ui::gHintsOver == 0);
+            rig.key(A, true);
+            rig.frames(1);
+            holds(rig, "the sampler's EDIT, A held");
+            rig.key(A, false);
+            rig.frames(1);
+            // (No Y here: its trim is heard once made, and a sound heard would be caught by the kit's CATCH below. The
+            // view's words are the kit's, held there.)
+            rig.tap(B);
+            rig.frames(2);
+        }
+        CHECK(!screen.editing() && screen.cursor() == SamplerScreen::kPictureStop);
+        session.setSamplerSetting(project.track, sampler::Loop, 1);
+        session.setSamplerSetting(project.track, sampler::LoopStart, 50);
+        rig.frames(1);
+        holds(rig, "the sampler's picture, LOOP START said");
+        session.setSamplerSetting(project.track, sampler::Loop, 0);
+        session.setSamplerSetting(project.track, sampler::LoopStart, 0);
+        session.setTrackSample(project.track, longest);
     }
     // Its own preset (gesture audit G01, G10): the name keys at their longest, saying save and then replace; what
     // is said after, a long own name on PRESET, and the bar while B deletes it, which says it cannot be undone.

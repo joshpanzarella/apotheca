@@ -1455,6 +1455,8 @@ void testTheSamplerTrack() {
     rig.render(100000);
     rig.frames(20);
     rig.tap(RIGHT);
+    CHECK(screen.cursor() == SamplerScreen::kPictureStop); // (the picture, S4: between SOUND and PITCH along the row)
+    rig.tap(RIGHT);
     CHECK(screen.cursor() == 1);
     rig.key(A, true);
     rig.tap(UP);
@@ -1498,11 +1500,14 @@ void testTheSamplerTrack() {
     session.setSamplerSetting(1, sampler::Tune, 0);
     rig.tap(LEFT);
     rig.tap(LEFT);
+    CHECK(screen.cursor() == SamplerScreen::kPictureStop); // (left from PITCH: the picture, S4)
+    rig.tap(LEFT);
+    CHECK(screen.cursor() == 0);
     rig.frames(20);
     rig.render(100000);
 
-    // The settings: right along the row, down to the second row, up to SOUND.
-    rig.tap(RIGHT);
+    // The settings: right along the row (past the picture), down to the second row, up to SOUND.
+    rig.tap(RIGHT, 2);
     CHECK(screen.cursor() == 1);
     rig.tap(RIGHT, 3);
     CHECK(screen.cursor() == 4);
@@ -3947,6 +3952,231 @@ void testSamplerChopFile() {
     CHECK(parseSong(songText(plain), *older) && !older->tracks[0].samplerChop);
 }
 
+// S4 (2026-11-25): EDIT on the SAMPLER, the lane EDIT's tools on its one recording, the file never written.
+void testTheSamplersEdit() {
+    const std::string folder = tempFolder("samples");
+    writeWav(folder + "/alpha.wav", tone(1.f, 0.95f), 48000); // (over the guard's knee: at rest it must not be rounded)
+    std::vector<float> gap(12000, 0.f), middle = tone(0.5f, 0.9f);
+    gap.insert(gap.end(), middle.begin(), middle.end());
+    gap.insert(gap.end(), 12000, 0.f);
+    writeWav(folder + "/gap.wav", gap, 48000);
+    mkdir((folder + "/set").c_str(), 0755);
+    writeWav(folder + "/set/P C3.wav", toneAt(200.f, 1.f, 0.5f), 48000);
+    writeWav(folder + "/set/P C4.wav", toneAt(400.f, 1.f, 0.5f), 48000);
+    Rig rig(folder);
+    Session& session = rig.session();
+    session.usePresetFolder(folder + "/presets");
+    CHECK(session.addTrack(TrackKind::Sampler));
+    TrackData& track = rig.project().tracks[1];
+    rig.project().track = 1;
+    session.view = View::Device;
+    session.setTrackSample(1, "alpha");
+    session.setSamplerSetting(1, sampler::Attack, 0);
+    session.setSamplerSetting(1, sampler::Release, 0);
+    const auto note = [&](int key) {
+        rig.render(100000);
+        Command c;
+        c.type = Command::NoteOn;
+        c.track = 1;
+        c.a = key;
+        c.value = 1.f;
+        rig.engine->send(c);
+        std::vector<float> out = rig.render(60000);
+        c.type = Command::NoteOff;
+        rig.engine->send(c);
+        rig.render(48000);
+        return out;
+    };
+    const std::vector<float> plain = note(60);
+    CHECK(session.samplerEdits(1) && track.samplerEdit.atRest() && std::abs(Rig::sounding(plain) - 48000) <= 2);
+    // START and END cut what plays: half the file, to the millisecond.
+    LaneEdit e;
+    e.start = 25000;
+    e.end = 75000;
+    e.pitch = 12, e.fine = 30; // (never on the sampler: its page has PITCH and TUNE)
+    session.setSamplerEdit(1, e);
+    CHECK(track.samplerEdit.start == 25000 && track.samplerEdit.end == 75000 && track.samplerEdit.pitch == 0 && track.samplerEdit.fine == 0);
+    CHECK(std::fabs(session.trackSound(1).seconds - 0.5f) < 1e-3f && std::fabs(session.trackSound(1).sourceSeconds - 1.f) < 1e-3f);
+    CHECK(std::abs(Rig::sounding(note(60)) - 24000) <= 2);
+    // CHOP's slices are of the edited sound: a sixteenth of half a second.
+    session.setSamplerChop(1, true);
+    CHECK(std::abs(Rig::sounding(note(sampler::kChopBase)) - 1500) <= 2);
+    session.setSamplerChop(1, false);
+    // GAIN and the fades, on what is cut: louder by 6 dB, through the guard.
+    e.gain = 60;
+    session.setSamplerEdit(1, e);
+    float most = 0.f;
+    for (float v : session.trackSound(1).peaks) most = std::fmax(most, v);
+    CHECK(most > 0.95f && most <= 1.f);
+    // Every edit at rest: the file as it is, to the bit. (Any edit at all goes through the guard, which rounds the
+    // file's 0.95 peaks down: at rest they are not.)
+    session.setSamplerEdit(1, LaneEdit());
+    CHECK(note(60) == plain);
+    LaneEdit faint;
+    faint.fadeIn = 1;
+    session.setSamplerEdit(1, faint);
+    const auto peak = [](const std::vector<float>& v) { float p = 0.f; for (float x : v) p = std::fmax(p, std::fabs(x)); return p; };
+    const float guardedPeak = peak(note(60));
+    CHECK(guardedPeak > 0.f && peak(plain) / guardedPeak > 1.003f);
+    session.setSamplerEdit(1, LaneEdit());
+    // NORMALIZE: the loudest at -1 dB, or just under. TRIM SILENCE: START and END at the sound.
+    CHECK(session.normalizeSampler(1) && track.samplerEdit.gain == static_cast<int>(std::floor((-1.0 - 20.0 * std::log10(0.95)) * 10.0)));
+    LaneEdit cut = track.samplerEdit;
+    cut.start = 30000;
+    session.setSamplerEdit(1, cut);
+    CHECK(track.samplerEdit.start == 30000);
+    session.setTrackSample(1, "gap");
+    CHECK(track.samplerEdit.gain != 0 && track.samplerEdit.start == 0 && track.samplerEdit.end == kEditUnits); // another recording: the cut back to the whole, the rest kept
+    CHECK(session.trimSamplerSilence(1));
+    CHECK(std::abs(track.samplerEdit.start - 25000 + 100) <= 2 && std::abs(track.samplerEdit.end - 75000) <= 2);
+    // The song keeps it (left out at rest), and reads it back; undo puts it back.
+    const std::string text = songText(rig.project());
+    CHECK(text.find("\nsampleredit 0.249 0.75 ") != std::string::npos);
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back) && back->tracks[1].samplerEdit == track.samplerEdit);
+    std::unique_ptr<Project> old(new Project);
+    CHECK(parseSong(text.substr(0, text.find("\nsampleredit")) + "\n", *old) && old->tracks[1].samplerEdit.atRest());
+    rig.frames(60);
+    const LaneEdit trimmed = track.samplerEdit;
+    LaneEdit turned = trimmed;
+    turned.reverse = 1;
+    session.setSamplerEdit(1, turned);
+    rig.frames(60);
+    CHECK(session.undo());
+    rig.frames(4);
+    CHECK(track.samplerEdit == trimmed);
+    // A preset keeps it, and is that preset only while the EDIT is the same.
+    CHECK(session.saveSamplerPreset(1, "cut"));
+    CHECK(session.samplerPresetOf(1) == 0);
+    session.setSamplerEdit(1, turned);
+    CHECK(session.samplerPresetOf(1) < 0);
+    CHECK(session.loadSamplerPreset(1, 0) && track.samplerEdit == trimmed);
+
+    // The page: the picture is between SOUND and PITCH; a tap of A opens EDIT.
+    SamplerScreen& screen = rig.app.sampler();
+    screen.goTo(0);
+    rig.tap(RIGHT);
+    CHECK(screen.cursor() == SamplerScreen::kPictureStop && !screen.editing());
+    rig.tap(A);
+    CHECK(screen.editing() && screen.editView().row() == kEditStart);
+    // PITCH and FINE are not its: the cursor passes them by.
+    rig.tap(RIGHT);
+    rig.tap(DOWN); // from END: FINE's place is empty, PITCH's too: the nearest, the left first
+    CHECK(screen.editView().row() == kEditGain);
+    rig.tap(UP);
+    rig.tap(RIGHT, 2);
+    CHECK(screen.editView().row() == kEditFadeIn);
+    rig.tap(DOWN); // from FADE IN: REVERSE (FINE's empty, PITCH's empty)
+    CHECK(screen.editView().row() == kEditReverse);
+    rig.tap(UP);
+    rig.tap(LEFT, 2);
+    rig.tap(DOWN);
+    CHECK(screen.editView().row() == kEditGain);
+    rig.tap(RIGHT);
+    CHECK(screen.editView().row() == kEditReverse);
+    rig.tap(UP); // (REVERSE is under FADE OUT)
+    CHECK(screen.editView().row() == kEditFadeOut);
+    rig.tap(LEFT, 3);
+    CHECK(screen.editView().row() == kEditStart);
+    // Hold A + UP: START a millisecond later (100 units of a second's file).
+    const int start = track.samplerEdit.start;
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(track.samplerEdit.start == start + 100);
+    rig.tap(B); // its usual value
+    CHECK(track.samplerEdit.start == 0 && screen.editing());
+    rig.tap(B); // at its usual: back to the page
+    rig.frames(2);
+    CHECK(!screen.editing() && screen.cursor() == SamplerScreen::kPictureStop);
+    // A multisample has no EDIT: A on the picture says why.
+    session.setTrackSample(1, "set/P C3");
+    CHECK(session.trackSound(1).zones == 2 && !session.samplerEdits(1));
+    rig.tap(A);
+    CHECK(!screen.editing() && screen.said() == SamplerScreen::kNoEditWords);
+    // Nor a CLOUD: its recording plays as it is.
+    CHECK(!session.samplerEdits(0) && !session.normalizeSampler(1) && !session.trimSamplerSilence(-1));
+}
+
+// S4: LOOP START on the picture, hold A + up / down from START; B back to START (0, its usual).
+void testTheSamplersLoopStartOnThePage() {
+    const std::string folder = tempFolder("samples");
+    writeWav(folder + "/alpha.wav", tone(1.f, 0.9f), 48000);
+    Rig rig(folder);
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Sampler));
+    TrackData& track = rig.project().tracks[1];
+    rig.project().track = 1;
+    session.view = View::Device;
+    session.setTrackSample(1, "alpha");
+    session.setSamplerSetting(1, sampler::Start, 20);
+    session.setSamplerSetting(1, sampler::Loop, 1);
+    SamplerScreen& screen = rig.app.sampler();
+    screen.goTo(SamplerScreen::kPictureStop);
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(track.sampler[sampler::LoopStart] == 21); // from where it goes back to now: START
+    rig.tap(UP, 3);
+    CHECK(track.sampler[sampler::LoopStart] == 24);
+    rig.tap(DOWN, 4);
+    CHECK(track.sampler[sampler::LoopStart] == 0); // back to START: its usual (0, never START's own number)
+    rig.tap(UP, 200);
+    CHECK(track.sampler[sampler::LoopStart] == 99); // a percent short of END
+    rig.key(A, false);
+    rig.frames(2);
+    char shown[24];
+    samplerSettingText(sampler::LoopStart, 0, shown, sizeof shown);
+    CHECK(std::string(shown) == "START");
+    // The song writes it after END, only where it is not START.
+    CHECK(songText(rig.project()).find("\nsampler 60 0 20 0 20 1 80 100 99\n") != std::string::npos);
+    rig.tap(B);
+    CHECK(track.sampler[sampler::LoopStart] == 0);
+    CHECK(songText(rig.project()).find("\nsampler 60 0 20 0 20 1 80\n") != std::string::npos); // as it always was
+    // A song from before reads it at its usual.
+    session.setSamplerSetting(1, sampler::LoopStart, 40);
+    const std::string text = songText(rig.project());
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back) && back->tracks[1].sampler[sampler::LoopStart] == 40 && back->tracks[1].sampler[sampler::End] == 100);
+    std::string before = text;
+    before.replace(before.find(" 100 40\n"), 8, "\n");
+    std::unique_ptr<Project> old(new Project);
+    CHECK(parseSong(before, *old) && old->tracks[1].sampler[sampler::LoopStart] == 0);
+    // Undo puts it back.
+    rig.frames(60);
+    session.setSamplerSetting(1, sampler::LoopStart, 70);
+    rig.frames(60);
+    CHECK(session.undo());
+    rig.frames(4);
+    CHECK(track.sampler[sampler::LoopStart] == 40);
+    // Hold A + the stick turns it too, and letting A go then opens nothing (a turn, not a tap: it opened EDIT).
+    session.setSamplerSetting(1, sampler::LoopStart, 0);
+    rig.frames(2);
+    screen.goTo(SamplerScreen::kPictureStop);
+    rig.key(A, true);
+    rig.key(STICK_UP, true);
+    rig.frames(10);
+    rig.key(STICK_UP, false);
+    rig.key(A, false);
+    rig.frames(2);
+    CHECK(track.sampler[sampler::LoopStart] > 21 && !screen.editing());
+    // EDIT opened here, another sampler track picked on SONG meanwhile: closed, not drawing track 1's sound
+    // under track 2's name (nor editing track 1 from it).
+    CHECK(session.addTrack(TrackKind::Sampler));
+    session.setTrackSample(2, "alpha");
+    rig.frames(2);
+    screen.goTo(SamplerScreen::kPictureStop);
+    rig.tap(A);
+    CHECK(screen.editing());
+    session.view = View::Song;
+    rig.frames(2);
+    rig.project().track = 2;
+    session.view = View::Device;
+    rig.frames(2);
+    CHECK(!screen.editing());
+    rig.tap(A); // (on track 2's own picture: its EDIT)
+    CHECK(screen.editing());
+}
+
 int main(int, char**) {
     testThePlayhead();
     testTheSamplePicker();
@@ -3970,6 +4200,8 @@ int main(int, char**) {
     testTheSamplerTrack();
     testTheSamplersPictureIsTall();
     testTheSamplersEnd();
+    testTheSamplersEdit();
+    testTheSamplersLoopStartOnThePage();
     testTheRecorder();
     testRecordingOntoALane();
     testThePanicCallsOffARecordingBegunOnTheWay();

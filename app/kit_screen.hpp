@@ -38,17 +38,8 @@
 //           let go, it fades. A tap is heard for a moment (Session::kAuditionMs).
 //   START   play / stop
 //
-// The EDIT view (owner, 2026-11-16: "rudimentary sample editing"; lane_edit.hpp): the lane's sound
-// drawn large, the part played lit between START and END, and eight boxes laid out as the sampler's,
-// START, END, FADE IN, FADE OUT / GAIN, PITCH, FINE, REVERSE. The file on the card is never written.
-//   the stick or D-pad moves among the boxes
-//   hold A + up / down: turns the box (the stick through its range in about a second, however far it is
-//           pushed; the D-pad a millisecond of the file, half a dB, a fade's stop, a semitone, a cent)
-//   B       the box back to its usual value; on a box already there, or straight after Y, back to the kit (G16).
-//           HELD: every edit of the lane back to none, as the bar fills (undo brings them back)
-//   Y       on START or END: TRIM SILENCE (START and END at the first and last sound). Elsewhere
-//           NORMALIZE: GAIN so the part played peaks at -1 dB
-//   X       hear the lane as edited (held: to its end). A box turned is heard, with the song stopped
+// The EDIT view (owner, 2026-11-16: "rudimentary sample editing"): the lane's sound in the shared view
+// (edit_view.hpp, which the SAMPLER's EDIT is too), every box of it. The file on the card is never written.
 //
 // The VOICE view (DRUM SYNTH, docs/plans/drumsynth-plan.md; apotheca/drum_synth.hpp): laid out as the
 // EDIT view. The top box is the MODEL, with the made sound's picture; under it the eight knob places,
@@ -73,6 +64,7 @@
 #include <string>
 #include <vector>
 
+#include "edit_view.hpp"
 #include "input.hpp"
 #include "sample_picker.hpp"
 #include "session.hpp"
@@ -120,20 +112,20 @@ public:
 
     // The EDIT view. Laid out as the sampler's page: the sound's box at the top (its picture as tall
     // as the box allows), then two rows of four boxes down to the SIGNAL strip.
-    bool editing() const { return editing_; }
-    void openEdit(int row = 0) { session_.readyLane(project_.track, lane_); editing_ = true, yJust_ = false; editRow_ = row < 0 ? 0 : (row >= kEditRows ? kEditRows - 1 : row); }
-    int editRow() const { return editRow_; }
-    float deletePart() const { return deletePart_; } // the hold-B bar, 0..1
-    static constexpr int kEditY = 36, kEditH = 136, kEditWaveY = kEditY + 48, kEditWaveH = kEditH - 56;
-    static constexpr int kEditRowY = kEditY + kEditH + 10, kEditRowGap = 6, kEditRowH = (ui::kAboveScope - kEditRowY - kEditRowGap) / 2;
-    static constexpr int kEditBoxX = 8, kEditBoxStep = 157, kEditBoxW = 153;
-    static constexpr Uint32 kDeleteHoldMs = ui::kHoldUndoneMs; // EDIT's and VOICE's every box back: undo brings them back (G29)
-    static constexpr const char* kDeletingWords = "PUTTING EVERY EDIT BACK TO NONE"; // in the heading while the bar fills
+    bool editing() const { return edit_.isOpen(); }
+    void openEdit(int row = 0);
+    int editRow() const { return edit_.row(); }
+    float deletePart() const { return edit_.isOpen() ? edit_.deletePart() : deletePart_; } // the hold-B bar, 0..1
+    static constexpr int kEditY = EditView::kY, kEditH = EditView::kH, kEditWaveY = EditView::kWaveY, kEditWaveH = EditView::kWaveH;
+    static constexpr int kEditRowY = EditView::kRowY, kEditRowGap = EditView::kRowGap, kEditRowH = EditView::kRowH;
+    static constexpr int kEditBoxX = EditView::kBoxX, kEditBoxStep = EditView::kBoxStep, kEditBoxW = EditView::kBoxW;
+    static constexpr Uint32 kDeleteHoldMs = EditView::kDeleteHoldMs; // EDIT's and VOICE's every box back: undo brings them back (G29)
+    static constexpr const char* kDeletingWords = EditView::kDeletingWords; // in the heading while the bar fills
     // A box turned is heard ONCE, when the turning is done (owner, 2026-11-17: heard at every step it
     // "sounds odd and you can't really hear what has changed"): A let go, the D-pad and the stick at
     // rest, kHearAfterMs since the last change, and the new sound made (not MAKING IT...). X hears at once.
-    static constexpr Uint32 kHearAfterMs = 300;
-    bool hearOwed() const { return hearOwed_; }
+    static constexpr Uint32 kHearAfterMs = EditView::kHearAfterMs;
+    bool hearOwed() const { return hearOwed_ || edit_.hearOwed(); }
     int hears() const { return hears_; } // sounds this screen has begun (for the tests)
 
     // The VOICE view: on a synth lane, its model and knobs (the EDIT view's layout). A place of -1 is
@@ -162,11 +154,6 @@ private:
     void stepSound(int by);
     void stepFit(int by);
     void stepChoke(int by);
-    void editButton(const ButtonEvent& event, const Input& input);
-    void editPress(Button direction);
-    void editUpdate(const Input& input, Uint32 nowMs, float dt);
-    void setEdit(const LaneEdit& edit); // kept, and heard if the song is stopped
-    void drawEdit(SDL_Renderer* r, const Fonts& fonts) const;
     void voiceButton(const ButtonEvent& event, const Input& input);
     void voicePress(Button direction);
     void voiceUpdate(const Input& input, Uint32 nowMs, float dt);
@@ -207,12 +194,10 @@ private:
     Button repeating_ = Button::None;
     ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
     Uint32 lastMs_ = 0;
-    bool editing_ = false;
-    int editRow_ = 0;
-    float turned_ = 0.f;        // the stick's part-turned box
-    bool reversePushed_ = false; // the stick is pushed on REVERSE or MODEL (A held): it clicks once a push
+    EditView edit_{session_, project_}; // the EDIT view (edit_view.hpp)
+    bool reversePushed_ = false; // VOICE: the stick is pushed on MODEL's up / down: it clicks once a push
     bool deleting_ = false, deleteTimed_ = false, bBack_ = false; // B held; bBack_: its tap goes back to the kit
-    // Y (EDIT's trim or normalize, VOICE's roll) was the last press, on this box: a B straight after it goes back
+    // Y (VOICE's roll) was the last press, on this box: a B straight after it goes back
     // to the kit and keeps what Y set (gesture audit G16, 2026-11-25: it put the box under the cursor back).
     bool yJust_ = false;
     int yBox_ = 0;

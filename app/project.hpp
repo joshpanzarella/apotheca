@@ -358,6 +358,8 @@ struct TrackFields {
     bool solo = false;   // only soloed tracks are heard while any is; not kept with the song
     char sample[64] = {};           // when it is a sampler or a CLOUD (holdsRecording): its recording's file name (as a lane's), or empty
     int sampler[sampler::kSettings]; // ...and its settings
+    LaneEdit samplerEdit;           // ...and its EDIT (S4, 2026-11-25: lane_edit.hpp, PITCH and FINE always 0: the page has
+                                    // PITCH and TUNE). The file is never written; not for a multisample or a CLOUD
 
     TrackFields() {
         for (float& v : laneLevel) v = 1.f;

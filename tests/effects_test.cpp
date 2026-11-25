@@ -58,8 +58,10 @@
 
 #include "../engine/src/fx/glide.hpp"    // Glide, by itself
 #include "../engine/src/fx/halfband.hpp" // the 2x stage, measured by itself
+#include "../engine/src/fx/most.hpp"     // SlidingMost, at the edge of its room
 #include "../engine/src/fx/unit.hpp"     // makeSaturatePlain: SATURATE without it
 #include "../engine/src/fx/echo.hpp"     // DELAY's newer types: TAPE's eight TIMEs
+#include "../engine/src/fx/bend.hpp"     // FUZZ's side, its average by itself
 #include "measure.hpp"                   // the shared measuring tools: level, spectrum, pitch, checksum
 
 using namespace apotheca;
@@ -705,7 +707,7 @@ static void testEveryEffect() {
             loudest = std::fmax(loudest, std::fmax(peakOf(io.l), peakOf(io.r)));
         }
         // Today, with full-scale noise in, the loudest sample out:
-        //   FILTER 4.2   DRIVE 2.0   DELAY 4.8   REVERB 3.9   CRUSH 1.0   TAPE 2.9   HALL 2.6   SPRING 1.3   PLATE 2.9
+        //   FILTER 4.2   DRIVE 2.0   DELAY 4.8   REVERB 3.9   CRUSH 1.0   TAPE 2.9   HALL 2.4   SPRING 1.3   PLATE 2.9
         SAY("bounded  %-7s loudest %.2f\n", info.name, static_cast<double>(loudest));
         // (EQ with every band at +12 dB is the sound 24 dB up at the bottom, where the bell and the low
         // shelf meet: 14.4. That is what it is asked for; the others make nothing that much louder.)
@@ -764,7 +766,7 @@ static void testEveryEffect() {
         // all jumps; the tool shows both as it should.
         // The new ones glide every setting, a choice included:
         //   TAPE    TIME 1.2      FEEDBACK 0.9    AGE 1.0     MIX 1.0        0.9
-        //   HALL    SIZE 1.4      DECAY 1.0       TONE 0.8    MIX 1.0        0.7  (SIZE bends the room's pitch on the way)
+        //   HALL    SIZE 1.4      DECAY 0.9       TONE 0.8    MIX 1.0        0.7  (SIZE bends the room's pitch on the way)
         // CHORUS, COMP and SATURATE too. Their numbers are over 1 only
         // because they come out louder or steeper than the sine went in
         // ("held still" says by how much), not because anything jumps:
@@ -780,7 +782,8 @@ static void testEveryEffect() {
         //   VOWEL   VOWEL 0.20    SHIFT 0.22      RESONANCE 0.13  MIX 1.0    0.10 (a 100 Hz sine is under every vowel's peaks)
         //   EQ      LOW 3.4       MID 1.0         MID FREQ 1.0  HIGH 1.0     1.0  (LOW at +12 dB is the sine four times as big)
         //   FOLD    DRIVE 7.5     SYMMETRY 2.2    TONE 1.8    MIX 1.8        1.8  (it folds the sine: more DRIVE, more folds)
-        //   FUZZ    FUZZ 21.3     TONE 14.7       GATE 11.1   MIX 10.1       10.3 (it squares the sine; TONE up is a high-pass, made up)
+        //   FUZZ    FUZZ 18.8     TONE 14.4       GATE 10.8   MIX 9.7        9.9  (it squares the sine; TONE up is a high-pass, made up.
+        //                                                 Bent plainly it was 21.3, 14.7, 11.1, 10.1 and 10.3: its average rounds the corners)
         //   RING    FREQ 31.8     WAVE 114        SPREAD 3.3  MIX 3.2        3.3  (the sine times a 4 kHz wave, a square)
         //   WEAR    WOW 1.2       DIRT 6.3        DROPS 1.2   TONE 1.8       1.2  (DIRT and TONE: the hiss on the sine, brighter at TONE 0)
         //   LIMITER GAIN 1.6      CEILING 1.4     RELEASE 1.4                1.4  (GAIN +3 dB as it comes; +20 dB squares the sine)
@@ -806,7 +809,7 @@ static void testEveryEffect() {
             {0.94, 0.90, 1.09, 0, 0.83},
             {38.2, 38.8, 3.79, 0, 4.22},
             {1.15, 0.90, 1.01, 1.00, 0.88}, // TAPE
-            {1.38, 0.96, 0.80, 1.00, 0.69}, // HALL
+            {1.37, 0.91, 0.77, 1.00, 0.67}, // HALL (1.38, 0.96, 0.80, 1.00, 0.69 until every line was bent, 2026-11-25)
             {1.26, 1.67, 0.71, 1.25, 1.25},   // CHORUS
             {1.05, 0.91, 0.83, 1.00, 0.82},   // COMP
             {5.42, 2.10, 1.44, 1.43, 1.44},   // SATURATE
@@ -818,7 +821,7 @@ static void testEveryEffect() {
             {0.20, 0.22, 0.13, 1.00, 0.10},   // VOWEL
             {3.39, 1.03, 1.00, 1.00, 1.00},   // EQ
             {7.50, 2.22, 1.80, 1.79, 1.80},   // FOLD
-            {21.3, 14.7, 11.1, 10.1, 10.3},   // FUZZ
+            {18.8, 14.4, 10.8, 9.71, 9.93},   // FUZZ
             {31.8, 114.3, 3.32, 3.20, 3.32},  // RING
             {1.18, 6.32, 1.19, 1.75, 1.19},   // WEAR
             {1.61, 1.41, 1.41, 0, 1.41},      // LIMITER
@@ -1880,15 +1883,23 @@ static long soundAt(const std::vector<float>& v, float floor = 1e-9f) {
 static float hallDecay(double seconds) { return static_cast<float>(std::log(seconds / 0.3) / std::log(20.0 / 0.3)); }
 
 // Measured, and pinned (see the comments where they are used).
-static const double kHallWander = 4.86; // dB, lowest to highest
-static const int kHallWanderUps = 34;    // times up through its middle in 40 s
+// THE WANDER was 4.86 dB and 34 times with two lines bent; since every line is (2026-11-25) it is 30.6 dB and 60
+// times. That is the price of the ringing gone, not a fault: a held sine sits between the room's notes, and a room
+// whose notes move (so that none rings on) moves them past it, so its level there rises and falls. How far is about
+// the same at any bend deep enough to stop the ringing (0.12 ms either way or more: 26 to 35 dB at 2 s), and the
+// old HALL already wandered 26 to 39 dB at DECAY 7 to 20 s (where two lines had time to move every note). BLOOM and
+// SHIMMER (every line bent 0.12 ms) wander 13 dB at their usual 2 s and 24 to 43 dB at long DECAY; PLATE 7.
+static const double kHallWander = 30.6; // dB, lowest to highest
+static const int kHallWanderUps = 60;    // times up through its middle in 40 s
 // [setting][down, up][the largest step, the sharpest corner], each against the steady one.
 static const double kHallTurn[4][2][2] = {
-    {{2.47, 16.5}, {1.34, 5.8}},   // SIZE: the bent sound (see where it is used)
-    {{0.88, 0.88}, {0.64, 0.77}},  // DECAY
-    {{1.16, 1.48}, {0.86, 0.98}},  // TONE
-    {{0.92, 0.92}, {1.01, 1.01}},  // MIX
+    {{2.30, 13.9}, {1.23, 4.6}},   // SIZE: the bent sound (see where it is used)
+    {{0.48, 0.40}, {0.87, 0.92}},  // DECAY
+    {{1.05, 1.43}, {1.00, 1.24}},  // TONE
+    {{1.00, 1.02}, {1.01, 1.00}},  // MIX
 };
+// (Until 2026-11-25, against before and after only, with two lines bent: SIZE 2.47 / 16.5 and 1.34 / 5.8, DECAY
+// 0.88 / 0.88 and 0.64 / 0.77, TONE 1.16 / 1.48 and 0.86 / 0.98, MIX 0.92 / 0.92 and 1.01 / 1.01.)
 
 static void testHall() {
     const EffectKind hall = EffectKind::Hall;
@@ -1904,15 +1915,17 @@ static void testHall() {
     // DECAY IS A REAL TIME, WHATEVER SIZE IS. A click, MIX full, TONE in the
     // middle: the RT60 around 500 Hz against what DECAY reads.
     //   DECAY       SIZE 0%    50%     100%
-    //   0.3 s        0.28      0.31    0.34
-    //   0.86 s       0.82      0.87    0.86
-    //   2.45 s       2.28      2.34    2.28
-    //   7.0 s        6.50      6.68    6.63
-    //   20 s        19.0      18.7    18.8
-    // The plan asks for within 10% at five settings: it is, at every SIZE, but
-    // for the shortest DECAY in the largest room (14% long: a third of a second
-    // is three trips of its longest line). It reads about 6% short because
-    // TONE's dulling already takes a little at 500 Hz; at 80 Hz it is within 3%.
+    //   0.3 s        0.29      0.30    0.32
+    //   0.86 s       0.82      0.86    0.82
+    //   2.45 s       2.30      2.36    2.40
+    //   7.0 s        6.37      6.57    6.52
+    //   20 s        19.0      18.8    18.5
+    // The plan asks for within 10% at five settings: it is, at every SIZE (the
+    // shortest DECAY in the largest room was 14% long until every line was bent,
+    // 2026-11-25; now 6%). It reads about 6% short because TONE's dulling already
+    // takes a little at 500 Hz; at 80 Hz it is within 4%, but for the smallest
+    // room at 0.86 s (12% short: its 80 Hz band holds about seven notes, and bent
+    // they beat as they fall).
     for (float size : {0.f, 0.5f, 1.f}) {
         double last = 0.0;
         for (float decay : {0.f, 0.25f, 0.5f, 0.75f, 1.f}) {
@@ -1922,12 +1935,14 @@ static void testHall() {
             const int echoes = echoesIn(ir, 0.0005, 0.1);
             SAY("hall     size %3.0f%% decay %5.2f s: RT60 at 500 Hz %6.2f s (x %.3f), at 80 Hz x %.3f, at 8 kHz x %.3f; %d echoes in the first 100 ms\n", size * 100.0, want, mid, mid / want, low / want, high / want, echoes);
             CHECK(std::fabs(mid / want - 1.0) < (decay == 0.f ? 0.16 : 0.10));
-            if (decay > 0.f) CHECK(std::fabs(low / want - 1.0) < 0.06 && mid / want < 1.03);
+            if (decay > 0.f) CHECK(std::fabs(low / want - 1.0) < (size == 0.f ? 0.13 : 0.06) && mid / want < 1.03);
             CHECK(mid > 2.0 * last);
             last = mid;
-            // The highs die sooner: at 8 kHz the tail lasts 0.31 to 0.45 as long (TONE in the middle).
-            if (decay > 0.f) CHECK(high / want > 0.28 && high / want < 0.48);
-            // DENSE: 1250 separate echoes in the first 100 ms in the smallest room, 900 in the middle, 650 in the largest. (The old REVERB: 200. The plan asks for over 400.)
+            // The highs die sooner: at 8 kHz the tail lasts 0.23 to 0.46 as long (TONE in the middle). (0.31 to 0.45
+            // until every line was bent: each is read between two samples, which dulls the very top a hair each trip,
+            // and the smallest room at the longest DECAY makes the most trips.)
+            if (decay > 0.f) CHECK(high / want > 0.21 && high / want < 0.48);
+            // DENSE: 1180 to 1210 separate echoes in the first 100 ms in the smallest room, 840 to 870 in the middle, 640 in the largest. (The old REVERB: 200. The plan asks for over 400.)
             CHECK(echoes > (size == 0.f ? 1100 : (size == 0.5f ? 800 : 580)) && echoes < 1400);
         }
     }
@@ -1939,13 +1954,15 @@ static void testHall() {
 
     // TONE: HOW LONG THE TAIL LASTS AT EACH PITCH. DECAY 2.0 s (the usual), in seconds:
     //   TONE     80 Hz   250 Hz   1 kHz   4 kHz   8 kHz   14 kHz
-    //   0%       1.91    1.56     0.85    0.63    0.62    0.59      dark: above 600 Hz the tail lasts 0.3 as long
-    //   50%      1.99    1.94     1.68    0.93    0.74    0.66      the corner is at 2.7 kHz
-    //   100%     0.91    1.37     1.85    1.76    1.51    1.16      bright (corner 12 kHz), and the lows thinned: 0.4 as long at the bottom
+    //   0%       1.90    1.63     0.86    0.63    0.60    0.52      dark: above 600 Hz the tail lasts 0.3 as long
+    //   50%      1.95    2.03     1.69    0.93    0.73    0.58      the corner is at 2.7 kHz
+    //   100%     0.94    1.37     1.87    1.77    1.44    0.94      bright (corner 12 kHz), and the lows thinned: 0.4 as long at the bottom
+    // Since every line is bent (2026-11-25) the very top dies a little sooner (each line read between samples):
+    // at 14 kHz 0.59 / 0.66 / 1.16 s became 0.52 / 0.58 / 0.94; at 8 kHz and under within 5% of before.
     {
         struct Row { float tone; double at[6]; };
         const double hz[6] = {80.0, 250.0, 1000.0, 4000.0, 8000.0, 14000.0};
-        const Row rows[3] = {{0.f, {1.91, 1.56, 0.85, 0.63, 0.62, 0.59}}, {0.5f, {1.99, 1.94, 1.68, 0.93, 0.74, 0.66}}, {1.f, {0.91, 1.37, 1.85, 1.76, 1.51, 1.16}}};
+        const Row rows[3] = {{0.f, {1.90, 1.63, 0.86, 0.63, 0.60, 0.52}}, {0.5f, {1.95, 2.03, 1.69, 0.93, 0.73, 0.58}}, {1.f, {0.94, 1.37, 1.87, 1.77, 1.44, 0.94}}};
         for (const Row& row : rows) {
             const std::vector<float> ir = clickOf(*fresh(hall, 0.6f, 0.45f, row.tone, 1.f), 6.0, 1.f);
             for (int i = 0; i < 6; ++i) {
@@ -1976,9 +1993,9 @@ static void testHall() {
 
     // LEFT AND RIGHT ARE NEARLY UNRELATED (1 the same, 0 unrelated), so the room is wide:
     //   SIZE     one click in both: the first 100 ms, and after     a click on the left only: the right side against the left
-    //   0%          0.03    0.03                                      -0.5 dB
-    //   60%         0.02    0.03                                      -2.5 dB
-    //   100%        0.03    0.00                                      -5.7 dB
+    //   0%          0.03   -0.04                                      -0.3 dB
+    //   60%         0.03    0.02                                      -2.7 dB
+    //   100%        0.03    0.00                                      -6.1 dB
     // A sound on one side fills both, a little more on its own side.
     for (float size : {0.f, 0.6f, 1.f}) {
         const Stereo both = clickBoth(*fresh(hall, size, 0.45f, 0.5f, 1.f), 3.0), one = clickBoth(*fresh(hall, size, 0.45f, 0.5f, 1.f), 3.0, 1.f, 0.f), other = clickBoth(*fresh(hall, size, 0.45f, 0.5f, 1.f), 3.0, 0.f, 1.f);
@@ -1994,8 +2011,9 @@ static void testHall() {
     CHECK(std::fabs(alike(sineOf(100.0, 1.0, 4800), sineOf(100.0, 0.3, 4800), 0, 4800) - 1.0) < 1e-9 && alike(sineOf(100.0, 1.0, 4800), sineOf(200.0, 1.0, 4800), 0, 4800) < 1e-9); // the tool
 
     // ABOUT AS LOUD AT ANY SIZE AND DECAY. Held noise, MIX full: the room
-    // comes out 1.6 to 4.2 dB under the noise at every corner (a long tail
-    // is fed less, a small room less).
+    // comes out 2.1 to 4.4 dB under the noise at every corner (a long tail
+    // is fed less, a small room less). (1.6 to 4.2 until every line was bent:
+    // the very top of white noise, most of its power, dulls a little more.)
     for (float size : {0.f, 0.5f, 1.f})
         for (float decay : {0.f, 0.5f, 1.f}) {
             std::unique_ptr<Effect> h = fresh(hall, size, decay, 0.5f, 1.f);
@@ -2027,11 +2045,11 @@ static void testHall() {
         }
     }
 
-    // TWO OF THE EIGHT LINES ARE BENT, SLOWLY, so the tail does not sit on one
-    // note. A held 1 kHz sine, MIX full, the usual settings: its level in the
-    // room wanders (a room that stood still would hold it steady to a
-    // thousandth of a dB). Measured over 40 s from the 10th, a reading every
-    // 100 ms: see kHallWander. With no bend it reads 0.00 dB and 0 times.
+    // EVERY LINE IS BENT, SLOWLY, so the tail does not sit on one note (two of
+    // the eight were until 2026-11-25). A held 1 kHz sine, MIX full, the usual
+    // settings: its level in the room wanders (a room that stood still would
+    // hold it steady to a thousandth of a dB). Measured over 40 s from the 10th,
+    // a reading every 100 ms: see kHallWander. With no bend it reads 0.00 dB and 0 times.
     {
         std::unique_ptr<Effect> h = fresh(hall, 0.6f, 0.45f, 0.5f, 1.f);
         Stereo io(50 * 48000);
@@ -2046,16 +2064,114 @@ static void testHall() {
         SAY("hall     a held 1 kHz sine: its level in the room wanders %.2f dB, up through its middle %d times in 40 s\n", high - low, ups);
         CHECK(std::fabs((high - low) - kHallWander) < 0.1 * kHallWander && std::abs(ups - kHallWanderUps) <= 1);
     }
+    // ...AND IT STILL DOES AFTER TWENTY MINUTES. Each line's bend is a pair (cos, sin) turned on every 8 samples, and a
+    // float turned for ever drifts off its circle: left alone, the lines' bends were 0.82 to 1.05 of their depth after
+    // 20 minutes and 0.51 to 1.31 after an hour. So every 4096 samples each pair is put back on its circle
+    // (kBendRound). Every bend's rate is a whole hundredth of a hertz, so the room comes round every 100 s exactly: a
+    // held sine 20 minutes on (seconds 1210 to 1250) is the same sound as seconds 10 to 50, but for the turns'
+    // rounding. Put back: 2.0e-4 apart at most (the sound 0.14 across); never put back: 0.24 (5 minutes 0.06), and
+    // the wander 28.8 dB. About 3 s of the desk.
+    {
+        std::unique_ptr<Effect> h = fresh(hall, 0.6f, 0.45f, 0.5f, 1.f);
+        const std::size_t second = 48000, total = (20 * 60 + 50) * second;
+        std::vector<float> early, late;
+        Stereo io(second);
+        const std::vector<float> sine = sineOf(1000.0, 0.25, second); // whole cycles: it goes on as one
+        for (std::size_t done = 0; done < total; done += second) {
+            io.l = io.r = sine;
+            through(*h, io);
+            if (done >= 10 * second && done < 50 * second) early.insert(early.end(), io.l.begin(), io.l.end());
+            if (done >= total - 40 * second) late.insert(late.end(), io.l.begin(), io.l.end());
+        }
+        double apart = 0.0;
+        for (std::size_t i = 0; i < early.size(); ++i) apart = std::fmax(apart, std::fabs(static_cast<double>(early[i]) - late[i]));
+        std::vector<double> level;
+        for (std::size_t at = 0; at + 4800 <= late.size(); at += 4800) level.push_back(dB(partAt(late.data() + at, 4800, 1000.0)));
+        double low = level[0], high = level[0];
+        for (double v : level) low = std::fmin(low, v), high = std::fmax(high, v);
+        SAY("hall     the held sine 20 minutes on: %.1e apart from 20 minutes before (the sound %.2f across); it wanders %.2f dB\n", apart, rmsOf(early), high - low);
+        CHECK(early.size() == 40 * second && late.size() == early.size() && apart < 2e-3 && std::fabs((high - low) - kHallWander) < 0.1 * kHallWander);
+    }
+
+    // A LONG TAIL DOES NOT RING ON THE SAME NOTES (every line bent, 2026-11-25). A click, MIX full, SIZE 60%, TONE
+    // 50%; ringOnOf over five windows of a second (1 to 5 s), 200 Hz to 3 kHz, and 100 to 600 Hz (a piano's and a
+    // pad's low notes). How alike the windows are (1: the same notes stand out a second or more later; 0: others
+    // do), and how far over their neighbours the 20 notes that stood out most in one still stand in a later one:
+    //                          DECAY 2 s                 5 s                       20 s
+    //   no line bent           0.85 (0.89) / 9.1 dB      0.93 (0.94) / 9.8         0.95 (0.95) / 10.0
+    //   two, until 2026-11-25  0.26 (0.62) / 3.6         0.29 (0.65) / 4.0         0.30 (0.65) / 4.4
+    //   all eight              0.06 (0.31) / 1.0 dB      0.07 (0.32) / 1.3         0.07 (0.33) / 1.8
+    // (No line bent: a scratch copy of HALL. Two lines: the old HALL linked in here by hand. Low notes in brackets.) Unrelated windows read about 0 and
+    // 1.5 dB. So a long tail on a pad no longer holds the same few notes over its wash: they drift apart. The
+    // tool on what it knows: forty notes that stand still read nearly 1; noise, nearly 0.
+    {
+        const double secondsOf[3] = {2.0, 5.0, 20.0};
+        for (double seconds : secondsOf) {
+            const std::vector<float> ir = clickOf(*fresh(hall, 0.6f, hallDecay(seconds), 0.5f, 1.f), 6.0, 1.f);
+            const RingOn mid = ringOnOf(ir, 1.0, 5, 200.0, 3000.0), low = ringOnOf(ir, 1.0, 5, 100.0, 600.0);
+            SAY("hall     decay %4.1f s: the tail's notes a second or more apart are alike %.3f (low notes %.3f); the 20 that stood out most still stand %.1f dB over their neighbours (low %.1f)\n", seconds, mid.alike, low.alike, mid.standing, low.standing);
+            CHECK(mid.alike < 0.12 && low.alike < 0.45 && mid.standing < 2.5 && low.standing < 5.0);
+        }
+        std::vector<float> still(6 * 48000), noise(6 * 48000);
+        Noise n(5u);
+        for (std::size_t i = 0; i < still.size(); ++i) {
+            double sum = 0.0;
+            for (int k = 0; k < 40; ++k) sum += std::sin(2.0 * kPi * (230.0 + 61.3 * k) * static_cast<double>(i) / 48000.0 + k) * std::exp(-static_cast<double>(i) / 48000.0 * (0.5 + 0.03 * k));
+            still[i] = static_cast<float>(0.02 * sum) + 1e-4f * n.next();
+            noise[i] = n.next();
+        }
+        // ...and forty notes that each slide up 3 Hz a second: a second apart they have moved four bins, so the
+        // windows next to each other are partly alike and the far ones not at all; every two windows are taken.
+        std::vector<float> sliding(6 * 48000);
+        for (std::size_t i = 0; i < sliding.size(); ++i) {
+            const double t = static_cast<double>(i) / 48000.0;
+            double sum = 0.0;
+            for (int k = 0; k < 40; ++k) sum += std::sin(2.0 * kPi * ((230.0 + 61.3 * k) * t + 1.5 * t * t) + k);
+            sliding[i] = static_cast<float>(0.02 * sum) + 1e-4f * n.next();
+        }
+        const RingOn standing = ringOnOf(still, 1.0, 5, 200.0, 3000.0), none = ringOnOf(noise, 1.0, 5, 200.0, 3000.0), slid = ringOnOf(sliding, 1.0, 5, 200.0, 3000.0);
+        SAY("hall     the ringing tool: forty notes standing still read alike %.3f, still standing %.1f dB; sliding %.3f, %.1f dB; noise %.3f, %.1f dB\n", standing.alike, standing.standing, slid.alike, slid.standing, none.alike, none.standing);
+        CHECK(standing.alike > 0.8 && standing.standing > 15.0 && std::fabs(none.alike) < 0.05 && none.standing < 2.5);
+        CHECK(std::fabs(slid.alike - 0.720) < 0.02);
+    }
+
+    // THE BENDS DO NOT BUZZ. Each line's read is worked out every 8 samples and held till the next (kBendEvery),
+    // so it moves in small steps, and steps come back as a faint tone either side of a held one, at the rate they
+    // come. A held 4 kHz sine, TONE full (the brightest), MIX full: what is 3 kHz and 6 kHz either side of it
+    // (within 30 Hz), against it. Every 8 samples: 132 to 135 dB down at 3 kHz, 64 dB at 6 kHz (its own rate);
+    // every 16 (the TICK, as the tank's) was 56 to 57 dB down at 3 kHz.
+    {
+        std::unique_ptr<Effect> h = fresh(hall, 0.6f, 0.45f, 1.f, 1.f);
+        Stereo io(48000 * 7);
+        io.l = io.r = sineOf(4000.0, 0.25, io.frames());
+        through(*h, io);
+        std::vector<double> power(32768, 0.0);
+        for (int w = 0; w < 3; ++w) {
+            const std::vector<double> size = spectrumOf(io.l.data() + 2 * 48000 + w * 65536, 65536);
+            for (std::size_t i = 0; i < power.size(); ++i) power[i] += size[i] * size[i];
+        }
+        const auto band = [&](double hz) {
+            double sum = 0.0;
+            for (std::size_t i = static_cast<std::size_t>((hz - 30.0) / (48000.0 / 65536.0)); i <= static_cast<std::size_t>((hz + 30.0) / (48000.0 / 65536.0)); ++i) sum += power[i];
+            return sum;
+        };
+        const double tone = band(4000.0), below3 = 10.0 * std::log10(band(1000.0) / tone), above3 = 10.0 * std::log10(band(7000.0) / tone);
+        const double above6 = 10.0 * std::log10(band(10000.0) / tone);
+        SAY("hall     a held 4 kHz sine, TONE full: 3 kHz below it %.1f dB, above %.1f dB; 6 kHz above %.1f dB\n", below3, above3, above6);
+        CHECK(below3 < -60.0 && above3 < -60.0 && above6 < -60.0);
+    }
 
     // A TURNED SETTING GLIDES. Each turned end to end AT ONCE (the worst a
     // player can do), under a held 100 Hz sine at MIX 50%. Two readings while
     // it gets there, each against the same reading with nothing turned (the
-    // rougher of before and after): the largest step, and the sharpest corner
-    // (a click is a corner). See kHallTurn for the numbers.
+    // roughest of before, after, and the same room held all along where it was
+    // turned to: a room whose notes move swells and dips under a held sine by
+    // itself, most at a long DECAY, and that is not a click): the largest step,
+    // and the sharpest corner (a click is a corner). See kHallTurn for the numbers.
     //   - DECAY, TONE and MIX: no rougher than the sound standing still.
     //   - SIZE: the room's pitch bends while it changes size (the lines take a
     //     tenth of a second), so for a moment there is more going on: a step
-    //     2.4 times the steady one going small, and that is the bent sound, not
+    //     2.3 times the steady one going small, and that is the bent sound, not
     //     a click. Ears decide whether it is wanted.
     {
         for (int p = 0; p < 4; ++p)
@@ -2067,12 +2183,19 @@ static void testHall() {
                 through(*h, io, 0, 96000);
                 h->setParam(p, up ? 1.f : 0.f);
                 through(*h, io, 96000, io.frames());
-                const auto corner = [&](std::size_t from, std::size_t to) {
+                std::unique_ptr<Effect> held = fresh(hall, 0.6f, 0.45f, 0.5f, 0.5f); // (its bends are the turned one's: both woke on sample 0)
+                held->setParam(p, up ? 1.f : 0.f);
+                Stereo still(io.frames());
+                still.l = still.r = sineOf(100.0, 0.5, still.frames());
+                through(*held, still);
+                const auto cornerOf = [](const std::vector<float>& v, std::size_t from, std::size_t to) {
                     double most = 0.0;
-                    for (std::size_t i = from + 2; i < to; ++i) most = std::fmax(most, std::fabs(static_cast<double>(io.l[i]) - 2.0 * io.l[i - 1] + io.l[i - 2]));
+                    for (std::size_t i = from + 2; i < to; ++i) most = std::fmax(most, std::fabs(static_cast<double>(v[i]) - 2.0 * v[i - 1] + v[i - 2]));
                     return most;
                 };
-                const double steady = std::fmax(largestJump(io.l, 48000, 96000), largestJump(io.l, 4 * 48000, 5 * 48000)), steadyCorner = std::fmax(corner(48000, 96000), corner(4 * 48000, 5 * 48000));
+                const auto corner = [&](std::size_t from, std::size_t to) { return cornerOf(io.l, from, to); };
+                const double steady = std::fmax(std::fmax(largestJump(io.l, 48000, 96000), largestJump(io.l, 4 * 48000, 5 * 48000)), largestJump(still.l, 48000, 5 * 48000));
+                const double steadyCorner = std::fmax(std::fmax(corner(48000, 96000), corner(4 * 48000, 5 * 48000)), cornerOf(still.l, 48000, 5 * 48000));
                 const double step = largestJump(io.l, 96000 - 1, 4 * 48000) / steady, sharp = corner(96000 - 2, 4 * 48000) / steadyCorner;
                 SAY("hall     %-5s turned %-4s at once: the largest step is %.2f of the steady one, the sharpest corner %.2f of the steady one\n", info.paramNames[p], up ? "up" : "down", step, sharp);
                 CHECK(std::fabs(step - kHallTurn[p][up][0]) < 0.08 * kHallTurn[p][up][0]);
@@ -2121,30 +2244,38 @@ static void testHall() {
     }
     // SIZE LANDS: once it has got there, the room is exactly the room of that
     // size. Two rooms with the same past, turned from small to large while
-    // sounding; one is then given a click. What that click adds is what a
-    // fresh large room does with it, up to where its first bent line comes
-    // back (the gap, 30 ms, and the third line, 51.7 ms): the gap and the
-    // first two lines are whole numbers of samples again.
+    // sounding; one is then given a click. What that click adds is what it adds
+    // to two rooms that were large all along, with the same past (the bends are
+    // alike in all four: each woke on the same sample), for half a second: the
+    // gap and every line are whole numbers of samples again, and every gain is
+    // where it was going. (Until every line was bent, 2026-11-25, it was held
+    // against a fresh room, up to where its first bent line came back.)
     {
-        std::unique_ptr<Effect> a = fresh(hall, 0.f, 0.45f, 0.5f, 1.f), b = fresh(hall, 0.f, 0.45f, 0.5f, 1.f), box = fresh(hall, 1.f, 0.45f, 0.5f, 1.f);
+        std::unique_ptr<Effect> a = fresh(hall, 0.f, 0.45f, 0.5f, 1.f), b = fresh(hall, 0.f, 0.45f, 0.5f, 1.f), c = fresh(hall, 1.f, 0.45f, 0.5f, 1.f), d = fresh(hall, 1.f, 0.45f, 0.5f, 1.f);
         Stereo ioA(4 * 48000), ioB(0);
         Noise noise(11u);
         for (std::size_t i = 0; i < 24000; ++i) ioA.l[i] = ioA.r[i] = 0.25f * noise.next();
         ioB = ioA;
         ioA.l[3 * 48000] = ioA.r[3 * 48000] = 1.f;
+        Stereo ioC = ioA, ioD = ioB;
         for (Effect* e : {a.get(), b.get()}) {
             Stereo& io = e == a.get() ? ioA : ioB;
             through(*e, io, 0, 12000);
             e->setParam(0, 1.f);
             through(*e, io, 12000, io.frames());
         }
-        const std::vector<float> want = clickOf(*box, 0.5, 1.f);
+        through(*c, ioC);
+        through(*d, ioD);
         float apart = 0.f, loud = 0.f;
-        const std::size_t until = 1440 + static_cast<std::size_t>(0.0517 * 48000.0) - 8;
-        for (std::size_t i = 0; i < until; ++i) apart = std::fmax(apart, std::fabs((ioA.l[3 * 48000 + i] - ioB.l[3 * 48000 + i]) - want[i])), loud = std::fmax(loud, std::fabs(want[i]));
-        SAY("hall     SIZE turned and landed: a click then differs from a fresh room's by %.1e at most (the click's own sound is %.2f)\n", static_cast<double>(apart), static_cast<double>(loud));
+        std::vector<float> want(24000);
+        for (std::size_t i = 0; i < want.size(); ++i) {
+            const std::size_t at = 3 * 48000 + i;
+            want[i] = ioC.l[at] - ioD.l[at];
+            apart = std::fmax(apart, std::fabs((ioA.l[at] - ioB.l[at]) - want[i])), loud = std::fmax(loud, std::fabs(want[i]));
+        }
+        SAY("hall     SIZE turned and landed: a click then differs from a room large all along by %.1e at most (the click's own sound is %.2f)\n", static_cast<double>(apart), static_cast<double>(loud));
         CHECK(apart < 2e-6f && loud > 0.05f && soundAt(want) == 1440);
-        CHECK(rmsOf(want, 1440 + 1800, until) > 1e-3); // (the first lines are back within that stretch: it is not only the early sound)
+        CHECK(rmsOf(want, 1440 + 1800, want.size()) > 1e-3); // (the lines are in it: it is not only the early sound)
     }
 
     // SILENCE IN, SILENCE OUT IN THE END, AND NOTHING TOO SMALL TO HOLD ON
@@ -2196,6 +2327,65 @@ static void testHall() {
         const TailTimes took = tailTimes(*h, 40);
         SAY("flush    hall (flush-to-zero OFF): a block takes %.2f us early, %.2f us at its slowest, %.2f us at the end (asleep)\n", took.early, took.slowest, took.late);
         CHECK(took.slowest < 3.0 * took.early + 5.0 && took.late < 0.5 * took.early + 1.0);
+    }
+    // A SOUND COMING IN STARTS THE QUIET COUNT AGAIN. Woken by a sound too faint to put anything over kQuiet in
+    // the room (5e-14: over kNothing), it would fall asleep a quarter of a second later (12000 samples); a click
+    // 100 samples before that must be answered, though it takes the gap and the smearing (19 ms) to reach the lines.
+    {
+        std::unique_ptr<Effect> h = fresh(hall, 0.6f, 0.45f, 0.5f, 1.f), box = fresh(hall, 0.6f, 0.45f, 0.5f, 1.f);
+        Stereo io(48000);
+        io.l[0] = io.r[0] = 5e-14f;
+        io.l[11900] = io.r[11900] = 1.f;
+        through(*h, io);
+        const Stereo want = clickBoth(*box, 0.5);
+        const double answer = rmsOf(io.l, 11900, 11900 + 24000), fresh = rmsOf(want.l, 0, 24000);
+        SAY("hall     woken by a faint sound, clicked 100 samples before it would sleep: the room answers at %.5f (a fresh room %.5f)\n", answer, fresh);
+        CHECK(std::fabs(answer / fresh - 1.0) < 0.1 && std::fabs(io.l[11900 + 902] - want.l[902]) < 1e-6f && want.l[902] > 0.05f); // (the early sound, as a fresh room's)
+    }
+    // HOWEVER IT IS CUT INTO BLOCKS, THE SAME TO THE LAST BIT (2026-11-25: until then its bend was worked out at
+    // each end of a call, and it fell asleep and woke at a call's edge, so blocks of 64 and of 48 were apart from
+    // 0.02 s). 150 s, four ways (blocks of 64, of 48, of 1 to 61 in turn, of 256), both sides, through the tail,
+    // the sleep, and a waking part way through a block by a sound far too faint to hear (and asleep again, but for
+    // DECAY 20 s). Settings at rest (a setting turned glides a call at a time, as CHORUS's and TAPE's: engine.md).
+    // Four rooms, one on a bus.
+    {
+        struct Cut { float size, decay, tone, mix; bool bus; };
+        for (const Cut& c : {Cut{0.6f, 0.45f, 0.5f, 0.5f, false}, Cut{0.1f, 0.2f, 1.f, 1.f, false}, Cut{1.f, 1.f, 0.f, 0.3f, false}, Cut{0.37f, 0.6f, 0.8f, 0.7f, true}}) {
+            const std::size_t second = 48000;
+            std::vector<float> in(150 * second, 0.f);
+            Noise noise(31u);
+            for (std::size_t i = 0; i < 4800; ++i) in[1000 + i] = 0.5f * noise.next();
+            in[120 * second + 1237] = 5e-5f;
+            std::vector<float> ways[4];
+            const std::size_t sizes[4] = {64, 48, 0, 256}; // 0: odd sizes, 1 to 61 in turn
+            for (int way = 0; way < 4; ++way) {
+                std::unique_ptr<Effect> h = fresh(hall, c.size, c.decay, c.tone, c.mix);
+                if (c.bus) h->setOnBus(true);
+                Stereo io(in.size());
+                io.l = io.r = in;
+                for (std::size_t i = 0; i < in.size(); ++i) io.r[i] = -0.5f * in[i];
+                for (std::size_t at = 0, n = sizes[way] ? sizes[way] : 1; at < io.frames(); at += n, n = sizes[way] ? sizes[way] : n % 61 + 1) {
+                    if (at + n > io.frames()) n = io.frames() - at;
+                    h->process(io.l.data() + at, io.r.data() + at, static_cast<int>(n));
+                }
+                ways[way] = io.l;
+                ways[way].insert(ways[way].end(), io.r.begin(), io.r.end());
+            }
+            std::size_t firstApart = ways[0].size();
+            for (int way = 1; way < 4; ++way)
+                for (std::size_t i = 0; i < ways[0].size(); ++i)
+                    if (ways[way][i] != ways[0][i]) firstApart = std::min(firstApart, i);
+            // (And it did all of it: rang, slept, was woken by the faint sound, and slept again.)
+            const std::vector<float>& l = ways[0];
+            std::size_t lastBefore = 0, lastAfter = 0;
+            for (std::size_t i = 0; i < 120 * second; ++i) lastBefore = l[i] != 0.f ? i : lastBefore;
+            for (std::size_t i = 120 * second; i < 150 * second; ++i) lastAfter = l[i] != 0.f ? i : lastAfter;
+            SAY("hall     size %3.0f%% decay %5.2f s tone %3.0f%%%s: cut into blocks four ways, first apart at %s; asleep from %.2f s, woken and asleep again from %.2f s\n", c.size * 100.0, 0.3 * std::pow(20.0 / 0.3, c.decay), c.tone * 100.0,
+                c.bus ? " on a bus" : "", firstApart == ways[0].size() ? "nowhere" : "SOMEWHERE", static_cast<double>(lastBefore) / 48000.0, static_cast<double>(lastAfter) / 48000.0);
+            CHECK(firstApart == ways[0].size());
+            CHECK(lastBefore > 1 * second && lastBefore < 118 * second && lastAfter > 120 * second && (lastAfter < 149 * second) == (c.decay < 1.f));
+            CHECK(rmsOf(l, 120 * second + 1237 + 96, 120 * second + 48000) > 1e-12);
+        }
     }
     // Woken by a new sound, it plays as one fresh from the box does (the bend
     // starts again too; what is left in the room is under 240 dB down); and a
@@ -6862,7 +7052,7 @@ static void testSpring() {
     // mostly between 150 Hz and 2 kHz (as most of a song's power is), MIX full, against HALL with the same DECAY:
     //   DECAY    0.4 s      1.6 s      4 s
     //   SPRING   -2.1       -1.4       -0.1 dB   (both sides, against what went in)
-    //   HALL     -2.3       -2.4       -1.7 dB
+    //   HALL     -2.4       -2.3       -1.6 dB     (-2.3, -2.4, -1.7 with two of its lines bent, until 2026-11-25)
     // So a TYPE changed from HALL to SPRING keeps about its level (within 2 dB).
     {
         const float decays[3] = {0.f, 0.6f, 1.f};
@@ -7291,7 +7481,7 @@ static void testPlate() {
     // plate measured 0.57 s (x1.9) and 0.86 s x1.17. The
     // second smear in each loop is turned the other way from the classic plate's (-0.4 for +0.5): with it as it
     // was, the lows lasted 15% longer than DECAY says (a smear that way round holds the lows three times its length).
-    // (The old REVERB: about 200 echoes; HALL 650 to 1250.)
+    // (The old REVERB: about 200 echoes; HALL 640 to 1210.)
     {
         const double want80[5] = {0.892, 0.880, 0.815, 0.777, 0.784}, want500[5] = {1.036, 1.058, 1.021, 1.005, 1.002}, want8k[5] = {0.923, 0.890, 0.776, 0.664, 0.607};
         int row = 0;
@@ -7320,9 +7510,9 @@ static void testPlate() {
     //   PLATE 0.3 s    60 ms       -14.0 dB     x2.23    x1.05     150 ms, 0.0 dB, x3.67: level for 170 ms
     //   PLATE 0.86 s   50 ms        -3.9        x1.26    x0.86     140 ms, -0.7, x1.43
     //   PLATE 2.0 s   100 ms        -1.5        x0.90    x0.85     130 ms, -0.7, x0.96
-    //   HALL 0.3 s     40 ms       -11.0        x2.41    x0.85     (SIZE at its usual)
-    //   HALL 0.86 s    40 ms        -9.8        x0.91    x0.57
-    //   HALL 2.0 s     40 ms        -8.5        x0.51    x0.57
+    //   HALL 0.3 s     40 ms       -12.1        x2.37    x0.90     (SIZE at its usual; every line bent since 2026-11-25:
+    //   HALL 0.86 s    40 ms       -10.6        x0.89    x0.60      it read -11.0 / -9.8 / -8.5 dB, EDT x2.41 / x0.91 /
+    //   HALL 2.0 s     40 ms        -9.3        x0.49    x0.60      x0.51, T20 x0.85 / x0.57 / x0.57)
     // The taps were read before DECAY's gains were taken (at the end of each half of a loop), so a tap 120 ms
     // in was as loud as one 5 ms in. Now each tap is turned down for how far into its half it is. At 2 s the
     // plate still builds for its first 150 ms: the taps in the second half of each loop join 172 ms in, once
@@ -7381,7 +7571,7 @@ static void testPlate() {
     // about 3.5 to 4.5, separate echoes far more:
     //              20 ms    50 ms    strays (500 Hz)   echoes in the first 100 ms
     //   PLATE      4.08     4.40     2.1 dB            1412
-    //   HALL      10.2      9.8      0.6 dB            1244
+    //   HALL      10.4      9.7      1.4 dB            1192      (10.2, 9.8, 0.6 dB, 1244 until every line was bent)
     //   ROOM      31.0     35.6      1.1 dB             203
     // (Without its four short smearing stages ahead of the classic four, PLATE read 11.4 and 10.7: a click at
     // 8.9 ms, a silent gap, another at 12 ms.) DECAY 2.0 s, PRE 0; HALL and ROOM at their usual settings.
@@ -7485,7 +7675,7 @@ static void testPlate() {
         SAY("plate    PRE turned and landed: a click then differs from one in a plate never turned by %.1e at most (the click's own sound %.3f)\n", static_cast<double>(apart), static_cast<double>(loud));
         CHECK(apart < 1e-6f && loud > 0.01f && soundAt(added, 1e-9f) == 1392 + 429);
     }
-    // ABOUT AS LOUD AT ANY DECAY. Held noise, MIX full: -2.3 dB at 0.3 s, -3.1 at 2.45 s, -2.7 at 20 s (HALL: -1.6 to -4.2).
+    // ABOUT AS LOUD AT ANY DECAY. Held noise, MIX full: -2.3 dB at 0.3 s, -3.1 at 2.45 s, -2.7 at 20 s (HALL: -2.1 to -4.4).
     for (float decay : {0.f, 0.5f, 1.f}) {
         Stereo io(48000 * 20);
         Noise noise(3u);
@@ -7502,7 +7692,7 @@ static void testPlate() {
     //   TONE           80 Hz   250 Hz   1 kHz   8 kHz   14 kHz
     //   60%    PLATE    0.0     0.9      0.8    -1.8     -4.6
     //   100%   PLATE    0.0     0.9      0.9    -0.0     -3.0
-    //   50%    HALL     0.5     0.9      0.7    -1.8     -2.9
+    //   50%    HALL     0.8     2.1      0.8    -2.4     -4.4     (0.5, 0.9, 0.7, -1.8, -2.9 until every line was bent)
     // Before 2026-11-13 (a plain lowpass in the loops, nothing for the lows) the plate tilted dark and heavy
     // as DECAY grew: at 60% +3.5 +4.1 +3.2 -4.3 -8.1, at 100% +3.5 +4.1 +3.6 +1.4 -1.9.
     {
@@ -7530,7 +7720,7 @@ static void testPlate() {
     // NO COPY OF THE SOUND COMES BACK LATE, so at MIX 50% nothing combs. The plate alone against the noise that
     // went in, 0 to 10 ms late: alike 0.016 at most (a copy would read 1). A held sine at 39 pitches from 100 Hz
     // to 11 kHz at MIX 50%: -10.1 to +3.4 dB, -2.0 on average: what any room does to a held sine (HALL at its
-    // usual: -15.9 to +2.9, -2.8), not the even notches of a comb.
+    // usual: -10.5 to +2.3, -2.7; -15.9 to +2.9, -2.8 until every line was bent), not the even notches of a comb.
     {
         Stereo io(48000 * 4);
         Noise noise(9u);
@@ -9313,6 +9503,35 @@ static void testFold() {
 
 // ---- FUZZ ----
 
+// THE FOLD-BACK OF A BRIGHT NOTE through a bend: a saw at `hz` (whole hertz) with every harmonic under `top`, about
+// 0.3 at its peaks, through `kind` at `settings`, MIX as given. Everything that is not a harmonic of `hz` (more
+// than 6 bins from every one), from 20 Hz to `below`, added up, against the harmonics added up over the same
+// stretch, in dB. `loudest` gets the loudest single part of it, against the loudest harmonic.
+static double foldedOf(EffectKind kind, const float* settings, int hz, double top, double below = 19000.0, double* loudest = nullptr) {
+    const std::size_t frames = 24000 + 65536;
+    std::vector<float> saw(frames, 0.f);
+    for (int k = 1; k * hz < top; ++k) {
+        const double w = 2.0 * kPi * k * hz / 48000.0, size = 0.3 / 1.85 / k;
+        for (std::size_t i = 0; i < frames; ++i) saw[i] += static_cast<float>(size * std::sin(w * static_cast<double>(i)));
+    }
+    const std::vector<float> out = throughOne(kind, settings, saw);
+    const std::vector<double> size = spectrumOf(out.data() + 24000, 65536);
+    const double bin = 48000.0 / 65536.0;
+    double harmonic = 0.0, rest = 0.0, strongest = 0.0, most = 0.0;
+    for (std::size_t i = 0; i < size.size(); ++i) {
+        const double f = static_cast<double>(i) * bin;
+        if (f < 20.0 || f >= below) continue;
+        const double k = std::floor(f / hz + 0.5), p = size[i] * size[i];
+        if (k >= 1.0 && std::fabs(f - k * hz) <= 6.0 * bin) {
+            harmonic += p, strongest = std::fmax(strongest, p);
+        } else {
+            rest += p, most = std::fmax(most, p);
+        }
+    }
+    if (loudest) *loudest = 10.0 * std::log10(most / strongest);
+    return 10.0 * std::log10(rest / harmonic);
+}
+
 static void testFuzz() {
     const EffectKind fuzz = EffectKind::Fuzz;
     const EffectInfo& info = effectInfo(fuzz);
@@ -9331,6 +9550,87 @@ static void testFuzz() {
         CHECK(std::fabs(fx::fuzzCurve(-5.f, 0.f) + 0.6f) < 1e-6f && std::fabs(fx::fuzzCurve(-0.3f, 0.f) + 0.2795f) < 1e-4f && std::fabs(fx::fuzzCurve(-0.01f, 0.f) + 0.01f) < 1e-4f);
         CHECK(fx::fuzzCurve(0.5f, 1.f) == 0.f && fx::fuzzCurve(-0.99f, 1.f) == 0.f && fx::fuzzCurve(1.5f, 1.f) == 0.5f && fx::fuzzCurve(std::nanf(""), 0.f) == 0.f);
     }
+    // ITS AREA (2026-11-25: what the clip's average is worked from): nothing inside the gate's step, above 0 past it on
+    // either side, and its slope is the clip everywhere (the gate's step, the bend to the flat top, soft's flat end,
+    // at three gates), with no step where one piece meets the next.
+    {
+        double worstSlope = 0.0, worstJoin = 0.0;
+        for (float gate : {0.f, 0.4f, 2.f}) {
+            for (int i = -4000; i <= 4000; ++i) {
+                const double x = 0.001 * i + 0.0003, h = 1e-6;
+                const double slope = (fx::fuzzCurveArea(x + h, gate) - fx::fuzzCurveArea(x - h, gate)) / (2.0 * h);
+                worstSlope = std::fmax(worstSlope, std::fabs(slope - fx::fuzzCurve(static_cast<float>(x), gate)));
+            }
+            for (double join : {0.75 + gate, 1.25 + gate, -(gate + 3.0 * 0.6)})
+                worstJoin = std::fmax(worstJoin, std::fabs(fx::fuzzCurveArea(join + 1e-9, gate) - fx::fuzzCurveArea(join - 1e-9, gate)));
+        }
+        SAY("fuzz     its area: the slope at most %.1e from the clip, a join at most %.1e apart\n", worstSlope, worstJoin);
+        CHECK(worstSlope < 1e-5 && worstJoin < 1e-8);
+        CHECK(fx::fuzzCurveArea(0.0, 0.f) == 0.0 && fx::fuzzCurveArea(0.39, 0.4f) == 0.0 && fx::fuzzCurveArea(-0.39, 0.4f) == 0.0);
+        CHECK(fx::fuzzCurveArea(0.5, 0.f) == 0.125 && fx::fuzzCurveArea(-0.5, 0.f) > 0.1 && fx::fuzzCurveArea(-0.5, 0.f) < 0.125);
+    }
+    // THE SIDE BY ITSELF (bend.hpp's BendSide). Its average on curves whose averages are known: u squared, whose
+    // average from w to u is (u^3 - w^3) / 3 (u - w). Far apart it is that (0.01 apart the curve at the middle is
+    // 8e-6 off); nearer than kBendNear, the curve at the middle (at the end it is 3e-5 off). A curve turned between
+    // two points (u + s, s turned from 0 to 1) is averaged on the new one: on two curves it came to 1002, not 2.
+    {
+        struct Square {
+            float push = 1.f, level = 1.f, shape = 0.f;
+            float at(float u) const { return u * u; }
+            double area(double u) const { return u * u * u / 3.0; }
+        };
+        struct Moved {
+            float push = 1.f, level = 1.f, shape = 0.f;
+            float at(float u) const { return u + shape; }
+            double area(double u) const { return 0.5 * u * u + shape * u; }
+        };
+        const auto exact = [](double w, double u) { return (u * u * u - w * w * w) / (3.0 * (u - w)); };
+        fx::BendSide side;
+        side.reset();
+        const Square square;
+        const float far = 0.51f, nearer = 0.51f + 5e-5f;
+        const double middle = 0.5 * (static_cast<double>(far) + nearer);
+        CHECK(std::fabs(side.average(square, 0.5f) - 1.0 / 12.0) < 1e-6);
+        CHECK(std::fabs(side.average(square, far) - exact(0.5f, far)) < 1e-6);
+        CHECK(std::fabs(side.average(square, nearer) - middle * middle) < 1e-6);
+        fx::BendSide turned;
+        turned.reset();
+        Moved moved;
+        CHECK(std::fabs(turned.average(moved, 1.f) - 0.5) < 1e-6);
+        moved.shape = 1.f;
+        CHECK(std::fabs(turned.average(moved, 1.001f) - (1.0 + 0.5 * (1.0 + static_cast<double>(1.001f)))) < 1e-3);
+    }
+    // ...AND ITS PLAIN SOUND IN STEP: a straight line through the side, against its plain sound, a 12 kHz sine. The
+    // average of a straight line is its middle, half a sample late at twice the rate and 0.69 dB down there (a
+    // cosine); the plain sound is as late (Thiran's all-pass: 0.9 degrees apart at 12 kHz) and as loud as it came.
+    // (With no half sample its plain sound is 22.5 degrees early here; with the all-pass's number at 0.5, a third of a
+    // sample late, 7.5.)
+    {
+        struct Line {
+            float push = 1.f, level = 1.f, shape = 0.f;
+            float at(float u) const { return u; }
+            double area(double u) const { return 0.5 * u * u; }
+        };
+        fx::BendSide side;
+        side.reset();
+        const Line line;
+        const float keep = fx::dcKeep(48000.f);
+        const std::vector<float> in = sineOf(12000.0, 0.5, 9600);
+        std::vector<float> bent(in.size()), plain(in.size());
+        for (std::size_t i = 0; i < in.size(); ++i) bent[i] = side.twice(in[i], line, keep), plain[i] = side.plain(in[i]);
+        const auto at12k = [](const std::vector<float>& v, double& phase) { // 12 kHz is a quarter of the rate: whole cycles
+            double re = 0.0, im = 0.0;
+            for (std::size_t i = 4800; i < v.size(); ++i) re += v[i] * std::cos(0.5 * kPi * static_cast<double>(i)), im += v[i] * std::sin(0.5 * kPi * static_cast<double>(i));
+            phase = std::atan2(im, re) * 180.0 / kPi;
+            return dB(2.0 * std::sqrt(re * re + im * im) / 4800.0 / 0.5);
+        };
+        double bentPhase = 0.0, plainPhase = 0.0;
+        const double bentDb = at12k(bent, bentPhase), plainDb = at12k(plain, plainPhase);
+        double apart = bentPhase - plainPhase;
+        apart -= 360.0 * std::floor(apart / 360.0 + 0.5);
+        SAY("fuzz     the side, a straight line at 12 kHz: averaged %+.2f dB, the plain sound %+.3f dB, %.2f degrees apart\n", bentDb, plainDb, apart);
+        CHECK(std::fabs(bentDb + 0.69) < 0.05 && std::fabs(plainDb) < 0.02 && std::fabs(apart) < 1.5);
+    }
     // LOPSIDED, SO EVEN HARMONICS; NEARLY SQUARE. A 220 Hz sine at half scale, TONE in the middle, against the 1st:
     //   FUZZ     2nd     3rd     5th
     //   0%     -20.0   -26.7   -57.5    hardly fuzzed
@@ -9344,6 +9644,38 @@ static void testFuzz() {
         }
         const Harmonics low = harmonicsOf(*fresh(fuzz, 0.35f, 0.5f, 0.f, 1.f), 220, 0.5), h = harmonicsOf(*fresh(fuzz, 0.7f, 0.5f, 0.f, 1.f), 220, 0.5);
         CHECK(low.part[2] - low.part[1] > -35.0 && h.part[2] - h.part[1] > -50.0 && h.part[3] - h.part[1] > -14.0 && h.part[5] - h.part[1] > -20.0);
+    }
+    // THE FOLD-BACK (aliasing: overtones too high for the sample rate folding back down between the harmonics as
+    // notes never played, which do not follow a glide or vibrato). A saw, about 0.3 at its peaks, through FUZZ at
+    // its usual settings (FUZZ 70%, TONE 50%, GATE 20%): everything that is not a harmonic, under 19 kHz, against
+    // the harmonics. "Bent" is the clip itself at twice the rate (0.883 to 2026-11-25), "averaged" the clip's
+    // average between one point and the next (bend.hpp's BendSide, 2026-11-25):
+    //                                           bent    averaged
+    //   887 Hz, harmonics under 20 kHz         -27.8    -46.6     (the scratch model, before TONE: -30.6, -49.7;
+    //   223 Hz                                 -37.4    -56.1      at four times the rate it was -39.3)
+    //   443 Hz                                 -32.5    -51.3
+    //   1777 Hz                                -25.8    -44.7
+    //   887 Hz at FUZZ 35% / 100%           -32.5 / -25.6   -50.1 / -44.1
+    //   887 Hz, every harmonic to 24 kHz       -26.1    -33.5
+    // A saw with every harmonic to 24 kHz gains less: its harmonics over 19.2 kHz come out of the way up
+    // (halfband.hpp) as images between 24 and 28.8 kHz only partly taken out, and the clip mixes those with the
+    // note's own harmonics down between them (the loudest, 10746 Hz, is 48 kHz less 42 x 887). No average of the
+    // clip reaches that: only less of the input over 19.2 kHz would.
+    {
+        const float usual[4] = {0.7f, 0.5f, 0.2f, 1.f}, low[4] = {0.35f, 0.5f, 0.2f, 1.f}, most[4] = {1.f, 0.5f, 0.2f, 1.f};
+        double loudest = 0.0;
+        const double folded = foldedOf(fuzz, usual, 887, 20000.0, 19000.0, &loudest), full = foldedOf(fuzz, usual, 887, 24000.0);
+        const double under12k = foldedOf(fuzz, usual, 887, 20000.0, 12000.0); // -30.1 with the old 2x clip, -52.7 now
+        SAY("fuzz     an 887 Hz saw (harmonics under 20 kHz) at its usual settings: the fold-back under 19 kHz %.1f dB (the loudest part %.1f), under 12 kHz %.1f dB\n", folded, loudest, under12k);
+        double each[3];
+        const int notes[3] = {223, 443, 1777};
+        for (int n = 0; n < 3; ++n) {
+            each[n] = foldedOf(fuzz, usual, notes[n], 20000.0);
+            SAY("fuzz     a %d Hz saw at its usual settings: the fold-back under 19 kHz %.1f dB\n", notes[n], each[n]);
+        }
+        const double atLow = foldedOf(fuzz, low, 887, 20000.0), atMost = foldedOf(fuzz, most, 887, 20000.0);
+        SAY("fuzz     an 887 Hz saw at FUZZ 35%%: %.1f dB, at FUZZ 100%%: %.1f dB; with every harmonic to 24 kHz, at its usual settings: %.1f dB\n", atLow, atMost, full);
+        CHECK(folded < -44.0 && under12k < -50.0 && each[0] < -53.0 && each[1] < -48.0 && each[2] < -42.0 && atLow < -47.0 && atMost < -41.0 && full < -31.0);
     }
     // THE LOUDNESS IS HELD: the reference sine (0.18, 220 Hz) comes out about as loud as it went in at any FUZZ
     // from 35% (GATE off, TONE in the middle: its making up is for squares A1 to A7, not this one alone).
@@ -9374,8 +9706,9 @@ static void testFuzz() {
     // from 1 kHz loses up to 20 dB, as a pedal's does.
     //   TONE       A1     A2     A3     A4     A5     A6     A7   (dB, RMS out against in)
     //   0%       -1.8   -2.0   -2.6   -4.1   -7.2  -12.1  -17.7
-    //   50%      -3.2   -3.4   -4.0   -5.4   -7.0   -5.8   -4.4
-    //   100%    -20.0  -15.3  -11.1   -7.5   -4.1   -1.5   -0.3   (DRIVE at its usual: +2.5 to +3.5 on all)
+    //   50%      -3.2   -3.4   -4.0   -5.4   -7.0   -5.9   -4.5
+    //   100%    -20.0  -15.3  -11.1   -7.5   -4.1   -1.6   -0.4   (DRIVE at its usual: +2.5 to +3.5 on all)
+    // (Before the clip's average, 2026-11-25: TONE 50% A6 -5.8, A7 -4.4; TONE 100% A6 -1.5, A7 -0.3.)
     {
         double loudest = -1e9, middleLow = 1e9, middleHigh = -1e9;
         float peak = 0.f;
@@ -9429,9 +9762,10 @@ static void testFuzz() {
     // TONE: a scoop in the middle. Sines too quiet to clip (0.02 at FUZZ 0), through each TONE (made up for a
     // fuzzed note, so a quiet sine comes out louder at the ends):
     //   TONE    100 Hz   1 kHz   3 kHz   8 kHz
-    //   0%      +3.2    -2.5   -10.8   -18.8
-    //   50%     +1.7    -3.0    +0.2    +1.2
-    //   100%   -18.2    +0.2    +4.4    +5.2
+    //   0%      +3.2    -2.5   -10.8   -19.1 (-18.8)
+    //   50%     +1.7    -3.0    +0.1    +0.9 (+0.2, +1.2)
+    //   100%   -18.2    +0.2    +4.3    +4.9 (+4.4, +5.2)
+    // (In brackets, before the clip's average, 2026-11-25: the average's cosine takes 0.3 dB off 8 kHz.)
     {
         for (float t : {0.f, 0.5f, 1.f}) {
             double l[4];
@@ -9466,7 +9800,41 @@ static void testFuzz() {
         const double a = mixedAt12k(fuzz, half), b = mixedAt12k(fuzz, full);
         const double aligned = dB(0.5 * (1.0 + std::pow(10.0, b / 20.0))); // the two added as they are, in step
         SAY("fuzz     12 kHz at 0.05, FUZZ 0, TONE full: MIX 50%% %+.2f dB (in step: %+.2f), MIX 100%% %+.2f dB\n", a, aligned, b);
-        CHECK(std::fabs(a - aligned) < 0.3);
+        // (0.01 dB apart before the average, 0.02 since. The average is half a sample late at twice the rate: the
+        // plain sound as it was, a quarter of a sample early, is 0.16 dB out at 12 kHz; the plain sound averaged as
+        // the bent one is in step but 0.69 dB quieter there, which "in step" above does not allow for: 0.26 out.)
+        CHECK(std::fabs(a - aligned) < 0.06);
+    }
+    // NOTHING TOO SMALL TO HOLD AT GATE 0 (flush-to-zero off). holdsTheRules turns GATE to 50%, where the step keeps
+    // small sound from the clip; at GATE 0 the clip's lower side squared it, and before 2026-11-25 a click, a click in
+    // sound too small to hold, and noise and then silence each made a number too small for a float, at every FUZZ.
+    for (float f : {0.f, 0.7f, 1.f})
+        for (float mix : {0.5f, 1.f})
+            for (int what = 0; what < 3; ++what) {
+                std::unique_ptr<Effect> e = fresh(fuzz, f, 0.5f, 0.f, mix);
+                Stereo io(3 * 48000);
+                Noise noise(5u);
+                for (std::size_t i = 0; i < io.frames(); ++i) {
+                    if (what == 1) io.l[i] = 1e-39f, io.r[i] = -1e-39f;
+                    if (what == 2 && i < 24000) io.l[i] = 0.5f * noise.next(), io.r[i] = -io.l[i];
+                }
+                if (what < 2) io.l[0] = io.r[0] = 0.5f;
+                const TooSmall marks;
+                through(*e, io);
+                CHECK(!marks.seen());
+            }
+    // RESET IS FRESH: reset() in the middle of a loud note (the engine does it on a stop), and it plays on as one fresh
+    // from the box does, to the bit: the side's last point is forgotten with the rest.
+    {
+        std::unique_ptr<Effect> used = fresh(fuzz, 0.7f, 0.5f, 0.f, 0.6f), box = fresh(fuzz, 0.7f, 0.5f, 0.f, 0.6f);
+        Stereo before(4800), a(4800), b(4800);
+        before.l = before.r = sineOf(220.0, 0.5, 4800);
+        through(*used, before);
+        used->reset();
+        a.l = a.r = b.l = b.r = sineOf(330.0, 0.4, 4800);
+        through(*used, a);
+        through(*box, b);
+        CHECK(a.l == b.l && a.r == b.r && rmsOf(a.l) > 0.01);
     }
     sweptNoRougherThanHeld(fuzz);
     turnedLands(fuzz);
@@ -9952,6 +10320,24 @@ static void testWear() {
 
 // ---- LIMITER ----
 
+// A low note's bend, quickly: harmonics 2 to 9 of a sine at `hz` (settled, as harmonicShare reads it) against the note
+// itself, in dB. harmonicShare adds up every harmonic to 24 kHz for its "all", 1,200 of them at 20 Hz: seconds of work.
+static double underTheNote(Effect& effect, int hz, double amp) {
+    const std::size_t n = 48000;
+    Stereo io(2 * n);
+    io.l = io.r = sineOf(hz, amp, 2 * n);
+    effect.reset();
+    through(effect, io);
+    const float* out = io.l.data() + n;
+    const double note = partAt(out, n, hz);
+    double some = 0.0;
+    for (int k = 2; k <= 9; ++k) {
+        const double a = partAt(out, n, static_cast<double>(k) * hz);
+        some += a * a;
+    }
+    return 10.0 * std::log10(some / (note * note) + 1e-60);
+}
+
 static float limiterGain(double db) { return static_cast<float>(db / 20.0); }
 static float limiterCeiling(double db) { return static_cast<float>((db + 10.0) / 10.0); }
 
@@ -10019,15 +10405,106 @@ static void testLimiter() {
         SAY("limiter  a click: comes out at %.6f of the ceiling; the sound 1.5 ms before it turned down to %.3f, 3.1 ms before %.6f\n", io.l[click + 144] / top, gainAt(before), gainAt(wayBefore));
         CHECK(std::fabs(io.l[click + 144] / top - 1.0) < 1e-5 && gainAt(before) < 0.8 && gainAt(before) > 0.3 && gainAt(wayBefore) == 1.0);
     }
-    // NO CORNERS: a 100 Hz sine at half scale pushed 12 dB into a ceiling 6 dB down. Clipped it would be a square
-    // (harmonics 3 to 9 together -13 dB); held down ahead of time, the shape is kept (testLimiter's table).
+    // NO CORNERS: a sine at half scale pushed 12 dB into a ceiling 6 dB down (heavy limiting). Clipped it would be a
+    // square (harmonics 3 to 9 together -13 dB); held down ahead of time, the shape is kept.
+    // THE HOLD (2026-11-25, effect-quality.md): the turn-down is held 10 ms after each peak before it lets go. A wave
+    // whose peaks (either way up) come closer than that is never let go between them, so it is not bent at any
+    // RELEASE. Before the hold every wave was let go and caught again each half turn, more the shorter the RELEASE:
+    // 100 Hz read -52.7 dB (RELEASE 96 ms), -71.8 (1 s), -41.8 (20 ms), and 50 Hz at 20 ms -26.9 (4.5% of it: a buzz on
+    // a sub). A wave slower than the hold (20 Hz: a peak every 25 ms) is still let go between its peaks as fast as
+    // RELEASE says, so there a short RELEASE bends it more than a long one, as it did every note before the hold (that
+    // was this check's `shareFast > share`): -31.8 dB (96 ms), -48.3 (1 s), -25.5 (20 ms); before the hold -24.9,
+    // -42.0, -17.2. (Harmonics 2 to 9 against the note: `underTheNote`.)
     {
-        std::unique_ptr<Effect> e = fresh(lim, limiterGain(12.0), limiterCeiling(-6.0), 0.4f);
-        const double share = harmonicShare(*e, 100, 0.5, 2, 9);
-        std::unique_ptr<Effect> slow = fresh(lim, limiterGain(12.0), limiterCeiling(-6.0), 1.f), fast = fresh(lim, limiterGain(12.0), limiterCeiling(-6.0), 0.f);
-        const double shareSlow = harmonicShare(*slow, 100, 0.5, 2, 9), shareFast = harmonicShare(*fast, 100, 0.5, 2, 9);
-        SAY("limiter  a 100 Hz sine 12 dB into the ceiling: harmonics 2 to 9 %.1f dB of it (RELEASE 96 ms), %.1f (1 s), %.1f (20 ms)\n", share, shareSlow, shareFast);
-        CHECK(share < -35.0 && shareSlow < -50.0 && shareFast < -18.0 && shareFast > share);
+        double shares[3][3] = {}; // 100, 50, 20 Hz; RELEASE 96 ms, 1 s, 20 ms
+        const int notes[3] = {100, 50, 20};
+        const float releases[3] = {0.4f, 1.f, 0.f};
+        for (int n = 0; n < 3; ++n)
+            for (int r = 0; r < 3; ++r) {
+                std::unique_ptr<Effect> e = fresh(lim, limiterGain(12.0), limiterCeiling(-6.0), releases[r]);
+                shares[n][r] = underTheNote(*e, notes[n], 0.5);
+            }
+        for (int n = 0; n < 3; ++n)
+            SAY("limiter  a %3d Hz sine 12 dB into the ceiling: harmonics 2 to 9 %.1f dB under the note (RELEASE 96 ms), %.1f (1 s), %.1f (20 ms)\n", notes[n], shares[n][0], shares[n][1], shares[n][2]);
+        for (int n = 0; n < 2; ++n)
+            for (int r = 0; r < 3; ++r) CHECK(shares[n][r] < -100.0);
+        CHECK(shares[2][2] > shares[2][0] + 3.0 && shares[2][0] > shares[2][1] + 6.0 && shares[2][2] > -40.0);
+    }
+    // ...THE HOLD ITSELF: a steady level of 0.1 (an offset: every sample shows the gain) and one click of 1, 6 dB over
+    // a ceiling at -6 dB, RELEASE 20 ms. What is under the click is turned down to make room for it and stays turned
+    // down EXACTLY as far for 10 ms after it (480 samples), then lets go. Without the hold it let go from the sample
+    // after the click (0.7038 5 ms on, 0.8476 20 ms on; now 0.5599 and 0.7608).
+    {
+        std::unique_ptr<Effect> e = fresh(lim, 0.f, limiterCeiling(-6.0), 0.f);
+        Stereo io(48000);
+        io.l.assign(io.frames(), 0.1f), io.r.assign(io.frames(), 0.1f);
+        const std::size_t click = 24000;
+        io.l[click] = io.r[click] = 1.f;
+        const Stereo in = io;
+        through(*e, io);
+        const auto gainAt = [&](std::size_t i) { return static_cast<double>(io.l[i + 144]) / in.l[i]; };
+        const double atClick = gainAt(click - 1); // (the click itself comes out at the ceiling)
+        std::size_t heldTo = click;
+        while (heldTo < click + 2000 && std::fabs(gainAt(heldTo + 1) / atClick - 1.0) < 1e-6) ++heldTo;
+        const double after = gainAt(click + 480 + 240), later = gainAt(click + 480 + 960);
+        SAY("limiter  the hold: the click at %.6f of the ceiling, what is under it turned to %.4f; held there %zu samples (%.2f ms), then %.4f 5 ms on, %.4f 20 ms on\n",
+            io.l[click + 144] / std::pow(10.0, -6.0 / 20.0), atClick, heldTo - click, static_cast<double>(heldTo - click) / 48.0, after, later);
+        CHECK(std::fabs(atClick - std::pow(10.0, -6.0 / 20.0)) < 1e-4 && heldTo == click + 480 && after > 1.05 * atClick && later > after);
+    }
+    // reset() IS THE SAME AS NEW, the hold included: one reset while it is turning a loud sound down (the hold full of
+    // it) plays a quiet sine as one fresh from the box does, to the bit.
+    {
+        std::unique_ptr<Effect> used = fresh(lim, 1.f, limiterCeiling(-6.0), 0.f), made = fresh(lim, 1.f, limiterCeiling(-6.0), 0.f);
+        Stereo loud(4800), a(9600), b(9600);
+        loud.l = loud.r = sineOf(50.0, 0.5, loud.frames());
+        through(*used, loud);
+        CHECK(used->meter() > 10.f);
+        used->reset();
+        a.l = a.r = b.l = b.r = sineOf(220.0, 0.01, a.frames());
+        through(*used, a);
+        through(*made, b);
+        CHECK(a.l == b.l && a.r == b.r && peakOf(b.l) > 0.09f);
+    }
+    // ...AND WHAT IT COSTS: the turn-down let go 10 ms later after every peak makes the whole a little quieter at the
+    // same GAIN, with the same top. GAIN +6 dB, CEILING -2 dB: a dark mix (noise through a gentle low-pass) and bright
+    // hits (noise falling away in 30 ms, four a second), each peaking at full scale, how loud they come out against
+    // what went in. Before the hold: dark +0.39 dB (RELEASE 20 ms), -0.03 (96 ms); hits +1.57, -0.77. With it: -0.21,
+    // -0.34; +0.25, -1.25. So the hold gives up 0.60 and 0.31 dB on the dark mix, 1.32 and 0.48 on the hits: the
+    // shorter the RELEASE and the more spaced the peaks, the more. A GAIN a click higher (+7 dB) does NOT win it back:
+    // the extra goes into the turn-down. Dark -0.20, -0.32; hits +0.52, -1.16: 0.01 of 0.60 dB back, 0.02 of 0.31; 0.27
+    // of 1.32, 0.09 of 0.48.
+    {
+        Stereo dark(4 * 48000), hits(4 * 48000);
+        Noise a(1u), b(3u);
+        float p = 0.f;
+        for (std::size_t i = 0; i < dark.frames(); ++i) {
+            p += 0.3f * (a.next() - p);
+            dark.l[i] = p;
+            hits.l[i] = static_cast<float>(std::exp(-static_cast<double>(i % 12000) / 48000.0 / 0.03)) * b.next();
+        }
+        const float darkTop = peakOf(dark.l), hitsTop = peakOf(hits.l);
+        for (std::size_t i = 0; i < dark.frames(); ++i) dark.r[i] = dark.l[i] /= darkTop, hits.r[i] = hits.l[i] /= hitsTop;
+        double got[2][2] = {}, click[2][2] = {}; // dark, hits; RELEASE 20 ms, 96 ms; at +6 dB and a click higher, +7
+        for (int m = 0; m < 2; ++m)
+            for (int r = 0; r < 2; ++r)
+                for (int g = 0; g < 2; ++g) {
+                    Stereo io = m ? hits : dark;
+                    std::unique_ptr<Effect> e = fresh(lim, limiterGain(g ? 7.0 : 6.0), limiterCeiling(-2.0), r ? 0.4f : 0.f);
+                    through(*e, io);
+                    (g ? click : got)[m][r] = dB(rmsOf(io.l, 4800 + 144) / rmsOf(m ? hits.l : dark.l, 4800, io.frames() - 144));
+                }
+        SAY("limiter  +6 dB into -2 dB, how loud it comes out: dark %+.2f dB (RELEASE 20 ms), %+.2f (96 ms); hits %+.2f, %+.2f\n", got[0][0], got[0][1], got[1][0], got[1][1]);
+        const double was[2][2] = {{0.39, -0.03}, {1.57, -0.77}}, now[2][2] = {{-0.21, -0.34}, {0.25, -1.25}};
+        SAY("limiter  ...given up to the hold: dark %.2f dB (RELEASE 20 ms), %.2f (96 ms); hits %.2f, %.2f\n", was[0][0] - got[0][0], was[0][1] - got[0][1], was[1][0] - got[1][0], was[1][1] - got[1][1]);
+        for (int m = 0; m < 2; ++m)
+            for (int r = 0; r < 2; ++r) CHECK(std::fabs(got[m][r] - now[m][r]) < 0.05);
+        SAY("limiter  +7 dB into -2 dB, with the hold: dark %+.2f dB (RELEASE 20 ms), %+.2f (96 ms); hits %+.2f, %+.2f\n", click[0][0], click[0][1], click[1][0], click[1][1]);
+        SAY("limiter  ...won back by the click, of what the hold gave up: dark %.2f of %.2f dB, %.2f of %.2f; hits %.2f of %.2f, %.2f of %.2f\n",
+            click[0][0] - got[0][0], was[0][0] - got[0][0], click[0][1] - got[0][1], was[0][1] - got[0][1],
+            click[1][0] - got[1][0], was[1][0] - got[1][0], click[1][1] - got[1][1], was[1][1] - got[1][1]);
+        const double clickNow[2][2] = {{-0.20, -0.32}, {0.52, -1.16}};
+        for (int m = 0; m < 2; ++m)
+            for (int r = 0; r < 2; ++r) CHECK(std::fabs(click[m][r] - clickNow[m][r]) < 0.05 && click[m][r] - got[m][r] < 0.3);
     }
     // THE METER says how far it is turning down: a sine at half scale, +20 dB, ceiling 0 dB: 20 log 5 = 14 dB.
     {
@@ -10149,6 +10626,110 @@ static double snapOnAHit(float attack, float sustain, double fromMs, double toMs
     return 10.0 * std::log10(got / was);
 }
 
+// How much a gain moves within each turn of a falling low note (0.5, falling 29 dB a second), in dB, averaged over
+// the turns from 0.2 s to 0.83 s: the straight line through the gain over each turn (the note's own fall, and how the
+// effect follows it) taken out first, and the samples near the zero crossings left out (a gain says nothing there).
+static double wobbleOnAFallingNote(Effect& e, double hz) {
+    const std::size_t n = 48000;
+    Stereo io(n);
+    for (std::size_t i = 0; i < n; ++i)
+        io.l[i] = io.r[i] = static_cast<float>(0.5 * std::exp(-static_cast<double>(i) / 48000.0 / 0.3) * std::sin(2.0 * kPi * hz * static_cast<double>(i) / 48000.0));
+    const Stereo in = io;
+    through(e, io);
+    const std::size_t per = static_cast<std::size_t>(48000.0 / hz);
+    double sum = 0.0;
+    int count = 0;
+    for (std::size_t w = 9600; w + per < 40000; w += per) {
+        double top = 0.0, sx = 0.0, sy = 0.0, sxx = 0.0, sxy = 0.0, lo = 1e9, hi = -1e9;
+        int m = 0;
+        for (std::size_t i = w; i < w + per; ++i) top = std::fmax(top, std::fabs(in.l[i]));
+        for (std::size_t i = w; i < w + per; ++i) {
+            if (std::fabs(in.l[i]) < 0.1 * top) continue;
+            const double g = dB(std::fabs(static_cast<double>(io.l[i]) / in.l[i])), x = static_cast<double>(i - w);
+            sx += x, sy += g, sxx += x * x, sxy += x * g, ++m;
+        }
+        const double slope = (m * sxy - sx * sy) / (m * sxx - sx * sx), at0 = (sy - slope * sx) / m;
+        for (std::size_t i = w; i < w + per; ++i) {
+            if (std::fabs(in.l[i]) < 0.1 * top) continue;
+            const double g = dB(std::fabs(static_cast<double>(io.l[i]) / in.l[i])) - (at0 + slope * static_cast<double>(i - w));
+            lo = std::fmin(lo, g), hi = std::fmax(hi, g);
+        }
+        sum += hi - lo, ++count;
+    }
+    return sum / count;
+}
+// A busy pattern: snapOnAHit's drum (noise falling 60 dB in 0.3 s) every `everyMs`, ATTACK `attack`: what SNAP does to
+// the first millisecond of hits 2 to 8 (each over the tail of the one before), in dB.
+static double snapOnARoll(float attack, double everyMs) {
+    std::unique_ptr<Effect> e = fresh(EffectKind::Snap, attack, 0.5f, 1.f);
+    const std::size_t per = static_cast<std::size_t>(everyMs * 48.0), first = 4800;
+    Stereo io(first + 10 * per);
+    Noise noise(17u);
+    for (std::size_t i = first; i < io.frames(); ++i) {
+        const double t = static_cast<double>((i - first) % per) / 48000.0;
+        io.l[i] = io.r[i] = static_cast<float>(0.8 * std::pow(10.0, -3.0 * t / 0.3)) * noise.next();
+    }
+    const Stereo in = io;
+    through(*e, io);
+    double got = 0.0, was = 0.0;
+    for (std::size_t hit = 1; hit < 8; ++hit)
+        for (std::size_t i = first + hit * per; i < first + hit * per + 48; ++i) got += static_cast<double>(io.l[i]) * io.l[i], was += static_cast<double>(in.l[i]) * in.l[i];
+    return 10.0 * std::log10(got / was);
+}
+// Two hits `apartMs` apart (each 3 ms of noise falling away, from silence), ATTACK +100%: how far the second one turns
+// the sound up in its first millisecond, in dB, beyond what SNAP does there to the first hit alone.
+static double snapOnTwoHits(double apartMs) {
+    const std::size_t first = 4800, second = first + static_cast<std::size_t>(apartMs * 48.0);
+    double gain[2] = {};
+    for (int both = 0; both < 2; ++both) {
+        std::unique_ptr<Effect> e = fresh(EffectKind::Snap, 1.f, 0.5f, 1.f);
+        Stereo io(24000);
+        Noise noise(5u);
+        for (std::size_t i = first; i < io.frames(); ++i) {
+            double v = std::exp(-static_cast<double>(i - first) / 144.0);
+            if (both && i >= second) v += std::exp(-static_cast<double>(i - second) / 144.0);
+            io.l[i] = io.r[i] = static_cast<float>(0.5 * v) * noise.next();
+        }
+        const Stereo in = io;
+        through(*e, io);
+        const double was = rmsOf(in.l, second, second + 48);
+        gain[both] = was > 1e-12 ? dB(rmsOf(io.l, second, second + 48) / was) : 0.0; // (the first long gone: nothing to turn)
+    }
+    return gain[1] - gain[0];
+}
+
+// SLIDINGMOST AT THE EDGE OF ITS ROOM: a push writes before the oldest is dropped, so `back` can be at most N - 2.
+// Against the most found by hand, falling numbers (the case that filled the queue) and noise, at back N - 2; and a
+// `back` past that is taken as N - 2 (with N - 1, falling numbers wrote over the front: 10, 9, 8, 7, 6 gave 6, not 9).
+static void testSlidingMost() {
+    bool exact = true;
+    for (unsigned asked : {2u, 3u, 100u}) {
+        fx::SlidingMost<4> most;
+        const unsigned back = asked > 2u ? 2u : asked;
+        std::vector<float> seen;
+        Noise noise(5u);
+        for (int i = 0; i < 200; ++i) {
+            const float v = i < 100 ? 100.f - static_cast<float>(i) : noise.next();
+            seen.push_back(v);
+            float want = v;
+            for (std::size_t k = 1; k <= back && k < seen.size(); ++k) want = std::fmax(want, seen[seen.size() - 1 - k]);
+            exact = exact && most.push(v, asked) == want;
+        }
+    }
+    // As SNAP and LIMITER use it, at 192 kHz: SNAP's 14 ms (2688 samples) is past its 2048, so it reads 2046 back.
+    {
+        fx::SlidingMost<2048> most;
+        std::vector<float> seen;
+        for (int i = 0; i < 6000; ++i) {
+            const float v = 6000.f - static_cast<float>(i);
+            seen.push_back(v);
+            const std::size_t from = seen.size() > 2047 ? seen.size() - 2047 : 0;
+            exact = exact && most.push(v, 2688u) == seen[from];
+        }
+    }
+    CHECK(exact);
+}
+
 static void testSnap() {
     const EffectKind snap = EffectKind::Snap;
     const EffectInfo& info = effectInfo(snap);
@@ -10167,7 +10748,14 @@ static void testSnap() {
         for (Row& r : rows) {
             r.first = snapOnAHit(r.attack, r.sustain, 0.0, 1.0), r.early = snapOnAHit(r.attack, r.sustain, 4.0, 6.0);
             r.later = snapOnAHit(r.attack, r.sustain, 20.0, 40.0), r.tail = snapOnAHit(r.attack, r.sustain, 100.0, 250.0);
-            SAY("snap     ATTACK %-5s SUSTAIN %-5s a hit: first ms %+.1f dB, 4-6 ms %+.1f, 20-40 ms %+.1f, 100-250 ms %+.1f\n", reads(snap, 0, r.attack).c_str(), reads(snap, 1, r.sustain).c_str(), r.first, r.early, r.later, r.tail);
+            SAY("snap     ATTACK %-5s SUSTAIN %-5s a hit: first ms %+.2f dB, 4-6 ms %+.2f, 20-40 ms %+.2f, 100-250 ms %+.2f\n", reads(snap, 0, r.attack).c_str(), reads(snap, 1, r.sustain).c_str(), r.first, r.early, r.later, r.tail);
+        }
+        // Read over 14 ms (2026-11-25), a hit is shaped within 0.3 dB of what it was before, each stretch of each row
+        // (the most, 0.27 dB, at 20 to 40 ms with ATTACK +100%: the start is followed 14 ms longer; at 15 ms it was 0.32):
+        const double before[5][4] = {{12.00, 7.37, 0.73, 0.00}, {-12.96, -7.32, -0.65, 0.00}, {0.00, 0.00, 0.12, 6.01}, {0.00, 0.00, -0.11, -5.98}, {0.0, 0.0, 0.0, 0.0}};
+        for (int k = 0; k < 5; ++k) {
+            const double now[4] = {rows[k].first, rows[k].early, rows[k].later, rows[k].tail};
+            for (int j = 0; j < 4; ++j) CHECK(std::fabs(now[j] - before[k][j]) < 0.3);
         }
         CHECK(rows[0].first > 11.0 && rows[0].first < 12.8 && rows[0].early > 6.5 && rows[0].early < 8.5 && rows[0].later < rows[0].early - 2.0 && std::fabs(rows[0].tail) < 0.5);
         CHECK(rows[1].first < -12.5 && rows[1].first > -14.0 && rows[1].early < -6.5 && rows[1].early > -8.5 && std::fabs(rows[1].tail) < 0.5);
@@ -10200,17 +10788,90 @@ static void testSnap() {
         SAY("snap     MIX %.0f%%: left and right %s; the right off the plain and the shaped laid together by %.1e\n", mix * 100.0, io.l == io.r ? "the same" : "APART", worst);
         CHECK(io.l == io.r && worst < 1e-5);
     }
-    // A STEADY SOUND IS LEFT ALONE: a 100 Hz and a 1 kHz sine at half scale, every end of ATTACK and SUSTAIN,
-    // after its first half second, within 0.5 dB of what went in, and hardly bent (harmonics 2 to 9).
-    for (double hz : {100.0, 1000.0})
+    // A STEADY SOUND IS LEFT ALONE: a sine at half scale, every end of ATTACK and SUSTAIN, after its first half
+    // second, within 0.5 dB of what went in, and not bent (harmonics 2 to 9). Since the level is read over 14 ms
+    // (2026-11-25) a note's peaks are always in view, so on any note over 36 Hz the reading holds still and nothing is
+    // bent. Before, it fell between the peaks: 40 Hz read -22.7 to -28.5 dB under the note, 50 Hz -24.7 to -30.1
+    // (SUSTAIN +100%: -27.5, about 4%, a buzz), 100 Hz -32.5 to -36.2, 1 kHz -69 to -71. Under 36 Hz the peaks are
+    // further apart than the window: bent there, less than before (30 Hz at SUSTAIN +100%: -23.6 before, -49 now).
+    for (double hz : {40.0, 50.0, 100.0, 1000.0})
         for (float a : {0.f, 1.f})
             for (float s : {0.f, 1.f}) {
                 std::unique_ptr<Effect> e = fresh(snap, a, s, 1.f);
                 const double level = levelAt(*e, hz, 0.5);
-                const double bent = harmonicShare(*e, static_cast<int>(hz), 0.5, 2, 9);
+                const double bent = underTheNote(*e, static_cast<int>(hz), 0.5);
                 SAY("snap     a steady %4.0f Hz sine, ATTACK %-5s SUSTAIN %-5s: %+.2f dB, harmonics %.1f dB\n", hz, reads(snap, 0, a).c_str(), reads(snap, 1, s).c_str(), level, bent);
-                CHECK(std::fabs(level) < 0.5 && bent < (hz < 500.0 ? -25.0 : -45.0));
+                CHECK(std::fabs(level) < 0.5 && bent < -100.0);
             }
+    {
+        std::unique_ptr<Effect> held = fresh(snap, 0.5f, 1.f, 1.f);
+        const double at50 = underTheNote(*held, 50, 0.5), at30 = underTheNote(*held, 30, 0.5);
+        SAY("snap     SUSTAIN +100%%: a 50 Hz sine's harmonics %.1f dB (-27.5 before the window); 30 Hz, past it, %.1f (-23.6)\n", at50, at30);
+        CHECK(at50 < -100.0 && at30 > -90.0);
+    }
+    // AN 808'S TAIL: a 50 Hz note at half scale falling 29 dB a second, SUSTAIN +100%. SNAP follows its fall, but should
+    // not move within a turn: how far the gain moves within each turn, the straight line through it (the fall itself)
+    // taken out, averaged over the turns from 0.2 to 0.83 s. Before the window: 2.26 dB (100 Hz 0.93), a wobble at the
+    // note's own rate; now 0.19 (0.07): the reading steps down once a turn as the note falls.
+    for (double hz : {50.0, 100.0}) {
+        std::unique_ptr<Effect> e = fresh(snap, 0.5f, 1.f, 1.f);
+        const double wobble = wobbleOnAFallingNote(*e, hz);
+        SAY("snap     SUSTAIN +100%%, a falling %3.0f Hz note: the gain moves %.3f dB within each turn\n", hz, wobble);
+        CHECK(wobble < (hz < 75.0 ? 0.3 : 0.1));
+    }
+    // A FAST ROLL: two hits (each 3 ms of noise falling away, as loud) some way apart, ATTACK +100%. How far the second
+    // one turns the sound up in its first millisecond, beyond what SNAP does there to the first alone. Under 14 ms apart
+    // it is in the window of the first and is read as part of it (a flam, a very fast roll): next to nothing. Further
+    // apart it is a hit of its own, if less of one than before the window: the first is read 14 ms longer, so the
+    // second starts from higher. Before: 5 ms +0.51 dB, 10 ms +0.70, 15 ms +1.37, 20 ms +1.70, 31 ms (a ratchet of four
+    // at 120 BPM) +1.75, 40 ms +2.19, 125 ms (sixteenths at 120 BPM) +9.52. Now: +0.21, +0.08, +0.24, +0.44, +0.67,
+    // +0.84, +8.10.
+    {
+        const double apart[7] = {5.0, 10.0, 15.0, 20.0, 31.25, 40.0, 125.0};
+        double second[7] = {};
+        for (int k = 0; k < 7; ++k) second[k] = snapOnTwoHits(apart[k]);
+        SAY("snap     ATTACK +100%%, the second of two hits turns its first ms up: %+.2f dB 5 ms after the first, %+.2f 10 ms, %+.2f 15 ms, %+.2f 20 ms, %+.2f 31 ms, %+.2f 40 ms, %+.2f 125 ms\n",
+            second[0], second[1], second[2], second[3], second[4], second[5], second[6]);
+        CHECK(second[0] < 0.3 && second[1] < 0.3 && second[3] > 0.3 && second[4] > 0.5 && second[6] > 7.5 && second[6] < 9.0);
+    }
+    // ...AND A BUSY PATTERN, each hit over the tail of the one before: the tail is read 14 ms late, so a little higher,
+    // and the next hit starts from there. The first ms of each hit, ATTACK +100% / +50%: sixteenths at 120 BPM (125 ms)
+    // +3.33 dB / +1.58 (before the window +4.33 / +2.07), eighths (250 ms) +10.52 / +5.20 (+11.00 / +5.45). A hit on its
+    // own (the rows above) is shaped as before.
+    {
+        const double sixteenths = snapOnARoll(1.f, 125.0), half = snapOnARoll(0.75f, 125.0), eighths = snapOnARoll(1.f, 250.0);
+        SAY("snap     a busy pattern, the first ms of each hit: sixteenths %+.2f dB (ATTACK +100%%), %+.2f (+50%%); eighths %+.2f (+100%%)\n", sixteenths, half, eighths);
+        CHECK(std::fabs(sixteenths - 3.33) < 0.1 && std::fabs(half - 1.58) < 0.1 && std::fabs(eighths - 10.52) < 0.1);
+    }
+    // reset() IS THE SAME AS NEW, the window included: one reset in the middle of a loud low note (the window full of
+    // its peaks) shapes quiet hits as one fresh from the box does, to the bit.
+    {
+        std::unique_ptr<Effect> used = fresh(snap, 1.f, 1.f, 1.f), made = fresh(snap, 1.f, 1.f, 1.f);
+        Stereo loud(4800), a(9600), b(9600);
+        loud.l = loud.r = sineOf(50.0, 0.5, loud.frames());
+        through(*used, loud);
+        used->reset();
+        Noise noise(9u);
+        for (std::size_t i = 0; i < a.frames(); ++i) a.l[i] = a.r[i] = static_cast<float>(0.01 * std::exp(-static_cast<double>(i % 2400) / 144.0)) * noise.next();
+        b = a;
+        through(*used, a);
+        through(*made, b);
+        CHECK(a.l == b.l && a.r == b.r && rmsOf(b.l) > 1e-4);
+    }
+    // ...AND ASLEEP IT FORGETS THE WINDOW: it can fall asleep within 14 ms of sound too faint to keep (under kQuiet), so
+    // the window still holds it; woken by a sound fainter still, it plays as one fresh from the box, to the bit.
+    {
+        std::unique_ptr<Effect> slept = fresh(snap, 1.f, 1.f, 1.f), box = fresh(snap, 1.f, 1.f, 1.f);
+        Stereo before(160), a(2400), b(2400);
+        for (std::size_t i = 0; i < 128; ++i) before.l[i] = before.r[i] = 9e-13f; // then 32 zeros: asleep at the tick's end
+        through(*slept, before);
+        Noise noise(4u);
+        for (std::size_t i = 0; i < a.frames(); ++i) a.l[i] = a.r[i] = 3e-13f * noise.next();
+        b = a;
+        through(*slept, a);
+        through(*box, b);
+        CHECK(a.l == b.l && a.r == b.r && before.l[159] == 0.f);
+    }
     // LEFT AND RIGHT TOGETHER: a hit on one side turns a steady other side up with it (either way round).
     for (int side = 0; side < 2; ++side) {
         std::unique_ptr<Effect> e = fresh(snap, 1.f, 0.5f, 1.f);
@@ -10269,7 +10930,7 @@ static void testSnap() {
     CHECK(seen.lastAfterClick < 0.001); // nothing late, no tail
     for (int p = 0; p < 3; ++p) SAY("snap     turned at once %-9s down: step %.2f corner %.2f   up: step %.2f corner %.2f\n", info.paramNames[p], seen.stepDown[p], seen.cornerDown[p], seen.stepUp[p], seen.cornerUp[p]);
     // Each setting turned at once, end to end (down: step, corner; up: step, corner), against the steady sound:
-    const double was[3][4] = {{1.00, 1.00, 1.00, 0.92}, {1.00, 0.86, 1.00, 1.00}, {1.00, 0.94, 1.00, 1.00}};
+    const double was[3][4] = {{1.00, 1.00, 1.00, 1.00}, {1.00, 1.00, 1.00, 1.00}, {1.00, 0.99, 1.00, 1.00}}; // (before the 14 ms window, 2026-11-25: {1.00, 1.00, 1.00, 0.92}, {1.00, 0.86, 1.00, 1.00}, {1.00, 0.94, 1.00, 1.00}: the steady sound wobbled more)
     for (int p = 0; p < 3; ++p) {
         CHECK(seen.stepDown[p] < 1.1 * was[p][0] && seen.cornerDown[p] < 1.1 * was[p][1]);
         CHECK(seen.stepUp[p] < 1.1 * was[p][2] && seen.cornerUp[p] < 1.1 * was[p][3]);
@@ -12035,6 +12696,7 @@ int main(int argc, char** argv) {
         {"testRing", testRing},
         {"testWear", testWear},
         {"testLimiter", testLimiter},
+        {"testSlidingMost", testSlidingMost},
         {"testSnap", testSnap},
         {"testFlanger", testFlanger},
         {"testEnsemble", testEnsemble},
