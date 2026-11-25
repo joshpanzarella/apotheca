@@ -344,3 +344,124 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   (`Engine::playScene(&heard)`), so the two are never from different moments.
 - **The SONG screen's cursor is a scene's number too** (`SongScreen::scenesMoved`,
   called by `App` after the gesture, an undo or a redo).
+
+## The FILL (engine and data: batch F1-fill-engine, 2026-11-25)
+
+Design 1 of `docs/plans/fills-ideas.md` on design 2's engine work, **without EVERY**. The owner read the
+research and said "I like all of it, let's build all of that in" (2026-11-25), which approved the plan and
+the picks it made. **The gesture (hold L1 + Y on the grids) and every screen are the next batch**; this one
+is the engine, the data and the Session calls the screens will make.
+
+**The decisions** (the report's picks, approved with the plan, 2026-11-25):
+- **A cell can have one FILL bar.** It plays **instead of** the cell's own bar in the scene's **last bar**,
+  on the scene's **last time round** (REPEATS). Everywhere else the cell plays as it always did.
+- **A scene played alone** (looping) counts its time rounds the same way, round and round, and plays the
+  FILL on the last of each REPEATS of them (`Engine::loopPass_`, below). To hear it, wait the REPEATS.
+- **One meaning of the word FILL** (plan A's step condition and hold START take other words if they come).
+- **Kept in the cell's eighth bar** (`kFillSlot`, slot 7), which a cell of 1, 2 or 4 bars never plays: no
+  new pattern storage, so every copy of a cell or a scene carries it, automation (risers) included.
+- **A cell of eight bars cannot have one** (that bar is its own: `Fill::EightBars`).
+- **A cell with a FILL made eight bars long: the FILL becomes bar 8 and the flag goes off**
+  (`setCellBars`; the engine is sent `SetCellFill 0`, or made four again it would play it).
+
+**The rule is one header, `engine/include/apotheca/fill_rule.hpp`** (Rack-free, as `feel_rule.hpp`):
+`fillTime(bar, meter, steps, round, repeats)` (the scene's last bar on its last round) and
+`cellBarOf(bars, fillOn, bar, atFillTime)` (which bar of a cell plays: `bar % bars`, or `kFillSlot`).
+The engine (`slotOf`), MIDI export (`gatherMidiScene`) and the app (`Project::cellBarPlaying`) all ask it.
+**Anything that asks which bar of a cell plays goes through it, never `bar % bars`** (CLAUDE.md).
+Its test is `tests/fill_test.cpp` (`ctest -R fill`).
+
+**In memory:** `TrackFields::fill[scene]`, one byte a cell: `kFillNone` (never made), `kFillOn`, `kFillOff`
+(made and turned off: its bar is kept). **"Made" keeps an emptied FILL empty** (a drop): turned on again it
+is what it was, never a fresh copy. `TrackData::fillOn`, `fillMade` (both false on an eight-bar cell) and
+`barThere(scene, bar)` (a bar the player can stand on: one of the cell's, or its FILL once made). In the
+fields, so the text cache, `sameFields`, a duplicated track and undo's compares carry it with no work.
+`sceneEmpty` counts a FILL that is on (a cell with nothing but its FILL is a scene: `sceneCount`).
+
+**In the engine:** `SceneStore::fill` (so a scene move carries it: the store moves), `SceneImage::fill`,
+`TrackImage::fill[]`, `sceneIn` takes it. **`Command::SetCellFill`** (track, scene, a = 1 on, 0 off) is
+**appended after `SetClick`**; it goes through `send`'s GiveScene path (off on a blank scene needs no
+store: `leavesBlank`). `slotOf(track, scene, bar, atFillTime)` returns `kFillSlot` where the rule says.
+**`loopPass_` counts a looped scene's rounds; `repeat_` stays 0 there as it always did**, so its readers
+(the REPEATS progress bars, the ring lights, `songEndsNow`, `askAgain`'s last step) are untouched.
+`playPass()` and `ProjectHead::playPass` tell it out. **`askAgain` runs after `SetSceneRepeats` and
+`SetCellFill`**: changed on a bar's last step, the next bar may be the FILL or not (or another scene: a
+REPEATS change on the last step was not asked again before; `fill_test` `testAskedAgain` holds both ways).
+Turned on part way through the FILL's bar, the rest of that bar is the FILL's at once.
+**A slice's run begins in the FILL** (`schedule`'s `fill`): FEEL and SWING find the hit a run begins with
+by looking back over the bars of the cell, and the bar before the FILL's place (the seventh) is not the
+bar played before it. Claude's pick, 2026-11-25, open to the owner: the FILL is a cell of its own there,
+as a cell's first bar never looks back to its last (`testSliceRuns`).
+
+**The Session's calls for the screens** (all in `session.hpp`, "the FILL"):
+- `makeFill(track, scene)`: never made, **made as a copy of the bar it plays instead of** (the cell's own
+  bar in the scene's last bar, with that bar's 16 steps of automation; a note or chord running over the bar
+  line held to the FILL's end) and on (`Made`); made and off, on as it was kept (`On`); on: `AlreadyOn`.
+- `fillOff(track, scene)`: off, its bar kept (`Off`); `AlreadyOff`; none made: `NoFill`.
+- `emptyFill(track, scene)`: its hits or notes and its automation emptied, **on stays on: a drop**
+  (`Emptied`); nothing in it: `AlreadyEmpty`.
+- `goToFill(track, scene)`: `project.track`, `scene` and `bar = kFillSlot`; false where none is made.
+- `...Here()` for the cell the grids show, saying what was done (`fillWords`: FILL MADE, FILL ON,
+  FILL OFF, FILL EMPTIED, THE FILL IS ON / OFF / EMPTY, NO FILL HERE, NO FILL ON 8 BARS, NO TRACK HERE;
+  each fits the App's box at XL, `fillapp_test` `testTheWords`).
+- `cellBarWords(track, scene, bar)`: **what the top bar reads**: "BAR 2 OF 4", "FILL" (on), "FILL OFF".
+- `Project::cellBarPlaying(track)`: the bar of the cell playing now (`kFillSlot` while the FILL plays;
+  -1 stopped), for the playhead and FOLLOW.
+- Each change is ONE step of undo (`beginOwnUndoStep`); one that changes nothing is none.
+
+**What the next batch (the screens) must still do** (the report's fixes table): the grids' own
+`bar >= bars` guards push the view off the FILL (`pattern_screen.cpp` `project_.bar >= trk().bars`,
+`note_screen.cpp` `project_.bar >= cellBars()`): use `barThere`. The playhead (`project_.playBar % bars ==
+project_.bar` in `pattern_screen.cpp`, `pattern_slices.cpp`, `note_screen.cpp`) and FOLLOW
+(`follow_.step(..., project_.playBar % bars, ...)`) want `cellBarPlaying`. The roll catches Y first
+(`note_screen.cpp`, before its L1 block); Y's let go rolls dice or steps chance on the drum grid (swallow it
+after L1 + Y). The top bar: `cellBarWords`. The roll's glide lines (`Project::glideLines`) do not draw the
+FILL bar's (it is not one of the cell's bars in order). The Session's own guards already use `barThere`
+(`setCellBars`, `restorePatterns`, `nextScene`), so undo, NEXT SCENE and a length change keep a view on it.
+
+**What carries it** (each with a test in `tests/fillapp_test.cpp`):
+- copy a bar onto the FILL (`pasteBar` takes `kFillSlot` once made: a note held to its own end, as
+  `longestFrom`) and from it; copy a scene (`SceneClip::Track::fill`; a scene the same but for the flag is
+  not "the same"); SONG's copy of a cell (`CellCopy::fill`); NEXT SCENE (`moveScenesHere` carries it; its
+  undo and redo); undo (the song's text has it, `restorePatterns` compares and copies `fill` with `bars`).
+- **Emptying takes it**: a scene (`clearScene`: and `SetCellFill 0`), a cell on SONG (`clearCell`), each
+  counting a made FILL as something to empty.
+- **WRITE and a keyboard's recording go into the FILL while it plays** (`automated`, `recordAutomation`,
+  the keyboard's bar: `cellBarPlaying`). Claude's pick, 2026-11-25, open to the owner: what is recorded
+  goes where what is heard comes from (`fillapp_test` `testPlaying`, `midi_test` `testRecordingIntoTheFill`).
+- **MIDI export plays it on the last time round** (`gatherMidiScene` takes the round; a scene is gathered
+  twice where a cell has one on). `testMidi`: a song with FILLs is the same file, byte for byte, as the
+  same song built with each FILL's bar as a scene of its own.
+- **An audio bounce plays it**: the bounce's engine is sent the song as any (`trackImage` carries the flag).
+  `testBounce` reads the WAV.
+- **The song file**: `fill 1` (on) or `fill 0` (made, off) after the scene's `bars` line, its bar the
+  `bar 8` lines a hidden bar is written with. Never made: no line, so **an old song is written and read as
+  it was, to the byte** (`testSongFile`; `effects_test --print` the same before and after). A `fill` on a
+  cell of eight bars is dropped, whichever line comes first; a number not known reads as made, off.
+  A scene with nothing but a made FILL is still written (its `scene` line and the `fill` line).
+
+**Claude's picks, 2026-11-25, open to the owner** (beyond the two above):
+- A FILL is made as a copy of **the bar it plays instead of**, not always bar 1 (the report's example was
+  a one-bar cell, where they are the same): it starts as what would have played.
+- **A FILL made and turned off also becomes bar 8** when the cell is made eight bars (kept as it is, empty
+  or not), as one that is on does.
+- `emptyFill` **leaves it on**: an emptied FILL is a drop. Turning it off is what takes it out of play.
+- Making a FILL **writes over what the eighth bar hid** (a cell made shorter from eight keeps its bar 8):
+  undo brings it back. Making the FILL from it instead would make an unseen bar the FILL.
+
+**Costs** (`measured.md`): a step works out the rule twice (now and the bar after) and a compare or two a
+track, eight times a second at 120 BPM, nothing per sample. The step clock's song before / after / every cell
+a FILL: 0.193 to 0.207% / 0.202 to 0.210% / 0.202 to 0.211% of a desk core, within the runs' spread. Not run
+on the handheld. **Nothing new moves by itself on the screen**: `playPass` changes on a step, which the
+redraw already watches (`App::readouts`' `playStep`).
+
+**Tests and mutants**: `fill_test` (13 parts: the rule; the FILL in the last bar of the last round and
+never before, in a song and a looped scene, longer and cut-short scenes, 3/4, cell lengths, notes,
+automation, early hits, asked again, images and moves, two scenes, slice runs) and `fillapp_test` (14
+parts), `midi_test` `testRecordingIntoTheFill`. **78 mutants, 76 killed** (four only after the tests were
+made to reach them: the engine told when a FILL comes on again, when a cell made eight bars long fills no
+bar in, when a scene is emptied; a scene with nothing but its flag emptied). **Two survive, both kept**:
+`moveScenesHere`'s `t.fill[from] = t.fill[from + 1]` (the carry before it has already copied that value; it
+stands beside the same line for `bars`), and `patternsSameAsText`'s copy of `fill` for a track of another
+kind (only `patternsAre` after a NEXT SCENE reaches it, where the two are the same). `fillTimeAt`'s
+`validScene` check is never false (it is there for GCC's array-bounds warning) and was not mutated.

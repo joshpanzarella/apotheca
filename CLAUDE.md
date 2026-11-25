@@ -112,6 +112,8 @@ file gets only a new hard rule.**
   old path. (`engine.md`)
 - **Nothing on the app thread holds an `Effect` in a slot**; the WiFi server's thread never touches the `Project`.
 - **Anything below zero is not a track** (-1 master, -2 and -3 the buses): test `track >= 0`. (`screens.md`)
+- **Which bar of a cell plays goes through `fill_rule.hpp`** (`Engine::slotOf`, `Project::cellBarPlaying`),
+  never `bar % bars`: a cell's FILL plays in place of its own bar. (`songs-and-undo.md`)
 - **A colour goes through the theme's ten names**; a new mark is checked on a light theme; **text is checked at XL**;
   tight rows use `fonts.fixed()`. (`screens.md`)
 - **The device writes SEL, never SELECT; no maker's or model's name where a player reads; never erase, remove or rub out** (`ctest -R words`).

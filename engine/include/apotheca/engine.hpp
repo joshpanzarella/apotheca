@@ -52,6 +52,7 @@
 #include "apotheca/feel_rule.hpp"
 #include "apotheca/mod_rule.hpp"
 #include "apotheca/glide_rule.hpp"
+#include "apotheca/fill_rule.hpp"
 #include "apotheca/load_meter.hpp"
 #include "apotheca/instrument.hpp"
 #include "apotheca/phazed.hpp"
@@ -119,6 +120,7 @@ constexpr int kMaxBars = 8;       // the longest a cell (one track in one scene)
 constexpr int kPatternSlots = kMaxScenes * kMaxBars; // a bar of a scene is slot scene * kMaxBars + bar
 constexpr int kMaxNotes = 64;     // notes in one scene of one synth track
 static_assert(kGlideNotes == kMaxNotes && kGlideBars == kMaxBars, "glide_rule.hpp: a cell is as big there as here");
+static_assert(kFillBars == kMaxBars, "fill_rule.hpp: a cell is as big there as here (its FILL is kept in its last bar's place)");
 constexpr int kScopeSize = 1024;  // samples the scope keeps
 constexpr double kNoNote = 1e30;
 
@@ -263,10 +265,13 @@ struct Command {
                         //   0: the lane plays as it always did.
         GiveScene,      // internal: sent by send() before the first command that writes into a scene with
                         //   nothing in it (scenes-plan.md): track, scene, pointer = its store, made here
-        SetClick        // the METRONOME (easywins batch 2): a = 1 on, 0 off. On, every beat the song plays (steps 1,
+        SetClick,       // the METRONOME (easywins batch 2): a = 1 on, 0 off. On, every beat the song plays (steps 1,
                         //   5, 9, 13 of a bar; step 1 higher) begins a short click on its first sample, added after
                         //   Catch and before the volume. Off and no click sounding: the output is as it always was,
                         //   to the bit. A bounce's engine is never told it. (Play's `d` is the COUNT IN.)
+        SetCellFill     // a cell's FILL (fill_rule.hpp; appended after SetClick): track, scene, a = 1 on, 0 off. On,
+                        //   the cell's eighth bar (kFillSlot) plays in place of its own in the scene's last bar on
+                        //   its last time round. A cell of kMaxBars bars plays none. Taken on the step it lands in.
     };
     Type type = Trigger;
     int track = 0;
@@ -318,6 +323,7 @@ struct SceneImage {
     float start[kMaxBars][kDrumLanes][kSteps] = {};
     StepFx fx[kMaxBars][kDrumLanes][kSteps];
     int bars = 1; // how long the track's cell is in it
+    bool fill = false; // ...and whether its FILL is on (fill_rule.hpp: its eighth bar, in the scene's last bar, last time round)
     ImageNote notes[kMaxBars][kMaxNotes];
     float automation[kAutoLanes * kAutoSteps]; // [lane][bar * 16 + step]
     SceneImage() {
@@ -357,6 +363,7 @@ struct TrackImage {
         float& operator[](int i) const { return image->scene(i / (kAutoLanes * kAutoSteps)).automation[i % (kAutoLanes * kAutoSteps)]; }
     } automation{this};
     int bars[kMaxScenes]; // how long the track's cell is in each scene
+    bool fill[kMaxScenes] = {}; // ...and whether its FILL is on there (SetCellFill)
     float laneLevel[kDrumLanes];
     float lanePart[kDrumLanes] = {}; // how much of its sound each hit on a lane plays (0: all); see Command::SetLanePart
     TrackImage() {
@@ -501,6 +508,9 @@ public:
     bool clickOn() const { return clickOn_; } // what SetClick last said (for the tests: the audio thread's own)
     bool songStopsAtEnd() const { return songStop_; } // what SetSongEnd last said (for the tests: the audio thread's own)
     int playRepeat() const { return playRepeat_.load(std::memory_order_relaxed); } // 0-based pass through the scene
+    // A scene played alone: which time round of its REPEATS it is on (0-based; round and round), for its FILL
+    // (fill_rule.hpp). playRepeat stays 0 there, as it always did. In a song: 0.
+    int playPass() const { return playPass_.load(std::memory_order_relaxed); }
     int playBar() const { return playBar_.load(std::memory_order_relaxed); }       // 0-based bar of the scene
 
     // The scope: the last samples one track put out, after its effects.
@@ -616,6 +626,7 @@ private:
         Note notes[kMaxBars][kMaxNotes];
         float automation[kAutoLanes * kAutoSteps]; // [lane][step of the cell]
         std::uint8_t bars = 1;                     // the cell's length
+        std::uint8_t fill = 0;                     // its FILL is on (SetCellFill): drums[kFillSlot], notes[kFillSlot]
         SceneStore() {
             for (DrumScene& bar : drums)
                 for (auto& lane : bar.chance)
@@ -655,7 +666,8 @@ private:
     void moveGiven(int from, int by, const std::unique_ptr<SceneImage>* scenes);
     // One scene's patterns read in, as the engine keeps them (from a TrackImage, or a SceneImage).
     static void sceneIn(SceneStore& to, const float (*level)[kDrumLanes][kSteps], const float (*nudge)[kDrumLanes][kSteps], const float (*chance)[kDrumLanes][kSteps],
-                        const float (*start)[kDrumLanes][kSteps], const StepFx (*fx)[kDrumLanes][kSteps], const TrackImage::Note (*notes)[kMaxNotes], int bars, const float* automation);
+                        const float (*start)[kDrumLanes][kSteps], const StepFx (*fx)[kDrumLanes][kSteps], const TrackImage::Note (*notes)[kMaxNotes], int bars, bool fill,
+                        const float* automation);
     // A chord whose notes do not all begin on its own moment (strummed, an arpeggio, HUMAN TIME)
     // is still ONE moment to a glide: what follows slides from its keys as written (which of
     // them, the track's GLIDE FROM says), as the roll draws.
@@ -843,10 +855,18 @@ private:
         float goingGain = 1.f;
         bool hasInstrument() const { return hasDrums || synth; }
     };
-    struct Position { int scene, repeat, bar; };
+    // Where the song is: the scene, its time round (repeat: in a song; pass: a scene played alone, round and
+    // round, as loopPass_), its bar.
+    struct Position { int scene, repeat, bar, pass; };
     int sceneBars(int scene) const;                 // the longest cell in it
     int sceneSteps(int scene) const;                // how many steps it lasts
-    int slotOf(const Track& track, int scene, int bar) const { return scene * kMaxBars + bar % track.bars[scene]; }
+    // Is a FILL due where `at` is: the scene's last bar, its last time round (fill_rule.hpp)?
+    bool fillTimeAt(const Position& at) const;
+    // The pattern slot a track plays at bar `bar` of `scene`: its own bar, or its FILL at the FILL's time.
+    int slotOf(const Track& track, int scene, int bar, bool atFillTime) const {
+        return scene * kMaxBars + cellBarOf(track.bars[scene], track.scenes[scene]->fill != 0, bar, atFillTime);
+    }
+    static bool fillSlot(const Track& track, int slot) { return slot % kMaxBars >= track.bars[slot / kMaxBars]; } // a slot slotOf gave is the FILL
     void fireNoteOffs();
     void firePendingNotes();
     // at: when it begins, in steps since Play. strikeAt: when this very strike is, for its roll
@@ -904,7 +924,9 @@ private:
     // `bar`: the bar of the cell the hit is in; `stepAt`: its step's number, counted from Play (both for FEEL's
     // rolls); `ahead`: asked a step ahead (a hit whose moment has gone by is then not played).
     // False: asked ahead, and not taken (its moment had gone by).
-    bool schedule(Track& track, int lane, const DrumScene& scene, int step, double delaySamples, int bar, long stepAt, bool ahead);
+    // `fill`: the hit is in the cell's FILL (its eighth bar, played in place of its own): a run of slices begins
+    // in it, as in a cell's first bar (the bar before it in its place, the seventh, is not the one played before).
+    bool schedule(Track& track, int lane, const DrumScene& scene, int step, double delaySamples, int bar, long stepAt, bool ahead, bool fill = false);
     void firePending();
     void clearPending();
     void letGoOfNotes(bool stopping = false); // stopping: Stop (each synth's stopNotes), else Play and panic (allNotesOff)
@@ -1003,7 +1025,7 @@ private:
     bool asking_ = false;   // inside fireStep: what is set waiting now is asked a step ahead (marked `ahead`)
     int askedFollowing_ = -1; // the step after the one playing, as fireStep worked it out (-1: none asked)
     // The early notes, hits and chords of the step after the one playing, asked from where it is.
-    void askAheadHits(Track& track, const DrumScene& then, int bar, int following, double elapsed);
+    void askAheadHits(Track& track, const DrumScene& then, int bar, int following, double elapsed, bool fill);
     void askAheadNotes(Track& track, int slotThen, int following, double now, double elapsed);
     // After a scene move: the step after the one playing is another scene's now? Then what was
     // asked from the one it was is dropped, and asked again from the one it is.
@@ -1019,6 +1041,7 @@ private:
     int nextStep_ = 0;
     int scene_ = 0;
     int repeat_ = 0;
+    int loopPass_ = 0; // a scene played alone: its time round, round and round through its REPEATS (its FILL's clock; repeat_ stays 0)
     int bar_ = 0;    // the bar of the scene now playing
     int sceneCount_ = 1;
     int repeats_[kMaxScenes];
@@ -1033,6 +1056,7 @@ private:
     unsigned movesHeard_ = 0;            // Command::ScenesMoved taken so far (the audio thread's)
     void tellScene(int scene) { playScene_.store(((movesHeard_ % kMovesHeardRound) << 8) | static_cast<unsigned>(scene + 1), std::memory_order_relaxed); }
     std::atomic<int> playRepeat_{0};
+    std::atomic<int> playPass_{0};
     std::atomic<int> playBar_{0};
     // The gate at the very end of the chain, for Panic.
     enum class Gate { Open, Closing, Shut, Opening };

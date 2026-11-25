@@ -473,6 +473,37 @@ void testRecordingDrums() {
     CHECK(early == 0.f && hit > 0.1f);
 }
 
+// Recorded while a cell's FILL plays (fill_rule.hpp): into the FILL, the bar heard, not the cell's own.
+void testRecordingIntoTheFill() {
+    Rig rig;
+    Session& session = rig.app.session();
+    session.view = View::Pattern;
+    CHECK(session.makeFill(0, 0) == Session::Fill::Made); // REPEATS 1, one bar: every bar is the last time round's
+    session.setMidiRecording(true);
+    rig.frames(1);
+    rig.tap(SDLK_RETURN);
+    rig.render(6 * kStep + kStep / 2);
+    rig.frames(1);
+    CHECK(rig.project().playStep == 6 && rig.project().cellBarPlaying(0) == kFillSlot);
+    rig.keys.on(38, 90); // the third drum
+    CHECK(rig.heard([&] { return rig.project().tracks[0].drums[0][kFillSlot].level[2][6] > 0.f; }));
+    CHECK(rig.project().tracks[0].drums[0][0].level[2][6] == 0.f);
+    // Turned off: the cell's own bar again.
+    CHECK(session.fillOff(0, 0) == Session::Fill::Off);
+    rig.render(16 * kStep);
+    rig.frames(1);
+    CHECK(rig.project().cellBarPlaying(0) == 0);
+    rig.keys.on(36, 90); // the first drum
+    const auto lane1 = [&](int bar) {
+        for (int step = 0; step < kSteps; ++step)
+            if (rig.project().tracks[0].drums[0][bar].level[0][step] > 0.f) return true;
+        return false;
+    };
+    CHECK(rig.heard([&] { return lane1(0); }));
+    CHECK(!lane1(kFillSlot));
+    rig.tap(SDLK_RETURN);
+}
+
 // Drums played into a busy cell send the one hit, not the cell. Sent whole for each hit, eight
 // pads at once on an eight-bar cell full of hits were some sixteen thousand commands: the queue
 // filled, and the song was stopped and sent again (and undo was lost with it).
@@ -796,6 +827,7 @@ int main() {
     testAKeyHeldThroughNextScene();
     testRecordingDrums();
     testRecordingDrumsIntoABusyCell();
+    testRecordingIntoTheFill();
     testMidiFileNotes();
     testMidiFileDrumsLoopMute();
     testMidiFileChords();

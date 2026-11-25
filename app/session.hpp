@@ -819,6 +819,7 @@ public:
         struct Track {
             TrackKind kind = TrackKind::None;
             int bars = 1;
+            std::uint8_t fill = kFillNone; // its FILL (kept in drums / notes [kFillSlot], with its automation)
             DrumPattern drums[kMaxBars];
             NotePattern notes[kMaxBars];
             float automation[kAutoLanes][kAutoSteps];
@@ -847,6 +848,27 @@ public:
     const BarClip& barClip() const { return clip_; }
     void setBarClip(const BarClip& clip) { clip_ = clip; } // (the App, putting it back after a panic began with L1 + R1)
     unsigned barCopies() const { return barCopies_; }      // how many copies have been made (the App: did one come in a panic?)
+    // ---- the FILL (apotheca/fill_rule.hpp; docs/dev/songs-and-undo.md) ----------------------------
+    // A cell's one extra bar, kept in its eighth bar (kFillSlot): it plays INSTEAD of the cell's own bar in
+    // the scene's last bar, on the scene's last time round (a scene played alone: the last of each
+    // REPEATS of its rounds). Not on a cell of eight bars. Each change is one step of undo; one that
+    // changes nothing is none (AlreadyOn, AlreadyOff, AlreadyEmpty). The screens (the next batch) make the gesture; these are what it calls.
+    enum class Fill { Made, On, Off, Emptied, AlreadyOn, AlreadyOff, AlreadyEmpty, NoFill, EightBars, NoTrack };
+    // On. Never made: made as a copy of the bar it plays instead of (with that bar's automation), so it
+    // starts as what would have played (Made). Made and off: on again as it was kept, an emptied one empty (On).
+    Fill makeFill(int track, int scene);
+    Fill fillOff(int track, int scene);   // off; its bar is kept (Off). None made: NoFill
+    Fill emptyFill(int track, int scene); // its hits or notes and its automation emptied: a drop. On stays on (Emptied)
+    // The grids' view onto the FILL (project.track, scene and bar = kFillSlot); false where none is made.
+    bool goToFill(int track, int scene);
+    // ...on the cell the grids show, and what was done said (say()): FILL MADE, FILL ON, FILL OFF...
+    Fill makeFillHere();
+    Fill fillOffHere();
+    Fill emptyFillHere();
+    static std::string fillWords(Fill answer);
+    // What the grids' top bar names a bar of a cell: "BAR 2 OF 4", or "FILL" (on), or "FILL OFF".
+    static std::string cellBarWords(const TrackData& track, int scene, int bar);
+
     // A line for the App to say for a moment (its box above the hints bar): what a copy or a paste did.
     void say(const char* text);
     unsigned saidCount() const { return saidCount_; }

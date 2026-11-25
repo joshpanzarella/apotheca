@@ -1040,7 +1040,7 @@ void Session::hearMidi() {
             NoteEvent& note = track.notes[rec.scene][rec.bar].notes[rec.slot];
             if (note.velocity > 0.f && note.pitch == event.note) {
                 const int bars = track.bars[rec.scene];
-                const int all = bars * kSteps, now = scene == rec.scene && step >= 0 ? (project.playBar % bars) * kSteps + step : rec.startedAt;
+                const int all = bars * kSteps, now = scene == rec.scene && step >= 0 ? project.cellBarPlaying(rec.track) * kSteps + step : rec.startedAt;
                 int held = ((now - rec.startedAt) % all + all) % all;
                 if (held < 1) held = 1;
                 if (held > kSteps - note.step) held = kSteps - note.step;
@@ -1051,7 +1051,7 @@ void Session::hearMidi() {
         }
         if (event.kind != MidiEvent::NoteOn || !midiRecord_ || !project.playing || scene < 0 || step < 0) continue;
         TrackData& track = project.current();
-        const int bar = project.playBar % track.bars[scene];
+        const int bar = project.cellBarPlaying(project.track); // the bar playing: the FILL's, where it plays
         if (kind == TrackKind::Drums) {
             DrumPattern& pattern = track.drums[scene][bar];
             const int lane = midiDrumLane(event.note);

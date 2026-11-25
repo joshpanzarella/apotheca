@@ -305,6 +305,12 @@ struct AutoLanes { // automation: [lane][bar * 16 + step], kAutoNone where nothi
     }
 };
 
+// A cell's FILL (apotheca/fill_rule.hpp, TrackFields::fill): never made; made and ON (it plays in the
+// scene's last bar, its last time round); made and OFF (its bar is kept, and plays nothing). "Made" is
+// what keeps a FILL emptied on purpose (a drop) empty: it is not made again as a copy. In the song
+// file a `fill 1` (on) or `fill 0` (made, off) line after the scene's `bars`; never made: no line.
+constexpr std::uint8_t kFillNone = 0, kFillOn = 1, kFillOff = 2;
+
 // Everything a track holds but its patterns: one block of bytes, copied and compared so (the
 // song's text cache, makeBlank), padding and all.
 struct TrackFields {
@@ -312,6 +318,9 @@ struct TrackFields {
     // A cell (this track in one scene) is 1 to 8 bars long. Bars past its
     // length are kept but not played.
     int bars[kMaxScenes];
+    // ...and its FILL (kFillNone, kFillOn, kFillOff), kept in its eighth bar (kFillSlot). A cell of eight
+    // bars has none: that bar is its own (setCellBars turns a FILL into it).
+    std::uint8_t fill[kMaxScenes] = {};
     EffectData effects[kTrackSlots]; // on this track, one after the other
     float send[kBuses] = {};         // how much of it goes to the ECHO and the SPACE bus, 0..1
     int mixDb = 0;                   // its level on the mixer, in dB from its usual (kMixLeastDb..kMixMostDb)
@@ -384,6 +393,11 @@ struct TrackData : TrackFields {
     bool sameFields(const TrackFields& other) const { return std::memcmp(&fields(), &other, sizeof(TrackFields)) == 0; }
     // Does scene `s` have a piece of any kind (else it has nothing, whatever its length says)?
     bool holdsPieces(int s) const { return drums.has(s) || notes.has(s) || automation.has(s); }
+    // The FILL of the cell in scene `s`: on (it plays), made (on or off: its bar is the FILL's), and
+    // whether the player can stand on bar `bar` of the cell (one of its own, or its FILL once made).
+    bool fillOn(int s) const { return fill[s] == kFillOn && bars[s] < kMaxBars; }
+    bool fillMade(int s) const { return fill[s] != kFillNone && bars[s] < kMaxBars; }
+    bool barThere(int s, int bar) const { return (bar >= 0 && bar < bars[s]) || (bar == kFillSlot && fillMade(s)); }
     int piecesHeld() const { return drums.held() + notes.held() + automation.held(); }
     // Are every scene's patterns here those of `other`, byte for byte (no piece is the blank piece)?
     bool samePatternsAs(const TrackData& other) const {
@@ -392,11 +406,16 @@ struct TrackData : TrackFields {
         return true;
     }
 
+    // Does the cell play nothing: its own bars, and its FILL where it is on?
     bool sceneEmpty(int scene) const {
         if (!drums.has(scene) && !notes.has(scene)) return true;
         for (int bar = 0; bar < bars[scene]; ++bar) {
             if (kind == TrackKind::Drums && !drums[scene][bar].empty()) return false;
             if (isSynth(kind) && !notes[scene][bar].empty()) return false;
+        }
+        if (fillOn(scene)) {
+            if (kind == TrackKind::Drums && !drums[scene][kFillSlot].empty()) return false;
+            if (isSynth(kind) && !notes[scene][kFillSlot].empty()) return false;
         }
         return true;
     }
@@ -454,6 +473,7 @@ struct ProjectHead {
     // Where the engine is, copied in once a frame for the screens to draw.
     // Not part of the song.
     int playScene = -1, playStep = -1, playRepeat = 0, playBar = 0;
+    int playPass = 0;      // a scene played alone: its time round through its REPEATS, for its FILL (Engine::playPass)
     bool playLoop = false; // one scene going round, not the song
     bool writing = false;  // automation WRITE is on: a macro or effect setting moved while playing is recorded
     bool silenced = false; // a panic has shut the output and it has not opened again yet
@@ -532,6 +552,15 @@ struct Project : ProjectHead {
             }
         }
         apotheca::glideLines(all, bars, sceneSteps(s), lines, t.glideFrom, trackIndex);
+    }
+    // Which bar of track `t`'s cell is playing now (its FILL's kFillSlot in the scene's last bar on its
+    // last time round: fill_rule.hpp), as of the frame's copy of where the engine is; -1: not playing.
+    // What the playhead, WRITE and a keyboard's recording go by.
+    int cellBarPlaying(int t) const {
+        if (playScene < 0 || playScene >= kMaxScenes || t < 0 || t >= kNumTracks) return -1;
+        const TrackData& track = tracks[t];
+        const int s = playScene, bars = track.bars[s] < 1 ? 1 : track.bars[s];
+        return cellBarOf(bars, track.fillOn(s), playBar, fillTime(playBar, meterOf(s), sceneSteps(s), playLoop ? playPass : playRepeat, repeats[s]));
     }
     TrackData& current() { return tracks[track]; }
     const TrackData& current() const { return tracks[track]; }

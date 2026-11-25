@@ -183,6 +183,7 @@ private:
         bool has = false;
         TrackKind kind = TrackKind::None;
         int bars = 1;
+        std::uint8_t fill = kFillNone; // its FILL (fill_rule.hpp): its bar is drums / notes [kFillSlot]
         DrumPattern drums[kMaxBars];
         NotePattern notes[kMaxBars];
         float automation[kAutoLanes][kAutoSteps];

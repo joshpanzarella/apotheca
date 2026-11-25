@@ -103,6 +103,11 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   The open song's own file is left to the autosave. It holds
   `Transfer::songFiles()`, which the server holds while it writes or deletes
   a song: anything new that writes songs off the app thread takes it too.
+- **MIDI export and an audio bounce play a cell's FILL on the scene's last time round** (2026-11-25;
+  songs-and-undo.md "The FILL"). MIDI export gathers a scene once and repeats it; where a cell has a FILL
+  on, it gathers the last time round again with it (`gatherMidiScene`'s `round`). An audio bounce plays the
+  song through an engine of its own, which is sent the FILL with the rest (`fillapp_test` `testMidi`,
+  `testBounce`).
 - **A bounce runs until its tail ends** (owner, 2026-11-12; `BounceTail` in
   `session.hpp`, no engine and no file in it, tested with made-up tails).
   Sound is `kBounceFloor` (one step of a 16-bit file) or more; it is over
