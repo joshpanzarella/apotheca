@@ -1323,6 +1323,7 @@ int apotheca::runBench() {
         if (kind == EffectKind::Eq) effect("EQ, MID FREQ TURNING", kind, 2, 0.f, true);
         if (kind == EffectKind::Fold) effect("FOLD, DRIVE TURNING", kind, 0, 0.f, true);
         if (kind == EffectKind::Fuzz) effect("FUZZ, TONE TURNING", kind, 1, 0.f, true);
+        if (kind == EffectKind::Fuzz) effect("FUZZ, GATE TURNING", kind, 2, 0.f, true); // its area taken twice a point
         if (kind == EffectKind::Ring) effect("RING, SQUARE", kind, 1, 0.9f);
         if (kind == EffectKind::Ring) effect("RING, FREQ TURNING", kind, 0, 0.f, true);
         if (kind == EffectKind::Wear) effect("WEAR, DIRT 100%", kind, 1, 1.f);

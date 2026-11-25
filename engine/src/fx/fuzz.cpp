@@ -28,7 +28,11 @@
 // but a square, the 2nd 46 dB down at 70%), and the wave is brought back on
 // centre after it. Worked out at twice
 // the sample rate (bend.hpp, halfband.hpp), the plain sound made as late to
-// match. The loudness is held level as FUZZ moves (a sine at 0.18,
+// match, and each sample there bent by the clip's AVERAGE between where the
+// sound is and where it was a sample before (its area, fuzzArea, 2026-11-25):
+// the flat top's corners make far fewer overtones past the top of the rate,
+// so far fewer fold back down as notes never played (BendSide in bend.hpp has
+// the figures). The loudness is held level as FUZZ moves (a sine at 0.18,
 // kFuzzReference, comes out as loud as it went in, GATE off), so FUZZ
 // changes the character, not the volume; GATE only takes away. A fuzz brings
 // a quiet note and a loud one to about the same level, so a loud one comes
@@ -75,6 +79,34 @@ inline float fuzz(float x, float gate) {
     }
     return -kLow * soft(a * (1.f / kLow));
 }
+// The pedal's AREA from 0 to x (its antiderivative: what BendSide averages the curve with), in double. FUZZ's own:
+// nothing else bends by this curve. The upper side: x^2 / 2 to 0.75, the bend's x^2 / 2 - (x - 0.75)^3 / 3 to 1.25,
+// then a straight line. The lower side: soft(r) = r / 9 + (8/3) r / (r^2 + 3), whose area is r^2 / 18 +
+// (4/3) ln(1 + r^2 / 3) to 3 (then a straight line), times kLow squared (r is a / kLow, and the curve kLow
+// soft(r)). The lower side's area is above 0 too: the curve is below 0 there, and the area is taken from 0 back to x.
+constexpr double kUpperFlatArea = 0.5 * 1.25 * 1.25 - 0.5 * 0.5 * 0.5 / 3.0; // the upper side's area to its flat top
+constexpr double kLowD = kLow;                                                // (the float's own value, in double)
+constexpr double kSoftFlatArea = 0.5 + (4.0 / 3.0) * 1.3862943611198906;     // soft's area to 3 (ln 4), where it is flat
+double fuzzArea(double x, float gate) {
+    const double a = std::fabs(x) - gate;
+    if (!(a > 0.0)) return 0.0;
+    if (x > 0.0) {
+        if (a <= 0.75) return 0.5 * a * a;
+        if (a < 1.25) {
+            const double b = a - 0.75;
+            return 0.5 * a * a - b * b * b * (1.0 / 3.0);
+        }
+        return kUpperFlatArea + (a - 1.25);
+    }
+    const double r = a / kLowD, r2 = r * r;
+    return kLowD * kLowD * (r < 3.0 ? r2 * (1.0 / 18.0) + (4.0 / 3.0) * std::log(1.0 + r2 * (1.0 / 3.0)) : kSoftFlatArea + (r - 3.0));
+}
+// The pedal as BendSide averages it (bend.hpp): pushed, past the gate's step, the lopsided clip, made level.
+struct Pedal {
+    float push, level, shape; // shape: the gate, which is all that changes the curve itself
+    float at(float u) const { return fuzz(u, shape); }
+    double area(double u) const { return fuzzArea(u, shape); }
+};
 float pushOf(float v) { return std::pow(10.f, (6.f + 42.f * clamp01(v)) / 20.f); }
 float gateOf(float v) { return kMostGate * clamp01(v); }
 
@@ -115,10 +147,10 @@ public:
             const float mix = mix_.next(), late = late_.next();
             shape_.next();
             const float* const n = shape_.now;
-            const float push = n[kPush], gate = n[kGate], level = n[kLevel], tilt = n[kTilt], makeUp = n[kMakeUp];
-            const auto bend = [push, gate, level](float v) { return level * fuzz(v * push, gate); };
+            const Pedal pedal = {n[kPush], n[kLevel], n[kGate]};
+            const float tilt = n[kTilt], makeUp = n[kMakeUp];
             for (int c = 0; c < 2; ++c) {
-                const float bent = side_[c].twice(x[c], bend, keep_);
+                const float bent = side_[c].twice(x[c], pedal, keep_);
                 low_[c] += dark_ * (bent - low_[c]);
                 high_[c] += bright_ * (bent - high_[c]);
                 const float wet = makeUp * (low_[c] + tilt * ((bent - high_[c]) - low_[c]));
@@ -249,6 +281,7 @@ const EffectInfo kFuzzInfo = {
 };
 
 float fuzzCurve(float x, float gate) { return fuzz(x, gate); }
+double fuzzCurveArea(double x, float gate) { return fuzzArea(x, gate); }
 
 } // namespace fx
 } // namespace apotheca

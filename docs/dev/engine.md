@@ -575,6 +575,76 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     (the hold at 0, at half, doubled, without the look ahead; the window at 0, 10 and 20 ms; `clear()` without the hold,
     `reset()` and the sleep without the window; the queue's window one shorter, its back not popped, its front not
     returned); the sleep one lived until the faint-wake check was written.
+- **FUZZ's average, 2026-11-25** (`docs/plans/effect-quality.md`; the owner approved the change to old songs and
+  presets that use it). Each sample at twice the rate is bent by the clip's AVERAGE between where the sound is and
+  where it was the sample before, (F(u) - F(was)) / (u - was), F the clip's area from 0: first-order antiderivative
+  anti-aliasing (ADAA). The area is FUZZ's own (`fuzzArea` beside `fuzz` in `fx/fuzz.cpp`; nothing else bends by that
+  curve), and so is the side that averages (`BendSide` in `fx/bend.hpp`: only FUZZ used it). FOLD's `BendSide4`,
+  SATURATE's halfbands and `bendLevel` are not touched; FUZZ's level is still evened out on the clip itself
+  (`bendLevel`): the reference sine reads as it did to 0.01 dB, a held 220 Hz note at half scale 0.01 dB quieter; what
+  is high moves (8 kHz through TONE 0.3 dB down, noise 0.15 across 0.4 dB down: the top's cosine).
+  - **What it does** (`testFuzz`: a saw about 0.3 at its peaks with its harmonics under 20 kHz, as the scratch model
+    had (Claude's pick, 2026-11-25, of what to pin: the full saw is pinned beside it), at FUZZ's usual settings;
+    everything that is not a harmonic, under 19 kHz, against the harmonics): 887 Hz -27.8 dB before, -46.6 after
+    (under 12 kHz -30.1, -52.7; the scratch model, before TONE: -30.6 and -49.7, four times the rate -39.3); 223 Hz
+    -37.4 / -56.1; 443 Hz -32.5 / -51.3; 1777 Hz -25.8 / -44.7; 887 Hz at FUZZ 35% -32.5 / -50.1, at 100% -25.6 /
+    -44.1. **A saw with every harmonic to 24 kHz gains less: -26.1 / -33.5.** Its harmonics over 19.2 kHz come out of
+    the way up (`halfband.hpp`) as images between 24 and 28.8 kHz, only partly taken out there, and the clip mixes
+    them with the note's own harmonics down between them (the loudest, at 10746 Hz, is 48 kHz less 42 x 887). No
+    average of the clip reaches those; only less of the input over 19.2 kHz would (a steeper way up, or a low-pass
+    before it). Not built: it is the owner's question, not this batch's.
+  - **In double, divided in float.** Far out the area is as big as u (up to about 300 after the push), so in float the
+    difference of two areas is lost to rounding; in double it is good to about 1e-9 over `kBendNear` (1e-4), under
+    which the clip at the middle of the two is used instead (the two agree to about 1e-9 there). The difference is
+    then divided in float (good to 1e-7; the quicker division). **A GATE that glides changes the curve**, so the area
+    to the last point is taken again on the new curve (`shape`): two areas of two curves over a small distance are
+    anything.
+  - **The plain sound is kept in step** (Claude's pick, 2026-11-25, open to the owner: the all-pass, not the plain
+    sound averaged as the wet one is). The average is half a sample late at twice the rate (a quarter at the plain
+    rate). The plain sound goes up, through an all-pass half a sample late (Thiran's, 1/3) and down: in step within
+    0.9 degrees at 12 kHz and 4.5 at 20 kHz, and as loud at every pitch. `testFuzz`'s MIX 50% check at 12 kHz reads
+    0.02 dB from "in step" (0.01 before), and is now held to 0.06 (it was 0.3): the plain sound as it was, a quarter
+    of a sample early, reads 0.16 out; the plain sound averaged as the wet one is reads 0.26 out, in step but 0.69 dB
+    quieter at 12 kHz (2 dB at 20 kHz), which the plain half of a MIX should not be. **The wet sound is that much
+    softer at the very top**: the price of the average (0.7 dB at 12 kHz, 2 dB at 20 kHz).
+  - **Small numbers** (Claude's pick, 2026-11-25, open to the owner: every sample, for about 0.07% of a desk core,
+    over settling only the stages that were seen to need it). The side's stages are settled every SAMPLE now, as
+    `BendSide4`'s are; on the tick, a stage whose input stopped at once fell from a difference far under 1e-20 to a
+    number too small for a float to hold (the plain sound's way down; holdsTheRules' TooSmall saw it). And the middle
+    of two points under kNothing is nothing before the clip's lower side squares it (far apart the areas are in double
+    and need no such care; a flush of what comes in as well was tried and is not needed: that mutant lives). **At GATE
+    0 the clip did that before the average**: a click, a click in sound too small to hold, and noise then silence each
+    made a number too small for a float, at FUZZ 0, 70% and 100%, MIX 50% and 100% (all 18 cases, `testFuzz`;
+    holdsTheRules turns GATE to 50%, where the step hid it). Now none does.
+  - **What moved**: `effects_test --print` the same before and after (the 40 pinned renders and the maths line).
+    `--measure`: only FUZZ's lines moved (testFuzz's own; the sweep, swap and "bounded" lines with FUZZ in them; the
+    rest differ only in clock timings). The sweep table's FUZZ row: FUZZ turned 21.3 to 18.8, TONE 14.7 to 14.4, GATE
+    11.1 to 10.8, MIX 10.1 to 9.7, held still 10.3 to 9.9 (the average rounds the clip's corners). **Presets that
+    change** (FUZZ in slot 1): ACID's Fuzz Line, Dub Smash and Fuzz Square; FM-6's Wasp; JAX-EP's Sync Scream and Fuzz
+    Lead; PHAZED's Fuzz Lead; PHYSIC's Broken Kalimba. No kit or built-in song holds a FUZZ.
+  - **Cost** (`bench`'s `effect()` copied into a scratch program linked against the engine before and after, six
+    rounds in turns on a quiet desk, the best of each; `bench` has a FUZZ, GATE TURNING row now): FUZZ at its usual
+    settings 0.186% of a desk core before, 0.425% after; TONE turning 0.236 / 0.475; GATE turning (the area taken
+    twice a point) 0.277 / 0.504; quiet sound (noise at 0.02, so the lower side's logarithm at every other point)
+    0.270 / 0.547; FUZZ 0 0.256 / 0.543. **+0.23 to +0.29% of a desk core: at 9 to 16 times for an effect
+    (measured.md), +2 to +5% of a handheld core per FUZZ, about twice the research's +0.8 to 2%.** Where it goes (a
+    scratch variant of each, the same desk): settling every sample about 0.07, the plain sound's own way up and down
+    about 0.07, the rest the areas and the divisions (cachegrind: 90 M instructions to 171 M for 3000 blocks, the
+    mispredicted branches the same, 0.65 M: the clip branched as much). Tried and not kept: a settle without branches
+    (more instructions on the desk), `__restrict` on the block (the same instructions: the four halfbands do not fit
+    in registers whatever the compiler is told). Not tried: leaving the plain sound out at MIX 100% (half the
+    presets): it would have to start again from nothing when MIX moves, under the glide.
+  - **Tests** (`testFuzz`): the fold-back table above; the area's slope against the clip and its joins; `BendSide` by
+    itself (its average far apart and near, a curve turned between two points, its plain sound's lateness and level
+    against a straight line's average at 12 kHz); MIX 50% in step to 0.06 dB; nothing too small to hold at GATE 0;
+    reset() in the middle of a note plays on as a fresh one. The new tests fail on the old FUZZ (linked in by hand):
+    the area (none), the fold-back pins, and all 18 small-number cases. 20 mutants: 18 killed (the area's four pieces
+    and its lower side's square; the curve turned and not taken again; `kBendNear` at 0.1 and at 0; the near case at
+    the end, not the middle; the last point not kept, or kept through reset(); the plain sound with no half sample, or
+    a third of one; each per-sample settle left out; the middle not flushed; the division off). One lives: halfOut
+    left out of loudest() (lateDown follows it, as the dcOut note says), kept so the side is right by itself. One
+    lived and its line was taken out: a flush of what comes into the clip as well as of the middle (the middle's alone
+    holds every small-number case).
 - **A per-sample loop works on locals** (WEAR's `stretch`: up to the tick's
   end, everything the samples change copied in, worked on, copied back).
   Written straight on the effect's own numbers WEAR cost 0.40% of a core; the

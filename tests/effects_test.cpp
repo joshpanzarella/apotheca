@@ -60,6 +60,7 @@
 #include "../engine/src/fx/halfband.hpp" // the 2x stage, measured by itself
 #include "../engine/src/fx/unit.hpp"     // makeSaturatePlain: SATURATE without it
 #include "../engine/src/fx/echo.hpp"     // DELAY's newer types: TAPE's eight TIMEs
+#include "../engine/src/fx/bend.hpp"     // FUZZ's side, its average by itself
 #include "measure.hpp"                   // the shared measuring tools: level, spectrum, pitch, checksum
 
 using namespace apotheca;
@@ -780,7 +781,8 @@ static void testEveryEffect() {
         //   VOWEL   VOWEL 0.20    SHIFT 0.22      RESONANCE 0.13  MIX 1.0    0.10 (a 100 Hz sine is under every vowel's peaks)
         //   EQ      LOW 3.4       MID 1.0         MID FREQ 1.0  HIGH 1.0     1.0  (LOW at +12 dB is the sine four times as big)
         //   FOLD    DRIVE 7.5     SYMMETRY 2.2    TONE 1.8    MIX 1.8        1.8  (it folds the sine: more DRIVE, more folds)
-        //   FUZZ    FUZZ 21.3     TONE 14.7       GATE 11.1   MIX 10.1       10.3 (it squares the sine; TONE up is a high-pass, made up)
+        //   FUZZ    FUZZ 18.8     TONE 14.4       GATE 10.8   MIX 9.7        9.9  (it squares the sine; TONE up is a high-pass, made up.
+        //                                                 Bent plainly it was 21.3, 14.7, 11.1, 10.1 and 10.3: its average rounds the corners)
         //   RING    FREQ 31.8     WAVE 114        SPREAD 3.3  MIX 3.2        3.3  (the sine times a 4 kHz wave, a square)
         //   WEAR    WOW 1.2       DIRT 6.3        DROPS 1.2   TONE 1.8       1.2  (DIRT and TONE: the hiss on the sine, brighter at TONE 0)
         //   LIMITER GAIN 1.6      CEILING 1.4     RELEASE 1.4                1.4  (GAIN +3 dB as it comes; +20 dB squares the sine)
@@ -818,7 +820,7 @@ static void testEveryEffect() {
             {0.20, 0.22, 0.13, 1.00, 0.10},   // VOWEL
             {3.39, 1.03, 1.00, 1.00, 1.00},   // EQ
             {7.50, 2.22, 1.80, 1.79, 1.80},   // FOLD
-            {21.3, 14.7, 11.1, 10.1, 10.3},   // FUZZ
+            {18.8, 14.4, 10.8, 9.71, 9.93},   // FUZZ
             {31.8, 114.3, 3.32, 3.20, 3.32},  // RING
             {1.18, 6.32, 1.19, 1.75, 1.19},   // WEAR
             {1.61, 1.41, 1.41, 0, 1.41},      // LIMITER
@@ -9313,6 +9315,35 @@ static void testFold() {
 
 // ---- FUZZ ----
 
+// THE FOLD-BACK OF A BRIGHT NOTE through a bend: a saw at `hz` (whole hertz) with every harmonic under `top`, about
+// 0.3 at its peaks, through `kind` at `settings`, MIX as given. Everything that is not a harmonic of `hz` (more
+// than 6 bins from every one), from 20 Hz to `below`, added up, against the harmonics added up over the same
+// stretch, in dB. `loudest` gets the loudest single part of it, against the loudest harmonic.
+static double foldedOf(EffectKind kind, const float* settings, int hz, double top, double below = 19000.0, double* loudest = nullptr) {
+    const std::size_t frames = 24000 + 65536;
+    std::vector<float> saw(frames, 0.f);
+    for (int k = 1; k * hz < top; ++k) {
+        const double w = 2.0 * kPi * k * hz / 48000.0, size = 0.3 / 1.85 / k;
+        for (std::size_t i = 0; i < frames; ++i) saw[i] += static_cast<float>(size * std::sin(w * static_cast<double>(i)));
+    }
+    const std::vector<float> out = throughOne(kind, settings, saw);
+    const std::vector<double> size = spectrumOf(out.data() + 24000, 65536);
+    const double bin = 48000.0 / 65536.0;
+    double harmonic = 0.0, rest = 0.0, strongest = 0.0, most = 0.0;
+    for (std::size_t i = 0; i < size.size(); ++i) {
+        const double f = static_cast<double>(i) * bin;
+        if (f < 20.0 || f >= below) continue;
+        const double k = std::floor(f / hz + 0.5), p = size[i] * size[i];
+        if (k >= 1.0 && std::fabs(f - k * hz) <= 6.0 * bin) {
+            harmonic += p, strongest = std::fmax(strongest, p);
+        } else {
+            rest += p, most = std::fmax(most, p);
+        }
+    }
+    if (loudest) *loudest = 10.0 * std::log10(most / strongest);
+    return 10.0 * std::log10(rest / harmonic);
+}
+
 static void testFuzz() {
     const EffectKind fuzz = EffectKind::Fuzz;
     const EffectInfo& info = effectInfo(fuzz);
@@ -9331,6 +9362,87 @@ static void testFuzz() {
         CHECK(std::fabs(fx::fuzzCurve(-5.f, 0.f) + 0.6f) < 1e-6f && std::fabs(fx::fuzzCurve(-0.3f, 0.f) + 0.2795f) < 1e-4f && std::fabs(fx::fuzzCurve(-0.01f, 0.f) + 0.01f) < 1e-4f);
         CHECK(fx::fuzzCurve(0.5f, 1.f) == 0.f && fx::fuzzCurve(-0.99f, 1.f) == 0.f && fx::fuzzCurve(1.5f, 1.f) == 0.5f && fx::fuzzCurve(std::nanf(""), 0.f) == 0.f);
     }
+    // ITS AREA (2026-11-25: what the clip's average is worked from): nothing inside the gate's step, above 0 past it on
+    // either side, and its slope is the clip everywhere (the gate's step, the bend to the flat top, soft's flat end,
+    // at three gates), with no step where one piece meets the next.
+    {
+        double worstSlope = 0.0, worstJoin = 0.0;
+        for (float gate : {0.f, 0.4f, 2.f}) {
+            for (int i = -4000; i <= 4000; ++i) {
+                const double x = 0.001 * i + 0.0003, h = 1e-6;
+                const double slope = (fx::fuzzCurveArea(x + h, gate) - fx::fuzzCurveArea(x - h, gate)) / (2.0 * h);
+                worstSlope = std::fmax(worstSlope, std::fabs(slope - fx::fuzzCurve(static_cast<float>(x), gate)));
+            }
+            for (double join : {0.75 + gate, 1.25 + gate, -(gate + 3.0 * 0.6)})
+                worstJoin = std::fmax(worstJoin, std::fabs(fx::fuzzCurveArea(join + 1e-9, gate) - fx::fuzzCurveArea(join - 1e-9, gate)));
+        }
+        SAY("fuzz     its area: the slope at most %.1e from the clip, a join at most %.1e apart\n", worstSlope, worstJoin);
+        CHECK(worstSlope < 1e-5 && worstJoin < 1e-8);
+        CHECK(fx::fuzzCurveArea(0.0, 0.f) == 0.0 && fx::fuzzCurveArea(0.39, 0.4f) == 0.0 && fx::fuzzCurveArea(-0.39, 0.4f) == 0.0);
+        CHECK(fx::fuzzCurveArea(0.5, 0.f) == 0.125 && fx::fuzzCurveArea(-0.5, 0.f) > 0.1 && fx::fuzzCurveArea(-0.5, 0.f) < 0.125);
+    }
+    // THE SIDE BY ITSELF (bend.hpp's BendSide). Its average on curves whose averages are known: u squared, whose
+    // average from w to u is (u^3 - w^3) / 3 (u - w). Far apart it is that (0.01 apart the curve at the middle is
+    // 8e-6 off); nearer than kBendNear, the curve at the middle (at the end it is 3e-5 off). A curve turned between
+    // two points (u + s, s turned from 0 to 1) is averaged on the new one: on two curves it came to 1002, not 2.
+    {
+        struct Square {
+            float push = 1.f, level = 1.f, shape = 0.f;
+            float at(float u) const { return u * u; }
+            double area(double u) const { return u * u * u / 3.0; }
+        };
+        struct Moved {
+            float push = 1.f, level = 1.f, shape = 0.f;
+            float at(float u) const { return u + shape; }
+            double area(double u) const { return 0.5 * u * u + shape * u; }
+        };
+        const auto exact = [](double w, double u) { return (u * u * u - w * w * w) / (3.0 * (u - w)); };
+        fx::BendSide side;
+        side.reset();
+        const Square square;
+        const float far = 0.51f, nearer = 0.51f + 5e-5f;
+        const double middle = 0.5 * (static_cast<double>(far) + nearer);
+        CHECK(std::fabs(side.average(square, 0.5f) - 1.0 / 12.0) < 1e-6);
+        CHECK(std::fabs(side.average(square, far) - exact(0.5f, far)) < 1e-6);
+        CHECK(std::fabs(side.average(square, nearer) - middle * middle) < 1e-6);
+        fx::BendSide turned;
+        turned.reset();
+        Moved moved;
+        CHECK(std::fabs(turned.average(moved, 1.f) - 0.5) < 1e-6);
+        moved.shape = 1.f;
+        CHECK(std::fabs(turned.average(moved, 1.001f) - (1.0 + 0.5 * (1.0 + static_cast<double>(1.001f)))) < 1e-3);
+    }
+    // ...AND ITS PLAIN SOUND IN STEP: a straight line through the side, against its plain sound, a 12 kHz sine. The
+    // average of a straight line is its middle, half a sample late at twice the rate and 0.69 dB down there (a
+    // cosine); the plain sound is as late (Thiran's all-pass: 0.9 degrees apart at 12 kHz) and as loud as it came.
+    // (With no half sample its plain sound is 22.5 degrees early here; with the all-pass's number at 0.5, a third of a
+    // sample late, 7.5.)
+    {
+        struct Line {
+            float push = 1.f, level = 1.f, shape = 0.f;
+            float at(float u) const { return u; }
+            double area(double u) const { return 0.5 * u * u; }
+        };
+        fx::BendSide side;
+        side.reset();
+        const Line line;
+        const float keep = fx::dcKeep(48000.f);
+        const std::vector<float> in = sineOf(12000.0, 0.5, 9600);
+        std::vector<float> bent(in.size()), plain(in.size());
+        for (std::size_t i = 0; i < in.size(); ++i) bent[i] = side.twice(in[i], line, keep), plain[i] = side.plain(in[i]);
+        const auto at12k = [](const std::vector<float>& v, double& phase) { // 12 kHz is a quarter of the rate: whole cycles
+            double re = 0.0, im = 0.0;
+            for (std::size_t i = 4800; i < v.size(); ++i) re += v[i] * std::cos(0.5 * kPi * static_cast<double>(i)), im += v[i] * std::sin(0.5 * kPi * static_cast<double>(i));
+            phase = std::atan2(im, re) * 180.0 / kPi;
+            return dB(2.0 * std::sqrt(re * re + im * im) / 4800.0 / 0.5);
+        };
+        double bentPhase = 0.0, plainPhase = 0.0;
+        const double bentDb = at12k(bent, bentPhase), plainDb = at12k(plain, plainPhase);
+        double apart = bentPhase - plainPhase;
+        apart -= 360.0 * std::floor(apart / 360.0 + 0.5);
+        SAY("fuzz     the side, a straight line at 12 kHz: averaged %+.2f dB, the plain sound %+.3f dB, %.2f degrees apart\n", bentDb, plainDb, apart);
+        CHECK(std::fabs(bentDb + 0.69) < 0.05 && std::fabs(plainDb) < 0.02 && std::fabs(apart) < 1.5);
+    }
     // LOPSIDED, SO EVEN HARMONICS; NEARLY SQUARE. A 220 Hz sine at half scale, TONE in the middle, against the 1st:
     //   FUZZ     2nd     3rd     5th
     //   0%     -20.0   -26.7   -57.5    hardly fuzzed
@@ -9344,6 +9456,38 @@ static void testFuzz() {
         }
         const Harmonics low = harmonicsOf(*fresh(fuzz, 0.35f, 0.5f, 0.f, 1.f), 220, 0.5), h = harmonicsOf(*fresh(fuzz, 0.7f, 0.5f, 0.f, 1.f), 220, 0.5);
         CHECK(low.part[2] - low.part[1] > -35.0 && h.part[2] - h.part[1] > -50.0 && h.part[3] - h.part[1] > -14.0 && h.part[5] - h.part[1] > -20.0);
+    }
+    // THE FOLD-BACK (aliasing: overtones too high for the sample rate folding back down between the harmonics as
+    // notes never played, which do not follow a glide or vibrato). A saw, about 0.3 at its peaks, through FUZZ at
+    // its usual settings (FUZZ 70%, TONE 50%, GATE 20%): everything that is not a harmonic, under 19 kHz, against
+    // the harmonics. "Bent" is the clip itself at twice the rate (0.883 to 2026-11-25), "averaged" the clip's
+    // average between one point and the next (bend.hpp's BendSide, 2026-11-25):
+    //                                           bent    averaged
+    //   887 Hz, harmonics under 20 kHz         -27.8    -46.6     (the scratch model, before TONE: -30.6, -49.7;
+    //   223 Hz                                 -37.4    -56.1      at four times the rate it was -39.3)
+    //   443 Hz                                 -32.5    -51.3
+    //   1777 Hz                                -25.8    -44.7
+    //   887 Hz at FUZZ 35% / 100%           -32.5 / -25.6   -50.1 / -44.1
+    //   887 Hz, every harmonic to 24 kHz       -26.1    -33.5
+    // A saw with every harmonic to 24 kHz gains less: its harmonics over 19.2 kHz come out of the way up
+    // (halfband.hpp) as images between 24 and 28.8 kHz only partly taken out, and the clip mixes those with the
+    // note's own harmonics down between them (the loudest, 10746 Hz, is 48 kHz less 42 x 887). No average of the
+    // clip reaches that: only less of the input over 19.2 kHz would.
+    {
+        const float usual[4] = {0.7f, 0.5f, 0.2f, 1.f}, low[4] = {0.35f, 0.5f, 0.2f, 1.f}, most[4] = {1.f, 0.5f, 0.2f, 1.f};
+        double loudest = 0.0;
+        const double folded = foldedOf(fuzz, usual, 887, 20000.0, 19000.0, &loudest), full = foldedOf(fuzz, usual, 887, 24000.0);
+        SAY("fuzz     an 887 Hz saw (harmonics under 20 kHz) at its usual settings: the fold-back under 19 kHz %.1f dB (the loudest part %.1f), under 12 kHz %.1f dB\n", folded, loudest,
+            foldedOf(fuzz, usual, 887, 20000.0, 12000.0));
+        double each[3];
+        const int notes[3] = {223, 443, 1777};
+        for (int n = 0; n < 3; ++n) {
+            each[n] = foldedOf(fuzz, usual, notes[n], 20000.0);
+            SAY("fuzz     a %d Hz saw at its usual settings: the fold-back under 19 kHz %.1f dB\n", notes[n], each[n]);
+        }
+        const double atLow = foldedOf(fuzz, low, 887, 20000.0), atMost = foldedOf(fuzz, most, 887, 20000.0);
+        SAY("fuzz     an 887 Hz saw at FUZZ 35%%: %.1f dB, at FUZZ 100%%: %.1f dB; with every harmonic to 24 kHz, at its usual settings: %.1f dB\n", atLow, atMost, full);
+        CHECK(folded < -44.0 && each[0] < -53.0 && each[1] < -48.0 && each[2] < -42.0 && atLow < -47.0 && atMost < -41.0 && full < -31.0);
     }
     // THE LOUDNESS IS HELD: the reference sine (0.18, 220 Hz) comes out about as loud as it went in at any FUZZ
     // from 35% (GATE off, TONE in the middle: its making up is for squares A1 to A7, not this one alone).
@@ -9466,7 +9610,41 @@ static void testFuzz() {
         const double a = mixedAt12k(fuzz, half), b = mixedAt12k(fuzz, full);
         const double aligned = dB(0.5 * (1.0 + std::pow(10.0, b / 20.0))); // the two added as they are, in step
         SAY("fuzz     12 kHz at 0.05, FUZZ 0, TONE full: MIX 50%% %+.2f dB (in step: %+.2f), MIX 100%% %+.2f dB\n", a, aligned, b);
-        CHECK(std::fabs(a - aligned) < 0.3);
+        // (0.01 dB apart before the average, 0.02 since. The average is half a sample late at twice the rate: the
+        // plain sound as it was, a quarter of a sample early, is 0.16 dB out at 12 kHz; the plain sound averaged as
+        // the bent one is in step but 0.69 dB quieter there, which "in step" above does not allow for: 0.26 out.)
+        CHECK(std::fabs(a - aligned) < 0.06);
+    }
+    // NOTHING TOO SMALL TO HOLD AT GATE 0 (flush-to-zero off). holdsTheRules turns GATE to 50%, where the step keeps
+    // small sound from the clip; at GATE 0 the clip's lower side squared it, and before 2026-11-25 a click, a click in
+    // sound too small to hold, and noise and then silence each made a number too small for a float, at every FUZZ.
+    for (float f : {0.f, 0.7f, 1.f})
+        for (float mix : {0.5f, 1.f})
+            for (int what = 0; what < 3; ++what) {
+                std::unique_ptr<Effect> e = fresh(fuzz, f, 0.5f, 0.f, mix);
+                Stereo io(3 * 48000);
+                Noise noise(5u);
+                for (std::size_t i = 0; i < io.frames(); ++i) {
+                    if (what == 1) io.l[i] = 1e-39f, io.r[i] = -1e-39f;
+                    if (what == 2 && i < 24000) io.l[i] = 0.5f * noise.next(), io.r[i] = -io.l[i];
+                }
+                if (what < 2) io.l[0] = io.r[0] = 0.5f;
+                const TooSmall marks;
+                through(*e, io);
+                CHECK(!marks.seen());
+            }
+    // RESET IS FRESH: reset() in the middle of a loud note (the engine does it on a stop), and it plays on as one fresh
+    // from the box does, to the bit: the side's last point is forgotten with the rest.
+    {
+        std::unique_ptr<Effect> used = fresh(fuzz, 0.7f, 0.5f, 0.f, 0.6f), box = fresh(fuzz, 0.7f, 0.5f, 0.f, 0.6f);
+        Stereo before(4800), a(4800), b(4800);
+        before.l = before.r = sineOf(220.0, 0.5, 4800);
+        through(*used, before);
+        used->reset();
+        a.l = a.r = b.l = b.r = sineOf(330.0, 0.4, 4800);
+        through(*used, a);
+        through(*box, b);
+        CHECK(a.l == b.l && a.r == b.r && rmsOf(a.l) > 0.01);
     }
     sweptNoRougherThanHeld(fuzz);
     turnedLands(fuzz);
