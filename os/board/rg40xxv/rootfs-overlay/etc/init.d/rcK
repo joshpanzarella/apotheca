@@ -1,0 +1,53 @@
+#!/bin/sh
+# Going down: BusyBox init runs this first of its shutdown lines (inittab),
+# for every way off. It stops the start-up scripts in reverse order
+# (S95apotheca first: Apotheca saves its song; S05data near the end
+# unmounts /data), as Buildroot's own rcK does, and in addition:
+#
+#   - every step is a line in /data/apotheca/logs/off.log, on the card at
+#     once (/usr/lib/apotheca/off.sh), and in the kernel's log: a turn-off
+#     that hangs says where;
+#   - no stop script may take for ever: each gets a time (STOP_S, 30 s; 40 s for
+#     S95apotheca, whose own wait for Apotheca is 15 s), then it is cut
+#     short, the log says so, and the turn-off goes on.
+#
+# APOTHECA_INITD (default /etc/init.d), APOTHECA_LIB, APOTHECA_STOP_S and
+# APOTHECA_S95_STOP_S are for the desk test (os/tools/off-test.sh).
+
+initd=${APOTHECA_INITD:-/etc/init.d}
+. "${APOTHECA_LIB:-/usr/lib/apotheca}/off.sh"
+
+STOP_S=${APOTHECA_STOP_S:-30}
+S95_STOP_S=${APOTHECA_S95_STOP_S:-40}
+
+asked=$(cat "$OFF_RUN/off-asked" 2>/dev/null)
+off_log "rcK: going down (asked by ${asked:-nobody of ours: poweroff or reboot from a shell, or init})"
+# What might hold the way down: WiFi (its daemons, the rtw88 driver) and
+# anything already stuck in the kernel (state D).
+wifi=$(pidof wpa_supplicant udhcpc udhcpd avahi-daemon 2>/dev/null)
+mods=$(cut -d' ' -f1 /proc/modules 2>/dev/null | grep -i rtw | tr '\n' ' ')
+stuck=$(for p in $(off_pids); do sed -n 's/^\([0-9]*\) (\(.*\)) D .*/\1 \2/p' "/proc/$p/stat" 2>/dev/null; done | tr '\n' ',')
+off_log "rcK: WiFi programs running: ${wifi:-none}; WiFi modules: ${mods:-none}; stuck in the kernel: ${stuck:-none}"
+
+stop_one() {
+    case "$1" in
+        *.sh) ( trap - INT QUIT TSTP; set stop; . "$1" ) ;;
+        *) "$1" stop ;;
+    esac
+}
+
+for i in $(ls -r "$initd"/S??*); do
+    # Ignore dangling symlinks (if any).
+    [ ! -f "$i" ] && continue
+    s=${i##*/}
+    limit=$STOP_S
+    [ "$s" = S95apotheca ] && limit=$S95_STOP_S
+    off_log "$s stop: begins (at most $limit s)"
+    off_limit "$limit" "$s stop" stop_one "$i"
+    code=$?
+    [ "$code" -ne 124 ] && off_log "$s stop: done in $off_took s (code $code)"
+done
+
+# /data is unmounted by now: these lines reach the kernel's log only.
+off_log "rcK: every stop script done; init next: sync, umount -a -r (off-last), TERM and KILL to all, then the kernel powers off"
+exit 0

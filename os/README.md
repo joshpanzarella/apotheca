@@ -145,6 +145,29 @@ is off charges it and it stays off**, as on ROCKNIX (the rule was taken out
 on 2026-11-17 while one unit would not start; it was not the cause, and it
 is back: plan, section 17).
 
+**If it does not turn off** (the screen dark or not, it stays on until the
+power key is held 10 seconds), send `apotheca/logs/off.log`. Every step of
+turning off writes a line there at once, so the last line is the step it
+stuck at:
+
+```
+----- a turn-off (boot 12; boot-latest.txt is this start)
+[65.40] off: apotheca-keep asks for the handheld off: apotheca asked, after 65s, code 0 (quit)
+[65.41] off: poweroff: asking init to turn the handheld off
+[65.52] off: rcK: going down (asked by apotheca-keep: ...)
+[65.60] off: S95apotheca stop: begins (at most 40 s)
+...
+[66.10] off: S05data: unmounting /data (at most 10 s; ...): the LAST line on the card
+```
+
+Who asked (Apotheca's quit or idle, the power key, the battery; nothing
+said means `poweroff` from a shell), then each stop script with how long
+it took. No step can wait for ever any more: each has a time limit, and
+one cut short says `CUT SHORT`, with what was still running and where it
+waited. The lines after the unmount (and every line, if the card stopped
+answering) go to the kernel's own log only. The file keeps its last 200
+lines.
+
 ## Headphones or speaker, one or the other
 
 **Headphones in: the speaker is off. Headphones out: the speaker is on.**
@@ -223,7 +246,7 @@ Whatever you see is useful. Send:
    buttons and the stick do what they should**. **Power**: does SEL + START
    turn it off, does a tap of the power key turn the screen off and back,
    does holding it 2 s turn it off; `apotheca/logs/power.log` says what the
-   battery read. `apotheca/apotheca.log` on
+   battery read, `apotheca/logs/off.log` how far each turn-off got. `apotheca/apotheca.log` on
    the card says which way it draws (`screen: opengles2, accelerated` is the
    GPU) and how the sound card opened.
 
@@ -321,6 +344,7 @@ Press Enter for a `#` prompt. Useful there:
 | `speaker-test -t sine -l 1` | a tone from each side (we cannot hear it on the desk) |
 | `/usr/libexec/apotheca/padprobe` | press buttons: prints each as Apotheca's `controls.txt` numbers it |
 | `cat /data/apotheca/logs/power.log` | what the power key and the battery did |
+| `cat /data/apotheca/logs/off.log` | each step of the last turn-offs, the last one reached at the end |
 | `poweroff` | turns the handheld off cleanly (Apotheca saves first) |
 
 If the USB serial port never appears, the handheld also has a serial port on
@@ -392,6 +416,7 @@ python3 -I os/tools/qemu-test.py build-image/apotheca-rg40xxv.img.gz  # boots it
 scripts/build-firmware-app.sh                # Apotheca alone: dist/firmware/apotheca (minutes)
 os/tools/panel-dtb.sh IN.dtb NEW.panel OUT.dtb   # a panel file into a device tree
 python3 -I os/tools/power-test.py           # apotheca-power on the desk, a made-up /sys (about 1 min)
+os/tools/off-test.sh [SHELL]                 # the turn-off's log and time limits on the desk (about 30 s)
 ```
 
 `os/` is a Buildroot "external tree": `configs/apotheca_rg40xxv_defconfig`

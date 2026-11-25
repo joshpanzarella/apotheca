@@ -2,7 +2,8 @@
  * for the RG40XXV (firmware plan, batch 4). /etc/inittab starts it, and
  * starts it again if it ever stops.
  *
- * It turns the handheld off only through `poweroff`, so there is one way
+ * It turns the handheld off only through `poweroff` (run by
+ * /usr/libexec/apotheca/off, which writes each step in off.log), so there is one way
  * down: BusyBox init runs /etc/init.d/rcK, whose S95apotheca stops Apotheca
  * first (TERM: it saves its song, as quitting does), then the card is
  * synced and unmounted, then the AXP717 cuts the power.
@@ -68,7 +69,10 @@
  *   --dev DIR      where the input devices' nodes are (default /dev/input)
  *   --config FILE  (default /data/apotheca/power.txt)
  *   --log FILE     (default /data/apotheca/logs/power.log)
- *   --off CMD      what turns it off, run by /bin/sh (default poweroff)
+ *   --off CMD      what turns it off, run by /bin/sh, with the reason in
+ *                  APOTHECA_OFF_WHY (default /usr/libexec/apotheca/off
+ *                  apotheca-power: it writes the turn-off in off.log, syncs
+ *                  and runs poweroff, each with a time limit)
  *   --poll S       seconds between battery reads (default 20)
  *   --long-ms MS   a long press (default 2000)
  *   --console FILE where the important lines also go (default /dev/console)
@@ -102,7 +106,7 @@ static const char* sysDir = "/sys";
 static const char* devDir = "/dev/input";
 static const char* configFile = "/data/apotheca/power.txt";
 static const char* logFile = "/data/apotheca/logs/power.log";
-static const char* offCommand = "poweroff";
+static const char* offCommand = "/usr/libexec/apotheca/off apotheca-power";
 static const char* consoleFile = "/dev/console";
 static int pollSeconds = 20;
 static long longMs = 2000;
@@ -414,7 +418,10 @@ static void turnOff(const char* why) {
     offAsked = 1;
     say(1, "%s: turning off", why);
     backlight(0);
-    sync();
+    /* No sync() here: one that hangs on a card that stopped answering would
+     * keep the handheld on with nothing said. The off command syncs, with a
+     * time limit, and says each step in off.log. */
+    setenv("APOTHECA_OFF_WHY", why, 1);
     const int code = system(offCommand);
     if (code != 0) {
         say(1, "\"%s\" failed (%d): still on", offCommand, code);

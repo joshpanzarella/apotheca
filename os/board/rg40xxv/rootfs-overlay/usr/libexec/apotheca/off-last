@@ -1,0 +1,19 @@
+#!/bin/sh
+# The last of init's shutdown lines (inittab), after rcK: everything written
+# reaches the card, and every file system is made read-only. Both had no
+# time limit (a card that stops answering would hold the handheld on for
+# ever); each now gets 10 s. /data is unmounted by now, so these lines go to
+# the kernel's log only (ramoops keeps it past a warm reset). After this,
+# BusyBox init sends TERM and then KILL to every program, syncs once more
+# (its own, with no limit) and asks the kernel to power off ("reboot: Power
+# down" in the kernel's log).
+
+. "${APOTHECA_LIB:-/usr/lib/apotheca}/off.sh"
+
+off_log "off-last: sync"
+off_limit 10 "sync" sync && off_log "off-last: sync done in $off_took s"
+off_log "off-last: umount -a -r"
+off_limit 10 "umount -a -r" umount -a -r
+code=$?
+off_log "off-last: umount -a -r ended (code $code); init next: TERM, KILL, the kernel's power-off"
+exit 0

@@ -14,7 +14,8 @@
 #   - The program gets KEEP_FAILS: how many starts in a row stopped too soon.
 #   - A program that wants the handheld off writes the file $KEEP_RUN/NAME.off
 #     (any words: why) before it stops. It is not started again: KEEP_OFF
-#     (default: poweroff) is run instead, and this waits to be stopped. The
+#     (default: /usr/libexec/apotheca/off, which writes the turn-off in
+#     off.log and runs poweroff) is run instead, and this waits to be stopped. The
 #     file is deleted before every start, so only the run that wrote it counts;
 #     a program that stops without it (a crash, a kill) is started again.
 #     Apotheca writes it after saving its song, when quit or left idle
@@ -73,8 +74,16 @@ while :; do
         why=$(head -c 64 "$off" | tr -d '\n')
         note "stopped with code $code after ${ran}s, asking for the handheld off ($why)"
         echo "apotheca-keep: $name asked for the handheld off ($why)" > /dev/console 2>/dev/null
-        sync
-        ${KEEP_OFF:-poweroff}
+        # With no KEEP_OFF: /usr/libexec/apotheca/off says so in off.log,
+        # syncs and runs poweroff, each with a time limit (a plain sync or
+        # poweroff here could wait for ever and leave the handheld on).
+        if [ -n "$KEEP_OFF" ]; then
+            sync
+            $KEEP_OFF
+        else
+            "${KEEP_OFF_SCRIPT:-/usr/libexec/apotheca/off}" apotheca-keep \
+                "$name asked, after ${ran}s, code $code ($why)"
+        fi
         # Going down: wait here to be stopped (TERM), starting nothing.
         while :; do sleep 60; done
     fi

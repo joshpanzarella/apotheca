@@ -4,6 +4,7 @@
 # /dev/tty.usbmodem* on a Mac, a COM port on Windows, /dev/ttyACM0 on Linux).
 
 . /usr/lib/apotheca/common.sh
+. /usr/lib/apotheca/off.sh
 
 G=/sys/kernel/config/usb_gadget/apotheca
 
@@ -26,8 +27,13 @@ start() {
     echo "$udc" > "$G/UDC" && say "USB: serial console on $udc (ttyGS0)"
 }
 
+# Letting go of the port waits on the kernel's USB driver: at most 5 s.
+unbind() { echo "" > "$G/UDC"; }
 stop() {
-    [ -e "$G/UDC" ] && echo "" > "$G/UDC" 2>/dev/null
+    if [ -e "$G/UDC" ]; then
+        off_log "S10usbgadget: letting go of the USB port (at most 5 s)"
+        off_limit 5 "S10usbgadget: USB port" unbind 2>/dev/null && off_log "S10usbgadget: USB port let go in $off_took s"
+    fi
     true
 }
 

@@ -13,7 +13,8 @@
 #   - partition 2: a squashfs that fits its partition; with unsquashfs (on the
 #     PATH, or the one the image build made) also what batch 4 put in it:
 #     apotheca-power started by inittab, S95apotheca, the off mark handed to
-#     Apotheca and read by apotheca-keep, Apotheca that knows the mark
+#     Apotheca and read by apotheca-keep, Apotheca that knows the mark, and
+#     the turn-off's log (off.log) with its time limits in every step
 #   - partition 3: empty (the second system slot)
 #   - partition 4: zeros (the first boot grows it and makes it exFAT)
 #
@@ -350,7 +351,22 @@ if unsquashfs:
                 found.append(r.stdout.strip())
         check(found == ['yes', 'yes', 'no'],
               "run finds the stick light's serial line as Linux 7.2 places it, and as before (%s)" % found)
-        check(b'KEEP_OFF:-poweroff' in cat('/usr/sbin/apotheca-keep'), "apotheca-keep turns the handheld off on the mark")
+        check(b'/usr/libexec/apotheca/off' in cat('/usr/sbin/apotheca-keep'), "apotheca-keep turns the handheld off on the mark (through off)")
+        # The turn-off's own log (off.log): every step, each with a time limit.
+        offsh = cat('/usr/lib/apotheca/off.sh')
+        check(b'off_log()' in offsh and b'off_limit()' in offsh and b'/dev/kmsg' in offsh and b'logs/off.log' in offsh,
+              "off.sh: the turn-off's log (off.log, the kernel's log) and its time limits")
+        for f in ['/etc/init.d/rcK', '/usr/libexec/apotheca/off', '/usr/libexec/apotheca/off-last']:
+            check(mode(f).startswith('-rwx') and b'/usr/lib/apotheca}/off.sh' in cat(f),
+                  "%s is ours (logs the turn-off), executable (%s)" % (f, mode(f) or "missing"))
+        check(b'off_limit "$limit" "$s stop"' in cat('/etc/init.d/rcK'), "rcK logs every stop script and limits its time")
+        for f in ['/etc/init.d/S95apotheca', '/etc/init.d/S05data', '/etc/init.d/S10usbgadget', '/etc/init.d/S90bootlog']:
+            check(b'. /usr/lib/apotheca/off.sh' in cat(f) and b'off_limit ' in cat(f), "%s logs its stop and limits its waits" % f)
+        check(b'the LAST line on the card' in cat('/etc/init.d/S05data'), "S05data logs the last line before /data is unmounted")
+        check('::shutdown:/usr/libexec/apotheca/off-last' in inittab and '::shutdown:/bin/sync' not in inittab,
+              "inittab's last shutdown steps (sync, umount -a -r) go through off-last, with time limits")
+        check(b'/usr/libexec/apotheca/off apotheca-power' in cat('/usr/sbin/apotheca-power'),
+              "apotheca-power turns the handheld off through off (logged)")
         check(b'APOTHECA_OFF_MARK' in cat('/usr/lib/apotheca/apotheca'), "the Apotheca on the card knows the off mark")
         check(any(l.endswith('/test_power.ko') for l in listing.splitlines()),
               "the kernel's made-up battery (test_power) is there for the desk test, as a module")

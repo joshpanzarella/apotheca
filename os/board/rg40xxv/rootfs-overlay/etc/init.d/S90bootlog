@@ -5,6 +5,7 @@
 # The last 20 boots are kept.
 
 . /usr/lib/apotheca/common.sh
+. /usr/lib/apotheca/off.sh
 
 LOGS=/data/apotheca/logs
 KEEP=20
@@ -224,6 +225,6 @@ start_now() {
 
 case "$1" in
     start) start ;;
-    stop) sync ;;
+    stop) off_limit 10 "S90bootlog: sync" sync && off_log "S90bootlog: sync done in $off_took s" ;;
     *) echo "usage: $0 start|stop" ;;
 esac

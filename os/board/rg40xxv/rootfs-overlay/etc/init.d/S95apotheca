@@ -12,8 +12,10 @@
 # Stopping: hold restarts, then TERM to apotheca-keep, which hands it on
 # (apotheca-start) to Apotheca; Apotheca saves its song and ends, as when
 # it is quit. If it has not gone in 15 s the shutdown goes on without it.
+# Each step is a line in off.log (/usr/lib/apotheca/off.sh).
 
 . /usr/lib/apotheca/common.sh
+. /usr/lib/apotheca/off.sh
 
 stop() {
     touch "$APOTHECA_RUN/apotheca.hold"
@@ -21,8 +23,12 @@ stop() {
     keep=$(cat "$APOTHECA_RUN/apotheca.keep.pid" 2>/dev/null)
     if [ -n "$keep" ] && kill -TERM "$keep" 2>/dev/null; then
         : # it hands the TERM on to Apotheca
+        off_log "S95apotheca: TERM to apotheca-keep ($keep); Apotheca: ${pid:-not running}"
     elif [ -n "$pid" ]; then
         kill -TERM $pid 2>/dev/null
+        off_log "S95apotheca: TERM to Apotheca ($pid); apotheca-keep not running"
+    else
+        off_log "S95apotheca: neither Apotheca nor apotheca-keep running"
     fi
     i=0
     while pidof apotheca > /dev/null && [ "$i" -lt 150 ]; do
@@ -31,10 +37,13 @@ stop() {
     done
     if pidof apotheca > /dev/null; then
         say "Apotheca did not stop within 15 s: going down without it"
+        off_log "S95apotheca: Apotheca did NOT stop within 15 s ($(off_where "$(pidof apotheca | cut -d' ' -f1)")): going down without it"
     elif [ -n "$pid" ]; then
         say "Apotheca stopped (in $((i / 10)).$((i % 10)) s), its song saved"
+        off_log "S95apotheca: Apotheca stopped in $((i / 10)).$((i % 10)) s"
     fi
-    sync
+    off_log "S95apotheca: sync (at most 10 s)"
+    off_limit 10 "S95apotheca: sync" sync && off_log "S95apotheca: sync done in $off_took s"
 }
 
 case "$1" in

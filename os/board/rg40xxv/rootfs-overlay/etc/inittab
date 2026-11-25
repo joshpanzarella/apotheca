@@ -33,7 +33,9 @@ tty1::respawn:-/bin/sh
 ::respawn:/usr/libexec/apotheca/console ttyAMA0
 
 # Going down: stop the scripts (S95apotheca first: Apotheca saves and ends),
-# then everything written reaches the card
+# then everything written reaches the card and every file system is made
+# read-only (off-last: sync, umount -a -r). Each step has a time limit and
+# a line in /data/apotheca/logs/off.log (once /data is unmounted, in the
+# kernel's log only): /usr/lib/apotheca/off.sh.
 ::shutdown:/etc/init.d/rcK
-::shutdown:/bin/sync
-::shutdown:/bin/umount -a -r
+::shutdown:/usr/libexec/apotheca/off-last

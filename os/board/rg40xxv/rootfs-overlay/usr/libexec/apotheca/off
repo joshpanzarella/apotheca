@@ -1,0 +1,16 @@
+#!/bin/sh
+# off WHO WHY: the handheld off, for apotheca-keep (the program's off mark)
+# and apotheca-power (the power key held, a low battery, a screen not seen
+# working). Says who asked and why in /data/apotheca/logs/off.log, syncs (at
+# most 3 s) and asks init to power off (at most 10 s, then init is told
+# directly). init then runs rcK, which logs every stop script.
+# (A `poweroff` typed at the shell comes straight to rcK.)
+
+. "${APOTHECA_LIB:-/usr/lib/apotheca}/off.sh"
+
+who=${1:-someone}
+why=${2:-$APOTHECA_OFF_WHY}
+mkdir -p "$OFF_RUN" 2>/dev/null
+echo "$who: ${why:-no reason given}" > "$OFF_RUN/off-asked" 2>/dev/null
+off_log "$who asks for the handheld off: ${why:-no reason given}"
+off_poweroff

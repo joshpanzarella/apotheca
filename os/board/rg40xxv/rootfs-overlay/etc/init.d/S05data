@@ -7,8 +7,14 @@
 # so nothing is lost. Anything else is mounted as it is and never made again:
 # a DATA partition that will not mount is left alone and said so, never
 # formatted.
+#
+# Stopping (the turn-off, near its end): sync, then unmount, each with a
+# time limit (a card that stops answering must not hold the handheld on);
+# an unmount that fails or is cut short is followed by a read-only remount.
+# The line before the unmount is the last off.log line on the card.
 
 . /usr/lib/apotheca/common.sh
+. /usr/lib/apotheca/off.sh
 
 start() {
     root=$(root_partition) || { say "DATA: cannot find the root's disk"; return 1; }
@@ -44,8 +50,26 @@ grow() {
     partx -u -n 4 "/dev/$disk"
 }
 
+stop() {
+    mountpoint -q /data || { off_log "S05data: /data not mounted"; return 0; }
+    off_log "S05data: sync (at most 10 s)"
+    off_limit 10 "S05data: sync" sync && off_log "S05data: sync done in $off_took s"
+    busy=$(fuser -m /data 2>/dev/null | tr -s ' ')
+    off_log "S05data: unmounting /data (at most 10 s; still using it:${busy:- nothing}): the LAST line on the card"
+    off_limit 10 "S05data: umount /data" umount /data
+    code=$?
+    if mountpoint -q /data; then
+        off_log "S05data: umount /data failed (code $code); remounting it read-only (at most 5 s)"
+        off_limit 5 "S05data: remount /data read-only" mount -o remount,ro /data
+        off_log "S05data: remount ended (code $?)"
+    else
+        off_log "S05data: /data unmounted in $off_took s"
+    fi
+    true
+}
+
 case "$1" in
     start) start ;;
-    stop) sync; umount /data 2>/dev/null; true ;;
+    stop) stop ;;
     *) echo "usage: $0 start|stop" ;;
 esac
