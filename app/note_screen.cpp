@@ -25,11 +25,12 @@ constexpr int kCellH = kRowH - 2;
 constexpr int kOctaveTop = 33, kOctaveH = 11, kKeysTop = 45;
 constexpr int kStripGap = 4; // from the grid down to the strip
 constexpr float kNewLevel = kPlacedLevel, kMinLevel = 0.05f; // a note or a chord placed (project.hpp)
-constexpr float kStickKeysPerSecond = 36.f, kStickStepsPerSecond = 24.f, kFillPerSecond = 3.f, kLengthStepsPerSecond = 10.f;
+// Values turned by the stick, however far it is pushed (times STICK SPEED): a note's level and length with A held, and
+// a carried note slid freely in time with R1 held. Their own rates, not twice a held D-pad's: the D-pad's UP / DOWN go
+// to the step lines, the stick to any point in a step (owner, 2026-11-25: "d-pad for detailed ones").
+constexpr float kFillPerSecond = 3.f, kLengthStepsPerSecond = 10.f, kCarryStepsPerSecond = 6.f;
 constexpr float kShortestLength = 0.1f; // of a step
 constexpr float kMostNudge = 0.5f;      // half a step early or late
-constexpr float kChordsPerSecond = 7.f, kInversionsPerSecond = 5.f; // the stick with Y held
-constexpr float kCarryKeysPerSecond = 10.f, kCarryStepsPerSecond = 6.f; // the stick with X held on a note
 
 bool isBlackKey(int pitch) {
     const int k = ((pitch % 12) + 12) % 12;
@@ -809,6 +810,7 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (b == Button::A) {
         if (event.down && !onBars_ && !chordHere()) placeNote(kNewLevel); // on a chord, A takes hold of the chord
         shaping_ = event.down;
+        barsPushed_ = false; // (a new hold: a push already there is a click on BARS, as on a synth's choice)
         axis_ = Axis::None;
         return;
     }
@@ -960,7 +962,8 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
     keepInView(); // the zoom can be changed from SETUP too
 
     if (fxHeld_) {
-        // X is held on a note: the stick clicks what it does. One way per push; a click at once, then slowly.
+        // X is held on a note: the stick clicks what it does. One way per push; a click at once, then at twice the held
+        // D-pad's pace (the clicks'), however far it is pushed.
         if (x == 0.f && y == 0.f) {
             axis_ = Axis::None;
             fxSaved_ = 0.f;
@@ -970,7 +973,7 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
             if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
             const float push = axis_ == Axis::UpDown ? -y : x;
             if (push != 0.f) {
-                fxSaved_ += fxWas_ ? std::fabs(push) * ui::kStickClicksPerSecond * dt : 1.f; // (G32: the clicks' pace)
+                fxSaved_ += fxWas_ ? ui::stickPerSecond(Pace::Click) * dt : 1.f; // (G32: the clicks' pace)
                 fxWas_ = true;
                 for (; fxSaved_ >= 1.f; fxSaved_ -= 1.f)
                     fxTurn(axis_ == Axis::UpDown ? (push > 0.f ? Button::Up : Button::Down) : (push > 0.f ? Button::Right : Button::Left));
@@ -982,13 +985,13 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
         return;
     }
     if (picking_) {
-        // The stick steps through chords (sideways) or inversions (up and
-        // down): at once on the first push, then at a steady rate.
+        // The stick steps through chords (sideways) or inversions (up and down): at once on the first push, then
+        // at twice the held D-pad's pace (the list's), however far it is pushed.
         const bool sideways = std::fabs(x) >= std::fabs(y);
         const float push = sideways ? x : y;
         if (push == 0.f) stickX_ = 0.f, stickWasX_ = false;
         else {
-            stickX_ += stickWasX_ ? std::fabs(push) * (sideways ? kChordsPerSecond : kInversionsPerSecond) * dt : 1.f;
+            stickX_ += stickWasX_ ? ui::stickPerSecond(Pace::List) * dt : 1.f;
             stickWasX_ = true;
             for (; stickX_ >= 1.f; stickX_ -= 1.f)
                 press(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
@@ -1000,18 +1003,21 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
         if (x == 0.f && y == 0.f) axis_ = Axis::None;
         else if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
         if (onBars_) {
-            // BARS with A held: the stick steps the cell's bars, once for each push up or down.
-            const bool pushed = axis_ == Axis::UpDown && std::fabs(y) > 0.5f;
+            // BARS with A held, a choice (1, 2, 4, 8): the stick steps the cell's bars once for each push up or down,
+            // however far it is pushed (CLAUDE.md: choices click once per push; the owner's stick rule, 2026-11-25,
+            // took out the "past half"). Held, it does no more: the drum grid's BARS the same.
+            const bool pushed = axis_ == Axis::UpDown && y != 0.f;
             if (pushed && !barsPushed_) stepBars(y < 0.f ? 1 : -1);
             barsPushed_ = pushed;
         }
+        // However far it is pushed, each at its own rate: the level (a fill) and the length.
         const bool here = !onBars_ && levelNow() > 0.f;
         if (here && axis_ == Axis::Sideways && x != 0.f) {
-            setLevel(levelNow() + x * std::fabs(x) * kFillPerSecond * dt);
+            setLevel(levelNow() + stickWay(x) * kFillPerSecond * dt);
             turningLength_ = false;
         } else if (here && axis_ == Axis::UpDown && y != 0.f) {
             // Freely: the end follows the stick, to any point in a step.
-            setLength(lengthNow() + y * std::fabs(y) * kLengthStepsPerSecond * dt);
+            setLength(lengthNow() + stickWay(y) * kLengthStepsPerSecond * dt);
             turningLength_ = true;
         }
         stickX_ = stickY_ = 0.f;
@@ -1020,7 +1026,9 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
         // R1 has hold of a note or a chord. One job per push, as with A held: whichever way the stick
         // leaves the centre is the job until it comes back. Sideways it goes as the D-pad does
         // (carry(): a SCALE's next key; with L1 held an octave, once a push: at the stick's pace an
-        // octave would fly); up and down it slides freely in time, squared, so a small push is a fine move.
+        // octave would fly), at twice the held D-pad's pace (the cursor's); up and down it slides freely in time,
+        // at its own rate (a value turned: the D-pad's UP / DOWN carry it a whole step). Both however far it is
+        // pushed (owner, 2026-11-25).
         if (x == 0.f && y == 0.f) axis_ = Axis::None;
         else if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
         if (axis_ != Axis::Sideways || x == 0.f) {
@@ -1029,27 +1037,29 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
             if (!stickWasX_) carry(x > 0.f ? Button::Right : Button::Left);
             stickX_ = 0.f, stickWasX_ = true;
         } else {
-            stickX_ += stickWasX_ ? std::fabs(x) * kCarryKeysPerSecond * dt : 1.f;
+            stickX_ += stickWasX_ ? ui::stickPerSecond(Pace::Cursor) * dt : 1.f;
             stickWasX_ = true;
             for (; stickX_ >= 1.f; stickX_ -= 1.f) carry(x > 0.f ? Button::Right : Button::Left);
         }
-        if (axis_ == Axis::UpDown) carryFree(y * std::fabs(y) * kCarryStepsPerSecond * dt);
+        if (axis_ == Axis::UpDown) carryFree(stickWay(y) * kCarryStepsPerSecond * dt);
         stickY_ = 0.f;
         stickWasY_ = false;
     } else {
         axis_ = Axis::None;
-        const float climbX = climbX_.times(x, nowMs), climbY = climbY_.times(y, nowMs); // a full push held climbs (G07)
-        if (x == 0.f) stickX_ = 0.f, stickWasX_ = false;
+        // The keys and the steps: one at once, then at twice the held D-pad's pace (the cursor's), however far it is
+        // pushed; a slight drift off one axis is not the other (ui::stickAxes).
+        const StickAxes both = stickAxes(x, y);
+        if (both.x == 0.f) stickX_ = 0.f, stickWasX_ = false;
         else {
-            stickX_ += stickWasX_ ? std::fabs(x) * kStickKeysPerSecond * climbX * dt : 1.f;
+            stickX_ += stickWasX_ ? ui::stickPerSecond(Pace::Cursor) * dt : 1.f;
             stickWasX_ = true;
-            for (; stickX_ >= 1.f; stickX_ -= 1.f) moveCursor(x > 0.f ? Button::Right : Button::Left);
+            for (; stickX_ >= 1.f; stickX_ -= 1.f) moveCursor(both.x > 0.f ? Button::Right : Button::Left);
         }
-        if (y == 0.f) stickY_ = 0.f, stickWasY_ = false;
+        if (both.y == 0.f) stickY_ = 0.f, stickWasY_ = false;
         else {
-            stickY_ += stickWasY_ ? std::fabs(y) * kStickStepsPerSecond * climbY * dt : 1.f;
+            stickY_ += stickWasY_ ? ui::stickPerSecond(Pace::Cursor) * dt : 1.f;
             stickWasY_ = true;
-            for (; stickY_ >= 1.f; stickY_ -= 1.f) moveCursor(y > 0.f ? Button::Down : Button::Up);
+            for (; stickY_ >= 1.f; stickY_ -= 1.f) moveCursor(both.y > 0.f ? Button::Down : Button::Up);
         }
     }
 

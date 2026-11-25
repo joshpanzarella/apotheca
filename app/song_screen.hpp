@@ -12,13 +12,13 @@
 //                      (the stick up / down: an octave; Session::transposeCell). The scene lasts as long as its longest
 //                      cell; a shorter one goes round under it, and is
 //                      drawn once with a LOOPS mark.
-//                      R1 copies it; R1 on another cell pastes it there (on its let go), and the
-//                      copy stays (brass) for the next; R1 on the copied cell clears it (G23).
+//                      R1 copies it (brass); R1 on another cell pastes it there (on its let go), and
+//                      the paste spends the copy; R1 on the copied cell clears it unpasted.
 //   on a repeat count  (the column left of the tracks) hold A + stick up /
 //                      down: how many times the scene plays. Tap A: 1, 2, 4, 8.
 //                      R1 copies the whole scene; R1 on another row pastes it there (on its let go),
-//                      and the copy stays, as a cell's. Hold B half a second (G29): empty the whole
-//                      scene (one step of undo).
+//                      and the paste spends the copy, as a cell's. Hold B half a second (G29): empty
+//                      the whole scene (one step of undo).
 //   on + TRACK         A, then pick the instrument: drums, Phazed, JAX-EP...
 //   on a track's head  (up from the top scene) tap A: its instrument. R1, on its let go: its name.
 //                      Hold B: delete it.
@@ -43,6 +43,7 @@
 #include "screen.hpp"
 #include <SDL.h>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -105,7 +106,7 @@ public:
     // On a song's row while B is held on it.
     static constexpr const char* kSongDeletingWords = "CANNOT BE UNDONE"; // (short: the song's name shares the row)
     float trackDeletePart() const { return trackHoldPart_; }
-    explicit SongScreen(Session& session) : session_(session), project_(session.project) {}
+    explicit SongScreen(Session& session) : session_(session), project_(session.project), cellBeforeCopy_(new CellClip) {}
 
     void onButton(const ButtonEvent& event, const Input& input) override;
     void update(const Input& input, Uint32 nowMs) override;
@@ -119,6 +120,10 @@ public:
     bool cursorOnHead() const { return onHead_; }
     bool cursorOnMaster() const { return onMaster_; }
     void shouldersPressed() { l1OnHead_ = dupArmed_ = nameArmed_ = scenePasteArmed_ = cellPasteArmed_ = false; } // (the App: all four shoulders, a panic: R1 let go copies and pastes nothing)
+    // The copied cell (the App, a panic begun with R1, as the Session's scene and bar): how many times R1 has copied
+    // or cleared one, and that R1's copy or clear taken back, the cell as copied just before it.
+    unsigned cellCopies() const { return cellCopies_; }
+    void takeBackCellCopy();
     bool copyKeyHeld() const { return l1OnHead_; }             // L1 is held on a track's head: R1 copies the track
     static int headMarkWidth(const Fonts& fonts, const char* letter); // a head's M or S mark, made to its letter
     bool mixing() const { return mixing_; } // A is held on a head (a track's or MASTER): the directions are the mixer's
@@ -188,6 +193,12 @@ private:
         float automation[kAutoLanes][kAutoSteps];
     };
     void copyCell(const CellCopy& from, int toTrack, int toScene);
+    struct CellClip { // the copied cell, all of it: whether one is, the copy, and where it came from
+        bool copied = false;
+        CellCopy copy;
+        int track = 0, scene = 0;
+    };
+    void rememberCellClip(); // just before R1 copies or clears a cell: what takeBackCellCopy puts back
     void pasteCellHere(int toTrack, int toScene);
 
     Session& session_;
@@ -266,13 +277,14 @@ private:
     bool scenePasteArmed_ = false; // R1 went down on a repeat count with a scene copied: let go, it pastes there
     int scenePaste_ = 0;           // ...on this scene (where it went down, wherever the cursor is now)
     int copyTrack_ = 0, copyScene_ = 0;
+    std::unique_ptr<CellClip> cellBeforeCopy_; // (on the heap: eight bars of a cell)
+    unsigned cellCopies_ = 0;
 
     Button repeating_ = Button::None;
     ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
     Uint32 lastMs_ = 0;
     float stickX_ = 0.f, stickY_ = 0.f;
     bool stickWasX_ = false, stickWasY_ = false;
-    ui::StickClimb climbX_, climbY_; // a full push held climbs (G07)
 };
 
 } // namespace apotheca

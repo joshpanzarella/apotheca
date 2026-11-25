@@ -79,12 +79,17 @@ stand-in for testing at a desk: each key presses one handheld button, so the
 keyboard can do nothing the handheld cannot.
 
 **The handheld has one stick, and one rule for it.** With nothing held it
-moves the cursor (so does the D-pad; hold either and it runs). Pushed part of
-the way it moves at a steady pace, faster the further it goes; **pushed all the
-way and held, it speeds up**, to three times that pace over a second, for the
-long trips (scene 1 to scene 40, the top of SET to the bottom). Only a cursor
-speeds up: a value being turned, a list of sounds or presets, a choice, never.
-Hold a button and the stick shapes the thing under the cursor:
+moves the cursor (so does the D-pad; hold either and it runs). **The stick is
+the fast one: as soon as it is pushed it goes at its full speed, however far it
+is pushed, twice as fast as the D-pad held** (at STICK SPEED 75%, as it
+starts: fifty a second over cells where the held D-pad runs 33, fourteen
+through a list where it runs nine). The stick for the long trips (scene 1 to
+scene 40, the top of SET to the bottom), the D-pad for the exact place or
+value. **A value it turns** (a level, a note's length) goes at its own speed,
+as fast just past the middle as all the way over. **A choice clicks**: BARS, a
+drum synth's MODEL, LOOP and REVERSE once a push, however long it is held; a
+filter TYPE, a delay TIME or a synth's wave with A held at once, then about
+fourteen a second. Hold a button and the stick shapes the thing under the cursor:
 
 | Held | The stick |
 | --- | --- |
@@ -243,7 +248,7 @@ column. It opens in the folder of the recording that is on, on it.
 | Button | Does |
 | --- | --- |
 | Up / down | The next in the column. A recording goes on **at once**: with the song playing you hear it in the beat; stopped, **half of it plays** (from where it plays from: the sampler's START), and it stops as soon as the cursor moves on. Held: a steady pace, faster after a second and a half, and faster again after three and a half |
-| The stick | Big moves: up to sixty rows a second pushed all the way (at STICK SPEED 75%; it scales with the setting). Going by that fast, the one you stop on goes on, not each one passed |
+| The stick | Big moves: sixty rows a second as soon as it is pushed, however far (at STICK SPEED 75%; it scales with the setting). Going by that fast, the one you stop on goes on, not each one passed |
 | Left / right | Out to the folder this one is in / into the folder under the cursor |
 | **L1 / R1** | A page up / down. (With nothing at all on the card, R1 records: below) |
 | **Hold R1** | On a recording: **carry it**. Keep R1 down and steer (D-pad, stick, L1) to a folder, or into one; let go and it is there. The top line says where it would go. Let go on a row of SAMPLES that is no folder: out of every folder. **B with R1 held calls it off** |
@@ -478,7 +483,8 @@ the buttons are let go, any button puts it away (that press does nothing
 else), or it goes by itself after four seconds.
 
 What the shoulder buttons did on the way to all four is put back: the tab, a
-bar or scene copied, and **a recording that R1 began** (R1 pressed first on a
+bar, a cell or a scene copied (or a copy cleared) by the R1 among them, and
+**a recording that R1 began** (R1 pressed first on a
 kit lane, the sampler or CLOUD's RECORDING) is called off, and nothing of it is
 kept. A recording that was already running when R1 went down first is ended by
 that R1, as any R1 ends it, and kept. **Name keys that R1 opened on the way**
@@ -517,7 +523,7 @@ track's name is typed L1 and R1 are the keys'.
 | STICK LIGHT | The light round the stick: OFF, ON (steady, in LIGHT COLOUR), BEAT (a flash on every beat while the song plays), STEPS (the ring goes round once a scene: its sixteen lights share the scene's length, the bar's first step in brass). **Only on Apotheca's own system** | |
 | LIGHT COLOUR | The ring's colour: THEME (a colour picked for each theme: BROWN's is BRASS, DRACULA purple, NORD frost blue, GRUVBOX orange, TOKYO indigo, MONOKAI lime, SOLARIZED cyan, GITHUB blue), TEAL, PURPLE, BRASS, RED, ORANGE, YELLOW, GREEN, BLUE, PINK, WHITE, TRACK (a colour for each track: the track you are on; while it is chosen each track's head on the SONG screen wears a thin bar of its colour along its foot, so the ring can be matched to a track), RAINBOW (each light its own colour, turning a light a beat while the song plays). **Only on Apotheca's own system** | |
 | RING LEVEL | The ring's own brightness, 10% to 100% in fives, apart from the screen's. **Only on Apotheca's own system** | |
-| STICK SPEED | 25% to 150%, kept for next time | |
+| STICK SPEED | How fast the stick goes, 25% to 150%, kept for next time. **At 50% it is the held D-pad's own pace**; at 75% (as it starts) half as fast again, at 100% twice | |
 | TEXT SIZE | SMALL, MEDIUM, LARGE or XL, kept for next time | |
 | THEME | The colours: BROWN, DRACULA, NORD, GRUVBOX, TOKYO, MONOKAI, SOLARIZED or GITHUB, kept for next time | |
 | PIANO ROLL SHOWS | 1, 2 or 3 octaves | |
@@ -804,7 +810,7 @@ Every scene plays at the song's tempo in 4/4 until it is given its own. On
 the scene's `x2` box on SONG, **hold L1: up / down is its tempo in BPM, left /
 right the steps in its bars** (a bar of 12 is 3/4, of 8 is 2/4), with the
 D-pad or the stick (the stick turns the tempo fast, and the steps a click at
-once, then slowly; one job a push). **B** puts
+once, then fast; one job a push). **B** puts
 both back (the tempo follows the song, 16 steps). A line says each as it is
 turned. Only the first steps of a pattern bar play in a short bar; the rest
 are shaded on the grids and kept, as past a cut. The metronome clicks the
@@ -1550,11 +1556,11 @@ The track columns share the width of the screen: with few tracks they are wide.
 
 | On | A | Hold A + stick | B | R1 |
 | --- | --- | --- | --- | --- |
-| A cell | Opens it on PATTERN | Left / right: how long it is (1, 2, 4 or 8 bars). **Up / down: TRANSPOSE** its notes and chords a semitone (the stick up / down: an octave), every bar of it; the box above the bar says how far (MOVED +3 SEMITONES). A drum cell does not move. If a key would pass C0 or C8 nothing moves (NO ROOM). One step of undo | Empties it (on letting go) | **R1** copies it; **R1** on another cell pastes it there, on its let go, and **the copy stays** (its brass mark too), so the next cell takes it with one more R1. Notes go on notes (any synth or sampler) and drums on drums (NO PASTE: OTHER KIND). **R1** on the copied cell clears the copy without pasting. Each paste is one step of undo |
+| A cell | Opens it on PATTERN | Left / right: how long it is (1, 2, 4 or 8 bars). **Up / down: TRANSPOSE** its notes and chords a semitone (the stick up / down: an octave), every bar of it; the box above the bar says how far (MOVED +3 SEMITONES). A drum cell does not move. If a key would pass C0 or C8 nothing moves (NO ROOM). One step of undo | Empties it (on letting go) | **R1** copies it; **R1** on another cell pastes it there, on its let go, and **the copy is cleared** (its brass mark too), so the next R1 copies the cell it is on. Notes go on notes (any synth or sampler) and drums on drums (NO PASTE: OTHER KIND; the copy is kept for elsewhere). **R1** on the copied cell clears the copy without pasting. Each paste is one step of undo |
 | A track's head (up from the top scene, with the D-pad) | **A** (a quick tap) changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go (the list warns UNSAVED PATCHES WILL BE LOST). This cannot be undone. Held, it is the mixer: once its card is up, letting go never changes it, turned or not. While it is held the head fills with the level, as a lane's name does. **R1**, on its let go, types its name. **Hold L1 and press R1** copies the track: a new track right after it with the same instrument, sound, effects, sends, MODs, mixer, name and every scene's patterns (the tracks after it move a place along; twelve is the most). The copy is not soloed. It is not undone by SELECT + B: hold B on the copy deletes it. **Hold B** two seconds deletes the track. Y and X work there as on its cells. | | | |
 | A track (any of its cells) | **Y** mutes it and **X** solos it, each a tap, at once, playing or not; again to undo. X does not hear the track here: on its DEVICE page it does. L1 does nothing on a track. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. SELECT + Y there is NEXT SCENE, not a mute. | | | |
 | A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell: when B is let go, or at once if you move or press another button, not A, in its first half second.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted, the cell neither. **It is the track B went down on: moving the cursor (D-pad or stick) or pressing any other button calls it off.** The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
-| A repeat count | Tap: 1, 2, 4, 8. **R1** copies the whole scene; **R1** on another row pastes it there, on its let go, and **the copy stays** (brass) for the next. **R1** on the copied scene clears it | Up / down: times the scene plays, 1 to 16. Left / right: how many steps the scene's bars have, 16 or fewer (as the D-pad's). One job a push | Back to 1; held half a second, empties the whole scene (one step of undo) | |
+| A repeat count | Tap: 1, 2, 4, 8. **R1** copies the whole scene; **R1** on another row pastes it there, on its let go, and **the copy is cleared** (its brass mark too). **R1** on the copied scene clears it without pasting | Up / down: times the scene plays, 1 to 16. Left / right: how many steps the scene's bars have, 16 or fewer (as the D-pad's). One job a push | Back to 1; held half a second, empties the whole scene (one step of undo) | |
 | The song's end (the REPEATS box of the first empty row, just past the last scene) | Switches what the song does at its end: LOOP (a loop arrow) or STOP (a square) | | Back to LOOP | |
 | + TRACK | Pick DRUMS, PHAZED, JAX-EP, SAMPLER, FM-6, PHYSIC, ACID, CLOUD or MORPH | | | |
 | MASTER (the head at the right-hand end, right of + TRACK) | | Its level and pan, as a track's (below) | | |
@@ -1645,7 +1651,7 @@ On the drum grid (the slice view too) and the piano roll:
 | Gesture | Does |
 | --- | --- |
 | **Hold L1, press R1** | **Copy** the bar on screen: BAR 1 COPIED (on the drums, as it is pressed; on the roll, as R1 is let go unmoved — moved, it carried instead) |
-| **Hold L1, press A** | **Paste** it over the bar on screen: PASTED ON BAR 2. The copy stays, so another bar takes it with one more L1 + A |
+| **Hold L1, press A** | **Paste** it over the bar on screen: PASTED ON BAR 2, and the copy is cleared. With nothing copied it says NOTHING COPIED YET and places nothing |
 
 So steps 1-16 onto 17-32: on bar 1, hold L1 and press R1; run the cursor on
 into bar 2; hold L1 and press A.
@@ -1654,7 +1660,9 @@ into bar 2; hold L1 and press A.
   with its level, nudge, chance, start, step effects and THROW. On the roll
   its notes and chords, with everything they do.
 - **It can go anywhere**: another bar of the cell, another cell, another
-  scene, another track. The copy stays until the next copy, a new song too.
+  scene, another track. The copy is kept, through a new song too, until it
+  is pasted, another bar is copied or its track is deleted. A paste that is
+  refused, or onto a bar that is already the same, keeps it.
 - **A drum bar only goes on a drum track. Notes go on any synth or sampler
   track.** Otherwise it says so and nothing changes.
 - **A note that runs over the bar line keeps its length**, but stops at the
@@ -1696,9 +1704,9 @@ remembered between starts. Catch takes the sound before the volume, so a
 quiet handheld still catches at full level.
 
 The stick's speed, for everything it moves and turns on every screen, is one
-setting: STICK SPEED on the SET tab (25% to 150%; 75%, a quarter slower than
-first built, until it is changed). The speeding up of a full push held is
-scaled by it too.
+setting: STICK SPEED on the SET tab (25% to 150%; 75% until it is changed).
+At 50% the stick goes at the held D-pad's own pace, at 75% half as fast again,
+at 150% three times. How far it is pushed never changes its speed.
 
 ## Files over WiFi
 
@@ -1920,7 +1928,7 @@ A few things mean one thing everywhere:
 | B | Delete, empty, go back. On a setting: its usual value (a synth's pages: back to MAIN). With A still held after stepping sounds or trying effects (or Y on a chord): back to what was there when it went down |
 | **Hold B** | **Delete for good**: a track (2 s), a song (1 s), a recording in the list (1 s), one of your own presets or kits (1 s), an update sent over WiFi (1 s). The row fills as you hold; let go early and nothing happens. **What SELECT + B can bring back takes half a second**: an effect, a MOD, a scene emptied, EDIT's or VOICE's every box back (there the words say DELETING or empty, not CANNOT BE UNDONE) |
 | X | Hear it, **for as long as X is held** (a tap: a moment), and over the song while it plays. A drum hit plays whole, as the pattern plays it. Held on a drum hit: its step effects. Held on a knob: its MOD |
-| Hold R1 | On an empty step: paint as you drag. On a note: carry it. On SONG (a tap): copy a cell; R1 on another cell pastes it there, and the copy stays for the next |
+| Hold R1 | On an empty step: paint as you drag. On a note: carry it. On SONG (a tap): copy a cell; R1 on another cell pastes it there, and the copy is cleared |
 | Y | The screen's own job: chance, a chord, a mute, a catch, a roll of the dice. Held on one of FX's lines, up / down moves the effect |
 | L2 / R2 | The tabs, round the ends (L2 on SONG is SET) |
 | **L3** (press the stick in) | **The SONG screen with MASTER under the cursor**: hold A + up / down is the output's level at once, whatever the handheld's own volume. L3 again (still on MASTER): back where you were. Only where the controls setup learned it (it asks for it after the stick) |
@@ -2212,7 +2220,8 @@ the edits make it, and eight boxes laid out as the sampler's.
 | REVERSE | The whole of the part played, end first | On / off |
 
 - **Hold A + up / down turns a box**; the stick turns it through its whole
-  range in about a second (gently with a little push). **A box turned is heard
+  range in about a second, however far it is pushed (the D-pad for the exact
+  value). **A box turned is heard
   once, when you let go of A** (and the new sound is made), with the song stopped. **X hears the lane as edited** (held: to its end).
 - **B gives a box its usual value; B on a box already there goes back to the
   kit. B straight after Y goes back to the kit too, keeping what Y set**

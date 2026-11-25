@@ -1019,6 +1019,17 @@ void testBigMoves() {
             ButtonEvent press;
             if (input.handle(event, press)) list.onButton(press, true);
         };
+        // The stick pushed up or down (-1..1, before the dead zone), as a gamepad does; 0 lets it go. (`sideways`: across.)
+        const auto stickOn = [&](SDL_GameControllerAxis axis, float v) {
+            SDL_Event event = {};
+            event.type = SDL_CONTROLLERAXISMOTION;
+            event.caxis.axis = static_cast<Uint8>(axis);
+            event.caxis.value = static_cast<Sint16>(v * 32767.f);
+            ButtonEvent press;
+            if (input.handle(event, press)) list.onButton(press, true);
+        };
+        const auto stick = [&](float y) { stickOn(SDL_CONTROLLER_AXIS_LEFTY, y); };
+        const auto sideways = [&](float x) { stickOn(SDL_CONTROLLER_AXIS_LEFTX, x); };
         // How many seconds until the cursor is on `row` (30 if it never is).
         const auto secondsTo = [&](int row) {
             for (int frame = 0; frame < 1875; ++frame) {
@@ -1035,11 +1046,29 @@ void testBigMoves() {
         const int last = list.count() - 1;
         double took = 0.0;
         if (way == 0) {
-            // The stick pushed all the way: 60 rows a second as set (80 times the setting). It was 15.
-            key(STICK_DOWN, true);
+            // The stick: 60 rows a second as set (80 times the setting), however far it is pushed (owner, 2026-11-25: it
+            // was by the square of the push; before the review, 15). In 62 frames one at once, then 58.56: 59.
+            stick(0.25f); // just past the dead zone (0.0625 of the way)
             for (int i = 0; i < 62; ++i) list.update(input, clock += 16, true);
-            CHECK(list.cursor() >= 52 && list.cursor() <= 64); // a second: sixty or so
-            took = 1.0 + secondsTo(last);
+            CHECK(list.cursor() == 59);
+            stick(0.f);
+            list.update(input, clock += 16, true);
+            key(STICK_DOWN, true); // all the way: the same
+            for (int i = 0; i < 62; ++i) list.update(input, clock += 16, true);
+            CHECK(list.cursor() == 118);
+            key(STICK_DOWN, false);
+            list.update(input, clock += 16, true);
+            // Pushed sideways with a drift down (raw 0.5: 0.375 of the way, under half the push): no rows. Only up and
+            // down count here, and not by a sideways push that drifts (ui::stickAxes).
+            sideways(1.f);
+            stick(0.5f);
+            for (int i = 0; i < 62; ++i) list.update(input, clock += 16, true);
+            CHECK(list.cursor() == 118);
+            sideways(0.f);
+            stick(0.f);
+            list.update(input, clock += 16, true);
+            key(STICK_DOWN, true);
+            took = 2.0 + secondsTo(last);
             key(STICK_DOWN, false);
             CHECK(took > 7.5 && took < 9.5);
         } else if (way == 1) {

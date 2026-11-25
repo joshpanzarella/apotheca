@@ -1,7 +1,8 @@
 // COPY A BAR: hold L1, R1 copies the bar on screen, A pastes it over the bar on screen (the drum
 // grid, its slice view, the piano roll). The Session's side (Session::copyBar / pasteBar): every
 // field of a hit, notes and chords with a length over the bar line held to the cell's end, the
-// automation on the same track only, the refusals, one step of undo, the same bar no step. The
+// automation on the same track only, the refusals, one step of undo, the same bar no step, a paste
+// spending the copy (a Same and a refusal keep it). The
 // gesture through the real screens: R1 paints and carries nothing, A places nothing, L1 alone
 // still opens the slices and zooms (on its let go) and does not when a copy or a paste was made,
 // X held keeps L1 / R1 for the step effects, a panic begun with L1 then R1 leaves the copy as it
@@ -200,7 +201,7 @@ void testDrums() {
     rig.frames(1);
     CHECK(rig.said() == "PASTED ON BAR 2");
     CHECK(sameDrums(rig.track(0).drums[0][1], rig.track(0).drums[0][0]));
-    CHECK(rig.session().barClip().has); // kept for another paste (G23, 2026-11-25: a paste spent it)
+    CHECK(!rig.session().barClip().has); // spent: a paste clears the copy (testAPasteSpendsTheCopy)
     CHECK(drums.level(4, 2) == 0.f);
     // A's hold is not A's: the D-pad does not nudge or level anything while it is down.
     const float level = drums.level(0, 8);
@@ -222,7 +223,7 @@ void testDrums() {
     rig.redo();
     CHECK(sameDrums(rig.track(0).drums[0][1], rig.track(0).drums[0][0]) && rig.track(0).automation[0][20][kSteps + 3] == 0.7f);
     rig.settle();
-    // Pasted again on the same: nothing changes, no step of undo (a fresh copy of bar 1).
+    // Pasted again on the same: nothing changes, no step of undo (a fresh copy: the paste spent it).
     rig.project().bar = 0;
     rig.frames(1);
     rig.withL1(R1);
@@ -251,7 +252,7 @@ void testDrums() {
     rig.settle();
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // a fresh copy, of the bar as it is now
+    rig.withL1(R1); // again: the paste spent it
     rig.project().bar = 1;
     rig.frames(1);
     rig.withL1(A);
@@ -289,7 +290,7 @@ void testDrums() {
     // A paste and an edit straight after are two steps, not one burst.
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // a fresh copy, of the bar as it is now
+    rig.withL1(R1); // again: the paste spent it
     rig.project().bar = 1;
     rig.frames(1);
     drums.setStep(0, 0, 0.f);
@@ -307,7 +308,7 @@ void testDrums() {
     // An edit and a paste straight after it (no still moment between): two steps too.
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // a fresh copy, of the bar as it is now
+    rig.withL1(R1); // again: the paste spent it
     rig.project().bar = 1;
     rig.frames(1);
     const int beforeBoth = rig.session().undoSteps();
@@ -336,7 +337,7 @@ void testDrums() {
     // Another scene, another drum track: the hits; automation only on the same track.
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // a fresh copy, of the bar as it is now
+    rig.withL1(R1); // again: the paste spent it
     rig.project().scene = 1;
     rig.project().bar = 0;
     rig.frames(1);
@@ -345,7 +346,7 @@ void testDrums() {
     rig.project().track = 0;
     rig.project().scene = 0;
     rig.frames(1);
-    rig.withL1(R1); // a fresh copy, of the bar as it is now
+    rig.withL1(R1); // again: the paste spent it
     CHECK(rig.session().addTrack(TrackKind::Drums));
     rig.project().track = 1;
     rig.project().scene = 0;
@@ -356,7 +357,7 @@ void testDrums() {
     // Onto a synth track: refused, nothing placed.
     rig.project().track = 0;
     rig.frames(1);
-    rig.withL1(R1); // a fresh copy (the refusal kept the copy too)
+    rig.withL1(R1); // again: the paste spent it (the refusal keeps it)
     CHECK(rig.session().addTrack(TrackKind::Phazed));
     rig.project().track = 2;
     rig.frames(1);
@@ -373,27 +374,51 @@ void testDrums() {
     CHECK(rig.session().barClip().has);
 }
 
-// A bar's copy stays after a paste (gesture audit G23, 2026-11-25: a paste spent it): one copy goes on
-// bar after bar, each paste its own step of undo; a new copy replaces it.
-void testTheCopyStaysForAnotherPaste() {
+// A paste spends the bar's copy (the owner, 2026-11-25: "you copy, clipboard has it, another R1 pastes and
+// then the clipboard is clear"; gesture audit G23 had kept it that morning). L1 + A twice pastes once: the
+// second says NOTHING COPIED YET and places nothing. (L1 + R1 always copied afresh, G23 included: a bar has
+// its own copy key, so the spend is for one rule with SONG's cell and scene.) A Same and a refusal paste
+// nothing, so they keep the copy. One Session::pasteBar
+// for the drum grid, its slice view and the roll (testTheSlicesAndL1 and testNotes take it through those).
+void testAPasteSpendsTheCopy() {
     Rig rig;
     writeDrumBar(rig);
     Session& session = rig.session();
+    PatternScreen& drums = rig.app.drums();
     rig.settle();
+    // The Session's side: a paste spends it, and the next finds nothing.
     CHECK(session.copyBar(0, 0, 0) == Session::BarCopy::Done);
-    const int steps = session.undoSteps();
-    for (int scene = 1; scene <= 3; ++scene) {
-        CHECK(session.pasteBar(0, scene, 0) == Session::BarCopy::Done && session.barClip().has);
-        CHECK(sameDrums(rig.track(0).drums[scene][0], rig.track(0).drums[0][0]));
-        rig.settle();
-    }
-    CHECK(session.undoSteps() == steps + 3);
-    // Through the grid: hold L1, A on bar 2 of scene 1 pastes the same copy, with no R1 between.
+    CHECK(session.pasteBar(0, 1, 0) == Session::BarCopy::Done && !session.barClip().has);
+    CHECK(sameDrums(rig.track(0).drums[1][0], rig.track(0).drums[0][0]));
+    CHECK(session.pasteBar(0, 2, 0) == Session::BarCopy::NothingCopied && rig.track(0).drums[2][0].empty());
+    // A Same and a refusal keep it: nothing was pasted.
+    CHECK(session.copyBar(0, 0, 0) == Session::BarCopy::Done);
+    CHECK(session.pasteBar(0, 1, 0) == Session::BarCopy::Same && session.barClip().has);
+    CHECK(session.pasteBar(0, 0, 2) == Session::BarCopy::NoTrack && session.barClip().has); // (a two-bar cell)
+    CHECK(session.addTrack(TrackKind::Phazed));
+    CHECK(session.pasteBar(1, 0, 0) == Session::BarCopy::DrumsOnDrums && session.barClip().has);
+    // Through the drum grid: hold L1, A on bar 2 pastes; L1 + A again, on scene 3, places nothing.
+    rig.project().track = 0;
     rig.project().scene = 0;
     rig.project().bar = 1;
     rig.frames(1);
     rig.withL1(A);
-    CHECK(rig.said() == "PASTED ON BAR 2" && sameDrums(rig.track(0).drums[0][1], rig.track(0).drums[0][0]) && session.barClip().has);
+    CHECK(rig.said() == "PASTED ON BAR 2" && sameDrums(rig.track(0).drums[0][1], rig.track(0).drums[0][0]) && !session.barClip().has);
+    rig.project().scene = 2;
+    rig.project().bar = 0;
+    rig.frames(1);
+    rig.withL1(A);
+    CHECK(rig.said() == "NOTHING COPIED YET" && rig.track(0).drums[2][0].empty());
+    // L1 + R1 copies what is under the cursor, as it always did: scene 3's own bar, onto scene 4, spent again.
+    drums.setStep(4, 2, 0.6f);
+    rig.frames(1);
+    rig.withL1(R1);
+    CHECK(rig.said() == "BAR 1 COPIED" && session.barClip().has && session.barClip().scene == 2);
+    rig.project().scene = 3;
+    rig.frames(1);
+    rig.withL1(A);
+    CHECK(rig.said() == "PASTED ON BAR 1" && rig.track(0).drums[3][0].level[4][2] == 0.6f && rig.track(0).drums[3][0].level[0][0] == 0.f);
+    CHECK(!session.barClip().has);
 }
 
 // ---- notes -------------------------------------------------------------------------------------
@@ -467,7 +492,7 @@ void testNotes() {
     rig.key(A, false);
     rig.key(L1, false);
     rig.frames(1);
-    CHECK(rig.said() == "PASTED ON BAR 2" && rig.session().octavesShown() == zoom);
+    CHECK(rig.said() == "PASTED ON BAR 2" && rig.session().octavesShown() == zoom && !rig.session().barClip().has); // (spent)
     const NotePattern& two = rig.track(1).notes[0][1];
     const NotePattern& one = rig.track(1).notes[0][0];
     CHECK(two.at(72, 7) < 0);
@@ -489,7 +514,7 @@ void testNotes() {
     // Another synth track, a cell of four bars: the long note keeps its length. No automation.
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // a fresh copy, of the bar as it is now
+    rig.withL1(R1); // again: the paste spent it
     CHECK(rig.session().addTrack(TrackKind::Jx3p));
     rig.session().setCellBars(2, 0, 4);
     rig.project().track = 2;
@@ -497,11 +522,16 @@ void testNotes() {
     rig.frames(1);
     rig.withL1(A);
     CHECK(rig.track(2).notes[0][0].notes[2].length == 10.f && rig.track(2).automation[0][0][2] < 0.f);
+    // ...which spent it: L1 + A on its bar 2 places nothing.
+    rig.project().bar = 1;
+    rig.frames(1);
+    rig.withL1(A);
+    CHECK(rig.said() == "NOTHING COPIED YET" && rig.track(2).notes[0][1].empty());
     // A sampler takes notes too.
     rig.project().track = 1;
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // a fresh copy, of the bar as it is now
+    rig.withL1(R1); // again: the paste spent it
     CHECK(rig.session().addTrack(TrackKind::Sampler));
     rig.project().track = 3;
     rig.frames(1);
@@ -511,7 +541,7 @@ void testNotes() {
     rig.project().track = 1;
     rig.project().bar = 0;
     rig.frames(1);
-    rig.withL1(R1); // a fresh copy (the refusal kept the copy too)
+    rig.withL1(R1); // again: the paste spent it (the refusal keeps it)
     rig.project().track = 0;
     rig.frames(1);
     rig.withL1(A);
@@ -617,6 +647,23 @@ void testTheSlicesAndL1() {
     rig.key(L1, false);
     rig.frames(1);
     CHECK(drums.slicing());
+    // That paste spent the copy: L1 + A in the slice view finds nothing, and the view stays.
+    rig.withL1(A);
+    CHECK(drums.slicing() && rig.said() == "NOTHING COPIED YET" && rig.track(0).drums[0][0].level[2][3] == 0.8f);
+    // A paste made in the slice view spends the copy too: bar 1 copied, pasted on bar 2, the view up throughout.
+    rig.session().setCellBars(0, 0, 2); // (bar 2 a repeat of bar 1: a hit more on bar 1, so the paste is no Same)
+    drums.setStep(2, 5, 0.4f);
+    rig.frames(1);
+    CHECK(drums.slicing());
+    rig.withL1(R1);
+    CHECK(drums.slicing() && rig.said() == "BAR 1 COPIED" && rig.session().barClip().has);
+    rig.project().bar = 1;
+    rig.frames(1);
+    rig.withL1(A);
+    CHECK(drums.slicing() && rig.said() == "PASTED ON BAR 2" && !rig.session().barClip().has);
+    CHECK(rig.track(0).drums[0][1].level[2][5] == 0.4f && rig.track(0).drums[0][1].start[2][3] == 5.f / 16.f);
+    rig.project().bar = 0;
+    rig.frames(1);
     rig.tap(L1);
     CHECK(!drums.slicing());
 
@@ -664,6 +711,48 @@ void testTheSlicesAndL1() {
     rig.frames(1);
     CHECK(!drums.slicing());
     rig.tap(A); // puts the notice away
+    rig.frames(2);
+    // A copy spent on the way stays spent: L1, A (pastes, and the copy goes), R1 (copies again), L2, R2. The panic
+    // takes back R1's copy alone, the clipboard as it was just before R1: empty, not the copy L1 went down with.
+    drums.moveCursorTo(2, 3);
+    rig.frames(1);
+    rig.withL1(R1);
+    CHECK(rig.said() == "BAR 1 COPIED" && rig.session().barClip().has);
+    rig.key(L1, true);
+    rig.frames(1);
+    rig.tap(A);
+    CHECK(rig.said() == "BAR 1 IS THE SAME ALREADY" && rig.session().barClip().has); // (a Same keeps it)
+    rig.project().bar = 1;
+    rig.frames(1);
+    rig.tap(A);
+    CHECK(rig.said() == "PASTED ON BAR 2" && !rig.session().barClip().has);
+    rig.key(R1, true);
+    rig.frames(1);
+    CHECK(rig.session().barClip().has && rig.session().barClip().bar == 1); // (on the way, R1 copied bar 2)
+    rig.key(L2, true);
+    rig.key(R2, true);
+    CHECK(!rig.session().barClip().has);
+    for (SDL_Keycode k : {L1, L2, R2, R1}) rig.key(k, false);
+    rig.frames(1);
+    rig.tap(A);
+    rig.frames(2);
+    rig.project().bar = 0;
+    // ...and a copy made on purpose before the panic's R1 stays: L1, R1 tapped (copies bar 1), R1 again (copies
+    // bar 1 again), L2, R2: bar 1's copy, as the first R1 made it.
+    rig.key(L1, true);
+    rig.frames(1);
+    rig.tap(R1);
+    CHECK(rig.said() == "BAR 1 COPIED" && rig.session().barClip().has && rig.session().barClip().bar == 0);
+    const unsigned made = rig.session().barCopies();
+    rig.key(R1, true);
+    rig.frames(1);
+    CHECK(rig.session().barCopies() == made + 1);
+    rig.key(L2, true);
+    rig.key(R2, true);
+    CHECK(rig.session().barClip().has && rig.session().barClip().bar == 0);
+    for (SDL_Keycode k : {L1, L2, R2, R1}) rig.key(k, false);
+    rig.frames(1);
+    rig.tap(A);
     rig.frames(2);
     // ...and begun L1, L2, R2, R1 (the triggers turn the tabs on the way, R1 makes it a panic): L1 let
     // go after it opens no slices either.
@@ -1082,7 +1171,7 @@ int main(int argc, char** argv) {
         {"testDrums", testDrums}, {"testNotes", testNotes}, {"testTheSlicesAndL1", testTheSlicesAndL1}, {"testTheEngineHearsIt", testTheEngineHearsIt}, {"testTheWordsFit", testTheWordsFit},
         {"testRollBarsLength", testRollBarsLength}, {"testDrumBarsLength", testDrumBarsLength},
         {"testBarCopyTracksItsTrack", testBarCopyTracksItsTrack}, {"testPasteSeparatesUnmarkedDrift", testPasteSeparatesUnmarkedDrift},
-        {"testAStickMoveIsAUseOfL1", testAStickMoveIsAUseOfL1}, {"testTheCopyStaysForAnotherPaste", testTheCopyStaysForAnotherPaste},
+        {"testAStickMoveIsAUseOfL1", testAStickMoveIsAUseOfL1}, {"testAPasteSpendsTheCopy", testAPasteSpendsTheCopy},
     };
     for (const Test& test : tests) {
         bool wanted = argc < 2;

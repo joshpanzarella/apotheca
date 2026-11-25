@@ -638,12 +638,13 @@ void testPickingWithTheDPadAndTheStick() {
     CHECK(rig.notes().handInversion() == -3);
     rig.tap(SDLK_UP, 4);
     CHECK(rig.notes().handInversion() == 1);
-    // The stick does the same: one at once, then about seven a second.
+    // The stick does the same: one at once, then twice the held D-pad's pace for a list (18.2 a second at STICK
+    // SPEED 100%; it was seven), however far it is pushed.
     rig.key(STICK_RIGHT, true);
     rig.frames(1);
     CHECK(rig.notes().handIndex() == 1);
-    rig.frames(31); // half a second
-    CHECK(rig.notes().handIndex() >= 4 && rig.notes().handIndex() <= 5);
+    rig.frames(27); // 0.43 s more: 7.85
+    CHECK(rig.notes().handIndex() == 8);
     rig.key(STICK_RIGHT, false);
     rig.frames(1);
     const int hand = rig.notes().handIndex();
@@ -780,7 +781,8 @@ void testShapingAndRemovingAWholeChord() {
     CHECK(rig.chordOn(0)->velocity == 1.f);
     rig.key(A, false);
     CHECK(rig.notes().noteCount() == 0);
-    // The stick with A held slides the chord's end freely; the D-pad snaps it.
+    // The stick with A held slides the chord's end freely; the D-pad snaps it. (At its own ten steps a second, times
+    // STICK SPEED, however far it is pushed: a value turned, not twice the held D-pad's pace.)
     rig.key(A, true);
     rig.key(STICK_UP, true);
     rig.frames(4);

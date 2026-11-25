@@ -129,8 +129,21 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - **The clipboard is memory only**, never in the song file; a new song keeps it. It holds a drum
     bar (`DrumPattern`, every field) or a note bar (`NotePattern`, chords and their effects), the bar's
     16 steps of every automation lane, and where it came from.
-  - **The copy stays after a paste** (gesture audit G23, 2026-11-25: a paste spent it; reasons in
-    `song-screen.md`), so one bar goes on bar after bar with L1 + A each; L1 + R1 copies afresh.
+  - **A paste spends the copy** (owner, 2026-11-25, reversing gesture audit G23 of that morning, which
+    read "The copy stays after a paste ... so one bar goes on bar after bar with L1 + A each"; the
+    owner's words in `song-screen.md`). L1 + A pastes and empties the clipboard: another L1 + A says
+    NOTHING COPIED YET and places nothing. The owner's reason is SONG's: there one R1 does both jobs, so a
+    kept copy turned the next R1 into a paste. A bar has its own two keys and L1 + R1 always copied afresh,
+    G23 included; it spends its copy too so the three clipboards keep one rule. A Same (BAR 2 IS THE SAME
+    ALREADY) or a refusal pastes nothing and keeps it. No mark on the grids (none was ever drawn).
+    `copybar_test testAPasteSpendsTheCopy`, the slice view in `testTheSlicesAndL1` (a paste made there
+    spends it too, since the [owner-fix] review), the roll in `testNotes`.
+  - **A panic takes back only the copy its own R1 made** ([owner-fix] review, 2026-11-25). The App notes the
+    copy counts when R1 goes down (`App::onButton`), and at the fourth shoulder, if they moved, puts the
+    clipboard as it was just before that R1 (`Session::takeBackBarCopy`, `clipBeforeCopy_`, set at the top
+    of `copyBar`). It used to put back the clipboard as it was when the FIRST shoulder went down, so L1, A
+    (pastes, spending the copy), R1 (copies), L2, R2 brought back the spent copy, and a copy made on purpose
+    with L1 held before the panic's R1 went with it. `copybar_test testTheSlicesAndL1`.
   - **A paste REPLACES the bar** and is **one step of undo of its own** (as NEXT SCENE: the burst
     before it ends, and `settled_` is taken after it, so an edit straight after is a step too). Onto a
     bar that is already the same (compared field by field; automation too on the same track): nothing,
@@ -372,7 +385,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - **The KIT page's fourth column is the sound's picture, EDIT** (`KitScreen::kEdit`); a tap of A
     opens the view (`editing()`, `openEdit`), laid out as the sampler's page (`kEdit...` in
     kit_screen.hpp), the file's picture drawn by `ui::wavePicture`, which the sampler shares. Hold A
-    + up / down turns a box, the stick by the square of its push (`laneEditRange` a second); B its
+    + up / down turns a box, the stick however far it is pushed (`laneEditRange` a second, times STICK SPEED;
+    by the square of its push until the owner's stick rule, 2026-11-25: screens.md); B its
     usual value, B on a box at its usual value back to the kit (on letting go); hold B half a second (G29),
     every edit to none (any other button or a move calls it off); Y on START / END trims, elsewhere
     normalizes; X hears. Stills `kit-edit`, `kit-edit-held`, `kit-edit-deleting`,
@@ -423,8 +437,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - **The KIT page**: hold A on SOUND, from the built-in drum UP the recordings (as before) and DOWN
     the twelve models (each at its usual); a synth lane reads its model and SYNTH. **A tap of A on a synth lane opens
     its VOICE view** (`KitScreen::voicing()`, the EDIT view's layout: MODEL on top, the eight places two
-    rows of four, an unused one an empty box the cursor passes by): hold A turns (the stick by the
-    square of its push), B default / back, hold B every knob to the usual, Y ROLL (`kRollLow` 25 to
+    rows of four, an unused one an empty box the cursor passes by): hold A turns (the stick however far
+    it is pushed, since the owner's stick rule, 2026-11-25; MODEL, a choice, once a push, any push: screens.md), B default / back, hold B every knob to the usual, Y ROLL (`kRollLow` 25 to
     `kRollHigh` 75, by a hash of the voice and a count), L1 / R1 the synth lane before / after, X hears.
     **A turned box (VOICE and EDIT views) is heard ONCE, when the turn is done** (owner, 2026-11-17: heard at
     every step it "sounds odd and you can't really hear what has changed"; `KitScreen::hearWhenDone`): A let go,
@@ -581,8 +595,10 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - `tests/picker_test.cpp` (real files; the saved song and rev byte for byte; the list by
     itself with jobs that count), `textsize_test` (each state drawn, the bar's words).
   - **The review's mend (batch 3, 2026-11-15):**
-    - **Big moves.** The stick is `kStickRowsPerSecond` 80 times its setting, by the SQUARE of
-      the push (a little push reads each name). A held D-pad has a third pace
+    - **Big moves.** The stick is `kStickRowsPerSecond` 80 times its setting (60 a second at 75%), however
+      far it is pushed (owner, 2026-11-25: it was by the SQUARE of the push, a little push reading each
+      name; the D-pad is for that now). It keeps its own rate, not the other screens' twice the D-pad's: the
+      held D-pad here goes on to 50 a second (screens.md, the stick). A held D-pad has a third pace
       (`kFastestEveryMs` 20 after `kFastestAfterMs` 3.5 s), counted from when each row was due
       (several a frame; a stall makes no burst). (Gesture audit G32, 2026-11-25: its numbers now live
       in `ui.hpp` as the one named exception to the paces, `kRecordings...`, and it counts through

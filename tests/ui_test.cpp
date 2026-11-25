@@ -132,8 +132,8 @@ void testStickRunsTheCursor() {
     rig.key(STICK_RIGHT, true);
     rig.frames(1);
     CHECK(rig.screen.cursorStep() == 1); // no wait at all
-    rig.frames(16); // a quarter of a second at 36 a second, climbing (a full push, G07: steady, it reached 10)
-    CHECK(rig.screen.cursorStep() >= 12);
+    rig.frames(10); // 0.16 s more at 66.7 a second (twice the held D-pad's pace at STICK SPEED 100%): 10.67
+    CHECK(rig.screen.cursorStep() == 11);
     rig.key(STICK_RIGHT, false);
     const int stopped = rig.screen.cursorStep();
     rig.frames(20);
@@ -161,7 +161,7 @@ void testAStalledFrameDoesNotFlingTheCursor() {
     rig.frames(1);
     rig.clock += 5000; // the program hung for five seconds
     rig.frames(1);
-    CHECK(rig.screen.cursorStep() <= 3);
+    CHECK(rig.screen.cursorStep() == 4); // 1, then at most 0.05 s of travel (3.3 at 66.7 a second), not five seconds
 }
 
 void testAPlacesAHitAndPlaysIt() {
@@ -825,11 +825,11 @@ void testPaintingRunsWithTheStick() {
     Rig rig;
     rig.key(R1, true);
     rig.key(STICK_RIGHT, true);
-    rig.frames(18); // under a third of a second (a full push climbs, G07: steady, it reached 11)
+    rig.frames(13); // about a fifth of a second: 1 at once, then 12.8 at 66.7 a second
     rig.key(STICK_RIGHT, false);
     rig.key(R1, false);
     const int reached = rig.screen.cursorStep();
-    CHECK(reached >= 12 && reached < kSteps); // most of the row
+    CHECK(reached == 13); // most of the row
     for (int step = 0; step <= reached; ++step) CHECK(near(rig.screen.level(0, step), 0.9f)); // and no step skipped
     // A held D-pad paints as it repeats.
     rig.screen.moveCursorTo(4, 0);

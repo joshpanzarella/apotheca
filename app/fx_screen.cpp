@@ -16,7 +16,7 @@ namespace apotheca {
 using namespace ui;
 
 namespace {
-constexpr float kMovesPerSecond = 14.f, kKindsPerSecond = 5.f, kTurnPerSecond = 0.9f, kNotch = 0.05f;
+constexpr float kTurnPerSecond = 0.9f, kNotch = 0.05f; // (kTurnPerSecond: the stick turning, however far it is pushed)
 static_assert(kEffectPushes == 20, "kNotch is a push of the usual twenty");
 
 // One push of the D-pad on an amount: to the next of its points, `pushes` across the range. The usual twenty keep
@@ -728,47 +728,55 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
     if (stickWait_ && x == 0.f && y == 0.f) stickWait_ = false;
     if (stickWait_) return; // (the stick was pushed for the MOD: it moves nothing until it has come back)
 
-    // A setting that is a choice (the filter's TYPE, the delay's TIME) is not turned: it clicks
-    // from one choice to the next, a push at a time, with the stick as with the D-pad.
+    // A held D-pad (and the stick, at twice it): the list of effects and a TYPE (a choice) at the list's pace, after
+    // the cursor's wait they always had (G32: the list ran at a bare 200 ms); the cursor, a setting and a send at
+    // the cursor's.
+    const auto runs = [&](Button way) {
+        const bool types = typeKey() != nullptr && (way == Button::Left || way == Button::Right); // a TYPE: a choice
+        return picking() || types ? Pace::List : Pace::Cursor;
+    };
+    // A setting that is a choice (the filter's TYPE, the delay's TIME) is not turned: with A held it clicks from one
+    // choice to the next, at once, and held on, the stick runs at twice the LIST's pace (the standard's for choices:
+    // CLAUDE.md, "choices click once per push; they are not sliders"), not twice the cursor's its held D-pad was left
+    // at (gesture audit G08, the owner's question): at the cursor's, a push passed several types.
     const bool onSend = sends(row_);
     const bool choice = !onSend && column_ > 0 && effectChoices(static_cast<EffectKind>(data(row_).kind), column_ - 1) > 0;
     if (const int along = bandGrip(); along >= 0) {
         // Y held on BAND's FREQ, GAIN or Q (gesture audit G18): the stick moves the bell both ways at once, as
         // the mixer turns level and pan (no lock to one axis): across is FREQ, up / down GAIN (on the Q dial, Q),
-        // each squared and at the pace a turn with A held has.
-        turnSetting(kBandFreq, x * std::fabs(x) * kTurnPerSecond * dt);
-        turnSetting(along, -y * std::fabs(y) * kTurnPerSecond * dt);
+        // each at the pace a turn with A held has, however far it is pushed. A slight drift off one way is not
+        // the other (ui::stickAxes).
+        const StickAxes both = stickAxes(x, y);
+        turnSetting(kBandFreq, stickWay(both.x) * kTurnPerSecond * dt);
+        turnSetting(along, -stickWay(both.y) * kTurnPerSecond * dt);
         saved_ = 0.f;
         stickWas_ = false;
     } else if (holding_ && column_ > 0 && !choice) {
-        // A setting or a send: the stick turns it. Squared, so a small push is fine.
-        turn(-y * std::fabs(y) * kTurnPerSecond * dt);
+        // A setting or a send: the stick turns it, however far it is pushed (the D-pad for exact steps); up / down
+        // only, and not by a sideways push that drifts (ui::stickAxes).
+        turn(-stickWay(stickAxes(x, y).y) * kTurnPerSecond * dt);
     } else {
-        // Moving, or stepping through the effects or the types: one at once, then steadily.
-        const bool sideways = (!holding_ || picking()) && std::fabs(x) > std::fabs(y);
-        const float push = sideways ? x : y;
-        const bool kinds = holding_ || (sideways && typeKey() != nullptr); // (a TYPE from the settings: at the list's pace)
-        const float climb = climb_.times(kinds ? 0.f : push, nowMs);       // the cursor: a full push held climbs (G07)
+        // Moving, or stepping through the effects or the types: one at once, then at twice the pace a held D-pad
+        // runs the same way (runs(), above), however far it is pushed; a choice with A held at twice the list's.
+        // With A held (not picking) only up / down counts, and not by a sideways push that drifts.
+        const bool upDownOnly = holding_ && !picking();
+        const bool sideways = !upDownOnly && std::fabs(x) > std::fabs(y);
+        const float push = sideways ? x : upDownOnly ? stickAxes(x, y).y : y;
+        const Button way = sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up);
         if (push == 0.f) {
             saved_ = 0.f;
             stickWas_ = false;
         } else {
-            saved_ += stickWas_ ? std::fabs(push) * (kinds ? kKindsPerSecond : kMovesPerSecond * climb) * dt : 1.f;
+            saved_ += stickWas_ ? stickPerSecond(upDownOnly && choice ? Pace::List : runs(way)) * dt : 1.f;
             stickWas_ = true;
             for (; saved_ >= 1.f; saved_ -= 1.f) {
-                press(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
+                press(way);
                 if (gripEntered_) break; // (onto BAND's dials with Y held: moved() below)
             }
             moved(input);
         }
     }
-    // A held D-pad: the list of effects and a TYPE (a choice) at the list's pace, after the cursor's wait they
-    // always had (G32: the list ran at a bare 200 ms); the cursor, a setting and a send at the cursor's.
-    const auto runs = [&] {
-        const bool types = typeKey() != nullptr && (repeating_ == Button::Left || repeating_ == Button::Right); // a TYPE: a choice
-        return picking() || types ? Pace::List : Pace::Cursor;
-    };
-    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::Cursor, runs())) {
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::Cursor, runs(repeating_))) {
         press(repeating_);
         moved(input);
     }

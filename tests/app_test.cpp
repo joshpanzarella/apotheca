@@ -372,9 +372,13 @@ void testCopyingABar() {
     rig.app.song().moveCursorTo(0, 0);
     rig.tap(R1); // copy
     rig.app.song().moveCursorTo(1, 0);
-    rig.tap(R1); // paste: the copy stays (G23)
+    rig.tap(R1); // paste: the copy is spent (the owner, 2026-11-25)
+    rig.app.song().moveCursorTo(0, 0);
+    rig.tap(R1); // copy again
     rig.app.song().moveCursorTo(2, 0);
-    rig.tap(R1); // paste again, with no copy between
+    rig.tap(R1); // paste
+    rig.app.song().moveCursorTo(0, 0);
+    rig.tap(R1); // copy the drum cell again
     rig.app.song().moveCursorTo(2, 1);
     rig.tap(R1); // onto the synth: a drum bar cannot go there
     CHECK(!rig.project().tracks[1].notes[2][0].empty()); // and it did not wipe the synth's bar
@@ -441,7 +445,9 @@ void testTheCellCopyStaysPut() {
     rig.tap(DOWN, 3); // moving on pastes nothing more
     CHECK(!rig.project().tracks[0].drums[1][0].empty());
     for (int scene = 2; scene <= 4; ++scene) CHECK(rig.project().tracks[0].drums[scene][0].empty());
-    // R1 on a repeat count or on + TRACK leaves the cell copy alone (the paste before kept it: G23).
+    // R1 on a repeat count or on + TRACK leaves the cell copy alone.
+    rig.app.song().moveCursorTo(0, 0);
+    rig.tap(R1); // copy again: the paste before spent it
     rig.app.song().moveCursorTo(0, -1);
     rig.tap(R1); // that copies the scene, another clipboard
     rig.tap(RIGHT, 2); // onto + TRACK
@@ -539,13 +545,15 @@ void testNoteLevelAndLength() {
     CHECK(near(notes.noteHere()->velocity, 0.6f));
     rig->tap(RIGHT);
     CHECK(near(notes.noteHere()->velocity, 0.7f));
-    // The stick is free: the end goes to any point in a step.
-    rig->key(STICK_DOWN, true);
+    // The stick is free: the end goes to any point in a step, at its own ten steps a second (times STICK SPEED, 100%
+    // here: 0.16 of a step a frame) however far it is pushed. A value turned, not twice the held D-pad's 33 a
+    // second: the D-pad goes to the step lines (owner, 2026-11-25: "d-pad for detailed ones").
+    rig->stick(0.f, 0.25f); // just past the dead zone
     rig->frames(5);
-    rig->key(STICK_DOWN, false);
+    rig->stick(0.f, 0.f);
     rig->frames(1);
     const float free = notes.noteHere()->length;
-    CHECK(free > 1.5f && free < 2.f && free != std::floor(free)); // about ten steps a second, fully pushed
+    CHECK(near(free, 1.8f) && free != std::floor(free)); // (it was ten steps a second fully pushed, by the square)
     CHECK(notes.cursorStep() == 4);
     // The D-pad puts it back on a step line: the next one, or the one before.
     rig->tap(DOWN);
@@ -554,7 +562,7 @@ void testNoteLevelAndLength() {
     rig->frames(3);
     rig->key(STICK_DOWN, false);
     rig->frames(1);
-    CHECK(notes.noteHere()->length > 2.f && notes.noteHere()->length < 3.f);
+    CHECK(near(notes.noteHere()->length, 2.48f));
     rig->tap(UP);
     CHECK(notes.noteHere()->length == 2.f);
     rig->tap(UP);
@@ -565,7 +573,7 @@ void testNoteLevelAndLength() {
     rig->key(STICK_UP, false);
     rig->frames(1);
     const float shortNote = notes.noteHere()->length;
-    CHECK(shortNote > 0.3f && shortNote < 0.8f);
+    CHECK(near(shortNote, 0.52f));
     rig->tap(UP); // there is no whole step below it: nothing happens
     CHECK(notes.noteHere()->length == shortNote);
     rig->key(STICK_UP, true);
@@ -575,7 +583,7 @@ void testNoteLevelAndLength() {
     CHECK(near(notes.noteHere()->length, 0.1f));
     rig->tap(DOWN);
     CHECK(notes.noteHere()->length == 1.f);
-    // A small push is a fine adjustment: a quarter of the way over moves a sixteenth as fast.
+    // Pushed down: to the end of the bar.
     rig->key(STICK_DOWN, true);
     rig->frames(100);
     rig->key(STICK_DOWN, false);
@@ -2644,10 +2652,16 @@ void testChoicesClick() {
     rig.key(STICK_UP, false);
     rig.frames(1);
     CHECK(type() == FilterType::BandPass);
-    // Held over: on through them steadily, a few a second, and it stops at the end.
+    // Held over: on through them at twice the list's pace (the standard's for choices: 18.2 a second at STICK SPEED
+    // 100%, 0.29 a frame), however far it is pushed, and it stops at the end. Not twice the cursor's, where its held
+    // D-pad was left (G08): at 1.07 a frame a push passed several types.
     rig.key(STICK_UP, true);
-    rig.frames(12); // a fifth of a second: not yet a second click
+    rig.frames(1); // one at once
     CHECK(type() == FilterType::Dj);
+    rig.frames(3); // 0.87 more: not yet
+    CHECK(type() == FilterType::Dj);
+    rig.frames(1); // 1.16: the next (it was five a second: none yet)
+    CHECK(type() == FilterType::HighPass);
     rig.frames(120);
     CHECK(type() == FilterType::HighPass);
     rig.key(STICK_UP, false);
@@ -2659,14 +2673,26 @@ void testChoicesClick() {
     CHECK(type() == FilterType::Dj);
     rig.tap(DOWN); // the D-pad: the same click
     CHECK(type() == FilterType::BandPass);
-    // A setting that is an amount still turns smoothly under the stick.
+    // A sideways push that drifts up (raw 0.5: 0.375 of the way, under half) clicks no type: only up / down counts.
+    rig.stick(1.f, -0.5f);
+    rig.frames(10);
+    rig.stick(0.f, 0.f);
+    rig.frames(1);
+    CHECK(type() == FilterType::BandPass);
+    // A setting that is an amount still turns smoothly under the stick: 0.9 of its range a second, 0.0144 a frame.
     rig.app.fx().goTo(0, 1); // CUTOFF
     const float before = session.effectData(0, 0).param[0];
     rig.key(STICK_UP, true);
     rig.frames(10);
     rig.key(STICK_UP, false);
     const float moved = session.effectData(0, 0).param[0] - before;
-    CHECK(moved > 0.02f && moved < 0.3f);
+    CHECK(near(moved, 0.144f));
+    // ...and not by a sideways push that drifts up.
+    rig.stick(1.f, -0.5f);
+    rig.frames(10);
+    rig.stick(0.f, 0.f);
+    rig.frames(1);
+    CHECK(session.effectData(0, 0).param[0] == before + moved);
     rig.key(A, false);
 
     // On a synth's pages: a wave is a choice, a level is a range.
@@ -2695,11 +2721,14 @@ void testChoicesClick() {
     rig.frames(1);
     CHECK(rig.project().tracks[1].patch.value[waveId] == wave + next); // one, not a sweep
     rig.key(next > 0 ? STICK_UP : STICK_DOWN, true);
-    rig.frames(8);
+    rig.frames(5);
     rig.key(next > 0 ? STICK_UP : STICK_DOWN, false);
     rig.frames(1);
     const int after = rig.project().tracks[1].patch.value[waveId];
-    CHECK(std::abs(after - (wave + next)) <= 1); // an eighth of a second more is one click at most
+    // A click at once, then twice the list's pace (the standard's for choices: 0.29 a frame at STICK SPEED 100%; not
+    // the cursor's of its held D-pad, G08): in 5 frames 1 + 1.16, two clicks.
+    const int clicked = wave + 3 * next, most = spec.settingMax(waveId), least = spec.settingMin(waveId);
+    CHECK(after == (clicked > most ? most : clicked < least ? least : clicked));
     rig.key(A, false);
     // Letting go of A and taking hold again: the next push is a click again, at once.
     rig.key(A, true);
@@ -3779,19 +3808,21 @@ void testHoldXCarriesANote() {
     // The stick, up and down, slides it FREELY in time, off the grid: a short push is a small move...
     // (The engine is run as the frames go by, as the sound card runs it: each frame of sliding tells it the bar again.)
     const auto hold = [&](int count) { for (int f = 0; f < count; ++f) { rig.frames(1); rig.render(16); } };
+    // (At its own six steps a second, times STICK SPEED, however far it is pushed: 0.096 of a step a frame at 100%. A
+    // value turned, not twice the held D-pad's pace: the D-pad carries it a whole step.)
     notes.moveCursorTo(61, 5);
     rig.key(R1, true);
-    rig.key(STICK_UP, true);
+    rig.stick(0.f, -0.25f); // just past the dead zone
     hold(3);
-    rig.key(STICK_UP, false);
+    rig.stick(0.f, 0.f);
     rig.frames(1);
-    CHECK(bar.notes[slot].step == 5 && bar.notes[slot].nudge < -0.01f && bar.notes[slot].nudge > -0.4f && notes.cursorStep() == 5);
+    CHECK(bar.notes[slot].step == 5 && std::fabs(bar.notes[slot].nudge + 0.288f) < 1e-3f && notes.cursorStep() == 5);
     // ...and a longer one carries it on through the steps, the cursor with it, still between the lines.
     rig.key(STICK_DOWN, true);
-    hold(40); // about four tenths of a second at the stick's speed: a few steps
+    hold(40); // 3.84 steps: from 4.712 to 8.552
     rig.key(STICK_DOWN, false);
     rig.frames(1);
-    CHECK(bar.notes[slot].step >= 7 && bar.notes[slot].step <= 9 && notes.cursorStep() == bar.notes[slot].step);
+    CHECK(bar.notes[slot].step == 9 && notes.cursorStep() == 9 && std::fabs(bar.notes[slot].nudge + 0.448f) < 1e-3f);
     CHECK(std::fabs(bar.notes[slot].nudge) <= 0.5f && bar.notes[slot].pitch == 61);
     const float where = bar.notes[slot].step + bar.notes[slot].nudge;
     CHECK(std::fabs(where - std::round(where)) > 0.001f); // not on a line
@@ -4481,16 +4512,17 @@ void testTheStickSpeedAndTheVolume() {
         Rig rig;
         rig.app.session().view = View::Song;
         rig.key(STICK_DOWN, true);
-        rig.frames(26); // the first move is at once; the rest at the stick's speed
+        rig.frames(24); // the first move is at once; the rest at the stick's speed
         rig.key(STICK_DOWN, false);
         ui::gStickSpeed = 1.f;
         return rig.app.song().cursorScene();
     };
-    // (A full push held climbs, G07: 10 cells at a steady 24 a second became 14. The climb is scaled the same.)
+    // (Twice the held D-pad's pace on a cursor, times STICK SPEED (owner, 2026-11-25): 1 at once, then 23 frames of 16 ms
+    // at 66.7, 50 and 33.3 a second. It was 24 a second, a full push held climbing to three times it: G07.)
     const int full = travel(1.f), slower = travel(0.75f), half = travel(0.5f);
-    CHECK(full >= 13 && full <= 15);
-    CHECK(slower >= 10 && slower <= 12); // a quarter off
-    CHECK(half >= 7 && half <= 8);
+    CHECK(full == 25);
+    CHECK(slower == 19); // a quarter off
+    CHECK(half == 13);
     // ...and what it turns with a button held, the same.
     const auto turned = [](float speed) {
         ui::gStickSpeed = speed;
@@ -9151,8 +9183,8 @@ void testStepEffects() {
     rig.frames(30);
     rig.key(STICK_RIGHT, false);
     CHECK(drums.fx(0, 4).hits() == 1 && drums.fx(0, 4).pitch > 1);
-    rig.frames(32);
-    CHECK(drums.fx(0, 4).pitch >= 6 && drums.fx(0, 4).pitch <= 11 && drums.fx(0, 4).hits() == 1);
+    rig.frames(8); // 38 frames in all at twice the held D-pad's clicks (16 a second at STICK SPEED 100%): 1 + 9.7
+    CHECK(drums.fx(0, 4).pitch == 10 && drums.fx(0, 4).hits() == 1);
     rig.key(STICK_UP, false);
     rig.frames(1);
     rig.key(STICK_RIGHT, true);
@@ -11786,6 +11818,21 @@ void testHoldYMovesABandTwoWays() {
     rig.key(STICK_LEFT, false);
     rig.frames(1);
     CHECK(p(0, 0) < f2 - 0.1f && p(0, 1) == g2 && still(1));
+    // A drift off one way is not the other (ui::stickAxes): across all the way with up a little (raw 0.5, under half
+    // the push) turns FREQ alone; and a push just past the dead zone (raw 0.25) as far as one all the way.
+    {
+        const float f = p(0, 0), g = p(0, 1);
+        rig.stick(1.f, -0.5f);
+        rig.frames(10);
+        rig.stick(0.f, 0.f);
+        rig.frames(1);
+        CHECK(p(0, 0) > f + 0.1f && p(0, 1) == g && still(1));
+        rig.stick(-0.25f, 0.f);
+        rig.frames(10);
+        rig.stick(0.f, 0.f);
+        rig.frames(1);
+        CHECK(std::fabs(p(0, 0) - f) < 1e-4f && p(0, 1) == g && still(1));
+    }
     rig.key(Y, false);
     // A direction that brought the cursor onto the dials with Y held is a move, not a turn (review of G18, as the
     // roll's X): from BAND's line, RIGHT held past the repeat's wait, or the stick pushed across, leaves FREQ as it
@@ -13244,7 +13291,7 @@ void testAnAcidLine() {
     CHECK(acid->ties() - ties == 4 && acid->strikes() - strikes == 12);
 }
 
-// ---- gesture audit, batch A5: going round, the headings, the stick's climb, SONG's cell ------------------
+// ---- gesture audit, batch A5: going round, the headings, SONG's cell; the stick ------------------
 
 // G35: SET's rows go round on a PRESS of the D-pad at either end; a held D-pad or the stick stops there.
 void testTheEndsOfSetsRows() {
@@ -13356,158 +13403,491 @@ void testSetJumpsHeadings() {
     }
 }
 
-// G07: on a cursor, a FULL push of the stick held climbs to three times the screen's own rate over a
-// second; a part push moves as it always did; a value turned, a list or the kit's sounds do not climb.
-void testTheStickClimbsOnACursor() {
+// The stick (owner, 2026-11-25: "I also wanted the stick to be fast in comparison to the d-pad. As soon as you move
+// it, it goes as fast as you set the speed to. Stick for macro moves and d-pad for detailed ones."; it replaced
+// gesture audit G07's climb). However far it is pushed past the dead zone it runs at its full rate at once: twice
+// the held D-pad's pace for the same thing, times STICK SPEED (50 a second on a cursor at 75%, 13.6 on a list); at
+// 50% it is the D-pad's own pace. A slight drift off one axis is not the other; a real diagonal moves both.
+void testTheStickIsTwiceTheDpad() {
     using S = SettingsScreen;
+    using ui::Pace;
     // The rule.
     {
-        ui::StickClimb climb;
-        Uint32 t = 1000;
-        CHECK(climb.times(0.8f, t) == 1.f);
-        CHECK(climb.times(1.f, t += 16) == 1.f); // full from here: the screen's own rate first
-        for (int i = 0; i < 31; ++i) climb.times(1.f, t += 16);
-        CHECK(near(climb.times(1.f, t += 16), 1.f + 2.f * 0.512f)); // half a second on: about twice
-        for (int i = 0; i < 40; ++i) climb.times(-1.f, t += 16);    // (either way)
-        CHECK(climb.times(-1.f, t += 16) == 3.f && climb.times(1.f, t += 16) == 3.f); // a second on: three times, and no more
-        CHECK(climb.times(0.85f, t += 16) == 1.f && climb.times(1.f, t += 16) == 1.f); // short of full: back to the bottom
-        climb.times(1.f, t += 16);
-        CHECK(climb.times(1.f, t += 16) > 1.f);
-        CHECK(climb.times(1.f, t += 500) == 1.f); // not asked for half a second (another screen): from the bottom
+        CHECK(ui::kStickSpeedAsBuilt == 0.75f);
+        CHECK(near(ui::stickPerSecond(Pace::Cursor) * 0.75f, 50.f) && near(ui::stickPerSecond(Pace::List) * 0.75f, 1500.f / 110.f) &&
+              near(ui::stickPerSecond(Pace::Click) * 0.75f, 12.f));
+        for (Pace pace : {Pace::Cursor, Pace::List, Pace::Click}) CHECK(near(ui::stickPerSecond(pace) * 0.5f, 1000.f / static_cast<float>(ui::paceEveryMs(pace))));
+        CHECK(ui::stickWay(0.0625f) == 1.f && ui::stickWay(-1.f) == -1.f && ui::stickWay(0.f) == 0.f);
+        // Which axes count: the larger always, the smaller from half of it.
+        const ui::StickAxes drift = ui::stickAxes(1.f, 0.49f), diagonal = ui::stickAxes(-1.f, 0.5f), up = ui::stickAxes(0.3f, -0.7f), none = ui::stickAxes(0.f, 0.f);
+        CHECK(drift.x == 1.f && drift.y == 0.f);
+        CHECK(diagonal.x == -1.f && diagonal.y == 0.5f);
+        CHECK(up.x == 0.f && up.y == -0.7f);
+        CHECK(none.x == 0.f && none.y == 0.f);
+        CHECK(ui::stickAxes(0.4f, 0.8f).x == 0.4f && ui::stickAxes(0.39f, 0.8f).x == 0.f); // half exactly counts
     }
-    // SET's rows (7 a second at STICK SPEED 1): a part push as before, a full push held climbing, scaled by STICK SPEED.
-    const auto rows = [](float raw, int frames, float speed) {
-        ui::gStickSpeed = speed;
-        Rig rig;
-        S& setup = rig.app.settings();
-        rig.app.session().view = View::Settings;
-        setup.goTo(S::kTempo);
-        rig.frames(2);
-        rig.stick(0.f, raw);
-        rig.frames(frames);
-        rig.stick(0.f, 0.f);
-        ui::gStickSpeed = 1.f;
-        return setup.placeOf(setup.cursorRow());
-    };
-    const int part = rows(0.84f, 62, 1.f), full = rows(1.f, 62, 1.f), slow = rows(1.f, 62, 0.5f);
-    std::printf("  the stick on SET's rows for a second: part push %d rows, full %d, full at 50%% %d\n", part, full, slow);
-    CHECK(part == 6);              // 1 at once, then 0.8 x 7 a second: as before G07
-    CHECK(full >= 13 && full <= 15); // steady, it was 7
-    CHECK(slow >= 6 && slow <= 8);   // ...half that at STICK SPEED 50% (steady, it was 4)
-    // The roll's keys (36 a second): 23 keys in 40 frames steady, about 37 climbing.
-    {
-        Rig rig;
-        addPhazed(rig);
-        rig.project().track = 1;
-        rig.app.session().view = View::Pattern;
-        rig.app.notes().moveCursorTo(24, 0);
-        rig.frames(2);
-        rig.key(STICK_RIGHT, true);
-        rig.frames(40);
-        rig.key(STICK_RIGHT, false);
-        const int keys = rig.app.notes().cursorPitch() - 24;
-        CHECK(keys >= 35 && keys <= 39);
-    }
-    // A value turned does not climb: TEMPO sideways, 9 a second.
-    {
-        Rig rig;
-        rig.app.session().view = View::Settings;
-        rig.app.settings().goTo(S::kTempo);
-        const float tempo = rig.project().tempo;
-        rig.frames(2);
-        rig.key(STICK_RIGHT, true);
-        rig.frames(62);
-        rig.key(STICK_RIGHT, false);
-        CHECK(rig.project().tempo == tempo + 9.f);
-    }
-    // The kit's sounds with A held stay slow enough to hear each one (8 a second): 7 in 50 frames, not the 12 of a climb.
-    {
-        Rig rig;
-        rig.app.session().view = View::Device;
-        rig.app.kit().goTo(0, KitScreen::kSound);
-        rig.frames(2);
-        rig.key(A, true);
-        rig.key(STICK_DOWN, true);
-        rig.frames(50);
-        rig.key(STICK_DOWN, false);
-        rig.key(A, false);
-        CHECK(rig.project().tracks[0].laneSynth[0].on() && rig.project().tracks[0].laneSynth[0].model == 7);
-    }
-    // SONG's list of instruments is a list: 8 in 20 frames at 24 a second, not the 10 of a climb.
-    {
-        Rig rig;
-        rig.app.session().view = View::Song;
-        rig.app.song().moveCursorTo(0, 1); // + TRACK
-        rig.tap(A);
-        CHECK(rig.app.song().choosing());
-        rig.key(STICK_DOWN, true);
-        rig.frames(20);
-        rig.key(STICK_DOWN, false);
-        rig.frames(1);
-        rig.tap(A);
-        CHECK(rig.project().trackCount() == 2 && rig.project().tracks[1].kind == kInstruments[(1 + 8) % kInstrumentCount].kind);
-    }
-    // Every other screen's cursor climbs too, each from its own call: FX, MOD, the sampler, a synth's stops (across
-    // and down), the kit's lanes and its EDIT and VOICE boxes. At STICK SPEED 25%, so a short row is not used up: a
-    // full push (raw 1.0) against one just short of full (raw 0.9: 0.875 past the dead zone, under kStickFullPush)
-    // from the same stop. The moves are counted a frame at a time, round a row that goes round.
-    struct Climber {
+    // Every screen's stick cursor and list, each from its own call.
+    const float cursor = 2000.f / 30.f, list = 2000.f / 110.f; // twice the held D-pad's pace (ui.hpp), at STICK SPEED 100%
+    struct Runner {
         const char* name;
-        std::function<void(Rig&)> open; // the screen, the cursor on its first stop
-        std::function<int(Rig&)> where; // the cursor's place along the way it is pushed
-        int ring;                       // the row goes round after this many (0: its ends stop)
+        std::function<void(Rig&)> open;  // the screen, the cursor on its first stop
+        std::function<int(Rig&)> where;  // the cursor's place along the way it is pushed (right or down)
+        int ring;                        // the row goes round after this many (0: its ends stop)
+        int room;                        // ...or how many moves until an end stops it
         bool sideways;
-        int frames, more; // how long the push is held, and how many more stops the full push makes at least
+        float perSecond;                 // the stick's full rate at 100%
+        SDL_Keycode dpad;                // the D-pad the same way
+        std::function<int(Rig&)> across; // where a screen reads both axes: the place along the other (else none)
+        int acrossRing;
+        int diagonalFrames = 3;          // ...and how long a diagonal is pushed there without reaching an end
     };
     const auto device = [](Rig& rig, int track) {
         rig.project().track = track;
         rig.app.session().view = View::Device;
     };
     const auto synthRow = [](int c) { return c < SynthScreen::kFirstMacro ? 0 : c == SynthScreen::kAdvanced ? 3 : 1 + (c - SynthScreen::kFirstMacro) / 4; };
-    const Climber climbers[] = {
-        {"FX's lines", [](Rig& rig) { rig.app.session().view = View::Effects; rig.app.fx().goTo(0, 0); },
-         [](Rig& rig) { return rig.app.fx().cursorRow(); }, FxScreen::kRows, false, 62, 2},
-        {"MOD's lines", [](Rig& rig) { rig.app.session().view = View::Mods; rig.app.mods().goTo(0, 0); },
-         [](Rig& rig) { return rig.app.mods().cursorRow(); }, ModScreen::kRows, false, 62, 2},
-        {"the sampler's stops", [&](Rig& rig) { rig.app.session().addTrack(TrackKind::Sampler); device(rig, 1); rig.app.sampler().goTo(0); },
-         [](Rig& rig) { return rig.app.sampler().cursor(); }, 0, true, 62, 2},
-        {"a synth's macros, across", [&](Rig& rig) { addPhazed(rig); device(rig, 1); rig.app.phazed().goTo(0, SynthScreen::kFirstMacro); },
-         [](Rig& rig) { return rig.app.phazed().cursor() - SynthScreen::kFirstMacro; }, 4, true, 62, 2},
-        {"a synth's MAIN, down", [&](Rig& rig) { addPhazed(rig); device(rig, 1); rig.app.phazed().goTo(0, SynthScreen::kFirstMacro); },
-         [&](Rig& rig) { return synthRow(rig.app.phazed().cursor()); }, 4, false, 62, 2},
-        {"the kit's lanes", [&](Rig& rig) { device(rig, 0); rig.app.kit().goTo(0, KitScreen::kSound); },
-         [](Rig& rig) { return rig.app.kit().cursorLane(); }, kDrumLanes, false, 62, 2},
-        // EDIT's and VOICE's rows are four boxes: the full push reaches the end in 32 frames, the part push (and a
-        // full one at the screen's own rate) two boxes along.
-        {"EDIT's boxes", [&](Rig& rig) { device(rig, 0); rig.app.kit().goTo(0, KitScreen::kEdit); rig.app.kit().openEdit(0); },
-         [](Rig& rig) { return rig.app.kit().editRow(); }, 0, true, 32, 1},
-        {"VOICE's boxes", [&](Rig& rig) { device(rig, 0); rig.project().tracks[0].laneSynth[0].model = drumsynth::kKick; rig.app.kit().goTo(0, KitScreen::kSound); rig.app.kit().openVoice(drumsynth::kTune); },
-         [](Rig& rig) { return rig.app.kit().voicePlace(); }, 0, true, 32, 1},
-    };
-    const auto climbed = [](const Climber& c, float raw) {
-        ui::gStickSpeed = 0.25f;
+    const auto setRows = [] {
         Rig rig;
-        c.open(rig);
-        rig.frames(2);
-        int was = c.where(rig), moves = 0;
-        rig.stick(c.sideways ? raw : 0.f, c.sideways ? 0.f : raw);
-        for (int f = 0; f < c.frames; ++f) {
-            rig.frames(1);
-            const int now = c.where(rig);
-            const int by = c.ring > 0 ? ((now - was) % c.ring + c.ring) % c.ring : now - was;
-            moves += by;
-            was = now;
-        }
-        rig.stick(0.f, 0.f);
-        ui::gStickSpeed = 1.f;
-        return moves;
+        return rig.app.settings().places() - 1 - rig.app.settings().placeOf(S::kTempo);
+    }();
+    const std::vector<Runner> runners = {
+        {"SET's rows", [](Rig& rig) { rig.app.session().view = View::Settings; rig.app.settings().goTo(S::kTempo); },
+         [](Rig& rig) { return rig.app.settings().placeOf(rig.app.settings().cursorRow()); }, 0, setRows, false, list, DOWN, nullptr, 0},
+        {"SONG's cells", [](Rig& rig) { for (int i = 0; i < 3; ++i) rig.app.session().addTrack(TrackKind::Drums); rig.app.session().view = View::Song; rig.app.song().moveCursorTo(0, 0); },
+         [](Rig& rig) { return rig.app.song().cursorScene(); }, 0, kMaxScenes - 1, false, cursor, DOWN, [](Rig& rig) { return rig.app.song().cursorColumn(); }, 0},
+        {"the drum grid", [](Rig& rig) { rig.app.session().view = View::Pattern; rig.app.drums().moveCursorTo(0, 0); },
+         [](Rig& rig) { return rig.app.drums().cursorStep() + 1; }, kSteps + 1, 0, true, cursor, RIGHT, [](Rig& rig) { return rig.app.drums().cursorLane(); }, 0},
+        {"the roll", [](Rig& rig) { addPhazed(rig); rig.project().track = 1; rig.app.session().view = View::Pattern; rig.app.notes().moveCursorTo(24, 0); },
+         [](Rig& rig) { return rig.app.notes().cursorPitch(); }, 0, NoteScreen::kHighest - 24, true, cursor, RIGHT, [](Rig& rig) { return rig.app.notes().cursorStep(); }, 0},
+        {"FX's lines", [](Rig& rig) { rig.app.session().view = View::Effects; rig.app.fx().goTo(0, 0); },
+         [](Rig& rig) { return rig.app.fx().cursorRow(); }, FxScreen::kRows, 0, false, cursor, DOWN, nullptr, 0},
+        {"MOD's lines", [](Rig& rig) { rig.app.session().view = View::Mods; rig.app.mods().goTo(0, 0); },
+         [](Rig& rig) { return rig.app.mods().cursorRow(); }, ModScreen::kRows, 0, false, cursor, DOWN, nullptr, 0},
+        {"the sampler's stops", [&](Rig& rig) { rig.app.session().addTrack(TrackKind::Sampler); device(rig, 1); rig.app.sampler().goTo(0); },
+         [](Rig& rig) { return rig.app.sampler().cursor(); }, 0, SamplerScreen::kPresetStop, true, cursor, RIGHT, nullptr, 0},
+        {"a synth's stops", [&](Rig& rig) { addPhazed(rig); device(rig, 1); rig.app.phazed().goTo(0, SynthScreen::kFirstMacro); },
+         [](Rig& rig) { return rig.app.phazed().cursor() - SynthScreen::kFirstMacro; }, 4, 0, true, cursor, RIGHT,
+         [&](Rig& rig) { return synthRow(rig.app.phazed().cursor()); }, 4, 2}, // (two rows of macros: down twice is ADVANCED)
+        {"a synth's MAIN, down", [&](Rig& rig) { addPhazed(rig); device(rig, 1); rig.app.phazed().goTo(0, SynthScreen::kFirstMacro); },
+         [&](Rig& rig) { return synthRow(rig.app.phazed().cursor()); }, 4, 0, false, cursor, DOWN, nullptr, 0},
+        {"the kit's lanes", [&](Rig& rig) { device(rig, 0); rig.app.kit().goTo(0, KitScreen::kSound); },
+         [](Rig& rig) { return rig.app.kit().cursorLane(); }, kDrumLanes, 0, false, cursor, DOWN, nullptr, 0},
+        {"EDIT's boxes", [&](Rig& rig) { device(rig, 0); rig.app.kit().goTo(0, KitScreen::kEdit); rig.app.kit().openEdit(0); },
+         [](Rig& rig) { return rig.app.kit().editRow(); }, 0, 3, true, cursor, RIGHT, nullptr, 0},
+        {"VOICE's boxes", [&](Rig& rig) { device(rig, 0); rig.project().tracks[0].laneSynth[0].model = drumsynth::kKick; rig.app.kit().goTo(0, KitScreen::kSound); rig.app.kit().openVoice(drumsynth::kTune); },
+         [](Rig& rig) { return rig.app.kit().voicePlace(); }, 0, 3, true, cursor, RIGHT, nullptr, 0},
+        {"the name keys", [](Rig& rig) { rig.app.session().view = View::Settings; rig.app.session().wantTrackName = true; rig.frames(1); },
+         [](Rig& rig) { return rig.app.settings().keyAt() % NameKeys::kColumns; }, NameKeys::kColumns, 0, true, list, RIGHT, nullptr, 0},
+        // The other axis of each screen that reads both, on its own (the diagonal below touches it for 3 frames only).
+        {"SONG's columns", [](Rig& rig) { for (int i = 0; i < 11; ++i) rig.app.session().addTrack(TrackKind::Drums); rig.app.session().view = View::Song; rig.app.song().moveCursorTo(0, 0); },
+         [](Rig& rig) { return rig.app.song().cursorColumn(); }, 0, kNumTracks - 1, true, cursor, RIGHT, nullptr, 0},
+        {"the drum grid's lanes", [](Rig& rig) { rig.app.session().view = View::Pattern; rig.app.drums().moveCursorTo(0, 0); },
+         [](Rig& rig) { const PatternScreen& d = rig.app.drums(); return d.cursorOnBars() ? kDrumLanes : d.cursorOnTempo() ? kDrumLanes + 1 : d.cursorLane(); },
+         kDrumLanes + 2, 0, false, cursor, DOWN, nullptr, 0}, // (down from the bottom lane: BARS, the tempo, the top lane)
+        {"the roll's steps", [](Rig& rig) { addPhazed(rig); rig.project().track = 1; rig.app.session().view = View::Pattern; rig.app.notes().moveCursorTo(60, 0); },
+         [](Rig& rig) { return rig.app.notes().cursorStep(); }, kSteps, 0, false, cursor, DOWN, nullptr, 0},
     };
-    for (const Climber& c : climbers) {
-        const int full = climbed(c, 1.f), part = climbed(c, 0.9f);
-        std::printf("  the stick at 25%% on %s for %d frames: full %d, just short of full %d\n", c.name, c.frames, full, part);
-        if (full < part + c.more) std::printf("FAIL %s: a full push held did not climb\n", c.name);
-        CHECK(full >= part + c.more && part >= 2);
+    // What the stick moves in `frames` frames at `speed`, `perSecond` at 100% (and its ends, `room`): one at once, the rest
+    // counted as every screen counts them (seconds of 16 ms frames, times STICK SPEED).
+    const auto expected = [](float perSecond, float speed, int frames, int room) {
+        const float dt = 0.016f * speed;
+        float saved = 1.f;
+        int moves = 0;
+        for (int f = 0; f < frames; ++f) {
+            if (f > 0) saved += perSecond * dt;
+            for (; saved >= 1.f; saved -= 1.f) ++moves;
+        }
+        return room > 0 && moves > room ? room : moves;
+    };
+    // The most frames, up to `most`, that do not reach an end that stops.
+    const auto within = [&](const Runner& r, float speed, int most) {
+        int frames = most;
+        while (r.room > 0 && frames > 1 && expected(r.perSecond, speed, frames, 0) > r.room) --frames;
+        return frames;
+    };
+    // The moves along (and across), frame by frame, from a fresh rig: the stick pushed `along` and `across` (raw, before
+    // the dead zone), or the D-pad held.
+    const auto run = [](const Runner& r, float along, float across, float speed, int frames, bool dpad, std::vector<int>* each = nullptr) {
+        ui::gStickSpeed = speed;
+        Rig rig;
+        r.open(rig);
+        rig.frames(2);
+        int was = r.where(rig), wasAcross = r.across ? r.across(rig) : 0;
+        std::pair<int, int> moved{0, 0};
+        const auto count = [&] {
+            const int now = r.where(rig);
+            moved.first += r.ring > 0 ? ((now - was) % r.ring + r.ring) % r.ring : now - was;
+            was = now;
+            if (r.across) {
+                const int there = r.across(rig);
+                moved.second += r.acrossRing > 0 ? ((there - wasAcross) % r.acrossRing + r.acrossRing) % r.acrossRing : there - wasAcross;
+                wasAcross = there;
+            }
+            if (each) each->push_back(moved.first);
+        };
+        if (dpad) rig.key(r.dpad, true);
+        else rig.stick(r.sideways ? along : across, r.sideways ? across : along);
+        count();
+        for (int f = 0; f < frames; ++f) {
+            rig.frames(1);
+            count();
+        }
+        if (dpad) rig.key(r.dpad, false);
+        else rig.stick(0.f, 0.f);
+        ui::gStickSpeed = 1.f;
+        return moved;
+    };
+    for (const Runner& r : runners) {
+        // A push just past the dead zone (raw 0.25: 0.0625 of the way) moves as far as a full push, at the full rate at once.
+        const int frames = within(r, 0.75f, 62);
+        const int full = run(r, 1.f, 0.f, 0.75f, frames, false).first, part = run(r, 0.25f, 0.f, 0.75f, frames, false).first;
+        const int want = expected(r.perSecond, 0.75f, frames, r.room), dpad = run(r, 0.f, 0.f, 0.75f, frames, true).first;
+        std::printf("  the stick at 75%% on %s, %d frames: full %d, just past the dead zone %d (%d wanted); the D-pad held %d\n", r.name, frames, full, part, want, dpad);
+        if (full != want || part != want) std::printf("FAIL %s: the stick at 75%%\n", r.name);
+        CHECK(full == want && part == want);
+        // At 75% further than a held D-pad on the same thing.
+        if (full <= dpad) std::printf("FAIL %s: the stick is not faster than the D-pad\n", r.name);
+        CHECK(full > dpad);
+        // STICK SPEED scales it: 25% and 150%.
+        for (float speed : {0.25f, 1.5f}) {
+            const int f = within(r, speed, 62), got = run(r, 1.f, 0.f, speed, f, false).first, wanted = expected(r.perSecond, speed, f, r.room);
+            if (got != wanted) std::printf("FAIL %s at %.0f%%: %d moves in %d frames, %d wanted\n", r.name, static_cast<double>(speed * 100.f), got, f, wanted);
+            CHECK(got == wanted);
+        }
+        // At 50% the stick is the D-pad's own pace, to the move: over 960 ms of a cursor (32 moves) or 880 ms of a list
+        // (8), each counted once it runs steadily. (Where an end would stop it first, the count is not steady.)
+        const int window = r.perSecond == cursor ? 60 : 55, from = 20;
+        if (r.room == 0 || expected(r.perSecond, 0.5f, from + window, 0) <= r.room) {
+            std::vector<int> stick, held;
+            run(r, 1.f, 0.f, 0.5f, from + window, false, &stick);
+            run(r, 0.f, 0.f, 0.5f, from + window, true, &held);
+            const int byStick = stick[static_cast<std::size_t>(from + window)] - stick[static_cast<std::size_t>(from)];
+            const int byDpad = held[static_cast<std::size_t>(from + window)] - held[static_cast<std::size_t>(from)];
+            if (byStick != byDpad || byDpad != (window == 60 ? 32 : 8)) std::printf("FAIL %s at 50%%: the stick %d, the D-pad %d\n", r.name, byStick, byDpad);
+            CHECK(byStick == byDpad && byDpad == (window == 60 ? 32 : 8));
+        }
+        // Both axes read: a drift smaller than half the push moves nothing the other way; a real diagonal moves both.
+        if (r.across) {
+            const int f = r.diagonalFrames, both = expected(cursor, 0.75f, f, 0); // (3 frames: 1 + 1)
+            const std::pair<int, int> drift = run(r, 1.f, 0.5f, 0.75f, f, false), diagonal = run(r, 1.f, 0.7f, 0.75f, f, false);
+            if (drift.second != 0 || diagonal.second != both || diagonal.first != both) std::printf("FAIL %s: a drift moved across %d, a diagonal %d along and %d across\n", r.name, drift.second, diagonal.first, diagonal.second);
+            CHECK(drift.first == both && drift.second == 0); // (raw 0.5 is 0.375 of the way, under half)
+            CHECK(diagonal.first == both && diagonal.second == both && both == (f == 3 ? 2 : 1)); // (raw 0.7 is 0.625)
+        }
     }
+    // Lists step at twice the list's pace, not the cursor's, however far the stick is pushed: the kit's sounds with A
+    // held (in 44 frames at 75%, 1 + 9: the old 8 a second gave 1 + 4) and SONG's list of instruments (30 frames: 1 + 6).
+    {
+        ui::gStickSpeed = 0.75f;
+        Rig rig;
+        rig.app.session().view = View::Device;
+        rig.app.kit().goTo(0, KitScreen::kSound);
+        rig.frames(2);
+        rig.key(A, true);
+        rig.stick(0.f, 0.3f);
+        rig.frames(44);
+        rig.stick(0.f, 0.f);
+        rig.key(A, false);
+        ui::gStickSpeed = 1.f;
+        CHECK(expected(list, 0.75f, 44, 0) == 10);
+        CHECK(rig.project().tracks[0].laneSynth[0].on() && rig.project().tracks[0].laneSynth[0].model == drumsynth::kClave); // the tenth
+    }
+    {
+        ui::gStickSpeed = 0.75f;
+        Rig rig;
+        rig.app.session().view = View::Song;
+        rig.app.song().moveCursorTo(0, 1); // + TRACK
+        rig.tap(A);
+        CHECK(rig.app.song().choosing());
+        rig.stick(0.f, 0.3f);
+        rig.frames(30);
+        rig.stick(0.f, 0.f);
+        rig.frames(1);
+        rig.tap(A);
+        ui::gStickSpeed = 1.f;
+        const int moves = expected(list, 0.75f, 30, 0); // 1 + 6
+        CHECK(moves == 7 && rig.project().trackCount() == 2 && rig.project().tracks[1].kind == kInstruments[(1 + moves) % kInstrumentCount].kind);
+    }
+}
+
+// Every other path the stick takes moves as far just past the dead zone (raw 0.25: 0.0625 of the way) as all the way
+// over (owner, 2026-11-25), each from a fresh rig at STICK SPEED 100%: the roll's chords and inversions with Y held,
+// its carry with R1, its clicks with X; SONG's REPEATS count with A and its meter with L1; a synth's macro with A.
+// (Their other tests push all the way, so the push's depth put back on one of them would pass there. The password
+// keys are wifi_test's, a MOD's RATE modknob_test's.) And where both axes are read with a button held (the mixer, A
+// on a SONG cell), a drift off one way under half the push is not the other.
+void testTheStickIgnoresHowFarEverywhere() {
+    struct Path {
+        const char* name;
+        std::function<void(Rig&)> ready;      // a fresh rig: the screen, and the button held
+        float x, y;                           // the way it is pushed (1 or -1 on one axis)
+        int frames;
+        std::function<float(Rig&)> read;      // what it moved
+        float want;                           // ...at the end, all the way or just past the dead zone
+    };
+    const auto rollWithANote = [](Rig& rig) {
+        addPhazed(rig);
+        rig.project().track = 1;
+        NoteEvent n;
+        n.step = 4, n.pitch = 60, n.length = 1.f, n.velocity = 0.8f;
+        rig.project().tracks[1].notes[0][0].notes[0] = n;
+        rig.app.session().sendNotePattern(1, 0);
+        rig.app.session().view = View::Pattern;
+        rig.app.notes().moveCursorTo(60, 4);
+        rig.frames(1);
+    };
+    const auto note = [](Rig& rig) -> NoteEvent& { return rig.project().tracks[1].notes[0][0].notes[0]; };
+    const std::vector<Path> paths = {
+        // Y held: the chords (one at once, then twice the list's pace, 0.29 a frame: 1 + 5.5 in 20 frames)...
+        {"the roll's chords, Y held", [](Rig& rig) { addPhazed(rig); rig.project().track = 1; rig.app.session().view = View::Pattern; rig.frames(1); rig.key(Y, true); },
+         1.f, 0.f, 20, [](Rig& rig) { return static_cast<float>(rig.app.notes().handIndex()); }, 6.f},
+        // ...and the inversions, down (1 + 2.04 in 8 frames: -3, their end).
+        {"the roll's inversions, Y held", [](Rig& rig) { addPhazed(rig); rig.project().track = 1; rig.app.session().view = View::Pattern; rig.frames(1); rig.key(Y, true); },
+         0.f, 1.f, 8, [](Rig& rig) { return static_cast<float>(rig.app.notes().handInversion()); }, -3.f},
+        // R1 carrying a note sideways: a key at once, then twice the cursor's pace (1.07 a frame: 1 + 5.3 in 6 frames).
+        {"the roll's carry, R1 held", [&](Rig& rig) { rollWithANote(rig); rig.key(R1, true); rig.frames(1); },
+         1.f, 0.f, 6, [&](Rig& rig) { return static_cast<float>(note(rig).pitch); }, 66.f},
+        // X held on a note: right clicks its ratchet, at once, then twice the clicks' pace (0.256 a frame: 1 + 2.3 in 10).
+        {"the roll's clicks, X held", [&](Rig& rig) { rollWithANote(rig); rig.key(X, true); rig.frames(1); },
+         1.f, 0.f, 10, [&](Rig& rig) { return static_cast<float>(note(rig).ratchet); }, 4.f},
+        // A on REPEATS: the count, up, at twice the cursor's pace with no click at once (1.07 a frame: 5.3 in 5 frames).
+        {"SONG's REPEATS, A held", [](Rig& rig) { rig.app.session().view = View::Song; rig.app.song().moveCursorTo(0, -1); rig.frames(1); rig.key(A, true); },
+         0.f, -1.f, 5, [](Rig& rig) { return static_cast<float>(rig.project().repeats[0]); }, 6.f},
+        // L1 on REPEATS: the meter, left, a click at once, then twice the cursor's pace (1 + 4.3 in 5 frames).
+        {"SONG's meter, L1 held", [](Rig& rig) { rig.app.session().view = View::Song; rig.app.song().moveCursorTo(0, -1); rig.frames(1); rig.key(L1, true); },
+         -1.f, 0.f, 5, [](Rig& rig) { return static_cast<float>(rig.project().meterOf(0)); }, static_cast<float>(kSteps - 5)},
+        // A synth's macro with A held: two of its range a second, 0.032 a frame: 0.32 in 10.
+        {"a synth's macro, A held", [](Rig& rig) { addPhazed(rig); rig.project().track = 1; rig.app.session().view = View::Device; rig.app.phazed().goTo(0, SynthScreen::kFirstMacro); rig.frames(1);
+             rig.project().tracks[1].macro[0] = 0.f; rig.key(A, true); },
+         0.f, -1.f, 10, [](Rig& rig) { return rig.project().tracks[1].macro[0]; }, 0.32f},
+    };
+    for (const Path& p : paths) {
+        float got[2];
+        for (int i = 0; i < 2; ++i) {
+            const float depth = i == 0 ? 1.f : 0.25f;
+            Rig rig;
+            p.ready(rig);
+            rig.stick(p.x * depth, p.y * depth);
+            rig.frames(p.frames);
+            rig.stick(0.f, 0.f);
+            rig.frames(1);
+            got[i] = p.read(rig);
+        }
+        if (std::fabs(got[0] - p.want) > 1e-4f || std::fabs(got[1] - p.want) > 1e-4f)
+            std::printf("FAIL %s: all the way %g, just past the dead zone %g, %g wanted\n", p.name, static_cast<double>(got[0]), static_cast<double>(got[1]), static_cast<double>(p.want));
+        CHECK(std::fabs(got[0] - p.want) <= 1e-4f && std::fabs(got[1] - p.want) <= 1e-4f);
+    }
+    // A held on a SONG cell: across its bars, up / down TRANSPOSE. Across all the way with a drift up (raw 0.5, under
+    // half the push): the bars, and no octave.
+    {
+        Rig rig;
+        rollWithANote(rig);
+        rig.app.session().view = View::Song;
+        rig.app.song().moveCursorTo(0, 1);
+        rig.frames(1);
+        rig.key(A, true);
+        rig.stick(1.f, -0.5f);
+        rig.frames(3);
+        rig.stick(0.f, 0.f);
+        rig.frames(1);
+        rig.key(A, false);
+        rig.frames(1);
+        CHECK(rig.project().tracks[1].bars[0] == 2 && note(rig).pitch == 60);
+    }
+}
+
+// Where a button held leaves the stick only up / down (owner, 2026-11-25: it runs at its full rate however far it is
+// pushed), a sideways push with a drift up or down under half of it (raw 0.5: 0.375 of the way) turns nothing:
+// the kit's sounds, EDIT's box, VOICE's knob, the sampler's setting and its recordings, a synth's macro, a MOD's
+// DEPTH (FX's are testChoicesClick's, the recordings' list picker_test's). By the square of the push, as before the
+// owner's rule, it was a crawl; at the full rate it would have run.
+void testASidewaysDriftTurnsNothing() {
+    // A held, pushed `way` across with a drift `drift` (raw) for 40 frames: up for a turn (each starts off its top),
+    // down for a list (each starts at its top).
+    const auto drifted = [](Rig& rig, float way, float drift = -0.5f) {
+        rig.key(A, true);
+        rig.frames(1);
+        rig.stick(way, drift);
+        rig.frames(40);
+        rig.stick(0.f, 0.f);
+        rig.frames(1);
+        rig.key(A, false);
+        rig.frames(1);
+    };
+    const auto device = [](Rig& rig, int track) {
+        rig.project().track = track;
+        rig.app.session().view = View::Device;
+        rig.frames(1);
+    };
+    {
+        Rig rig;
+        device(rig, 0);
+        rig.app.kit().goTo(0, KitScreen::kSound);
+        rig.frames(1);
+        const drumsynth::Voice was = rig.project().tracks[0].laneSynth[0];
+        drifted(rig, 1.f, 0.5f);
+        CHECK(std::memcmp(&rig.project().tracks[0].laneSynth[0], &was, sizeof was) == 0); // the kit's sounds
+    }
+    {
+        Rig rig;
+        device(rig, 0);
+        rig.app.kit().goTo(0, KitScreen::kEdit);
+        rig.app.kit().openEdit(kEditFadeIn);
+        rig.frames(1);
+        const LaneEdit was = rig.project().tracks[0].laneEdit[0];
+        drifted(rig, 1.f);
+        CHECK(rig.app.kit().editing() && std::memcmp(&rig.project().tracks[0].laneEdit[0], &was, sizeof was) == 0); // EDIT's FADE IN
+    }
+    {
+        Rig rig;
+        device(rig, 0);
+        rig.project().tracks[0].laneSynth[0] = drumsynth::usualVoice(drumsynth::kKick);
+        rig.app.kit().goTo(0, KitScreen::kSound);
+        rig.app.kit().openVoice(drumsynth::kTune);
+        rig.frames(1);
+        const int dial = rig.project().tracks[0].laneSynth[0].dial[drumsynth::kTune];
+        drifted(rig, -1.f);
+        CHECK(rig.app.kit().voicing() && rig.project().tracks[0].laneSynth[0].dial[drumsynth::kTune] == dial); // VOICE's TUNE
+    }
+    {
+        const std::string folder = tempFolder("drift");
+        CHECK(writeWav(folder + "/a.wav", std::vector<float>(4800, 0.25f), 48000) && writeWav(folder + "/b.wav", std::vector<float>(4800, 0.25f), 48000) &&
+              writeWav(folder + "/c.wav", std::vector<float>(4800, 0.25f), 48000));
+        Rig rig;
+        rig.app.session().useSampleFolder(folder);
+        CHECK(rig.app.session().addTrack(TrackKind::Sampler));
+        rig.app.session().setTrackSample(1, "b");
+        device(rig, 1);
+        rig.app.sampler().goTo(1); // PITCH
+        rig.frames(1);
+        const int pitch = rig.project().tracks[1].sampler[SamplerScreen::settingAt(0)];
+        drifted(rig, 1.f);
+        CHECK(rig.project().tracks[1].sampler[SamplerScreen::settingAt(0)] == pitch); // the sampler's PITCH
+        rig.app.sampler().goTo(0); // SOUND, with A held: the recordings (read before A's let go, which opens the list)
+        rig.frames(1);
+        rig.key(A, true);
+        rig.frames(1);
+        rig.stick(1.f, 0.5f);
+        rig.frames(40);
+        rig.stick(0.f, 0.f);
+        rig.frames(1);
+        CHECK(std::string(rig.project().tracks[1].sample) == "b");
+        rig.key(A, false);
+        rig.frames(1);
+    }
+    {
+        Rig rig;
+        addPhazed(rig);
+        device(rig, 1);
+        rig.app.phazed().goTo(0, SynthScreen::kFirstMacro);
+        rig.frames(1);
+        const float macro = rig.project().tracks[1].macro[0];
+        drifted(rig, 1.f);
+        CHECK(rig.project().tracks[1].macro[0] == macro); // a synth's macro
+    }
+    {
+        Rig rig;
+        addPhazed(rig);
+        rig.project().track = 1;
+        CHECK(rig.app.session().setMod(1, 0, ModKnob::fresh(kModFirstMacro)));
+        rig.app.session().view = View::Mods;
+        rig.frames(1);
+        rig.app.mods().goTo(0, ModScreen::kDepth);
+        rig.frames(1);
+        CHECK(rig.app.mods().cursorColumn() == ModScreen::kDepth);
+        const float depth = rig.app.session().modData(1, 0).depth;
+        drifted(rig, 1.f);
+        CHECK(rig.app.session().modData(1, 0).depth == depth); // a MOD's DEPTH
+    }
+}
+
+// The stick with a button held (owner, 2026-11-25): a value turned goes at its own rate however far it is pushed;
+// what a held D-pad also runs (the dice) at twice the D-pad's pace; a choice of a few (BARS on both grids, VOICE's
+// MODEL) once a push, however far and however long (CLAUDE.md: choices click once per push). At STICK SPEED 75%.
+void testTheStickWithAButtonHeld() {
+    const float speedWas = ui::gStickSpeed;
+    ui::gStickSpeed = 0.75f;
+    // A held on a hit: its level fills at three a second (times 75%), as fast just past the dead zone as all the way.
+    const auto filled = [](float raw) {
+        Rig rig;
+        rig.app.session().view = View::Pattern;
+        rig.app.drums().setStep(0, 0, 0.2f);
+        rig.frames(2);
+        rig.key(A, true);
+        rig.stick(0.f, -raw);
+        rig.frames(5);
+        rig.stick(0.f, 0.f);
+        rig.key(A, false);
+        return rig.app.drums().level(0, 0);
+    };
+    const float part = filled(0.25f), full = filled(1.f);
+    CHECK(near(part, full) && near(full, 0.2f + 3.f * 0.012f * 5.f));
+    // A choice of a few with A held: once a push, at once, just past the dead zone; held on, nothing more; back in the
+    // middle and pushed again, the next; A let go and taken again with the stick still pushed, a new hold's click.
+    // (`bars` reads the choice; `ready` puts the cursor on it.)
+    const auto oncePushed = [](const char* name, const std::function<void(Rig&)>& ready, const std::function<int(Rig&)> bars, std::vector<int> want) {
+        Rig rig;
+        ready(rig);
+        rig.frames(2);
+        std::vector<int> got{bars(rig)};
+        rig.key(A, true);
+        rig.stick(0.f, -0.25f);
+        rig.frames(1);
+        got.push_back(bars(rig));
+        rig.frames(40);
+        got.push_back(bars(rig));
+        rig.stick(0.f, 0.f);
+        rig.frames(1);
+        rig.stick(0.f, -1.f);
+        rig.frames(1);
+        got.push_back(bars(rig));
+        rig.key(A, false);
+        rig.stick(0.f, 0.f); // (A up: the stick would be the cursor's)
+        rig.frames(1);
+        rig.stick(0.f, -1.f);
+        rig.key(A, true);
+        rig.frames(1);
+        got.push_back(bars(rig));
+        rig.stick(0.f, 0.f);
+        rig.key(A, false);
+        rig.frames(1);
+        if (got != want) std::printf("FAIL %s: %d, %d, %d, %d, %d\n", name, got[0], got[1], got[2], got[3], got[4]);
+        CHECK(got == want);
+    };
+    // The drum grid's BARS (up from the top lane: the tempo, then BARS): it was a fill, 2.25 bars a second.
+    oncePushed("the drum grid's BARS", [](Rig& rig) { rig.app.session().view = View::Pattern; rig.app.drums().moveCursorTo(0, 0); rig.frames(1); rig.tap(UP, 2); },
+               [](Rig& rig) { return rig.project().tracks[0].bars[0]; }, {1, 2, 2, 4, 8});
+    // The drum grid: Y on a lane's name (the dice) steps at twice the held D-pad's pace, the cursor's: 0.8 a frame
+    // (no step at once: it was turned as a fill).
+    {
+        Rig rig;
+        rig.app.session().view = View::Pattern;
+        rig.app.drums().moveCursorTo(2, -1); // lane 3's name, an empty lane
+        rig.frames(2);
+        rig.key(Y, true);
+        rig.stick(0.f, -0.3f);
+        rig.frames(3); // 2.4 hits (it was 18 a second: 0.86)
+        rig.stick(0.f, 0.f);
+        rig.frames(1);
+        int hits = 0;
+        for (int step = 0; step < kSteps; ++step) hits += rig.app.drums().level(2, step) > 0.f ? 1 : 0;
+        rig.key(Y, false);
+        CHECK(hits == 2);
+    }
+    // The roll's BARS (up from the top step): it was once a push past half, so just past the dead zone did nothing.
+    oncePushed("the roll's BARS", [](Rig& rig) { addPhazed(rig); rig.project().track = 1; rig.app.session().view = View::Pattern; rig.app.notes().moveCursorTo(60, 0); rig.frames(1); rig.tap(UP); },
+               [](Rig& rig) { return rig.project().tracks[1].bars[0]; }, {1, 2, 2, 4, 8});
+    // VOICE's MODEL (the models, up and down): once a push as before, now just past the dead zone too.
+    oncePushed("VOICE's MODEL", [](Rig& rig) {
+        rig.app.session().view = View::Device;
+        rig.project().tracks[0].laneSynth[0] = drumsynth::usualVoice(drumsynth::kKick);
+        rig.app.kit().goTo(0, KitScreen::kSound);
+        rig.app.kit().openVoice();
+        rig.frames(1);
+        CHECK(rig.app.kit().voicing() && rig.app.kit().voicePlace() == KitScreen::kVoiceModel);
+    }, [](Rig& rig) { return static_cast<int>(rig.project().tracks[0].laneSynth[0].model); },
+               {drumsynth::kKick, drumsynth::kSnare, drumsynth::kSnare, drumsynth::kTom, drumsynth::kClap});
+    ui::gStickSpeed = speedWas;
 }
 
 // Held keys (gesture audit G08, G32, 2026-11-25): one repeat for every screen, ui::Repeat, each counted from when
@@ -13547,7 +13927,7 @@ void testHeldKeysRunAtTheirPace() {
         CHECK(runs == 4);
         // The paces, and the third for clicks: none slower than it was (8 a second, after the cursor's wait).
         CHECK(ui::paceDelayMs(Pace::Cursor) == 170 && ui::paceEveryMs(Pace::Cursor) == 30 && ui::paceDelayMs(Pace::List) == 200 && ui::paceEveryMs(Pace::List) == 110);
-        CHECK(ui::paceDelayMs(Pace::Click) == 170 && ui::paceEveryMs(Pace::Click) == 125 && ui::kStickClicksPerSecond == 8.f);
+        CHECK(ui::paceDelayMs(Pace::Click) == 170 && ui::paceEveryMs(Pace::Click) == 125 && ui::stickPerSecond(Pace::Click) == 16.f);
         // Waits as one, runs as another.
         repeat.restart();
         CHECK(!repeat.due(t, true, Pace::Cursor, Pace::List) && repeat.due(t + 170, true, Pace::Cursor, Pace::List));
@@ -13583,9 +13963,10 @@ void testHeldKeysRunAtTheirPace() {
         rig.frames(20); // 320 ms: the press, and two clicks after the 170 wait (at 220 after 200: one)
         rig.key(RIGHT, false);
         CHECK(slot >= 0 && p.notes[slot].ratchet == 4 && roll.cursorPitch() == 60);
-        // The stick the same (it was four a second): a click at once, then eight a second (STICK SPEED 100% here).
+        // The stick the same (it was four a second, then eight): a click at once, then twice the held D-pad's clicks,
+        // sixteen a second (STICK SPEED 100% here).
         rig.key(STICK_UP, true);
-        rig.frames(20); // the click at once, and 19 frames at 8 a second: two more (at four: one)
+        rig.frames(10); // the click at once, and 9 frames at 16 a second: two more (at eight: one)
         rig.key(STICK_UP, false);
         rig.key(X, false);
         rig.frames(1);
@@ -13618,8 +13999,8 @@ void testHeldKeysRunAtTheirPace() {
             CHECK(!rig.app.song().choosing() && rig.project().trackCount() == tracks + (closer == A ? 1 : 0) && rig.app.song().cursorScene() == 0);
         }
     }
-    // The sampler's LOOP with A held clicks once a push of the stick: up ON, down OFF (it was turned as a range of
-    // one: 1.3 s of push to flip it).
+    // The sampler's LOOP with A held clicks once a push of the stick, however far: up ON, down OFF (it was turned as
+    // a range of one: 1.3 s of push to flip it).
     {
         Rig rig;
         rig.app.session().addTrack(TrackKind::Sampler);
@@ -13642,11 +14023,16 @@ void testHeldKeysRunAtTheirPace() {
         rig.stick(0.f, was ? -1.f : 1.f); // straight across the middle the other way: a push, a click
         rig.frames(1);
         CHECK(loop() == was);
-        rig.stick(0.f, 0.5f); // short of half (0.37 past the dead zone): nothing
+        rig.stick(0.f, 0.f);
+        rig.frames(1);
+        rig.stick(0.f, was ? 0.25f : -0.25f); // just past the dead zone (0.06): a push, a click (owner, 2026-11-25: it was past half)
+        rig.frames(1);
+        CHECK(loop() == (was ? 0 : 1));
+        rig.stick(0.f, 0.f);
+        rig.frames(1);
+        rig.stick(was ? 1.f : -1.f, was ? -0.5f : 0.5f); // a sideways push that drifts back (0.37, under half of it): nothing
         rig.frames(30);
-        rig.stick(0.f, -0.5f);
-        rig.frames(30);
-        CHECK(loop() == was);
+        CHECK(loop() == (was ? 0 : 1));
         rig.stick(0.f, 0.f);
         rig.key(A, false);
         rig.frames(1);
@@ -13926,16 +14312,32 @@ int main(int argc, char** argv) {
         if (failures == 0) std::printf("app tests passed (pages only)\n");
         return failures == 0 ? 0 : 1;
     }
-    if (argc > 1 && std::string(argv[1]) == "--navigation") { // just the gesture audit's batch A5: going round, headings, the climb, SONG's cell
+    if (argc > 1 && std::string(argv[1]) == "--navigation") { // just the gesture audit's batch A5 (going round, headings, SONG's cell) and the stick
         testTabs();
         testTheEndsOfSetsRows();
         testSetJumpsHeadings();
-        testTheStickClimbsOnACursor();
+        testTheStickIsTwiceTheDpad();
+        testTheStickIgnoresHowFarEverywhere();
+        testASidewaysDriftTurnsNothing();
+        testTheStickWithAButtonHeld();
         testSongOpensOnTheCellWorkedOn();
         testTheSetupScreen();
         testTheStickSpeedAndTheVolume();
         testBOnASettingIsItsUsual();
         if (failures == 0) std::printf("app tests passed (navigation only)\n");
+        return failures == 0 ? 0 : 1;
+    }
+    if (argc > 1 && std::string(argv[1]) == "--stick") { // just the stick (owner, 2026-11-25: full speed at once, twice the D-pad's pace)
+        testTheStickIsTwiceTheDpad();
+        testTheStickIgnoresHowFarEverywhere();
+        testASidewaysDriftTurnsNothing();
+        testTheStickWithAButtonHeld();
+        testTheStickSpeedAndTheVolume();
+        testNoteLevelAndLength();
+        testChoicesClick();
+        testHoldXCarriesANote();
+        testHoldYMovesABandTwoWays();
+        if (failures == 0) std::printf("app tests passed (the stick only)\n");
         return failures == 0 ? 0 : 1;
     }
     if (argc > 1 && std::string(argv[1]) == "--held") { // just the gesture audit's batch C1: held keys' paces
@@ -13946,7 +14348,7 @@ int main(int argc, char** argv) {
         if (failures == 0) std::printf("app tests passed (held keys only)\n");
         return failures == 0 ? 0 : 1;
     }
-    if (argc > 1 && std::string(argv[1]) == "--holds") { // just the gesture audit's batch C3: held Y, B on SET, the hold lengths, the copy kept
+    if (argc > 1 && std::string(argv[1]) == "--holds") { // just the gesture audit's batch C3: held Y, B on SET, the hold lengths, the copy (spent by a paste again)
         testAHeldYDeletesOn();
         testBOnASettingIsItsUsual();
         testTheHoldLengths();
@@ -14050,7 +14452,10 @@ int main(int argc, char** argv) {
     testBOnASettingIsItsUsual();
     testTheEndsOfSetsRows();
     testSetJumpsHeadings();
-    testTheStickClimbsOnACursor();
+    testTheStickIsTwiceTheDpad();
+    testTheStickIgnoresHowFarEverywhere();
+    testASidewaysDriftTurnsNothing();
+    testTheStickWithAButtonHeld();
     testHeldKeysRunAtTheirPace();
     testSongOpensOnTheCellWorkedOn();
     testTheTempoFromAnyScreen();

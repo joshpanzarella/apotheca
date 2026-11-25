@@ -69,7 +69,8 @@ void NameKeys::letGo(Button b) {
 
 void NameKeys::update(const Input& input, Uint32 nowMs, float dt) {
     if (!open_) return;
-    // The stick: one key at once, then steadily, the way it leans most.
+    // The stick: one key at once, then at twice a held D-pad's pace (the list's) however far it is pushed, the
+    // way it leans most.
     const float x = input.stickX(), y = input.stickY();
     const bool sideways = std::fabs(x) > std::fabs(y);
     const float push = sideways ? x : y;
@@ -77,7 +78,7 @@ void NameKeys::update(const Input& input, Uint32 nowMs, float dt) {
         saved_ = 0.f;
         stickWas_ = false;
     } else {
-        saved_ += stickWas_ ? std::fabs(push) * kMovesPerSecond * dt : 1.f;
+        saved_ += stickWas_ ? ui::stickPerSecond(Pace::List) * dt : 1.f;
         stickWas_ = true;
         for (; saved_ >= 1.f; saved_ -= 1.f) move(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
     }

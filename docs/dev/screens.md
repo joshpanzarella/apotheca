@@ -145,8 +145,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     audit's hold-Y option): LEFT / RIGHT is FREQ, UP / DOWN GAIN, on the Q dial Q (`FxScreen::bandGrip`,
     `kBandFreq` / `kBandGain` / `kBandQ`). **The stick and the D-pad do the same job on each axis**: the D-pad a
     push (`pushed`, the row's own pushes: FREQ thirds of an octave, GAIN and Q twentieths), the stick both axes
-    together, squared, at A's turning pace (`kTurnPerSecond`), with no lock to one axis, as the SONG mixer (owner,
-    2026-11-14). The cursor stays. Not on SHAPE (a choice: Y held there leaves the D-pad the cursor's), not on
+    together at A's turning pace (`kTurnPerSecond`), however far it is pushed, with no lock to one axis, as the
+    SONG mixer (owner, 2026-11-14); a drift under half the push off one axis is not the other (`ui::stickAxes`,
+    owner 2026-11-25: the stick's rule above). The cursor stays. Not on SHAPE (a choice: Y held there leaves the D-pad the cursor's), not on
     another effect (Y on a dial did nothing before and still does), not with A held (A's jobs stand: A + LEFT /
     RIGHT is still the TYPE, owner 2026-11-14, untouched), not while trying or with X's MOD. Through
     `setEffectParam`, so WRITE records both lanes. **The option not taken: hold A + the stick across = FREQ**:
@@ -428,31 +429,130 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   "group" a fraction); it is left off while NETWORK picks or forgets, whose bars are their own. **The panic puts
   the row back** (`App::setRowBeforeShoulders_`, as FX's track). `app_test` `testSetJumpsHeadings` (every row's
   bar fits and says it).
-- **The stick on a CURSOR speeds up when it is pushed all the way and held** (gesture audit G07, 2026-11-25;
-  `ui::StickClimb`, `kStickFullPush` 0.9 after the dead zone, `kStickClimbTo` 3, `kStickClimbMs` 1000): a part
-  push moves at the screen's own rate exactly as before; a full push held climbs from that rate to three times it
-  over a second and stays there. A climb not asked for `kStickClimbGapMs` (100 ms: another screen, the stick on
-  other work) starts again from the bottom. Every rate is still times STICK SPEED, the climb with it.
-  **The owner's earlier call, kept in part and moved:** "The owner asked for a quarter off (2026-11)" (`ui.hpp`,
-  commit 37bcdbc, now STICK SPEED's default 75%). The quarter off stays on every rate and on every part push; only
-  a FULL push HELD goes past it. Why that is more logical: at 75% the stick ran slower than a held D-pad on most
-  screens (SET 5.25 rows a second against 9, FX 10.5 against 33), against "stick for big moves, D-pad for exact
-  ones"; a full push held is the one gesture that only ever means a big move, and SONG's scene 1 to 40 by the stick
-  halves (about 2.2 s to 1 s), SET's TEMPO to STICK SPEED (14 rows on the stock port) about 2.5 s to 1.2 s. (TEMPO
-  to CONTROLS is not the example: UP goes round, one press, G35.) The owner allowed reversing a decision where a
-  method is more logical (2026-11-24). **Cursors only**: SET's rows, SONG's cells, the drum grid, the roll, FX, MOD, the
-  sampler's and a synth's stops, the kit's lanes and its EDIT and VOICE boxes. **Not**: a value turned (hold A,
-  hold X, SET's LEFT / RIGHT: "the owner's rule: faster is better" would argue for it, but one turn time slows
-  hit LEVEL from 0.44 s to 1 s), a list (the list of songs, the instruments, NETWORK's networks, the recordings
-  list, which squares its push already), the name and password keys, and **the kit's sounds with A held** ("slow
-  enough to hear each sound", kit_screen.cpp). A wrapping cursor (the drum grid's row, the FX list) goes round
-  sooner when held full: the audit's named risk. `app_test` `testTheStickClimbsOnACursor` (the rule; SET's rows
-  part, full and at 50%; TEMPO turned; the kit's sounds; the instrument list; and, since the A5 review, every
-  other screen's own call at STICK SPEED 25%, a full push against one just short of full from the same stop: FX,
-  MOD, the sampler, a synth's MAIN across and down, the kit's lanes, EDIT's and VOICE's boxes, so dropping the
-  climb at any one of them fails), `testTheStickSpeedAndTheVolume`
-  (SONG); `ui_test` (the drum grid, painting); `wifi_test` `testTheStickOverTheNetworks` (NETWORK's list, A held). **0.9 is a guess at "all the way"**: what the handheld's stick
-  reads at its rim is not measured.
+- **The stick runs at its full speed at once, twice the held D-pad's pace, times STICK SPEED** (owner,
+  2026-11-25; `ui::stickPerSecond`, `ui::stickWay`, `ui::stickAxes` in `ui.hpp`). **It reverses gesture audit
+  G07.** The rule it replaced, as it stood: "The stick on a CURSOR speeds up when it is pushed all the way and
+  held (gesture audit G07, 2026-11-25; `ui::StickClimb`, `kStickFullPush` 0.9 after the dead zone,
+  `kStickClimbTo` 3, `kStickClimbMs` 1000): a part push moves at the screen's own rate exactly as before; a full
+  push held climbs from that rate to three times it over a second and stays there." **The owner's words:** "I
+  also wanted the stick to be fast in comparison to the d-pad. As soon as you move it, it goes as fast as you set
+  the speed to. Stick for macro moves and d-pad for detailed ones." G07 had seen the same fault (at 75% the stick
+  ran slower than a held D-pad: SET 5.25 rows a second against 9, FX 10.5 against 33) and answered it with a
+  climb the owner did not want: a part push still crawled, and a full push took a second to get fast.
+  `ui::StickClimb`, `kStickFullPush`, `kStickClimbTo`, `kStickClimbMs`, `kStickClimbGapMs` and every screen's
+  `climb_` went, with the screens' own step rates (`kMovesPerSecond` on SET, FX, MOD and the sampler,
+  `kStickCellsPerSecond`, `Feel::stickCellsPerSecond`, `kStickKeysPerSecond`, `kStickStepsPerSecond`,
+  `kStickStopsPerSecond`, `kEditMovesPerSecond`, `kChangesPerSecond`, `kChoicesPerSecond`, `kKindsPerSecond`,
+  `kClicksPerSecond`, `kSoundsPerSecond`, `kStepsPerSecond`, `kPresetsPerSecond`, `kChordsPerSecond`,
+  `kInversionsPerSecond`, `ui::kStickClicksPerSecond`, `NameKeys::kMovesPerSecond`, `kRepeatsPerSecond`,
+  `kDiceHitsPerSecond`, `kRatesPerSecond`, `kLengthStepsPerSecond`, `kCarryKeysPerSecond`, `kCarryStepsPerSecond`;
+  the last two but one came back in the [owner-fix] review, below).
+  - **How far it is pushed does not matter.** Past the dead zone (`input.cpp`, 0.2 of the travel, kept) it runs
+    at its full rate at once, for everything it moves, steps or turns: the `|push|` and the squares went from
+    every screen; only the way it is pushed is used. The first move is still at once, where it was.
+  - **Its full rate, for anything a held D-pad also runs, is twice the held D-pad's pace for the same thing**
+    (`kStickTimesPace` 2): the pace the screen's own `repeat_.due(..., Pace::...)` names, so a list stays a list
+    and a cursor a cursor. STICK SPEED is in each screen's dt once (`dt *= gStickSpeed`), so it scales every rate
+    exactly once. **At the default 75%: a cursor 50 a second against the D-pad's 33, a list 13.6 against 9.1, a
+    click 12 against 8. At 50% the stick is the D-pad's own pace**; 25% is half of it, 150% three times. STICK
+    SPEED's default (75%) and range (25 to 150%) stay.
+  - **Before and after, a full push at 75%** (moves a second; "climbing" was G07's full push held a second):
+
+    | Where | Before | After |
+    | --- | --- | --- |
+    | SET's rows, NETWORK's list | 5.25 (rows climbing to 15.75) | 13.6 (list) |
+    | SET's values sideways (TEMPO a BPM a step) | 6.75 | 13.6 (list) |
+    | the name keys, the password keys | 5.25 | 13.6 (list) |
+    | SONG's cells | 18, climbing to 54 | 50 (cursor) |
+    | SONG's list of songs | 18 | 50 (its held D-pad runs at the cursor's) |
+    | SONG's list of instruments | 18 | 13.6 (list) |
+    | SONG, A on REPEATS, up / down | 15 (squared) | 50 (cursor) |
+    | SONG, L1 on REPEATS, sideways (the meter) | 2.25 | 50 (cursor) |
+    | the drum grid's cursor: steps / lanes | 27 / 13.5, climbing to 81 / 40.5 | 50 / 50 |
+    | the drum grid, A on BARS | 2.25 bars | once a push (a choice) |
+    | the drum grid, Y on a lane's name (the dice) | 18 hits | 50 |
+    | X held on a hit, a lane's name or a note (clicks) | 6 | 12 (click) |
+    | the roll's cursor: keys / steps | 27 / 18, climbing to 81 / 54 | 50 / 50 |
+    | the roll, Y held: chords / inversions | 5.25 / 3.75 | 13.6 / 13.6 |
+    | the roll, A held: a note's length | 7.5 steps | 7.5 steps (its own rate, kept) |
+    | the roll, A on BARS | once a push past half | once a push, any push (a choice) |
+    | the roll, R1 carrying: keys / in time | 7.5 / 4.5 steps | 50 / 4.5 (in time its own rate, kept) |
+    | FX's and MOD's lines | 10.5, climbing to 31.5 | 50 |
+    | FX's list of effects and a TYPE; MOD's targets and a choice with A | 3.75 | 13.6 |
+    | FX's choice dial with A (TIME, TYPE, SHAPE) | 3.75 | 13.6 (twice the list's: a choice) |
+    | X on a knob: a MOD's RATE | 3.75 | 13.6 |
+    | the sampler's stops | 10.5, climbing to 31.5 | 50 |
+    | the sampler with A: SOUND / PRESET | 6 / 6 | 13.6 / 50 |
+    | a synth's stops | 12, climbing to 36 | 50 |
+    | a synth with A: PRESET, FOLDER, CLOUD's RECORDING / a choice | 7.5 / 3.75 | 50 / 13.6 (a choice: the list's) |
+    | the kit's lanes and columns | 12, climbing to 36 | 50 |
+    | the kit with A: sounds, FIT, CHOKE, kits | 6 | 13.6 |
+    | EDIT's and VOICE's boxes | 10.5, climbing to 31.5 | 50 |
+    | VOICE's MODEL with A | once a push past half | once a push, any push (a choice) |
+
+  - **Kept on their own rates, times STICK SPEED, at full at once** (the push's depth ignored, the rate as it
+    was): what a held D-pad does not run (A on a SONG cell: its length 3 a second and TRANSPOSE 2 octaves; A on
+    REPEATS sideways: the scene's steps, 3), **the list of recordings** (`SamplePicker::kStickRowsPerSecond` 80:
+    60 a second at 75%; it was by the square of the push; its held D-pad goes on to 50 a second there, so twice
+    the list's pace would have made the stick the slower one), and **values turned in units a second**: the drum
+    grid's tempo row (90 BPM) and its fills (a hit's level, a lane's level, nudge, chance, a slice's start: 3),
+    SONG's scene tempo with L1 (90 BPM), the mixer (24 dB, 60 pan steps), MACRO (2), a MOD's DEPTH (1.2), FX's
+    and MOD's turns (0.9, 1.8), a synth's setting (1.5 of its range), the sampler's settings, EDIT's boxes and
+    VOICE's knobs (their range), the roll's level (3), **the roll's note length (10 steps) and a carried note
+    slid in time (6 steps)**. A turn is now as fast at the dead zone's edge as all the way over: the fine move is
+    the D-pad's.
+  - **A choice clicks** (CLAUDE.md: "Choices (a filter type) click once per push; they are not sliders").
+    **Once a push, however far and however long**: the sampler's LOOP and EDIT's REVERSE (up ON, down OFF), BARS
+    on both grids (1, 2, 4, 8) and VOICE's MODEL; any push past the dead zone, though not a sideways one that
+    drifts (`stickAxes`). LOOP, REVERSE and MODEL were once a push past half, the roll's BARS too, the drum
+    grid's BARS a 2.25-a-second fill. **A choice with more values, with A held** (FX's choice dials: the filter
+    TYPE, the delay TIME, BAND's SHAPE; a synth's choice, a wave or a type), clicks at once and, held on, runs at
+    **twice the LIST's pace** (13.6 a second at 75%), not twice the cursor's its held D-pad was left at (G08's
+    "not made slower", the owner's question): the only place the stick does not run at twice its D-pad. At
+    the cursor's a push of any length passed several types; at 3.75 a second, before, a push clicked once.
+  - **Values turned, not steps run** ([owner-fix] review, 2026-11-25): the roll's note length with A held and
+    a carried note slid in time with R1 are free (to any point in a step), where the D-pad goes a whole step.
+    At twice the cursor's pace (50 steps a second at 75%, 0.8 of a step a frame) the stick could no longer land
+    between the step lines, and the same A-held gesture had its level on its own rate and its length on the
+    cursor's. Back on `kLengthStepsPerSecond` 10 and `kCarryStepsPerSecond` 6, push depth ignored, times STICK
+    SPEED. `app_test testNoteLevelAndLength`, `testHoldXCarriesANote`, `chord_test` (their counts at 100% as
+    before).
+  - **Only up / down, not a drift** ([owner-fix] review): where a button held leaves the stick one axis (the
+    list of recordings; FX's, MOD's, a synth's, the sampler's turns and lists with A held; the kit's sounds,
+    EDIT's boxes and VOICE's knobs with A held), the axis is read through `stickAxes` too: a sideways push
+    drifting under half of it turns nothing. By the square of the push, before, the drift crawled (raw 0.3, a
+    row a second on the recordings); at the full rate it ran (60). `app_test testASidewaysDriftTurnsNothing`,
+    `testChoicesClick`, `picker_test testBigMoves`.
+  - **Diagonals** (`ui::stickAxes`, `kStickDiagonal` 0.5): with the depth no longer slowing a move, a slight
+    drift off one axis would run the other at full rate. Where a screen reads both axes (SONG's cells, the drum
+    grid's and the roll's cursors, a synth's stops, the mixer, A on a SONG cell, Y on BAND's dials) the larger
+    always counts and the smaller only from half of it: a real diagonal. Screens that pick one axis
+    (`sideways = |x| > |y|`) or lock the first way pushed (`axis_`) keep that.
+  - **Named risks**: a row that goes round (the drum grid's steps and lanes, FX's and MOD's lines, the kit's
+    lanes, the name keys) goes round in well under a second; the drum grid's lanes, at half the steps' rate
+    before ("eight lanes: half speed is plenty"), run at the cursor's now, as their D-pad does; the lists with A
+    held (the kit's sounds, a synth's PRESET at 50 a second) pass sounds quicker than each can be heard (the kit's
+    were kept at 8 a second, "slow enough to hear each sound": kit_screen.cpp's `kStepsPerSecond` comment,
+    removed 2026-11-25; G07 kept them). Each is the owner's "stick for macro moves and d-pad for detailed ones".
+  - Tests: `app_test` `testTheStickIsTwiceTheDpad` (the rule; then on SET's rows, SONG's cells, the drum grid,
+    the roll, FX, MOD, the sampler, a synth's stops across and down, the kit's lanes, EDIT's and VOICE's boxes and
+    the name keys, each from its own call: a push just past the dead zone moves exactly as far as a full one;
+    further than a held D-pad at 75%; the same as the D-pad to the move at 50%, over 960 ms of a cursor (32) or
+    880 ms of a list (8) once both run steadily; exact counts at 25% and 150%; a drift under half moves nothing
+    across, a diagonal both; the kit's sounds and SONG's instruments at the list's pace; since the [owner-fix]
+    review the other axis of SONG's cells, the drum grid and the roll on its own), `testTheStickIgnoresHowFarEverywhere`
+    ([owner-fix] review: the roll's chords, inversions, carry and clicks, SONG's REPEATS count and meter, a
+    synth's macro, each as far just past the dead zone as all the way; A on a SONG cell, a drift is no octave),
+    `testTheStickWithAButtonHeld` (a hit's fill as fast just past the dead zone; the dice at its new pace; BARS
+    on both grids and VOICE's MODEL once a push, a new hold of A a new click), `wifi_test` (the password keys),
+    `mixer_test` and `testHoldYMovesABandTwoWays` (a drift is not the other axis), `app_test --stick` runs them
+    all, `testTheStickSpeedAndTheVolume` (SONG at 100, 75 and 50%: 25, 19 and 13 in 24
+    frames), `picker_test` `testBigMoves` (the recordings: 59 in 62 frames, just past the dead zone or all the
+    way), `feelapp_test` (the clicks, twelve a second), `modknob_test` (RATE), `easy_test` (the carry, SONG's
+    REPEATS and meter), `chord_test`, `wifi_test` (NETWORK's list), `ui_test`. Mutants: 46 of 46 killed (the
+    push's depth put back on each screen, STICK SPEED scaled twice, the diagonal helper broken or not used, the
+    2x dropped, each pace swapped, each old rate put back). **Not felt on the handheld**; how the handheld's
+    stick reads near the dead zone's edge is not measured.
 - **A held key's repeats are one helper, `ui::Repeat`, on every screen** (gesture audit G08, 2026-11-25).
   Each repeat is counted from when the one before was DUE, not from the frame that saw it, as the list of
   recordings always counted: the cursor's 30 ms was rounded up to two frames' time (about 28 to 31 a second, not the
@@ -471,8 +571,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     left it going round on every move; a held run now does too). A or B closing it ends the run, so a
     direction still held does not run on over the cells (`testHeldKeysRunAtTheirPace` closes it with each: the
     B half had no test until the C1 review).
-  - **The sampler's LOOP clicks once a push of the stick** past half (`loopPush_`): up ON, down OFF, as
-    the D-pad and a synth's choices; back in the middle, or pushed the other way (a flick across can pass
+  - **The sampler's LOOP clicks once a push of the stick** (`loopPush_`; past half until the owner's stick
+    rule, 2026-11-25: now any push, not a sideways one that drifts): up ON, down OFF, as the D-pad and a synth's choices; back in the middle, or pushed the other way (a flick across can pass
     the middle between two frames), the next push clicks. It was turned as a range of one: about 1.3 s of
     full push to flip it.
   - **Not made slower, though the standard would** (the owner's rule in `pattern_screen.hpp`'s `Feel`:
@@ -483,12 +583,13 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     and TYPE, MOD's targets and clicks, the sampler's SOUND with A held, the chord picker). Both are the
     owner's question (the audit's G08 risk: the song list would scroll at 9 a second).
 - **A third pace, for clicks** (gesture audit G32, 2026-11-25; `ui::kClickDelayMs` 170, `kClickEveryMs`
-  125, `kStickClicksPerSecond` 8): what X held sets on a hit or a note. It was three rates written in the
+  125; the stick had `kStickClicksPerSecond` 8, since the owner's stick rule twice the pace, 16, times STICK
+  SPEED: `stickPerSecond(Pace::Click)`): what X held sets on a hit or a note. It was three rates written in the
   screens, "clicks, not a slide": the drum grid's pitch 8 a second, its ratchet and a lane's FEEL 4, the
   roll's ratchet and glide one each 220 ms after 200; the stick the same 8 and 4 on the drums, 4 on the
   roll. **One pace, the fastest of them**, so none clicks slower than it did: the ratchet, FEEL and the
-  roll's clicks go twice as fast (FEEL's six clicks end to end in about 0.8 s, held or with the stick
-  at 75%). FX's list of effects ran at a bare 200 ms; it runs at the list's 110 (it reaches its end in
+  roll's clicks go twice as fast (FEEL's six clicks end to end in about 0.8 s held; with the stick at
+  75%, about 0.8 s then, 0.4 s since the stick's rule). FX's list of effects ran at a bare 200 ms; it runs at the list's 110 (it reaches its end in
   less than a second held). **The list of recordings' faster paces are named in `ui.hpp` as the one
   exception** (`kRecordings...`). CLAUDE.md's "two speeds" line is the owner's to change (changed in
   C4-docs, next).
@@ -498,7 +599,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   line's reasoning is in the batch's own note, named here.
   - **"A held D-pad has two speeds, in `ui.hpp`: `kCursor...` for cursors, `kList...` for lists and
     choices"** became three paces through `ui::Repeat` (Cursor, List, Click), the recordings list named
-    as the one exception, and the stick's climb on a cursor (G08, G32, G07 above). A new screen written
+    as the one exception, and the stick's climb on a cursor (G08, G32, G07; the climb itself reversed by the
+    owner the same day: the stick runs at twice the D-pad's pace, above). A new screen written
     to "two speeds" would have hand-rolled its own repeat and clicked at a cursor's or a list's pace.
   - **"Hold B deletes for good"** became "Hold B deletes", with the two lengths: since G29 the half-second
     holds (an effect, a MOD, a scene emptied, EDIT's and VOICE's every box) are undone by SEL + B, so
@@ -509,7 +611,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     It says "where R1 is taken" because on the drum grid hold Y + a direction is already the exact chance,
     a hit's slice and the lane dice (`PatternScreen::nudgeExact`), and the roll's hold Y is the chord.
   - Brought in line, each from its own batch: L2 / R2 go round and a long list goes round on a press (G35);
-    SELECT's combos on every tab (G03); the copy stays after a paste, on SONG and the grids (G23); a stick
+    SELECT's combos on every tab (G03); R1 on the copied cell or scene clears it (G23; G23's other half,
+    keeping the copy after a paste, the owner reversed on 2026-11-25: a paste spends the copy, on SONG and the
+    grids); a stick
     move is a use of L1 (G31); B during a held pick puts back what it found (G12, G26; the mixer's reset
     stays, owner 2026-11-14); B on a setting is its usual value, a synth page's still goes back (G17);
     one set of name keys with every button theirs (G01), Y held deleting on (G48); X heard as long as held,

@@ -42,8 +42,8 @@
 // drawn large, the part played lit between START and END, and eight boxes laid out as the sampler's,
 // START, END, FADE IN, FADE OUT / GAIN, PITCH, FINE, REVERSE. The file on the card is never written.
 //   the stick or D-pad moves among the boxes
-//   hold A + up / down: turns the box (the stick through its range in about a second, by the square
-//           of the push; the D-pad a millisecond of the file, half a dB, a fade's stop, a semitone, a cent)
+//   hold A + up / down: turns the box (the stick through its range in about a second, however far it is
+//           pushed; the D-pad a millisecond of the file, half a dB, a fade's stop, a semitone, a cent)
 //   B       the box back to its usual value; on a box already there, or straight after Y, back to the kit (G16).
 //           HELD: every edit of the lane back to none, as the bar fills (undo brings them back)
 //   Y       on START or END: TRIM SILENCE (START and END at the first and last sound). Elsewhere
@@ -54,8 +54,9 @@
 // EDIT view. The top box is the MODEL, with the made sound's picture; under it the eight knob places,
 // two rows of four (a place the model does not use is an empty box the cursor passes by).
 //   the stick or D-pad moves among the boxes (up from the first row: the MODEL)
-//   hold A + up / down: turns the box by a step (the stick through its range in about a second, by
-//           the square of its push). On MODEL: the model before / after, at its usual knobs.
+//   hold A + up / down: turns the box by a step (the stick through its range in about a second, however
+//           far it is pushed). On MODEL: the model before / after, at its usual knobs (the stick one at
+//           once, then at twice the held D-pad's pace).
 //           Hold A + left / right on MODEL: the model's named voice before / after (drum_voices.hpp:
 //           CLASSIC, then the built-in data's), written in brass after the model while the dials are its
 //   B       the box to its usual value; on a box already there, on MODEL, or straight after Y, back to the kit.
@@ -203,14 +204,13 @@ private:
     bool wasRecording_ = false;
     float saved_ = 0.f;
     bool stickWas_ = false;
-    ui::StickClimb climb_; // a full push held on the cursor climbs (G07)
     Button repeating_ = Button::None;
     ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
     Uint32 lastMs_ = 0;
     bool editing_ = false;
     int editRow_ = 0;
     float turned_ = 0.f;        // the stick's part-turned box
-    bool reversePushed_ = false; // the stick is pushed on REVERSE: it clicks once a push
+    bool reversePushed_ = false; // the stick is pushed on REVERSE or MODEL (A held): it clicks once a push
     bool deleting_ = false, deleteTimed_ = false, bBack_ = false; // B held; bBack_: its tap goes back to the kit
     // Y (EDIT's trim or normalize, VOICE's roll) was the last press, on this box: a B straight after it goes back
     // to the kit and keeps what Y set (gesture audit G16, 2026-11-25: it put the box under the cursor back).

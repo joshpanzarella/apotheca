@@ -18,11 +18,12 @@ constexpr Uint32 kDeleteHoldMs = ui::kHoldForGoodMs; // B held this long on a so
 
 constexpr int kGridTop = 34, kHeadH = 40, kRowH = 44, kRowsTop = kGridTop + kHeadH + 6;
 constexpr int kNumberW = 26, kRepeatW = 38, kColumnsLeft = 8 + kNumberW + kRepeatW; // (kRepeatW was 34: the column's word, REPEATS, is 67 wide at LARGE)
-constexpr float kStickCellsPerSecond = 24.f;
-constexpr float kRepeatsPerSecond = 20.f;
-constexpr float kSceneTempoPerSecond = 90.f; // L1 held on a repeat count, the stick fully over: BPM a second (the drum grid's tempo row's)
-constexpr float kRepeatSidePerSecond = 3.f;  // ...sideways, after the first click: the scene's steps (A) or its meter (L1)
-constexpr float kMixDbPerSecond = 24.f, kMixPanPerSecond = 60.f; // the stick, with A held on a head, at full push
+// The stick's own rates, where a held D-pad does not run the same thing or it is a value turned (owner, 2026-11-25:
+// however far it is pushed; times STICK SPEED, in dt). The rest is twice the held D-pad's pace (ui::stickPerSecond).
+constexpr float kSceneTempoPerSecond = 90.f; // L1 held on a repeat count: BPM a second (the drum grid's tempo row's)
+constexpr float kSceneStepsPerSecond = 3.f;  // A held on a repeat count, sideways, after the first click: the scene's steps
+constexpr float kMixDbPerSecond = 24.f, kMixPanPerSecond = 60.f; // with A held on a head
+constexpr float kCellBarsPerSecond = 3.f, kTransposesPerSecond = 2.f; // A held on a cell, after the first: its length, an octave
 
 
 // The columns share the width of the screen: few tracks, wide columns. The
@@ -225,16 +226,17 @@ void SongScreen::stepSceneMeter(int scene, int by) {
 }
 
 // A or L1 held on a repeat count: the stick does what the D-pad does there (gesture audit G14, 2026-11-24),
-// one job a push. A: up / down the repeat count (squared, as it always was), left / right the scene's
-// steps. L1: up / down the scene's own tempo (squared, a beat at a time, as fast as the drum grid's
-// tempo row), left / right the steps in its bars. Sideways is a click at once, then slowly: they are counts.
+// one job a push, however far it is pushed (owner, 2026-11-25). A: up / down the repeat count (at twice the
+// held D-pad's pace, the cursor's), left / right the scene's steps (a click at once, then kSceneStepsPerSecond:
+// a held D-pad does not run them). L1: up / down the scene's own tempo (a beat at a time, as fast as the drum
+// grid's tempo row), left / right the steps in its bars (a click at once, then twice the held D-pad's pace).
 void SongScreen::repeatStick(float x, float y, float dt) {
     if (x == 0.f && y == 0.f) repeatAxis_ = RepeatAxis::None;
     else if (repeatAxis_ == RepeatAxis::None) repeatAxis_ = std::fabs(y) >= std::fabs(x) ? RepeatAxis::UpDown : RepeatAxis::Sideways;
     const bool tempo = !holding_; // (L1 held, not A)
     if (repeatAxis_ == RepeatAxis::UpDown) {
         const float push = -y;
-        saved_ += push * std::fabs(push) * (tempo ? kSceneTempoPerSecond : kRepeatsPerSecond) * dt;
+        saved_ += stickWay(push) * (tempo ? kSceneTempoPerSecond : stickPerSecond(Pace::Cursor)) * dt;
         for (; saved_ >= 1.f; saved_ -= 1.f) {
             if (tempo) stepSceneTempo(scene_, 1);
             else setRepeats(project_.repeats[scene_] + 1), turned_ = true;
@@ -249,7 +251,7 @@ void SongScreen::repeatStick(float x, float y, float dt) {
     if (repeatAxis_ != RepeatAxis::Sideways || x == 0.f) {
         repeatSideSaved_ = 0.f, repeatSideWas_ = false;
     } else {
-        repeatSideSaved_ += repeatSideWas_ ? std::fabs(x) * kRepeatSidePerSecond * dt : 1.f;
+        repeatSideSaved_ += repeatSideWas_ ? (tempo ? stickPerSecond(Pace::Cursor) : kSceneStepsPerSecond) * dt : 1.f;
         repeatSideWas_ = true;
         for (; repeatSideSaved_ >= 1.f; repeatSideSaved_ -= 1.f) {
             const int by = x > 0.f ? 1 : -1;
@@ -320,6 +322,21 @@ void SongScreen::copyCell(const CellCopy& from, int toTrack, int toScene) {
     session_.sendTrackImage(toTrack); // patterns and automation, in one piece (as pasteBar)
 }
 
+void SongScreen::rememberCellClip() {
+    cellBeforeCopy_->copied = cellCopied_;
+    cellBeforeCopy_->copy = cellCopy_;
+    cellBeforeCopy_->track = copyTrack_;
+    cellBeforeCopy_->scene = copyScene_;
+    ++cellCopies_;
+}
+
+void SongScreen::takeBackCellCopy() {
+    cellCopied_ = cellBeforeCopy_->copied;
+    cellCopy_ = cellBeforeCopy_->copy;
+    copyTrack_ = cellBeforeCopy_->track;
+    copyScene_ = cellBeforeCopy_->scene;
+}
+
 void SongScreen::pasteCellHere(int toTrack, int toScene) {
     if (!cellCopy_.has) return; // armed, then the copy went (tracks came or went mid-hold)
     if (!pasteKindsFit(cellCopy_.kind, project_.tracks[toTrack].kind)) {
@@ -328,7 +345,12 @@ void SongScreen::pasteCellHere(int toTrack, int toScene) {
     }
     session_.beginOwnUndoStep();
     copyCell(cellCopy_, toTrack, toScene);
-    session_.endOwnUndoStep(); // the copy stays, brass-marked, for another paste (G23); R1 on its cell clears it
+    // Spent: a paste clears the copy and its brass mark, so the next R1 copies afresh, wherever the cursor is
+    // (the owner, 2026-11-25, reversing gesture audit G23's kept copy: "you don't have to go all the way
+    // back to the thing you originally copied").
+    cellCopied_ = false;
+    cellCopy_.has = false;
+    session_.endOwnUndoStep();
     session_.say("CELL PASTED");
 }
 
@@ -614,6 +636,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (b == Button::R1) {
         if (event.down && onCell() && cellCopied_ && copyTrack_ == column_ && copyScene_ == scene_) {
             // The copied cell again: the copy is cleared.
+            rememberCellClip();
             cellCopied_ = false;
             cellCopy_.has = false;
             session_.say("COPY CLEARED");
@@ -621,6 +644,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             // COPY A CELL, as a scene is copied: nothing copied, and it copies now. A snapshot:
             // edits after COPY never leak into the paste (as a scene copy's).
             const TrackData& from = project_.tracks[column_];
+            rememberCellClip();
             copyTrack_ = column_;
             copyScene_ = scene_;
             cellCopy_.has = true;
@@ -645,9 +669,9 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         } else if (event.down && column_ == kRepeatColumn) {
             // COPY A SCENE: nothing copied, and it copies now (the AT END row too: it is an empty scene
             // like any). The copied scene again: the copy is cleared, as a cell's (G23, 2026-11-25: it
-            // copied it again; a paste no longer spends a copy, so this is the way to put one down).
-            // Else the paste waits for R1's let go (as DUPLICATE A TRACK's: on the way to a panic
-            // nothing pastes).
+            // copied it again; kept when the owner put back the paste that spends the copy, the same day,
+            // so R1 on the copied one means one thing for both). Else the paste waits for R1's let go
+            // (as DUPLICATE A TRACK's: on the way to a panic nothing pastes), and spends the copy.
             if (session_.copiedScene() < 0) session_.copySceneHere(scene_);
             else if (session_.copiedScene() == scene_) {
                 session_.clearSceneCopy();
@@ -797,6 +821,11 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
     lastMs_ = nowMs;
     const float x = input.stickX(), y = input.stickY();
 
+    // A held D-pad (and the stick, at twice it): the cursor's pace; the list of instruments at the list's (gesture
+    // audit G08: it did not run at all). The list of songs keeps the cursor's: the standard would put it at the
+    // list's, but no held run was made slower than it was.
+    const Pace runs = choosing_ ? Pace::List : Pace::Cursor;
+
     // B held on a song for a second: it is deleted.
     if (!listing_ || bRow_ != listCursor_ || revsOpen_) bHeld_ = false; // the cursor moved off it
     if (bHeld_ && bDownAt_ == 0) bDownAt_ = nowMs;
@@ -813,31 +842,35 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
         }
     }
 
+    // Where both axes are read, a slight drift off one is not the other (ui::stickAxes).
+    const StickAxes both = stickAxes(x, y);
     if (mixing_) {
-        // A held on a head: the stick turns its level (up, down) and pan (left, right), for big moves.
+        // A held on a head: the stick turns its level (up, down) and pan (left, right), for big moves, however far
+        // it is pushed.
         const auto turn = [&](float push, float perSecond, float& saved, Button up, Button down) {
-            saved += push * std::fabs(push) * perSecond * dt;
+            saved += stickWay(push) * perSecond * dt;
             for (; saved >= 1.f; saved -= 1.f) mixStep(up);
             for (; saved <= -1.f; saved += 1.f) mixStep(down);
         };
-        turn(-y, kMixDbPerSecond, mixSavedDb_, Button::Up, Button::Down);
-        turn(x, kMixPanPerSecond, mixSavedPan_, Button::Right, Button::Left);
+        turn(-both.y, kMixDbPerSecond, mixSavedDb_, Button::Up, Button::Down);
+        turn(both.x, kMixPanPerSecond, mixSavedPan_, Button::Right, Button::Left);
         stickX_ = stickY_ = 0.f;
         stickWasX_ = stickWasY_ = false;
     } else if (holding_ && onCell()) {
-        // The stick sets the cell's length: one move at once, then slowly (there are only four).
-        if (x == 0.f) saved_ = 0.f, stickWasX_ = false;
+        // The stick sets the cell's length: one move at once, then slowly (there are only four; a held D-pad does
+        // not run it), however far it is pushed.
+        if (both.x == 0.f) saved_ = 0.f, stickWasX_ = false;
         else {
-            saved_ += stickWasX_ ? std::fabs(x) * 3.f * dt : 1.f;
+            saved_ += stickWasX_ ? kCellBarsPerSecond * dt : 1.f;
             stickWasX_ = true;
-            for (; saved_ >= 1.f; saved_ -= 1.f) stepBars(x > 0.f ? 1 : -1), turned_ = true;
+            for (; saved_ >= 1.f; saved_ -= 1.f) stepBars(both.x > 0.f ? 1 : -1), turned_ = true;
         }
         // ...and up / down an octave (TRANSPOSE): one at once, then slowly.
-        if (y == 0.f) savedY_ = 0.f, stickWasYHeld_ = false;
+        if (both.y == 0.f) savedY_ = 0.f, stickWasYHeld_ = false;
         else {
-            savedY_ += stickWasYHeld_ ? std::fabs(y) * 2.f * dt : 1.f;
+            savedY_ += stickWasYHeld_ ? kTransposesPerSecond * dt : 1.f;
             stickWasYHeld_ = true;
-            for (; savedY_ >= 1.f; savedY_ -= 1.f) transpose(y < 0.f ? 12 : -12);
+            for (; savedY_ >= 1.f; savedY_ -= 1.f) transpose(both.y < 0.f ? 12 : -12);
         }
         stickX_ = stickY_ = 0.f;
         stickWasY_ = false;
@@ -846,27 +879,23 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
         // there: its own tempo, and sideways its meter. (L1's stick moved the cursor off the count.)
         repeatStick(x, y, dt);
     } else {
-        // The cells are a cursor: a full push held climbs (G07). The lists (songs, instruments) do not.
-        const bool cells = !listing_ && !choosing_;
-        const float climbX = climbX_.times(cells ? x : 0.f, nowMs), climbY = climbY_.times(cells ? y : 0.f, nowMs);
-        if (x == 0.f) stickX_ = 0.f, stickWasX_ = false;
+        // The cells, the list of songs and the list of instruments: one at once, then at twice the held D-pad's pace
+        // for each (runs, below), however far it is pushed.
+        if (both.x == 0.f) stickX_ = 0.f, stickWasX_ = false;
         else {
-            stickX_ += stickWasX_ ? std::fabs(x) * kStickCellsPerSecond * climbX * dt : 1.f;
+            stickX_ += stickWasX_ ? stickPerSecond(runs) * dt : 1.f;
             stickWasX_ = true;
-            for (; stickX_ >= 1.f; stickX_ -= 1.f) moveCursor(x > 0.f ? Button::Right : Button::Left);
+            for (; stickX_ >= 1.f; stickX_ -= 1.f) moveCursor(both.x > 0.f ? Button::Right : Button::Left);
         }
-        if (y == 0.f) stickY_ = 0.f, stickWasY_ = false;
+        if (both.y == 0.f) stickY_ = 0.f, stickWasY_ = false;
         else {
-            stickY_ += stickWasY_ ? std::fabs(y) * kStickCellsPerSecond * climbY * dt : 1.f;
+            stickY_ += stickWasY_ ? stickPerSecond(runs) * dt : 1.f;
             stickWasY_ = true;
-            for (; stickY_ >= 1.f; stickY_ -= 1.f) moveCursor(y > 0.f ? Button::Down : Button::Up);
+            for (; stickY_ >= 1.f; stickY_ -= 1.f) moveCursor(both.y > 0.f ? Button::Down : Button::Up);
         }
     }
 
-    // A held D-pad: the cursor's pace; the list of instruments at the list's (gesture audit G08: it did not run at
-    // all). The list of songs keeps the cursor's: the standard would put it at the list's, but no held run was
-    // made slower than it was.
-    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), choosing_ ? Pace::List : Pace::Cursor)) {
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), runs)) {
         if (mixing_) {
             mixStep(repeating_);
         } else if (holding_ && onCell()) {

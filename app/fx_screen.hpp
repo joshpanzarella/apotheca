@@ -310,7 +310,6 @@ private:
     float deletePart_ = 0.f;
     float saved_ = 0.f;
     bool stickWas_ = false;
-    ui::StickClimb climb_; // a full push held on the cursor climbs (G07)
     Button repeating_ = Button::None;
     ui::Repeat repeat_; // the held direction's repeats (ui.hpp)
     Uint32 lastMs_ = 0;

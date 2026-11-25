@@ -18,10 +18,7 @@ using namespace phazed;
 
 namespace {
 
-constexpr float kChoicesPerSecond = 5.f; // the stick held over on a choice
-constexpr float kStickStopsPerSecond = 16.f;
-constexpr float kMacroPerSecond = 2.f;    // stick fully over: bottom to top in half a second
-constexpr float kPresetsPerSecond = 10.f;
+constexpr float kMacroPerSecond = 2.f; // the stick, however far it is pushed: bottom to top in half a second (times STICK SPEED)
 constexpr Uint32 kListPreviewMs = 1500, kListRestMs = 4000; // CLOUD's list of recordings: a preview, and X on it
 
 
@@ -313,21 +310,23 @@ void SynthScreen::turn(float amount) {
             return;
         }
         if (onRecording()) { // CLOUD's RECORDING: one at a time, as the presets
-            saved_ += amount * kPresetsPerSecond;
+            saved_ += amount * stickPerSecond(Pace::Cursor);
             for (; saved_ >= 1.f; saved_ -= 1.f) stepRecording(1);
             for (; saved_ <= -1.f; saved_ += 1.f) stepRecording(-1);
             return;
         }
         if (cursor_ == kAdvanced) return;
-        // Folder and preset step one at a time; up is the next one.
-        saved_ += amount * kPresetsPerSecond;
+        // Folder and preset step one at a time, at twice a held D-pad's pace with A held (the cursor's); up is the next one.
+        saved_ += amount * stickPerSecond(Pace::Cursor);
         for (; saved_ >= 1.f; saved_ -= 1.f) cursor_ == kFolder ? stepFolder(1) : stepPreset(1);
         for (; saved_ <= -1.f; saved_ += 1.f) cursor_ == kFolder ? stepFolder(-1) : stepPreset(-1);
         return;
     }
     const int id = item(cursor_).id;
-    // A setting with a handful of values (a wave, a type, on / off) is a choice: it clicks to the
-    // next one at each push of the stick, and then steadily while the stick is held over.
+    // A setting with a handful of values (a wave, a type, on / off) is a choice: it clicks to the next one at each
+    // push of the stick, and then at twice the LIST's pace while the stick is held over (the standard's for choices:
+    // CLAUDE.md, "choices click once per push; they are not sliders"), not twice the cursor's its held D-pad was left
+    // at (gesture audit G08, the owner's question).
     if (isChoice(id)) {
         if (!choicePushed_) {
             choicePushed_ = true;
@@ -335,7 +334,7 @@ void SynthScreen::turn(float amount) {
             setSetting(id, valueOf(id) + (amount > 0.f ? 1 : -1));
             return;
         }
-        saved_ += amount * kChoicesPerSecond;
+        saved_ += amount * stickPerSecond(Pace::List);
         const int steps = static_cast<int>(saved_);
         if (steps != 0) {
             saved_ -= static_cast<float>(steps);
@@ -576,25 +575,27 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
     if (stickWait_) {
         // (the stick was pushed for the MOD: it moves nothing until it has come back)
     } else if (holding_) {
-        const float push = -y;
-        turn(push * std::fabs(push) * dt);
+        const float push = -stickAxes(x, y).y; // up / down only, and not by a sideways push that drifts
+        turn(stickWay(push) * dt); // however far it is pushed (owner, 2026-11-25)
         if (push == 0.f) choicePushed_ = false; // back in the middle: the next push is a new click
         stickX_ = stickY_ = 0.f;
         stickWasX_ = stickWasY_ = false;
     } else {
         choicePushed_ = false;
-        const float climbX = climbX_.times(x, nowMs), climbY = climbY_.times(y, nowMs); // a full push held climbs (G07)
-        if (x == 0.f) stickX_ = 0.f, stickWasX_ = false;
+        // The stops: one at once, then at twice the held D-pad's pace (the cursor's), however far it is pushed; a
+        // slight drift off one axis is not the other (ui::stickAxes).
+        const StickAxes both = stickAxes(x, y);
+        if (both.x == 0.f) stickX_ = 0.f, stickWasX_ = false;
         else {
-            stickX_ += stickWasX_ ? std::fabs(x) * kStickStopsPerSecond * climbX * dt : 1.f;
+            stickX_ += stickWasX_ ? stickPerSecond(Pace::Cursor) * dt : 1.f;
             stickWasX_ = true;
-            for (; stickX_ >= 1.f; stickX_ -= 1.f) moveCursor(x > 0.f ? Button::Right : Button::Left);
+            for (; stickX_ >= 1.f; stickX_ -= 1.f) moveCursor(both.x > 0.f ? Button::Right : Button::Left);
         }
-        if (y == 0.f) stickY_ = 0.f, stickWasY_ = false;
+        if (both.y == 0.f) stickY_ = 0.f, stickWasY_ = false;
         else {
-            stickY_ += stickWasY_ ? std::fabs(y) * kStickStopsPerSecond * climbY * dt : 1.f;
+            stickY_ += stickWasY_ ? stickPerSecond(Pace::Cursor) * dt : 1.f;
             stickWasY_ = true;
-            for (; stickY_ >= 1.f; stickY_ -= 1.f) moveCursor(y > 0.f ? Button::Down : Button::Up);
+            for (; stickY_ >= 1.f; stickY_ -= 1.f) moveCursor(both.y > 0.f ? Button::Down : Button::Up);
         }
     }
 

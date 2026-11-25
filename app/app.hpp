@@ -158,11 +158,9 @@ private:
     int sceneBeforeShoulders_ = 0, barBeforeShoulders_ = 0; // ...or R2 off SONG takes the cursor's cell (G46)
     int setRowBeforeShoulders_ = 0;                         // ...or, on SET, L1 / R1 jump a heading (G28)
     SongScreen::Visit songBeforeShoulders_{};               // ...or L2 / R2 open SONG, its cursor on the cell worked on (G46)
-    // ...and the copied bar: L1 then R1 on the way to all four is a copy (hold L1, R1), which a panic puts back.
-    Session::BarClip clipBeforeShoulders_;
-    unsigned copiesBeforeShoulders_ = 0;
-    std::unique_ptr<Session::SceneClip> sceneClipBeforeShoulders_;
-    unsigned sceneCopiesBeforeShoulders_ = 0;
+    // ...and the copies when R1 last went down: a copy or a clear its press made on the way to all four (the bar
+    // on the grids, a cell or a scene on SONG) a panic takes back (Session::takeBackBarCopy and the others).
+    unsigned barCopiesAtR1_ = 0, sceneCopiesAtR1_ = 0, cellCopiesAtR1_ = 0;
     Session::Rec recBeforeShoulders_ = Session::Rec::Idle; // ...and a recording: R1 first on a lane or the sampler begins one
     bool typingBeforeShoulders_ = false; // ...and the name keys: R1 first on a synth's or the sampler's PRESET opens them
     void closePresetKeys(); // the name keys of every synth's and the sampler's PRESET, wherever they were opened

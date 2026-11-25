@@ -22,7 +22,6 @@ constexpr float kMaybe = 0.5f;        // the chance of a hit placed with Y
 constexpr float kRandomLow = 0.25f;   // R2 paints levels from here up to full
 constexpr int kFirstRoll = 4;         // hits a tap of Y gives an empty lane
 constexpr int kFullRoll = 8;          // ...and a full one (half the steps)
-constexpr float kDiceHitsPerSecond = 24.f; // stick fully over
 constexpr Uint32 kHearStartEveryMs = 90;  // a sliding start is played this often
 
 
@@ -615,12 +614,8 @@ void PatternScreen::dragCursor(Button direction) {
 
 void PatternScreen::turnUpDown(float amount) {
     if (amount == 0.f) return;
-    if (onBars_) {
-        // BARS, a bar more or fewer for each whole push: the ends stop.
-        barsSaved_ += amount;
-        for (; barsSaved_ >= 1.f; barsSaved_ -= 1.f) stepBars(1);
-        for (; barsSaved_ <= -1.f; barsSaved_ += 1.f) stepBars(-1);
-    } else if (onTempo_) {
+    if (onBars_) return; // (BARS: a choice, once a push: update())
+    if (onTempo_) {
         setTempo(tempoExact_ + amount * (feel.tempoPerSecond / feel.fillPerSecond));
     } else if (step_ == kLaneName) {
         setLaneLevel(trk().laneLevel[lane_] + amount);
@@ -639,8 +634,8 @@ void PatternScreen::turnSideways(float amount) {
 void PatternScreen::turnChance(float amount) {
     if (amount == 0.f) return;
     if (!onTempo_ && !onBars_ && step_ == kLaneName) {
-        // On a lane's name, Y is the dice: more hits or fewer.
-        diceTurn(amount / feel.fillPerSecond * kDiceHitsPerSecond);
+        // On a lane's name, Y is the dice: more hits or fewer, at twice the held D-pad's pace (the cursor's).
+        diceTurn(amount / feel.fillPerSecond * ui::stickPerSecond(Pace::Cursor));
         yDidSomething_ = true;
         return;
     }
@@ -838,6 +833,7 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down && onTempo_) session_.tapTempo(whenPressed(event, lastMs_)); // TAP TEMPO: A in time, by the press's own time (held, with a direction, it still turns)
         shaping_ = event.down;
         axis_ = Axis::None; // a new hold is a new choice of job for the stick
+        barsPushed_ = false; // (...and a push already there is a click on BARS)
         if (!event.down && !dicing_) turning_ = Turning::Nothing;
         return;
     }
@@ -944,7 +940,8 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
         // X is held on a hit: the stick clicks its step effects. One way per push (up / down is the
         // pitch, sideways the ratchet); a click at once, then a steady run while it is held over.
         // On a lane's name it clicks the lane's feel the same way (sideways HUMAN TIME, up / down
-        // HUMAN LEVEL): six clicks end to end. All at ui::kStickClicksPerSecond (gesture audit G32).
+        // HUMAN LEVEL): six clicks end to end. All at twice the held D-pad's pace for clicks (gesture audit G32), however
+        // far it is pushed.
         if (x == 0.f && y == 0.f) {
             axis_ = Axis::None;
             fxSaved_ = 0.f;
@@ -954,7 +951,7 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
             if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
             const float push = axis_ == Axis::UpDown ? -y : x;
             if (push != 0.f) {
-                fxSaved_ += fxWas_ ? std::fabs(push) * ui::kStickClicksPerSecond * dt : 1.f; // (G32: the clicks' pace, every way)
+                fxSaved_ += fxWas_ ? ui::stickPerSecond(Pace::Click) * dt : 1.f; // (G32: the clicks' pace, every way)
                 fxWas_ = true;
                 for (; fxSaved_ >= 1.f; fxSaved_ -= 1.f) {
                     const Button way = axis_ == Axis::UpDown ? (push > 0.f ? Button::Up : Button::Down) : (push > 0.f ? Button::Right : Button::Left);
@@ -972,9 +969,14 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
         if (x == 0.f && y == 0.f) axis_ = Axis::None, rolled_ = false;
         else if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
 
-        // Squared, so a small push is a fine adjustment and a full push is fast.
-        const float up = -y * std::fabs(y) * feel.fillPerSecond * dt;
-        const float right = x * std::fabs(x) * feel.fillPerSecond * dt;
+        // However far it is pushed (owner, 2026-11-25: the D-pad for a fine adjustment; it was by the square of the push).
+        const float up = -stickWay(y) * feel.fillPerSecond * dt;
+        const float right = stickWay(x) * feel.fillPerSecond * dt;
+        // BARS with A held, a choice (1, 2, 4, 8): a bar more or fewer once for each push up or down, however far it is
+        // pushed, as on the roll (CLAUDE.md: choices click once per push; it was a slow fill, 2.25 bars a second).
+        const bool barsPush = shaping_ && !dicing_ && onBars_ && axis_ == Axis::UpDown && y != 0.f;
+        if (barsPush && !barsPushed_) stepBars(y < 0.f ? 1 : -1);
+        barsPushed_ = barsPush;
         if (dicing_) {
             if (axis_ == Axis::UpDown) turnChance(up);
             else if (axis_ == Axis::Sideways) turnStart(right * 0.5f);
@@ -987,21 +989,20 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
         stickWasX_ = stickWasY_ = false;
     } else {
         axis_ = Axis::None;
-        // Nothing held: the stick runs the cursor. One move at once, then at
-        // a speed set by how far it is pushed.
-        // A full push held climbs (G07).
-        const float climbX = climbX_.times(x, nowMs), climbY = climbY_.times(y, nowMs);
-        if (x == 0.f) stickX_ = 0.f, stickWasX_ = false;
+        // Nothing held: the stick runs the cursor. One move at once, then at twice the held D-pad's pace (the
+        // cursor's), however far it is pushed; a slight drift off one axis is not the other (ui::stickAxes).
+        const StickAxes both = stickAxes(x, y);
+        if (both.x == 0.f) stickX_ = 0.f, stickWasX_ = false;
         else {
-            stickX_ += stickWasX_ ? std::fabs(x) * feel.stickCellsPerSecond * climbX * dt : 1.f;
+            stickX_ += stickWasX_ ? ui::stickPerSecond(Pace::Cursor) * dt : 1.f;
             stickWasX_ = true;
-            for (; stickX_ >= 1.f; stickX_ -= 1.f) dragCursor(x > 0.f ? Button::Right : Button::Left);
+            for (; stickX_ >= 1.f; stickX_ -= 1.f) dragCursor(both.x > 0.f ? Button::Right : Button::Left);
         }
-        if (y == 0.f) stickY_ = 0.f, stickWasY_ = false;
+        if (both.y == 0.f) stickY_ = 0.f, stickWasY_ = false;
         else {
-            stickY_ += stickWasY_ ? std::fabs(y) * feel.stickCellsPerSecond * 0.5f * climbY * dt : 1.f; // eight lanes: half speed is plenty
+            stickY_ += stickWasY_ ? ui::stickPerSecond(Pace::Cursor) * dt : 1.f;
             stickWasY_ = true;
-            for (; stickY_ >= 1.f; stickY_ -= 1.f) dragCursor(y > 0.f ? Button::Down : Button::Up);
+            for (; stickY_ >= 1.f; stickY_ -= 1.f) dragCursor(both.y > 0.f ? Button::Down : Button::Up);
         }
     }
 

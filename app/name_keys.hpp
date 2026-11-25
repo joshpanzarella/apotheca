@@ -5,7 +5,8 @@
 // preset keys left on B with the name thrown away and ran at a cursor's pace.
 //
 //   the stick, the D-pad   move over forty keys (they come round at the edges); a held D-pad runs at a
-//                          list's pace (ui::kListDelayMs, kListEveryMs), the stick kMovesPerSecond
+//                          list's pace (ui::kListDelayMs, kListEveryMs), the stick at twice it however
+//                          far it is pushed (ui::stickPerSecond)
 //   A       types the key under the cursor: no space first, never two together, `most` at most
 //   Y       deletes the last letter; held, deletes on at a list's pace (gesture audit G48, 2026-11-25)
 //   B       keeps what is typed and leaves (owner, 2026-11-15: "I find myself pressing B to back out of
@@ -30,7 +31,6 @@ class NameKeys {
 public:
     static constexpr const char* kKeys = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_ "; // four rows of ten; the space is the last key
     static constexpr int kColumns = 10, kCount = 40;
-    static constexpr float kMovesPerSecond = 7.f; // the stick pushed all the way (times ui::gStickSpeed)
 
     enum class Asked { Nothing, Keep, Start }; // what a press asks of the screen: B's keep, START's
 

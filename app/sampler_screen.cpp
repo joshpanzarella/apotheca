@@ -12,7 +12,6 @@ namespace apotheca {
 using namespace ui;
 
 namespace {
-constexpr float kMovesPerSecond = 14.f, kSoundsPerSecond = 8.f;
 const char* const kNames[sampler::kSettings] = {"PITCH", "TUNE", "START", "ATTACK", "RELEASE", "LOOP", "LEVEL", "END"};
 // The order the page shows them in: END beside START (it is the last id: ids are appended).
 const int kShown[sampler::kSettings] = {sampler::Root, sampler::Tune, sampler::Start, sampler::End, sampler::Attack, sampler::Release, sampler::Loop, sampler::Level};
@@ -368,42 +367,48 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
     if (stickWait_ && input.stickX() == 0.f && input.stickY() == 0.f) stickWait_ = false;
     const float x = stickWait_ ? 0.f : input.stickX(), y = stickWait_ ? 0.f : input.stickY();
 
+    // A held D-pad (and the stick, at twice it): SOUND's recordings with A held at the list's pace, after the cursor's
+    // wait they always had; the rest at the cursor's, PRESET and the settings with A held too (gesture audit G08: no
+    // held run was made slower than it was).
+    const Pace runs = holding_ && stop_ == 0 ? Pace::List : Pace::Cursor;
     if (holding_ && stop_ > 0 && settingAt(stop_ - 1) == sampler::Loop) {
-        // LOOP, a choice (off, on): it clicks once a push past half, up ON and down OFF, as the D-pad does (gesture
-        // audit G08: it was turned as a range of one, about 1.3 s of push to flip it). Back in the middle, or pushed
-        // the other way (a flick across can pass the middle between two frames), the next push clicks.
-        const int way = y < -0.5f ? 1 : (y > 0.5f ? -1 : 0);
+        // LOOP, a choice (off, on): it clicks once a push, up ON and down OFF, as the D-pad does (gesture audit G08:
+        // it was turned as a range of one, about 1.3 s of push to flip it). However far it is pushed (owner,
+        // 2026-11-25; it was past half), but not by a sideways push that drifts (ui::stickAxes). Back in the middle,
+        // or pushed the other way (a flick across can pass the middle between two frames), the next push clicks.
+        const float upDown = stickAxes(x, y).y;
+        const int way = upDown < 0.f ? 1 : (upDown > 0.f ? -1 : 0);
         if (way != 0 && way != loopPush_) setSetting(sampler::Loop, way > 0 ? 1 : 0);
         loopPush_ = way;
     } else if (holding_ && stop_ > 0 && settingAt(stop_ - 1) >= 0) {
-        // A setting: the stick turns it through its whole range in about a second.
+        // A setting: the stick turns it through its whole range in about a second (times STICK SPEED), however far
+        // it is pushed (the D-pad for exact steps).
         const int id = settingAt(stop_ - 1);
         const float range = static_cast<float>(sampler::settingMax(id) - sampler::settingMin(id));
-        turned_ += -y * std::fabs(y) * range * dt;
+        const float upDown = stickAxes(x, y).y; // (not by a sideways push that drifts)
+        turned_ += -stickWay(upDown) * range * dt;
         const int whole = static_cast<int>(turned_);
         if (whole != 0) {
             turned_ -= static_cast<float>(whole);
             setSetting(id, trk().sampler[id] + (id == sampler::Root ? -whole : whole));
         }
-        if (y == 0.f) turned_ = 0.f;
+        if (upDown == 0.f) turned_ = 0.f;
     } else {
+        // One at once, then at twice the held D-pad's pace, however far it is pushed. With A held only up / down
+        // counts, and not by a sideways push that drifts (ui::stickAxes).
         const bool sideways = !holding_ && std::fabs(x) > std::fabs(y);
-        const float push = sideways ? x : y;
-        const float climb = climb_.times(holding_ ? 0.f : push, nowMs); // the cursor: a full push held climbs (G07)
+        const float push = sideways ? x : holding_ ? stickAxes(x, y).y : y;
         if (push == 0.f) {
             saved_ = 0.f;
             stickWas_ = false;
         } else {
-            saved_ += stickWas_ ? std::fabs(push) * (holding_ ? kSoundsPerSecond : kMovesPerSecond * climb) * dt : 1.f;
+            saved_ += stickWas_ ? stickPerSecond(runs) * dt : 1.f;
             stickWas_ = true;
             for (; saved_ >= 1.f; saved_ -= 1.f)
                 press(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
         }
     }
-    // A held D-pad: SOUND's recordings with A held at the list's pace, after the cursor's wait they always had;
-    // the rest at the cursor's, PRESET and the settings with A held too (gesture audit G08: no held run was made
-    // slower than it was).
-    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::Cursor, holding_ && stop_ == 0 ? Pace::List : Pace::Cursor))
+    while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::Cursor, runs))
         press(repeating_);
 }
 

@@ -42,14 +42,14 @@ New screens and gestures keep these; do not invent a variant.
 - **B during a held pick puts back what the press found**: A stepping sounds (`Session::putSoundBack`) or trying effects, Y swapping a chord. The mixer's A + B is a reset (owner, 2026-11-14).
 - **Typing a name** (`NameKeys`, every place; the password keys alike): A types, Y deletes a letter (held, on), B or START keeps it and leaves. Every button is the keys' meanwhile; only the four-shoulder panic acts.
 - **X** hears, as long as it is held, over the song too (on SONG it solos the track: owner, 2026-11-15). **Hold X** is "what it does": step effects on a drum hit, ratchet and glide on a note.
-- **Hold R1** drags: paint from an empty step, carry from a note. **On SONG R1 is a tap**: on a cell or a scene's REPEATS box it copies; on another it pastes, and the copy stays (brass) until R1 on it clears it.
-- **Hold L1 on the grids** (drum grid, slices, roll) is the bar key: **+ R1 copies the bar, + A pastes it** (the copy stays for the next paste).
+- **Hold R1** drags: paint from an empty step, carry from a note. **On SONG R1 is a tap**: on a cell or a scene's REPEATS box it copies; on another it pastes, and the paste spends the copy (R1 on the copied one clears it unpasted).
+- **Hold L1 on the grids** (drum grid, slices, roll) is the bar key: **+ R1 copies the bar, + A pastes it** (a paste spends the copy).
   So L1's own tap (the slices, the roll's zoom) acts on its LET GO, and only if nothing else was pressed meanwhile (a stick move included).
 - **Y** is the screen's special (chance, chord, mute, catch, roll).
 - **Hold Y + a direction moves a line where R1 is taken** (FX's effects: R1 is its track key). Not on the drum grid, where hold Y + a direction sets chance, a hit's slice and the lane dice.
 - **SELECT + something** is for whole-song things, on every tab; no screen sees a SELECT-held Y but the open song list's (a rev). **L2 / R2** are the tabs, and go round.
 - **A long list goes round on a press**; a held run and the stick stop at its end (`ui::listStep`). Tracks and FX's TYPE stop at the ends (owner, 2026-11-14).
-- **A held key runs at one of three paces** (`ui::Pace` through `ui::Repeat`, in `ui.hpp`): Cursor for cursors and values turned, List for lists and choices, Click for what hold X clicks. The list of recordings is the one named exception. **A full push of the stick held climbs on a cursor** (`ui::StickClimb`), nowhere else.
+- **A held key runs at one of three paces** (`ui::Pace` through `ui::Repeat`, in `ui.hpp`): Cursor for cursors and values turned, List for lists and choices, Click for what hold X clicks. The list of recordings is the one named exception. **The stick runs at full speed at once, however far it is pushed: twice the held D-pad's pace for the same thing, times STICK SPEED** (`ui::stickPerSecond`; owner, 2026-11-25); a value turned keeps its own rate, a choice clicks (`screens.md`).
 - **One word: "delete".** Not erase, remove or rub out. A cell is "emptied".
 - **What cannot be undone says so** where it is confirmed.
 
