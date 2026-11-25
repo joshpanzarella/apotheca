@@ -781,15 +781,13 @@ void testShapingAndRemovingAWholeChord() {
     CHECK(rig.chordOn(0)->velocity == 1.f);
     rig.key(A, false);
     CHECK(rig.notes().noteCount() == 0);
-    // The stick with A held slides the chord's end freely; the D-pad snaps it. (At twice the held D-pad's pace, 66.7
-    // steps a second at 100%: one frame at STICK SPEED 50% is 0.53 of a step.)
+    // The stick with A held slides the chord's end freely; the D-pad snaps it. (At its own ten steps a second, times
+    // STICK SPEED, however far it is pushed: a value turned, not twice the held D-pad's pace.)
     rig.key(A, true);
-    ui::gStickSpeed = 0.5f;
     rig.key(STICK_UP, true);
-    rig.frames(1);
+    rig.frames(4);
     rig.key(STICK_UP, false);
     rig.frames(1);
-    ui::gStickSpeed = 1.f;
     const float freeLength = rig.chordOn(0)->length;
     CHECK(freeLength > 2.f && freeLength < 3.f && freeLength != std::floor(freeLength));
     {

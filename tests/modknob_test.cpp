@@ -80,6 +80,17 @@ struct Rig {
             engine->render(out.data(), 256);
         }
     }
+    // The stick pushed part of the way (-1..1 as the handheld sends it, before the dead zone), as a gamepad does.
+    void stick(float x, float y) {
+        for (int axis = 0; axis < 2; ++axis) {
+            SDL_Event event = {};
+            event.type = SDL_CONTROLLERAXISMOTION;
+            event.caxis.axis = static_cast<Uint8>(axis == 0 ? SDL_CONTROLLER_AXIS_LEFTX : SDL_CONTROLLER_AXIS_LEFTY);
+            event.caxis.value = static_cast<Sint16>((axis == 0 ? x : y) * 32767.f);
+            ButtonEvent press;
+            if (input.handle(event, press)) app.onButton(press, input);
+        }
+    }
     // DEVICE MAIN of a synth track, the cursor on macro `m`.
     SynthScreen& device(int track, int m) {
         project().track = track;
@@ -404,6 +415,12 @@ void testTheGestureOnAMacro() {
     rig.key(StickRight, false);
     rig.frames(1);
     CHECK(ui::gStickSpeed == 0.75f && rate + 3 < kModRateFree && rig.mod(t, 0).rate == rate + 3);
+    // ...however far it is pushed: just past the dead zone (raw 0.25: 0.0625 of the way), left, the same 1 + 1.96 back.
+    rig.stick(-0.25f, 0.f);
+    rig.frames(10);
+    rig.stick(0.f, 0.f);
+    rig.frames(1);
+    CHECK(rig.mod(t, 0).rate == rate + 1);
     // A held D-pad: DEPTH runs on, a percent at a time.
     const float runFrom = rig.mod(t, 0).depth;
     rig.key(SDLK_DOWN, true);

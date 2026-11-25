@@ -409,9 +409,11 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
     }
     if (!said_.empty() && nowMs >= saidUntil_) said_.clear();
     // One move at once, then at twice the held D-pad's pace however far it is pushed: the lanes and columns a
-    // cursor's, with A held (the sounds, FIT, CHOKE, the kits) a list's. With A held only up / down counts.
+    // cursor's, with A held (the sounds, FIT, CHOKE, the kits) a list's. With A held only up / down counts, and not
+    // by a sideways push that drifts (ui::stickAxes).
     if (stickWait_ && input.stickX() == 0.f && input.stickY() == 0.f) stickWait_ = false; // (back in the middle after a put-back)
-    const float x = holding_ || stickWait_ ? 0.f : input.stickX(), y = stickWait_ ? 0.f : input.stickY();
+    const float x = holding_ || stickWait_ ? 0.f : input.stickX();
+    const float y = stickWait_ ? 0.f : holding_ ? stickAxes(input.stickX(), input.stickY()).y : input.stickY();
     const bool sideways = std::fabs(x) > std::fabs(y);
     const float push = sideways ? x : y;
     const Pace runs = holding_ ? Pace::List : Pace::Cursor;
@@ -559,7 +561,8 @@ void KitScreen::editUpdate(const Input& input, Uint32 nowMs, float dt) {
             if (upDown != 0.f && !reversePushed_) setEdit(laneEditWith(e, kEditReverse, upDown < 0.f ? 1 : 0));
             reversePushed_ = upDown != 0.f;
         } else {
-            turned_ += -stickWay(y) * static_cast<float>(laneEditRange(editRow_)) * dt;
+            const float upDown = stickAxes(x, y).y; // (not by a sideways push that drifts)
+            turned_ += -stickWay(upDown) * static_cast<float>(laneEditRange(editRow_)) * dt;
             const int whole = static_cast<int>(turned_);
             if (whole != 0) {
                 turned_ -= static_cast<float>(whole);
@@ -572,7 +575,7 @@ void KitScreen::editUpdate(const Input& input, Uint32 nowMs, float dt) {
                     setEdit(laneEditHeld(laneEditWith(e, editRow_, v + whole), seconds));
                 }
             }
-            if (y == 0.f) turned_ = 0.f;
+            if (upDown == 0.f) turned_ = 0.f;
         }
     } else {
         // The boxes: one at once, then at twice the held D-pad's pace (the cursor's), however far it is pushed.
@@ -820,22 +823,16 @@ void KitScreen::voiceUpdate(const Input& input, Uint32 nowMs, float dt) {
     }
     const float x = input.stickX(), y = input.stickY();
     if (holding_) {
+        const float upDown = stickAxes(x, y).y; // only up / down counts, and not by a sideways push that drifts
         if (voicePlace_ == kVoiceModel) {
-            // The models and the named voices, a list: one at once, then at twice the held D-pad's pace (the list's),
-            // however far it is pushed (owner, 2026-11-25; it was once a push), not by a sideways push that drifts.
-            const float upDown = stickAxes(x, y).y;
-            if (upDown == 0.f) {
-                saved_ = 0.f;
-                stickWas_ = false;
-            } else {
-                saved_ += stickWas_ ? stickPerSecond(Pace::List) * dt : 1.f;
-                stickWas_ = true;
-                for (; saved_ >= 1.f; saved_ -= 1.f) voicePress(upDown < 0.f ? Button::Up : Button::Down);
-            }
+            // The models (up / down), a choice: once a push, however far it is pushed (CLAUDE.md: choices click once per
+            // push; the owner's stick rule, 2026-11-25, took out the "past half"), as EDIT's REVERSE.
+            if (upDown != 0.f && !reversePushed_) voicePress(upDown < 0.f ? Button::Up : Button::Down);
+            reversePushed_ = upDown != 0.f;
         } else {
             // A knob: the stick turns it through its whole range in about a second (times STICK SPEED), however far it
             // is pushed (owner, 2026-11-25; it was by the square of the push).
-            turnedVoice_ += -stickWay(y) * static_cast<float>(drumsynth::kDialMost) * dt;
+            turnedVoice_ += -stickWay(upDown) * static_cast<float>(drumsynth::kDialMost) * dt;
             const int whole = static_cast<int>(turnedVoice_);
             if (whole != 0) {
                 turnedVoice_ -= static_cast<float>(whole);
@@ -844,7 +841,7 @@ void KitScreen::voiceUpdate(const Input& input, Uint32 nowMs, float dt) {
                 to.dial[voicePlace_] = static_cast<std::uint8_t>(dial < 0 ? 0 : dial > drumsynth::kDialMost ? drumsynth::kDialMost : dial);
                 setVoice(to);
             }
-            if (y == 0.f) turnedVoice_ = 0.f;
+            if (upDown == 0.f) turnedVoice_ = 0.f;
         }
     } else {
         // The boxes: one at once, then at twice the held D-pad's pace (the cursor's), however far it is pushed.

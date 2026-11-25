@@ -266,7 +266,7 @@ private:
     bool onTempo_ = false;
     float tempoExact_; // the stick moves this; the project's tempo is it, rounded
     bool onBars_ = false; // BARS, above the tempo: the bar shown, and the cell's count
-    float barsSaved_ = 0.f; // the stick's push toward the next bar more or fewer
+    bool barsPushed_ = false; // the stick is pushed for a bar more or fewer, on BARS with A held: once a push
 
     bool shaping_ = false;  // A is held
     bool dicing_ = false;   // Y is held

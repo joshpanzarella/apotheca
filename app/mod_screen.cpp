@@ -16,7 +16,7 @@ namespace {
 
 constexpr float kTurnPerSecond = 1.8f; // the stick turning, however far it is pushed (an amount here is -1..1 or 0..1)
 constexpr float kNotch = 0.05f;
-constexpr double kSpeedOctaves = 4.0; // the stick on a FREE LFO's SPEED: octaves a unit of turn (its 10 octaves in about 1.4 s, pushed full)
+constexpr double kSpeedOctaves = 4.0; // the stick on a FREE LFO's SPEED: octaves a unit of turn (its 10 octaves in about 1.4 s at STICK SPEED 100%)
 
 float held(float v, float lo, float hi) { return v > hi ? hi : (v < lo ? lo : (v == v ? v : lo)); }
 
@@ -464,7 +464,7 @@ void ModScreen::update(const Input& input, Uint32 nowMs) {
     };
     const float x = input.stickX(), y = input.stickY();
     if (holding_ && !picking() && amount()) {
-        turnSmooth(-stickWay(y) * kTurnPerSecond * dt); // however far it is pushed (the D-pad for exact steps)
+        turnSmooth(-stickWay(stickAxes(x, y).y) * kTurnPerSecond * dt); // however far it is pushed (the D-pad for exact steps), not by a sideways drift
     } else {
         // One at once, then at twice the pace a held D-pad runs the same way, however far it is pushed.
         const bool sideways = std::fabs(x) > std::fabs(y);

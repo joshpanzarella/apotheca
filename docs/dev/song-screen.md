@@ -38,8 +38,10 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   next scenes cost a copy before every paste (R1 copy, move, R1 paste: 3 presses a scene, or copying the
   cell just pasted); with the copy kept it is move, R1 (2)." G23 had itself reversed "A copy clears on
   paste (scene, cell, bar)", an item of the owner's feature queue in commit e7b847d (2026-11-21), so that
-  rule is back. What G23 missed: with the copy kept, copying anything else meant going back to the copied
-  cell to clear it first. So: R1 copies (the brass mark on the cell or REPEATS box); R1 elsewhere pastes on
+  rule is back. What G23 missed, on SONG where one R1 does both jobs (it copies only when nothing is
+  copied): with the copy kept, copying another cell or scene meant going back to the copied one to clear it
+  first. (A bar has its own copy key, L1 + R1, which always copied afresh; it spends its copy too, for one
+  rule: `drums-and-samples.md`.) So: R1 copies (the brass mark on the cell or REPEATS box); R1 elsewhere pastes on
   its let go, and the copy and its mark go (`SongScreen::pasteCellHere`, `Session::pasteScene`,
   `Session::pasteBar`, each `has = false`); the next R1 copies whatever is under the cursor. **A refusal
   or a Same pastes nothing and keeps the copy** (NO PASTE: OTHER KIND, DRUMS GO ON A DRUM TRACK, a bar
@@ -48,7 +50,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   bring a spent copy back. **Kept from G23**: R1 on the copied cell or scene before a paste clears it
   ("COPY CLEARED"; a scene used to copy itself again: one meaning for both), so R1's hint says `copy` with
   nothing copied, `clear` on the copied one and `paste` elsewhere; `Session::clearSceneCopy` counts in
-  `sceneCopies()`, so a panic begun with that R1 puts the copy back, as it does a copy; and a copy moves
+  `sceneCopies()`, so a panic begun with that R1 puts the copy back, as it does a copy (a cell's the same
+  since the [owner-fix] review: next rule but one); and a copy moves
   with its scene through NEXT SCENE (next rule). **SONG's copy is a TAP of R1, not a drag** (the drag went
   on 2026-11-19, `docs/plans/easywins-plan.md`; CLAUDE.md and the manual said "hold R1 and drag" until
   G23). `copyscene_test` `testAPasteSpendsTheCopy`, `testTheGesture`, `testTheMarkAndHints`;
@@ -67,6 +70,20 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   the copy going called the cell's off and the scene's landed on the old number. With a paste spending
   the copy again (rule above), this still holds for a copy made before a NEXT SCENE and pasted or cleared
   after it. `copyscene_test` `testTheCopyFollowsNextScene`, `testCellCopyCleared`.
+- **A panic begun with R1 on a cell takes back what that R1 did, as a scene's** ([owner-fix] review,
+  2026-11-25). R1's press copies a cell (CELL COPIED, the brass mark) when nothing is copied, or clears the
+  copied one; the App put back only the bar's and the scene's clipboard, and `SongScreen::Visit` carries the
+  cursor, not the copy. With a paste spending the copy, the clipboard is empty after most pastes, so a panic
+  begun with R1 on a cell often left a copy nobody meant, and the next R1 elsewhere pasted it. Now
+  `SongScreen::rememberCellClip` keeps the cell clipboard just before each copy or clear and counts it
+  (`cellCopies()`); the App notes the counts (bar, scene, cell) when R1 goes down and, at the fourth
+  shoulder, takes back whichever moved (`takeBackCellCopy`, `Session::takeBackSceneCopy` /
+  `takeBackBarCopy`), the clipboard as it was just before THAT R1. Not as it was when the first shoulder
+  went down, as before: a paste made since (L1 held, R1 tapped on another cell) spent the copy and stays
+  spent, and a copy made on purpose before the panic's R1 stays. The snapshots moved from the App (which
+  copied a whole scene's clipboard at every first shoulder, the tab keys' L2 / R2 included) to the copies
+  themselves. `copyscene_test testTheCellPanic`, `testAPasteSpendsTheCopy`; `copybar_test
+  testTheSlicesAndL1`.
 - **The owner's five of 2026-11-18** (`easy_test looks`). SONG's column word is REPEATS (`SongScreen::
   kRepeatsWord`, low in the heads' row, 10 above the first box; `kRepeatW` 38, it was 34, so the word
   fits at LARGE: the columns start 4 further right). **A lane's volume in its name's box is `kPanel2`,

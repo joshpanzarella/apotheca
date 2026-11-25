@@ -156,10 +156,12 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     just those.
 - **The stick carries as the D-pad does** (gesture audit G14, 2026-11-24). With R1 holding a note or
   a chord, the stick's sideways steps go through `carry()`: a SCALE's next key for a note (a chord a
-  semitone), and with L1 held an octave **once a push** (at the stick's pace for keys, ten a second then
-  and twice the held D-pad's since the owner's stick rule, 2026-11-25, an octave a click would fly off the
-  keyboard). Up and down it slides in time at that pace too, however far it is pushed (it was squared, six
-  steps a second). **One job a push**, as with A held (`axis_`, set afresh
+  semitone), and with L1 held an octave **once a push**: at the stick's pace for keys an octave a click
+  would fly off the keyboard. That pace was ten keys a second; since the owner's stick rule (2026-11-25) it
+  is twice the held D-pad's, 50 a second at 75%. Up and down it slides freely in time at its own six steps a
+  second, times STICK SPEED, however far it is pushed (it was by the square of the push; for a day of the
+  owner's rule it ran at the keys' 50, too fast to land between two step lines: screens.md). **One job a
+  push**, as with A held (`axis_`, set afresh
   when R1 goes down): pushed up or down first it slides in time (`carryFree`) and moves no key until
   it comes back. It was `carryBy(+-1, 0)` straight, chromatic, with no lock, though the hints said
   "LEFT / RIGHT another key, L1 octave" and `docs/plans/easywins-plan.md` asked for the scale "the

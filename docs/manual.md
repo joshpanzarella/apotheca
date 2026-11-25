@@ -85,7 +85,11 @@ is pushed, twice as fast as the D-pad held** (at STICK SPEED 75%, as it
 starts: fifty a second over cells where the held D-pad runs 33, fourteen
 through a list where it runs nine). The stick for the long trips (scene 1 to
 scene 40, the top of SET to the bottom), the D-pad for the exact place or
-value. Hold a button and the stick shapes the thing under the cursor:
+value. **A value it turns** (a level, a note's length) goes at its own speed,
+as fast just past the middle as all the way over. **A choice clicks**: BARS, a
+drum synth's MODEL, LOOP and REVERSE once a push, however long it is held; a
+filter TYPE, a delay TIME or a synth's wave with A held at once, then about
+fourteen a second. Hold a button and the stick shapes the thing under the cursor:
 
 | Held | The stick |
 | --- | --- |
@@ -479,7 +483,8 @@ the buttons are let go, any button puts it away (that press does nothing
 else), or it goes by itself after four seconds.
 
 What the shoulder buttons did on the way to all four is put back: the tab, a
-bar or scene copied, and **a recording that R1 began** (R1 pressed first on a
+bar, a cell or a scene copied (or a copy cleared) by the R1 among them, and
+**a recording that R1 began** (R1 pressed first on a
 kit lane, the sampler or CLOUD's RECORDING) is called off, and nothing of it is
 kept. A recording that was already running when R1 went down first is ended by
 that R1, as any R1 ends it, and kept. **Name keys that R1 opened on the way**
@@ -1655,8 +1660,9 @@ into bar 2; hold L1 and press A.
   with its level, nudge, chance, start, step effects and THROW. On the roll
   its notes and chords, with everything they do.
 - **It can go anywhere**: another bar of the cell, another cell, another
-  scene, another track. The copy is kept until it is pasted or another bar
-  is copied, a new song too; a paste that is refused keeps it.
+  scene, another track. The copy is kept, through a new song too, until it
+  is pasted, another bar is copied or its track is deleted. A paste that is
+  refused, or onto a bar that is already the same, keeps it.
 - **A drum bar only goes on a drum track. Notes go on any synth or sampler
   track.** Otherwise it says so and nothing changes.
 - **A note that runs over the bar line keeps its length**, but stops at the

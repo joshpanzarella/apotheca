@@ -131,11 +131,19 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     16 steps of every automation lane, and where it came from.
   - **A paste spends the copy** (owner, 2026-11-25, reversing gesture audit G23 of that morning, which
     read "The copy stays after a paste ... so one bar goes on bar after bar with L1 + A each"; the
-    owner's words in `song-screen.md`). L1 + A pastes and empties the clipboard, so another L1 + A says
-    NOTHING COPIED YET and places nothing, and the next L1 + R1 copies the bar shown, wherever it is. A
-    Same (BAR 2 IS THE SAME ALREADY) or a refusal pastes nothing and keeps it. No mark on the grids (none
-    was ever drawn). `copybar_test testAPasteSpendsTheCopy`, the slice view in `testTheSlicesAndL1`, the
-    roll in `testNotes`.
+    owner's words in `song-screen.md`). L1 + A pastes and empties the clipboard: another L1 + A says
+    NOTHING COPIED YET and places nothing. The owner's reason is SONG's: there one R1 does both jobs, so a
+    kept copy turned the next R1 into a paste. A bar has its own two keys and L1 + R1 always copied afresh,
+    G23 included; it spends its copy too so the three clipboards keep one rule. A Same (BAR 2 IS THE SAME
+    ALREADY) or a refusal pastes nothing and keeps it. No mark on the grids (none was ever drawn).
+    `copybar_test testAPasteSpendsTheCopy`, the slice view in `testTheSlicesAndL1` (a paste made there
+    spends it too, since the [owner-fix] review), the roll in `testNotes`.
+  - **A panic takes back only the copy its own R1 made** ([owner-fix] review, 2026-11-25). The App notes the
+    copy counts when R1 goes down (`App::onButton`), and at the fourth shoulder, if they moved, puts the
+    clipboard as it was just before that R1 (`Session::takeBackBarCopy`, `clipBeforeCopy_`, set at the top
+    of `copyBar`). It used to put back the clipboard as it was when the FIRST shoulder went down, so L1, A
+    (pastes, spending the copy), R1 (copies), L2, R2 brought back the spent copy, and a copy made on purpose
+    with L1 held before the panic's R1 went with it. `copybar_test testTheSlicesAndL1`.
   - **A paste REPLACES the bar** and is **one step of undo of its own** (as NEXT SCENE: the burst
     before it ends, and `settled_` is taken after it, so an edit straight after is a step too). Onto a
     bar that is already the same (compared field by field; automation too on the same track): nothing,
@@ -430,7 +438,7 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     the twelve models (each at its usual); a synth lane reads its model and SYNTH. **A tap of A on a synth lane opens
     its VOICE view** (`KitScreen::voicing()`, the EDIT view's layout: MODEL on top, the eight places two
     rows of four, an unused one an empty box the cursor passes by): hold A turns (the stick however far
-    it is pushed; MODEL a list, one at once then 13.6 a second at 75%: the owner's stick rule, 2026-11-25), B default / back, hold B every knob to the usual, Y ROLL (`kRollLow` 25 to
+    it is pushed, since the owner's stick rule, 2026-11-25; MODEL, a choice, once a push, any push: screens.md), B default / back, hold B every knob to the usual, Y ROLL (`kRollLow` 25 to
     `kRollHigh` 75, by a hash of the voice and a count), L1 / R1 the synth lane before / after, X hears.
     **A turned box (VOICE and EDIT views) is heard ONCE, when the turn is done** (owner, 2026-11-17: heard at
     every step it "sounds odd and you can't really hear what has changed"; `KitScreen::hearWhenDone`): A let go,

@@ -770,6 +770,100 @@ void testTheGesturePanic() {
     CHECK(rig.track(0).drums[1][0].level[0][0] == 0.f && session.copiedScene() == 0 && session.view == View::Song);
 }
 
+// A panic begun with R1 on a cell (as testTheGesturePanic's scene): R1's press copies the cell, or on the copied cell
+// clears it, and the panic takes that back, the copy as it was just before that R1 went down. A copy made on purpose
+// before it stays; a paste made before it (spending the copy) stays spent.
+void panicWithR1On(Rig& rig, int scene, int column, bool l1First = false) {
+    rig.app.song().moveCursorTo(scene, column);
+    if (!l1First) rig.key(L1, true);
+    rig.frames(1);
+    rig.key(R1, true);
+    rig.frames(1);
+    rig.key(L2, true);
+    rig.frames(1);
+    rig.key(R2, true);
+    rig.frames(2);
+    rig.key(R1, false);
+    rig.key(L1, false);
+    rig.key(L2, false);
+    rig.key(R2, false);
+    rig.frames(2);
+    rig.tap(A); // puts the notice away
+    rig.frames(2);
+}
+
+void testTheCellPanic() {
+    Rig rig;
+    Session& session = rig.session();
+    SongScreen& song = rig.app.song();
+    rig.track(0).drums[0][0].level[0][0] = 0.9f;
+    rig.track(0).drums[1][0].level[1][1] = 0.6f;
+    // Nothing copied: the panic's R1 copied scene 1's cell on its press, and that is taken back, unsaid.
+    const unsigned copies = song.cellCopies();
+    panicWithR1On(rig, 0, 0);
+    CHECK(song.cellCopies() == copies + 1 && session.view == View::Song && rig.track(0).drums[0][0].level[0][0] == 0.9f);
+    song.moveCursorTo(2, 0);
+    rig.tap(R1); // copies, as nothing is copied: no paste of scene 1's cell
+    CHECK(rig.said() == "CELL COPIED" && rig.track(0).drums[2][0].level[0][0] == 0.f);
+    rig.tap(R1);
+    CHECK(rig.said() == "COPY CLEARED");
+    // Scene 1's cell copied: the panic's R1 on it cleared it on its press; the copy is put back.
+    song.moveCursorTo(0, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL COPIED");
+    panicWithR1On(rig, 0, 0);
+    song.moveCursorTo(3, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL PASTED" && rig.track(0).drums[3][0].level[0][0] == 0.9f);
+    // A copy made on purpose (L1 down, R1 tapped on scene 2's cell), then the panic's R1 down on another cell to
+    // paste: nothing pastes, and scene 2's copy stays.
+    rig.key(L1, true);
+    song.moveCursorTo(1, 0);
+    rig.frames(1);
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL COPIED");
+    panicWithR1On(rig, 4, 0, true);
+    CHECK(rig.track(0).drums[4][0].level[1][1] == 0.f);
+    song.moveCursorTo(5, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL PASTED" && rig.track(0).drums[5][0].level[1][1] == 0.6f);
+    // A paste on the way spends the copy, and it stays spent: L1 down, R1 tapped on scene 7's cell (pastes scene 1's),
+    // the panic's R1 on scene 8's (copies it, taken back). R1 then copies, not pastes.
+    song.moveCursorTo(0, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL COPIED");
+    rig.key(L1, true);
+    song.moveCursorTo(6, 0);
+    rig.frames(1);
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL PASTED" && rig.track(0).drums[6][0].level[0][0] == 0.9f);
+    panicWithR1On(rig, 7, 0, true);
+    song.moveCursorTo(8, 0);
+    rig.tap(R1);
+    CHECK(rig.said() == "CELL COPIED" && rig.track(0).drums[8][0].level[0][0] == 0.f);
+    // The scene the same: L1 down, R1 tapped on scene 2's REPEATS box (pastes scene 1, spent), the panic's R1 on
+    // scene 3's (copies it, taken back): nothing copied.
+    rig.tap(R1); // (the cell's copy cleared)
+    song.moveCursorTo(0, -1);
+    rig.tap(R1);
+    CHECK(session.copiedScene() == 0);
+    rig.key(L1, true);
+    song.moveCursorTo(9, -1);
+    rig.frames(1);
+    rig.tap(R1);
+    CHECK(rig.said() == "PASTED ON SCENE 10" && session.copiedScene() < 0);
+    panicWithR1On(rig, 10, -1, true);
+    CHECK(session.copiedScene() < 0);
+    // ...and taken back to just before the panic's own R1, not to an older clear: scene 1 copied and cleared, then
+    // the panic's R1 copies scene 4: nothing copied.
+    song.moveCursorTo(0, -1);
+    rig.tap(R1);
+    rig.tap(R1);
+    CHECK(rig.said() == "COPY CLEARED" && session.copiedScene() < 0);
+    panicWithR1On(rig, 3, -1);
+    CHECK(session.copiedScene() < 0);
+}
+
 void testTheMarkAndHints() {
     Canvas canvas, scratch;
     CHECK(canvas.ok && scratch.ok);
@@ -1146,7 +1240,7 @@ int main(int argc, char** argv) {
     const Test tests[] = {
         {"testCopyPasteScene", testCopyPasteScene}, {"testTheEngineHearsIt", testTheEngineHearsIt}, {"testOneUndoStep", testOneUndoStep},
         {"testTheSameIsNoStep", testTheSameIsNoStep}, {"testRefusals", testRefusals}, {"testScenePasteAcrossChangedSynths", testScenePasteAcrossChangedSynths}, {"testTheGesture", testTheGesture},
-        {"testTheGesturePanic", testTheGesturePanic}, {"testTheMarkAndHints", testTheMarkAndHints}, {"testAPasteSpendsTheCopy", testAPasteSpendsTheCopy}, {"testTheCopyFollowsNextScene", testTheCopyFollowsNextScene}, {"testEmptyCellBars", testEmptyCellBars}, {"testTheWordsFit", testTheWordsFit},
+        {"testTheGesturePanic", testTheGesturePanic}, {"testTheCellPanic", testTheCellPanic}, {"testTheMarkAndHints", testTheMarkAndHints}, {"testAPasteSpendsTheCopy", testAPasteSpendsTheCopy}, {"testTheCopyFollowsNextScene", testTheCopyFollowsNextScene}, {"testEmptyCellBars", testEmptyCellBars}, {"testTheWordsFit", testTheWordsFit},
         {"testClearScene", testClearScene}, {"testClearAlreadyEmpty", testClearAlreadyEmpty}, {"testClearGesture", testClearGesture},
         {"testCellCopyRefusals", testCellCopyRefusals},
         {"testCellCopyAcrossSynths", testCellCopyAcrossSynths},

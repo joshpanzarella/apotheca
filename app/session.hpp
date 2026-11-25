@@ -842,11 +842,15 @@ public:
     static std::string sceneClearWords(SceneClear answer, int scene); // (scene from 0)
     int copiedScene() const { return sceneClip_->has ? sceneClip_->scene : -1; }
     const SceneClip& sceneClip() const { return *sceneClip_; }
-    void setSceneClip(const SceneClip& clip) { *sceneClip_ = clip; } // (the App, putting it back after a panic begun with R1)
     unsigned sceneCopies() const { return sceneCopies_; }           // how many copies have been made or cleared (the App: did one come in a panic?)
     const BarClip& barClip() const { return clip_; }
-    void setBarClip(const BarClip& clip) { clip_ = clip; } // (the App, putting it back after a panic began with L1 + R1)
+    void setBarClip(const BarClip& clip) { clip_ = clip; }
     unsigned barCopies() const { return barCopies_; }      // how many copies have been made (the App: did one come in a panic?)
+    // A panic begun with R1 (the App): the copy or clear that R1's press made is taken back, the clipboard put
+    // as it was just before it. Not as it was when the first shoulder went down: a paste made since then (L1
+    // held, A on a grid; R1 tapped on SONG) spent the copy, and it stays spent.
+    void takeBackBarCopy() { clip_ = clipBeforeCopy_; }
+    void takeBackSceneCopy() { *sceneClip_ = *sceneClipBeforeCopy_; }
     // A line for the App to say for a moment (its box above the hints bar): what a copy or a paste did.
     void say(const char* text);
     unsigned saidCount() const { return saidCount_; }
@@ -906,8 +910,10 @@ private:
     unsigned droppedSeen_ = 0; // engine.dropped() when the song was last sent whole
     int resyncs_ = 0;
     BarClip clip_;           // what copyBar holds (memory only)
+    BarClip clipBeforeCopy_; // ...and what it held just before the last copy (takeBackBarCopy)
     unsigned barCopies_ = 0;
     std::unique_ptr<SceneClip> sceneClip_; // what copyScene holds (memory only; itself on the heap: a whole scene)
+    std::unique_ptr<SceneClip> sceneClipBeforeCopy_; // ...and what it held just before the last copy or clear (takeBackSceneCopy)
     unsigned sceneCopies_ = 0;
     char saidText_[64] = "";
     unsigned saidCount_ = 0;

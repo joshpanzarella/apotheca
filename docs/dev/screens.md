@@ -445,7 +445,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   `kStickStopsPerSecond`, `kEditMovesPerSecond`, `kChangesPerSecond`, `kChoicesPerSecond`, `kKindsPerSecond`,
   `kClicksPerSecond`, `kSoundsPerSecond`, `kStepsPerSecond`, `kPresetsPerSecond`, `kChordsPerSecond`,
   `kInversionsPerSecond`, `ui::kStickClicksPerSecond`, `NameKeys::kMovesPerSecond`, `kRepeatsPerSecond`,
-  `kDiceHitsPerSecond`, `kRatesPerSecond`, `kLengthStepsPerSecond`, `kCarryKeysPerSecond`, `kCarryStepsPerSecond`).
+  `kDiceHitsPerSecond`, `kRatesPerSecond`, `kLengthStepsPerSecond`, `kCarryKeysPerSecond`, `kCarryStepsPerSecond`;
+  the last two but one came back in the [owner-fix] review, below).
   - **How far it is pushed does not matter.** Past the dead zone (`input.cpp`, 0.2 of the travel, kept) it runs
     at its full rate at once, for everything it moves, steps or turns: the `|push|` and the squares went from
     every screen; only the way it is pushed is used. The first move is still at once, where it was.
@@ -468,26 +469,26 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     | SONG, A on REPEATS, up / down | 15 (squared) | 50 (cursor) |
     | SONG, L1 on REPEATS, sideways (the meter) | 2.25 | 50 (cursor) |
     | the drum grid's cursor: steps / lanes | 27 / 13.5, climbing to 81 / 40.5 | 50 / 50 |
-    | the drum grid, A on BARS | 2.25 bars | 50 |
+    | the drum grid, A on BARS | 2.25 bars | once a push (a choice) |
     | the drum grid, Y on a lane's name (the dice) | 18 hits | 50 |
     | X held on a hit, a lane's name or a note (clicks) | 6 | 12 (click) |
     | the roll's cursor: keys / steps | 27 / 18, climbing to 81 / 54 | 50 / 50 |
     | the roll, Y held: chords / inversions | 5.25 / 3.75 | 13.6 / 13.6 |
-    | the roll, A held: a note's length | 7.5 steps | 50 steps |
-    | the roll, A on BARS | once a push past half | 1 at once, then 50 |
-    | the roll, R1 carrying: keys / in time | 7.5 / 4.5 steps | 50 / 50 |
+    | the roll, A held: a note's length | 7.5 steps | 7.5 steps (its own rate, kept) |
+    | the roll, A on BARS | once a push past half | once a push, any push (a choice) |
+    | the roll, R1 carrying: keys / in time | 7.5 / 4.5 steps | 50 / 4.5 (in time its own rate, kept) |
     | FX's and MOD's lines | 10.5, climbing to 31.5 | 50 |
     | FX's list of effects and a TYPE; MOD's targets and a choice with A | 3.75 | 13.6 |
-    | FX's choice dial with A (TIME) | 3.75 | 50 (its held D-pad runs at the cursor's) |
+    | FX's choice dial with A (TIME, TYPE, SHAPE) | 3.75 | 13.6 (twice the list's: a choice) |
     | X on a knob: a MOD's RATE | 3.75 | 13.6 |
     | the sampler's stops | 10.5, climbing to 31.5 | 50 |
     | the sampler with A: SOUND / PRESET | 6 / 6 | 13.6 / 50 |
     | a synth's stops | 12, climbing to 36 | 50 |
-    | a synth with A: PRESET, FOLDER, CLOUD's RECORDING / a choice | 7.5 / 3.75 | 50 / 50 |
+    | a synth with A: PRESET, FOLDER, CLOUD's RECORDING / a choice | 7.5 / 3.75 | 50 / 13.6 (a choice: the list's) |
     | the kit's lanes and columns | 12, climbing to 36 | 50 |
     | the kit with A: sounds, FIT, CHOKE, kits | 6 | 13.6 |
     | EDIT's and VOICE's boxes | 10.5, climbing to 31.5 | 50 |
-    | VOICE's MODEL with A | once a push past half | 1 at once, then 13.6 |
+    | VOICE's MODEL with A | once a push past half | once a push, any push (a choice) |
 
   - **Kept on their own rates, times STICK SPEED, at full at once** (the push's depth ignored, the rate as it
     was): what a held D-pad does not run (A on a SONG cell: its length 3 a second and TRANSPOSE 2 octaves; A on
@@ -497,11 +498,31 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     grid's tempo row (90 BPM) and its fills (a hit's level, a lane's level, nudge, chance, a slice's start: 3),
     SONG's scene tempo with L1 (90 BPM), the mixer (24 dB, 60 pan steps), MACRO (2), a MOD's DEPTH (1.2), FX's
     and MOD's turns (0.9, 1.8), a synth's setting (1.5 of its range), the sampler's settings, EDIT's boxes and
-    VOICE's knobs (their range), the roll's level (3). A turn is now as fast at the dead zone's edge as all the
-    way over: the fine move is the D-pad's.
-  - **A two-way choice clicks once a push, however far** (the sampler's LOOP, EDIT's REVERSE: up ON, down OFF):
-    it was past half; now any push past the dead zone, though not a sideways one that drifts (`stickAxes`). The
-    roll's BARS and VOICE's MODEL were once a push too; they run now, as their held D-pad does.
+    VOICE's knobs (their range), the roll's level (3), **the roll's note length (10 steps) and a carried note
+    slid in time (6 steps)**. A turn is now as fast at the dead zone's edge as all the way over: the fine move is
+    the D-pad's.
+  - **A choice clicks** (CLAUDE.md: "Choices (a filter type) click once per push; they are not sliders").
+    **Once a push, however far and however long**: the sampler's LOOP and EDIT's REVERSE (up ON, down OFF), BARS
+    on both grids (1, 2, 4, 8) and VOICE's MODEL; any push past the dead zone, though not a sideways one that
+    drifts (`stickAxes`). LOOP, REVERSE and MODEL were once a push past half, the roll's BARS too, the drum
+    grid's BARS a 2.25-a-second fill. **A choice with more values, with A held** (FX's choice dials: the filter
+    TYPE, the delay TIME, BAND's SHAPE; a synth's choice, a wave or a type), clicks at once and, held on, runs at
+    **twice the LIST's pace** (13.6 a second at 75%), not twice the cursor's its held D-pad was left at (G08's
+    "not made slower", the owner's question): the only place the stick does not run at twice its D-pad. At
+    the cursor's a push of any length passed several types; at 3.75 a second, before, a push clicked once.
+  - **Values turned, not steps run** ([owner-fix] review, 2026-11-25): the roll's note length with A held and
+    a carried note slid in time with R1 are free (to any point in a step), where the D-pad goes a whole step.
+    At twice the cursor's pace (50 steps a second at 75%, 0.8 of a step a frame) the stick could no longer land
+    between the step lines, and the same A-held gesture had its level on its own rate and its length on the
+    cursor's. Back on `kLengthStepsPerSecond` 10 and `kCarryStepsPerSecond` 6, push depth ignored, times STICK
+    SPEED. `app_test testNoteLevelAndLength`, `testHoldXCarriesANote`, `chord_test` (their counts at 100% as
+    before).
+  - **Only up / down, not a drift** ([owner-fix] review): where a button held leaves the stick one axis (the
+    list of recordings; FX's, MOD's, a synth's, the sampler's turns and lists with A held; the kit's sounds,
+    EDIT's boxes and VOICE's knobs with A held), the axis is read through `stickAxes` too: a sideways push
+    drifting under half of it turns nothing. By the square of the push, before, the drift crawled (raw 0.3, a
+    row a second on the recordings); at the full rate it ran (60). `app_test testASidewaysDriftTurnsNothing`,
+    `testChoicesClick`, `picker_test testBigMoves`.
   - **Diagonals** (`ui::stickAxes`, `kStickDiagonal` 0.5): with the depth no longer slowing a move, a slight
     drift off one axis would run the other at full rate. Where a screen reads both axes (SONG's cells, the drum
     grid's and the roll's cursors, a synth's stops, the mixer, A on a SONG cell, Y on BAND's dials) the larger
@@ -511,16 +532,21 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     lanes, the name keys) goes round in well under a second; the drum grid's lanes, at half the steps' rate
     before ("eight lanes: half speed is plenty"), run at the cursor's now, as their D-pad does; the lists with A
     held (the kit's sounds, a synth's PRESET at 50 a second) pass sounds quicker than each can be heard (the kit's
-    were kept at 8 a second, "slow enough to hear each sound", kit_screen.cpp; G07 kept them). Each is
-    the owner's "stick for macro moves and d-pad for detailed ones".
+    were kept at 8 a second, "slow enough to hear each sound": kit_screen.cpp's `kStepsPerSecond` comment,
+    removed 2026-11-25; G07 kept them). Each is the owner's "stick for macro moves and d-pad for detailed ones".
   - Tests: `app_test` `testTheStickIsTwiceTheDpad` (the rule; then on SET's rows, SONG's cells, the drum grid,
     the roll, FX, MOD, the sampler, a synth's stops across and down, the kit's lanes, EDIT's and VOICE's boxes and
     the name keys, each from its own call: a push just past the dead zone moves exactly as far as a full one;
     further than a held D-pad at 75%; the same as the D-pad to the move at 50%, over 960 ms of a cursor (32) or
     880 ms of a list (8) once both run steadily; exact counts at 25% and 150%; a drift under half moves nothing
-    across, a diagonal both; the kit's sounds and SONG's instruments at the list's pace), `testTheStickWithAButtonHeld`
-    (a hit's fill as fast just past the dead zone; the drum grid's BARS and dice, the roll's BARS and VOICE's
-    MODEL at their new pace), `testTheStickSpeedAndTheVolume` (SONG at 100, 75 and 50%: 25, 19 and 13 in 24
+    across, a diagonal both; the kit's sounds and SONG's instruments at the list's pace; since the [owner-fix]
+    review the other axis of SONG's cells, the drum grid and the roll on its own), `testTheStickIgnoresHowFarEverywhere`
+    ([owner-fix] review: the roll's chords, inversions, carry and clicks, SONG's REPEATS count and meter, a
+    synth's macro, each as far just past the dead zone as all the way; A on a SONG cell, a drift is no octave),
+    `testTheStickWithAButtonHeld` (a hit's fill as fast just past the dead zone; the dice at its new pace; BARS
+    on both grids and VOICE's MODEL once a push, a new hold of A a new click), `wifi_test` (the password keys),
+    `mixer_test` and `testHoldYMovesABandTwoWays` (a drift is not the other axis), `app_test --stick` runs them
+    all, `testTheStickSpeedAndTheVolume` (SONG at 100, 75 and 50%: 25, 19 and 13 in 24
     frames), `picker_test` `testBigMoves` (the recordings: 59 in 62 frames, just past the dead zone or all the
     way), `feelapp_test` (the clicks, twelve a second), `modknob_test` (RATE), `easy_test` (the carry, SONG's
     REPEATS and meter), `chord_test`, `wifi_test` (NETWORK's list), `ui_test`. Mutants: 46 of 46 killed (the
@@ -585,8 +611,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     It says "where R1 is taken" because on the drum grid hold Y + a direction is already the exact chance,
     a hit's slice and the lane dice (`PatternScreen::nudgeExact`), and the roll's hold Y is the chord.
   - Brought in line, each from its own batch: L2 / R2 go round and a long list goes round on a press (G35);
-    SELECT's combos on every tab (G03); R1 on the copied cell or scene clears it (G23; its copy kept after
-    a paste was put back by the owner, 2026-11-25: a paste spends the copy, on SONG and the grids); a stick
+    SELECT's combos on every tab (G03); R1 on the copied cell or scene clears it (G23; G23's other half,
+    keeping the copy after a paste, the owner reversed on 2026-11-25: a paste spends the copy, on SONG and the
+    grids); a stick
     move is a use of L1 (G31); B during a held pick puts back what it found (G12, G26; the mixer's reset
     stays, owner 2026-11-14); B on a setting is its usual value, a synth page's still goes back (G17);
     one set of name keys with every button theirs (G01), Y held deleting on (G48); X heard as long as held,

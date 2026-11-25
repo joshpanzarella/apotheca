@@ -323,8 +323,10 @@ void SynthScreen::turn(float amount) {
         return;
     }
     const int id = item(cursor_).id;
-    // A setting with a handful of values (a wave, a type, on / off) is a choice: it clicks to the
-    // next one at each push of the stick, and then at twice a held D-pad's pace while the stick is held over.
+    // A setting with a handful of values (a wave, a type, on / off) is a choice: it clicks to the next one at each
+    // push of the stick, and then at twice the LIST's pace while the stick is held over (the standard's for choices:
+    // CLAUDE.md, "choices click once per push; they are not sliders"), not twice the cursor's its held D-pad was left
+    // at (gesture audit G08, the owner's question).
     if (isChoice(id)) {
         if (!choicePushed_) {
             choicePushed_ = true;
@@ -332,7 +334,7 @@ void SynthScreen::turn(float amount) {
             setSetting(id, valueOf(id) + (amount > 0.f ? 1 : -1));
             return;
         }
-        saved_ += amount * stickPerSecond(Pace::Cursor);
+        saved_ += amount * stickPerSecond(Pace::List);
         const int steps = static_cast<int>(saved_);
         if (steps != 0) {
             saved_ -= static_cast<float>(steps);
@@ -573,7 +575,7 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
     if (stickWait_) {
         // (the stick was pushed for the MOD: it moves nothing until it has come back)
     } else if (holding_) {
-        const float push = -y;
+        const float push = -stickAxes(x, y).y; // up / down only, and not by a sideways push that drifts
         turn(stickWay(push) * dt); // however far it is pushed (owner, 2026-11-25)
         if (push == 0.f) choicePushed_ = false; // back in the middle: the next push is a new click
         stickX_ = stickY_ = 0.f;

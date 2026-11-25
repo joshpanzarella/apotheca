@@ -49,7 +49,7 @@ New screens and gestures keep these; do not invent a variant.
 - **Hold Y + a direction moves a line where R1 is taken** (FX's effects: R1 is its track key). Not on the drum grid, where hold Y + a direction sets chance, a hit's slice and the lane dice.
 - **SELECT + something** is for whole-song things, on every tab; no screen sees a SELECT-held Y but the open song list's (a rev). **L2 / R2** are the tabs, and go round.
 - **A long list goes round on a press**; a held run and the stick stop at its end (`ui::listStep`). Tracks and FX's TYPE stop at the ends (owner, 2026-11-14).
-- **A held key runs at one of three paces** (`ui::Pace` through `ui::Repeat`, in `ui.hpp`): Cursor for cursors and values turned, List for lists and choices, Click for what hold X clicks. The list of recordings is the one named exception. **The stick runs at full speed at once, however far it is pushed: twice the held D-pad's pace for the same thing, times STICK SPEED** (`ui::stickPerSecond`; owner, 2026-11-25).
+- **A held key runs at one of three paces** (`ui::Pace` through `ui::Repeat`, in `ui.hpp`): Cursor for cursors and values turned, List for lists and choices, Click for what hold X clicks. The list of recordings is the one named exception. **The stick runs at full speed at once, however far it is pushed: twice the held D-pad's pace for the same thing, times STICK SPEED** (`ui::stickPerSecond`; owner, 2026-11-25); a value turned keeps its own rate, a choice clicks (`screens.md`).
 - **One word: "delete".** Not erase, remove or rub out. A cell is "emptied".
 - **What cannot be undone says so** where it is confirmed.
 

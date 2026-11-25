@@ -376,8 +376,9 @@ void testDrums() {
 
 // A paste spends the bar's copy (the owner, 2026-11-25: "you copy, clipboard has it, another R1 pastes and
 // then the clipboard is clear"; gesture audit G23 had kept it that morning). L1 + A twice pastes once: the
-// second says NOTHING COPIED YET and places nothing, and L1 + R1 then copies the bar under the cursor, not
-// the one copied before. A Same and a refusal paste nothing, so they keep the copy. One Session::pasteBar
+// second says NOTHING COPIED YET and places nothing. (L1 + R1 always copied afresh, G23 included: a bar has
+// its own copy key, so the spend is for one rule with SONG's cell and scene.) A Same and a refusal paste
+// nothing, so they keep the copy. One Session::pasteBar
 // for the drum grid, its slice view and the roll (testTheSlicesAndL1 and testNotes take it through those).
 void testAPasteSpendsTheCopy() {
     Rig rig;
@@ -408,7 +409,7 @@ void testAPasteSpendsTheCopy() {
     rig.frames(1);
     rig.withL1(A);
     CHECK(rig.said() == "NOTHING COPIED YET" && rig.track(0).drums[2][0].empty());
-    // So the next L1 + R1 copies what is under the cursor, nearby: scene 3's own bar, onto scene 4.
+    // L1 + R1 copies what is under the cursor, as it always did: scene 3's own bar, onto scene 4, spent again.
     drums.setStep(4, 2, 0.6f);
     rig.frames(1);
     rig.withL1(R1);
@@ -649,6 +650,20 @@ void testTheSlicesAndL1() {
     // That paste spent the copy: L1 + A in the slice view finds nothing, and the view stays.
     rig.withL1(A);
     CHECK(drums.slicing() && rig.said() == "NOTHING COPIED YET" && rig.track(0).drums[0][0].level[2][3] == 0.8f);
+    // A paste made in the slice view spends the copy too: bar 1 copied, pasted on bar 2, the view up throughout.
+    rig.session().setCellBars(0, 0, 2); // (bar 2 a repeat of bar 1: a hit more on bar 1, so the paste is no Same)
+    drums.setStep(2, 5, 0.4f);
+    rig.frames(1);
+    CHECK(drums.slicing());
+    rig.withL1(R1);
+    CHECK(drums.slicing() && rig.said() == "BAR 1 COPIED" && rig.session().barClip().has);
+    rig.project().bar = 1;
+    rig.frames(1);
+    rig.withL1(A);
+    CHECK(drums.slicing() && rig.said() == "PASTED ON BAR 2" && !rig.session().barClip().has);
+    CHECK(rig.track(0).drums[0][1].level[2][5] == 0.4f && rig.track(0).drums[0][1].start[2][3] == 5.f / 16.f);
+    rig.project().bar = 0;
+    rig.frames(1);
     rig.tap(L1);
     CHECK(!drums.slicing());
 
@@ -696,6 +711,48 @@ void testTheSlicesAndL1() {
     rig.frames(1);
     CHECK(!drums.slicing());
     rig.tap(A); // puts the notice away
+    rig.frames(2);
+    // A copy spent on the way stays spent: L1, A (pastes, and the copy goes), R1 (copies again), L2, R2. The panic
+    // takes back R1's copy alone, the clipboard as it was just before R1: empty, not the copy L1 went down with.
+    drums.moveCursorTo(2, 3);
+    rig.frames(1);
+    rig.withL1(R1);
+    CHECK(rig.said() == "BAR 1 COPIED" && rig.session().barClip().has);
+    rig.key(L1, true);
+    rig.frames(1);
+    rig.tap(A);
+    CHECK(rig.said() == "BAR 1 IS THE SAME ALREADY" && rig.session().barClip().has); // (a Same keeps it)
+    rig.project().bar = 1;
+    rig.frames(1);
+    rig.tap(A);
+    CHECK(rig.said() == "PASTED ON BAR 2" && !rig.session().barClip().has);
+    rig.key(R1, true);
+    rig.frames(1);
+    CHECK(rig.session().barClip().has && rig.session().barClip().bar == 1); // (on the way, R1 copied bar 2)
+    rig.key(L2, true);
+    rig.key(R2, true);
+    CHECK(!rig.session().barClip().has);
+    for (SDL_Keycode k : {L1, L2, R2, R1}) rig.key(k, false);
+    rig.frames(1);
+    rig.tap(A);
+    rig.frames(2);
+    rig.project().bar = 0;
+    // ...and a copy made on purpose before the panic's R1 stays: L1, R1 tapped (copies bar 1), R1 again (copies
+    // bar 1 again), L2, R2: bar 1's copy, as the first R1 made it.
+    rig.key(L1, true);
+    rig.frames(1);
+    rig.tap(R1);
+    CHECK(rig.said() == "BAR 1 COPIED" && rig.session().barClip().has && rig.session().barClip().bar == 0);
+    const unsigned made = rig.session().barCopies();
+    rig.key(R1, true);
+    rig.frames(1);
+    CHECK(rig.session().barCopies() == made + 1);
+    rig.key(L2, true);
+    rig.key(R2, true);
+    CHECK(rig.session().barClip().has && rig.session().barClip().bar == 0);
+    for (SDL_Keycode k : {L1, L2, R2, R1}) rig.key(k, false);
+    rig.frames(1);
+    rig.tap(A);
     rig.frames(2);
     // ...and begun L1, L2, R2, R1 (the triggers turn the tabs on the way, R1 makes it a panic): L1 let
     // go after it opens no slices either.

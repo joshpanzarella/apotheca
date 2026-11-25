@@ -210,7 +210,7 @@ private:
     bool editing_ = false;
     int editRow_ = 0;
     float turned_ = 0.f;        // the stick's part-turned box
-    bool reversePushed_ = false; // the stick is pushed on REVERSE: it clicks once a push
+    bool reversePushed_ = false; // the stick is pushed on REVERSE or MODEL (A held): it clicks once a push
     bool deleting_ = false, deleteTimed_ = false, bBack_ = false; // B held; bBack_: its tap goes back to the kit
     // Y (EDIT's trim or normalize, VOICE's roll) was the last press, on this box: a B straight after it goes back
     // to the kit and keeps what Y set (gesture audit G16, 2026-11-25: it put the box under the cursor back).

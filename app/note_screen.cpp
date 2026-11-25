@@ -25,7 +25,10 @@ constexpr int kCellH = kRowH - 2;
 constexpr int kOctaveTop = 33, kOctaveH = 11, kKeysTop = 45;
 constexpr int kStripGap = 4; // from the grid down to the strip
 constexpr float kNewLevel = kPlacedLevel, kMinLevel = 0.05f; // a note or a chord placed (project.hpp)
-constexpr float kFillPerSecond = 3.f; // a note's level turned by the stick with A held, however far it is pushed (times STICK SPEED)
+// Values turned by the stick, however far it is pushed (times STICK SPEED): a note's level and length with A held, and
+// a carried note slid freely in time with R1 held. Their own rates, not twice a held D-pad's: the D-pad's UP / DOWN go
+// to the step lines, the stick to any point in a step (owner, 2026-11-25: "d-pad for detailed ones").
+constexpr float kFillPerSecond = 3.f, kLengthStepsPerSecond = 10.f, kCarryStepsPerSecond = 6.f;
 constexpr float kShortestLength = 0.1f; // of a step
 constexpr float kMostNudge = 0.5f;      // half a step early or late
 
@@ -807,6 +810,7 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (b == Button::A) {
         if (event.down && !onBars_ && !chordHere()) placeNote(kNewLevel); // on a chord, A takes hold of the chord
         shaping_ = event.down;
+        barsPushed_ = false; // (a new hold: a push already there is a click on BARS, as on a synth's choice)
         axis_ = Axis::None;
         return;
     }
@@ -999,25 +1003,21 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
         if (x == 0.f && y == 0.f) axis_ = Axis::None;
         else if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
         if (onBars_) {
-            // BARS with A held: the stick steps the cell's bars up or down, one at once, then at twice the held
-            // D-pad's pace (the cursor's), however far it is pushed (owner, 2026-11-25; it was once a push).
+            // BARS with A held, a choice (1, 2, 4, 8): the stick steps the cell's bars once for each push up or down,
+            // however far it is pushed (CLAUDE.md: choices click once per push; the owner's stick rule, 2026-11-25,
+            // took out the "past half"). Held, it does no more: the drum grid's BARS the same.
             const bool pushed = axis_ == Axis::UpDown && y != 0.f;
-            if (!pushed) {
-                barsSaved_ = 0.f;
-            } else {
-                barsSaved_ += barsPushed_ ? ui::stickPerSecond(Pace::Cursor) * dt : 1.f;
-                for (; barsSaved_ >= 1.f; barsSaved_ -= 1.f) stepBars(y < 0.f ? 1 : -1);
-            }
+            if (pushed && !barsPushed_) stepBars(y < 0.f ? 1 : -1);
             barsPushed_ = pushed;
         }
-        // However far it is pushed: the level at its own rate (a fill), the length at twice the held D-pad's pace.
+        // However far it is pushed, each at its own rate: the level (a fill) and the length.
         const bool here = !onBars_ && levelNow() > 0.f;
         if (here && axis_ == Axis::Sideways && x != 0.f) {
             setLevel(levelNow() + stickWay(x) * kFillPerSecond * dt);
             turningLength_ = false;
         } else if (here && axis_ == Axis::UpDown && y != 0.f) {
             // Freely: the end follows the stick, to any point in a step.
-            setLength(lengthNow() + stickWay(y) * ui::stickPerSecond(Pace::Cursor) * dt);
+            setLength(lengthNow() + stickWay(y) * kLengthStepsPerSecond * dt);
             turningLength_ = true;
         }
         stickX_ = stickY_ = 0.f;
@@ -1026,8 +1026,9 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
         // R1 has hold of a note or a chord. One job per push, as with A held: whichever way the stick
         // leaves the centre is the job until it comes back. Sideways it goes as the D-pad does
         // (carry(): a SCALE's next key; with L1 held an octave, once a push: at the stick's pace an
-        // octave would fly); up and down it slides freely in time. Both at twice the held D-pad's pace (the
-        // cursor's), however far it is pushed (owner, 2026-11-25: the D-pad for a fine move).
+        // octave would fly), at twice the held D-pad's pace (the cursor's); up and down it slides freely in time,
+        // at its own rate (a value turned: the D-pad's UP / DOWN carry it a whole step). Both however far it is
+        // pushed (owner, 2026-11-25).
         if (x == 0.f && y == 0.f) axis_ = Axis::None;
         else if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
         if (axis_ != Axis::Sideways || x == 0.f) {
@@ -1040,7 +1041,7 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
             stickWasX_ = true;
             for (; stickX_ >= 1.f; stickX_ -= 1.f) carry(x > 0.f ? Button::Right : Button::Left);
         }
-        if (axis_ == Axis::UpDown) carryFree(stickWay(y) * ui::stickPerSecond(Pace::Cursor) * dt);
+        if (axis_ == Axis::UpDown) carryFree(stickWay(y) * kCarryStepsPerSecond * dt);
         stickY_ = 0.f;
         stickWasY_ = false;
     } else {

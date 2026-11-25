@@ -311,6 +311,17 @@ struct Rig {
     }
     void tap(SDL_Keycode code, int times = 1) { for (int i = 0; i < times; ++i) { key(code, true); key(code, false); } }
     void frames(int count) { for (int i = 0; i < count; ++i) { clock += 16; app.update(input, clock); } }
+    // The stick pushed part of the way (-1..1 as the handheld sends it, before the dead zone), as a gamepad does.
+    void stick(float x, float y) {
+        for (int axis = 0; axis < 2; ++axis) {
+            SDL_Event event = {};
+            event.type = SDL_CONTROLLERAXISMOTION;
+            event.caxis.axis = static_cast<Uint8>(axis == 0 ? SDL_CONTROLLER_AXIS_LEFTX : SDL_CONTROLLER_AXIS_LEFTY);
+            event.caxis.value = static_cast<Sint16>((axis == 0 ? x : y) * 32767.f);
+            ButtonEvent press;
+            if (input.handle(event, press)) app.onButton(press, input);
+        }
+    }
     Session& session() { return app.session(); }
     Project& project() { return app.project(); }
     SongScreen& song() { return app.song(); }
@@ -380,6 +391,23 @@ void testTheGesture() {
     rig.frames(1);
     CHECK(session.mixDb(1) >= 3 && session.mixPan(1) <= -10);
     CHECK(song.cursorOnHead() && song.cursorColumn() == 1);
+    // A drift off one way is not the other (ui::stickAxes): right all the way with down a little (raw 0.5, under half
+    // the push; the level is at its top) turns the pan alone. And a push just past the dead zone (raw 0.25) turns as fast as one all the way:
+    // 60 pan steps a second times STICK SPEED (75%), 7.2 in 10 frames either way (6 or 7 whole: a part of a step is
+    // kept from the turn before).
+    {
+        const int db = session.mixDb(1), pan = session.mixPan(1);
+        rig.stick(1.f, 0.5f);
+        rig.frames(10);
+        rig.stick(0.f, 0.f);
+        rig.frames(1);
+        CHECK(session.mixDb(1) == db && session.mixPan(1) >= pan + 6 && session.mixPan(1) <= pan + 7);
+        rig.stick(-0.25f, 0.f);
+        rig.frames(10);
+        rig.stick(0.f, 0.f);
+        rig.frames(1);
+        CHECK(session.mixDb(1) == db && std::abs(session.mixPan(1) - pan) <= 1);
+    }
     rig.key(A, false);
     // Hard left, by the gesture: the engine was told.
     rig.key(A, true);

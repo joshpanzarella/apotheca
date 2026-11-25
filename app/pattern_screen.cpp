@@ -614,12 +614,8 @@ void PatternScreen::dragCursor(Button direction) {
 
 void PatternScreen::turnUpDown(float amount) {
     if (amount == 0.f) return;
-    if (onBars_) {
-        // BARS, a bar more or fewer at twice the held D-pad's pace (the cursor's; `amount` comes as a fill): the ends stop.
-        barsSaved_ += amount / feel.fillPerSecond * ui::stickPerSecond(Pace::Cursor);
-        for (; barsSaved_ >= 1.f; barsSaved_ -= 1.f) stepBars(1);
-        for (; barsSaved_ <= -1.f; barsSaved_ += 1.f) stepBars(-1);
-    } else if (onTempo_) {
+    if (onBars_) return; // (BARS: a choice, once a push: update())
+    if (onTempo_) {
         setTempo(tempoExact_ + amount * (feel.tempoPerSecond / feel.fillPerSecond));
     } else if (step_ == kLaneName) {
         setLaneLevel(trk().laneLevel[lane_] + amount);
@@ -837,6 +833,7 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down && onTempo_) session_.tapTempo(whenPressed(event, lastMs_)); // TAP TEMPO: A in time, by the press's own time (held, with a direction, it still turns)
         shaping_ = event.down;
         axis_ = Axis::None; // a new hold is a new choice of job for the stick
+        barsPushed_ = false; // (...and a push already there is a click on BARS)
         if (!event.down && !dicing_) turning_ = Turning::Nothing;
         return;
     }
@@ -975,6 +972,11 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
         // However far it is pushed (owner, 2026-11-25: the D-pad for a fine adjustment; it was by the square of the push).
         const float up = -stickWay(y) * feel.fillPerSecond * dt;
         const float right = stickWay(x) * feel.fillPerSecond * dt;
+        // BARS with A held, a choice (1, 2, 4, 8): a bar more or fewer once for each push up or down, however far it is
+        // pushed, as on the roll (CLAUDE.md: choices click once per push; it was a slow fill, 2.25 bars a second).
+        const bool barsPush = shaping_ && !dicing_ && onBars_ && axis_ == Axis::UpDown && y != 0.f;
+        if (barsPush && !barsPushed_) stepBars(y < 0.f ? 1 : -1);
+        barsPushed_ = barsPush;
         if (dicing_) {
             if (axis_ == Axis::UpDown) turnChance(up);
             else if (axis_ == Axis::Sideways) turnStart(right * 0.5f);

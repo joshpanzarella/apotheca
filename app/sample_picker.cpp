@@ -531,7 +531,7 @@ void SamplePicker::update(const Input& input, Uint32 nowMs, bool playing) {
         }
         return;
     }
-    const float y = input.stickY();
+    const float y = ui::stickAxes(input.stickX(), input.stickY()).y; // up / down only, and not by a sideways push that drifts
     if (y == 0.f) {
         saved_ = 0.f;
         stickWas_ = false;

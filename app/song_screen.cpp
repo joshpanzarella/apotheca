@@ -322,6 +322,21 @@ void SongScreen::copyCell(const CellCopy& from, int toTrack, int toScene) {
     session_.sendTrackImage(toTrack); // patterns and automation, in one piece (as pasteBar)
 }
 
+void SongScreen::rememberCellClip() {
+    cellBeforeCopy_->copied = cellCopied_;
+    cellBeforeCopy_->copy = cellCopy_;
+    cellBeforeCopy_->track = copyTrack_;
+    cellBeforeCopy_->scene = copyScene_;
+    ++cellCopies_;
+}
+
+void SongScreen::takeBackCellCopy() {
+    cellCopied_ = cellBeforeCopy_->copied;
+    cellCopy_ = cellBeforeCopy_->copy;
+    copyTrack_ = cellBeforeCopy_->track;
+    copyScene_ = cellBeforeCopy_->scene;
+}
+
 void SongScreen::pasteCellHere(int toTrack, int toScene) {
     if (!cellCopy_.has) return; // armed, then the copy went (tracks came or went mid-hold)
     if (!pasteKindsFit(cellCopy_.kind, project_.tracks[toTrack].kind)) {
@@ -331,7 +346,7 @@ void SongScreen::pasteCellHere(int toTrack, int toScene) {
     session_.beginOwnUndoStep();
     copyCell(cellCopy_, toTrack, toScene);
     // Spent: a paste clears the copy and its brass mark, so the next R1 copies afresh, wherever the cursor is
-    // (the owner, 2026-11-25, putting back what gesture audit G23 changed: "you don't have to go all the way
+    // (the owner, 2026-11-25, reversing gesture audit G23's kept copy: "you don't have to go all the way
     // back to the thing you originally copied").
     cellCopied_ = false;
     cellCopy_.has = false;
@@ -621,6 +636,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (b == Button::R1) {
         if (event.down && onCell() && cellCopied_ && copyTrack_ == column_ && copyScene_ == scene_) {
             // The copied cell again: the copy is cleared.
+            rememberCellClip();
             cellCopied_ = false;
             cellCopy_.has = false;
             session_.say("COPY CLEARED");
@@ -628,6 +644,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             // COPY A CELL, as a scene is copied: nothing copied, and it copies now. A snapshot:
             // edits after COPY never leak into the paste (as a scene copy's).
             const TrackData& from = project_.tracks[column_];
+            rememberCellClip();
             copyTrack_ = column_;
             copyScene_ = scene_;
             cellCopy_.has = true;

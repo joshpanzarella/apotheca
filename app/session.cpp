@@ -615,6 +615,7 @@ Session::BarCopy Session::copyBar(int track, int scene, int bar) {
     if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes || bar < 0 || bar >= kMaxBars) return BarCopy::NoTrack;
     const TrackData& t = project.tracks[track];
     if (t.kind == TrackKind::None) return BarCopy::NoTrack;
+    clipBeforeCopy_ = clip_;
     clip_.has = true;
     clip_.drums = t.kind == TrackKind::Drums;
     clip_.track = track;
@@ -662,8 +663,8 @@ Session::BarCopy Session::pasteBar(int track, int scene, int bar) {
             for (int step = 0; step < kSteps; ++step) t.automation[scene][lane][bar * kSteps + step] = clip_.automation[lane][step];
     sendTrackImage(track); // every bar of it, in one piece (as setCellBars)
     endOwnUndoStep();
-    // Spent: a paste clears the copy (a Same, or a refusal, keeps it). The owner, 2026-11-25, putting back what
-    // gesture audit G23 changed that morning, for a bar as for a cell and a scene (song-screen.md).
+    // Spent: a paste clears the copy (a Same, or a refusal, keeps it). The owner, 2026-11-25, reversing gesture
+    // audit G23's kept copy of that morning, for a bar as for a cell and a scene (song-screen.md).
     clip_.has = false;
     return BarCopy::Done;
 }
@@ -695,6 +696,7 @@ std::string Session::barCopyWords(BarCopy answer, bool paste, int bar) {
 
 Session::SceneCopy Session::copyScene(int scene) {
     if (scene < 0 || scene >= kMaxScenes) return SceneCopy::NoScene;
+    *sceneClipBeforeCopy_ = *sceneClip_;
     sceneClip_->has = true;
     sceneClip_->scene = scene;
     for (int t = 0; t < kNumTracks; ++t) {
@@ -766,13 +768,14 @@ Session::SceneCopy Session::pasteScene(int scene) {
     if (scene == project.scene) project.bar = 0;
     endOwnUndoStep();
     // Spent: a paste clears the copy, and its brass mark with it (a Same, or a refusal, keeps it; the owner,
-    // 2026-11-25, putting back what gesture audit G23 changed). R1 on the copied scene clears it unpasted.
+    // 2026-11-25, reversing gesture audit G23's kept copy). R1 on the copied scene clears it unpasted.
     sceneClip_->has = false;
     return SceneCopy::Done;
 }
 
 void Session::clearSceneCopy() {
     if (!sceneClip_->has) return;
+    *sceneClipBeforeCopy_ = *sceneClip_;
     sceneClip_->has = false;
     ++sceneCopies_; // (the clipboard changed: a panic begun with this R1 puts it back, as it does a copy)
 }
@@ -2158,7 +2161,7 @@ std::unique_ptr<TrackImage> Session::trackImage(int t) const {
 }
 
 // A new handheld's engine is a new song but for the two buses, which hold nothing until they are told.
-Session::Session(Engine& engine, Project& project) : engine(engine), project(project), packs(loadChordPacks("")), sceneClip_(new SceneClip) {
+Session::Session(Engine& engine, Project& project) : engine(engine), project(project), packs(loadChordPacks("")), sceneClip_(new SceneClip), sceneClipBeforeCopy_(new SceneClip) {
     for (int bus = 0; bus < kBuses; ++bus) sendEffects(busTrack(bus));
 }
 

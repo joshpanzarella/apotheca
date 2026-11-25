@@ -75,6 +75,17 @@ struct Rig {
     void tap(SDL_Keycode code, int times = 1) {
         for (int i = 0; i < times; ++i) key(code, true), frames(1), key(code, false), frames(1);
     }
+    // The stick pushed part of the way (-1..1 as the handheld sends it, before the dead zone), as a gamepad does.
+    void stick(float x, float y) {
+        for (int axis = 0; axis < 2; ++axis) {
+            SDL_Event event = {};
+            event.type = SDL_CONTROLLERAXISMOTION;
+            event.caxis.axis = static_cast<Uint8>(axis == 0 ? SDL_CONTROLLER_AXIS_LEFTX : SDL_CONTROLLER_AXIS_LEFTY);
+            event.caxis.value = static_cast<Sint16>((axis == 0 ? x : y) * 32767.f);
+            ButtonEvent press;
+            if (input.handle(event, press)) app.onButton(press, input);
+        }
+    }
     void frames(int count) {
         for (int i = 0; i < count; ++i) {
             clock += 16;
@@ -596,6 +607,22 @@ void testThePassword() {
     };
     open();
     CHECK(setup.typingPassword() && setup.passwordSet() == 0 && setup.typed().empty());
+    // The stick over the keys moves as far just past the dead zone (raw 0.25: 0.0625 of the way) as all the way over
+    // (owner, 2026-11-25): one at once, then twice the list's pace, 1 + 3.27 in 16 frames at STICK SPEED 75%. Four
+    // right just past the dead zone, four left all the way: back on the first key (a row of ten goes round).
+    {
+        const int from = setup.keyAt();
+        rig.stick(0.25f, 0.f);
+        rig.frames(16);
+        rig.stick(0.f, 0.f);
+        rig.frames(1);
+        CHECK(setup.keyAt() == from + 4);
+        rig.stick(-1.f, 0.f);
+        rig.frames(16);
+        rig.stick(0.f, 0.f);
+        rig.frames(1);
+        CHECK(setup.keyAt() == from && setup.typed().empty());
+    }
     // X turns the set, round; an empty key types nothing.
     rig.tap(X);
     CHECK(setup.passwordSet() == 1);

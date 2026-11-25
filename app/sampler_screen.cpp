@@ -385,17 +385,19 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
         // it is pushed (the D-pad for exact steps).
         const int id = settingAt(stop_ - 1);
         const float range = static_cast<float>(sampler::settingMax(id) - sampler::settingMin(id));
-        turned_ += -stickWay(y) * range * dt;
+        const float upDown = stickAxes(x, y).y; // (not by a sideways push that drifts)
+        turned_ += -stickWay(upDown) * range * dt;
         const int whole = static_cast<int>(turned_);
         if (whole != 0) {
             turned_ -= static_cast<float>(whole);
             setSetting(id, trk().sampler[id] + (id == sampler::Root ? -whole : whole));
         }
-        if (y == 0.f) turned_ = 0.f;
+        if (upDown == 0.f) turned_ = 0.f;
     } else {
-        // One at once, then at twice the held D-pad's pace, however far it is pushed.
+        // One at once, then at twice the held D-pad's pace, however far it is pushed. With A held only up / down
+        // counts, and not by a sideways push that drifts (ui::stickAxes).
         const bool sideways = !holding_ && std::fabs(x) > std::fabs(y);
-        const float push = sideways ? x : y;
+        const float push = sideways ? x : holding_ ? stickAxes(x, y).y : y;
         if (push == 0.f) {
             saved_ = 0.f;
             stickWas_ = false;
