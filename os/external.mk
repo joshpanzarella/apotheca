@@ -37,12 +37,16 @@ LINUX_PRE_BUILD_HOOKS += APOTHECA_LINUX_EARLY_INIT
 # The start-up picture in place of the penguins (os/tools/make-logo.py writes
 # it; CONFIG_LOGO_LINUX_CLUT224_FILE in linux.fragment names it). Copied only
 # when it changed, with the build's fixed date, so the kernel is the same from
-# one build to the next.
+# one build to the next. That fixed date is older than the C file the kernel
+# made from the last picture, so make would keep the old one (every card from
+# 2026-11-24 to 11-25 started with the 11-18 picture): a new picture deletes
+# the made C file and its object, as the early init's change does.
 define APOTHECA_LINUX_LOGO
 	cmp -s $(BR2_EXTERNAL_APOTHECA_PATH)/board/rg40xxv/logo/logo_apotheca_clut224.ppm \
 		$(LINUX_DIR)/drivers/video/logo/logo_apotheca_clut224.ppm || \
-		cp $(BR2_EXTERNAL_APOTHECA_PATH)/board/rg40xxv/logo/logo_apotheca_clut224.ppm \
-			$(LINUX_DIR)/drivers/video/logo/logo_apotheca_clut224.ppm
+		{ cp $(BR2_EXTERNAL_APOTHECA_PATH)/board/rg40xxv/logo/logo_apotheca_clut224.ppm \
+			$(LINUX_DIR)/drivers/video/logo/logo_apotheca_clut224.ppm; \
+		  rm -f $(LINUX_DIR)/drivers/video/logo/logo_linux_clut224.c $(LINUX_DIR)/drivers/video/logo/logo_linux_clut224.o; }
 	touch -d @$(SOURCE_DATE_EPOCH) $(LINUX_DIR)/drivers/video/logo/logo_apotheca_clut224.ppm
 endef
 LINUX_PRE_BUILD_HOOKS += APOTHECA_LINUX_LOGO
