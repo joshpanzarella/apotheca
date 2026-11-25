@@ -1009,6 +1009,15 @@ void testTheDrumGridsRows() {
     rig.frames(2);
     holds(rig, "the slice view, X held on a hit", kDrumStrip);
     rig.key(X, false);
+    rig.key(SDLK_a, true); // Y held on a hit: R1 saves the slice (batch S1)
+    rig.frames(2);
+    holds(rig, "the slice view, Y held on a hit", kDrumStrip);
+    CHECK(ui::gHintsOver == 0);
+    rig.tap(SDLK_w);
+    rig.key(SDLK_a, false);
+    rig.frames(2);
+    CHECK(std::string(drums.said()).find("SAVED \"") == 0);
+    holds(rig, "the slice view, a slice saved", kDrumStrip);
     drums.moveCursorTo(5, -1);
     rig.frames(2);
     holds(rig, "the slice view, on the lane's name", kDrumStrip);
@@ -1759,6 +1768,52 @@ void testTheOtherScreens() {
         rig.tap(SDLK_z);
         CHECK(!rig.app.kit().editing());
         session.setLaneEdit(0, 2, LaneEdit());
+    }
+    {
+        // Batch S1: R1 in a lane's EDIT view saves a copy, said with its name at its longest (63 letters); A held on FIT
+        // on a recording (LEFT / RIGHT the tempo from it) and the longest thing it says; the KIT stop on a folder.
+        std::unique_ptr<TrackData> kept(new TrackData(project.tracks[0])); // (the kit as it was, put back after)
+        session.setLaneSample(0, 6, deep);
+        session.finishStretching();
+        rig.app.kit().goTo(6, KitScreen::kEdit);
+        rig.app.kit().openEdit(kEditGain);
+        rig.frames(2);
+        rig.tap(SDLK_w); // R1
+        CHECK(rig.app.kit().said() == "SAVED \"X OF NAM 1\"");
+        CHECK(std::remove((samples + "/" + sampleFolderOf(deep) + "/x of nam 1.wav").c_str()) == 0); // (the lists below count that folder's)
+        holds(rig, "a lane's EDIT, SAVED said with the longest name");
+        CHECK(ui::gHintsOver == 0);
+        for (const textfit::Text& t : lastXl.texts)
+            if (t.words.find("SAVED") == 0) CHECK(t.x + t.w <= ui::kScreenW - 8);
+        rig.tap(SDLK_z);
+        rig.app.kit().goTo(6, KitScreen::kFit);
+        rig.key(SDLK_x, true); // A held
+        rig.frames(1);
+        holds(rig, "the kit, A held on FIT on a recording");
+        CHECK(ui::gHintsOver == 0);
+        rig.tap(SDLK_RIGHT); // (half a second: no tempo fits it)
+        rig.key(SDLK_x, false);
+        rig.frames(1);
+        CHECK(rig.app.kit().said() == "NO TEMPO FITS IT IN 1, 2 OR 4 BARS");
+        holds(rig, "the kit, no tempo fits the loop");
+        for (const textfit::Text& t : lastXl.texts)
+            if (t.words == rig.app.kit().said()) CHECK(t.x + t.w <= ui::kScreenW - 8);
+        session.setLaneSample(0, 6, "");
+        CHECK(session.loadFolderKit(0, sampleFolderOf(deep)));
+        session.finishStretching();
+        rig.app.kit().goToKit();
+        rig.frames(200); // (what was said has gone)
+        holds(rig, "the KIT stop, on a folder with a long name");
+        CHECK(ui::gHintsOver == 0);
+        rig.key(SDLK_x, true); // A held: kits, then folders
+        rig.frames(1);
+        holds(rig, "the KIT stop, A held");
+        CHECK(ui::gHintsOver == 0);
+        rig.key(SDLK_x, false);
+        rig.frames(1);
+        rig.tap(SDLK_DOWN);
+        CHECK(session.putKit(0, *kept));
+        session.finishStretching();
     }
     {
         // DRUM SYNTH: synth lanes on the kit, and a VOICE view at its widest readings (NOISE's TUNE at

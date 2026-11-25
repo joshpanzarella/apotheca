@@ -42,7 +42,12 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   that differ; `SetSend`, `setGlideFrom`, `sendSynthPatch`), never a track
   image and never an `Effect` from this thread. Automation is a pattern, so a
   TYPE change taken back has its lanes back with it. Tempo, mutes, names and
-  track deletes are not undone. After a restore the marks are taken again
+  track deletes are not undone, **but for THE TEMPO FROM THIS LOOP** (batch S1, 2026-11-25:
+  `Session::setTempoFromLoop`, hold A + LEFT / RIGHT on a kit lane's FIT): it sets the tempo and the lane's
+  FIT as one step, and the brief asked for one step of undo. Its own step (`beginOwnUndoStep` /
+  `endOwnUndoStep`) is marked `UndoStep::tempo`, and undo and redo of a marked step set the tempo the step's
+  text holds (`step_.head.tempo`, read by `restorePatterns`), the mark carried to the step pushed the other way.
+  Any other step leaves the tempo alone, as before (`sample_test testTheTempoFromALoop`). After a restore the marks are taken again
   (putting back is not an edit).
   **Only another song clears undo** (`applyProject`). A resync after a full
   queue, a track deleted and a track given another instrument send the song

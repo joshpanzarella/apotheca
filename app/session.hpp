@@ -314,6 +314,10 @@ public:
     // to the whole, as another recording does; a knob turned keeps them. A step of undo (soundMark).
     void setLaneSynth(int track, int lane, const drumsynth::Voice& voice);
     void setLaneFit(int track, int lane, int steps);                  // 0: as recorded
+    // THE TEMPO FROM THIS LOOP (batch S1, 2026-11-25; KitScreen, loopTempo): the song's tempo to `bpm` and the lane's
+    // FIT to `bars` bars of the scene's meter, as ONE step of undo, and that step puts the tempo back too (no
+    // other change of tempo is undone). False: not a drum lane, or a tempo out of range.
+    bool setTempoFromLoop(int track, int lane, float bpm, int bars);
     // A lane's sound as slices, for chopping a break. How many there are: sixteen,
     // or one to a step if the recording is fitted to more than a bar (32 for two
     // bars, 64 for four). And whether a hit plays just its slice and stops, or
@@ -331,6 +335,17 @@ public:
     // fitted to one bar. Returns its name, or "" if there was only silence
     // to catch or nowhere to keep it.
     std::string catchLastBar(int track, int lane);
+    // SAVE AS A RECORDING (batch S1, 2026-11-25; sampling-gaps.md 1): what the lane plays, as EDIT and FIT make it (a
+    // DRUM SYNTH voice, the built-in drum too: not its VOLUME, a hit's level or step effects, or the track's
+    // effects), written as a new recording, 16-bit mono 48 kHz as CATCH writes, on this (the app) thread. Of it,
+    // from `start` (0..1 of it) for `part` of it (1: to its end): one slice, from the slice view, with the 1 ms
+    // fade a hit's part ends with where it is cut short. Named after its source with the next free number
+    // ("breaks/amen 1", "amen 2"...: never over a file, capitals not counted), in its folder; a voice or the
+    // built-in drum after its model or drum ("kick 1") in the samples folder. Nothing else changes (the lane
+    // keeps its sound). `name` is what it was saved as.
+    enum class SaveSound { Saved, Missing, Making, Failed };
+    SaveSound saveLaneSound(int track, int lane, float start, float part, std::string& name);
+    static std::string savedLine(SaveSound how, const std::string& name); // what the screen says: SAVED "AMEN 1" (its name, not its folder)...
     // EDIT (lane_edit.hpp): what a lane does to its sound, made from the file (or the built-in drum)
     // here and handed to the engine. The file is never written. START and END go back to the whole of
     // it when the lane is given another sound (setLaneSample); the rest stay.
@@ -695,6 +710,17 @@ public:
     bool putKit(int track, const TrackData& kit);  // ...the kit fields of `kit` (copyKit's)
     std::string saveKit(int track);                // as the next free "KIT n": its name, or "" (no folder, or the card refused)
     bool deleteKit(int index);                     // an own kit's file, for good
+    // A FOLDER AS A KIT (batch S1, 2026-11-25; sampling-gaps.md 3): on the KIT stop the samples folders come after the
+    // kits. The folders with a recording in them (not in a folder inside), as wavFolders lists them.
+    std::vector<std::string> kitFolders() const;
+    // Its first recordings on the 8 lanes, by name where it helps (folderKitLanes): each lane's sound with nothing
+    // done to it (EDIT, FIT, FEEL, SWING at rest, VOLUME full), a hat on lane 3 or 4 in CHOKE 1, a lane left over
+    // the built-in drum. Through putKit: one step of undo, and what B with A held puts back (keepSound). False:
+    // not a drum track, or no recording there.
+    bool loadFolderKit(int track, const std::string& folder);
+    // The folder the track's kit was put on from, while the kit is still as it was put on (its text then); "" if
+    // none. Memory only: a song opened again reads YOUR OWN (which kit a track has is worked out, never kept).
+    std::string folderKitOf(int track) const;
     // SAMPLER PRESETS (sampler_presets.cpp): a sampler track's sound kept as a file of its own, "NAME.sampler"
     // in the preset folder. A preset is its recording, its settings, chopped or whole; and the track's whole
     // sound (effects, sends, MODs), as a new synth preset's. There are no built-in ones: the list is the
@@ -1015,7 +1041,8 @@ private:
     void restoreSounds(const StepRead& was, const bool same[kNumTracks]);
     void restoreEffect(int track, int slot, const EffectData& then);
     void sendMod(int track, int mod); // the project's MOD told to the engine (OFF: one command)
-    struct UndoStep { std::string text; int nextScene = -1; };
+    // `tempo`: the step puts the song's tempo back as well (THE TEMPO FROM THIS LOOP: setTempoFromLoop).
+    struct UndoStep { std::string text; int nextScene = -1; bool tempo = false; };
     std::vector<UndoStep> undo_, redo_;
     // A recording renamed, moved or found elsewhere (recordingChanged, findMissing): every step of
     // undo and redo, and settled_, name it where it is now (renameRecordings).
@@ -1041,6 +1068,7 @@ private:
     std::string presetFolder_;
     std::vector<Kit> kits_;
     void readKits();
+    struct FolderKit { std::string folder, text; } folderKits_[kNumTracks]; // what loadFolderKit put on each track last
     std::vector<SamplerPreset> samplerPresets_;
     bool samplerPresetsRead_ = false; // (empty is usual: no built-ins)
     void readSamplerPresets();
@@ -1052,6 +1080,7 @@ private:
     int designSpecPresets_ = -1, designSpecTrack_ = -1;
     unsigned designSpecSound_ = 0;  // the sampler's recording's version (LaneSound::version) it was made from
     unsigned designSpecFx_ = 0;     // the slots', buses' and master's effects it was made from (their kinds, hashed)
+    int designSpecMeter_ = 0; // the scene's meter the spec was made in (FIT TO reads bars of it: batch S1)
     std::string designSpecText_ = "{}";
     unsigned designSpecSerial_ = 0; // goes up whenever designSpecText_ changes: the page asks for it again
     // The recordings a sampler's page is offered: read from the card on this thread, when the page
@@ -1175,5 +1204,12 @@ private:
 
 // A built-in kit's recipe naming a voice the data does not have ("TIGHT: no voice kick TIGHT"): the tests fail on one.
 std::vector<std::string> builtInKitProblems();
+// A FOLDER AS A KIT (batch S1): which of `recordings` (a folder's, in name order) goes on each lane ("" none). By
+// the words of each one's name (letters and numbers apart, capitals not counted: "808_BD01" is 808 BD 01): lane 1
+// the first KICK or BD, lane 2 the first SNARE or SD (else a CLAP), lane 3 the first closed hat (CH, HH, CLOSED
+// with a hat word, or a hat word not OPEN), lane 4 the first open hat (OH, or OPEN with a hat word); then every
+// lane still empty, in order, the rest in name order. At most 8.
+void folderKitLanes(const std::vector<std::string>& recordings, std::string lanes[kDrumLanes]);
+bool folderKitHat(const std::string& recording); // a hat by its name, closed or open (lanes 3 and 4 go in CHOKE 1)
 
 } // namespace apotheca

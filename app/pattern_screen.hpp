@@ -110,6 +110,9 @@
 //                       through the recording until the next hit.
 //                       Hold Y + right rolls every hit's slice; left puts
 //                       them back in order.
+//   hold Y on a hit, R1 SAVE THE SLICE (batch S1): the slice the hit plays, as
+//                       a new recording beside the lane's file ("amen 1");
+//                       the hit and the lane are as they were
 //
 // Slices that follow each other in order play as one unbroken sound; only a
 // slice out of order is heard as a cut (drums.hpp).
@@ -241,6 +244,7 @@ private:
     void setTempo(float bpm);
     void audition(int lane, float level, float start = 0.f, float part = 0.f, const StepFx& fx = StepFx()); // part: this much of the sound (0: as the lane is set)
     void sliceUpDown(int by);        // the slice view's up / down
+    void saveSlice();                // ...Y held on a hit, R1: its slice saved as a new recording (batch S1)
     void fxTurn(Button direction);   // with X held: one click of pitch (up / down) or ratchet (left / right)
     void fxRoll();                   // with X held, Y: the dice set the hit's step effects
     void fxThrow();                  // with X held, A: its THROW a step round (off, ECHO, SPACE, both)

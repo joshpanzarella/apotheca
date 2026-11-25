@@ -532,7 +532,8 @@ std::string Session::kitSpec(int track) const {
         }
         out += (row ? "," : "") + kitField(laneEditName(row), row, rest.c_str());
     }
-    out += "," + kitField("FIT TO", kKitFit, (stops(kLaneFits, kLaneFitCount, [](int v, char* into) { laneFitText(v, into, 64); }) + "}").c_str());
+    const int meter = project.meterOf(project.scene); // (FIT reads bars of the scene's meter, as the KIT page's box)
+    out += "," + kitField("FIT TO", kKitFit, (stops(kLaneFits, kLaneFitCount, [meter](int v, char* into) { laneFitText(v, meter, into, 64); }) + "}").c_str());
     out += "," + kitField("CHOKE", kKitChoke, (",\"min\":0,\"max\":2" + texts(kChokeNone, kChokeGroups, [](int v, char* into) { std::snprintf(into, 64, "%s", laneChokeText(v)); }) + "}").c_str());
     out += "," + kitField("VOLUME", kKitVolume, (",\"min\":0,\"max\":100" + texts(0, 100, [](int v, char* into) { std::snprintf(into, 64, "%d%%", v); }) + "}").c_str());
     const auto feel = [](int v, char* into) { feelAmountText(v, into, 64); };
@@ -900,7 +901,9 @@ void Session::serveDesigner() {
     for (int s = 0; s < kTrackSlots; ++s) fx = fx * 31u + static_cast<unsigned>(project.tracks[project.track].effects[s].kind);
     for (int b = 0; b < kBuses; ++b) fx = fx * 31u + static_cast<unsigned>(project.busEffects[b].kind);
     for (int s = 0; s < kMasterSlots; ++s) fx = fx * 31u + static_cast<unsigned>(project.masterEffects[s].kind);
-    if (kind != designSpecKind_ || presets != designSpecPresets_ || project.track != designSpecTrack_ || sound != designSpecSound_ || fx != designSpecFx_ || listed) {
+    const int meter = project.meterOf(project.scene); // (a kit's FIT TO reads bars of it: batch S1)
+    if (kind != designSpecKind_ || presets != designSpecPresets_ || project.track != designSpecTrack_ || sound != designSpecSound_ || fx != designSpecFx_ || meter != designSpecMeter_ || listed) {
+        designSpecMeter_ = meter;
         designSpecKind_ = kind;
         designSpecPresets_ = presets;
         designSpecTrack_ = project.track;

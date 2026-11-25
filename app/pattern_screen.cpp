@@ -187,6 +187,16 @@ void PatternScreen::swingTurn(int by) {
     session_.setLaneSwing(project_.track, lane_, feelAmountStep(trk().laneSwing[lane_], by));
 }
 
+// The slice view, Y held on a hit, R1 (batch S1): the hit's slice, as it plays it (from its start, one slice long,
+// of what the lane plays), saved as a new recording (Session::saveLaneSound), and said in the strip.
+void PatternScreen::saveSlice() {
+    if (!hitHere()) return;
+    std::string name;
+    const Session::SaveSound how = session_.saveLaneSound(project_.track, lane_, pat().start[lane_][step_], 1.f / static_cast<float>(slices()), name);
+    std::snprintf(said_, sizeof said_, "%s", Session::savedLine(how, name).c_str());
+    saidUntil_ = lastMs_ + 2500;
+}
+
 void PatternScreen::hearHit() {
     if (!hitHere()) return;
     audition(lane_, pat().level[lane_][step_], pat().start[lane_][step_], slicing_ ? 1.f / static_cast<float>(slices()) : 0.f, pat().fx[lane_][step_]);
@@ -737,6 +747,16 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
             if (!evening_) evenTurn_ = 0;
             evening_ = true;
             evenLane(now + (b == Button::R1 ? 1 : -1), evenTurn_);
+        }
+        return;
+    }
+    if (slicing_ && dicing_ && hitHere() && b == Button::R1 && !input.held(Button::L1)) { // (X held: R1 is CUT, above; Y spent on X's dice is no dicing_)
+        // SAVE A SLICE (batch S1, 2026-11-25): with Y held on a hit (where its sound starts is Y's), R1 saves the
+        // slice it plays as a new recording (R1 saves, as in a lane's EDIT view and on the preset stops). Y's let
+        // go is then no tap: the hit's chance stays.
+        if (event.down) {
+            saveSlice();
+            yDidSomething_ = true;
         }
         return;
     }
@@ -1362,7 +1382,8 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else if (dicing_ && onStep()) {
         hint("UP / DOWN", "chance");
         hint("LEFT / RIGHT", "where the sound starts");
-        hint("TAP Y", "100 > 75 > 50 > 25");
+        if (slicing_ && hitHere()) hint("R1", "save the slice"); // (batch S1)
+        else hint("TAP Y", "100 > 75 > 50 > 25");
     } else if (dicing_ && onName && evening_) {
         hint("R1 / L1", "more / fewer, even");
         hint("LEFT / RIGHT", "turn it a step");

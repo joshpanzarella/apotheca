@@ -10,24 +10,50 @@ namespace apotheca {
 
 using namespace ui;
 
-void laneFitText(int fit, char* text, std::size_t size) {
+void laneFitText(int fit, int meter, char* text, std::size_t size) {
+    if (meter < 1) meter = kSteps; // (as meterOf holds it)
     if (fit == 0) std::snprintf(text, size, "OFF");
-    else if (fit % 16 == 0) std::snprintf(text, size, "%d BAR%s", fit / 16, fit == 16 ? "" : "S");
+    else if (fit % meter == 0) std::snprintf(text, size, "%d BAR%s", fit / meter, fit == meter ? "" : "S");
     else std::snprintf(text, size, "%d STEP%s", fit, fit == 1 ? "" : "S");
 }
 
 int laneFitFor(float seconds, float tempo, int meter) {
     if (!(seconds > 0.f) || !(tempo > 0.f) || meter <= 0) return 0;
     const double steps = static_cast<double>(seconds) * static_cast<double>(tempo) / 15.0;
-    const int stops[] = {1, 2, 4, 8, meter, 2 * meter, 4 * meter}; // (steps only under a bar)
+    const int stops[] = {1, 2, 3, 4, 6, 8, 12, meter, 2 * meter, 4 * meter}; // (FIT's stops under a bar, then whole bars)
+    const int under = 7;
     int best = 0;
     double bestOff = 0.0;
-    for (int i = 0; i < 7; ++i) {
-        if (i < 4 && stops[i] >= meter) continue;
+    for (int i = 0; i < under + 3; ++i) {
+        if (i < under && stops[i] >= meter) continue;
         const double off = std::fabs(std::log(steps / stops[i]));
         if (best == 0 || off < bestOff) best = stops[i], bestOff = off;
     }
     return best;
+}
+
+float loopTempo(float seconds, float tempo, int meter, int by, int* bars) {
+    if (!(seconds > 0.f) || meter <= 0) return 0.f;
+    // A tempo the loop fills b bars at: b bars are b * meter steps of 15 / tempo seconds each. Whole, as the tempo is.
+    float tempos[3];
+    int counts[3], n = 0;
+    for (int b : {1, 2, 4}) {
+        const float t = std::round(static_cast<float>(b * meter) * 15.f / seconds);
+        if (t >= kMinTempo && t <= kMaxTempo) tempos[n] = t, counts[n] = b, ++n;
+    }
+    if (n == 0) return 0.f;
+    int at = -1, nearest = 0;
+    for (int i = 0; i < n; ++i) {
+        if (tempos[i] == tempo) at = i;
+        if (std::fabs(std::log(tempos[i] / tempo)) < std::fabs(std::log(tempos[nearest] / tempo))) nearest = i;
+    }
+    int to = nearest;
+    if (at >= 0 && by != 0) {
+        to = at + (by > 0 ? 1 : -1);
+        if (to < 0 || to >= n) return 0.f; // (the end: nothing changes)
+    }
+    if (bars) *bars = counts[to];
+    return tempos[to];
 }
 
 const char* laneChokeText(int group) { return group == kChokeNone ? "NONE" : group == 1 ? "1" : "2"; }
@@ -169,12 +195,21 @@ void KitScreen::openPicker() {
 }
 
 // The kit after or before in the list, put on at once. From a kit of the player's own making (in no
-// list) UP is the first; the ends stop.
+// list) UP is the first; the ends stop. After the kits, the samples folders as kits (batch S1: loadFolderKit),
+// as they were when A went down (`folders_`).
 void KitScreen::stepKit(int by) {
-    const int now = session_.kitOf(project_.track);
+    if (session_.sampleFiles() != foldersSeen_) { // the card changed mid-hold (WiFi): step through what is there now
+        foldersSeen_ = session_.sampleFiles();
+        folders_ = session_.kitFolders();
+    }
+    const int kits = static_cast<int>(session_.kits().size()), folders = static_cast<int>(folders_.size());
+    int now = session_.kitOf(project_.track);
+    const std::string folder = now < 0 ? session_.folderKitOf(project_.track) : "";
+    for (int i = 0; i < folders && !folder.empty(); ++i)
+        if (folders_[static_cast<std::size_t>(i)] == folder) now = kits + i;
     const int to = now < 0 ? (by > 0 ? 0 : -1) : now + by;
-    if (to < 0) return; // (past the last: loadKit refuses)
-    if (!session_.loadKit(project_.track, to)) return;
+    if (to < 0 || to >= kits + folders) return; // (the ends stop)
+    if (to < kits ? !session_.loadKit(project_.track, to) : !session_.loadFolderKit(project_.track, folders_[static_cast<std::size_t>(to - kits)])) return;
     if (!project_.playing) hear(false); // (heard: its first lane, where the stop is reached from)
 }
 
@@ -213,6 +248,36 @@ void KitScreen::fitToItsBars() {
     if (fit > 0) session_.setLaneFit(project_.track, lane_, fit);
 }
 
+// Hold A + LEFT / RIGHT on FIT (batch S1, 2026-11-25): THE TEMPO FROM THIS LOOP. The song's tempo set so the lane's
+// recording, as it plays unfitted (its cut), fills 1, 2 or 4 bars of the scene's meter: the nearest first, then
+// RIGHT twice the bars (faster) and LEFT half (slower). FIT goes to those bars with it, so the loop is not
+// stretched and stays in time if the tempo moves later. One step of undo, which puts the tempo back too.
+void KitScreen::tempoFromLoop(int by) {
+    if (!fitsByTap()) return; // (a built-in drum, a voice, a file not found: a hit, not a loop, as A's tap)
+    const float seconds = session_.laneSound(project_.track, lane_).seconds;
+    const int meter = project_.meterOf(project_.scene);
+    int bars = 0;
+    float bpm = loopTempo(seconds, project_.tempo, meter, by, &bars);
+    if (bpm <= 0.f) bpm = loopTempo(seconds, project_.tempo, meter, 0, &bars); // at the end already: where it is (FIT to it)
+    char text[80];
+    if (bpm <= 0.f) {
+        std::snprintf(text, sizeof text, "NO TEMPO FITS IT IN 1, 2 OR 4 BARS"); // (from kMinTempo to kMaxTempo: the words fit the heads' room)
+    } else {
+        session_.setTempoFromLoop(project_.track, lane_, bpm, bars);
+        std::snprintf(text, sizeof text, "TEMPO %d: IT FILLS %d BAR%s", static_cast<int>(project_.tempo), bars, bars == 1 ? "" : "S");
+    }
+    said_ = text;
+    saidUntil_ = lastMs_ + 2500;
+}
+
+// R1 in the EDIT view (batch S1, 2026-11-25): what the lane plays saved as a new recording (Session::saveLaneSound).
+void KitScreen::saveSound() {
+    std::string name;
+    const Session::SaveSound how = session_.saveLaneSound(project_.track, lane_, 0.f, 1.f, name);
+    said_ = Session::savedLine(how, name);
+    saidUntil_ = lastMs_ + 2500;
+}
+
 void KitScreen::press(Button b) {
     if (onKit_) {
         if (holding_) {
@@ -224,6 +289,11 @@ void KitScreen::press(Button b) {
         return;
     }
     if (holding_) {
+        if (column_ == kFit && (b == Button::Left || b == Button::Right)) { // THE TEMPO FROM THIS LOOP (batch S1)
+            stepped_ = true;
+            tempoFromLoop(b == Button::Right ? 1 : -1);
+            return;
+        }
         if (b != Button::Up && b != Button::Down) return;
         stepped_ = true;
         if (column_ == kSound) stepSound(b == Button::Up ? 1 : -1);
@@ -264,6 +334,7 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
             stepped_ = false;
             saved_ = 0.f;
             if (event.down) session_.keepSound(project_.track); // (what B with A held puts back)
+            if (event.down) folders_ = session_.kitFolders(), foldersSeen_ = session_.sampleFiles(); // (the folders after the kits: batch S1)
             return;
         }
         if (b == Button::B) {
@@ -532,6 +603,8 @@ void KitScreen::editButton(const ButtonEvent& event, const Input& input) {
         saidUntil_ = lastMs_ + 2500;
         if (!project_.playing) { hearOwed_ = true; changedAt_ = lastMs_ - kHearAfterMs; } // heard once it is made
         yJust_ = true, yBox_ = editRow_;
+    } else if (b == Button::R1 && !holding_) {
+        saveSound(); // (batch S1: R1 saves, as on the preset stops)
     } else if (b == Button::X) {
         hear(true);
     } else if (b == Button::Start && !input.held(Button::Select)) {
@@ -609,7 +682,10 @@ void KitScreen::drawEdit(SDL_Renderer* r, const Fonts& fonts) const {
         fill(r, sx + 1, sy + sh - 6, static_cast<int>((sw - 2) * (deletePart_ > 1.f ? 1.f : deletePart_)), 5, faded(kStop, 150));
         fonts.within(&Fonts::small, kDeletingWords, sw - 120.f).draw(r, sx + 7.f, sy + 7.f, kDeletingWords, kText);
     } else if (!said_.empty()) {
-        fonts.within(&Fonts::small, said_.c_str(), sw - 120.f).draw(r, sx + 7.f, sy + 7.f, said_.c_str(), kBrass);
+        std::string line = said_; // (a name saved as long as a name may be: cut where it would run past the room)
+        const Font& f = fonts.within(&Fonts::small, line.c_str(), sw - 120.f);
+        while (line.size() > 1 && f.width(line.c_str()) > sw - 120) line.pop_back();
+        f.draw(r, sx + 7.f, sy + 7.f, line.c_str(), kBrass);
     } else {
         std::snprintf(text, sizeof text, "LANE %d. THE FILE ITSELF IS NEVER CHANGED", lane_ + 1);
         fonts.within(&Fonts::small, text, sw - 120.f).draw(r, sx + 7.f, sy + 7.f, text, kDim);
@@ -928,6 +1004,7 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             hint("HOLD A", "turn");
             hint("B", bLeavesAfterY(editRow_) || laneEditValue(trk().laneEdit[lane_], editRow_) == laneEditValue(LaneEdit(), editRow_) ? "back" : "default");
             hint("Y", editRow_ == kEditStart || editRow_ == kEditEnd ? "trim silence" : "normalize");
+            hint("R1", "save a copy");
             hint("START", project_.playing ? "stop" : "play");
         }
         hints(r, fonts, list, count);
@@ -965,11 +1042,15 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     {
         const int now = const_cast<Session&>(session_).kitOf(project_.track);
         const std::vector<Session::Kit>& all = const_cast<Session&>(session_).kits();
-        const char* name = now >= 0 ? all[static_cast<std::size_t>(now)].name.c_str() : "YOUR OWN";
-        const std::string whole = std::string("KIT ") + name;
+        // A folder put on as a kit (batch S1) reads FOLDER and its name while the kit is as it was put on.
+        const std::string folder = now < 0 ? session_.folderKitOf(project_.track) : "";
+        std::string name = now >= 0 ? all[static_cast<std::size_t>(now)].name : folder.empty() ? "YOUR OWN" : "FOLDER " + folder;
+        for (char& c : name) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+        std::string whole = std::string("KIT ") + name;
         const Font& f = fonts.within(&Fonts::small, whole.c_str(), static_cast<float>(soundW) - 12.f);
+        while (name.size() > 1 && f.width(("KIT " + name).c_str()) > soundW - 12) name.pop_back(); // (a long folder: cut, as a lane's name is)
         f.draw(r, soundX + 2.f, 34.f, "KIT", kDim);
-        f.draw(r, soundX + 2.f + f.width("KIT") + 8.f, 34.f, name, onKit_ ? cursorColor : now >= 0 ? kText : kDim);
+        f.draw(r, soundX + 2.f + f.width("KIT") + 8.f, 34.f, name.c_str(), onKit_ ? cursorColor : now >= 0 || !folder.empty() ? kText : kDim);
         // (Its line stands under the tallest lettering, XL's, and above lane 1.)
         if (kitDeletePart_ > 0.f) fill(r, soundX, 48, static_cast<int>(soundW * (kitDeletePart_ > 1.f ? 1.f : kitDeletePart_)), 1, kStop);
         else if (onKit_) fill(r, soundX, 48, soundW, 1, cursorColor);
@@ -1018,7 +1099,7 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         box(r, fitX, y, fitW, h, kPanel, kLine);
         const bool fits = file[0] || voice.on(); // (a synth voice is fitted as a recording; the built-in drum is not)
         if (!fits) std::snprintf(text, sizeof text, "-");
-        else laneFitText(fit, text, sizeof text);
+        else laneFitText(fit, project_.meterOf(project_.scene), text, sizeof text);
         fonts.medium.draw(r, fitX + 9.f, textY, text, fit > 0 && fits ? kPurple : kDim);
         if (here && !onKit_ && column_ == kFit) outline(r, fitX - 1, y - 1, fitW + 2, h + 2, cursorColor, 2);
 
@@ -1061,7 +1142,7 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (kitDeletePart_ > 0.f) {
             hint("HOLD B", kKitDeletingWords);
         } else if (holding_) {
-            hint("UP / DOWN", "next / previous kit");
+            hint("UP / DOWN", folders_.empty() ? "next / previous kit" : "kits, then folders");
             hint("B", "as it was"); // (Session::putSoundBack, as SOUND's)
         } else {
             hint("HOLD A", "kits");
@@ -1078,6 +1159,7 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else if (holding_) {
         hint("UP / DOWN", column_ == kSound ? "recordings / synths" : column_ == kFit ? "longer / shorter" : "next / previous group");
         if (column_ == kSound) hint("B", "as it was");
+        if (column_ == kFit && fitsByTap()) hint("LEFT / RIGHT", "tempo from it");
     } else if (column_ == kEdit) {
         hint("A", "edit");
     } else if (column_ == kFit && fitsByTap()) {

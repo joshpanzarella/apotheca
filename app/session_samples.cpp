@@ -785,6 +785,76 @@ std::string Session::catchLastBar(int track, int lane) {
     return name;
 }
 
+namespace {
+// "breaks/amen" and 2: "breaks/amen 2", its name cut where the whole would not be a name (sampleNameOk: under 64).
+std::string numbered(const std::string& folder, std::string stem, int number) {
+    const std::string tail = " " + std::to_string(number), head = folder.empty() ? "" : folder + "/";
+    const std::size_t room = static_cast<std::size_t>(kSampleNameRoom - 1) - head.size() - tail.size();
+    if (stem.size() > room) stem.resize(room);
+    while (!stem.empty() && stem.back() == ' ') stem.pop_back();
+    return head + (stem.empty() ? "sound" : stem) + tail;
+}
+}
+
+Session::SaveSound Session::saveLaneSound(int track, int lane, float start, float part, std::string& name) {
+    name.clear();
+    if (sampleFolder_.empty() || track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums) return SaveSound::Failed;
+    readyLane(track, lane);
+    const TrackData& t = project.tracks[track];
+    const LaneSound& sound = sounds_[track][lane];
+    if (sound.missing) return SaveSound::Missing;
+    // What the engine plays is still on its way (a shape or a voice on the helper thread, a FIT for this tempo or
+    // this length not made yet): saved now, it would be what the lane played before.
+    const int fit = t.laneFit[lane];
+    const bool fitOwed = sound.recording && fit > 0 && (!sound.fitted || sound.fittedTempo != project.tempo || sound.fittedSteps != fit);
+    if (sound.waiting || sound.shaping || sound.making || fitOwed) return SaveSound::Making;
+    const std::shared_ptr<const std::vector<float>>& made = sound.fitted ? sound.fitted : sound.shaped;
+    if (!made || made->empty()) return SaveSound::Failed;
+    // As installLane hands it to the engine: at rest the sound itself (the built-in drum's is the kit's), else
+    // with its fades, GAIN and guard.
+    std::vector<float> plays(made->size());
+    if (t.laneEdit[lane].atRest()) plays = *made;
+    else makeLevel(made->data(), static_cast<int>(made->size()), t.laneEdit[lane], kSampleRate, plays.data());
+    // A part of it, as DrumMachine::trigger takes one: from start * length, part * length long.
+    const int length = static_cast<int>(plays.size());
+    if (!(start > 0.f)) start = 0.f;
+    const int from = start < 1.f ? static_cast<int>(start * static_cast<float>(length)) : length;
+    int end = part > 0.f && part < 1.f ? from + static_cast<int>(part * static_cast<float>(length)) : length;
+    if (end > length) end = length;
+    if (from >= end) return SaveSound::Failed;
+    std::vector<float> out(plays.begin() + from, plays.begin() + end);
+    if (end < length) { // cut short: it ends with the quick fade the engine ends a part with, so the file never clicks
+        const int fade = std::min(static_cast<int>(kEdgeMs * kSampleRate / 1000.f), static_cast<int>(out.size()));
+        for (int i = 0; i < fade; ++i) out[out.size() - 1 - static_cast<std::size_t>(i)] *= static_cast<float>(i) / static_cast<float>(fade);
+    }
+    // Its name: after its source, in its folder; a voice or the built-in drum in the samples folder.
+    std::string folder, stem;
+    if (t.laneSample[lane][0]) folder = sampleFolderOf(t.laneSample[lane]), stem = sampleLabel(t.laneSample[lane]);
+    else stem = t.laneSynth[lane].on() ? drumsynth::modelName(t.laneSynth[lane].model) : DrumKit::laneName(lane);
+    for (char& c : stem) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c); // (a model's or a drum's name is in capitals)
+    std::vector<std::string> taken = sampleNames(); // capitals not counted: a card may not tell them apart
+    for (std::string& have : taken) have = lowered(have);
+    for (int number = 1; number < 10000; ++number) {
+        const std::string candidate = numbered(folder, stem, number);
+        if (!sampleNameOk(candidate) || recordingThere(sampleFolder_, candidate)) continue;
+        if (std::find(taken.begin(), taken.end(), lowered(candidate)) != taken.end()) continue;
+        if (!writeWav(sampleFolder_ + "/" + candidate + ".wav", out, static_cast<int>(kSampleRate))) return SaveSound::Failed;
+        name = candidate;
+        return SaveSound::Saved;
+    }
+    return SaveSound::Failed;
+}
+
+std::string Session::savedLine(SaveSound how, const std::string& name) {
+    std::string said;
+    if (how == SaveSound::Saved) said = "SAVED \"" + sampleLabel(name) + "\""; // (in its source's folder: the name is enough)
+    else if (how == SaveSound::Missing) said = "NOT SAVED: ITS FILE IS NOT FOUND";
+    else if (how == SaveSound::Making) said = "NOT SAVED: IT IS STILL BEING MADE. AGAIN IN A MOMENT";
+    else said = "NOT SAVED: THE CARD REFUSED IT";
+    for (char& c : said) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+    return said;
+}
+
 int Session::laneSlices(int track, int lane) const {
     if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return kSteps;
     const int fit = project.tracks[track].laneFit[lane];
@@ -832,6 +902,21 @@ void Session::setLaneFit(int track, int lane, int steps) {
         sound.fitted.reset();
         installLane(track, lane); // back to as recorded (and edited)
     }
+}
+
+bool Session::setTempoFromLoop(int track, int lane, float bpm, int bars) {
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums) return false;
+    if (!(bpm >= kMinTempo && bpm <= kMaxTempo) || bars < 1) return false;
+    const int fit = bars * project.meterOf(project.scene);
+    if (bpm == project.tempo && project.tracks[track].laneFit[lane] == fit) return true; // (as it is: no step)
+    // Its own step: what was being edited just before is a step already, and nothing after joins this one. The
+    // step is marked to put the tempo back (no other tempo change is undone: songs-and-undo.md).
+    beginOwnUndoStep();
+    if (undoReady_ && !undo_.empty()) undo_.back().tempo = true;
+    setTempo(bpm);
+    setLaneFit(track, lane, fit);
+    endOwnUndoStep();
+    return true;
 }
 
 // A lane wants work on the helper thread: a shape too costly for a frame (shapeLane), or its FIT

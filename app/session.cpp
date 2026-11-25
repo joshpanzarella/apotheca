@@ -1674,9 +1674,10 @@ bool Session::undo() {
     if (undo_.empty()) return false;
     const UndoStep back = undo_.back();
     undo_.pop_back();
-    redo_.push_back({patternsNow(), back.nextScene}); // as things are, to come forward to again
+    redo_.push_back({patternsNow(), back.nextScene, back.tempo}); // as things are, to come forward to again
     if (back.nextScene < 0) {
         restorePatterns(back.text);
+        if (back.tempo) setTempo(step_.head.tempo); // (THE TEMPO FROM THIS LOOP: its step's tempo, as read back)
         return true;
     }
     // A "next scene" taken back: the scene goes, the playing leaves it for the one it was
@@ -1692,9 +1693,10 @@ bool Session::redo() {
     if (redo_.empty()) return false;
     const UndoStep forward = redo_.back();
     redo_.pop_back();
-    undo_.push_back({patternsNow(), forward.nextScene});
+    undo_.push_back({patternsNow(), forward.nextScene, forward.tempo});
     if (forward.nextScene < 0) {
         restorePatterns(forward.text);
+        if (forward.tempo) setTempo(step_.head.tempo);
         return true;
     }
     // A "next scene" put back.

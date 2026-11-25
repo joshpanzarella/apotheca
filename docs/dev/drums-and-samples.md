@@ -689,7 +689,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   The length is what the lane plays unfitted (`LaneSound::seconds`: the cut, turned round and pitched
   shape, which is what FIT stretches; the review's note said `sourceSeconds`, the whole file, which a
   trimmed loop would get wrong), the steps it fills at the tempo (a step is 15 / tempo seconds),
-  rounded to FIT's stops **in the scene's meter**: 1, 2, 4 or 8 steps (those under a bar), or 1, 2 or
+  rounded to FIT's stops **in the scene's meter**: 1, 2, 4 or 8 steps (those under a bar; since batch S1 also 3,
+  6 and 12, FIT's new stops, below), or 1, 2 or
   4 bars of `meterOf` (12 a bar in 3/4, as CATCH sets; FIT's most is 4 bars, so not 8 as first proposed). The
   nearest by ratio, since a stretch is one: 24 steps in 4/4 are 2 bars, not 1. **Nothing on a
   built-in drum, a DRUM SYNTH voice or a file not found** (a hit, not a loop; `fitsByTap`), where the
@@ -698,8 +699,99 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   below it, 16, so DOWN went to 8 and 24 and 48 could not be stepped back to; now DOWN lands on the stop
   below, UP on the one above; CATCH's 12 in 3/4 had the same fault). One step of undo, as FIT is (`laneFit` is in `soundMark`). **Left as it was**: FIT's box reads
   16-step bars (`laneFitText`), so a tap's 48 steps in 3/4 (four of its bars) reads 3 BARS and 12 reads
-  12 STEPS, as CATCH's 12 always has; a question for the owner, not changed here. `sample_test`
+  12 STEPS, as CATCH's 12 always has; a question for the owner, not changed here. (Settled by batch S1,
+  2026-11-25, below: the box counts bars of the scene's meter.) `sample_test`
   `testATapOnFitFitsItsBars`.
+- **FIT's stops are 0, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64** (batch S1, 2026-11-25, sampling-gaps.md; the owner:
+  "I like all of it, let's build all of that in"; `kLaneFits`). They were 0, 1, 2, 4, 8, 16, 32, 64, so a 3/4 CATCH
+  (12) stepped off with hold A could not get back: 12 went up to 16 or down to 4 (8 since the review of A4). 3 and 6
+  are the dotted lengths under a beat and a half-bar; 12, 24 and 48 are 1, 2 and 4 bars of 3/4. The stops are the
+  same in every meter (a 3/4 song still reaches 16 and 32). The designer page's FIT TO lists them (`kitSpec`).
+  **A tap of A picks among them** (`laneFitFor`): under a bar every stop below the meter (1, 2, 3, 4, 6, 8, 12 in
+  4/4; 12 there is three beats), then 1, 2 or 4 bars as before, nearest by ratio; 12 steps in 4/4 is now 12 (it was
+  16). The stepping between stops (review of A4) still holds for a count off them: 20, two bars of a 10-step meter.
+  `sample_test` `testATapOnFitFitsItsBars`, `testTheKitScreen`, `testFitInTheMeter`; `design_test`.
+- **FIT's box counts bars of the scene's meter** (batch S1; `laneFitText(fit, meter, ...)`, the KIT page and the
+  designer page with `meterOf(scene)`): 12 in 3/4 reads 1 BAR, 24 2 BARS, 48 4 BARS, 16 there 16 STEPS. It read
+  16-step bars whatever the meter ("Left as it was ... a question for the owner", the tap's entry above). The brief
+  for this batch settled it this way as more logical: the box says what the tap and CATCH meant. A meter below 1
+  reads as 16, as `meterOf` holds it. `sample_test` `testFitInTheMeter` (the box drawn, in 3/4 and 4/4).
+- **THE TEMPO FROM THIS LOOP: hold A + LEFT / RIGHT on FIT** (batch S1, 2026-11-25; `loopTempo`,
+  `KitScreen::tempoFromLoop`, `Session::setTempoFromLoop`). The song's tempo set so the lane's recording, as it
+  plays unfitted (`LaneSound::seconds`, as the tap's), fills 1, 2 or 4 bars of the scene's meter, whole BPM (as
+  `setTempo` keeps it) within `kMinTempo`..`kMaxTempo`: the nearest to the tempo now by ratio first; then, from a
+  tempo that is one of them, RIGHT twice the bars (faster) and LEFT half (slower), the ends stopping. FIT goes to
+  those bars with it, so the loop is not stretched (or only by the whole-BPM rounding) and stays in time when the
+  tempo moves later. **One step of undo, which puts the tempo back too** (`UndoStep::tempo`, songs-and-undo.md);
+  as it is already, no step. A built-in drum, a voice or a file not found: nothing (a hit, not a loop, as the
+  tap). No tempo in range (in 4/4 a loop under 1 s or over 24 s; in 3/4 under 0.75 s or over 18 s): NO TEMPO FITS IT IN 1, 2
+  OR 4 BARS (shorter than "FROM 40 TO 240", which ran past the heads' room at XL). The song's tempo, not a
+  scene's own (FIT is worked from the song's: `steadyTempo_`); a scene with its own still plays at it.
+  **The gesture is Claude's pick, 2026-11-25, open to the owner**: the brief pointed at SELECT + something (whole-
+  song things), and every SELECT pair is taken (B undo, A redo, X WRITE, Y NEXT SCENE, L1 / R1 volume, the D-pad
+  the tempo, L2 / R2 the scene's steps, START quits). Hold A + a direction "shapes or turns what is under the
+  cursor": on FIT, up / down turns the loop to the tempo and left / right the tempo to the loop. Hold A + LEFT /
+  RIGHT did nothing on FIT before (and its let go was a tap: now `stepped_`, no tap). `sample_test`
+  `testTheTempoFromALoop`; `textsize` (A held on FIT, the longest line said).
+- **SAVE AS A RECORDING: R1 in a lane's EDIT view** (batch S1, 2026-11-25; sampling-gaps.md item 1;
+  `Session::saveLaneSound`, `KitScreen::saveSound`). What the lane plays, as `installLane` hands it to the engine
+  (the fitted or shaped sound, with `makeLevel` where EDIT is not at rest; the built-in drum's own at rest; a DRUM
+  SYNTH voice as made), written as a new WAV, 16-bit mono 48 kHz (`writeWav`, as CATCH), on the app thread: never
+  the audio thread. **Not** the lane's VOLUME, a hit's level or step effects, or the track's effects: the sound.
+  **Named after its source with the next free number**, from 1 (`amen 1`, as `rec 1` and `catch 1`), in its folder;
+  a voice after its model and the built-in drum after its drum (`kick 1`, `tom 1`) in the samples folder itself.
+  Never over a file: a name is passed by if it is there as .wav or .WAV or **differs only in capitals** from one in
+  the list (a card may not tell them apart). A long name is cut so the whole is still a name (`numbered`, under
+  `kSampleNameRoom`). The screen says **SAVED "AMEN 1"**, the name without its folder (the source's, shown in the
+  view's heading; with its folder the longest ran past the box at XL), and the lane keeps its sound; nothing else
+  changes, no step of undo. (No list is open in either view; a list opened later reads the card.) **While what the lane
+  plays is still on its way** (a shape or a voice on the helper thread, `waiting`, or a FIT not made for this
+  tempo and length: `fittedTempo` against `project.tempo`, since a tempo change starts no job until it has stood
+  a quarter of a second) it says NOT SAVED: IT IS STILL BEING MADE. AGAIN IN A MOMENT and writes nothing: saved
+  then, it would be what the lane played before. (Claude's pick, 2026-11-25, open to the owner: waiting for the job
+  would hold the screen, `finishStretching` being every lane's.) A file not found: NOT SAVED: ITS FILE IS NOT FOUND.
+  With A held R1 does nothing. R1 was free in the EDIT view (checked: `editButton` had no R1; L1 is free too and
+  stays so). The VOICE view's R1 is its lane key, so a voice is saved from its EDIT view (A on the picture), which
+  every lane has. `sample_test` `testSaveAsARecording` (the bytes against what the engine is handed, its length
+  against what a hit sounds, the numbering and capitals, MAKING for a FIT and for a shape, a voice, the built-in
+  drum, a name at its longest), `textsize` (the said line at its longest, cut to the room).
+- **SAVE A SLICE: in the slice view, Y held on a hit, R1** (batch S1, 2026-11-25; `PatternScreen::saveSlice`, the
+  same `saveLaneSound` with the hit's `start` and one slice, `1 / slices()`). The part of what the lane plays that
+  the hit plays with ONE SLICE (from `start * length`, `part * length` long, as `DrumMachine::trigger` takes it),
+  its end faded over `kEdgeMs` (1 ms, the quick fade the engine ends a part with) where it is cut short, its
+  start as the engine starts it (a hit is not faded in). The last slice runs to the sound's own end, unfaded.
+  Said in the strip (SAVED "AMEN 3"). Y's let go is then no tap (`yDidSomething_`): the hit's chance stays.
+  **The gesture is Claude's pick, 2026-11-25, open to the owner**: R1's own press in the slice view is the brush
+  (on a hit it puts the hit back on its own slice at once, so a tap of R1 was taken), X held + R1 is CUT, L1 + R1
+  copies the bar, L1 + Y is the FILL bar's (another batch), every SELECT pair is taken; with Y held on a hit, R1
+  did nothing (`!dicing_` kept the brush off) and Y held there already has hold of where the hit's sound starts.
+  Not on the plain grid (Y + R1 on a hit there is as it was), not on the lane's name (EVEN), not with L1 held.
+  The hint with Y held on a hit says R1 save the slice in place of TAP Y's chance steps. `sample_test`
+  `testSaveASlice`; `textsize` (Y held on a hit, the line said).
+- **A FOLDER AS A KIT: on the KIT stop, after the kits, the samples folders** (batch S1, 2026-11-25;
+  sampling-gaps.md item 3; `Session::kitFolders`, `loadFolderKit`, `folderKitOf`, `folderKitLanes`). Hold A + UP
+  past the last kit steps through the folders that hold a recording themselves (`wavFolders`' order; an empty one
+  or one with only folders in it is passed by), read when A goes down (and again if the card changes, as SOUND's
+  list). **Where it goes is Claude's pick, 2026-11-25, open to the owner**: the brief's first choice, "the samples
+  folders can be picked like the kits", so no new gesture. A folder put on: its recordings in name order
+  (`wavNames` sorts each folder's), **by name where it helps** (`folderKitLanes`; the name's words, letters and
+  numbers apart, capitals not counted): lane 1 the first KICK, KICKS or BD; lane 2 the first SNARE, SNARES or SD,
+  else a CLAP; lane 3 the first closed hat (CH, CHH, CLHAT, CLOSEDHAT, or HAT, HATS, HIHAT, HIHATS, HH not open);
+  lane 4 the first open hat (OH, OHH, OPHAT, OPENHAT, or OPEN with a hat word); then **every lane still empty, in
+  order, takes the rest in name order** (Claude's pick, 2026-11-25, open to the owner: lanes 1 to 4 are looked for in
+  the whole folder, not only its first 8 by name, since a folder sorted "808 bd 01..10" first would otherwise put
+  eight kicks on). A lane left over plays its built-in drum. Each lane's sound has nothing done to it (a new
+  `TrackData`'s lanes: EDIT, FIT, FEEL, SWING at rest, VOLUME full) and **a hat on lane 3 or 4 is in CHOKE 1**, as a
+  new kit's hats are (`folderKitHat`). Through `putKit`: one step of undo, and B with A held puts the kit back
+  (`keepSound` / `putSoundBack`, G12). **The stop reads FOLDER and the folder's name** (capitals, cut to the room)
+  while the kit's text is the one put on (`folderKits_`, a track's last; memory only: which kit a track has is
+  worked out, never kept, and reading every folder to work it out is a card read a frame), else YOUR OWN; stepping
+  on from it goes on from that folder. Eight files read on a press, as eight picks would be: **not timed on the
+  handheld** (measured.md has the desk's). `sample_test` `testAFolderAsAKit` (the names, the stop, the ends,
+  CHOKE, B with A held, one step of undo, the name drawn); `textsize` (the stop on a folder at its longest, A held).
+- **RECORD's "OF 10"** (sampling-gaps.md's first bug) was fixed by G34 (`Session::recordingLine`, from
+  `Recorder::kMaxSeconds`): checked for batch S1 and left. The manual's "any sample rate" now says what `parseWav`
+  takes: 4 kHz to 192 kHz, 1 to 8 channels.
 - **Hold B deletes one of the player's own presets the same way everywhere** (gesture audit G10, G30,
   2026-11-24): a kit (`kKitDeletingWords`), a sampler preset (`SamplerScreen::kPresetDeletingWords`:
   it said nothing, a 2-pixel line only, though the file is gone for good) and a synth's

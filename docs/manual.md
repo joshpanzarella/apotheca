@@ -2114,6 +2114,7 @@ Everything the grid does works the same here. What is added:
 | X | Hear one slice: the hit's, or on an empty step the one a hit would get |
 | Up / down on the lane's name | **Up: ONE SLICE**, each hit plays its slice and stops. **Down: RUNS ON**, through the recording until the next hit. Held, it stays where it was pushed |
 | Hold Y + right on the name | Roll every hit's slice. Left: back in order. |
+| **Hold Y on a hit, R1** | **Save the slice** as a new recording: the slice the hit plays (from where it starts, one slice long), as the lane plays it (EDIT and FIT made), beside the lane's file, named after it with the next free number (`amen 1`, `amen 2`...; never over a file). The strip says SAVED "AMEN 1". The hit, its chance and the lane stay as they were. |
 
 So, to chop a break: put it on a lane, FIT it to 1 bar, L1, hold R1 and
 sweep the stick across. That is the break as it was, in sixteen hits. Now
@@ -2142,16 +2143,27 @@ picture, EDIT (round the ends).
 **Kits.** UP from lane 1 is the kit's own stop, at the top left: KIT and its
 name. Hold A + UP / DOWN there puts on the next / previous kit: seven
 built-in kits (DRUMS, SYNTH, TIGHT, BIG, ELECTRO, DUSTY, HAND DRUMS), then
-your own. B with A still held gives back the kit you had (and plays it). Y saves the kit as
+your own, **then each folder of `samples` that holds recordings**. B with A still held gives back the kit you had (and plays it). Y saves the kit as
 it is now as KIT 1, KIT 2... (a file `kit 1.kit` beside the presets). Hold B
 a second deletes one of your own; the track keeps its sound. A kit is each
 lane's sound with its EDIT, FIT, VOLUME, CHOKE, FEEL and SWING, not the
 patterns or the effects. A changed kit reads YOUR OWN until it is saved.
 
+**A folder as a kit.** A folder puts its recordings on the eight lanes in one
+go, by name where it helps: lane 1 the first KICK or BD, lane 2 the first
+SNARE or SD (else a CLAP), lane 3 the first closed hat (CH, HH, or a HAT that
+is not OPEN), lane 4 the first open hat (OH, or OPEN with HAT); then the
+lanes still empty take the rest in name order. A lane left over plays its
+built-in drum. Each lane's sound comes with nothing done to it (no EDIT, no
+FIT, full VOLUME), and a hat on lane 3 or 4 is in CHOKE 1. It is one step of
+undo, and B with A still held gives back the kit you had. The stop reads
+FOLDER and the folder's name until a lane is changed (or the song is opened
+again: then YOUR OWN).
+
 | On | Hold A + stick up / down | B |
 | --- | --- | --- |
 | SOUND | From the built-in drum: UP each recording by name, DOWN the twelve synth models. Heard as it changes. **B with A still held: the lane as it was when A went down** (its EDIT and FIT too) | The drum back |
-| FIT TO | Off, 1, 2, 4, 8 steps, 1 bar, 2 bars, 4 bars. **A tap of A on a recording: the bars it fills at the tempo** (1, 2 or 4 bars in the scene's meter, or 1 to 8 steps for a short one). From a count between those (24 steps, two bars of 3/4), hold A + down goes to the one below it (16), up to the one above (32) | Off |
+| FIT TO | Off, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64 steps, read as bars of the scene's meter where they are whole (16 is 1 BAR in 4/4; 12 is 1 BAR in 3/4, 24 two, 48 four). **A tap of A on a recording: the bars it fills at the tempo** (1, 2 or 4 bars in the scene's meter, or one of the stops under a bar for a short one). From a count between those (20 steps, two bars of a 10-step meter), hold A + down goes to the one below it (16), up to the one above (24). **Hold A + left / right on a recording: the tempo from it** (below) | Off |
 | CHOKE | None, 1, 2 | None |
 | EDIT | (A opens the lane's EDIT view, below) | |
 
@@ -2222,6 +2234,16 @@ the edits make it, and eight boxes laid out as the sampler's.
   sound, END after the last: under 40 dB below its loudest is silence).
   **Y anywhere else: NORMALIZE**: GAIN so the part played peaks at about
   -1 dB, never over it. Both only set the boxes, and are undone like any edit.
+- **R1: SAVE A COPY.** What the lane plays, as its EDIT and FIT make it, is
+  written as a new recording (16-bit, one channel, 48 kHz, as Catch writes),
+  beside the lane's file and named after it with the next free number:
+  `amen 1`, `amen 2`... (never over a file). A synth voice or a built-in drum
+  goes in `samples` itself, after its model or drum (`kick 1`). The line at
+  the top says SAVED "AMEN 1", and it is in the list at once. The lane keeps
+  its sound; nothing else changes. Not the lane's VOLUME, a hit's level or
+  step effects, or the track's effects: the sound itself. Just after a FIT
+  or a tempo change it says NOT SAVED: IT IS STILL BEING MADE; press again
+  in a moment.
 - **The file on the card is never written.** The lane plays a copy made from
   it whenever an edit changes, so FIT stretches the edited sound, slices cut
   it (a trimmed break slices into its trimmed part), and slices in order still
@@ -2295,12 +2317,23 @@ another thread and swapped in when ready, so it never costs the sound
 anything while playing. Until it is ready the lane plays what it had.
 **A tap of A on FIT** picks the length for you: the bars the recording (as
 EDIT cuts it) lasts at the tempo, rounded to 1, 2 or 4 bars of the scene's
-meter (or 1, 2, 4 or 8 steps for a short one). Hold A + up / down still
+meter (or 1, 2, 3, 4, 6, 8 or 12 steps for a short one, those under a bar). Hold A + up / down still
 moves it one stop at a time. Nothing happens on the built-in drum or a synth
 voice.
 
-- WAV files of 8, 16, 24 or 32 bits or 32-bit float, any sample rate, any
-  number of channels. They are played as one channel at 48 kHz.
+**The tempo from a loop: hold A + right (or left) on FIT.** The other way
+round: the song's tempo is set so the recording (as EDIT cuts it) fills 1, 2
+or 4 bars of the scene's meter, the nearest to the tempo now first, as a
+whole number between 40 and 240. Again with A held: **right** doubles the
+bars (a faster tempo), **left** halves them. FIT goes to those bars with it,
+so the loop plays as it is and stays in time if the tempo moves later. The
+line at the top says TEMPO 123: IT FILLS 2 BARS. **One step of undo, the
+tempo with it** (SELECT + B puts the tempo and FIT back; no other change of
+tempo is undone). A scene with its own tempo still plays at its own.
+Nothing happens on the built-in drum or a synth voice.
+
+- WAV files of 8, 16, 24 or 32 bits or 32-bit float, at 4 kHz to 192 kHz,
+  with 1 to 8 channels. They are played as one channel at 48 kHz.
 - **Twenty seconds** of each is used; a longer file is cut there, with a short fade so it does not click.
 - The song file keeps each lane's file by name and each hit's start. If the
   file is not on the card, the lane plays its drum and says so (FILE NOT
