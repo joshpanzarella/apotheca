@@ -116,6 +116,10 @@ private:
         const Screen* now = &screenNow();
         return (now == &kit_ && kit_.picker().typing()) || (now == &sampler_ && sampler_.picker().typing()) || (now == &cloud_ && cloud_.picker().typing());
     }
+    bool browsingRecordings() const { // the list of recordings is up on the screen shown (Session::browsingRecordings)
+        const Screen* now = &screenNow();
+        return (now == &kit_ && kit_.picker().isOpen()) || (now == &sampler_ && sampler_.picker().isOpen()) || (now == &cloud_ && cloud_.picker().isOpen());
+    }
     const Screen& screenNow() const { return const_cast<App*>(this)->screenNow(); }
     std::unique_ptr<Project> project_; // large, so not on the stack
     Session session_;

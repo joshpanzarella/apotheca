@@ -233,7 +233,7 @@ public:
     // their built-in drum (a sampler: to none). False if there is no such recording.
     std::vector<std::string> sampleFolders() const; // the folders in the samples folder, two levels, the empty ones too
     int sampleUses(const std::string& name) const; // how many drum lanes and sampler tracks of the open song have it on
-    bool deleteSample(const std::string& name);
+    bool deleteSample(const std::string& name); // for good: the lanes and tracks it was on go back to their drum, no step of undo
     // What the handheld does to the samples folder itself (the list of recordings: carry, + NEW FOLDER,
     // hold B on an empty folder), and how it went.
     enum class FileJob { Done, Same, TooLong, Taken, NotEmpty, Failed, NotSaved, Moving, Copying, Busy }; // NotSaved: done, but a song that names it could not be written (a full card). Moving: done, and the saved songs are following (following()). Copying: a card that will not rename, so it is being written again in its new place, off the screen's thread: nothing has changed yet, and carryDone() then says how it went. Busy: another is being copied.
@@ -258,7 +258,8 @@ public:
     // (`to` empty): they keep the name and are marked missing, as they would be the next time
     // the song was opened. Sent (`from` empty): one that was missing by that name is read.
     // A recording of that base name that turns up anywhere (`to` in another folder) is taken by
-    // one that was missing, if it is the only one (findMissing).
+    // one that was missing, if it is the only one (findMissing). None of it is a step of undo, and
+    // every step of undo follows a rename or a move (undoFollows), as the saved songs do.
     void recordingChanged(const std::string& from, const std::string& to);
     // Recordings that were renamed or moved while a song was shut. A lane or sampler track whose
     // recording is not where the song says takes the one of the same base name (the part after
@@ -266,6 +267,7 @@ public:
     // ONE and it reads. None, or two: it stays missing, never a guess. Run when a song or a rev
     // is opened; the changed name is saved as any change is. `label`: only those of that base
     // name. Returns how many were found. The folder is listed once, and only if something is missing.
+    // A recording found is no step of undo, and the steps of undo name it where it was found.
     int findMissing(const std::string& label = "");
     int sampleLookups() const { return lookups_; } // how many times findMissing has listed the folder (tests)
     // The page renamed or moved recordings (`first` to `second`, in order): every saved song and
@@ -290,7 +292,9 @@ public:
     int followFailures() const { return followFailures_; } // files that named one and could not be written, since the program started
     static constexpr int kFollowReadsAFrame = 8;
     static const char* const kOwedFile;                 // "renames-owed.txt"
-    void setLaneSample(int track, int lane, const std::string& name); // "" brings the drum back (and takes a synth voice off)
+    // "" brings the drum back (and takes a synth voice off); START and END go back to the whole. A step of
+    // undo with the name (soundMark): undo puts the old sound back with its own cut and voice.
+    void setLaneSample(int track, int lane, const std::string& name);
     // DRUM SYNTH (apotheca/drum_synth.hpp): the lane's sound made from a voice, in place of a recording
     // (its name is emptied) or the built-in drum. Made here, or on the helper thread past
     // drumsynth::kWorkInAFrame, and handed to the engine as a recording is. A voice that is not on puts
@@ -512,14 +516,20 @@ public:
     // put forward again. One step is one burst of editing: everything
     // changed until nothing has changed for seven tenths of a second (a
     // whole paint stroke, a roll of the dice, a cell emptied). The song
-    // keeps playing. It covers the patterns and each track's effects, sends, sound and GLIDE FROM,
-    // the master's effects and the buses' (soundMark_, restoreSounds).
+    // keeps playing. It covers the patterns and each track's effects, sends, sound (a recording on a
+    // lane, a sampler or a CLOUD with it) and GLIDE FROM, the master's effects and the buses'
+    // (soundMark_, restoreSounds).
     static constexpr int kUndoLevels = 20;
     bool undo();
     bool redo();
     int undoSteps() const;
     int redoSteps() const { return static_cast<int>(redo_.size()); }
     void noteEdit(); // something in a pattern has just changed
+    // A list of recordings is open on the screen shown (the App says so each frame, before update). What
+    // it puts on as the cursor goes is not watched for undo until it closes, however long it rests on
+    // each: a visit is one step of undo (from before it opened to what A kept), or none where the sound
+    // is as it was (B: what was there put back). Gesture audit G04, as a pick became a step of undo.
+    void browsingRecordings(bool on) { browsing_ = on; }
     // An edit's own step of undo, from outside (SongScreen::pasteCellHere): whatever was being
     // edited just before ends here, and nothing after it joins the step (as pasteBar's inline).
     void beginOwnUndoStep();
@@ -928,9 +938,10 @@ private:
     bool readStep(const std::string& text, StepRead& was, bool same[kNumTracks], bool whole);
     bool readUndoWhole_ = false;
     // Undo covers more than the patterns: each track's effects, sends, sound (preset, settings,
-    // macros, a sampler's settings) and GLIDE FROM, the master's effects and the buses' (their
-    // LEVEL with them). Whatever changes them is seen here, as the cell is (cellMark): no screen
-    // has to say so. restoreSounds puts them back from a step, through the engine's usual commands.
+    // macros, a sampler's settings, a kit's lanes, and a recording's NAME: a lane's, a sampler's,
+    // a CLOUD's) and GLIDE FROM, the master's effects and the buses' (their LEVEL with them).
+    // Whatever changes them is seen here, as the cell is (cellMark): no screen has to say so.
+    // restoreSounds puts them back from a step, through the engine's usual commands.
     std::uint64_t soundMark() const;
     std::uint64_t soundMark_ = 0;
     void restoreSounds(const StepRead& was, const bool same[kNumTracks]);
@@ -938,8 +949,12 @@ private:
     void sendMod(int track, int mod); // the project's MOD told to the engine (OFF: one command)
     struct UndoStep { std::string text; int nextScene = -1; };
     std::vector<UndoStep> undo_, redo_;
+    // A recording renamed, moved or found elsewhere (recordingChanged, findMissing): every step of
+    // undo and redo, and settled_, name it where it is now (renameRecordings).
+    void undoFollows(const std::vector<std::pair<std::string, std::string>>& renames);
     std::string settled_;                            // the patterns when things were last still
     bool editing_ = false, restoring_ = false, undoReady_ = false;
+    bool browsing_ = false; // a list of recordings is open on the screen shown
     Uint32 editedAt_ = 0;
     std::uint64_t cellMark_ = 0;
     void serveDesigner();

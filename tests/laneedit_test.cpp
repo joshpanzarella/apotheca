@@ -767,16 +767,24 @@ void testUndoAndANewRecording() {
     CHECK(session.redo() && session.redo());
     rig.frames(4);
     CHECK(rig.kit().laneEdit[kLane] == g);
-    // Another recording: START and END go back to the whole of it, the rest stays. Not a step of undo.
+    // Another recording: START and END go back to the whole of it, the rest stays. A step of undo with
+    // its name (gesture audit G04): undo puts the old recording back WITH its own cut, as it was heard.
     session.setLaneSample(0, kLane, "break");
     rig.frames(60);
     LaneEdit kept = g;
     kept.start = 0;
     kept.end = kEditUnits;
     CHECK(rig.kit().laneEdit[kLane] == kept);
-    CHECK(session.undo()); // the reset was no step: undo takes back the GAIN turned before it (and the cut with it)
+    const int steps = session.undoSteps();
+    CHECK(session.undo());
     rig.frames(4);
-    CHECK(rig.kit().laneEdit[kLane] == busyEdit());
+    CHECK(std::string(rig.kit().laneSample[kLane]) == "hit" && rig.kit().laneEdit[kLane] == g && session.undoSteps() == steps - 1);
+    CHECK(!session.laneSound(0, kLane).missing);
+    byHand.session().setLaneEdit(0, kLane, g);
+    CHECK(rig.hit(kLane, 20000) == byHand.hit(kLane, 20000));
+    CHECK(session.redo());
+    rig.frames(4);
+    CHECK(std::string(rig.kit().laneSample[kLane]) == "break" && rig.kit().laneEdit[kLane] == kept);
 }
 
 // ---- the KIT page -------------------------------------------------------------------------------------

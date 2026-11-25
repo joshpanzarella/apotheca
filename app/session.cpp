@@ -442,11 +442,13 @@ void Session::update(Uint32 nowMs) {
         cellMark_ = mark;
         noteEdit();
     }
-    if (const std::uint64_t mark = soundMark(); mark != soundMark_) {
+    // A list of recordings open: what it puts on is looked at when it closes, and a burst of edits it
+    // was opened in goes on till then (browsingRecordings).
+    if (const std::uint64_t mark = soundMark(); !browsing_ && mark != soundMark_) {
         soundMark_ = mark;
         noteEdit();
     }
-    if (editing_ && nowMs - editedAt_ >= 700) {
+    if (editing_ && !browsing_ && nowMs - editedAt_ >= 700) {
         editing_ = false;
         settled_ = patternsNow();
     }
@@ -1141,6 +1143,11 @@ std::uint64_t Session::soundMark() const {
         mix(&track.glideFrom, sizeof track.glideFrom);
         mix(track.mods, sizeof track.mods);
         if (track.kind == TrackKind::Drums) mix(track.laneFeel, sizeof track.laneFeel), mix(track.laneSwing, sizeof track.laneSwing), mix(track.laneChoke, sizeof track.laneChoke), mix(track.laneEdit, sizeof track.laneEdit), mix(track.laneSynth, sizeof track.laneSynth), mix(track.laneLevel, sizeof track.laneLevel), mix(track.laneFit, sizeof track.laneFit), mix(track.laneOneSlice, sizeof track.laneOneSlice);
+        // A recording's name, to its end (what lies past it is whatever a longer name left there): a lane's
+        // with its FIT, cut and voice above, and a sampler's or a CLOUD's (gesture audit G04).
+        if (track.kind == TrackKind::Drums)
+            for (const char* name : track.laneSample) mix(name, std::strlen(name) + 1);
+        if (holdsRecording(track.kind)) mix(track.sample, std::strlen(track.sample) + 1);
         if (const SynthSpec* spec = specFor(track.kind)) {
             mix(&track.preset, sizeof track.preset);
             mix(spec->values(const_cast<TrackData&>(track)), sizeof(int) * static_cast<std::size_t>(settingCount(track.kind)));
@@ -1259,19 +1266,21 @@ void Session::restoreSounds(const StepRead& was, const bool same[kNumTracks]) {
                 if (now.laneChoke[lane] != then.laneChoke[lane]) setLaneChoke(t, lane, then.laneChoke[lane]);
         if (now.kind == TrackKind::Drums)
             for (int lane = 0; lane < kDrumLanes; ++lane) {
-                if (std::strcmp(now.laneSample[lane], then.laneSample[lane]) != 0) setLaneSample(t, lane, then.laneSample[lane]);
+                // The sound first, as a kit is put on (putKit): a voice, or a recording or the built-in drum
+                // (which takes a voice off). Another sound puts START and END back to the whole, so the
+                // step's EDIT goes in after it: the sound and its cut come back together. A recording
+                // is read from its file again, as a pick reads it (one deleted since is missing, as in a
+                // song opened); a step keeps only its name.
+                if (then.laneSynth[lane].on()) {
+                    if (now.laneSynth[lane] != then.laneSynth[lane]) setLaneSynth(t, lane, then.laneSynth[lane]);
+                } else if (now.laneSynth[lane].on() || std::strcmp(now.laneSample[lane], then.laneSample[lane]) != 0) {
+                    setLaneSample(t, lane, then.laneSample[lane]);
+                }
                 if (now.laneEdit[lane] != then.laneEdit[lane]) setLaneEdit(t, lane, then.laneEdit[lane]);
                 if (!sameAsText(now.laneLevel[lane], then.laneLevel[lane])) setLaneLevel(t, lane, then.laneLevel[lane]);
                 if (now.laneFit[lane] != then.laneFit[lane]) setLaneFit(t, lane, then.laneFit[lane]);
                 if (now.laneOneSlice[lane] != then.laneOneSlice[lane]) setLaneOneSlice(t, lane, then.laneOneSlice[lane]);
             }
-        if (now.kind == TrackKind::Drums)
-            for (int lane = 0; lane < kDrumLanes; ++lane)
-                if (now.laneSynth[lane] != then.laneSynth[lane]) {
-                    const LaneEdit edit = then.laneEdit[lane];
-                    setLaneSynth(t, lane, then.laneSynth[lane]);
-                    setLaneEdit(t, lane, edit); // (another model put START and END back to the whole: the step's are put back)
-                }
         // (After the slots: the step's MODs fit the step's effects. Compared as the file writes them.)
         for (int m = 0; m < kModsPerTrack; ++m) {
             if (modText(now.mods[m], m) == modText(then.mods[m], m)) continue;
@@ -1291,6 +1300,8 @@ void Session::restoreSounds(const StepRead& was, const bool same[kNumTracks]) {
                 sendSynthPatch(t); // every setting and macro: the engine's sound is the step's, whatever preset it was on
             }
         }
+        // A sampler's or a CLOUD's recording, read again from its file (gesture audit G04).
+        if (holdsRecording(now.kind) && std::strcmp(now.sample, then.sample) != 0) setTrackSample(t, then.sample);
         if (now.kind == TrackKind::Sampler) {
             for (int id = 0; id < sampler::kSettings; ++id)
                 if (now.sampler[id] != then.sampler[id]) setSamplerSetting(t, id, then.sampler[id]);

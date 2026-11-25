@@ -115,10 +115,12 @@ emptied, a chord placed, a pass of automation. It covers what is in the
 patterns (hits, notes, chords, automation, how long each cell is, how often
 each scene plays), and also each track's effects and their settings (a
 TYPE changed comes back with its old settings and automation), its sends,
-its sound (preset, settings, macros), its GLIDE FROM, the master's effects
-and the buses' (their LEVEL too). Tempo, mutes, names, the kit's recordings
-and a track deleted or given another instrument are not. The song keeps
-playing while you undo.
+its sound (preset, settings, macros, and a recording: a kit lane's with its
+FIT, cut and synth voice, a sampler's, a CLOUD's), its GLIDE FROM, the
+master's effects and the buses' (their LEVEL too). So a Catch, a take or a B
+on SOUND is put back with SELECT + B. Tempo, mutes, names, a recording
+deleted from the card and a track deleted or given another instrument are
+not. The song keeps playing while you undo.
 
 **L2 and R2** walk along the screens: SONG, PATTERN, DEVICE, FX, MOD, SET.
 The bar at the top writes PATTERN as **PTRN** and DEVICE as **DVICE**, to give
@@ -199,7 +201,7 @@ recording; let go and it stops (its RELEASE runs). A tap plays a moment
 is also heard as it is changed, when the song is stopped.
 
 **Y is Catch** here too: the last bar the song played becomes this track's
-recording. Eight notes at a time.
+recording. Eight notes at a time. SELECT + B puts back the one it had.
 
 ## The list of recordings
 
@@ -219,7 +221,7 @@ column. It opens in the folder of the recording that is on, on it.
 | Left / right | Out to the folder this one is in / into the folder under the cursor |
 | **L1 / R1** | A page up / down |
 | **Hold R1** | On a recording: **carry it**. Keep R1 down and steer (D-pad, stick, L1) to a folder, or into one; let go and it is there. The top line says where it would go. Let go on a row of SAMPLES that is no folder: out of every folder. **B with R1 held calls it off** |
-| A | On a recording: keep it. On a folder: into it. On **+ NEW FOLDER**: type its name (A types, Y deletes a letter, **B makes the folder and leaves**, as START does; with nothing typed B leaves and makes none) |
+| A | On a recording: keep it (one step of SELECT + B, however many you passed on the way). On a folder: into it. On **+ NEW FOLDER**: type its name (A types, Y deletes a letter, **B makes the folder and leaves**, as START does; with nothing typed B leaves and makes none) |
 | B | A tap: put back what was there before the list opened |
 | X | **While it is still playing: it plays on to its end.** Nothing playing: hear it again; **held, it plays until you let go**, or to its end; a tap plays a moment |
 | **Hold B** | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. Or an **empty folder**: one with anything in it is never deleted |
@@ -611,9 +613,8 @@ designer".
   reads it. The picture is what the KIT page's EDIT view draws: the whole
   file (or the built-in drum), the part played lit, as loud as GAIN and the
   fades make it. FIT is for a recording or a synth voice: a built-in drum has none. As on the
-  handheld, the file on the card is never changed, and a lane's EDIT, CHOKE,
-  FEEL, SWING and synth voice are undone with undo; a recording picked, FIT and
-  VOLUME are not.
+  handheld, the file on the card is never changed, and a lane's recording,
+  EDIT, FIT, VOLUME, CHOKE, FEEL, SWING and synth voice are undone with undo.
 - Every setting of the synth is on the page, in the same groups as the
   handheld's pages, with the eight macros at the top. Phazed's envelopes
   are drawn as lines. Turn something on the handheld and the page shows it.
@@ -1219,7 +1220,8 @@ track makes a sound at once.
   folders, a preview as you go, X to hear); **hold A + UP / DOWN** steps to the
   next one, heard at once. **R1 there records** a new one (as the sampler's
   R1; elsewhere R1 turns the page). **Y on SOURCE is CATCH**: the last bar the
-  song played becomes this track's recording. B in the list leaves the
+  song played becomes this track's recording (SELECT + B puts back the one it
+  had). B in the list leaves the
   recording as it was. "THE BUILT-IN TONE" at the top of the list is none.
 - **MAIN shows the recording**, between PRESET and the macros: its outline,
   the part the grains come from lit (POSITION give or take SPRAY), POSITION a
@@ -2140,7 +2142,8 @@ lane takes the last whole bar the song played, everything as it was heard,
 saves it as `catch 1.wav`, `catch 2.wav`... in `samples/catches`, and puts
 it on that lane fitted to one bar. It works just after stopping too. With no
 whole bar to take (the first bar, or after playing by hand), it takes the
-last bar's worth of sound.
+last bar's worth of sound. SELECT + B puts back what the lane had, its FIT,
+cut and synth voice with it (the catch's file stays in `catches`).
 
 **R1 is Record.** With a USB microphone or audio interface plugged into the
 USB-C port: R1 on a lane starts it waiting for sound, so there is no silence

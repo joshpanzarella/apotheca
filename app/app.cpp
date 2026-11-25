@@ -396,6 +396,7 @@ void App::update(const Input& input, Uint32 nowMs) {
         }
     }
     if (updateSaid_ != 0 && nowMs >= updateSaidUntil_) updateSaid_ = 0;
+    session_.browsingRecordings(browsingRecordings()); // (a visit to the list: one step of undo, or none)
     session_.update(nowMs);
     // X held hears a recording until it is let go. Let go, or another screen or track up while it
     // is held (the screen that asked would never hear of the let go): it stops.

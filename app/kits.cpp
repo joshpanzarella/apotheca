@@ -126,9 +126,9 @@ bool Session::putKit(int track, const TrackData& kit) {
         setLaneSwing(track, lane, kit.laneSwing[lane]);
         setLaneChoke(track, lane, kit.laneChoke[lane]);
     }
-    // A step of undo like any change to a kit (soundMark sees it): voices, EDIT, FEEL, SWING and CHOKE
-    // are put back. A recording is not, as always: the kit's stop keeps the kit as it was while A is
-    // held, and SAVE keeps one for good.
+    // A step of undo like any change to a kit (soundMark sees it): recordings, voices, EDIT, FEEL, SWING
+    // and CHOKE are put back (a recording by its name since gesture audit G04). The kit's stop also
+    // keeps the kit as it was while A is held, and SAVE keeps one for good.
     return true;
 }
 

@@ -290,9 +290,11 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     fit's is. Until it lands the lane plays what it had (freshly read, the file), its level made at
     once; the view says MAKING IT..., the kit MAKING. Anything that waits for fits
     (`finishStretching`, a bounce) waits for it too.
-  - **Another recording puts START and END back to the whole of it, the rest stay**, and that is no
-    step of undo (`setLaneSample` takes the mark again: undo would put the old cut on the new
-    file). `loadLane` (a song opened, a file sent over WiFi, a rename) keeps every edit.
+  - **Another recording puts START and END back to the whole of it, the rest stay**, in ONE step of
+    undo with the name (gesture audit G04, 2026-11-25; songs-and-undo.md): undo puts the old
+    recording back with its own cut. (It was "no step of undo (`setLaneSample` takes the mark again:
+    undo would put the old cut on the new file)"; with the name in the step that cannot happen.)
+    `loadLane` (a song opened, a file sent over WiFi, a rename) keeps every edit.
     NORMALIZE (`normalizeLane`: the GAIN that puts what is played, fitted if it is, at -1 dB or
     just under) and TRIM SILENCE (`trimLaneSilence`: 40 dB under the file's loudest, START 1 ms
     ahead) only set the boxes.
@@ -330,9 +332,10 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     0 under `kTiny` and the filters are fed steady noise (the envelope after them), so flush-to-zero
     changes no bit (`drumsynth_test` makes each both ways). A new recipe keeps all of it.
   - **A lane is a recording, the built-in drum or a voice, one at a time**: `setLaneSample` takes a
-    voice off (no step of undo, as a recording is not), `setLaneSynth` empties the name; another model
+    voice off (a step of undo with the name since G04: B on SOUND no longer loses a tuned voice),
+    `setLaneSynth` empties the name; another model
     puts START and END back to the whole (EDIT's rule), a knob turned keeps them. A voice is a step of
-    undo (`soundMark` / `restoreSounds`, which puts the step's EDIT back after it).
+    undo (`soundMark` / `restoreSounds`, which puts the sound back first, as `putKit`, then the step's EDIT).
   - In a song file `lanesynth LANE WORD v1..v8` (the model by its word, the dials in place order),
     **left out when the lane has none**; a word nobody knows skips the line, a number that will not read
     ends it (the rest the model's usual), each held as a double first; of a `sample` and a `lanesynth`
@@ -376,6 +379,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   ended by itself before its stop is not playing). The built-in drum is heard whole, as a tap of
   it always is. `Session::stopHeard` stops only what that screen began. `hear_test`
   (`testThePages`, `testTheSampler`, `testThePreviewStopsWhenTheCursorMovesOn`).
+  **A visit to the list is one step of undo, or none** (G04, 2026-11-25: `Session::browsingRecordings`;
+  songs-and-undo.md): what it puts on as the cursor goes is not twenty steps.
   `rowsAt(depth, folder)` is the one place a column's rows are made (0 SAMPLES: the first row,
   UNSORTED if anything is loose, the folders; with no folders at all, the recordings
   themselves: `flat()`). **A D-pad press puts the recording on at once; rows going by faster
@@ -496,5 +501,5 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   the list's), so a song file has no word for it and a changed kit reads YOUR OWN. The built-in kits
   are recipes of DRUM SYNTH's named voices BY NAME (`kRecipes`): a voice renamed or taken out fails
   `easy_test kits` (`builtInKitProblems`). A kit put on goes through the lanes' own setters, so it is a
-  step of undo as they are (a recording is not put back). A player's own are `kit N.kit` in the preset
+  step of undo as they are (its recordings too, since G04). A player's own are `kit N.kit` in the preset
   folder. Stills `kit-preset`, `-held`, `-own`. **Nobody has heard the kits.**
