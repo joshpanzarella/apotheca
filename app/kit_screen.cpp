@@ -145,8 +145,7 @@ void KitScreen::stepChoke(int by) {
 
 void KitScreen::catchBar() {
     const std::string name = session_.catchLastBar(project_.track, lane_);
-    said_ = name.empty() ? "NOTHING TO CATCH: PLAY SOMETHING FIRST" : "CAUGHT THE LAST BAR AS \"" + name + "\"";
-    for (char& c : said_) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+    said_ = caughtLine(session_, name);
     saidUntil_ = lastMs_ + 2500;
 }
 
@@ -370,6 +369,18 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         return;
     }
+    // CATCH's Y (catch_key.hpp): a tap catches on its let go; held, the directions choose the bars and what.
+    if (b == Button::Y && !event.down) {
+        if (catchKey_.up()) catchBar();
+        return;
+    }
+    if (event.down && b != Button::Y) {
+        if (catchKey_.held() && isDirection(b)) {
+            catchKey_.direction(b, session_);
+            return; // (the cursor stays, and nothing repeats)
+        }
+        catchKey_.spoil();
+    }
     if (b == Button::A) {
         // Held, with up / down: one at a time. A plain tap on SOUND: the list; on the picture: EDIT.
         if (!event.down && holding_ && !stepped_ && column_ == kSound) {
@@ -410,7 +421,7 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
         else if (column_ == kFit) session_.setLaneFit(project_.track, lane_, 0);
         else if (column_ == kChoke) session_.setLaneChoke(project_.track, lane_, kChokeNone);
     } else if (b == Button::Y && !holding_) {
-        catchBar();
+        catchKey_.down(); // (CATCH on its let go, if nothing was chosen meanwhile)
     } else if (b == Button::R1 && !holding_) {
         record();
     } else if (b == Button::L1 && !holding_ && !input.held(Button::Select)) {
@@ -488,7 +499,8 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
     if (!said_.empty() && nowMs >= saidUntil_) said_.clear();
     // One move at once, then at a steady rate. With A held only up / down counts.
     if (stickWait_ && input.stickX() == 0.f && input.stickY() == 0.f) stickWait_ = false; // (back in the middle after a put-back)
-    const float x = holding_ || stickWait_ ? 0.f : input.stickX(), y = stickWait_ ? 0.f : input.stickY();
+    const bool choosing = catchKey_.stick(input, session_); // Y held: the stick chooses CATCH's bars and what, a push at a time
+    const float x = holding_ || stickWait_ || choosing ? 0.f : input.stickX(), y = stickWait_ || choosing ? 0.f : input.stickY();
     const bool sideways = std::fabs(x) > std::fabs(y);
     const float push = sideways ? x : y;
     // The cursor climbs on a full push held (G07); with A held it is the list of sounds, slow enough to hear each.
@@ -1058,12 +1070,13 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (kitDeletePart_ > 0.f) fill(r, soundX, 48, static_cast<int>(soundW * (kitDeletePart_ > 1.f ? 1.f : kitDeletePart_)), 1, kStop);
         else if (onKit_) fill(r, soundX, 48, soundW, 1, cursorColor);
     }
-    if (said_.empty()) {
+    const std::string said = catchKey_.held() ? catchChoiceLine(session_) : said_; // (Y held: what its let go catches)
+    if (said.empty()) {
         fonts.small.draw(r, fitX + 2.f, 34.f, "FIT TO", kDim);
         fonts.small.draw(r, chokeX + 2.f, 34.f, "CHOKE", kDim);
         fonts.small.draw(r, waveX + 2.f, 34.f, "THE RECORDING", kDim);
     } else { // over the heads of the three columns at the right, for a moment
-        fonts.within(&Fonts::small, said_.c_str(), waveX + waveW - fitX - 4.f).draw(r, fitX + 2.f, 34.f, said_.c_str(), kBrass);
+        fonts.within(&Fonts::small, said.c_str(), waveX + waveW - fitX - 4.f).draw(r, fitX + 2.f, 34.f, said.c_str(), kBrass);
     }
     for (int lane = 0; lane < kDrumLanes; ++lane) {
         const int y = top + lane * rowH, h = rowH - kLaneGap;
@@ -1157,7 +1170,11 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         picker_.draw(r, fonts);
         return;
     }
-    if (holding_ && column_ == kEdit) {
+    if (catchKey_.held()) {
+        hint("LEFT / RIGHT", "bars");
+        hint("UP / DOWN", "mix or a track");
+        hint("Y", "catch"); // (on its let go)
+    } else if (holding_ && column_ == kEdit) {
         hint("A", "edit"); // (opens when it is let go)
     } else if (holding_) {
         hint("UP / DOWN", column_ == kSound ? "recordings / synths" : column_ == kFit ? "longer / shorter" : "next / previous group");
@@ -1172,7 +1189,7 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint(column_ == kSound ? "A" : "HOLD A", column_ == kSound ? (trk().laneSynth[lane_].on() ? "knobs" : "pick from list") : column_ == kFit ? "fit to steps" : "choke group");
         hint("B", column_ == kSound ? "default drum" : column_ == kFit ? "fit off" : "no choke");
     }
-    if (!holding_) {
+    if (!holding_ && !catchKey_.held()) {
         hint("Y", "catch");
         hint("R1", session_.recordingNow() ? "stop" : "record");
         // A recording on the lane has all six it can hold: START yields to the slices (it is on

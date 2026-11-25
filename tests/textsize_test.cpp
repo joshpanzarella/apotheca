@@ -1742,6 +1742,27 @@ void testTheOtherScreens() {
     CHECK(drew("NOTHING TO CATCH: PLAY SOMETHING FIRST") && !drew("CHOKE"));
     for (const textfit::Text& t : lastLarge.texts)
         if (t.words == "NOTHING TO CATCH: PLAY SOMETHING FIRST") CHECK(t.x + t.w <= ui::kScreenW - 8);
+    {
+        // Batch S3: Y held, CATCH's choice said at its longest (4 bars of a track with a ten-letter name), and the hints.
+        char before[sizeof project.tracks[0].name];
+        std::memcpy(before, project.tracks[0].name, sizeof before);
+        session.setTrackName(0, "WWWWWWWWWW");
+        rig.key(SDLK_a, true); // Y held
+        rig.tap(SDLK_RIGHT, 2);
+        rig.tap(SDLK_DOWN);
+        rig.frames(1);
+        CHECK(holds(rig, "the kit, Y held: CATCH's choice at its longest") > 8);
+        CHECK(drew("CATCH THE LAST 4 BARS OF 1 WWWWWWWWWW") && ui::gHintsOver == 0);
+        for (const textfit::Frame* frame : {&lastLarge, &lastXl})
+            for (const textfit::Text& t : frame->texts)
+                if (t.words.find("CATCH THE LAST") == 0) CHECK(t.x + t.w <= ui::kScreenW - 8);
+        rig.key(SDLK_a, false); // (a choice was made: nothing is caught)
+        session.stepCatchFrom(-1);
+        session.stepCatchBars(-1);
+        session.stepCatchBars(-1);
+        session.setTrackName(0, before);
+        rig.frames(1);
+    }
     rig.app.kit().goTo(2, KitScreen::kFit);
     rig.frames(1);
     holds(rig, "the kit, on FIT TO");
@@ -2070,6 +2091,11 @@ void testTheOtherScreens() {
     rig.frames(300); // it closes by itself
     CHECK(!setup.testing());
     setup.goTo(SettingsScreen::kBounce);
+    rig.tap(SDLK_LEFT); // round to the last: TRACK TO SAMPLES (batch S3)
+    rig.frames(1);
+    holds(rig, "BOUNCE: TRACK TO SAMPLES");
+    CHECK(drew("TRACK TO SAMPLES"));
+    rig.tap(SDLK_RIGHT);
     session.pretendBounce(0.37f, -1.f);
     rig.frames(1);
     holds(rig, "a bounce under way");

@@ -130,3 +130,17 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   tail `bounceTail()` gives the seconds so far and the row says that instead.
 - **Do not pipe the app's output into `head`** when making a still; it dies
   before it saves.
+- **BOUNCE: TRACK TO SAMPLES** (batch S3, 2026-11-25; sampling-gaps.md 4; `Session::Bounce::ToSamples`, appended, the
+  row's fifth choice: the other four work as they did). **A loop of the track being worked on, into the samples
+  folder**: the track alone (muted or not: the copy mutes every other), the scene being worked on played round
+  (Play with the scene looping), **the first time round thrown away and the second kept**, so what rings past the
+  scene's end is in its start, as when it loops; mono (L + R halved, as CATCH), 16-bit 48 kHz (`writeWav`). **1, 2 or
+  4 whole bars** (`samplesBounceSteps`: the most the scene has within `kCatchLongest`, 20 s; a scene under a bar,
+  all of it). Claude's pick, 2026-11-25, open to the owner: the scene and not the song, since a recording is 20 s at
+  most and FIT 64 steps; 1, 2 or 4 bars so a tap of A on FIT (G45, `laneFitFor`) fits it to its bars exactly (3 bars
+  would be fitted to 4). **Named after the track** (`bounces/bass 1`, the next free number, `freeSampleName`),
+  chosen on the app thread when it starts, in `samples/bounces` where the list sees it: the app thread bumps
+  `sampleFiles_` the frame after it is done (`BounceJob::seen`), so an open list reads the card again. It needs no
+  `bounces` folder beside the program. **It is not put on a lane by itself** (SET has no lane): pick it, then a tap
+  of A on FIT. The row's note: `A: this scene's loop, into recordings`, then `done: "bounces/bass 1" in recordings`.
+  Stopped with hold B as any bounce (nothing written). `sample_test` `testBouncingIntoSamples`; `textsize` (the row).

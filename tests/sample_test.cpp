@@ -4,6 +4,7 @@
 #include <SDL.h>
 
 #include <stdlib.h>
+#include <algorithm>
 #include <chrono>
 #include <sys/stat.h>
 
@@ -15,6 +16,7 @@
 #include <vector>
 
 #include "app.hpp"
+#include "catch_key.hpp"
 #include "apotheca/cloud.hpp"
 #include "drum_voices.hpp"
 #include "presets.hpp"
@@ -928,6 +930,206 @@ void testCatch() {
     bare.tap(START);
     bare.render(20 * kStep);
     CHECK(bare.session().catchLastBar(0, 5).empty() && bare.project().tracks[0].laneSample[5][0] == 0);
+}
+
+// CATCH of 1, 2 or 4 bars, of the mix or one track (batch S3, 2026-11-25; catch_key.hpp): a tap of Y catches on
+// its let go; hold Y + LEFT / RIGHT the bars, + UP / DOWN of what; a let go after a choice catches nothing.
+void testCatchingBarsAndATrack() {
+    const std::string folder = tempFolder("samples") + "/caught";
+    Rig rig(folder);
+    Session& session = rig.session();
+    KitScreen& kit = rig.app.kit();
+    TrackData& track = rig.project().tracks[0];
+    rig.app.drums().setStep(0, 0, 1.f);
+    rig.app.drums().setStep(0, 8, 1.f);
+    session.view = View::Device;
+    kit.goTo(5, KitScreen::kSound);
+    rig.frames(2);
+    CHECK(session.catchBars() == 1 && session.catchFrom() == -1);
+
+    // Y held: RIGHT twice is 4 bars (the ends stop), and the line says so; its let go catches nothing.
+    rig.key(Y, true);
+    CHECK(kit.choosingCatch());
+    rig.tap(RIGHT);
+    CHECK(session.catchBars() == 2 && catchChoiceLine(session) == "CATCH THE LAST 2 BARS OF THE MIX");
+    rig.tap(RIGHT, 2);
+    CHECK(session.catchBars() == 4 && kit.cursorLane() == 5 && kit.cursorColumn() == KitScreen::kSound); // (the cursor stays)
+    rig.key(Y, false);
+    CHECK(!kit.choosingCatch() && wavNames(folder).empty());
+    // Two and a half bars played: 4 asked, the 2 whole ones given, and it says ONLY; FIT is their 32 steps.
+    rig.tap(START);
+    rig.render(2 * 16 * kStep + 8 * kStep);
+    rig.tap(Y);
+    CHECK(std::strcmp(track.laneSample[5], "catches/catch 1") == 0 && track.laneFit[5] == 32 && session.caughtBars() == 2);
+    CHECK(kit.said() == "CAUGHT ONLY 2 BARS AS \"CATCHES/CATCH 1\"");
+    std::vector<float> file;
+    CHECK(readWav(folder + "/catches/catch 1.wav", file) && file.size() == 32u * kStep);
+    // Four whole bars, then LEFT to 2: the last 2 of them.
+    rig.render(2 * 16 * kStep);
+    kit.goTo(6, KitScreen::kSound);
+    rig.tap(Y);
+    CHECK(track.laneFit[6] == 64 && session.caughtBars() == 4 && kit.said().find("CAUGHT THE LAST 4 BARS AS") == 0);
+    rig.key(Y, true);
+    rig.tap(LEFT);
+    rig.key(Y, false);
+    CHECK(session.catchBars() == 2);
+    rig.tap(LEFT, 3); // (Y let go: the cursor moves again)
+    CHECK(kit.cursorColumn() != KitScreen::kSound || kit.cursorLane() == 6);
+    kit.goTo(7, KitScreen::kSound);
+    rig.tap(Y);
+    CHECK(track.laneFit[7] == 32 && session.caughtBars() == 2 && kit.said().find("CAUGHT THE LAST 2 BARS AS") == 0);
+    // Another button while Y is held: its let go catches nothing.
+    const std::size_t files = wavNames(folder).size();
+    rig.key(Y, true);
+    rig.tap(X);
+    rig.key(Y, false);
+    CHECK(wavNames(folder).size() == files);
+
+    // The stick, with Y held, is one choice a push, however long it is held; the cursor stays.
+    session.stepCatchBars(-1);
+    CHECK(session.catchBars() == 1);
+    rig.key(Y, true);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(30);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(2);
+    CHECK(session.catchBars() == 2 && kit.cursorColumn() == KitScreen::kSound);
+    rig.key(STICK_DOWN, true);
+    rig.frames(30);
+    CHECK(session.catchFrom() == 0 && kit.cursorLane() == 7);
+    rig.key(STICK_DOWN, false);
+    rig.frames(2);
+    rig.key(STICK_DOWN, true);
+    rig.frames(2);
+    rig.key(STICK_DOWN, false);
+    CHECK(session.catchFrom() == 0); // (only one track: the end stops)
+    rig.frames(1);
+    CHECK(catchChoiceLine(session).find("CATCH THE LAST 2 BARS OF 1 ") == 0);
+    rig.key(Y, false);
+    // One track, muted: caught alone all the same, from when it was chosen (no soloing). The mix has nothing now.
+    session.addTrack(TrackKind::Jx3p);
+    session.setMuted(0, true);
+    rig.frames(2);
+    rig.render(3 * 16 * kStep);
+    rig.frames(1);
+    kit.goTo(4, KitScreen::kSound);
+    rig.tap(Y);
+    CHECK(std::string(track.laneSample[4]).find("catches/") == 0 && session.caughtFrom() == 0 && session.caughtBars() == 2);
+    CHECK(kit.said().find("CAUGHT THE LAST 2 BARS OF 1 ") == 0);
+    CHECK(readWav(folder + "/" + track.laneSample[4] + ".wav", file) && file.size() == 32u * kStep);
+    CHECK(std::fabs(file[0]) > 0.05f && std::fabs(file[16 * kStep]) > 0.05f); // its kicks, though muted
+    CHECK(rig.engine->lastBars(2).bars == 2);
+    float mixPeak = 0.f;
+    for (float v : rig.engine->lastBars(2).sound) mixPeak = std::fmax(mixPeak, std::fabs(v));
+    CHECK(mixPeak < 1e-4f);
+    // A track with nothing playing: nothing to catch, and it says of what.
+    session.stepCatchFrom(1);
+    CHECK(session.catchFrom() == 1);
+    rig.frames(1);
+    rig.render(3 * 16 * kStep);
+    kit.goTo(3, KitScreen::kSound);
+    rig.tap(Y);
+    CHECK(track.laneSample[3][0] == 0 && kit.said().find("NOTHING OF 2 ") == 0);
+    // UP back past the first track: the mix; the ends stop.
+    session.stepCatchFrom(-1);
+    session.stepCatchFrom(-1);
+    session.stepCatchFrom(-1);
+    CHECK(session.catchFrom() == -1);
+    rig.tap(START);
+
+    // The sampler: the same Y.
+    session.setMuted(0, false);
+    CHECK(session.addTrack(TrackKind::Sampler));
+    rig.project().track = 2;
+    rig.frames(2);
+    rig.tap(START);
+    rig.render(2 * 16 * kStep + 100);
+    rig.key(Y, true);
+    rig.tap(RIGHT); // (2 to 4: 2 whole bars played, so ONLY 2)
+    rig.key(Y, false);
+    CHECK(rig.project().tracks[2].sample[0] == 0);
+    rig.tap(Y);
+    CHECK(std::string(rig.project().tracks[2].sample).find("catches/") == 0 && session.caughtBars() == 2);
+    CHECK(rig.app.sampler().said().find("CAUGHT") == 0);
+    rig.tap(START);
+}
+
+// BOUNCE THIS TRACK INTO SAMPLES (batch S3; Session::Bounce::ToSamples): the track alone, muted or not, its scene
+// gone round once first (a sound ringing past the end is in its start), 1, 2 or 4 whole bars, mono, in samples'
+// "bounces" folder, where the list sees it; a tap of A on FIT fits it to its bars.
+void testBouncingIntoSamples() {
+    const std::string folder = tempFolder("samples") + "/into";
+    mkdir(folder.c_str(), 0755);
+    writeWav(folder + "/long.wav", steady(1.f, 0.2f), 48000); // a second: 8 steps at 120 BPM
+    Rig rig(folder);
+    Session& session = rig.session();
+    session.setLaneSample(0, 1, "long");
+    rig.app.drums().setStep(1, 12, 1.f); // the long one on step 13, ringing 4 steps past the bar's end
+    session.setMuted(0, true);           // muted: bounced all the same
+    CHECK(session.addTrack(TrackKind::Jx3p)); // another track, playing: not in it
+    NotePattern& bar = rig.project().tracks[1].notes[0][0];
+    bar.notes[0].step = 4;
+    bar.notes[0].pitch = 57;
+    bar.notes[0].length = 2.f;
+    bar.notes[0].velocity = 0.8f;
+    session.sendNotePattern(1, 0);
+    rig.project().track = 0;
+    rig.frames(2);
+    const unsigned lists = session.sampleFiles();
+    CHECK(session.startBounce(Session::Bounce::ToSamples)); // (no bounces folder needed)
+    session.finishBounce();
+    CHECK(session.bounceFiles() == 1 && session.bounceSampleSteps() == 16);
+    const std::string name = session.bounceSample();
+    CHECK(name == "bounces/drums 1");
+    std::vector<float> file;
+    CHECK(readWav(folder + "/" + name + ".wav", file) && file.size() == 16u * kStep);
+    // The second time round: the long one from the bar before rings in its first 4 steps (the first time round, silence).
+    CHECK(file.size() == 16u * kStep && std::fabs(std::fabs(file[100]) - 0.2f * kTrackLevel) < 0.01f);
+    CHECK(file.size() == 16u * kStep && std::fabs(std::fabs(file[static_cast<std::size_t>(3 * kStep)]) - 0.2f * kTrackLevel) < 0.01f);
+    CHECK(file.size() == 16u * kStep && std::fabs(std::fabs(file[static_cast<std::size_t>(14 * kStep)]) - 0.2f * kTrackLevel) < 0.01f);
+    float between = 0.f; // steps 5 to 8, where only the JAX-EP's note would sound: nothing
+    for (int i = 5 * kStep; i < 8 * kStep && file.size() == 16u * kStep; ++i) between = std::fmax(between, std::fabs(file[static_cast<std::size_t>(i)]));
+    CHECK(between < 1e-3f);
+    // The open lists hear of it on the next frame; it is in the list.
+    rig.frames(1);
+    CHECK(session.sampleFiles() == lists + 1);
+    const std::vector<std::string> names = session.sampleNames();
+    CHECK(std::find(names.begin(), names.end(), name) != names.end());
+    rig.frames(1);
+    CHECK(session.sampleFiles() == lists + 1); // (once)
+    // On a lane, a tap of A on FIT fits it to its bar.
+    session.setMuted(0, false);
+    session.setLaneSample(0, 3, name);
+    session.view = View::Device;
+    rig.app.kit().goTo(3, KitScreen::kFit);
+    rig.frames(2);
+    rig.tap(A);
+    CHECK(rig.project().tracks[0].laneFit[3] == 16);
+    // The next is "drums 2"; a named track goes by its name.
+    CHECK(session.startBounce(Session::Bounce::ToSamples));
+    session.finishBounce();
+    CHECK(session.bounceSample() == "bounces/drums 2");
+    session.setTrackName(0, "BEAT");
+    CHECK(session.startBounce(Session::Bounce::ToSamples));
+    session.finishBounce();
+    CHECK(session.bounceSample() == "bounces/beat 1");
+    // How long: 4, 2 or 1 whole bars within twenty seconds; under a bar, all of it.
+    Project song;
+    song.tracks[0].kind = TrackKind::Drums;
+    song.tracks[0].bars[0] = 4;
+    song.tempo = 120.f;
+    CHECK(samplesBounceSteps(song, 0, 48000.f) == 64);
+    song.tempo = 40.f; // 4 bars 24 s: 2
+    CHECK(samplesBounceSteps(song, 0, 48000.f) == 32);
+    song.tempo = 48.f; // 4 bars 20 s exactly: 4
+    CHECK(samplesBounceSteps(song, 0, 48000.f) == 64);
+    song.tracks[0].bars[0] = 3; // 3 bars: 2 of them
+    CHECK(samplesBounceSteps(song, 0, 48000.f) == 32);
+    song.steps[0] = 8; // cut to 8 steps: all of it
+    CHECK(samplesBounceSteps(song, 0, 48000.f) == 8);
+    // Nowhere to put it: no bounce.
+    Rig bare;
+    CHECK(!bare.session().startBounce(Session::Bounce::ToSamples));
 }
 
 // A recording is a step of undo (gesture audit G04): CATCH, B on SOUND, a pick or a take is put back
@@ -4936,6 +5138,8 @@ int main(int argc, char** argv) {
     testRollingALanesStarts();
     testTheKitScreen();
     testCatch();
+    testCatchingBarsAndATrack();
+    testBouncingIntoSamples();
     testUndoPutsBackARecording();
     testTheSamplerTrack();
     testTheSamplersPictureIsTall();

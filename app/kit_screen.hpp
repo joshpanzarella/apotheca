@@ -31,8 +31,9 @@
 //           Session::loadFolderKit), put on at once; B with A still held: the kit as it was when A went down, heard.
 //           Y: SAVE the kit as it is now as KIT 1, KIT 2... Hold B a second on one of your own:
 //           delete its file (the track keeps its sound).
-//   Y       CATCH: the last bar the song played, all of it as it was
-//           heard, becomes a recording on this lane, fitted to one bar.
+//   Y       CATCH (on its let go): the last bars the song played become a recording on this lane, fitted
+//           to their steps. Hold Y + LEFT / RIGHT: 1, 2 or 4 bars; hold Y + UP / DOWN: of THE MIX (as it
+//           was heard) or one track alone (batch S3; catch_key.hpp). The line says what a let go catches.
 //   R1      RECORD from a USB microphone or interface onto this lane: once
 //           to start (it waits for sound), again to stop. Twenty seconds at most.
 //           While a take waits or runs, R1 on any lane or column stops it, and on the KIT stop
@@ -79,6 +80,7 @@
 #include <string>
 #include <vector>
 
+#include "catch_key.hpp"
 #include "input.hpp"
 #include "sample_picker.hpp"
 #include "session.hpp"
@@ -122,7 +124,8 @@ public:
     void goTo(int lane, int column) { lane_ = lane; column_ = column; }
     int cursorLane() const { return lane_; }
     int cursorColumn() const { return column_; }
-    bool fitsByTap() const; // a recording on the lane, found: a tap of A on FIT fits it to its bars (G45)
+    bool fitsByTap() const;
+    bool choosingCatch() const { return catchKey_.held(); } // Y held: CATCH's choice (for tests) // a recording on the lane, found: a tap of A on FIT fits it to its bars (G45)
     const std::string& said() const { return said_; }
     const ui::Playhead& playhead() const { return head_; }
     enum { kSound, kFit, kChoke, kEdit, kColumns }; // (kEdit: the sound's picture)
@@ -211,7 +214,8 @@ private:
     void saveSound();           // R1 in the EDIT view: what the lane plays, as a new recording (batch S1)
     SamplePicker picker_;
     void openPicker();
-    void catchBar(); // Y: the last bar the song played, onto this lane (the list of recordings with nothing in it asks too)
+    void catchBar(); // Y: the last bars the song played, onto this lane (the list of recordings with nothing in it asks too)
+    CatchKey catchKey_; // Y's tap and its held choice (catch_key.hpp)
     void record();   // R1: record from the input onto this lane, or stop
     unsigned sampleFilesSeen_ = 0; // sampleFiles() the picker's lists were read at: behind, it reads them again
     std::vector<std::string> names_; // the recordings there were when A went down

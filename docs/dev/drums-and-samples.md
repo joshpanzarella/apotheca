@@ -69,7 +69,7 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   `sample_test` (`testTheSamplersEnd`).
 - **A recording is 20 s at most** (owner, 2026-11-18: it was 10): `kMaxSampleSeconds` for a file read
   (a longer one is cut there and faded) and `Recorder::kMaxSeconds` for RECORD; `sample_test` holds both
-  (15 s kept whole). **Catch is not tied to it**: the engine remembers `kCatchFrames`, ten seconds.
+  (15 s kept whole). **A catch is held to it since batch S3** (`kCatchLongest`, 20 s; the rings are 25 s: below).
 - **While a take waits or runs, R1 stops it from any stop of a screen that records** (gesture audit
   G34, 2026-11-25; `Session::recordingNow`, checked first in each screen's `onButton`): the kit's lanes,
   every column and the KIT stop (where R1 did nothing), the sampler's every stop (on PRESET R1 opened
@@ -920,3 +920,43 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   held the bar's clock had run and the file went at once, the bar never seen. The same for the kit's
   EDIT and VOICE holds and a list of recordings' (`SamplePicker::callOffDelete`). `app_test`
   `testATabCallsOffAHoldOfB`, `sample_test` `testATabCallsOffARecordingsDelete`.
+- **CATCH of 1, 2 or 4 bars, of the mix or one track** (batch S3, 2026-11-25; sampling-gaps.md 4, owner: "I like all
+  of it"). It was always the last bar of everything.
+  - **The gesture** (`app/catch_key.hpp`, one `CatchKey` on the kit's lanes, the sampler and CLOUD's first page): **a
+    tap of Y catches, on its LET GO** (it was on the press); **hold Y + LEFT / RIGHT: 1, 2, 4 bars; hold Y + UP /
+    DOWN: THE MIX, then track 1 to the last** (the ends stop: tracks stop at the ends, owner 2026-11-14). The stick,
+    Y held, is one choice a push ("choices click once per push"), and moves no cursor. A let go after a choice, or
+    after any other button, catches nothing (as L1's own tap on the grids). The line at the top says what a let go
+    would catch (`catchChoiceLine`: "CATCH THE LAST 2 BARS OF THE MIX", "... OF 3 BASS"), the hints LEFT / RIGHT
+    bars, UP / DOWN mix or a track, Y catch. Claude's pick, 2026-11-25, open to the owner: it uses "hold Y + a
+    direction" as the drum grid does (a held choice of Y's own job), the brief's own example. **No new mark**:
+    the existing said line carries it. The empty list of recordings' Y (G42) catches with the choice as it is.
+  - **The choice is the session's, not the song's** (`Session::catchBars`, `catchFrom`; Claude's pick, 2026-11-25,
+    open to the owner): not saved, back to 1 bar of THE MIX at start. A track past the last there is reads as THE
+    MIX (`catchFrom`).
+  - **The engine** (`Engine::lastBars(bars, track)`): every bar line is kept (`lineAt_`, the last 8, with the steps
+    of the bar ending there), not only the last; a Play, a panic or a hand played after a stop begins a new run
+    (`runFrom_`), as the one-bar catch had it. The last `bars` WHOLE bars of the run, bar line to bar line, their
+    steps added up (FIT goes to them: 2 bars of 3/4 are 24). **Fewer where fewer were played** (4 asked after 2:
+    2, and the line says CAUGHT ONLY 2 BARS: Claude's pick, 2026-11-25, open to the owner; the other way was to
+    refuse) or where they would pass **20 s** (`kCatchLongest`, the longest recording, owner 2026-11-18: 4 bars
+    down to 48 BPM, 3 at 40). None whole: `bars` bars' worth up to now, as before. The lines are read with a
+    check (read again if a line was drawn meanwhile), never a lock.
+  - **The rings are 25 s** (`kCatchFrames` 1,200,000; it was 480,000): the last whole bars end at the last bar line
+    and up to a bar has gone by since, so 4 bars at 48 BPM (20 s) need 25 s behind the press. **Two rings**, the
+    mix and one track, **4.8 MB each, made with the engine** (on the heap: an `Engine` on a stack is the size it
+    was). Memory: 9.6 MB an engine, against 1.9 MB before (a bounce makes a second engine for its time).
+  - **One track: the cheapest honest way** is a second ring fed by the track the app names every frame
+    (`Engine::setCatchTrack`, from `Session::update`, as `setScopeTrack`). It follows that track from the next chunk
+    (`following_`, `followFrom_`); its bars count only from then, and what was before is never handed out as that
+    track's (another track's sound would be). Fed in `renderTrack` where the scope is (after the track's effects
+    and level, before its mute gate and pan: **muted or not, with no soloing**; not its sends); a chunk the track
+    is not worked out (no instrument) writes silence. With THE MIX chosen it costs nothing. Rejected: catching from
+    the next bar after the press (the brief's example), since then a catch would wait up to 4 bars and every screen
+    would need a waiting state; the ring catches the past at once, as CATCH always has. **Asked of the owner**:
+    whether "the track under the cursor" meant the track the screen is on; here any track can be chosen, so a synth
+    can be caught onto a drum lane or a sampler (to print it).
+  - Undo: a caught recording on a lane is still one step of undo (G04): `catchLastBar` puts it on through
+    `setLaneSample` / `setTrackSample` as before. Tests: `engine_test` `testCatchingSeveralBars`,
+    `testCatchingOneTrack`; `sample_test` `testCatchingBarsAndATrack`; `app_test` (CLOUD's Y held); `textsize`
+    (the choice at its longest at XL, the hints).

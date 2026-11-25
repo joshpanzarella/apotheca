@@ -151,7 +151,15 @@ struct PlaceBits {
             for (std::uint64_t w = word[k]; w; w &= w - 1) f(k * 64 + __builtin_ctzll(w));
     }
 };
-constexpr int kCatchFrames = 480000; // what the engine remembers of its own output: ten seconds
+// CATCH (batch S3, 2026-11-25; it was ten seconds and one bar): what is caught is at most twenty seconds, the
+// longest recording (owner, 2026-11-18), so 4 bars of 16 steps are caught down to 48 BPM, where they are 20 s
+// exactly (at 40 BPM, 3 bars). The engine remembers 25 s of its own output, and of the track CATCH follows: the
+// last whole bars end at the last bar line, and up to a bar has gone by since (5 s at 48 BPM). Each ring is
+// 4.8 MB, made with the engine, on the heap (an Engine itself stays as it was on a stack).
+constexpr int kCatchLongest = 960000; // the longest catch: twenty seconds at 48 kHz
+constexpr int kCatchFrames = 1200000; // the rings: 25 seconds
+constexpr int kCatchMostBars = 4;   // CATCH takes 1, 2 or 4 bars
+constexpr int kBarLinesKept = 8;    // the bar lines remembered (more than kCatchMostBars + 1)
 constexpr float kShortestNote = 0.05f; // of a step
 
 struct Command {
@@ -513,7 +521,7 @@ public:
     void readScope(float* out, int count) const; // the newest `count` samples (up to kScopeSize), oldest first
 
     float sampleRate() const { return sampleRate_; }
-    // Catch: the engine remembers the last ten seconds it put out (both
+    // Catch: the engine remembers the last twenty seconds it put out (both
     // sides mixed to one). This copies out the last whole bar the song
     // played, exactly, bar line to bar line, also just after it has been
     // stopped. If there is no such bar (the song is in its first bar, or
@@ -522,6 +530,21 @@ public:
     // `steps`, if given: how many steps that bar had (12 in a scene of 3/4, fewer in a scene's short
     // last bar; 16 for the bar's worth up to now), so what is caught can be fitted to them.
     std::vector<float> lastBar(int* steps = nullptr) const;
+    // CATCH of 1, 2 or 4 bars (batch S3, 2026-11-25), of the whole mix (`track` -1) or of one track alone
+    // (what that track puts out after its effects and its level, before its mute and pan: caught without
+    // soloing). The last `bars` whole bars the song played, bar line to bar line; fewer where fewer were
+    // played since Play (or since the ring began following that track, setCatchTrack), or where `bars`
+    // of them would not fit the twenty seconds. None at all: `bars` bars' worth up to now, as lastBar's, no
+    // longer than what has been heard of the track. From the control thread; allocates.
+    struct Caught {
+        std::vector<float> sound;
+        int steps = kSteps; // how many steps it is (to fit it to)
+        int bars = 0;       // how many whole bars it is; 0: a bar's worth up to now, not whole bars
+    };
+    Caught lastBars(int bars, int track = -1) const;
+    // The track a second ring remembers, for a CATCH of one track (-1: none, and nothing is spent on it).
+    // Set from the app every frame, as setScopeTrack; the ring follows it from the next chunk.
+    void setCatchTrack(int track) { catchTrack_.store(track, std::memory_order_relaxed); }
 
     // True from a Panic until the output has opened again.
     bool silenced() const { return silenced_.load(std::memory_order_relaxed); }
@@ -1056,12 +1079,22 @@ private:
     float volume_ = 1.f, volumeNow_ = 1.f; // where it is going, and where it has got to (it glides, so a change does not click)
     std::unique_ptr<std::atomic<float>[]> caught_; // a ring of kCatchFrames
     std::atomic<std::uint64_t> caughtCount_{0};    // frames ever written to it
-    std::atomic<std::uint64_t> barEndedAt_{0};     // caughtCount_ when the last whole bar ended
-    std::atomic<int> barFrames_{0};                // how long that bar was; 0: none yet
-    std::atomic<int> barSteps_{kSteps};            // ...and how many steps it had (stored before barFrames_)
-    std::uint64_t barBeganAt_ = 0;
     long long barBeganStep_ = 0;                   // stepsFired_ when the bar playing began
     std::atomic<int> barFramesNow_{96000};         // a bar at the present tempo
+    // The last bar lines (CATCH of 1, 2 or 4 bars): caughtCount_ at each, and the steps of the bar that ended
+    // there, in a ring of kBarLinesKept. lineCount_ only grows; the lines from runFrom_ on are of one run of
+    // the song (a Play, a panic or a hand played after a stop begins another). Read with a check, no lock.
+    std::atomic<std::uint64_t> lineAt_[kBarLinesKept];
+    std::atomic<int> lineSteps_[kBarLinesKept];
+    std::atomic<std::uint64_t> lineCount_{0}, runFrom_{0};
+    // CATCH of one track: a second ring, fed by the track catchTrack_ names, from followFrom_ on.
+    std::unique_ptr<std::atomic<float>[]> trackCaught_;
+    std::atomic<int> catchTrack_{-1};
+    std::atomic<int> following_{-1};             // the track the ring holds since followFrom_ (-1: none)
+    std::atomic<std::uint64_t> followFrom_{0};
+    int chunkCatch_ = -1;        // the track followed this chunk (the audio thread's)
+    bool chunkTapped_ = false;   // ...and it was worked out this chunk (written by whoever rendered it)
+    std::uint64_t chunkAt_ = 0;  // caughtCount_ at this chunk's first frame
 
     std::uint32_t dice_ = 0x2545F491u; // for chance; runs on, so no two bars need match
 

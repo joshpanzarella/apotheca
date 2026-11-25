@@ -178,7 +178,7 @@ if(APOTHECA_BUILD_APP)
   find_package(Threads REQUIRED)
   # Everything of the app but main(): compiled ONCE, and linked by the program and by every test
   # of it. (It used to be compiled again for each of the nine tests: ten times in all.)
-  add_library(apotheca_app STATIC app/app.cpp app/lane_edit.cpp app/bench_run.cpp app/chords.cpp app/controls.cpp app/sampler_screen.cpp app/settings_screen.cpp app/samples.cpp app/stretch.cpp app/stretch_smooth.cpp app/fx_screen.cpp app/fx_picture.cpp app/icons.cpp app/stills.cpp app/input.cpp app/kit_screen.cpp app/note_screen.cpp app/pattern_screen.cpp app/pattern_slices.cpp
+  add_library(apotheca_app STATIC app/app.cpp app/lane_edit.cpp app/bench_run.cpp app/chords.cpp app/controls.cpp app/sampler_screen.cpp app/settings_screen.cpp app/samples.cpp app/stretch.cpp app/stretch_smooth.cpp app/fx_screen.cpp app/fx_picture.cpp app/icons.cpp app/stills.cpp app/input.cpp app/kit_screen.cpp app/catch_key.cpp app/note_screen.cpp app/pattern_screen.cpp app/pattern_slices.cpp
       app/instruments.cpp app/synth_screen.cpp app/mod_knob.cpp app/mod_screen.cpp app/recorder.cpp app/session.cpp app/session_songs.cpp app/session_synth.cpp app/session_samples.cpp app/kits.cpp app/sampler_presets.cpp app/song_file.cpp app/song_screen.cpp app/synth_spec.cpp app/presets.cpp app/drum_voices.cpp app/transfer.cpp app/wifi.cpp app/midi.cpp app/bounce.cpp app/sample_picker.cpp app/name_keys.cpp app/designer.cpp app/design_page.cpp
       app/text.cpp app/ui.cpp app/realtime.cpp app/redraw.cpp app/lights.cpp
       app/version.cpp)

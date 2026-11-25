@@ -2538,6 +2538,118 @@ static void testCatchingTheLastBar() {
     CHECK(bar.size() == 288000u && about(bar[0], 0.2f * kTrackLevel));
 }
 
+// CATCH of 1, 2 or 4 bars (batch S3, 2026-11-25): the last whole bars, bar line to bar line; fewer where
+// fewer were played since Play or 4 would not fit the twenty seconds; their steps added up (3/4: 12 a bar).
+static void testCatchingSeveralBars() {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.4f)));
+    engine->send(step(0, 0, 1.f));
+    engine->send(make(Command::Play, 0, 0, 1));
+    renderFrames(*engine, 16 * kStep + 3 * kStep);
+    // One whole bar played: 4 asked, 1 given (no bar's worth from before Play).
+    Engine::Caught c = engine->lastBars(4);
+    CHECK(c.bars == 1 && c.steps == 16 && c.sound.size() == 16u * kStep);
+    CHECK(c.sound == engine->lastBar());
+    renderFrames(*engine, 2 * 16 * kStep);
+    c = engine->lastBars(4);
+    CHECK(c.bars == 3 && c.steps == 48 && c.sound.size() == 48u * kStep);
+    for (int bar = 0; bar < 3; ++bar) CHECK(about(c.sound[static_cast<std::size_t>(bar * 16 * kStep)], 0.2f * kTrackLevel));
+    renderFrames(*engine, 3 * 16 * kStep);
+    c = engine->lastBars(4);
+    CHECK(c.bars == 4 && c.steps == 64 && c.sound.size() == 64u * kStep);
+    // Two bars are the last two of the four, to the sample; one is the last bar.
+    const Engine::Caught two = engine->lastBars(2);
+    CHECK(two.bars == 2 && two.steps == 32 && std::vector<float>(c.sound.begin() + 32 * kStep, c.sound.end()) == two.sound);
+    CHECK(engine->lastBars(1).sound == std::vector<float>(c.sound.begin() + 48 * kStep, c.sound.end()));
+    CHECK(engine->lastBars(3).bars == 3 && engine->lastBars(9).bars == 4); // (the screens ask 1, 2 or 4; the engine gives up to 4)
+    // A bar line drawn between: the bars move on by one.
+    engine->send(step(0, 4, 1.f));
+    renderFrames(*engine, 16 * kStep);
+    const Engine::Caught moved = engine->lastBars(4);
+    CHECK(moved.bars == 4 && std::vector<float>(moved.sound.begin(), moved.sound.begin() + 48 * kStep) == std::vector<float>(c.sound.begin() + 16 * kStep, c.sound.end()));
+    CHECK(about(moved.sound[static_cast<std::size_t>(48 * kStep + 4 * kStep)], 0.2f * kTrackLevel));
+    // Played again: the bars before are another run. Two steps in, 2 bars' worth up to now, not whole bars.
+    engine->send(make(Command::Play, 0, 0, 1));
+    renderFrames(*engine, 2 * kStep);
+    c = engine->lastBars(2);
+    CHECK(c.bars == 0 && c.steps == 32 && c.sound.size() == 32u * kStep && about(c.sound[c.sound.size() - 2 * kStep], 0.2f * kTrackLevel));
+    engine->send(make(Command::Stop));
+
+    // 3/4: two bars are 24 steps.
+    Command meter = make(Command::SetSceneMeter, 0, 12);
+    meter.scene = 0;
+    engine->send(meter);
+    engine->send(make(Command::Play, 0, 0, 1));
+    renderFrames(*engine, 3 * 12 * kStep + kStep);
+    c = engine->lastBars(2);
+    CHECK(c.bars == 2 && c.steps == 24 && c.sound.size() == 24u * kStep);
+    engine->send(make(Command::Stop));
+    meter.a = 16;
+    engine->send(meter);
+
+    // 48 BPM: 4 bars are 20 s to the frame, and fit. 40 BPM: 4 would be 24 s; the 3 that fit are given.
+    engine->send(make(Command::SetTempo, 0, 0, 0, 48.f));
+    engine->send(make(Command::Play, 0, 0, 1));
+    renderFrames(*engine, 4 * 240000 + 1000);
+    c = engine->lastBars(4);
+    CHECK(c.bars == 4 && c.sound.size() == static_cast<std::size_t>(kCatchLongest) && about(c.sound[0], 0.2f * kTrackLevel));
+    renderFrames(*engine, 239000 - kMaxBlock); // ...to the end of the bar after: still all four
+    CHECK(engine->lastBars(4).bars == 4);
+    engine->send(make(Command::SetTempo, 0, 0, 0, 40.f));
+    engine->send(make(Command::Play, 0, 0, 1));
+    renderFrames(*engine, 4 * 288000 + 1000);
+    c = engine->lastBars(4);
+    CHECK(c.bars == 3 && c.steps == 48 && c.sound.size() == 3u * 288000u && about(c.sound[0], 0.2f * kTrackLevel));
+}
+
+// CATCH of one track (batch S3): a second ring, fed by the track setCatchTrack names, from when it began
+// following it; that track alone, after its effects and level, muted or not; another track's is not there.
+static void testCatchingOneTrack() {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.4f)));
+    CHECK(engine->addDrumTrack(1));
+    CHECK(engine->setLaneSample(1, 0, twoHalves(500, 0.1f, 0.1f)));
+    engine->send(step(0, 0, 1.f));
+    engine->send(step(0, 8, 1.f, 1));
+    // Not following any: nothing of a track, and nothing spent.
+    engine->send(make(Command::Play, 0, 0, 1));
+    renderFrames(*engine, 2 * 16 * kStep + kStep);
+    CHECK(engine->lastBars(1, 1).sound.empty());
+    // Following track 1 from part-way through bar 3: its bars are counted from the first whole one after.
+    engine->setCatchTrack(1);
+    renderFrames(*engine, 16 * kStep);
+    Engine::Caught c = engine->lastBars(4, 1);
+    CHECK(c.bars == 0 && c.sound.size() == 16u * kStep); // (no whole bar of it yet: what was heard of it, a bar's worth)
+    CHECK(engine->lastBars(1, 0).sound.empty());          // another track's: not there
+    renderFrames(*engine, 2 * 16 * kStep);
+    c = engine->lastBars(4, 1);
+    CHECK(c.bars == 2 && c.steps == 32 && c.sound.size() == 32u * kStep);
+    for (int bar = 0; bar < 2; ++bar) {
+        CHECK(c.sound[static_cast<std::size_t>(bar * 16 * kStep)] == 0.f); // track 0's hit is not in it
+        CHECK(about(c.sound[static_cast<std::size_t>((bar * 16 + 8) * kStep)], 0.1f * kTrackLevel));
+    }
+    // The mix has both, the same bars.
+    const Engine::Caught mix = engine->lastBars(2);
+    CHECK(mix.bars == 2 && about(mix.sound[0], 0.2f * kTrackLevel) && about(mix.sound[8 * kStep], 0.1f * kTrackLevel));
+    // Muted, it is caught all the same (no soloing needed, and no un-muting).
+    engine->send(make(Command::SetTrackHeard, 1, 0));
+    renderFrames(*engine, 2 * 16 * kStep);
+    c = engine->lastBars(1, 1);
+    CHECK(c.bars == 1 && about(c.sound[8 * kStep], 0.1f * kTrackLevel));
+    CHECK(engine->lastBars(1).sound[8 * kStep] == 0.f); // (and the mix does not have it)
+    // A track with nothing on it: silence, not what the ring held before (the ring gone all the way round with track 1).
+    renderFrames(*engine, kCatchFrames);
+    engine->setCatchTrack(5);
+    renderFrames(*engine, 2 * 16 * kStep);
+    c = engine->lastBars(1, 5);
+    CHECK(c.bars == 1 && c.sound.size() == 16u * kStep && peakOf(c.sound) == 0.f);
+    // Followed again: from then on, not before.
+    engine->setCatchTrack(1);
+    renderFrames(*engine, kStep);
+    c = engine->lastBars(1, 1);
+    CHECK(c.bars == 0 && c.sound.size() == static_cast<std::size_t>(kStep));
+}
+
 // ---- the effects ------------------------------------------------------------------------
 
 // Run a signal through one effect by itself.
@@ -3778,6 +3890,8 @@ int main() {
     testEffectsOneByOne();
     testEffectsInTheEngine();
     testCatchingTheLastBar();
+    testCatchingSeveralBars();
+    testCatchingOneTrack();
     testTheCatchSaysItsSteps();
     testPanic();
     testANoteEndsPartWayThroughAStep();

@@ -226,8 +226,9 @@ recording; let go and it stops (its RELEASE runs). A tap plays a moment
 (0.35 s), as before. Pressed again, it starts again from the top. A setting
 is also heard as it is changed, when the song is stopped.
 
-**Y is Catch** here too: the last bar the song played becomes this track's
-recording. Eight notes at a time. SELECT + B puts back the one it had.
+**Y is Catch** here too: the last bars the song played become this track's
+recording (hold Y + a direction for 1, 2 or 4 bars, of the mix or one track:
+see Catch under the kit). Eight notes at a time. SELECT + B puts back the one it had.
 
 ## The list of recordings
 
@@ -251,7 +252,7 @@ column. It opens in the folder of the recording that is on, on it.
 | B | **A tap**: put back what was there before the list opened, a lane's cut (EDIT's START and END) with it. On a recording or a folder (where holding B deletes), only a quick tap does: held longer than a quarter of a second, or with another button pressed meanwhile, letting go does nothing and the list stays where it is |
 | X | **While it is still playing: it plays on to its end.** Nothing playing: hear it again; **held, it plays until you let go**, or to its end; a tap plays a moment |
 | **Hold B** | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. Or an **empty folder**: one with anything in it is never deleted. Let go before the bar is full and nothing happens |
-| Y / R1 | **With nothing on the card at all** (no recording, no folder), the list says where recordings come from: **Y catches the last bar and R1 records**, as on the page it was opened from. The list closes as a tap of B closes it |
+| Y / R1 | **With nothing on the card at all** (no recording, no folder), the list says where recordings come from: **Y catches the last bars and R1 records**, as on the page it was opened from. The list closes as a tap of B closes it |
 | START | Play / stop, with the list still open |
 
 **Folders.** Folders inside `samples` (kicks, breaks, vocals...), and
@@ -860,6 +861,7 @@ and A starts nothing meanwhile.
 | THE SONG | One WAV of the whole song: every scene as many times as it plays, then **for as long as its echoes and tails take to die away**. Muted tracks are left out. |
 | EACH TRACK | One WAV for every track by itself (stems), all the same length (the longest one's), so they line up in any other program |
 | THIS TRACK | The track being worked on, by itself |
+| TRACK TO SAMPLES | **A loop of this track, made into a recording** (to put on a lane or a sampler, and to free the handheld's work: a busy synth played back as a recording costs little). The track being worked on by itself (muted or not), the scene you are on played round once and then **the second time round kept**, so whatever rings past its end is heard at its start, as when it loops. **1, 2 or 4 whole bars** (the most the scene has, within twenty seconds: 4 bars at 120 BPM, 2 at 40); a scene under a bar, all of it. One channel, 16-bit 48 kHz, in `samples/bounces` ("bounces/bass 1", after the track's name), where the list of recordings sees it at once. On a lane, **a tap of A on FIT fits it to its bars**. The row says `done: "bounces/bass 1" in recordings` |
 | MIDI FILE | One MIDI file of the whole song (Type 1): every scene as many times as it plays, one track per track, at the song's tempo. Notes and chords as written, with ratchets and nudges; drums as General MIDI on channel 10. Muted tracks are left out. Chance, swing and feel, strum, glide and automation have no MIDI in them and are left out |
 
 A bounce is **not recorded as the song plays**. A second engine works the
@@ -892,7 +894,8 @@ far. Nobody knows how long a tail will be until it ends, so there is no
 percentage to give.
 
 Files are 48 kHz, 16-bit stereo, in a `bounces` folder beside the program.
-The WiFi page lists them under BOUNCES, to play, download or delete.
+The WiFi page lists them under BOUNCES, to play, download or delete. (TRACK TO
+SAMPLES is the exception: its one file is a recording, in `samples/bounces`.)
 
 ## Automation
 
@@ -1317,9 +1320,9 @@ track makes a sound at once.
   R1; elsewhere R1 turns the page). ADVANCED opens on POSITION the first time,
   and a page turn never lands on RECORDING, so R1 records only once you have
   moved onto it. **While a take waits or runs, R1 stops it** on any page and
-  any box (but with X held on a macro, R1 is its MOD's, as ever). **Y on SOURCE is CATCH**: the last bar the
-  song played becomes this track's recording (SELECT + B puts back the one it
-  had). B in the list leaves the
+  any box (but with X held on a macro, R1 is its MOD's, as ever). **Y on SOURCE is CATCH**: the last bars the
+  song played become this track's recording, as the kit's Catch (hold Y + a direction picks the bars and what;
+  SELECT + B puts back the one it had). B in the list leaves the
   recording as it was. "THE BUILT-IN TONE" at the top of the list is none.
 - **MAIN shows the recording**, between PRESET and the macros: its outline,
   the part the grains come from lit (POSITION give or take SPRAY), POSITION a
@@ -2328,13 +2331,30 @@ screen, another track, Play or a new song stops it.
 **L1 is Slices**: the PATTERN tab, zoomed into this lane's recording cut
 into slices (see "Slices: chopping a break").
 
-**Y is Catch.** The engine remembers the last ten seconds it played. Y on a
-lane takes the last whole bar the song played, everything as it was heard,
-saves it as `catch 1.wav`, `catch 2.wav`... in `samples/catches`, and puts
-it on that lane fitted to one bar. It works just after stopping too. With no
-whole bar to take (the first bar, or after playing by hand), it takes the
-last bar's worth of sound. SELECT + B puts back what the lane had, its FIT,
-cut and synth voice with it (the catch's file stays in `catches`).
+**Y is Catch.** The engine remembers the last 25 seconds it played. A tap of Y on a
+lane takes the last whole bars the song played, saves them as `catch 1.wav`, `catch 2.wav`... in
+`samples/catches`, and puts them on that lane **fitted to their steps** (2 bars: 32). It catches when Y
+is let go. It works just after stopping too. SELECT + B puts back what the lane had, its FIT, cut and
+synth voice with it (the catch's file stays in `catches`).
+
+**Hold Y to choose what it catches**; the line at the top says it, e.g. `CATCH THE LAST 2 BARS OF THE MIX`:
+
+| Hold Y + | Does |
+| --- | --- |
+| LEFT / RIGHT | **1, 2 or 4 bars** (the ends stop) |
+| UP / DOWN | **THE MIX** (everything, as it was heard), or **one track alone**, 1 to the last (the ends stop) |
+
+The stick does the same, one choice a push. Let go of Y after choosing and nothing is caught; tap it
+to catch. The choice stays until you change it (it is not saved with the song).
+
+- **Fewer bars than asked**: since Play only 2 whole bars have gone by, so 4 asked gives 2, and the
+  line says `CAUGHT ONLY 2 BARS`. With no whole bar at all (the first bar, or after playing by hand) it
+  takes that many bars' worth of the sound up to now.
+- **Twenty seconds at most**, the longest recording: 4 bars fit down to 48 BPM; at 40 BPM, 3.
+- **One track alone**: what that track puts out after its own effects and level, **muted or not, with
+  no soloing**: a muted bass can be caught while the rest plays on. Not its pan, and not what it sends
+  to the buses. The handheld starts remembering a track when you choose it, so its bars count from
+  then: choose, let a bar or more go by, then tap Y.
 
 **R1 is Record.** With a USB microphone or audio interface plugged into the
 USB-C port: R1 on a lane starts it waiting for sound, so there is no silence

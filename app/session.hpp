@@ -53,6 +53,10 @@ constexpr float kBounceQuietSeconds = 7.f;
 constexpr float kBounceAfterSeconds = 0.5f;
 constexpr float kBounceCapSeconds = 480.f;
 constexpr float kBounceFadeSeconds = 1.f;
+constexpr const char* kBouncesInSamples = "bounces"; // a ToSamples bounce's folder, inside the samples folder
+// A ToSamples bounce's length in steps: 4, 2 or 1 whole bars of the scene's meter, the most it has within twenty
+// seconds (kCatchLongest); a scene under a bar, all of it (bounce.cpp).
+int samplesBounceSteps(const Project& song, int scene, float rate);
 
 // Listens to a bounce's tail, block by block, and says when it is over and
 // how much of it belongs in the file. No engine, no file: it can be tested
@@ -360,11 +364,23 @@ public:
     // Asked for from the SONG screen: the keyboard for the current track's name (it lives on the SET tab).
     // When it is done, the SONG screen comes back.
     bool wantTrackName = false;
-    // Catch: the last bar the song played (everything, as it was heard)
-    // becomes a recording, "catch 1", "catch 2"..., and goes on this lane
-    // fitted to one bar. Returns its name, or "" if there was only silence
-    // to catch or nowhere to keep it.
+    // Catch: the last bars the song played become a recording, "catch 1", "catch 2"..., and go on this lane
+    // fitted to their steps (on a sampler or CLOUD: its recording). Returns its name, or "" if there was only
+    // silence to catch or nowhere to keep it. What is caught is CATCH's choice (batch S3, 2026-11-25; it was
+    // always one bar of everything): 1, 2 or 4 bars (Engine::lastBars: fewer where fewer were played, or 4
+    // would pass twenty seconds), of the whole mix as it was heard, or of one track alone (after its effects
+    // and level; muted or not, no soloing). The choice is the session's, not the song's (Claude's pick,
+    // 2026-11-25, open to the owner), and the app hands catchFrom() to the engine every frame
+    // (Engine::setCatchTrack), so the engine remembers that track from when it was chosen.
     std::string catchLastBar(int track, int lane);
+    // The next free name "folder/stem N" in the samples folder (N from 1; capitals not counted), or "" if none.
+    std::string freeSampleName(const std::string& folder, const std::string& stem) const;
+    int catchBars() const { return catchBars_; } // 1, 2 or 4
+    int catchFrom() const { return catchFrom_ < project.trackCount() ? catchFrom_ : -1; } // -1: the mix; else a track there is
+    void stepCatchBars(int by);  // 1, 2, 4: the ends stop
+    void stepCatchFrom(int by);  // the mix, then track 1, 2... to the last there is: the ends stop
+    int caughtBars() const { return caughtBars_; } // the last catch: its whole bars (0: a bar's worth up to now)
+    int caughtFrom() const { return caughtFrom_; } // ...and what it was of (-1: the mix)
     // SAVE AS A RECORDING (batch S1, 2026-11-25; sampling-gaps.md 1): what the lane plays, as EDIT and FIT make it (a
     // DRUM SYNTH voice, the built-in drum too: not its VOLUME, a hit's level or step effects, or the track's
     // effects), written as a new recording, 16-bit mono 48 kHz as CATCH writes, on this (the app) thread. Of it,
@@ -557,7 +573,13 @@ public:
     // The song, or its tracks, written out as WAV files (or the song as one MIDI file) in the
     // "bounces" folder. Worked out off to one side, not recorded as it plays, so it is
     // whole whatever the handheld could keep up with.
-    enum class Bounce { Song, EachTrack, ThisTrack, MidiFile };
+    // ToSamples (batch S3, 2026-11-25; sampling-gaps.md 4): BOUNCE THIS TRACK INTO SAMPLES. The track alone (muted
+    // or not), the scene being worked on played round as a loop, the second time round kept (so what rings
+    // past its end is in its start, as when it loops), 1, 2 or 4 whole bars of it (the most it has, within 20
+    // s; a scene under a bar, all of it), one channel, 16-bit 48 kHz as CATCH writes, in the samples folder's
+    // "bounces" folder ("bounces/bass 1") where the list of recordings sees it. A tap of A on a lane's FIT then
+    // fits it to its bars (G45). bounceSample() and bounceSampleSteps() say what it made.
+    enum class Bounce { Song, EachTrack, ThisTrack, MidiFile, ToSamples };
     void useBounceFolder(const std::string& folder); // (and what a killed bounce left there is removed)
     bool startBounce(Bounce what); // false if one is under way, or there is nowhere to put it
     bool bouncing() const;
@@ -570,6 +592,8 @@ public:
     void pretendBounce(float progress, float tailSeconds);    // as if one were under way, this far along: for a still of the screen
     int bounceFiles() const;       // once done: how many files were written
     std::string bounceLast() const; // ...and the name of the last one
+    std::string bounceSample() const; // a ToSamples bounce, once done: the recording's name ("bounces/bass 1"); "" if none
+    int bounceSampleSteps() const;    // ...and its steps (what FIT fits it to)
     void finishBounce();           // wait for it (the tests, and closing down)
     // Hold B on SET's BOUNCE: told to stop, nothing kept, and NOT waited for (the thread may be loading the
     // song, its samples read and its FIT lanes stretched, which it cannot leave half-way): bouncing() until it
@@ -1010,14 +1034,20 @@ private:
         Bounce what = Bounce::Song;
         int track = 0, files = 0;
         std::string sampleFolder, base, last;
+        std::string sample; // ToSamples: the recording's name, chosen when it starts
+        int scene = 0, sampleSteps = 0;
+        bool seen = false;  // ...its being done told to the open lists (the app thread's)
         float cap = kBounceCapSeconds;
         std::atomic<float> progress{0.f}, tail{-1.f};
         std::atomic<bool> done{false}, cancel{false};
         std::thread thread;
     };
     std::shared_ptr<BounceJob> bounce_;
+    static void bounceToSamples(BounceJob& job); // (on the bounce's thread)
     std::string bounceFolder_;
     float bounceCap_ = kBounceCapSeconds;
+    int catchBars_ = 1, catchFrom_ = -1; // CATCH's choice (catchLastBar)
+    int caughtBars_ = 0, caughtFrom_ = -1;
     std::string patternsNow() const;                 // the patterns as text: a step of undo
     // (moved: a "next scene" lies between; see moveScenesHere). Only undo and redo call it, each just
     // after patternsNow(): readStep takes the text of each track now from what that made.

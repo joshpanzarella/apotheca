@@ -23,7 +23,8 @@
 //                RELEASE  fade out when the key is let go
 //                LOOP     go round from START to END while the key is held
 //                LEVEL
-//   Y          CATCH: the last bar the song played becomes this track's recording
+//   Y          CATCH (on its let go): the last bars the song played become this track's recording. Hold
+//              Y + LEFT / RIGHT: 1, 2 or 4 bars; + UP / DOWN: of THE MIX or one track (catch_key.hpp)
 //   L1         CHOP: the recording in 16 even slices from C1 up, each at its own pitch
 //              (PITCH moves every slice together). START, END and LOOP work within a
 //              slice. Not with a multisample: its zones win.
@@ -43,6 +44,7 @@
 #include <string>
 #include <vector>
 
+#include "catch_key.hpp"
 #include "input.hpp"
 #include "name_keys.hpp"
 #include "sample_picker.hpp"
@@ -118,7 +120,8 @@ private:
     bool stepped_ = false; // A was used to change something: letting go is not a tap
     SamplePicker picker_;
     void openPicker();
-    void catchBar(); // Y: the last bar the song played, as the recording (the list of recordings with nothing in it asks too)
+    void catchBar(); // Y: the last bars the song played, as the recording (the list of recordings with nothing in it asks too)
+    CatchKey catchKey_; // Y's tap and its held choice (catch_key.hpp)
     void record();   // R1: record from the input, or stop
     unsigned sampleFilesSeen_ = 0; // sampleFiles() the picker's lists were read at: behind, it reads them again
     std::vector<std::string> names_;

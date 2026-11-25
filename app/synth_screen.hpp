@@ -26,7 +26,8 @@
 // between PRESET and the macros (POSITION a brass line, SPRAY a lit band about it, each grain sounding
 // a tick at its place), and its first page's first stop is RECORDING: a tap of A the list of
 // recordings (the sampler's, with its preview), hold A + up / down the next one, R1 there RECORD
-// (elsewhere R1 is the next page), Y anywhere on that page CATCH (the last bar the song played).
+// (elsewhere R1 is the next page), Y anywhere on that page CATCH (the last bars the song played, on
+// its let go; hold Y + a direction chooses the bars and what: catch_key.hpp).
 // While a take waits or runs, R1 on any page and stop stops it (before SAVE and a page turned).
 //
 // ADVANCED is every setting. For Phazed that is nine pages: the sound as a
@@ -44,6 +45,7 @@
 #include <string>
 #include <vector>
 
+#include "catch_key.hpp"
 #include "input.hpp"
 #include "mod_knob.hpp"
 #include "name_keys.hpp"
@@ -242,7 +244,8 @@ private:
     std::vector<std::string> names_; // the recordings, read as A goes down on RECORDING
     unsigned namesSeen_ = 0;        // sampleFiles() names_ was read at: behind, the next step reads it again
     void openPicker();
-    void catchBar(); // Y on CLOUD's first page: the last bar the song played, as its recording (the empty list of recordings asks too)
+    void catchBar(); // Y on CLOUD's first page: the last bars the song played, as its recording (the empty list of recordings asks too)
+    CatchKey catchKey_; // Y's tap and its held choice there (catch_key.hpp)
     void record();   // R1 on CLOUD's RECORDING: record from the input, or stop
     void stepRecording(int by);
     void hearFromList(SamplePicker::Hear how);

@@ -66,7 +66,11 @@ Engine::Engine() {
     for (int& n : steps_) n = 0;
     for (int& m : meter_) m = kSteps;
     caught_.reset(new std::atomic<float>[kCatchFrames]);
+    trackCaught_.reset(new std::atomic<float>[kCatchFrames]);
     for (int i = 0; i < kCatchFrames; ++i) caught_[i].store(0.f, std::memory_order_relaxed);
+    for (int i = 0; i < kCatchFrames; ++i) trackCaught_[i].store(0.f, std::memory_order_relaxed);
+    for (auto& at : lineAt_) at.store(0, std::memory_order_relaxed);
+    for (auto& n : lineSteps_) n.store(kSteps, std::memory_order_relaxed);
     for (auto& s : scope_) s.store(0.f, std::memory_order_relaxed);
     for (Track& track : tracks_) {
         for (auto& m : track.meters) m.store(0.f, std::memory_order_relaxed);
@@ -239,23 +243,71 @@ bool Engine::setLaneSample(int track, int lane, std::unique_ptr<SampleData> samp
 }
 
 std::vector<float> Engine::lastBar(int* steps) const {
-    const std::uint64_t now = caughtCount_.load(std::memory_order_relaxed);
-    std::uint64_t end = barEndedAt_.load(std::memory_order_relaxed);
-    int frames = barFrames_.load(std::memory_order_acquire);
-    if (steps) *steps = barSteps_.load(std::memory_order_relaxed);
-    // No whole bar, or one so long ago that the ring has gone round past it:
-    // the last bar's worth up to now.
-    if (frames <= 0 || now - (end - static_cast<std::uint64_t>(frames)) > static_cast<std::uint64_t>(kCatchFrames)) {
-        frames = barFramesNow_.load(std::memory_order_relaxed);
-        if (frames > kCatchFrames) frames = kCatchFrames;
-        end = now;
-        if (steps) *steps = kSteps; // (a bar's worth at the present tempo)
+    Caught caught = lastBars(1);
+    if (steps) *steps = caught.steps;
+    return std::move(caught.sound);
+}
+
+Engine::Caught Engine::lastBars(int bars, int track) const {
+    bars = bars < 1 ? 1 : (bars > kCatchMostBars ? kCatchMostBars : bars);
+    const bool alone = track >= 0;
+    const std::atomic<float>* ring = alone ? trackCaught_.get() : caught_.get();
+    Caught out;
+    std::uint64_t now = 0, lines[kCatchMostBars + 1] = {};
+    int steps[kCatchMostBars + 1] = {};
+    int whole = 0;
+    std::uint64_t from = 0; // the first frame the ring holds of what is asked for
+    // The bar lines of this run, read with a check: read again if the audio thread drew one meanwhile.
+    for (int tries = 0; tries < 8; ++tries) {
+        const std::uint64_t count = lineCount_.load(std::memory_order_acquire), run = runFrom_.load(std::memory_order_acquire);
+        const int follows = following_.load(std::memory_order_acquire);
+        const std::uint64_t followFrom = followFrom_.load(std::memory_order_relaxed);
+        now = caughtCount_.load(std::memory_order_relaxed);
+        const std::uint64_t have = count - run < static_cast<std::uint64_t>(kBarLinesKept) ? count - run : kBarLinesKept;
+        whole = have >= 1 ? static_cast<int>(have) - 1 : 0;
+        if (whole > bars) whole = bars;
+        for (int j = 0; j <= whole; ++j) {
+            const std::uint64_t n = count - 1 - static_cast<std::uint64_t>(whole) + static_cast<std::uint64_t>(j);
+            lines[j] = lineAt_[n % kBarLinesKept].load(std::memory_order_relaxed);
+            steps[j] = lineSteps_[n % kBarLinesKept].load(std::memory_order_relaxed);
+        }
+        from = now > static_cast<std::uint64_t>(kCatchFrames) ? now - kCatchFrames : 0;
+        if (alone) {
+            if (follows != track) return out; // the ring holds another track (or none): nothing of this one
+            if (followFrom > from) from = followFrom;
+        }
+        if (lineCount_.load(std::memory_order_acquire) == count && runFrom_.load(std::memory_order_acquire) == run &&
+            following_.load(std::memory_order_acquire) == follows)
+            break;
     }
-    std::vector<float> out(static_cast<std::size_t>(frames), 0.f);
+    // The most whole bars, up to `bars`, that the ring still holds (of the track: since it began following it).
+    int b = whole;
+    while (b > 0 && (lines[whole - b] < from || lines[whole] - lines[whole - b] > static_cast<std::uint64_t>(kCatchLongest))) --b;
+    std::uint64_t end = now;
+    int frames = 0;
+    if (b > 0) {
+        end = lines[whole];
+        frames = static_cast<int>(end - lines[whole - b]);
+        out.bars = b;
+        out.steps = 0;
+        for (int j = whole - b + 1; j <= whole; ++j) out.steps += steps[j];
+    } else {
+        // No whole bar: `bars` bars' worth up to now (no more than the ring holds of it).
+        const int bar = barFramesNow_.load(std::memory_order_relaxed);
+        // (Of the mix, from before the engine began is silence; of a track, only what was heard of it.)
+        std::uint64_t most = alone ? now - from : static_cast<std::uint64_t>(kCatchLongest);
+        if (most > static_cast<std::uint64_t>(kCatchLongest)) most = kCatchLongest;
+        frames = bars * bar;
+        if (static_cast<std::uint64_t>(frames) > most) frames = static_cast<int>(most);
+        out.steps = frames == bars * bar ? kSteps * bars : static_cast<int>(std::lround(static_cast<double>(frames) * kSteps / (bar > 0 ? bar : 1)));
+        if (out.steps < 1) out.steps = 1;
+        if (alone && frames <= 0) return out;
+    }
+    out.sound.assign(static_cast<std::size_t>(frames), 0.f);
     for (int i = 0; i < frames; ++i) {
         const std::uint64_t back = static_cast<std::uint64_t>(frames - i);
         if (back > end) continue; // before the engine began: silence
-        out[static_cast<std::size_t>(i)] = caught_[(end - back) % kCatchFrames].load(std::memory_order_relaxed);
+        out.sound[static_cast<std::size_t>(i)] = ring[(end - back) % kCatchFrames].load(std::memory_order_relaxed);
     }
     return out;
 }
@@ -1139,7 +1191,7 @@ void Engine::apply(const Command& c) {
     // played by hand after it stopped, or on a panic.
     if (c.type == Command::Play || c.type == Command::Panic ||
         (!playing_ && (c.type == Command::Trigger || c.type == Command::NoteOn))) {
-        barFrames_.store(0, std::memory_order_relaxed);
+        runFrom_.store(lineCount_.load(std::memory_order_relaxed), std::memory_order_release); // (the lines before are another run)
     }
     if (gate_ == Gate::Shut && !panicHeld_ && !cutEverything_ &&
         (c.type == Command::Play || c.type == Command::Trigger || c.type == Command::NoteOn)) {
@@ -1934,15 +1986,15 @@ int Engine::sceneSteps(int scene) const {
 // A bar line, for Catch: the bar that has just ended is the last whole bar (where it began and
 // ended), and the next begins here. Called where a bar's first step fires, and where a song that
 // stops at its end stops (no step fires there, and its last bar is a whole bar all the same).
+// Each line is kept (the last kBarLinesKept), so CATCH can take 1, 2 or 4 bars (batch S3); the first of a
+// run (Play's first step: a Play always begins a run, apply) only marks where its first bar begins.
 void Engine::barLine() {
     const std::uint64_t now = caughtCount_.load(std::memory_order_relaxed);
-    if (!firstStep_ && now - barBeganAt_ <= static_cast<std::uint64_t>(kCatchFrames)) {
-        const long long steps = stepsFired_ - barBeganStep_; // (a scene of 3/4: 12; a short last bar: fewer)
-        barSteps_.store(steps >= 1 && steps <= kSteps ? static_cast<int>(steps) : kSteps, std::memory_order_relaxed);
-        barFrames_.store(static_cast<int>(now - barBeganAt_), std::memory_order_release);
-        barEndedAt_.store(now, std::memory_order_relaxed);
-    }
-    barBeganAt_ = now;
+    const long long steps = stepsFired_ - barBeganStep_; // (a scene of 3/4: 12; a short last bar: fewer)
+    const std::uint64_t n = lineCount_.load(std::memory_order_relaxed);
+    lineAt_[n % kBarLinesKept].store(now, std::memory_order_relaxed);
+    lineSteps_[n % kBarLinesKept].store(!firstStep_ && steps >= 1 && steps <= kSteps ? static_cast<int>(steps) : kSteps, std::memory_order_relaxed);
+    lineCount_.store(n + 1, std::memory_order_release);
     barBeganStep_ = stepsFired_;
 }
 
@@ -2691,6 +2743,11 @@ void Engine::renderTrack(int t) {
         }
         scopeWritten_.store(written, std::memory_order_relaxed);
     }
+    if (t == chunkCatch_) { // CATCH of this track alone: as the scope hears it (after its effects and level)
+        for (int i = 0; i < frames; ++i)
+            trackCaught_[(chunkAt_ + static_cast<std::uint64_t>(i)) % kCatchFrames].store(0.5f * (left[i] + right[i]) * track.level, std::memory_order_relaxed);
+        chunkTapped_ = true;
+    }
     float peak = chunkPeaks_[t];
     const float gateTo = track.heard ? 1.f : 0.f, gateStep = 1.f / (0.005f * sampleRate_);
     const float glide = 1.f / (kSendGlideSeconds * sampleRate_);
@@ -2999,6 +3056,17 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
         tracks_[t].hitsNow = 0;
     }
     chunkScope_ = scopeTrack_.load(std::memory_order_relaxed);
+    // CATCH of one track: the ring follows the track the app names (from this chunk, if it is another).
+    chunkAt_ = caughtCount_.load(std::memory_order_relaxed);
+    int follow = catchTrack_.load(std::memory_order_relaxed);
+    if (follow < 0 || follow >= kNumTracks) follow = -1;
+    if (follow != chunkCatch_) {
+        following_.store(-1, std::memory_order_relaxed);
+        followFrom_.store(chunkAt_, std::memory_order_relaxed);
+        following_.store(follow, std::memory_order_release);
+        chunkCatch_ = follow;
+    }
+    chunkTapped_ = false;
     if (workers_.empty() || count < 2) {
         for (int i = 0; i < count; ++i) renderTrack(active_[i]);
     } else {
@@ -3084,6 +3152,8 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
         for (int i = 0; i < frames; ++i, ++at) {
             caught_[at % kCatchFrames].store(0.5f * (interleaved[2 * i] + interleaved[2 * i + 1]), std::memory_order_relaxed);
         }
+        if (chunkCatch_ >= 0 && !chunkTapped_) // the track followed was not worked out (none there): silence
+            for (int i = 0; i < frames; ++i) trackCaught_[(chunkAt_ + static_cast<std::uint64_t>(i)) % kCatchFrames].store(0.f, std::memory_order_relaxed);
         caughtCount_.store(at, std::memory_order_relaxed);
         barFramesNow_.store(static_cast<int>(samplesPerStep_ * kSteps), std::memory_order_relaxed);
     };

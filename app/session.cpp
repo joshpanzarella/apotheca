@@ -399,6 +399,11 @@ void Session::update(Uint32 nowMs) {
     // QUEUED MUTES: the engine has set (or called off) every gate of the last asking.
     if (mutesWaiting_ && engine.heardDone() == mutesAsked_) mutesWaiting_ = false;
     now_ = nowMs;
+    engine.setCatchTrack(catchFrom()); // CATCH of one track: the engine remembers the one chosen (-1: none, nothing spent)
+    if (bounce_ && bounce_->done.load() && bounce_->what == Bounce::ToSamples && !bounce_->seen) { // a bounce into samples: open lists see it
+        bounce_->seen = true;
+        if (bounce_->files > 0) ++sampleFiles_;
+    }
     if (wifi_.here()) wifi_.update(nowMs, transferOn(), view == View::Settings && wifiLooking); // (each call on the WiFi's own thread)
     engine.collectGarbage();
     {

@@ -766,8 +766,11 @@ std::string Session::catchLastBar(int track, int lane) {
     if (sampleFolder_.empty() || track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return "";
     const bool sampler = holdsRecording(project.tracks[track].kind); // its one recording; the lane does not matter
     if (!sampler && project.tracks[track].kind != TrackKind::Drums) return "";
-    int barSteps = kSteps;
-    const std::vector<float> bar = engine.lastBar(&barSteps);
+    const int from = catchFrom();
+    const Engine::Caught caught = engine.lastBars(catchBars_, from);
+    caughtBars_ = caught.bars, caughtFrom_ = from;
+    const std::vector<float>& bar = caught.sound;
+    const int barSteps = caught.steps;
     float peak = 0.f;
     for (float v : bar) peak = std::fabs(v) > peak ? std::fabs(v) : peak;
     if (peak < 1e-4f) return ""; // nothing was playing
@@ -784,9 +787,22 @@ std::string Session::catchLastBar(int track, int lane) {
         setTrackSample(track, name);
     } else {
         setLaneSample(track, lane, name);
-        setLaneFit(track, lane, barSteps); // it is the bar's steps long (12 in 3/4: review 2026-11-23, it was always 16), and stays so when the tempo moves
+        setLaneFit(track, lane, barSteps); // it is its bars' steps long (12 a bar in 3/4: review 2026-11-23, it was always 16), and stays so when the tempo moves
     }
     return name;
+}
+
+void Session::stepCatchBars(int by) {
+    static const int stops[3] = {1, 2, 4};
+    int at = catchBars_ >= 4 ? 2 : catchBars_ - 1;
+    at += by > 0 ? 1 : (by < 0 ? -1 : 0);
+    catchBars_ = stops[at < 0 ? 0 : (at > 2 ? 2 : at)];
+}
+
+void Session::stepCatchFrom(int by) {
+    const int to = catchFrom() + (by > 0 ? 1 : (by < 0 ? -1 : 0));
+    catchFrom_ = to < -1 ? -1 : (to >= project.trackCount() ? project.trackCount() - 1 : to);
+    engine.setCatchTrack(catchFrom()); // (and every frame, update)
 }
 
 namespace {
@@ -847,6 +863,19 @@ Session::SaveSound Session::saveLaneSound(int track, int lane, float start, floa
         return SaveSound::Saved;
     }
     return SaveSound::Failed;
+}
+
+std::string Session::freeSampleName(const std::string& folder, const std::string& stem) const {
+    if (sampleFolder_.empty()) return "";
+    std::vector<std::string> taken = sampleNames(); // capitals not counted: a card may not tell them apart
+    for (std::string& have : taken) have = lowered(have);
+    for (int number = 1; number < 10000; ++number) {
+        const std::string candidate = numbered(folder, lowered(stem), number);
+        if (!sampleNameOk(candidate) || recordingThere(sampleFolder_, candidate)) continue;
+        if (std::find(taken.begin(), taken.end(), lowered(candidate)) != taken.end()) continue;
+        return candidate;
+    }
+    return "";
 }
 
 std::string Session::savedLine(SaveSound how, const std::string& name) {
