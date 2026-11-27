@@ -5,6 +5,8 @@
 // no words: everything said is said by the heading and the dials.
 #include <SDL.h>
 
+#include <cstddef>
+
 #include "apotheca/effects.hpp"
 
 namespace apotheca {
@@ -41,5 +43,9 @@ SDL_Point dialPoint(int cx, int cy, float radius, float part);
 // dim detent mark over the top.
 void drawDial(SDL_Renderer* r, int cx, int cy, int radius, int ring, float part, int choices, int which, SDL_Color lit, float mark,
               bool fromMiddle = false);
+// How many dials have been worked out afresh this run (a dial drawn again the same is drawn from what was kept: the
+// tests count on it).
+unsigned long dialsWorkedOut();
+std::size_t dialsKept(); // how many are kept (at most 32)
 
 } // namespace apotheca

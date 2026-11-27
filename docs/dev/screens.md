@@ -229,6 +229,24 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     VINTAGE (BROWN, GRUVBOX: a knurled cap, an engraved scale, a dotted grid), NEON (DRACULA, TOKYO, MONOKAI: a
     glow ring outside the lit arc, a lit pointer, curves with a 1-pixel `kLine` afterglow), CLEAN (the rest: a
     thin ring, a dot pointer, no grid). Shapes only: colours stay the theme's jobs. A new theme falls to CLEAN.
+  - **FX drawing: cheap, and the same to the pixel** (2026-11-27; app 0.981's `logs/sound.log` had a late sound
+    block about twice a second on FX only, the pass about 11.5 ms, drawing 5.4). What a frame sent SDL, counted with
+    an `LD_PRELOAD` shim round SDL's render calls (Brown, the GLES2 renderer, the last frame of a still): FILTER
+    **9,272 rectangles, 58,544 vertices** (SDL gives the GPU two triangles a rectangle, six vertices) against the
+    drum grid's 181 and 6,180; the dials were most of it, a 1x1 rectangle a pixel, and each frame worked out 5,000
+    square roots and angles a dial. Now: (1) `Ink::add` makes the last rectangle longer when the next goes on along
+    its row at its height (touching: the same pixels once each; over its end only in a solid colour, where twice is
+    once); (2) **a dial worked out is kept** (`drawDial`, 32 of them, the latest) with everything it came from:
+    place, size, setting, choice, MOD mark, the lit colour, the style and the five theme colours it uses. Anything
+    different is worked out afresh, so a kept dial cannot be out of date and nothing new tells the redraw anything;
+    the picture is still drawn from its settings every frame (it moves while playing). FILTER is now 1,466
+    rectangles, 11,708 vertices (the piano roll's is 13,530; every view in `measured.md`). **No texture is drawn into**: a target texture is
+    a render-pass switch on a tiled GPU, a new thing for a driver already suspected in two FX crashes, and it needs a
+    rule for when it is stale; the kept dials need none. Pinned by `ui_test`'s `testFxDrawingIsPixelForPixel` (every
+    dial shape twice over and every effect's picture at rest, turned and playing, in all eight themes, folded into a
+    number a theme taken from the drawing as it was) and `testKeptDialsFollowTheTheme`. The GPU draw calls (SDL's
+    GLES2 renderer joins runs of rectangles and of letters) stay about 100 a frame, the grid's 80. **Not seen on the
+    handheld**: whether the late blocks on FX went.
   - `--frames DIR` with `--shot` keeps every frame drawn (DIR/0000.bmp on): how to see what moves without a
     handheld.
   - What is automated in the scene worked on has a purple name and line in its

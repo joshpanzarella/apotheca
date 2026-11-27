@@ -45,6 +45,7 @@
 #include "app.hpp"
 #include "bench_run.hpp"
 #include "drum_voices.hpp"
+#include "late_blocks.hpp"
 #include "realtime.hpp"
 #include "song_file.hpp"
 #include "text.hpp"
@@ -952,9 +953,12 @@ std::string apotheca::probeSoundCard() {
     want.freq = 48000; // as the program asks (main.cpp)
     want.format = AUDIO_F32SYS;
     want.channels = 2;
-    want.samples = 256;
+    want.samples = kCardBlockFrames;
     want.callback = [](void*, Uint8* stream, int bytes) { std::memset(stream, 0, static_cast<std::size_t>(bytes)); };
-    const SDL_AudioDeviceID device = SDL_OpenAudioDevice(nullptr, 0, &want, &have, SDL_AUDIO_ALLOW_ANY_CHANGE);
+    // (Any change but the block's: a block that is not a power of two, allowed to change on a driver that rounds it,
+    // overruns SDL 2.30's own buffer: main.cpp.)
+    const SDL_AudioDeviceID device = SDL_OpenAudioDevice(nullptr, 0, &want, &have,
+                                                         SDL_AUDIO_ALLOW_FREQUENCY_CHANGE | SDL_AUDIO_ALLOW_FORMAT_CHANGE | SDL_AUDIO_ALLOW_CHANNELS_CHANGE);
     const char* driver = SDL_GetCurrentAudioDriver();
     if (!device) return std::string("could not be opened (") + SDL_GetError() + ")";
     SDL_CloseAudioDevice(device);

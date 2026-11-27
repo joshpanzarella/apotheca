@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <functional>
+#include <utility>
 #include <vector>
 
 #include "ui.hpp"
@@ -21,13 +22,27 @@ bool playing() { return gLive && gLive->playing; }
 
 float held(float v) { return v != v ? 0.f : (v < 0.f ? 0.f : (v > 1.f ? 1.f : v)); }
 
-// Rectangles gathered by colour and drawn in one call each (a call a pixel is slow on the handheld's renderer).
+// Rectangles gathered by colour and drawn in one call each (a call a pixel is slow on the handheld's renderer). One
+// that goes on from the last along its row, as tall and at the same height, makes the last longer: the same pixels in
+// far fewer rectangles (a dial's pixels come a row at a time; the handheld's GPU is given each rectangle as two
+// triangles: docs/dev/screens.md, "FX drawing"). Touching, it is the same pixels drawn once each, as before; over
+// the last's own end (a curve's two-pixel columns) only when the colour is solid, where a pixel drawn twice is the
+// pixel drawn once (every theme colour is).
 struct Ink {
     SDL_Color colour;
     std::vector<SDL_Rect> rects;
     explicit Ink(SDL_Color c) : colour(c) {}
     void add(int x, int y, int w, int h) {
-        if (w > 0 && h > 0) rects.push_back({x, y, w, h});
+        if (w <= 0 || h <= 0) return;
+        if (!rects.empty()) {
+            SDL_Rect& last = rects.back();
+            const int end = last.x + last.w;
+            if (last.y == y && last.h == h && (x == end || (colour.a == 255 && x >= last.x && x < end))) {
+                if (x + w > end) last.w = x + w - last.x;
+                return;
+            }
+        }
+        rects.push_back({x, y, w, h});
     }
     void draw(SDL_Renderer* r) const {
         if (rects.empty()) return;
@@ -651,11 +666,37 @@ SDL_Point dialPoint(int cx, int cy, float radius, float part) {
     return {cx + static_cast<int>(std::floor(radius * std::cos(a))), cy + static_cast<int>(std::floor(radius * std::sin(a)))};
 }
 
-void drawDial(SDL_Renderer* r, int cx, int cy, int radius, int ring, float part, int choices, int which, SDL_Color lit, float mark,
-              bool fromMiddle) {
-    part = held(part);
-    const FxStyle style = fxStyle();
-    if (style == FxStyle::Clean) ring = ring > 4 ? 4 : ring; // a thin ring
+namespace {
+
+// A dial worked out is kept with everything it was worked out from (its place, size, setting, colours and the
+// theme's style and colours): drawn again the same, it is the same rectangles, not 5,000 pixels' square roots and
+// angles again. Anything different is worked out afresh, so a kept one is never out of date.
+struct DialKey {
+    int cx, cy, radius, ring, choices, which;
+    float part, mark; // (mark: NaN kept as "none", so two of them are the same)
+    bool marked, fromMiddle;
+    FxStyle style;
+    SDL_Color lit, line, panel, panel2, text, brass;
+};
+bool sameColour4(SDL_Color a, SDL_Color b) { return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a; }
+bool sameBits(float a, float b) { return std::memcmp(&a, &b, sizeof a) == 0; }
+bool sameDial(const DialKey& a, const DialKey& b) {
+    return a.cx == b.cx && a.cy == b.cy && a.radius == b.radius && a.ring == b.ring && a.choices == b.choices && a.which == b.which &&
+           sameBits(a.part, b.part) && a.marked == b.marked && (!a.marked || sameBits(a.mark, b.mark)) && a.fromMiddle == b.fromMiddle &&
+           a.style == b.style && sameColour4(a.lit, b.lit) && sameColour4(a.line, b.line) && sameColour4(a.panel, b.panel) &&
+           sameColour4(a.panel2, b.panel2) && sameColour4(a.text, b.text) && sameColour4(a.brass, b.brass);
+}
+struct KeptDial {
+    DialKey key;
+    std::vector<Ink> inks; // in the order drawn
+};
+constexpr std::size_t kDialsKept = 32; // a screen has at most a dozen; the rest is room for a turn
+std::vector<KeptDial> gKeptDials;
+std::size_t gNextKept = 0;
+unsigned long gDialsWorkedOut = 0;
+
+std::vector<Ink> workOutDial(int cx, int cy, int radius, int ring, float part, int choices, int which, SDL_Color lit, float mark, bool fromMiddle,
+                             FxStyle style) {
     // Where a pixel's centre stands on the ring: how far round it is (0..1), or past the end (> 1, the gap at the foot).
     const auto round = [&](int px, int py, float* d) {
         const float dx = static_cast<float>(px - cx) + 0.5f, dy = static_cast<float>(py - cy) + 0.5f;
@@ -729,13 +770,38 @@ void drawDial(SDL_Renderer* r, int cx, int cy, int radius, int ring, float part,
             brass.add(at.x, at.y, 2, 2);
         }
     }
-    face.draw(r);
-    knurl.draw(r);
-    engraved.draw(r);
-    off.draw(r);
-    on.draw(r);
-    pointer.draw(r);
-    brass.draw(r);
+    // (The order they are drawn in.)
+    return {face, knurl, engraved, off, on, pointer, brass};
+}
+
+} // namespace
+
+unsigned long dialsWorkedOut() { return gDialsWorkedOut; }
+std::size_t dialsKept() { return gKeptDials.size(); }
+
+void drawDial(SDL_Renderer* r, int cx, int cy, int radius, int ring, float part, int choices, int which, SDL_Color lit, float mark,
+              bool fromMiddle) {
+    part = held(part);
+    const FxStyle style = fxStyle();
+    if (style == FxStyle::Clean) ring = ring > 4 ? 4 : ring; // a thin ring
+    const bool marked = mark == mark;
+    const DialKey key{cx, cy, radius, ring, choices, which, part, marked ? mark : 0.f, marked, fromMiddle, style, lit, kLine, kPanel, kPanel2, kText, kBrass};
+    const KeptDial* kept = nullptr;
+    for (std::size_t i = 0; i < gKeptDials.size() && !kept; ++i)
+        if (sameDial(gKeptDials[i].key, key)) kept = &gKeptDials[i];
+    if (!kept) {
+        ++gDialsWorkedOut;
+        KeptDial made{key, workOutDial(cx, cy, radius, ring, part, choices, which, lit, mark, fromMiddle, style)};
+        if (gKeptDials.size() < kDialsKept) {
+            gKeptDials.push_back(std::move(made));
+            kept = &gKeptDials.back();
+        } else {
+            gKeptDials[gNextKept] = std::move(made);
+            kept = &gKeptDials[gNextKept];
+            gNextKept = (gNextKept + 1) % kDialsKept;
+        }
+    }
+    for (const Ink& ink : kept->inks) ink.draw(r);
 }
 
 } // namespace apotheca

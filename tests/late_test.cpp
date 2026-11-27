@@ -6,6 +6,7 @@
 
 #include <SDL.h>
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -30,15 +31,22 @@ static int failures = 0;
 
 namespace {
 
-constexpr std::int64_t kBlock = 5333; // 256 frames at 48 kHz, in microseconds
+constexpr std::int64_t kBlock = 8000; // 384 frames at 48 kHz, in microseconds: the program's block (kCardBlockFrames)
 
 void testTheRule() {
+    // The card holds two blocks (16 ms): late is a gap and a call together past that, when the card ran dry.
+    CHECK(kCardBlockFrames == 384 && kCardHoldsBlocks == 2);
+    CHECK(std::fabs(cardHoldsMs(kCardBlockFrames, 48000) - 16.0) < 1e-9);
+    CHECK(std::fabs(cardHoldsMs(256, 48000) - 32.0 / 3.0) < 1e-9); // the old block's card: 10.7 ms
     CHECK(!LateBlocks::isLate(kBlock, kBlock / 2, kBlock));          // on time
-    CHECK(!LateBlocks::isLate(kBlock * 3 / 2, kBlock, kBlock));       // a block and a half, the call a whole block: not yet
-    CHECK(LateBlocks::isLate(kBlock * 3 / 2 + 1, 0, kBlock));         // past a block and a half after the one before
-    CHECK(LateBlocks::isLate(0, kBlock + 1, kBlock));                 // a call that took longer than its sound
-    CHECK(!LateBlocks::isLate(0, 0, kBlock));                         // back to back (the card catching up)
-    CHECK(!LateBlocks::isLate(1000000, 1000000, 0));                  // no block: nothing is late
+    CHECK(!LateBlocks::isLate(2 * kBlock - 100, 100, kBlock));         // two blocks to the microsecond: not yet
+    CHECK(LateBlocks::isLate(2 * kBlock - 100, 101, kBlock));          // a microsecond more: the card ran dry
+    CHECK(LateBlocks::isLate(2 * kBlock + 1, 0, kBlock));              // past two blocks after the one before
+    CHECK(!LateBlocks::isLate(15000, 100, kBlock));                    // the handheld's 11-15 ms gaps (app 0.981): not heard now
+    CHECK(LateBlocks::isLate(11000, 100, 5333));                       // but heard with the old 256-frame block (10.7 ms)
+    CHECK(LateBlocks::isLate(kBlock, kBlock + 1, kBlock));             // a call longer than its sound, after a usual gap
+    CHECK(!LateBlocks::isLate(0, 0, kBlock));                          // back to back (the card catching up)
+    CHECK(!LateBlocks::isLate(1000000, 1000000, 0));                   // no block: nothing is late
 }
 
 void testCounted() {
@@ -54,7 +62,7 @@ void testCounted() {
     CHECK(late.take(got));
     CHECK(got.count == 1 && got.since == 1 && got.gapUs == 31000 && got.tookUs == 2100 && got.blockUs == kBlock);
     CHECK(!late.take(got)); // taken once
-    late.block(at += kBlock, 9000, kBlock);  // slow
+    late.block(at += kBlock, 9000, kBlock);  // slow: 8 ms after, 9 ms long, past the card's 16
     late.block(at += 20000, 100, kBlock);    // and late
     late.block(at += kBlock, 100, kBlock);   // on time again
     CHECK(late.take(got));
@@ -68,16 +76,27 @@ void testCounted() {
 
 void testTheLine() {
     LateBlock got;
-    got.count = 4, got.since = 1, got.gapUs = 31200, got.tookUs = 2100, got.blockUs = 5333;
+    got.count = 4, got.since = 1, got.gapUs = 31200, got.tookUs = 2100, got.blockUs = 8000;
     char line[400];
     lateLine(line, sizeof line, got, "FX, playing, FX track 1 line 1 FILTER, dial 2 CUTOFF", 18.04, 12.0);
-    CHECK(std::strstr(line, "began 31.2 ms after the one before, took 2.1 ms (a block is 5.3 ms)") != nullptr);
+    CHECK(std::strstr(line, "began 31.2 ms after the one before, took 2.1 ms (a block is 8.0 ms, the card holds 16.0)") != nullptr);
     CHECK(std::strstr(line, "1 since the last line, 4 this run") != nullptr);
     CHECK(std::strstr(line, "dial 2 CUTOFF") != nullptr);
     CHECK(std::strstr(line, "the pass before took 18.0 ms (drawing 12.0)") != nullptr);
     std::vector<char> small(9, 'x');
     lateLine(small.data(), 8, got, nullptr, 0.0, 0.0);
     CHECK(std::strlen(small.data()) == 7 && small[8] == 'x'); // cut short, never past the end
+}
+
+// The log's first line says the block the card took and what the card holds, so the next log confirms the buffer.
+void testTheFirstLine() {
+    char line[240];
+    soundFirstLine(line, sizeof line, "0.99", 48000, 384, "alsa", true, 3, 3);
+    CHECK(std::strcmp(line, "Apotheca 0.99: sound at 48000 Hz, 384 frames a block (8.0 ms), the card holds two: 16.0 ms (alsa); realtime priority granted, helpers 3 of 3") == 0);
+    soundFirstLine(line, sizeof line, "0.99", 48000, 384, "", true, 3, 3);
+    CHECK(std::strstr(line, "16.0 ms (no driver);") != nullptr);
+    soundFirstLine(line, sizeof line, "0.99", 48000, 512, nullptr, false, 0, 3);
+    CHECK(std::strstr(line, "512 frames a block (10.7 ms), the card holds two: 21.3 ms (no driver); realtime priority NOT granted, helpers 0 of 3") != nullptr);
 }
 
 struct Rig {
@@ -159,7 +178,7 @@ int main(int argc, char** argv) {
         void (*run)();
     };
     const Test tests[] = {
-        {"testTheRule", testTheRule}, {"testCounted", testCounted}, {"testTheLine", testTheLine},
+        {"testTheRule", testTheRule}, {"testCounted", testCounted}, {"testTheLine", testTheLine}, {"testTheFirstLine", testTheFirstLine},
         {"testFilterDialsSendNothing", testFilterDialsSendNothing}, {"testCursorWords", testCursorWords},
     };
     for (const Test& test : tests) {
