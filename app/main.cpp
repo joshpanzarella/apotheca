@@ -454,6 +454,8 @@ int main(int argc, char** argv) {
     // What the sound card itself runs at, before the program opens it for its sound: said here and
     // handed to the SPEED TEST, which cannot open a card the program holds (speed plan, batch 0).
     if (!smoke && !shot) {
+        // SDL's ALSA driver then writes what it set to the log: "ALSA: period size = 384, periods = 2, buffer size = 768".
+        setenv("SDL_AUDIO_ALSA_DEBUG", "1", 0);
         const std::string card = probeSoundCard();
         std::printf("sound card: %s\n", card.c_str());
         setenv(kSoundCardVariable, card.c_str(), 1);
@@ -462,13 +464,20 @@ int main(int argc, char** argv) {
     want.freq = 48000; // SDL converts if the device differs
     want.format = AUDIO_F32SYS;
     want.channels = 2;
-    want.samples = 256; // about 5 ms
+    // A block of 384 frames (8 ms), so the card holds 768 (16 ms): a block may begin up to 16 ms after the one
+    // before and nothing is heard (owner, 2026-11-27; late_blocks.hpp, docs/dev/engine.md). SDL2's ALSA driver takes `samples` as the
+    // period and always asks for two periods, so a bigger block is the one way through SDL to a bigger card.
+    want.samples = kCardBlockFrames;
     want.callback = audioCallback;
     want.userdata = &audio;
     SDL_AudioSpec have = {};
     // Tried a few times: the probe above has just let go of the card, and a sound card may take a
     // moment to be free again (never tried on the handheld: a program that would not start is the
     // worst thing a probe could cost).
+    // (Never with SDL_AUDIO_ALLOW_SAMPLES_CHANGE: SDL 2.30, on a driver that rounds the block up to a power of two
+    // as its dummy driver does, then hands the callback 512 frames in a buffer made for 384, and the heap is
+    // overwritten. Without it the callback is always asked for 384, and SDL puts a stream between if the card took
+    // another period. What the card took is in SDL's own ALSA line in the log: SDL_AUDIO_ALSA_DEBUG above.)
     SDL_AudioDeviceID device = 0;
     for (int tries = 0; tries < 10 && !device; ++tries) {
         if (tries) SDL_Delay(100);
@@ -741,10 +750,9 @@ int main(int argc, char** argv) {
         if (!reported && audio.realtime.load() >= 0) {
             reported = true;
             std::printf("realtime priority: %s\n", audio.realtime.load() == 1 ? "granted" : "not granted");
-            char line[200];
-            std::snprintf(line, sizeof line, "Apotheca %s: sound at %d Hz, %d frames a block (%.1f ms); realtime priority %s, helpers %d of %d",
-                          kVersion, have.freq, have.samples, 1000.0 * have.samples / (have.freq > 0 ? have.freq : 48000),
-                          audio.realtime.load() == 1 ? "granted" : "NOT granted", gHelpersRealtime.load(), engine.workers());
+            char line[240];
+            soundFirstLine(line, sizeof line, kVersion, have.freq, have.samples, SDL_GetCurrentAudioDriver(), audio.realtime.load() == 1,
+                           gHelpersRealtime.load(), engine.workers());
             soundLine(line);
         }
         const float peak = engine.trackPeak(0);

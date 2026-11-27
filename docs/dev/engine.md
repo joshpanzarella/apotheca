@@ -28,16 +28,38 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
 - **A helper takes a track by ONE atomic that holds the chunk's count and the next place** (`claims_`:
   count << 16 | place, 0 shut). Read apart, a helper that took a place past one chunk's end and then read
   the next chunk's larger count rendered a track another thread was rendering (review 2026-11-23).
+- **The sound card holds 16 ms: blocks of 384 frames, two of them** (owner, 2026-11-27: "whatever you
+  recommend", on the recommendation of three of the old 256-frame blocks for headroom; `kCardBlockFrames` in
+  `app/late_blocks.hpp`, main.cpp). **It adds about 5.3 ms of delay** to everything heard (10.7 ms of card before,
+  16 ms now). Why: app 0.981's `logs/sound.log` showed the sound thread woken 11 to 15 ms after the block before on
+  the FX screen (once 32 ms), with the card holding 10.7: each a click. How SDL2 makes the card (read in SDL 2.32.10's
+  `src/audio/alsa/SDL_alsa_audio.c`, `ALSA_set_buffer_size`, and 2.0.10's, the same): the period is the nearest ALSA
+  has to `samples`, then `periods_min(2)` and `periods_first`, so **always two periods**; `avail_min` is a period and
+  writing blocks until one is free. There is no hint for a third period, so the only way through SDL to a bigger card
+  is a bigger block: 384 x 2 = 768 frames. The engine makes a block in its own 64-frame pieces (`kMaxBlock`), so a
+  384-frame call sounds as 256 did; commands are taken once a call, so a press waits up to 8 ms to be taken, inside
+  the same delay. A wake-up up to about 8 ms late (on top of the block's own 8) is not heard now, against 5.3 before.
+  **Open it with flags 0, never `SDL_AUDIO_ALLOW_SAMPLES_CHANGE`**: SDL 2.30 on the desk (its dummy driver rounds a
+  block up to a power of two: 384 to 512) then hands the callback 512 frames in a buffer made for 384 and the heap
+  is overwritten (valgrind, 2026-11-27). With 0 the callback is always asked for 384 and SDL puts a stream between
+  if the card took another period. SDL 2.32's ALSA driver takes 384 as it is (`SupportsNonPow2Samples`); a driver
+  that rounds (the stock firmware's SDL may) makes 512 x 2, 21 ms, and still works. main.cpp sets
+  `SDL_AUDIO_ALSA_DEBUG`, so SDL's ALSA driver writes "ALSA: period size = 384, periods = 2, buffer size = 768" to the
+  log (`apotheca.log`); `logs/sound.log`'s first line says the block and what the card holds. The SPEED TEST still
+  plays 256-frame blocks (`bench_run.cpp`): a stricter test, the same share of a core. **Not yet seen on the
+  handheld**: the next logs confirm the period and whether the clicks went.
 - **Late sound blocks are written down on the handheld** (`app/late_blocks.hpp`, main.cpp; owner, 2026-11-25:
   "a noticeable click in the audio when I am moving between the parameters of the filter", FX screen, FILTER, firmware
   app 0.975). The audio callback times itself and the gap since the call before began (a steady clock, three atomics
-  and a count: nothing made, freed or locked). LATE: the call took longer than its sound lasts, or it began more than
-  1.5 blocks after the one before (the card holds two). The screen's thread takes a new one each pass and writes a line
+  and a count: nothing made, freed or locked). LATE (since 2026-11-27): the gap and the call's own time together are
+  more than the card holds, two blocks: the card, full when the call before wrote, ran dry, so it was heard (it was
+  "more than 1.5 blocks, or a call longer than its sound", which wrote lines no one could hear). The screen's thread takes a new one each pass and writes a line
   to `logs/sound.log` (beside `crash.txt`; only where `crash::install` runs, never for a still or a check; at most 1000
-  lines a run) and to the crash trail: the gap, the call's own time, the block's length, how many since the line
+  lines a run) and to the crash trail: the gap, the call's own time, the block's length and the card's, how many since the line
   before and this run, the view, playing or stopped, on FX the track, line, effect and dial (`FxScreen::cursorWords`),
   and the pass before's time (update, drawing and present) and its drawing alone. The log's first line says the rate,
-  the block, and whether realtime priority was granted to the sound and to how many helpers.
+  the block, what the card holds and SDL's driver, and whether realtime priority was granted to the sound and to how
+  many helpers.
   **Reading it**: a click with a late line at that moment is the sound falling behind (a long gap with a short call:
   the thread was not run in time; a long call: the work, or a helper not run). **A click with no late line is not a
   missed block**: look at the sound itself, or the hardware.

@@ -5,12 +5,16 @@
 #include <SDL.h>
 
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <memory>
 #include <vector>
 
 #include "apotheca/engine.hpp"
 #include "canvas.hpp"
+#include "fx_picture.hpp"
+#include "fx_screen.hpp"
 #include "input.hpp"
 #include "note_marks.hpp"
 #include "ui.hpp"
@@ -1562,7 +1566,144 @@ static void testGlideLineRects() {
     CHECK(squares > 800 && rects * 2 < squares);
 }
 
-int main(int, char**) {
+
+// ---- The FX screen's dials and pictures, pixel for pixel (2026-11-27: drawn cheaper, with no change seen) ----
+// Every dial shape and every effect's picture (at rest, turned, playing) drawn in every theme on the software
+// renderer, each picture's pixels folded into one number a theme. The numbers were taken from the drawing as it was
+// before the rectangles were joined and the dials kept (app 0.981), so a change to what is drawn shows here. The
+// dials go in an order where each differs from the one before in one thing, and the whole run is drawn twice: a
+// dial drawn from one kept for another, or a joined rectangle that covers a pixel it should not, changes a number.
+namespace {
+std::uint64_t foldPixels(std::uint64_t h, const std::vector<Uint32>& pixels) {
+    for (Uint32 p : pixels) {
+        h ^= p;
+        h *= 1099511628211ull;
+    }
+    return h;
+}
+std::uint64_t fxDrawingHash(Canvas& c) {
+    std::uint64_t h = 1469598103934665603ull;
+    const float none = std::nanf("");
+    struct Dial { int cx, cy, radius, ring; float part; int choices, which; int lit; float mark; bool middle; };
+    const int cx = FxScreen::dialCX(1), cy = FxScreen::kDialCY, R = FxScreen::kDialR, ring = FxScreen::kDialRing;
+    const Dial dials[] = {
+        {cx, cy, R, ring, 0.3f, 0, 0, 0, none, false}, {cx, cy, R, ring, 0.f, 0, 0, 0, none, false},
+        {cx, cy, R, ring, 1.f, 0, 0, 0, none, false}, {cx, cy, R, ring, 0.5f, 0, 0, 0, none, false},
+        {cx, cy, R, ring, 0.7001f, 0, 0, 0, none, false}, {cx, cy, R, ring, 0.7001f, 0, 0, 1, none, false},
+        {cx, cy, R, ring, 0.7001f, 0, 0, 2, none, false}, {cx, cy, R, ring, 0.7001f, 0, 0, 2, 0.25f, false},
+        {cx, cy, R, ring, 0.7001f, 0, 0, 2, 0.6f, false}, {cx, cy, R, ring, 0.7001f, 0, 0, 2, none, true},
+        {cx, cy, R, ring, 0.5f, 0, 0, 2, none, true}, {cx, cy, R, ring, 0.2f, 0, 0, 2, none, true},
+        {cx, cy, R, ring, 0.2f, 3, 0, 2, none, false}, {cx, cy, R, ring, 0.2f, 3, 1, 2, none, false},
+        {cx, cy, R, ring, 0.2f, 3, 2, 2, none, false}, {cx, cy, R, ring, 0.2f, 5, 2, 2, none, false},
+        {cx + 1, cy, R, ring, 0.2f, 5, 2, 2, none, false}, {cx + 1, cy + 1, R, ring, 0.2f, 5, 2, 2, none, false},
+        {cx + 1, cy + 1, 24, ring, 0.2f, 0, 2, 2, none, false}, {cx + 1, cy + 1, 24, 3, 0.2f, 0, 2, 2, none, false},
+        {cx + 1, cy + 1, 24, 3, 0.2f, 0, 2, 2, 0.9f, true}, {cx + 1, cy + 1, 24, 3, 0.2f, 0, 2, 2, 0.f, true},
+        {cx + 1, cy + 1, 24, 3, 0.2f, 0, 2, 2, none, true}, {cx + 1, cy + 1, 24, 3, 0.2f, 0, 2, 3, none, true},
+        {cx, cy, R, ring, 0.3f, 0, 0, 3, none, false}, {cx, cy, R, ring, 0.3f, 0, 0, 0, none, false},
+    };
+    // (The last colour is see-through: a pixel drawn twice in it is not the pixel drawn once.)
+    const SDL_Color lits[] = {ui::kTeal, ui::kBrass, ui::kText, {ui::kTeal.r, ui::kTeal.g, ui::kTeal.b, 128}};
+    SDL_SetRenderDrawBlendMode(c.r, SDL_BLENDMODE_BLEND); // as every frame of the program
+    for (int pass = 0; pass < 2; ++pass) {
+        for (const Dial& d : dials) {
+            c.clear();
+            drawDial(c.r, d.cx, d.cy, d.radius, d.ring, d.part, d.choices, d.which, lits[d.lit], d.mark, d.middle);
+            h = foldPixels(h, c.part(d.cx - 50, d.cy - 50, 100, 100));
+        }
+    }
+    for (int k = 1; k < kEffectKinds; ++k) {
+        const EffectKind kind = static_cast<EffectKind>(k);
+        float shown[kEffectParams];
+        for (int way = 0; way < 4; ++way) {
+            for (int i = 0; i < kEffectParams; ++i) shown[i] = way == 1 ? 0.8f : way == 2 ? 0.15f : effectInfo(kind).defaults[i];
+            FxLive live;
+            if (way == 3) live.playing = true, live.steps = 21.5, live.stepSeconds = 0.125f, live.level = 0.7f;
+            c.clear();
+            drawEffectPicture(c.r, FxScreen::kPaneX, FxScreen::kPicY, FxScreen::kPaneW, FxScreen::kPicH, kind, shown, way == 0 ? 0.f : -12.f, live);
+            h = foldPixels(h, c.part(FxScreen::kPaneX, FxScreen::kPicY, FxScreen::kPaneW, FxScreen::kPicH));
+        }
+    }
+    return h;
+}
+} // namespace
+
+void testFxDrawingIsPixelForPixel(bool print) {
+    Canvas c;
+    CHECK(c.r != nullptr);
+    if (!c.r) return;
+    // As drawn by app 0.981, theme by theme (BROWN first): `ui_test --print-fx-hashes` prints them afresh.
+    const std::uint64_t asItWas[kThemes] = {0x1938aea8d818522cull, 0x530ebd4e9e705c84ull, 0x53e6ef1f5d2cb7cfull, 0xd0fcaf5e316104ecull,
+                                             0xa0c688e61ed10a38ull, 0x6a9f1275d065e274ull, 0x50c702634a228ec3ull, 0x680dc80723e348f7ull};
+    for (int t = 0; t < kThemes; ++t) {
+        ui::useTheme(t);
+        const unsigned long workedOut = dialsWorkedOut();
+        const std::uint64_t h = fxDrawingHash(c);
+        // Twenty-five dials differ (the last is the first again), each worked out once: the second time round, and
+        // the last, are drawn from what was kept.
+        CHECK(dialsWorkedOut() - workedOut == 25);
+        if (print) std::printf("0x%016llxull,\n", static_cast<unsigned long long>(h));
+        else if (h != asItWas[t]) std::printf("  the FX drawing in theme %d changed: 0x%016llx\n", t, static_cast<unsigned long long>(h));
+        CHECK(print || h == asItWas[t]);
+    }
+    ui::useTheme(kThemeBrown);
+}
+
+
+// A kept dial is never drawn for one that differs only in a colour of the theme or its style, and the latest 32 are
+// the ones kept.
+void testKeptDialsFollowTheTheme() {
+    Canvas c;
+    if (!c.r) return;
+    ui::useTheme(kThemeBrown);
+    const int cx = FxScreen::dialCX(0), cy = FxScreen::kDialCY;
+    const auto countOf = [&](SDL_Color colour) {
+        int n = 0;
+        for (Uint32 p : c.part(cx - 45, cy - 45, 90, 90)) n += p == Canvas::colour(colour);
+        return n;
+    };
+    const auto draw = [&](float mark) {
+        c.clear();
+        drawDial(c.r, cx, cy, FxScreen::kDialR, FxScreen::kDialRing, 0.4f, 0, 0, ui::kTeal, mark);
+    };
+    const SDL_Color odd = {1, 2, 3, 255};
+    SDL_Color* const fields[] = {&ui::gTheme.line, &ui::gTheme.panel, &ui::gTheme.panel2, &ui::gTheme.text, &ui::gTheme.brass};
+    for (SDL_Color* field : fields) {
+        draw(0.7f);
+        CHECK(countOf(odd) == 0);
+        const SDL_Color was = *field;
+        *field = odd; // (the theme's colours are the program's to set: only a test does it by hand)
+        draw(0.7f);
+        CHECK(countOf(odd) > 0); // worked out afresh in the new colour
+        *field = was;
+    }
+    // The size alone: a smaller ring has fewer of its unlit pixels.
+    draw(std::nanf(""));
+    const int bigger = countOf(ui::kLine);
+    c.clear();
+    drawDial(c.r, cx, cy, FxScreen::kDialR - 6, FxScreen::kDialRing, 0.4f, 0, 0, ui::kTeal, std::nanf(""));
+    CHECK(countOf(ui::kLine) > 0 && countOf(ui::kLine) < bigger);
+    // The style alone (BROWN's colours, NEON's shapes: a glow ring outside the lit arc).
+    draw(std::nanf(""));
+    const std::vector<Uint32> vintage = c.part(cx - 45, cy - 45, 90, 90);
+    ui::gTheme.name = "DRACULA";
+    draw(std::nanf(""));
+    CHECK(c.part(cx - 45, cy - 45, 90, 90) != vintage);
+    ui::useTheme(kThemeBrown);
+    // Forty dials, then the last 32 of them again: all kept, none worked out.
+    for (int k = 0; k < 40; ++k) drawDial(c.r, cx, cy, FxScreen::kDialR, FxScreen::kDialRing, 0.001f + k / 41.f, 0, 0, ui::kTeal, std::nanf(""));
+    const unsigned long before = dialsWorkedOut();
+    for (int k = 8; k < 40; ++k) drawDial(c.r, cx, cy, FxScreen::kDialR, FxScreen::kDialRing, 0.001f + k / 41.f, 0, 0, ui::kTeal, std::nanf(""));
+    CHECK(dialsWorkedOut() == before);
+    CHECK(dialsKept() == 32);
+}
+
+int main(int argc, char** argv) {
+    if (argc > 1 && std::strcmp(argv[1], "--print-fx-hashes") == 0) {
+        testFxDrawingIsPixelForPixel(true);
+        return 0;
+    }
+    testFxDrawingIsPixelForPixel(false);
+    testKeptDialsFollowTheTheme();
     testGlideLineSpan();
     testGlideShifts();
     testGlideLineRects();
