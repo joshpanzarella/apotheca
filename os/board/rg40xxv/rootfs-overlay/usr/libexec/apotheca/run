@@ -8,7 +8,9 @@
 #            apotheca-start has just put back the program before a new one that
 #            did not start, /run/apotheca/apotheca.rolledback), or the file
 #            /data/apotheca/gpu-off exists, Mesa draws with the CPU instead
-#            (softpipe) and SDL uses its own software renderer: the fallback.
+#            (softpipe through kms_swrast) and SDL uses its own software
+#            renderer: the fallback (below, with why it needs both GBM and EGL
+#            told).
 #   sound    ALSA straight to the card: plughw on the first card that is not
 #            HDMI (the SoC's codec on the handheld; qemu's virtio card on the
 #            desk). /data/apotheca/sound-card overrides it (a card's id).
@@ -51,7 +53,21 @@ if [ -e /run/apotheca/apotheca.rolledback ]; then
 fi
 if [ -e "$dir/gpu-off" ] || [ "$fails" -ge 2 ]; then
     mode=software
+    # Both halves of Mesa are told, or it crashes on the first frame. SDL's
+    # KMSDRM makes the GBM device itself and hands it to EGL. GBM reads only
+    # GBM_ALWAYS_SOFTWARE: without it GBM opens panfrost as usual, while EGL,
+    # told LIBGL_ALWAYS_SOFTWARE, takes the pure-software swap on panfrost's
+    # drawable, which has none: a call to address 0 inside libEGL
+    # (dri2_drm_swap_buffers, 2026-11-27, every start on the handheld).
+    # qemu never showed it: its virtio GPU has no Mesa driver, so GBM falls
+    # back to kms_swrast by itself there. With both set, GBM and EGL agree on
+    # kms_swrast: softpipe draws into a dumb buffer that KMS shows.
+    export GBM_ALWAYS_SOFTWARE=1
     export LIBGL_ALWAYS_SOFTWARE=1
+    # SDL draws the picture with its own CPU code; it reaches the screen as
+    # one texture and one quad a frame through GLES2 on softpipe (KMSDRM has
+    # no framebuffer of its own: SDL_CreateWindowTexture). Not opengles2 for
+    # everything: then every rectangle and letter goes through softpipe.
     export SDL_RENDER_DRIVER=software
 fi
 

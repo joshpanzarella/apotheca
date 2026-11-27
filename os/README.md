@@ -255,7 +255,11 @@ Whatever you see is useful. Send:
 - **It draws with the GPU** (Mesa's panfrost driver). After two starts in a
   row that stop within seconds it starts drawing with the CPU instead, by
   itself. To make it always draw with the CPU, put an empty file named
-  **`gpu-off`** in the `apotheca` folder on the APOTHECA drive.
+  **`gpu-off`** in the `apotheca` folder on the APOTHECA drive. Drawing
+  with the CPU is slower (the screen's moving parts may lag), but it does
+  not need the GPU at all. `apotheca/apotheca.log` then says
+  `screen: software`. **Images before 2026-11-27 crashed on every start
+  this way** and stayed on the start-up picture; this one does not.
 - **No sound**: `apotheca/logs/boot-latest.txt` lists the sound cards and
   every mixer control; send it. A card can be named in a file
   `apotheca/sound-card` (its id, one word).
@@ -433,3 +437,26 @@ back too (about 2 GB more), and the next kernel takes the hour again. Where ever
 file we did not write came from, and its licence: `board/rg40xxv/README.md`.
 `scripts/build-image.sh -- legal-info` gathers every source and licence of
 what is on the card.
+
+**The CPU fallback** (`gpu-off`, or two failed starts in a row:
+`rootfs-overlay/usr/libexec/apotheca/run`). Mesa is built with softpipe (a
+software driver that needs no LLVM) next to panfrost, so its KMS software
+path, kms_swrast, is in `libgallium`: softpipe draws into a plain ("dumb")
+buffer that the display shows. **Both halves of Mesa must be told**:
+
+| Set | GBM (SDL makes it) | EGL | Result |
+| --- | --- | --- | --- |
+| `LIBGL_ALWAYS_SOFTWARE=1` only (before 2026-11-27) | panfrost | pure software swap | crash on the first frame, every start: a call to address 0 in `dri2_drm_swap_buffers` (libEGL), on panfrost's drawable |
+| `GBM_ALWAYS_SOFTWARE=1` and `LIBGL_ALWAYS_SOFTWARE=1` | kms_swrast | kms_swrast | softpipe draws, KMS shows it |
+
+GBM reads only `GBM_ALWAYS_SOFTWARE`; EGL reads `LIBGL_ALWAYS_SOFTWARE`
+and, told it, takes the pure-software swap unless GBM's driver is
+kms_swrast. **qemu cannot show the crash**: its virtio GPU has no Mesa
+driver, so there GBM falls back to kms_swrast by itself, in both modes.
+`qemu-test.py` reads the running program's environment instead, and
+`check-image.sh` checks the pieces are in the image. SDL keeps its own
+software renderer here (`SDL_RENDER_DRIVER=software`): it draws the picture
+with SDL's CPU code, and KMSDRM, which has no framebuffer of its own, takes
+it to the screen as one texture a frame through GLES2 on softpipe; with
+SDL's opengles2 renderer every rectangle and letter would go through
+softpipe instead.

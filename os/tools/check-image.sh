@@ -14,7 +14,9 @@
 #     PATH, or the one the image build made) also what batch 4 put in it:
 #     apotheca-power started by inittab, S95apotheca, the off mark handed to
 #     Apotheca and read by apotheca-keep, Apotheca that knows the mark, and
-#     the turn-off's log (off.log) with its time limits in every step
+#     the turn-off's log (off.log) with its time limits in every step, and
+#     the CPU fallback (gpu-off): softpipe and kms_swrast in Mesa, and run
+#     telling both GBM and EGL
 #   - partition 3: empty (the second system slot)
 #   - partition 4: zeros (the first boot grows it and makes it exFAT)
 #
@@ -379,6 +381,20 @@ if unsquashfs:
               "and runs it only if it is an arm64 program")
         check(b'apotheca.rolledback' in cat('/usr/libexec/apotheca/run'),
               "run does not fall back to the CPU for the program put back after a new one failed")
+        # The CPU fallback (gpu-off): Mesa's softpipe and its KMS path
+        # (kms_swrast: the kms_dri winsys in libgallium, chosen by GBM), and
+        # run telling both GBM and EGL; EGL alone crashed every start on the
+        # handheld (2026-11-27).
+        gallium = [l.split('squashfs-root', 1)[1] for l in listing.splitlines()
+                   if re.search(r'squashfs-root/usr/lib/libgallium-[0-9.]+\.so$', l)]
+        lib = cat(gallium[0]) if gallium else b''
+        check(b'SOFTPIPE_DEBUG' in lib and b'kms_dri' in lib,
+              "Mesa can draw with the CPU: softpipe and the KMS software path in %s" % (gallium[0] if gallium else "no libgallium"))
+        gbm = cat('/usr/lib/gbm/dri_gbm.so')
+        check(b'kms_swrast' in gbm and b'GBM_ALWAYS_SOFTWARE' in gbm, "GBM's backend knows kms_swrast and GBM_ALWAYS_SOFTWARE")
+        runsh = cat('/usr/libexec/apotheca/run')
+        check(b'export GBM_ALWAYS_SOFTWARE=1' in runsh and b'export LIBGL_ALWAYS_SOFTWARE=1' in runsh,
+              "run's CPU fallback tells both GBM and EGL (GBM_ALWAYS_SOFTWARE, LIBGL_ALWAYS_SOFTWARE)")
         wifi = cat('/usr/sbin/apotheca-wifi')
         check(mode('/usr/sbin/apotheca-wifi').startswith('-rwx') and b'hotspot) hotspot' in wifi and b'mode=2' in wifi and b'udhcpd' in wifi,
               "apotheca-wifi is there and knows our own network (hotspot: wpa_supplicant's AP mode, udhcpd)")

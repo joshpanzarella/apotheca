@@ -708,6 +708,13 @@ def main():
         out, _ = m.run("grep 'screen: ' /data/apotheca/apotheca.log; pidof apotheca || echo none")
         check("screen: " in out and not out.endswith("none"),
               "and keeps running that way (%s)" % out.replace("\n", "; "))
+        # Both GBM and EGL told (run): EGL alone told crashed every start on
+        # the handheld (2026-11-27). qemu cannot show that crash (its virtio
+        # GPU has no Mesa driver, so GBM goes to kms_swrast by itself), so the
+        # program's own environment is read instead.
+        out, _ = m.run("tr '\\0' '\\n' < /proc/$(pidof apotheca)/environ | grep -E '^(GBM|LIBGL)_ALWAYS_SOFTWARE=' | sort")
+        check(out.split() == ["GBM_ALWAYS_SOFTWARE=1", "LIBGL_ALWAYS_SOFTWARE=1"],
+              "with gpu-off GBM and EGL are both told to draw with the CPU (%s)" % " ".join(out.split()))
         m.run("rm /data/apotheca/gpu-off")
 
         # A program copied onto the card by hand (scripts/build-firmware-app.sh,
