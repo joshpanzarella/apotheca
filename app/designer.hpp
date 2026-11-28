@@ -59,7 +59,7 @@ namespace apotheca {
 
 // A KIT's settings: lane * kKitStride + field. The EDIT rows keep LaneEditRow's numbers (0 to 7).
 constexpr int kKitStride = 16;
-enum KitField { kKitFit = 8, kKitChoke, kKitVolume, kKitHumanTime, kKitHumanLevel, kKitSwing, kKitFields };
+enum KitField { kKitFit = 8, kKitChoke, kKitVolume, kKitHumanTime, kKitHumanLevel, kKitSwing, kKitMono, kKitFields }; // kKitMono: EDIT's MONO (STEREO, 2026-11-28; appended)
 // DRUM SYNTH: a synth lane's knob P is the id kKitKnobs + lane * 8 + P, after every lane's fields (so the
 // ids above, in pages and tests, stay where they were). Its name and readings hang on the lane's model:
 // the spec's wave gives the names, the state the readings.

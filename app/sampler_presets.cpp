@@ -6,7 +6,8 @@
 //   sound NAME.wav
 //   sampler PITCH TUNE START END ATTACK RELEASE LOOP LEVEL
 //   chop
-//   edit START END GAIN FADEIN FADEOUT REVERSE   (its EDIT, S4: as the song's sampleredit; left out at rest)
+//   edit START END GAIN FADEIN FADEOUT REVERSE [MONO]   (its EDIT, S4: as the song's sampleredit; left out at rest;
+//                                                      MONO, STEREO 2026-11-28, appended and left out at 0)
 //   whole
 //   fx/send/glidefrom/mod... (soundText's lines)
 //
@@ -48,7 +49,7 @@ std::string samplerPresetText(const TrackData& t, const TrackSound& sound) {
     if (!t.samplerEdit.atRest()) {
         char line[160];
         const LaneEdit& e = t.samplerEdit;
-        std::snprintf(line, sizeof line, "edit %.6g %.6g %.6g %d %d %d\n", static_cast<double>(e.start) / kEditUnits, static_cast<double>(e.end) / kEditUnits, e.gain / 10.0, e.fadeIn, e.fadeOut, e.reverse);
+        std::snprintf(line, sizeof line, e.mono ? "edit %.6g %.6g %.6g %d %d %d 1\n" : "edit %.6g %.6g %.6g %d %d %d\n", static_cast<double>(e.start) / kEditUnits, static_cast<double>(e.end) / kEditUnits, e.gain / 10.0, e.fadeIn, e.fadeOut, e.reverse);
         out += line;
     }
     out += "whole\n" + soundText(TrackKind::Sampler, sound.effects, sound.send, sound.glideFrom, sound.mods);
@@ -83,7 +84,7 @@ bool readSamplerPreset(const std::string& text, Session::SamplerPreset& out) {
         } else if (word == "chop") {
             out.chop = true;
         } else if (word == "edit") { // (a number missing or not one ends it there, the rest at rest)
-            double v[6] = {0, 1, 0, 0, 0, 0};
+            double v[7] = {0, 1, 0, 0, 0, 0, 0};
             for (double& one : v) {
                 double read = 0;
                 if (!(in >> read) || !std::isfinite(read)) break;
@@ -97,6 +98,7 @@ bool readSamplerPreset(const std::string& text, Session::SamplerPreset& out) {
             e.fadeIn = static_cast<int>(within(v[3], 0, kFadeMost));
             e.fadeOut = static_cast<int>(within(v[4], 0, kFadeMost));
             e.reverse = v[5] >= 0.5 ? 1 : 0;
+            e.mono = v[6] >= 0.5 ? 1 : 0;
             out.edit = laneEditHeld(e, 0.f);
         } else if (word == "whole") {
             out.sound.whole = true;

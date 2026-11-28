@@ -442,7 +442,7 @@ long long BounceTail::keep() const {
 }
 
 // BOUNCE THIS TRACK INTO SAMPLES (batch S3; Session::Bounce::ToSamples): the track alone, its scene played round
-// as a loop by an engine nobody hears, the second time round kept, mono, 1, 2 or 4 whole bars of it.
+// as a loop by an engine nobody hears, the second time round kept, in stereo (STEREO, 2026-11-28: it was mono), 1, 2 or 4 whole bars of it.
 int samplesBounceSteps(const Project& song, int scene, float rate) {
     const int steps = song.sceneSteps(scene), meter = song.meterOf(scene);
     const float tempo = song.sceneTempo[scene] > 0.f ? song.sceneTempo[scene] : (song.tempo > 0.f ? song.tempo : 120.f);
@@ -486,18 +486,25 @@ void Session::bounceToSamples(BounceJob& job) {
     c.b = 1; // the scene goes round
     engine->send(c);
     const int block = 256;
-    std::vector<float> out(static_cast<std::size_t>(2 * block)), mono;
-    mono.reserve(static_cast<std::size_t>(keep));
+    // STEREO (2026-11-28): both sides, as the song plays them (it was mixed to one).
+    std::vector<float> out(static_cast<std::size_t>(2 * block));
+    Clip sound;
+    sound.reserve(static_cast<std::size_t>(keep));
+    sound.right.reserve(static_cast<std::size_t>(keep));
     for (long long at = 0; at < round + keep && !job.cancel.load();) {
         const int frames = static_cast<int>(round + keep - at < block ? round + keep - at : block);
         engine->render(out.data(), frames);
         for (int i = 0; i < frames; ++i)
-            if (at + i >= round) mono.push_back(0.5f * (out[2 * static_cast<std::size_t>(i)] + out[2 * static_cast<std::size_t>(i) + 1]));
+            if (at + i >= round) {
+                sound.push_back(out[2 * static_cast<std::size_t>(i)]);
+                sound.right.push_back(out[2 * static_cast<std::size_t>(i) + 1]);
+            }
         at += frames;
         job.progress.store(static_cast<float>(at) / static_cast<float>(round + keep));
     }
     if (job.cancel.load()) return;
-    if (!writeWav(job.sampleFolder + "/" + job.sample + ".wav", mono, static_cast<int>(rate))) return;
+    sound.oneIfSame(); // (nothing off the middle: one channel, as it always was)
+    if (!writeWav(job.sampleFolder + "/" + job.sample + ".wav", sound, static_cast<int>(rate))) return;
     job.files = 1;
     job.sampleSteps = steps;
     job.last = job.sample;

@@ -65,7 +65,8 @@ inline int wrapIndex(int i, int length) {
 
 struct Cloud::State {
     float rate = 48000.f;
-    const float* data = nullptr; // the recording, or none
+    const float* data = nullptr; // the recording, or none (a stereo one's left side)
+    const float* right = nullptr; // a stereo recording's right side; nullptr: mono (STEREO, 2026-11-28)
     int length = 0;
     const std::vector<float>* toneData = nullptr;
 
@@ -278,13 +279,17 @@ inline int clearRun(std::int64_t pos, std::int64_t step, std::int64_t lo, std::i
 // of the recording in them (no test a sample), and a sample at a time where one is; then the run
 // into the sums. The window, the plain reads and the sums are loops the compiler takes four at a
 // time; only the Hermite read goes one by one.
-template <bool kPlain>
-void runGrain(const float* __restrict d, int length, float* __restrict left, float* __restrict right, int m, long& kRef, long grainLength, long rise,
+// STEREO (2026-11-28): `kStereo`, a stereo recording, `dR` its right side. Each grain reads both sides at
+// the same place, through the same window; its pan sets each side's level (a balance), as it sets a mono
+// grain's. The mono build is the loop there always was.
+template <bool kPlain, bool kStereo>
+void runGrain(const float* __restrict d, const float* __restrict dR, int length, float* __restrict left, float* __restrict right, int m, long& kRef, long grainLength, long rise,
               float invRise, float invFall, std::int64_t& posRef, std::int64_t step, bool linear, float gl, float gr) {
     long k = kRef;
     std::int64_t pos = posRef;
     const std::int64_t end = static_cast<std::int64_t>(length) * kWhole;
     float w[kPiece];
+    float wR[kStereo ? kPiece : 1];
     int i = 0;
     while (i < m) {
         const bool rising = k < rise;
@@ -294,6 +299,8 @@ void runGrain(const float* __restrict d, int length, float* __restrict left, flo
         i += run;
         k += run;
     }
+    if constexpr (kStereo)
+        for (i = 0; i < m; ++i) wR[i] = w[i];
     for (i = 0; i < m;) {
         // Hermite reads a sample either side and two after: the stretch keeps all four inside.
         const int clear = kPlain ? clearRun(pos, step, 0, length, m - i) : clearRun(pos, step, 1, length - 2, m - i);
@@ -305,11 +312,19 @@ void runGrain(const float* __restrict d, int length, float* __restrict left, flo
                     for (int j = 0; j < clear; ++j) w[i + j] *= from[j];
                 else
                     for (int j = 0; j < clear; ++j) w[i + j] *= from[-j];
+                if constexpr (kStereo) {
+                    const float* __restrict fromR = dR + (pos >> 32);
+                    if (dir > 0)
+                        for (int j = 0; j < clear; ++j) wR[i + j] *= fromR[j];
+                    else
+                        for (int j = 0; j < clear; ++j) wR[i + j] *= fromR[-j];
+                }
                 pos += static_cast<std::int64_t>(clear) * step;
             } else {
                 // The four points and the fraction gathered one by one; the curve four at a time.
                 float xm1[kPiece], x0[kPiece], x1[kPiece], x2[kPiece];
                 std::int32_t part[kPiece]; // the fraction, in 24 bits
+                const std::int64_t pos0 = pos;
                 for (int j = 0; j < clear; ++j, pos += step) {
                     const float* p = d + (pos >> 32);
                     xm1[j] = p[-1], x0[j] = p[0], x1[j] = p[1], x2[j] = p[2];
@@ -320,6 +335,18 @@ void runGrain(const float* __restrict d, int length, float* __restrict left, flo
                     for (int j = 0; j < clear; ++j) wr[j] *= x0[j] + static_cast<float>(part[j]) * (1.f / 16777216.f) * (x1[j] - x0[j]);
                 else
                     for (int j = 0; j < clear; ++j) wr[j] *= hermite(xm1[j], x0[j], x1[j], x2[j], static_cast<float>(part[j]) * (1.f / 16777216.f));
+                if constexpr (kStereo) { // the right side at the same places
+                    std::int64_t at = pos0;
+                    for (int j = 0; j < clear; ++j, at += step) {
+                        const float* p = dR + (at >> 32);
+                        xm1[j] = p[-1], x0[j] = p[0], x1[j] = p[1], x2[j] = p[2];
+                    }
+                    float* __restrict wrR = wR + i;
+                    if (linear)
+                        for (int j = 0; j < clear; ++j) wrR[j] *= x0[j] + static_cast<float>(part[j]) * (1.f / 16777216.f) * (x1[j] - x0[j]);
+                    else
+                        for (int j = 0; j < clear; ++j) wrR[j] *= hermite(xm1[j], x0[j], x1[j], x2[j], static_cast<float>(part[j]) * (1.f / 16777216.f));
+                }
             }
             i += clear;
             if (pos >= end || pos < 0) pos = stepOn(pos - step, step, end); // (the last step of the stretch landed on an end)
@@ -330,20 +357,31 @@ void runGrain(const float* __restrict d, int length, float* __restrict left, flo
         float v;
         if (kPlain) {
             v = d[i0];
+            if constexpr (kStereo) wR[i] *= dR[i0];
         } else {
             const float f = static_cast<float>(static_cast<std::int32_t>((pos & 0xFFFFFFFF) >> 8)) * (1.f / 16777216.f);
             const float x1 = d[wrapIndex(i0 + 1, length)];
             v = linear ? d[i0] + f * (x1 - d[i0]) : hermite(d[wrapIndex(i0 - 1, length)], d[i0], x1, d[wrapIndex(i0 + 2, length)], f);
+            if constexpr (kStereo) {
+                const float y1 = dR[wrapIndex(i0 + 1, length)];
+                wR[i] *= linear ? dR[i0] + f * (y1 - dR[i0]) : hermite(dR[wrapIndex(i0 - 1, length)], dR[i0], y1, dR[wrapIndex(i0 + 2, length)], f);
+            }
         }
         w[i] *= v;
         pos = stepOn(pos, step, end);
         ++i;
     }
     // Into the key's sums, on its side: four at a time.
-    for (i = 0; i < m; ++i) {
-        left[i] += w[i] * gl;
-        right[i] += w[i] * gr;
-    }
+    if constexpr (kStereo)
+        for (i = 0; i < m; ++i) {
+            left[i] += w[i] * gl;
+            right[i] += wR[i] * gr;
+        }
+    else
+        for (i = 0; i < m; ++i) {
+            left[i] += w[i] * gl;
+            right[i] += w[i] * gr;
+        }
     kRef = k;
     posRef = pos;
 }
@@ -355,13 +393,19 @@ void Cloud::State::renderGrains(int from, int to) {
     if (to <= from || grainCount == 0) return;
     int length = 0;
     const float* d = source(&length);
+    const float* dR = data ? right : nullptr; // (the TONE is mono)
     for (Grain& g : grains) {
         if (g.key < 0) continue;
         const int m = static_cast<int>(g.left < to - from ? g.left : to - from);
-        if (g.plain)
-            runGrain<true>(d, length, sumL[g.key] + from, sumR[g.key] + from, m, g.k, g.length, g.rise, g.invRise, g.invFall, g.pos, g.step, g.linear, g.gl, g.gr);
+        if (dR) {
+            if (g.plain)
+                runGrain<true, true>(d, dR, length, sumL[g.key] + from, sumR[g.key] + from, m, g.k, g.length, g.rise, g.invRise, g.invFall, g.pos, g.step, g.linear, g.gl, g.gr);
+            else
+                runGrain<false, true>(d, dR, length, sumL[g.key] + from, sumR[g.key] + from, m, g.k, g.length, g.rise, g.invRise, g.invFall, g.pos, g.step, g.linear, g.gl, g.gr);
+        } else if (g.plain)
+            runGrain<true, false>(d, nullptr, length, sumL[g.key] + from, sumR[g.key] + from, m, g.k, g.length, g.rise, g.invRise, g.invFall, g.pos, g.step, g.linear, g.gl, g.gr);
         else
-            runGrain<false>(d, length, sumL[g.key] + from, sumR[g.key] + from, m, g.k, g.length, g.rise, g.invRise, g.invFall, g.pos, g.step, g.linear, g.gl, g.gr);
+            runGrain<false, false>(d, nullptr, length, sumL[g.key] + from, sumR[g.key] + from, m, g.k, g.length, g.rise, g.invRise, g.invFall, g.pos, g.step, g.linear, g.gl, g.gr);
         g.left -= m;
         if (g.left <= 0) freeGrain(g);
     }
@@ -617,9 +661,10 @@ void Cloud::allNotesOff() {
     s.seedGiven = false;
 }
 
-void Cloud::setSample(const float* data, int length) {
+void Cloud::setSample(const float* data, int length, const float* right) {
     State& s = *state_;
     s.data = length > 0 ? data : nullptr;
+    s.right = s.data ? right : nullptr;
     s.length = s.data ? length : 0;
     for (State::Grain& g : s.grains) // they were reading the old recording, which goes to the trash
         if (g.key >= 0) s.freeGrain(g);

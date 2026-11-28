@@ -192,7 +192,8 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         // EDIT on a lane: with --samples the first recording on lane 6, else lane 1's built-in kick; cut
         // to its middle, GAIN +3, a fade out, PITCH -2, backwards. kit-edit: the edit view on GAIN.
         // kit-edit-held: A held there. kit-edit-deleting: B held (its bar filling). kit-edit-column: the
-        // KIT page, the cursor on the lane's picture (EDIT), its seconds purple.
+        // KIT page, the cursor on the lane's picture (EDIT), its seconds purple. kit-edit-mono: the cursor on MONO (STEREO,
+        // 2026-11-28: a stereo recording's; with a mono one, or none, it is kit-edit).
         Session& session = app.session();
         const std::vector<std::string> names = session.sampleNames();
         const int lane = names.empty() ? 0 : 5;
@@ -207,7 +208,7 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         session.setLaneEdit(0, lane, e);
         session.view = View::Device;
         app.kit().goTo(lane, KitScreen::kEdit);
-        if (std::strcmp(view, "kit-edit-column") != 0) app.kit().openEdit(kEditGain);
+        if (std::strcmp(view, "kit-edit-column") != 0) app.kit().openEdit(std::strcmp(view, "kit-edit-mono") == 0 ? kEditMono : kEditGain);
         if (std::strcmp(view, "kit-edit-held") == 0) pushKey(SDLK_x, true); // A held
         if (std::strcmp(view, "kit-edit-deleting") == 0) {
             pushKey(SDLK_z, true); // B held

@@ -37,7 +37,7 @@ const char* const kRecordedFolder = "recorded"; // and a take from a microphone
 // A recording's file may end .wav or .WAV (the list shows both by the one name, the page takes
 // both): whichever is there, as deleteSample does. On a card that tells them apart, one ending
 // .WAV was listed and never played.
-bool readRecording(const std::string& folder, const std::string& name, std::vector<float>& out) {
+bool readRecording(const std::string& folder, const std::string& name, Clip& out) {
     return readWav(folder + "/" + name + ".wav", out) || readWav(folder + "/" + name + ".WAV", out);
 }
 bool recordingThere(const std::string& folder, const std::string& name) {
@@ -268,21 +268,35 @@ int Session::findMissing(const std::string& label) {
     return found;
 }
 
-void Session::install(int track, int lane, const std::vector<float>& samples) {
+void Session::install(int track, int lane, const Clip& samples) {
     std::unique_ptr<SampleData> data(new SampleData);
-    data->data = samples;
+    data->data = samples.left();
+    if (samples.stereo()) data->right = samples.right; // STEREO: both sides to the engine
     engine.setLaneSample(track, lane, std::move(data));
 }
 
 namespace {
-// An outline of a sound, kPeaks points of its loudest.
-void outlineOf(const std::vector<float>& sound, std::vector<float>& peaks) {
+// An outline of a sound, kPeaks points of its loudest (of either side, a stereo one's: STEREO keeps the one picture).
+void outlineOf(const std::vector<float>& sound, std::vector<float>& peaks, const std::vector<float>* right = nullptr) {
     peaks.assign(kPeaks, 0.f);
+    if (right && right->size() != sound.size()) right = nullptr;
     for (std::size_t i = 0; i < sound.size(); ++i) {
         float& peak = peaks[i * kPeaks / sound.size()];
-        const float v = std::fabs(sound[i]);
+        float v = std::fabs(sound[i]);
+        if (right && std::fabs((*right)[i]) > v) v = std::fabs((*right)[i]);
         if (v > peak) peak = v;
     }
+}
+void outlineOf(const Clip& sound, std::vector<float>& peaks) { outlineOf(sound.left(), peaks, sound.stereo() ? &sound.right : nullptr); }
+void outlineOf(const SampleData& sound, std::vector<float>& peaks) { outlineOf(sound.data, peaks, sound.stereo() ? &sound.right : nullptr); }
+// The built-in drums as Waves (mono), made once and kept for as long as the program runs, as the kit is.
+const Clip& builtInDrum(int lane) {
+    static const Clip* const* drums = [] {
+        static const Clip* made[kDrumLanes];
+        for (int l = 0; l < kDrumLanes; ++l) made[l] = new Clip(DrumKit::builtIn(kSampleRate).samples[l]);
+        return made;
+    }();
+    return *drums[lane];
 }
 }
 
@@ -307,10 +321,10 @@ void Session::loadLane(int track, int lane) {
     }
     if (!name[0]) {
         // The built-in drum: the kit's own sound, never copied unless an edit makes something of it.
-        const std::vector<float>& drum = DrumKit::builtIn(kSampleRate).samples[lane];
-        sound.source = std::shared_ptr<const std::vector<float>>(&drum, [](const std::vector<float>*) {}); // (kept for as long as the program runs)
+        const Clip& drum = builtInDrum(lane);
+        sound.source = std::shared_ptr<const Clip>(&drum, [](const Clip*) {}); // (kept for as long as the program runs)
     } else {
-        std::shared_ptr<std::vector<float>> recording(new std::vector<float>);
+        std::shared_ptr<Clip> recording(new Clip);
         if (sampleFolder_.empty() || !readRecording(sampleFolder_, name, *recording) || recording->empty()) {
             sound.missing = true; // the drum plays in its place, and the song keeps the name
             engine.setLaneSample(track, lane, nullptr);
@@ -326,7 +340,7 @@ void Session::loadLane(int track, int lane) {
 void Session::madeLane(int track, int lane, std::vector<float> made) {
     LaneSound& sound = sounds_[track][lane];
     sound.making = sound.shaping = sound.waiting = false;
-    sound.recording = sound.source = std::make_shared<const std::vector<float>>(std::move(made));
+    sound.recording = sound.source = std::make_shared<const Clip>(std::move(made));
     sound.sourceSeconds = static_cast<float>(sound.source->size()) / kSampleRate;
     outlineOf(*sound.source, sound.sourcePeaks);
     shapeLane(track, lane);
@@ -350,7 +364,7 @@ void Session::shapeLane(int track, int lane) {
         return;
     }
     sound.shaping = false;
-    sound.shaped = edit.shapes() ? std::make_shared<const std::vector<float>>(makeShape(*sound.source, edit, kSampleRate)) : sound.source;
+    sound.shaped = edit.shapes() ? std::make_shared<const Clip>(makeShape(*sound.source, edit, kSampleRate)) : sound.source;
     sound.seconds = static_cast<float>(sound.shaped->size()) / kSampleRate;
     sound.fitted.reset();
     sound.fittedTempo = 0.f;
@@ -361,11 +375,11 @@ void Session::shapeLane(int track, int lane) {
 
 void Session::installLane(int track, int lane) {
     LaneSound& sound = sounds_[track][lane];
-    const std::shared_ptr<const std::vector<float>>& made = sound.fitted ? sound.fitted : sound.shaped;
+    const std::shared_ptr<const Clip>& made = sound.fitted ? sound.fitted : sound.shaped;
     if (!made) return;
     const LaneEdit& edit = project.tracks[track].laneEdit[lane];
-    if (edit.atRest()) {
-        if (!sound.recording) { // the built-in drum as it is: the kit's, in the engine too
+    if (edit.levelAtRest()) { // (MONO alone is a shape: its sides mixed, and no guard)
+        if (edit.atRest() && !sound.recording) { // the built-in drum as it is: the kit's, in the engine too
             sound.peaks.clear();
             engine.setLaneSample(track, lane, nullptr);
             return;
@@ -374,11 +388,10 @@ void Session::installLane(int track, int lane) {
         install(track, lane, *made); // as recorded (or fitted), to the bit
         return;
     }
-    std::unique_ptr<SampleData> data(new SampleData);
-    data->data.resize(made->size());
-    makeLevel(made->data(), static_cast<int>(made->size()), edit, kSampleRate, data->data.data());
-    outlineOf(data->data, sound.peaks);
-    engine.setLaneSample(track, lane, std::move(data));
+    Clip level;
+    makeLevel(*made, edit, kSampleRate, level);
+    outlineOf(level, sound.peaks);
+    install(track, lane, level);
 }
 
 void Session::setLaneSample(int track, int lane, const std::string& name) {
@@ -436,9 +449,9 @@ void Session::readyLane(int track, int lane) {
 bool Session::normalizeLane(int track, int lane) {
     if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums) return false;
     const LaneSound& sound = sounds_[track][lane];
-    const std::shared_ptr<const std::vector<float>>& made = sound.fitted ? sound.fitted : sound.shaped;
+    const std::shared_ptr<const Clip>& made = sound.fitted ? sound.fitted : sound.shaped;
     int gain = 0;
-    if (!made || !normalGain(made->data(), static_cast<int>(made->size()), gain)) return false;
+    if (!made || !normalGain(*made, gain)) return false;
     LaneEdit edit = project.tracks[track].laneEdit[lane];
     edit.gain = gain;
     setLaneEdit(track, lane, edit);
@@ -593,7 +606,7 @@ void Session::finishRecording() {
 // where it spells none (its root is 60, which ROOT moves as it moves the set). At most kMaxZoneNotes notes, the
 // nearest to the picked one's; as many layers on each as kMaxZones leaves room for, up to kMaxLayers, spread from
 // the softest to the loudest; the picked one always among them.
-std::unique_ptr<sampler::SampleZoneSet> Session::multisampleOf(const std::string& name, std::vector<float>& main) {
+std::unique_ptr<sampler::SampleZoneSet> Session::multisampleOf(const std::string& name, Clip& main) {
     const std::string folder = sampleFolderOf(name), stem = sampleLayerStem(name);
     const int mainNote = sampleNote(name), mainRoot = mainNote >= 0 ? mainNote : 60;
     // A layer's place among a note's: its number; none spelled sits with MF (between SOFT and HARD).
@@ -654,11 +667,12 @@ std::unique_ptr<sampler::SampleZoneSet> Session::multisampleOf(const std::string
         }
         std::vector<sampler::SampleZone> read;
         for (const Candidate& c : layers) {
-            std::vector<float> data;
+            Clip data;
             if (c.name == name) data = std::move(main); // (given back below if it ends up alone)
             else if (!readRecording(sampleFolder_, c.name, data) || data.empty()) continue; // gone or broken: skipped
             read.push_back(sampler::SampleZone());
-            read.back().data = std::move(data);
+            if (data.stereo()) read.back().right = std::move(data.right); // STEREO: each note as its file has it
+            read.back().data = std::move(data.left());
             read.back().root = c.note;
         }
         for (std::size_t k = 0; k < read.size(); ++k) {
@@ -667,7 +681,7 @@ std::unique_ptr<sampler::SampleZoneSet> Session::multisampleOf(const std::string
         }
     }
     if (set->zones.size() < 2) { // one after all (nothing readable beside it): the picked one alone, given back
-        if (!set->zones.empty()) main = std::move(set->zones.front().data);
+        if (!set->zones.empty()) main = Clip(std::move(set->zones.front().data), std::move(set->zones.front().right));
         return nullptr;
     }
     // Each note's keys reach halfway to its neighbours'; its layers share them.
@@ -696,19 +710,14 @@ void Session::loadTrackSample(int track) {
         engine.setTrackSample(track, nullptr);
         return;
     }
-    std::vector<float> main;
+    Clip main;
     if (sampleFolder_.empty() || !readRecording(sampleFolder_, name, main) || main.empty()) {
         sound.missing = true;
         engine.setTrackSample(track, nullptr);
         return;
     }
     sound.seconds = static_cast<float>(main.size()) / kSampleRate;
-    sound.peaks.assign(kPeaks, 0.f);
-    for (std::size_t i = 0; i < main.size(); ++i) {
-        float& peak = sound.peaks[i * kPeaks / main.size()];
-        const float v = std::fabs(main[i]);
-        if (v > peak) peak = v;
-    }
+    outlineOf(main, sound.peaks);
     if (project.tracks[track].kind == TrackKind::Sampler) {
         std::unique_ptr<sampler::SampleZoneSet> set = multisampleOf(name, main);
         if (set) {
@@ -724,14 +733,15 @@ void Session::loadTrackSample(int track) {
     }
     if (project.tracks[track].kind == TrackKind::Sampler) {
         // One recording: EDIT works on it (S4). Kept as it came off the card, and made from that.
-        sound.recording = sound.source = std::make_shared<const std::vector<float>>(std::move(main));
+        sound.recording = sound.source = std::make_shared<const Clip>(std::move(main));
         sound.sourceSeconds = sound.seconds;
         sound.sourcePeaks = sound.peaks;
         shapeSampler(track);
         return;
     }
-    std::unique_ptr<SampleData> data(new SampleData);
-    data->data = std::move(main);
+    std::unique_ptr<SampleData> data(new SampleData); // (a CLOUD: the file as it is, stereo or not)
+    if (main.stereo()) data->right = std::move(main.right);
+    data->data = std::move(main.left());
     engine.setTrackSample(track, std::move(data));
 }
 
@@ -739,7 +749,7 @@ void Session::shapeSampler(int track) {
     LaneSound& sound = sounds_[track][0];
     if (!sound.source) return;
     const LaneEdit& edit = project.tracks[track].samplerEdit;
-    sound.shaped = edit.shapes() ? std::make_shared<const std::vector<float>>(makeShape(*sound.source, edit, kSampleRate)) : sound.source;
+    sound.shaped = edit.shapes() ? std::make_shared<const Clip>(makeShape(*sound.source, edit, kSampleRate)) : sound.source;
     installSampler(track);
 }
 
@@ -748,14 +758,17 @@ void Session::installSampler(int track) {
     if (!sound.shaped) return;
     const LaneEdit& edit = project.tracks[track].samplerEdit;
     std::unique_ptr<SampleData> data(new SampleData);
-    if (edit.atRest()) {
-        data->data = *sound.shaped; // the file as it is, to the bit
+    if (edit.levelAtRest()) {
+        data->data = sound.shaped->left(); // the file as it is, to the bit (MONO alone: its sides mixed)
+        if (sound.shaped->stereo()) data->right = sound.shaped->right;
     } else {
-        data->data.resize(sound.shaped->size());
-        makeLevel(sound.shaped->data(), static_cast<int>(sound.shaped->size()), edit, kSampleRate, data->data.data());
+        Clip level;
+        makeLevel(*sound.shaped, edit, kSampleRate, level);
+        if (level.stereo()) data->right = std::move(level.right);
+        data->data = std::move(level.left());
     }
     sound.seconds = static_cast<float>(data->data.size()) / kSampleRate;
-    outlineOf(data->data, sound.peaks);
+    outlineOf(*data, sound.peaks);
     engine.setTrackSample(track, std::move(data));
 }
 
@@ -782,7 +795,7 @@ bool Session::normalizeSampler(int track) {
     if (!samplerEdits(track)) return false;
     const LaneSound& sound = sounds_[track][0];
     int gain = 0;
-    if (!sound.shaped || !normalGain(sound.shaped->data(), static_cast<int>(sound.shaped->size()), gain)) return false;
+    if (!sound.shaped || !normalGain(*sound.shaped, gain)) return false;
     LaneEdit edit = project.tracks[track].samplerEdit;
     edit.gain = gain;
     setSamplerEdit(track, edit);
@@ -853,10 +866,12 @@ std::string Session::catchLastBar(int track, int lane) {
     // and the line says to let a bar go by. (The mix is always heard: no whole bar there is a bar's worth, as ever.)
     caughtNoBar_ = from >= 0 && caught.bars == 0;
     if (caughtNoBar_) return "";
-    const std::vector<float>& bar = caught.sound;
+    Clip bar(caught.sound, caught.right); // STEREO: both sides, as heard (a WAV of two channels)...
+    bar.oneIfSame();                      // ...or one, where nothing was off the middle (the same sound, half the file)
     const int barSteps = caught.steps;
     float peak = 0.f;
     for (float v : bar) peak = std::fabs(v) > peak ? std::fabs(v) : peak;
+    for (float v : bar.right) peak = std::fabs(v) > peak ? std::fabs(v) : peak;
     if (peak < 1e-4f) return ""; // nothing was playing
     // Catches go in a folder of their own, so they do not pile up among everything else.
     mkdir(sampleFolder_.c_str(), 0755); // fine if it is already there
@@ -912,13 +927,13 @@ Session::SaveSound Session::saveLaneSound(int track, int lane, float start, floa
     const int fit = t.laneFit[lane];
     const bool fitOwed = sound.recording && fit > 0 && (!sound.fitted || sound.fittedTempo != project.tempo || sound.fittedSteps != fit);
     if (sound.waiting || sound.shaping || sound.making || fitOwed) return SaveSound::Making;
-    const std::shared_ptr<const std::vector<float>>& made = sound.fitted ? sound.fitted : sound.shaped;
+    const std::shared_ptr<const Clip>& made = sound.fitted ? sound.fitted : sound.shaped;
     if (!made || made->empty()) return SaveSound::Failed;
     // As installLane hands it to the engine: at rest the sound itself (the built-in drum's is the kit's), else
-    // with its fades, GAIN and guard.
-    std::vector<float> plays(made->size());
-    if (t.laneEdit[lane].atRest()) plays = *made;
-    else makeLevel(made->data(), static_cast<int>(made->size()), t.laneEdit[lane], kSampleRate, plays.data());
+    // with its fades, GAIN and guard. STEREO: as it plays, two sides or one (MONO mixed).
+    Clip plays;
+    if (t.laneEdit[lane].levelAtRest()) plays = *made;
+    else makeLevel(*made, t.laneEdit[lane], kSampleRate, plays);
     // A part of it, as DrumMachine::trigger takes one: from start * length, part * length long.
     const int length = static_cast<int>(plays.size());
     if (!(start > 0.f)) start = 0.f;
@@ -926,10 +941,15 @@ Session::SaveSound Session::saveLaneSound(int track, int lane, float start, floa
     int end = part > 0.f && part < 1.f ? from + static_cast<int>(part * static_cast<float>(length)) : length;
     if (end > length) end = length;
     if (from >= end) return SaveSound::Failed;
-    std::vector<float> out(plays.begin() + from, plays.begin() + end);
+    Clip out(std::vector<float>(plays.begin() + from, plays.begin() + end),
+             plays.stereo() ? std::vector<float>(plays.right.begin() + from, plays.right.begin() + end) : std::vector<float>());
     if (end < length) { // cut short: it ends with the quick fade the engine ends a part with, so the file never clicks
         const int fade = std::min(static_cast<int>(kEdgeMs * kSampleRate / 1000.f), static_cast<int>(out.size()));
-        for (int i = 0; i < fade; ++i) out[out.size() - 1 - static_cast<std::size_t>(i)] *= static_cast<float>(i) / static_cast<float>(fade);
+        for (int i = 0; i < fade; ++i) {
+            const float g = static_cast<float>(i) / static_cast<float>(fade);
+            out[out.size() - 1 - static_cast<std::size_t>(i)] *= g;
+            if (out.stereo()) out.right[out.size() - 1 - static_cast<std::size_t>(i)] *= g;
+        }
     }
     // Its name: after its source, in its folder; a voice or the built-in drum in the samples folder.
     std::string folder, stem;
@@ -990,6 +1010,12 @@ int Session::laneSlices(int track, int lane) const {
 
 namespace {
 bool laneThere(int track, int lane) { return track >= 0 && track < kNumTracks && lane >= 0 && lane < kDrumLanes; }
+// The hits in a sound, found on its two sides mixed to one where it has two (STEREO: one set of cuts for both).
+std::vector<slices::Found> hitsIn(const Clip& sound) {
+    if (!sound.stereo()) return slices::findHits(sound.data(), static_cast<int>(sound.size()), kSampleRate);
+    const std::vector<float> mixed = sound.mono();
+    return slices::findHits(mixed.data(), static_cast<int>(mixed.size()), kSampleRate);
+}
 } // namespace
 
 float Session::laneCutAt(int track, int lane, int k) const {
@@ -1091,7 +1117,7 @@ const std::vector<slices::Found>* Session::foundHits(int track, int lane, bool a
     if (sound.hitsOf == sound.shaped) return &sound.hits;
     if (hits_ && hits_->track == track && hits_->lane == lane) return nullptr; // (on its way)
     if (!atOnce || static_cast<int>(sound.shaped->size()) > kFindInAFrame) return nullptr;
-    sound.hits = slices::findHits(sound.shaped->data(), static_cast<int>(sound.shaped->size()), kSampleRate);
+    sound.hits = hitsIn(*sound.shaped);
     sound.hitsOf = sound.shaped;
     return &sound.hits;
 }
@@ -1127,7 +1153,7 @@ Session::Cut Session::cutLaneAtHits(int track, int lane, int sense) {
                 job->lane = lane;
                 job->of = sound.shaped;
                 job->thread = std::thread([job] {
-                    job->found = slices::findHits(job->of->data(), static_cast<int>(job->of->size()), kSampleRate);
+                    job->found = hitsIn(*job->of);
                     job->done.store(true);
                 });
             }
@@ -1307,12 +1333,12 @@ void Session::startJob(int track, int lane) {
     job->frames = steps > 0 && steadyTempo_ > 0.f ? static_cast<int>(std::lround(steps * 15.0 / steadyTempo_ * kSampleRate)) : 0;
     job->thread = std::thread([job] {
         if (job->make) { // a synth voice: made, and the rest is the app's (collectJob)
-            job->out = drumsynth::make(job->voice, kSampleRate);
+            job->out = Clip(drumsynth::make(job->voice, kSampleRate));
             job->done.store(true);
             return;
         }
         if (job->shape) job->shaped = makeShape(*job->in, job->edit, kSampleRate);
-        const std::vector<float>& from = job->shape ? job->shaped : *job->in;
+        const Clip& from = job->shape ? job->shaped : *job->in; // (STEREO: both sides fitted together)
         // As good as the right length already (a bar caught at this tempo): leave it be.
         const int have = static_cast<int>(from.size());
         if (job->frames > 0) job->out = std::abs(have - job->frames) <= 8 ? from : fitTo(from, job->frames, kSampleRate);
@@ -1333,7 +1359,7 @@ void Session::collectJob(bool wait) {
     if (sound.version == job_->version && (job_->shape ? sound.source : sound.shaped) == job_->in) { // else the lane has moved on
         if (job_->shape) {
             sound.shaping = false;
-            sound.shaped = std::make_shared<const std::vector<float>>(std::move(job_->shaped));
+            sound.shaped = std::make_shared<const Clip>(std::move(job_->shaped));
             sound.seconds = static_cast<float>(sound.shaped->size()) / kSampleRate;
             sound.fitted.reset();
             sound.fittedTempo = 0.f;
@@ -1342,7 +1368,7 @@ void Session::collectJob(bool wait) {
         if (job_->frames > 0) {
             sound.fittedTempo = job_->tempo;
             sound.fittedSteps = project.tracks[track].laneFit[lane];
-            sound.fitted = std::make_shared<const std::vector<float>>(std::move(job_->out));
+            sound.fitted = std::make_shared<const Clip>(std::move(job_->out));
         }
         sound.waiting = false; // (a shape and its FIT are made in the one go: a job starts only once the tempo is known)
         installLane(track, lane);
