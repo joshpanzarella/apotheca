@@ -250,6 +250,11 @@ back to the whole; the rest stay. A preset keeps the EDIT. **A multisample has
 no EDIT**: each note is its own file, and A on the picture says so (NO EDIT FOR
 A MULTISAMPLE). Nor does CLOUD.
 
+**A stereo recording plays in stereo** (as on a kit lane: each side to its own, PAN a balance), each note of
+a multisample as its own file is, and EDIT's **MONO** (UP from the top row, hold A + UP) mixes the one
+recording into one. CLOUD plays a stereo recording in stereo too: each grain reads both sides at one place,
+and its STEREO spread then turns each grain's sides up and down as a balance.
+
 **PITCH is semitones up or down, and up is higher.** (It used to be ROOT, a
 key, which ran the other way. Old songs open as they were.) **X hears it at
 middle C**: its own pitch at PITCH 0, and the change when PITCH or TUNE is
@@ -900,7 +905,7 @@ and A starts nothing meanwhile.
 | THE SONG | One WAV of the whole song: every scene as many times as it plays, then **for as long as its echoes and tails take to die away**. Muted tracks are left out. |
 | EACH TRACK | One WAV for every track by itself (stems), all the same length (the longest one's), so they line up in any other program |
 | THIS TRACK | The track being worked on, by itself |
-| TRACK TO SAMPLES | **A loop of this track, made into a recording** (to put on a lane or a sampler, and to free the handheld's work: a busy synth played back as a recording costs little). The track being worked on by itself (muted or not), the scene you are on played round once and then **the second time round kept**, so whatever rings past its end is heard at its start, as when it loops. **1, 2 or 4 whole bars** (the most the scene has, within twenty seconds: 4 bars at 120 BPM, 2 at 40); a scene under a bar, all of it. One channel, 16-bit 48 kHz, in `samples/bounces` ("bounces/bass 1", after the track's name), where the list of recordings sees it at once. **The cell's FILL is left out**: a loop is the plain cell. On a lane, **a tap of A on FIT fits it to its bars**. The row says `done: "bounces/bass 1" in recordings` |
+| TRACK TO SAMPLES | **A loop of this track, made into a recording** (to put on a lane or a sampler, and to free the handheld's work: a busy synth played back as a recording costs little). The track being worked on by itself (muted or not), the scene you are on played round once and then **the second time round kept**, so whatever rings past its end is heard at its start, as when it loops. **1, 2 or 4 whole bars** (the most the scene has, within twenty seconds: 4 bars at 120 BPM, 2 at 40); a scene under a bar, all of it. Stereo, 16-bit 48 kHz (one channel where both sides are the same), in `samples/bounces` ("bounces/bass 1", after the track's name), where the list of recordings sees it at once. **The cell's FILL is left out**: a loop is the plain cell. On a lane, **a tap of A on FIT fits it to its bars**. The row says `done: "bounces/bass 1" in recordings` |
 | MIDI FILE | One MIDI file of the whole song (Type 1): every scene as many times as it plays, one track per track, at the song's tempo. Notes and chords as written, with ratchets and nudges; drums as General MIDI on channel 10. Muted tracks are left out. Chance, swing and feel, strum, glide and automation have no MIDI in them and are left out |
 
 A bounce is **not recorded as the song plays**. A second engine works the
@@ -2403,8 +2408,14 @@ the edits make it, and eight boxes laid out as the sampler's.
   sound, END after the last: under 40 dB below its loudest is silence).
   **Y anywhere else: NORMALIZE**: GAIN so the part played peaks at about
   -1 dB, never over it. Both only set the boxes, and are undone like any edit.
+- **MONO (a stereo sound only).** A stereo recording shows **STEREO** at the
+  right of its name, at the top. UP from the top row of boxes goes there (DOWN
+  comes back). **Hold A + UP: MONO**, both sides mixed into one, heard the same
+  on both; **hold A + DOWN: STEREO** again, as the file is. B puts it back to
+  STEREO. It never changes the file, it is kept with the song and undone like
+  any edit. A mono recording has no such word: there is nothing to mix.
 - **R1: SAVE A COPY.** What the lane plays, as its EDIT and FIT make it, is
-  written as a new recording (16-bit, one channel, 48 kHz, as Catch writes),
+  written as a new recording (16-bit, 48 kHz, as Catch writes; two channels for a stereo sound, one with MONO on),
   beside the lane's file and named after it with the next free number:
   `amen 1`, `amen 2`... (never over a file). A synth voice or a built-in drum
   goes in `samples` itself, after its model or drum (`kick 1`). The line at
@@ -2463,7 +2474,7 @@ screen, another track, Play or a new song stops it.
 into slices (see "Slices: chopping a break").
 
 **Y is Catch.** The engine remembers the last 25 seconds it played. A tap of Y on a
-lane takes the last whole bars the song played, saves them as `catch 1.wav`, `catch 2.wav`... in
+lane takes the last whole bars the song played, **in stereo, as they were heard**, saves them as `catch 1.wav`, `catch 2.wav`... in
 `samples/catches`, and puts them on that lane **fitted to their steps** (2 bars: 32). It catches when Y
 is let go. It works just after stopping too. SELECT + B puts back what the lane had, its FIT, cut and
 synth voice with it (the catch's file stays in `catches`).
@@ -2487,8 +2498,11 @@ to catch. The choice stays until you change it (it is not saved with the song).
   to the buses. The handheld starts remembering a track when you choose it, so its bars count from
   then: choose, let a bar or more go by, then tap Y. Before a whole bar of it has gone by nothing is
   caught, and the line says `NO WHOLE BAR OF 3 BASS YET: LET ONE GO BY`.
+- **A catch is a stereo file** (two channels, 16-bit, 48 kHz), left and right as they were heard. One with
+  nothing off the middle at all (both sides the same, sample for sample: the plain kit, nothing panned, no
+  stereo effect) is saved as one channel: the same sound, half the size.
 
-**R1 is Record.** With a USB microphone or audio interface plugged into the
+**R1 is Record.** (One channel: the input is taken as one.) With a USB microphone or audio interface plugged into the
 USB-C port: R1 on a lane starts it waiting for sound, so there is no silence
 on the front. R1 again stops it, on any lane or box and on the KIT stop; it
 stops by itself at twenty seconds. Silence
@@ -2521,7 +2535,18 @@ tempo is undone). A scene with its own tempo still plays at its own.
 Nothing happens on the built-in drum or a synth voice.
 
 - WAV files of 8, 16, 24 or 32 bits or 32-bit float, at 4 kHz to 192 kHz,
-  with 1 to 8 channels. They are played as one channel at 48 kHz.
+  with 1 to 8 channels, played at 48 kHz. **A sound plays as its file is**: a
+  stereo file (two channels) in stereo, each side to its own; a mono file as
+  one sound in the middle. A file of 3 to 8 channels is mixed into one. EDIT's
+  MONO mixes a stereo one into one for that lane.
+- **PAN on a stereo sound is a balance**: turned one way, the other side is
+  turned down (to nothing at the end) and the side it turns to comes up a
+  little (3 dB at the end), as a mono sound's does. So a stereo sound with
+  nothing on its left, panned hard left, is silent. The slices, FIT, step
+  effects, CHOKE and THROW work on both sides alike (THROW sends both sides
+  mixed into one, as a bus is fed one sound).
+- **A stereo recording takes twice the memory** of a mono one of the same
+  length.
 - **Twenty seconds** of each is used; a longer file is cut there, with a short fade so it does not click.
 - The song file keeps each lane's file by name and each hit's start. If the
   file is not on the card, the lane plays its drum and says so (FILE NOT

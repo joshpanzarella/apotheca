@@ -148,6 +148,15 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     sample to the next makes `plainRun` say 0 while it moves**, or the run
     skips it. `speed_test` (`testDrumRuns`) holds the two ways side by side
     (`setRunsForTests`). Twelve drum tracks 1.47% to 0.43% of a desk core.
+  - **STEREO recordings (2026-11-28)**: `SampleData::right` (empty: mono) reaches a lane as `ownRight_`, the
+    sampler as `Voice::right` (a zone's `SampleZone::right` too), CLOUD as `State::right`. Each render does
+    **every mono voice first, exactly as before, then the copy to `right`, then the stereo voices**
+    (`renderVoice<kThrown, true>`, `Sampler::renderVoice<true>`, `runGrain<kPlain, true>`), so a block with no
+    stereo voice sounding is the old block to the bit, and a stereo voice whose two sides are the same writes
+    the same bits as the mono one (both tested). A stereo drum voice's THROW is its two sides mixed to one
+    (`0.5 * (L + R)`): the buses are fed one sound. A CLOUD grain reads both sides at the same place through
+    the same window; its pan (gl, gr) weighs them. The track's PAN is unchanged (equal power, after the
+    instrument), so on a stereo sound it acts as a balance with +3 dB on the side it turns to at the end.
   - **A track that throws nothing takes the old loop in `feedBuses`**, which
     is why a song without throws is the same to the bit (the pinned song).
   - `letGoOfNotes` shuts every send a THROW held (Play, Stop, panic), as do
