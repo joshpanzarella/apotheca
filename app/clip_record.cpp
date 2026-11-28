@@ -31,11 +31,10 @@ std::string trimmed(const std::string& s) {
     return s.substr(a, b - a);
 }
 
-// A button by the name controls.txt uses (buttonName): A, B, X, Y, UP, L1, START, SELECT...
-Button buttonNamed(const std::string& word) {
-    if (word == "SEL") return Button::Select;
+// A button by the name the screen gives it (buttonLabel): A, B, X, Y, UP, L1, START, SEL...
+Button buttonCalled(const std::string& word) {
     for (int i = 0; i < static_cast<int>(Button::Count); ++i)
-        if (word == buttonName(static_cast<Button>(i))) return static_cast<Button>(i);
+        if (word == buttonLabel(static_cast<Button>(i))) return static_cast<Button>(i);
     return Button::None;
 }
 
@@ -203,7 +202,7 @@ bool ClipScript::parse(const std::string& text, std::string& error) {
             add(back);
             continue;
         }
-        e.button = buttonNamed(name);
+        e.button = buttonCalled(name);
         if (e.button == Button::None) return fail("no such button");
         if (what == "down" || what == "up") {
             e.kind = what == "down" ? Event::Down : Event::Up;
@@ -263,8 +262,8 @@ void KeyBand::letGo(const std::string& key, double at) {
 
 void KeyBand::apply(const ClipScript::Event& e) {
     switch (e.kind) {
-    case ClipScript::Event::Down: press(buttonName(e.button), e.hold, e.at); break;
-    case ClipScript::Event::Up: letGo(buttonName(e.button), e.at); break;
+    case ClipScript::Event::Down: press(buttonLabel(e.button), e.hold, e.at); break;
+    case ClipScript::Event::Up: letGo(buttonLabel(e.button), e.at); break;
     case ClipScript::Event::Stick: {
         const std::string word = stickWord(e.x, e.y);
         if (!stick_.empty() && stick_ != "STICK " + word) letGo(stick_, e.at);
@@ -361,7 +360,7 @@ int recordClip(App& app, Input& input, SDL_Renderer* renderer, const Fonts& font
                 key.key.keysym.sym = keyFor(e.button);
                 if (input.handle(key, press)) {
                     do {
-                        std::fprintf(presses, "%u %s %s\n", now - kStartMs, buttonName(press.button), press.down ? "down" : "up");
+                        std::fprintf(presses, "%u %s %s\n", now - kStartMs, buttonLabel(press.button), press.down ? "down" : "up");
                         app.onButton(press, input);
                     } while (input.pending(press));
                 }

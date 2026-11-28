@@ -44,8 +44,8 @@ length 17.0                          # and up to here
 3.5 down SEL / 3.6 up SEL            # a button by itself (down X hold: marked a hold)
 ```
 
-Buttons are named as `controls.txt` names them (`buttonName`): UP DOWN LEFT RIGHT A B X Y L1 R1 L2 R2 START SELECT
-(or SEL) MENU L3. Each press goes to the app through the keyboard stand-ins of `input.cpp`, so the app takes it the
+Buttons are named as the screen writes them (`buttonLabel`): UP DOWN LEFT RIGHT A B X Y L1 R1 L2 R2 START SEL MENU
+L3. Each press goes to the app through the keyboard stand-ins of `input.cpp`, so the app takes it the
 way it takes the desk's keyboard; the stick goes in as a gamepad axis. `OUTDIR/presses.txt` lists each press as the
 app got it, with its time in milliseconds.
 

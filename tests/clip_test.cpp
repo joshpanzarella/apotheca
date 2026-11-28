@@ -48,7 +48,7 @@ void testTheScript() {
         "1.2 hold A 0.6\n"
         "3.0 stick LEFT 0.3 0.5\n"
         "3.5 down SEL\n"
-        "3.6 up SELECT\n"
+        "3.6 up SEL\n"
         "1.5 say Hold A.\n"
         "4.0 caption FX\n";
     check(s.parse(text, error), "a script is read");
@@ -65,7 +65,7 @@ void testTheScript() {
     check(std::fabs(s.events[7].at - 2.5) < 1e-9 && s.events[7].kind == Event::Down, "the third tap at 2.5");
     check(s.events[9].kind == Event::Stick && s.events[9].x == -0.5f && s.events[9].y == 0.f, "the stick half left");
     check(s.events[10].kind == Event::Stick && s.events[10].x == 0.f && std::fabs(s.events[10].at - 3.3) < 1e-9, "and let go at 3.3");
-    check(s.events[11].button == Button::Select && s.events[12].button == Button::Select, "SEL and SELECT both name it");
+    check(s.events[11].button == Button::Select && s.events[12].button == Button::Select, "SEL, as the screen writes it");
     check(s.events[13].kind == Event::Caption && s.events[13].text == "FX", "a caption at a time");
 
     check(!s.parse("1.0 tap Q\n", error) && error.find("line 1") != std::string::npos, "no such button");
