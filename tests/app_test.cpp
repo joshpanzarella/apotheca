@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "memory.hpp"
 #include "apotheca/engine.hpp"
 #include "presets.hpp"
 #include "app.hpp"
@@ -3187,6 +3188,10 @@ void testQuittingTurnsTheHandheldOff() {
         CHECK(canvas.fonts->small.width(App::updateNowWords(true)) <= canvas.fonts->small.width(App::updateNowWords(false)));
         // Drawn: the card with the firmware's words differs from the port's, and only in the START line's words.
         Rig rig;
+        // The card also prints the live SOUND load and free memory: fixed here, or a busy desk changes a
+        // second line between two drawings (seen: this test failing twice under load).
+        rig.app.pretendLoad(43, 51, 37);
+        memory::pretend([] { return 2000 * memory::kMegabyte + memory::kMargin; });
         rig.app.session().view = View::Pattern;
         rig.frames(2);
         rig.key(SDLK_TAB, true); // MENU held: the card
@@ -3208,6 +3213,7 @@ void testQuittingTurnsTheHandheldOff() {
         rig.app.draw(canvas.r, *canvas.fonts);
         CHECK(canvas.all() == quits);
         rig.key(SDLK_TAB, false);
+        memory::pretend(nullptr);
     }
 }
 
