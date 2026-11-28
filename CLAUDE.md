@@ -97,6 +97,7 @@ were here (moved 2026-11-24, when this file had grown to 3,139 lines); read the 
 | `docs/dev/measured.md` | every timing taken |
 | `docs/dev/next.md` | the road map, in the owner's order |
 | `docs/dev/stills.md` | every `--view` |
+| `docs/dev/videos.md` | the feature clips (desk only): `--script`/`--record`, `scripts/make-clips.sh`, the script format, how sound and picture stay in step |
 
 Plans and reviews: `docs/plans/`. The manual: `docs/manual.md`. **A new decision goes in its `docs/dev/` file; this
 file gets only a new hard rule.**

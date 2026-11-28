@@ -1,0 +1,31 @@
+# 05: a MOD on a knob (hold X on it) and the MOD tab.
+title A MOD ON A KNOB
+about A knob that moves by itself: hold X on the bass's TONE, press up for an LFO, set its depth and rate, then see it on the MOD tab.
+caption MOD
+run --demo --view song
+# (not recorded: from SONG to the bass track's DEVICE page, on TONE)
+0.4 tap RIGHT
+0.8 tap R2 2 0.3
+1.6 tap DOWN
+1.9 tap LEFT 2 0.3
+from 2.6
+length 20.4
+
+2.8 say The bass track's TONE knob, the song playing.
+3.8 say Hold X on the knob: its MOD shows. UP makes one, an LFO.
+3.8 hold X 7.6
+4.6 tap UP
+5.8 say The stick sets its DEPTH: how far it swings.
+5.8 stick UP 0.5
+7.0 say Left and right set its RATE: a bar, half a bar...
+7.0 tap LEFT 2 0.7
+8.8 say A steps its SHAPE.
+8.8 tap A 2 0.7
+11.8 say Let go: the knob keeps moving. The brass mark shows where it is.
+14.0 say The MOD tab shows both MODs of the track.
+14.0 tap R2 2 0.4
+15.6 tap RIGHT
+16.0 say Hold A and press up: DEPTH turns here too.
+16.4 tap DOWN 2 0.4
+17.4 hold A 2.0
+17.8 tap UP 6 0.15

@@ -323,6 +323,8 @@ int recordClip(App& app, Input& input, SDL_Renderer* renderer, const Fonts& font
         return 1;
     }
     wavHeader(wav, options.rate, 0);
+    // A bounce from SET (its own clip) is written beside the recording, never in the desk's own folders.
+    app.session().useBounceFolder(out + "/bounces");
 
     // The band's lettering: the app's own font, a size up from XL so the chips read on a phone.
     Fonts band;
@@ -414,7 +416,7 @@ int recordClip(App& app, Input& input, SDL_Renderer* renderer, const Fonts& font
     // The narration: each "say" until the next (at most six seconds), as subtitles and as a page.
     std::FILE* srt = std::fopen((out + "/clip.srt").c_str(), "w");
     std::FILE* md = std::fopen((out + "/clip.md").c_str(), "w");
-    if (md) std::fprintf(md, "# %s\n\n%s\n\n", script.title.c_str(), script.about.c_str());
+    if (md) std::fprintf(md, "# %s\n\n%s\n\n## Narration\n\n", script.title.c_str(), script.about.c_str());
     int said = 0;
     for (std::size_t i = 0; i < script.events.size(); ++i) {
         const ClipScript::Event& e = script.events[i];
@@ -428,7 +430,7 @@ int recordClip(App& app, Input& input, SDL_Renderer* renderer, const Fonts& font
         const double a = e.at - script.from, b = until - script.from;
         if (srt) std::fprintf(srt, "%d\n%s --> %s\n%s\n\n", ++said, srtTime(a).c_str(), srtTime(b).c_str(), e.text.c_str());
         const long whole = static_cast<long>(a);
-        if (md) std::fprintf(md, "    %ld:%02ld  %s\n", whole / 60, whole % 60, e.text.c_str());
+        if (md) std::fprintf(md, "- `%ld:%02ld` %s\n", whole / 60, whole % 60, e.text.c_str());
     }
     if (srt) std::fclose(srt);
     if (md) std::fclose(md);

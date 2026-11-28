@@ -2,10 +2,11 @@
 """Recordings for the feature clips (scripts/make-clips.sh), made from nothing, into FOLDER:
 
   break.wav     a mono drum break, two bars at 120 BPM (kicks, snares, hats): uneven hits for SLICES AT THE HITS
-  pingpong.wav  a stereo ping-pong, two bars at 120 BPM: a plucked note on each eighth, left, right, left...
+  pingpong.wav  a stereo ping-pong, one bar at 120 BPM: a plucked note on each sixteenth, left, right, left...
                 (MONO folds it to the middle, which is the point of the STEREO clip)
 
-usage: clip_samples.py FOLDER
+usage: clip_samples.py FOLDER            both
+       clip_samples.py --stereo FOLDER   the ping-pong alone (the stills put a folder's first recording on a lane)
 """
 import math
 import os
@@ -58,14 +59,14 @@ def drum_break():
 
 
 def ping_pong():
-    n = int(RATE * BEAT * 8)
+    n = int(RATE * BEAT * 4)
     left, right = [0.0] * n, [0.0] * n
     notes = [69, 72, 76, 79, 76, 72, 74, 77]
     for e in range(16):
-        start = int(e * BEAT / 2 * RATE)
+        start = int(e * BEAT / 4 * RATE)
         f = 440 * 2 ** ((notes[e % 8] - 69) / 12)
         side = left if e % 2 == 0 else right
-        for i in range(int(0.22 * RATE)):
+        for i in range(int(0.12 * RATE)):
             if start + i < n:
                 t = i / RATE
                 side[start + i] += 0.6 * math.exp(-t * 14) * (math.sin(2 * math.pi * f * t) + 0.3 * math.sin(4 * math.pi * f * t))
@@ -73,11 +74,16 @@ def ping_pong():
 
 
 def main():
-    if len(sys.argv) != 2:
+    args = sys.argv[1:]
+    stereo_only = args[:1] == ["--stereo"]
+    if stereo_only:
+        args = args[1:]
+    if len(args) != 1:
         sys.exit(__doc__)
-    folder = sys.argv[1]
+    folder = args[0]
     os.makedirs(folder, exist_ok=True)
-    write(os.path.join(folder, "break.wav"), drum_break())
+    if not stereo_only:
+        write(os.path.join(folder, "break.wav"), drum_break())
     l, r = ping_pong()
     write(os.path.join(folder, "pingpong.wav"), l, r)
 

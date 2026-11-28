@@ -10,7 +10,8 @@
 #   BUILD=/path/to/build                   another build folder (default: build/ beside this script's checkout)
 #
 # A clip's script names the program's options on its `run` line (--demo --view NAME ...). "$SAMPLES" in it is a
-# folder of recordings made here for the clips that need them (scripts/clip_samples.py).
+# folder of recordings made here for the clips that need them (scripts/clip_samples.py), "$STEREO" one that holds
+# only the stereo ping-pong.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 build=${BUILD:-$root/build}
@@ -19,7 +20,10 @@ work=${WORK:-$(mktemp -d "${TMPDIR:-/tmp}/apotheca-clips-XXXXXX")}
 mkdir -p "$videos" "$work"
 [ -x "$build/apotheca" ] || { echo "no $build/apotheca: build it first"; exit 1; }
 SAMPLES=$work/samples
+STEREO=$work/stereo
+rm -rf "$SAMPLES" "$STEREO" # (a catch from a run before would be CATCH 2)
 python3 "$root/scripts/clip_samples.py" "$SAMPLES"
+python3 "$root/scripts/clip_samples.py" --stereo "$STEREO"
 
 for script in "$root"/clips/*.clip; do
     name=$(basename "$script" .clip)
@@ -32,6 +36,7 @@ for script in "$root"/clips/*.clip; do
     rm -rf "$out"
     run=$(sed -n 's/^run //p' "$script" | head -1)
     run=${run//\$SAMPLES/$SAMPLES}
+    run=${run//\$STEREO/$STEREO}
     echo "== $name: apotheca $run"
     # (a still in every way: no songs, settings or recordings of the desk's own are touched)
     # shellcheck disable=SC2086
