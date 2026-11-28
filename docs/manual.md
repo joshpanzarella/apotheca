@@ -333,7 +333,7 @@ A fourth screen, after DEVICE. **Two columns, and everything is in view.**
 | Column | Holds |
 | --- | --- |
 | Left: the list | Eight lines, always there. **THIS TRACK**: its three effects, one after the other, then its **SENDS** (how much of it goes to ECHO, how much to SPACE). **BUSES**: what **ECHO** and **SPACE** hold, one effect each, shared by every track. **MASTER**: the two effects on everything, after the tracks are mixed. |
-| Right: the line picked | Large. A heading (where it is, the effect, its TYPE, what it is doing just now), then each setting as a wide row: its name, its value, a bar. For SENDS: the two sends. |
+| Right: the line picked | Large. A heading (where it is, the effect, its TYPE, what it is doing just now), a picture of what the effect does, then its settings as dials side by side: each its name and its value. For SENDS: the two sends. |
 
 Both columns go down to the hints bar.
 
@@ -535,7 +535,7 @@ before the panic stay up with what was typed.
 ![The SET tab](manual/volume.png)
 
 **Which version this is** shows at the top right of the SET tab (and on the
-help card, the WiFi page, and the first line of `apotheca.log`): `0.104`
+help card, the WiFi page, and the first line of `apotheca.log`): `BUILD 979`
 and the day it was built. The number goes up by one with every build.
 
 The rows stand under five headings: **SONG** (TEMPO, CHORD PACK, KEY, SCALE,

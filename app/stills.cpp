@@ -412,7 +412,7 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         app.session().setCellBars(1, 0, 2);
         app.notes().moveCursorTo(60, 0);
         app.project().bar = 0;
-        tapKey(SDLK_UP);
+        tapKey(SDLK_UP, 2); // tempo, BARS (the roll has had a TEMPO stop since 2026-11-28)
     } else if (std::strcmp(view, "bars-stop-grid") == 0) { // the drums with the cursor on BARS
         app.project().track = 0;
         app.session().view = View::Pattern;
@@ -596,9 +596,11 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         for (SDL_Keycode key : {SDLK_1, SDLK_2, SDLK_q, SDLK_w}) pushKey(key, true); // all four shoulder buttons
         for (SDL_Keycode key : {SDLK_1, SDLK_2, SDLK_q, SDLK_w}) pushKey(key, false);
     } else if (std::strcmp(view, "wifi") == 0) {
+        // Files over WiFi on, as L1 turns it on (pretended: a still runs no server), on the stock
+        // firmware: its address, :8080 before the number (the manual's picture).
+        app.session().pretendWifi(Wifi::Now(), "192.168.1.23:8080/4821");
         app.session().view = View::Song;
         tapKey(SDLK_BACKSPACE); // SELECT: the list
-        tapKey(SDLK_q);         // L1: files over WiFi
     } else if (std::strcmp(view, "revs") == 0) {
         app.session().view = View::Song;
         tapKey(SDLK_BACKSPACE); // SELECT
