@@ -116,3 +116,8 @@ Two things to know. A firmware build with main merged at a commit that is not a 
 count, one less than a port built from it. With no `main` or `origin/main` in the repository the card counts its
 own branch (Make warns). The number is only shown (screen, log, the WiFi page); nothing compares it, so the card's
 N going down from 1028 to 979 changes nothing else.
+
+**`dist/firmware/IMAGE_BUILD`** holds the BUILD N of the card image in `dist/firmware/` (one line, the number;
+2026-11-28). The app file beside it can be newer (`dist/VERSION` is the port's). Write it whenever a new
+`apotheca-rg40xxv.img.gz` is shipped: the owner's website reads it, with `dist/VERSION` and the image's size, to show
+the download's build number (`shapetaker-site`, `src/components/ApothecaDownload.tsx`).
