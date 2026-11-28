@@ -531,8 +531,8 @@ public:
     void readScope(float* out, int count) const; // the newest `count` samples (up to kScopeSize), oldest first
 
     float sampleRate() const { return sampleRate_; }
-    // Catch: the engine remembers the last twenty seconds it put out (both
-    // sides mixed to one). This copies out the last whole bar the song
+    // Catch: the engine remembers the last twenty seconds it put out (each side
+    // to its own ring since STEREO; this one mixes them to one). This copies out the last whole bar the song
     // played, exactly, bar line to bar line, also just after it has been
     // stopped. If there is no such bar (the song is in its first bar, or
     // something has been played by hand since it stopped, or there was a
@@ -546,8 +546,10 @@ public:
     // played since Play (or since the ring began following that track, setCatchTrack), or where `bars`
     // of them would not fit the twenty seconds. None at all: `bars` bars' worth up to now, as lastBar's, no
     // longer than what has been heard of the track. From the control thread; allocates.
+    // STEREO (2026-11-28): both sides, `sound` the left and `right` the right (as long). lastBar() mixes them to one.
     struct Caught {
         std::vector<float> sound;
+        std::vector<float> right;
         int steps = kSteps; // how many steps it is (to fit it to)
         int bars = 0;       // how many whole bars it is; 0: a bar's worth up to now, not whole bars
     };
@@ -1101,7 +1103,8 @@ private:
     float masterPanL_ = 1.f, masterPanR_ = 1.f, masterPanLNow_ = 1.f, masterPanRNow_ = 1.f;
     void runMaster(float* mixL, float* mixR, int frames);
     float volume_ = 1.f, volumeNow_ = 1.f; // where it is going, and where it has got to (it glides, so a change does not click)
-    std::unique_ptr<std::atomic<float>[]> caught_; // a ring of kCatchFrames
+    std::unique_ptr<std::atomic<float>[]> caught_; // a ring of kCatchFrames: the left side (STEREO, 2026-11-28)...
+    std::unique_ptr<std::atomic<float>[]> caughtR_; // ...and the right
     std::atomic<std::uint64_t> caughtCount_{0};    // frames ever written to it
     long long barBeganStep_ = 0;                   // stepsFired_ when the bar playing began
     std::atomic<int> barFramesNow_{96000};         // a bar at the present tempo
@@ -1113,6 +1116,7 @@ private:
     std::atomic<std::uint64_t> lineCount_{0}, runFrom_{0};
     // CATCH of one track: a second ring, fed by the track catchTrack_ names, from followFrom_ on.
     std::unique_ptr<std::atomic<float>[]> trackCaught_;
+    std::unique_ptr<std::atomic<float>[]> trackCaughtR_; // (its right side)
     std::atomic<int> catchTrack_{-1};
     std::atomic<int> following_{-1};             // the track the ring holds since followFrom_ (-1: none)
     std::atomic<std::uint64_t> followFrom_{0};

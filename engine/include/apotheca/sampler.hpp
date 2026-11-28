@@ -77,7 +77,8 @@ constexpr int kMaxLayers = 4;      // ...each with at most this many velocity la
 constexpr int kChopSlices = 16;    // ...and in a chop, always sixteen, from kChopBase up
 constexpr int kChopBase = 24;      // C1 plays the first slice
 struct SampleZone {
-    std::vector<float> data; // the zone's recording, mono, at the engine's rate
+    std::vector<float> data; // the zone's recording, mono (or its left side), at the engine's rate
+    std::vector<float> right; // a stereo recording's right side, as long as `data`; empty: mono (STEREO, 2026-11-28)
     int root = 60;           // the key it was made at: it plays untransposed there
     int lo = 0, hi = 127;    // the keys that play it
     float top = 1.f;         // the loudest note (velocity, 0..1) that plays it: a note's softer layers come first
@@ -101,7 +102,7 @@ public:
     void noteOff(int note) override;
     void allNotesOff() override;
     void chokeAll() override;
-    void setSample(const float* data, int length) override;
+    void setSample(const float* data, int length, const float* right = nullptr) override;
     void setZones(const sampler::SampleZoneSet* zones) override;
     void setChopped(bool chopped) override;
     void render(float* left, float* right, int frames) override;
@@ -110,6 +111,7 @@ private:
     struct Voice {
         int note = -1;       // -1: free
         const float* data = nullptr; // what it reads: its zone's recording, or the one recording
+        const float* right = nullptr; // ...and its right side, a stereo one's; nullptr: mono
         int length = 0;
         double spanFrom = 0.0, spanTo = 0.0; // the part it may read: a chop's slice, else the whole
         double position = 0.0, step = 1.0;
@@ -121,7 +123,10 @@ private:
         unsigned age = 0;    // for choosing which to take when all eight are busy
     };
     const float* data_ = nullptr;
+    const float* right_ = nullptr; // the one recording's right side (stereo); nullptr: mono
     int length_ = 0;
+    template <bool kStereo>
+    void renderVoice(Voice& v, float* left, float* right, int frames);
     const std::vector<sampler::SampleZone>* zones_ = nullptr; // a multisample's zones, or null for one recording
     bool chopped_ = false;                                        // ...played as 16 slices from C1 up (never with zones: they win)
     int value_[sampler::kSettings];

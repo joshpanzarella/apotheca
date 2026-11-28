@@ -667,11 +667,31 @@ static void mergedLanes(Engine& e, bool fill) {
     e.render(scratch.data(), 256);
 }
 
+// STEREO (2026-11-28): every lane of the busiest song's six drum tracks plays a recording in place of the kit's
+// drum: the drum itself, copied (1: mono), or as a stereo recording (2: the drum on the left, the same a little
+// quieter on the right), so the lanes' read is timed mono against stereo with every hit the song has.
+static void recordingsOnLanes(Engine& e, int channels) {
+    if (channels <= 0) return;
+    const DrumKit& kit = DrumKit::builtIn(48000.f);
+    std::vector<float> scratch(512);
+    for (int t = 0; t < 6; ++t)
+        for (int lane = 0; lane < kDrumLanes; ++lane) {
+            std::unique_ptr<SampleData> data(new SampleData);
+            data->data = kit.samples[lane];
+            if (channels > 1)
+                for (float v : kit.samples[lane]) data->right.push_back(0.8f * v);
+            e.setLaneSample(t, lane, std::move(data));
+            e.render(scratch.data(), 64);
+        }
+    e.collectGarbage();
+}
+
 // The busiest song in real time: a block is worked out, then the thread sleeps until the next
 // is due, as the sound card's thread does. On its own thread, which asks for realtime priority
 // as the program's audio thread does (`realtime`), and the helpers as the program's do.
 // `merged`: 0 the song alone; 1 with CATCH's ring following a track; 2 with that and a FILL too (mergedLanes).
-static WholeSongTimes playWholeSong(int helpers, double seconds, bool realtime, int mods = 0, bool heaviest = false, bool typical = false, int merged = 0) {
+// `recordings`: the drum lanes on recordings, 1 mono, 2 stereo (recordingsOnLanes); 0 the kit's drums.
+static WholeSongTimes playWholeSong(int helpers, double seconds, bool realtime, int mods = 0, bool heaviest = false, bool typical = false, int merged = 0, int recordings = 0) {
     WholeSongTimes times;
     std::thread player([&] {
         if (realtime) times.realtime = makeThreadRealtime(70);
@@ -679,6 +699,7 @@ static WholeSongTimes playWholeSong(int helpers, double seconds, bool realtime, 
         if (typical) typicalSong(*engine);
         else busiestSong(*engine), busiestMods(*engine, mods);
         if (!typical && merged > 0) mergedLanes(*engine, merged > 1);
+        if (!typical) recordingsOnLanes(*engine, recordings);
         std::vector<float> out(512);
         for (int i = 0; i < 400; ++i) { // two seconds, so every tail and bus is going
             engine->render(out.data(), 256);
@@ -1079,10 +1100,11 @@ __attribute__((noinline)) static void profiledRender(Engine& engine, int blocks)
 int apotheca::runProfile(const char* name, double seconds) {
     const std::string what = name;
     std::unique_ptr<Engine> engine;
-    if (what == "busiest" || what == "busiest-mods") {
+    if (what == "busiest" || what == "busiest-mods" || what == "busiest-mono" || what == "busiest-stereo") {
         engine.reset(new Engine);
         busiestSong(*engine);
         busiestMods(*engine, what == "busiest-mods" ? 24 : 0);
+        recordingsOnLanes(*engine, what == "busiest-mono" ? 1 : what == "busiest-stereo" ? 2 : 0);
         std::vector<float> out(512);
         for (int i = 0; i < 400; ++i) engine->render(out.data(), 256), engine->collectGarbage(); // every tail and bus going, as the rows
     } else if (what == "typical") {
@@ -1101,7 +1123,7 @@ int apotheca::runProfile(const char* name, double seconds) {
     } else if (what == "empty") {
         engine.reset(new Engine);
     } else {
-        std::printf("bench --profile NAME [SECONDS]: busiest, busiest-mods, typical, drums, drums-thrown, chords, phazed-silent, jaxep-silent, fm6-silent, empty\n");
+        std::printf("bench --profile NAME [SECONDS]: busiest, busiest-mods, busiest-mono, busiest-stereo, typical, drums, drums-thrown, chords, phazed-silent, jaxep-silent, fm6-silent, empty\n");
         return 1;
     }
     const int blocks = static_cast<int>(std::max(0.0, seconds) * 48000.0 / 256.0);
@@ -1133,6 +1155,16 @@ static void wholeSongRows() {
             const WholeSongTimes t = playWholeSong(h, 5.0, true, 0, false, false, merged);
             char name[48];
             std::snprintf(name, sizeof name, "%s, %d helper%s", merged == 1 ? "CATCH 1 track" : "CATCH + FILL", t.helpers, t.helpers == 1 ? "" : "s");
+            std::printf("  %-28s %5.1f%% of a block, 1 in 100 over %.2f ms, worst %.2f ms, %d of %d too late\n", name, 100.0 * t.meanMs / (256.0 / 48.0), t.p99Ms, t.worstMs, t.over, t.blocks);
+            if (h == helpers) break;
+        }
+    // STEREO (2026-11-28): the same song with every drum lane on a recording, mono and then stereo. Five seconds each.
+    std::printf("the busiest song with every drum lane on a recording, mono then stereo:\n");
+    for (int recordings : {1, 2})
+        for (int h : {0, helpers}) {
+            const WholeSongTimes t = playWholeSong(h, 5.0, true, 0, false, false, 0, recordings);
+            char name[48];
+            std::snprintf(name, sizeof name, "%s, %d helper%s", recordings == 1 ? "MONO lanes" : "STEREO lanes", t.helpers, t.helpers == 1 ? "" : "s");
             std::printf("  %-28s %5.1f%% of a block, 1 in 100 over %.2f ms, worst %.2f ms, %d of %d too late\n", name, 100.0 * t.meanMs / (256.0 / 48.0), t.p99Ms, t.worstMs, t.over, t.blocks);
             if (h == helpers) break;
         }
@@ -1175,7 +1207,7 @@ static void wholeSongModRows() {
 // CLOUD (docs/plans/granular-plan.md, section 3): one key of preset 0 (Soft Cloud: about two grains
 // at once), and the pool full: six keys at 200 grains a second, SIZE 80 (0.35 s) and PITCH SPRAY on,
 // so every grain is read between samples (Hermite), on a 4 s noise made here as the recording.
-static void cloudRow(const char* name, bool full) {
+static void cloudRow(const char* name, bool full, bool stereo = false) {
     std::unique_ptr<Cloud> synth(new Cloud);
     synth->prepare(48000.f);
     std::vector<float> recording(4 * 48000);
@@ -1184,7 +1216,9 @@ static void cloudRow(const char* name, bool full) {
         x = x * 1664525u + 1013904223u;
         v = (static_cast<float>(x >> 8) / 8388608.f - 1.f) * 0.5f;
     }
-    synth->setSample(recording.data(), static_cast<int>(recording.size()));
+    std::vector<float> right; // STEREO: the right side, the same noise turned round
+    if (stereo) right.assign(recording.rbegin(), recording.rend());
+    synth->setSample(recording.data(), static_cast<int>(recording.size()), stereo ? right.data() : nullptr);
     if (full) {
         synth->setSetting(cloud::Density, 100);
         synth->setSetting(cloud::Size, 80);
@@ -1206,7 +1240,7 @@ static void cloudRow(const char* name, bool full) {
 //   0  LOOP off, held: the plain read, START to END
 //   1  LOOP on round a 50 ms part (START 40, END 41): the jump back comes every few ms
 //   2  LOOP off, END at 2%: every note in its END fade (from S4) half the time, played again each block
-static void samplerRow(const char* name, int how) {
+static void samplerRow(const char* name, int how, bool stereo = false) {
     std::unique_ptr<Sampler> synth(new Sampler);
     synth->prepare(48000.f);
     std::vector<float> recording(4 * 48000);
@@ -1215,7 +1249,9 @@ static void samplerRow(const char* name, int how) {
         x = x * 1664525u + 1013904223u;
         v = (static_cast<float>(x >> 8) / 8388608.f - 1.f) * 0.5f;
     }
-    synth->setSample(recording.data(), static_cast<int>(recording.size()));
+    std::vector<float> right; // STEREO: the right side, the same noise turned round
+    if (stereo) right.assign(recording.rbegin(), recording.rend());
+    synth->setSample(recording.data(), static_cast<int>(recording.size()), stereo ? right.data() : nullptr);
     synth->setSetting(sampler::Release, 60);
     if (how == 1) {
         synth->setSetting(sampler::Loop, 1);
@@ -1350,6 +1386,7 @@ int apotheca::runBench() {
     acidRow("ACID asleep", true);
     cloudRow("CLOUD, one key", false);
     cloudRow("CLOUD, full pool", true);
+    cloudRow("CLOUD, full pool, stereo", true, true);
     morphRow("MORPH, 6 keys", 0);
     morphRow("MORPH, the pool full", 1);
     morphRow("MORPH asleep", 2);
@@ -1358,6 +1395,7 @@ int apotheca::runBench() {
     samplerRow("SAMPLER, 8 notes", 0);
     samplerRow("SAMPLER, 8 looped, 50 ms", 1);
     samplerRow("SAMPLER, 8 at END", 2);
+    samplerRow("SAMPLER, 8 notes, stereo", 0, true);
 
     {
         std::unique_ptr<Engine> engine(new Engine);

@@ -51,8 +51,9 @@ public:
     // so nothing plays on. Default: none (synths let go by stopNotes instead).
     virtual void chokeAll() {}
     // For an instrument that plays a recording: here it is (or nullptr for
-    // none). The samples stay alive until replaced. Realtime safe.
-    virtual void setSample(const float* data, int length) { (void)data; (void)length; }
+    // none). The samples stay alive until replaced. Realtime safe. `right`, if given, is a stereo
+    // recording's right side (as long; `data` is then its left): played in stereo. nullptr: mono.
+    virtual void setSample(const float* data, int length, const float* right = nullptr) { (void)data; (void)length; (void)right; }
     // For one that plays a multisample (the sampler): its zones, by root
     // (or nullptr for none). The set stays alive until replaced. Realtime safe.
     virtual void setZones(const sampler::SampleZoneSet* zones) { (void)zones; }

@@ -67,8 +67,12 @@ Engine::Engine() {
     for (int& m : meter_) m = kSteps;
     caught_.reset(new std::atomic<float>[kCatchFrames]);
     trackCaught_.reset(new std::atomic<float>[kCatchFrames]);
+    caughtR_.reset(new std::atomic<float>[kCatchFrames]);
+    trackCaughtR_.reset(new std::atomic<float>[kCatchFrames]);
     for (int i = 0; i < kCatchFrames; ++i) caught_[i].store(0.f, std::memory_order_relaxed);
     for (int i = 0; i < kCatchFrames; ++i) trackCaught_[i].store(0.f, std::memory_order_relaxed);
+    for (int i = 0; i < kCatchFrames; ++i) caughtR_[i].store(0.f, std::memory_order_relaxed);
+    for (int i = 0; i < kCatchFrames; ++i) trackCaughtR_[i].store(0.f, std::memory_order_relaxed);
     for (auto& at : lineAt_) at.store(0, std::memory_order_relaxed);
     for (auto& n : lineSteps_) n.store(kSteps, std::memory_order_relaxed);
     for (auto& s : scope_) s.store(0.f, std::memory_order_relaxed);
@@ -245,6 +249,8 @@ bool Engine::setLaneSample(int track, int lane, std::unique_ptr<SampleData> samp
 std::vector<float> Engine::lastBar(int* steps) const {
     Caught caught = lastBars(1);
     if (steps) *steps = caught.steps;
+    // Both sides mixed to one, as the one ring held it before STEREO (0.5 * (L + R), to the bit).
+    for (std::size_t i = 0; i < caught.sound.size() && i < caught.right.size(); ++i) caught.sound[i] = 0.5f * (caught.sound[i] + caught.right[i]);
     return std::move(caught.sound);
 }
 
@@ -252,6 +258,7 @@ Engine::Caught Engine::lastBars(int bars, int track) const {
     bars = bars < 1 ? 1 : (bars > kCatchMostBars ? kCatchMostBars : bars);
     const bool alone = track >= 0;
     const std::atomic<float>* ring = alone ? trackCaught_.get() : caught_.get();
+    const std::atomic<float>* ringR = alone ? trackCaughtR_.get() : caughtR_.get();
     Caught out;
     std::uint64_t now = 0, lines[kCatchMostBars + 1] = {};
     int steps[kCatchMostBars + 1] = {};
@@ -304,10 +311,12 @@ Engine::Caught Engine::lastBars(int bars, int track) const {
         if (alone && frames <= 0) return out;
     }
     out.sound.assign(static_cast<std::size_t>(frames), 0.f);
+    out.right.assign(static_cast<std::size_t>(frames), 0.f);
     for (int i = 0; i < frames; ++i) {
         const std::uint64_t back = static_cast<std::uint64_t>(frames - i);
         if (back > end) continue; // before the engine began: silence
         out.sound[static_cast<std::size_t>(i)] = ring[(end - back) % kCatchFrames].load(std::memory_order_relaxed);
+        out.right[static_cast<std::size_t>(i)] = ringR[(end - back) % kCatchFrames].load(std::memory_order_relaxed);
     }
     return out;
 }
@@ -1279,7 +1288,7 @@ bool Engine::applyDrums(const Command& c) {
             Track& track = tracks_[c.track];
             trash.pointer = track.laneSamples[c.a];
             track.laneSamples[c.a] = incoming;
-            track.drums.setLaneSample(c.a, incoming ? incoming->data.data() : nullptr, incoming ? static_cast<int>(incoming->data.size()) : 0);
+            track.drums.setLaneSample(c.a, incoming ? incoming->data.data() : nullptr, incoming ? static_cast<int>(incoming->data.size()) : 0, incoming && incoming->stereo() ? incoming->right.data() : nullptr);
         } else {
             trash.pointer = incoming; // nowhere to put it
         }
@@ -1350,7 +1359,7 @@ bool Engine::applySound(const Command& c) {
                 track.trackZones = nullptr;
                 bin(zones);
             }
-            track.synth->setSample(incoming ? incoming->data.data() : nullptr, incoming ? static_cast<int>(incoming->data.size()) : 0);
+            track.synth->setSample(incoming ? incoming->data.data() : nullptr, incoming ? static_cast<int>(incoming->data.size()) : 0, incoming && incoming->stereo() ? incoming->right.data() : nullptr);
         } else {
             trash.pointer = incoming;
         }
@@ -2775,8 +2784,11 @@ void Engine::renderTrack(int t) {
         scopeWritten_.store(written, std::memory_order_relaxed);
     }
     if (t == chunkCatch_) { // CATCH of this track alone: as the scope hears it (after its effects and level)
-        for (int i = 0; i < frames; ++i)
-            trackCaught_[(chunkAt_ + static_cast<std::uint64_t>(i)) % kCatchFrames].store(0.5f * (left[i] + right[i]) * track.level, std::memory_order_relaxed);
+        for (int i = 0; i < frames; ++i) {
+            const std::uint64_t at = (chunkAt_ + static_cast<std::uint64_t>(i)) % kCatchFrames;
+            trackCaught_[at].store(left[i] * track.level, std::memory_order_relaxed); // STEREO: each side to its own ring
+            trackCaughtR_[at].store(right[i] * track.level, std::memory_order_relaxed);
+        }
         chunkTapped_ = true;
     }
     float peak = chunkPeaks_[t];
@@ -3181,10 +3193,14 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
     const auto remember = [&] {
         std::uint64_t at = caughtCount_.load(std::memory_order_relaxed);
         for (int i = 0; i < frames; ++i, ++at) {
-            caught_[at % kCatchFrames].store(0.5f * (interleaved[2 * i] + interleaved[2 * i + 1]), std::memory_order_relaxed);
+            caught_[at % kCatchFrames].store(interleaved[2 * i], std::memory_order_relaxed); // STEREO: each side to its own ring
+            caughtR_[at % kCatchFrames].store(interleaved[2 * i + 1], std::memory_order_relaxed);
         }
         if (chunkCatch_ >= 0 && !chunkTapped_) // the track followed was not worked out (none there): silence
-            for (int i = 0; i < frames; ++i) trackCaught_[(chunkAt_ + static_cast<std::uint64_t>(i)) % kCatchFrames].store(0.f, std::memory_order_relaxed);
+            for (int i = 0; i < frames; ++i) {
+                trackCaught_[(chunkAt_ + static_cast<std::uint64_t>(i)) % kCatchFrames].store(0.f, std::memory_order_relaxed);
+                trackCaughtR_[(chunkAt_ + static_cast<std::uint64_t>(i)) % kCatchFrames].store(0.f, std::memory_order_relaxed);
+            }
         caughtCount_.store(at, std::memory_order_relaxed);
         barFramesNow_.store(static_cast<int>(samplesPerStep_ * kSteps), std::memory_order_relaxed);
     };

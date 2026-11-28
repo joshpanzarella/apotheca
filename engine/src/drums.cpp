@@ -231,10 +231,11 @@ void DrumMachine::reset() {
     }
 }
 
-void DrumMachine::setLaneSample(int lane, const float* data, int length) {
+void DrumMachine::setLaneSample(int lane, const float* data, int length, const float* right) {
     if (lane < 0 || lane >= kDrumLanes) return;
     own_[lane] = length > 0 ? data : nullptr;
     ownLength_[lane] = own_[lane] ? length : 0;
+    ownRight_[lane] = own_[lane] ? right : nullptr;
     voices_[lane][0] = Voice(); // they were reading the old sound
     voices_[lane][1] = Voice();
 }
@@ -358,8 +359,8 @@ int DrumMachine::plainRun(const Voice& v, int length, int most) {
 // a hit as it always was, with nothing of THROW in its loop, so a hit that is not thrown costs
 // what it did; true also writes the voice out for the buses. Returns `wrote` with the bits of
 // the ways out it wrote added.
-template <bool kThrown>
-int DrumMachine::renderVoice(Voice& v, const float* sample, int length, float laneLevel, float* left, int frames, float* const* thrownOut, int wrote) {
+template <bool kThrown, bool kStereo>
+int DrumMachine::renderVoice(Voice& v, const float* sample, const float* sampleR, int length, float laneLevel, float* left, float* right, int frames, float* const* thrownOut, int wrote) {
     const float quick = chokeStep_ * 3.f; // a fade of a millisecond
     // Backwards, the fade must be over when it reaches its start (the front of a drum is its
     // loudest part): it begins this far short of it.
@@ -373,6 +374,11 @@ int DrumMachine::renderVoice(Voice& v, const float* sample, int length, float la
             const float* from = sample + static_cast<int>(v.position);
             float* to = left + i;
             for (int k = 0; k < run; ++k) to[k] += from[k] * gain * fade * rise * laneLevel;
+            const float* fromR = kStereo ? sampleR + static_cast<int>(v.position) : nullptr;
+            if constexpr (kStereo) {
+                float* toR = right + i;
+                for (int k = 0; k < run; ++k) toR[k] += fromR[k] * gain * fade * rise * laneLevel;
+            }
             if (kThrown)
                 for (int bus = 0; bus < 2; ++bus) {
                     if (v.thrown[bus] == 0.f && v.thrownTo[bus] == 0.f) continue;
@@ -383,7 +389,10 @@ int DrumMachine::renderVoice(Voice& v, const float* sample, int length, float la
                     }
                     const float thrown = v.thrown[bus];
                     float* out = thrownOut[bus] + i;
-                    for (int k = 0; k < run; ++k) out[k] += from[k] * gain * fade * rise * laneLevel * thrown;
+                    if constexpr (kStereo) // a stereo sound goes to the bus as both its sides, mixed to one (the bus is fed one sound)
+                        for (int k = 0; k < run; ++k) out[k] += 0.5f * (from[k] + fromR[k]) * gain * fade * rise * laneLevel * thrown;
+                    else
+                        for (int k = 0; k < run; ++k) out[k] += from[k] * gain * fade * rise * laneLevel * thrown;
                 }
             v.position += run;
             if (v.life > 0) v.life -= run;
@@ -397,12 +406,18 @@ int DrumMachine::renderVoice(Voice& v, const float* sample, int length, float la
         if (v.life > 0 && --v.life == 0 && v.fadeStep == 0.f) v.fadeStep = quick;
         const int at = static_cast<int>(v.position);
         float value = sample[at];
+        float valueR = kStereo ? sampleR[at] : 0.f;
         if (v.rate != 1.0) { // between two samples: a straight line from one to the next
             const float part = static_cast<float>(v.position - at);
             value += part * ((at + 1 < length ? sample[at + 1] : 0.f) - value);
+            if constexpr (kStereo) valueR += part * ((at + 1 < length ? sampleR[at + 1] : 0.f) - valueR);
         }
         v.position += v.rate;
         left[i] += value * v.gain * v.fade * v.rise * laneLevel;
+        if constexpr (kStereo) {
+            right[i] += valueR * v.gain * v.fade * v.rise * laneLevel;
+            value = 0.5f * (value + valueR); // (what THROW sends below: both sides, mixed to one)
+        }
         if constexpr (kThrown) {
             // THROW: the same sample a second time, for the bus. (Worked out again, not kept
             // from the line above: that line stays as it was, to the bit.)
@@ -438,8 +453,13 @@ int DrumMachine::render(float* left, float* right, int frames, float* echo, floa
     for (int i = 0; i < frames; ++i) left[i] = 0.f;
     float* const thrownOut[2] = {echo, space};
     int wrote = 0;
+    bool stereo = false; // a lane with a stereo recording sounds: its voices go in after the copy below
     if (kit_) {
         for (int lane = 0; lane < kDrumLanes; ++lane) {
+            if (ownRight_[lane]) {
+                stereo = stereo || voices_[lane][0].position >= 0.0 || voices_[lane][1].position >= 0.0;
+                continue;
+            }
             const float* sample = own_[lane] ? own_[lane] : kit_->samples[lane].data();
             const int length = own_[lane] ? ownLength_[lane] : static_cast<int>(kit_->samples[lane].size());
             const float laneLevel = laneLevel_[lane];
@@ -448,12 +468,25 @@ int DrumMachine::render(float* left, float* right, int frames, float* echo, floa
                 // THROW: is this voice written out for a bus as well? Asked once for the block, not
                 // on every sample. (Nothing sets a voice's THROW while this runs.)
                 const bool throwing = (echo || space) && (v.thrown[0] != 0.f || v.thrownTo[0] != 0.f || v.thrown[1] != 0.f || v.thrownTo[1] != 0.f);
-                if (throwing) wrote = renderVoice<true>(v, sample, length, laneLevel, left, frames, thrownOut, wrote);
-                else renderVoice<false>(v, sample, length, laneLevel, left, frames, thrownOut, wrote);
+                if (throwing) wrote = renderVoice<true, false>(v, sample, nullptr, length, laneLevel, left, nullptr, frames, thrownOut, wrote);
+                else renderVoice<false, false>(v, sample, nullptr, length, laneLevel, left, nullptr, frames, thrownOut, wrote);
             }
         }
     }
     for (int i = 0; i < frames; ++i) right[i] = left[i];
+    // STEREO (2026-11-28): a lane whose recording has two sides writes each to its own. Only when one
+    // sounds; with none, the block is the one there always was, to the bit.
+    if (stereo)
+        for (int lane = 0; lane < kDrumLanes; ++lane) {
+            if (!ownRight_[lane]) continue;
+            const float laneLevel = laneLevel_[lane];
+            for (Voice& v : voices_[lane]) {
+                if (v.position < 0.0) continue;
+                const bool throwing = (echo || space) && (v.thrown[0] != 0.f || v.thrownTo[0] != 0.f || v.thrown[1] != 0.f || v.thrownTo[1] != 0.f);
+                if (throwing) wrote = renderVoice<true, true>(v, own_[lane], ownRight_[lane], ownLength_[lane], laneLevel, left, right, frames, thrownOut, wrote);
+                else renderVoice<false, true>(v, own_[lane], ownRight_[lane], ownLength_[lane], laneLevel, left, right, frames, thrownOut, wrote);
+            }
+        }
     if (frames > 0) ++renders_; // (every voice started before this render has been heard now)
     return wrote;
 }
