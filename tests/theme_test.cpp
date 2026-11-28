@@ -1,12 +1,12 @@
-// THEME: the colours are a setting (SET page; owner, 2026-11-13). Eight themes, six dark and two
-// light (owner, 2026-11-23: after editor themes); the first is the look as it was built. A theme changes the colours only.
+// THEME: the colours are a setting (SET page; owner, 2026-11-13). Ten themes, six dark and four
+// light (owner, 2026-11-23: after editor themes; LATTE and ONE for outdoors, 2026-11-28); the first is the look as it was built. A theme changes the colours only.
 //
-//   theme_test                    the eight palettes (each colour's job kept, contrast measured),
+//   theme_test                    the ten palettes (each colour's job kept, contrast measured),
 //                                 the setting (kept, read back, an old file reads BROWN), the
 //                                 row on the SET page and its page moving, in use from the next
 //                                 frame, and every screen the rig can reach drawn in each theme
 //   theme_test views APOTHECA     every still the program knows (tests/stills.hpp), drawn by the
-//                                 program in all eight themes (--themes): no colour on the screen
+//                                 program in all ten themes (--themes): no colour on the screen
 //                                 that is not the theme's own, or one of them laid over another
 //   ... views APOTHECA NAME       just the stills whose name has NAME in it, each fault said
 //
@@ -129,9 +129,10 @@ Measured measure(const Theme& t) {
 }
 
 void testThePalettes(bool print) {
-    CHECK(kThemes == 8 && Session::kThemeCount == kThemes && Session::kThemeAsBuilt == kThemeBrown && kThemeBrown == 0);
+    CHECK(kThemes == 10 && Session::kThemeCount == kThemes && Session::kThemeAsBuilt == kThemeBrown && kThemeBrown == 0);
     // The numbers are kept in settings.txt.
-    CHECK(kThemeDracula == 1 && kThemeNord == 2 && kThemeGruvbox == 3 && kThemeTokyo == 4 && kThemeMonokai == 5 && kThemeSolarized == 6 && kThemeGithub == 7);
+    CHECK(kThemeDracula == 1 && kThemeNord == 2 && kThemeGruvbox == 3 && kThemeTokyo == 4 && kThemeMonokai == 5 && kThemeSolarized == 6 && kThemeGithub == 7 &&
+          kThemeLatte == 8 && kThemeOne == 9);
     // BROWN is the look as it was built, to the number (every pixel test of the program is held to it).
     const Theme& brown = kThemeTable[kThemeBrown];
     const SDL_Color built[10] = {{20, 17, 14, 255}, {31, 26, 22, 255}, {42, 35, 29, 255}, {67, 57, 47, 255}, {224, 213, 191, 255},
@@ -198,6 +199,56 @@ void testThePalettes(bool print) {
     ui::useTheme(kThemeGithub);
     ui::useTheme(-1);
     CHECK(same(ui::kPurple, brown.purple));
+}
+
+// LATTE and ONE are for reading outdoors (owner, 2026-11-28: "it's very hard to see the dark themes when
+// you're outside"): a glossy screen in sunlight washes out everything but the strongest contrast. So each
+// beats both light themes before it, SOLARIZED and GITHUB, on what the eye reads: the lettering (text and
+// dim, on every surface), the lines (an edge, the faintest lettering), and each of the four accents
+// (its lowest on the three surfaces, accent by accent, so no job is left fainter than it was); and its
+// text is near black on a near-white ground: 15.9 to 1 or more (GITHUB's is 13.1, SOLARIZED's 10.6).
+// What each accent measures on its faintest surface (on a light theme, bg).
+double accentLow(const Theme& t, const SDL_Color& a) { return std::min(contrast(a, t.bg), std::min(contrast(a, t.panel), contrast(a, t.panel2))); }
+bool beatsForOutdoors(const Theme& t) {
+    const Measured m = measure(t);
+    bool beats = m.text >= 15.9;
+    for (const int older : {static_cast<int>(kThemeSolarized), static_cast<int>(kThemeGithub)}) {
+        const Theme& o = kThemeTable[older];
+        const Measured n = measure(o);
+        beats = beats && m.dim > n.dim && m.line > n.line;
+        beats = beats && accentLow(t, t.teal) > accentLow(o, o.teal) && accentLow(t, t.purple) > accentLow(o, o.purple) &&
+                accentLow(t, t.brass) > accentLow(o, o.brass) && accentLow(t, t.stop) > accentLow(o, o.stop);
+    }
+    return beats;
+}
+void testTheOutdoorThemes(bool print) {
+    CHECK(kThemeLatte >= kDarkThemes && kThemeOne >= kDarkThemes); // light
+    CHECK(std::strcmp(kThemeTable[kThemeLatte].name, "LATTE") == 0 && std::strcmp(kThemeTable[kThemeOne].name, "ONE") == 0);
+    for (const int id : {static_cast<int>(kThemeLatte), static_cast<int>(kThemeOne)}) {
+        const Theme& t = kThemeTable[id];
+        if (print)
+            std::printf("  %-6s accents on bg: teal %.2f  purple %.2f  brass %.2f  stop %.2f\n", t.name, accentLow(t, t.teal), accentLow(t, t.purple),
+                        accentLow(t, t.brass), accentLow(t, t.stop));
+        CHECK(beatsForOutdoors(t));
+    }
+    // The rule finds a theme that does not beat them: each part of it, one at a time.
+    CHECK(!beatsForOutdoors(kThemeTable[kThemeSolarized]) && !beatsForOutdoors(kThemeTable[kThemeGithub]));
+    const Theme& latte = kThemeTable[kThemeLatte];
+    Theme t = latte;
+    t.text = {26, 26, 32, 255}; // above both, but not near black
+    CHECK(!beatsForOutdoors(t));
+    t = latte, t.dim = {110, 112, 128, 255};
+    CHECK(!beatsForOutdoors(t));
+    t = latte, t.line = {170, 172, 186, 255};
+    CHECK(!beatsForOutdoors(t));
+    t = latte, t.teal = {30, 110, 116, 255};
+    CHECK(!beatsForOutdoors(t));
+    t = latte, t.purple = {140, 70, 240, 255};
+    CHECK(!beatsForOutdoors(t));
+    t = latte, t.brass = {125, 80, 16, 255};
+    CHECK(!beatsForOutdoors(t));
+    t = latte, t.stop = {150, 12, 40, 255};
+    CHECK(!beatsForOutdoors(t));
 }
 
 // The measuring itself, on colours worked out by hand.
@@ -316,7 +367,7 @@ void testTheSettingIsKept() {
     }
     {
         // A number nobody knows (a later program's theme), or rubbish: left as it was.
-        writeTextFile(file, "theme 8\ntheme -1\ntheme x\n");
+        writeTextFile(file, "theme " + std::to_string(kThemes) + "\ntheme -1\ntheme x\n");
         Rig rig;
         rig.session().useProgramFolder(folder);
         rig.session().loadSettings();
@@ -747,7 +798,7 @@ std::vector<std::string> viewFaults(const std::string& program, const std::strin
             out.push_back(std::string(kThemeTable[t].name) + ": the bars are not in its panel colour");
         SDL_FreeSurface(picture);
     }
-    // The eight are eight: each theme changed the picture (no screen ignores it).
+    // The ten are ten: each theme changed the picture (no screen ignores it).
     for (int a = 0; a < kThemes; ++a)
         for (int b = a + 1; b < kThemes; ++b) {
             int differ = 0;
@@ -775,12 +826,12 @@ void testTheStillsFlag(const std::string& program, const std::string& folder) {
     };
     Uint32 pixel = 0;
     CHECK(corner("--view setup", &pixel) && pixel == Canvas::colour(kThemeTable[kThemeBrown].bg)); // nothing asked: as built
-    const char* names[kThemes] = {"brown", "dracula", "nord", "gruvbox", "tokyo", "monokai", "solarized", "github"};
+    const char* names[kThemes] = {"brown", "dracula", "nord", "gruvbox", "tokyo", "monokai", "solarized", "github", "latte", "one"};
     for (int t = 0; t < kThemes; ++t) CHECK(corner((std::string("--view setup --theme ") + names[t]).c_str(), &pixel) && pixel == Canvas::colour(kThemeTable[t].bg));
     CHECK(corner("--view setup --theme SOLARIZED", &pixel) && pixel == Canvas::colour(kThemeTable[kThemeSolarized].bg)); // (in either case)
     CHECK(!corner("--view setup --theme mauve", &pixel)); // a theme nobody knows: said, and no still
     CHECK(corner("--learn --theme github", &pixel) && pixel == Canvas::colour(kThemeTable[kThemeGithub].bg));
-    // --themes draws all eight and then puts the theme back: a picture kept after it is in the one asked for.
+    // --themes draws all ten and then puts the theme back: a picture kept after it is in the one asked for.
     const std::string six = "--view setup --theme dracula --themes '" + folder + "/six-'";
     CHECK(corner(six.c_str(), &pixel) && pixel == Canvas::colour(kThemeTable[kThemeDracula].bg));
     for (int t = 0; t < kThemes; ++t) unlink((folder + "/six-" + std::to_string(t) + ".bmp").c_str());
@@ -865,7 +916,7 @@ int runViews(const char* program, const char* only) {
         std::printf("%d check(s) failed\n", failures);
         return 1;
     }
-    std::printf("themes, %d stills in eight themes: tests passed\n", drawn);
+    std::printf("themes, %d stills in ten themes: tests passed\n", drawn);
     return 0;
 }
 
@@ -912,6 +963,7 @@ int main(int argc, char** argv) {
     CHECK(canvas().ok);
     testTheMeasures();
     testThePalettes(print);
+    testTheOutdoorThemes(print);
     testTheColourCheck();
     testTheSettingIsKept();
     testTheRow();

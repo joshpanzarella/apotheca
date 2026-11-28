@@ -60,8 +60,8 @@
 //
 // The cursor can also sit on a lane's name (A alone is silent there, X plays
 // the drum; hold A + stick is that drum's volume), on the tempo (up from the top lane; hold A + stick),
-// and on BARS (up from the tempo; left / right the bar before or after, round the ends,
-// hold A + up / down the cell's count, more or fewer). With A or Y held, the D-pad
+// and on BARS (left of the tempo, one row: owner, 2026-11-28; A or Y held + left / right the bar before or
+// after, round the ends, hold A + up / down the cell's count, more or fewer). With A or Y held, the D-pad
 // nudges the same values in exact steps.
 //
 // Hold L1, R1 copies the bar shown and A pastes over it (as the piano roll's).
@@ -312,7 +312,7 @@ private:
     int step_ = 0;
     bool onTempo_ = false;
     float tempoExact_; // the stick moves this; the project's tempo is it, rounded
-    bool onBars_ = false; // BARS, above the tempo: the bar shown, and the cell's count
+    bool onBars_ = false; // BARS, left of the tempo (one row above the lanes): the bar shown, and the cell's count
     bool barsPushed_ = false; // the stick is pushed for a bar more or fewer, on BARS with A held: once a push
 
     bool shaping_ = false;  // A is held

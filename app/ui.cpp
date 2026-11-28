@@ -139,7 +139,7 @@ TopBar topBar(SDL_Renderer* r, const Fonts& chosen, View view, const char* conte
     arrow(x, true);
     x += 8.f;
     x += chip(x, "L2") + 4.f;
-    const char* tabs[] = {"SONG", "PTRN", "DVICE", "FX", "MOD", "SET"}; // View's order (PTRN and DVICE: owner, 2026-11-18, to give the tabs their room back)
+    const char* const* tabs = kTabNames;
     for (int i = 0; i < 6; ++i) {
         // (5 pixels either side of a tab's word again: it was 3 while the tabs read PATTERN and DEVICE. The four
         // letters saved pay for it and leave the screen's own words a little more room than they had.)

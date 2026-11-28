@@ -70,9 +70,13 @@ struct Theme {
 // look as it was built (a file with no such line gets it). The rest take their colours from the editor
 // themes they are named after, each moved in lightness (its hues kept) until it meets theme_test's
 // rules (owner, 2026-11-23: "more like common terminal or IDE themes", six dark and two light; they
-// replaced BLUE, GREEN, BLACK, PAPER and GREY, whose numbers they took: nothing is released).
-enum ThemeId { kThemeBrown, kThemeDracula, kThemeNord, kThemeGruvbox, kThemeTokyo, kThemeMonokai, kThemeSolarized, kThemeGithub, kThemes };
-constexpr int kDarkThemes = 6; // the first six: dark; the rest light
+// replaced BLUE, GREEN, BLACK, PAPER and GREY, whose numbers they took: nothing is released). LATTE and ONE
+// came after, for reading OUTDOORS (owner, 2026-11-28: "it's very hard to see the dark themes when you're
+// outside"): light like the two before them, but at the most contrast theme_test allows (lettering near
+// black, accents dark and saturated, lines darker); appended, so the light ones are the last four.
+enum ThemeId { kThemeBrown, kThemeDracula, kThemeNord, kThemeGruvbox, kThemeTokyo, kThemeMonokai, kThemeSolarized, kThemeGithub, kThemeLatte,
+               kThemeOne, kThemes };
+constexpr int kDarkThemes = 6; // the first six: dark; the rest light (new ones are appended: a light one stays after them)
 constexpr Theme kThemeTable[kThemes] = {
     {"BROWN", {20, 17, 14, 255}, {31, 26, 22, 255}, {42, 35, 29, 255}, {67, 57, 47, 255}, {224, 213, 191, 255}, {143, 131, 112, 255},
      {111, 191, 163, 255}, {154, 118, 176, 255}, {201, 161, 90, 255}, {196, 84, 70, 255}},
@@ -90,6 +94,11 @@ constexpr Theme kThemeTable[kThemes] = {
      {7, 75, 117, 255}, {93, 81, 171, 255}, {122, 90, 0, 255}, {126, 11, 13, 255}},
     {"GITHUB", {230, 234, 239, 255}, {243, 245, 248, 255}, {255, 255, 255, 255}, {140, 149, 159, 255}, {31, 35, 40, 255}, {91, 99, 109, 255},
      {14, 71, 154, 255}, {121, 72, 214, 255}, {109, 67, 1, 255}, {196, 49, 55, 255}},
+    // For sunlight (Catppuccin Latte's and Atom One Light's hues): text 16 on bg, every accent above SOLARIZED's and GITHUB's.
+    {"LATTE", {232, 234, 246, 255}, {243, 244, 250, 255}, {252, 252, 254, 255}, {144, 147, 164, 255}, {14, 14, 19, 255}, {93, 96, 114, 255},
+     {13, 79, 83, 255}, {121, 32, 237, 255}, {106, 67, 14, 255}, {119, 9, 32, 255}},
+    {"ONE", {235, 235, 236, 255}, {245, 245, 245, 255}, {253, 253, 253, 255}, {145, 147, 153, 255}, {15, 16, 18, 255}, {93, 96, 105, 255},
+     {12, 62, 170, 255}, {85, 20, 84, 255}, {102, 70, 1, 255}, {127, 11, 42, 255}},
 };
 
 namespace ui {
@@ -147,6 +156,9 @@ SDL_Color faded(SDL_Color c, int alpha);
 // whether it is playing. Returns the x where the tempo's number ends and the
 // x of the play mark, for a screen that puts a cursor on the tempo.
 constexpr float kTabPad = 5.f; // either side of a tab's word in the top bar
+// The six tabs' words, in View's order. PTRN: owner, 2026-11-18, to give the tabs their room. INST, the instrument
+// (owner, 2026-11-28: it read DVICE, shortened from DEVICE, and a player did not see a kit is picked there).
+constexpr const char* kTabNames[6] = {"SONG", "PTRN", "INST", "FX", "MOD", "SET"};
 struct TopBar { float tempoNumberRight, tempoRight, wordsX = 0.f, wordsRoom = 0.f, wordsWidth = 0.f; }; // wordsX / wordsRoom: where the screen's own words start, and the room they had; wordsWidth: how wide they drew
 TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* context, const Project& project);
 // The cursor on the top bar's tempo (the drum grid's and the roll's TEMPO stop, up from the top of the grid): its box
@@ -161,7 +173,7 @@ constexpr float kTempoPerSecond = 90.f;
 // the screens"): one of the theme's own names, worn by the top bar only, in two places: the lit tab, and the
 // line along the bar's foot. Chosen by the colour's job (ui.hpp's Theme): purple, where the song plays and
 // what moves by itself, for SONG and MOD; teal, the writing cursor, for PTRN and FX; brass, the knobs and
-// meters, for DVICE; text, the handheld's own, for SET. Neighbouring tabs never share one. A screen's
+// meters, for INST; text, the handheld's own, for SET. Neighbouring tabs never share one. A screen's
 // cursor stays teal (brass held) on every tab: the accent never stands for the cursor.
 const SDL_Color& tabAccent(View view);
 

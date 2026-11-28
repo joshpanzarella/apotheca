@@ -35,7 +35,9 @@
 //           B with A held: as it was (putBack). B: the built-in drum. A tap of A does nothing.
 //   EDIT    the sound's picture: tap A opens the lane's EDIT view (below).
 //   KIT     up from lane 1 (easywins batch 7, kit presets): the kit's own stop, where SOUND's heading
-//           stands. It names the kit the track's is (a built-in, one of your own, or YOUR OWN).
+//           stood: a box like a lane's with KIT, the kit the track's is (a built-in, one of your own, or
+//           YOUR OWN) and two arrows (owner, 2026-11-28: a player did not see a kit could be picked).
+//           LEFT / RIGHT, A held or not: the kit before / after, one a press (a choice), the stick once a push.
 //           hold A + up / down: the kit after / before in the list (the built-in kits, then your
 //           own, then the samples folders: batch S1, a folder's recordings on the lanes by name,
 //           Session::loadFolderKit), put on at once; B with A still held: the kit as it was when A went down, heard.
@@ -139,6 +141,7 @@ public:
     static int sourceModel(int lane);             // the DRUM SYNTH model for a lane's place: KICK, SNARE, CL HAT, OP HAT, CLAP, TOM, RIM, CYMBAL
     // The lanes' rows, from under the column heads down to the SIGNAL strip (ui::kAboveScope).
     static constexpr int kLaneTop = 50, kLaneGap = 4;
+    static constexpr int kKitBoxY = 29, kKitBoxH = 18; // the KIT stop's box, between the top bar and lane 1
     static constexpr int kLaneRowH = (ui::kAboveScope + kLaneGap - kLaneTop) / kDrumLanes;
     // The columns at the right of SOUND: FIT TO, CHOKE, SOURCE, the sound's picture (to the screen's edge, 8 in).
     // SOURCE stands where THE RECORDING's heading was (owner, 2026-11-28); the picture is narrower for it.
@@ -210,6 +213,7 @@ private:
     int lane_ = 0, column_ = kSound;
     // The KIT stop (up from lane 1).
     bool onKit_ = false;
+    bool kitPushed_ = false; // the stick pushed sideways on the KIT stop: one kit a push (a choice)
     bool kitDeleting_ = false, kitDeleteTimed_ = false;
     Uint32 kitDeleteSince_ = 0;
     float kitDeletePart_ = 0.f;

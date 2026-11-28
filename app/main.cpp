@@ -339,7 +339,7 @@ int main(int argc, char** argv) {
             for (int t = 0; t < kThemes; ++t)
                 if (strcasecmp(argv[i], kThemeTable[t].name) == 0) theme = t;
             if (theme < 0) {
-                std::fprintf(stderr, "--theme is one of brown, dracula, nord, gruvbox, tokyo, monokai, solarized, github\n");
+                std::fprintf(stderr, "--theme is one of brown, dracula, nord, gruvbox, tokyo, monokai, solarized, github, latte, one\n");
                 return 1;
             }
         }

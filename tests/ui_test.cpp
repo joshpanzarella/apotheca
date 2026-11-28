@@ -88,32 +88,34 @@ void testCursorMovesAndWraps() {
     rig.tap(SDLK_RIGHT);
     rig.tap(SDLK_RIGHT);
     CHECK(rig.screen.cursorStep() == 0);
-    // Up from the top lane is the tempo; up again is BARS; up again comes round to the bottom.
+    // Up from the top lane is the tempo. BARS and TEMPO are one row, side by side as the top bar draws them (owner,
+    // 2026-11-28: "the intuitive move is left right"): LEFT is BARS, RIGHT the tempo, the ends stop; up from either
+    // comes round to the bottom lane, down from either is the top lane.
     rig.tap(SDLK_UP);
     CHECK(rig.screen.cursorLane() == 0 && !rig.screen.cursorOnTempo());
     rig.tap(SDLK_UP);
-    CHECK(rig.screen.cursorOnTempo());
-    rig.tap(SDLK_LEFT); // nothing beside the tempo
-    CHECK(rig.screen.cursorOnTempo());
-    rig.tap(SDLK_UP);
-    CHECK(rig.screen.cursorOnBars());
-    rig.tap(SDLK_LEFT); // the bar before (one bar: still it)
-    CHECK(rig.screen.cursorOnBars());
-    rig.tap(SDLK_UP);
+    CHECK(rig.screen.cursorOnTempo() && !rig.screen.cursorOnBars());
+    rig.tap(SDLK_RIGHT); // nothing right of the tempo
+    CHECK(rig.screen.cursorOnTempo() && !rig.screen.cursorOnBars());
+    rig.tap(SDLK_LEFT);
+    CHECK(rig.screen.cursorOnBars() && !rig.screen.cursorOnTempo());
+    rig.tap(SDLK_LEFT); // nothing left of BARS (and the bar shown stays)
+    CHECK(rig.screen.cursorOnBars() && !rig.screen.cursorOnTempo());
+    rig.tap(SDLK_RIGHT);
+    CHECK(rig.screen.cursorOnTempo() && !rig.screen.cursorOnBars());
+    rig.tap(SDLK_LEFT), rig.tap(SDLK_DOWN); // down from BARS: the top lane
+    CHECK(!rig.screen.cursorOnBars() && !rig.screen.cursorOnTempo() && rig.screen.cursorLane() == 0 && rig.screen.cursorStep() == 0);
+    rig.tap(SDLK_UP), rig.tap(SDLK_LEFT), rig.tap(SDLK_UP); // up from BARS: round to the bottom lane
     CHECK(!rig.screen.cursorOnBars() && !rig.screen.cursorOnTempo() && rig.screen.cursorLane() == kDrumLanes - 1 && rig.screen.cursorStep() == 0);
-    // Down from the bottom lane is BARS, as up from the top is the tempo (G35: it skipped both, to the top lane).
+    // Down from the bottom lane is the row again (G35: it skipped both, to the top lane), on the tempo.
     rig.tap(SDLK_DOWN);
-    CHECK(rig.screen.cursorOnBars() && !rig.screen.cursorOnTempo() && rig.screen.cursorStep() == 0);
-    rig.tap(SDLK_DOWN); // down from BARS is the tempo
-    CHECK(!rig.screen.cursorOnBars() && rig.screen.cursorOnTempo());
+    CHECK(rig.screen.cursorOnTempo() && !rig.screen.cursorOnBars() && rig.screen.cursorStep() == 0);
     rig.tap(SDLK_DOWN); // down from the tempo is the top lane
     CHECK(!rig.screen.cursorOnTempo() && rig.screen.cursorLane() == 0);
     rig.tap(SDLK_UP);
     CHECK(rig.screen.cursorOnTempo());
-    rig.tap(SDLK_UP);
-    CHECK(rig.screen.cursorOnBars());
-    rig.tap(SDLK_UP); // ...and round the other way: up from BARS is the bottom lane
-    CHECK(!rig.screen.cursorOnBars() && rig.screen.cursorLane() == kDrumLanes - 1);
+    rig.tap(SDLK_UP); // ...and round the other way: up from the tempo is the bottom lane
+    CHECK(!rig.screen.cursorOnTempo() && !rig.screen.cursorOnBars() && rig.screen.cursorLane() == kDrumLanes - 1);
 }
 
 void testHeldDirectionRunsFast() {
@@ -859,7 +861,7 @@ void testTheBrushSkipsNamesAndTempo() {
     rig.tap(SDLK_UP);  // the tempo: nothing is painted from up here
     CHECK(rig.screen.cursorOnTempo());
     CHECK(rig.listen() == 0.f);
-    rig.tap(SDLK_UP);  // BARS: nothing either
+    rig.tap(SDLK_LEFT);  // BARS: nothing either
     CHECK(rig.screen.cursorOnBars());
     CHECK(rig.listen() == 0.f);
     rig.tap(SDLK_UP); // round to the bottom lane
@@ -1653,9 +1655,10 @@ void testFxDrawingIsPixelForPixel(bool print) {
     Canvas c;
     CHECK(c.r != nullptr);
     if (!c.r) return;
-    // As drawn by app 0.981, theme by theme (BROWN first): `ui_test --print-fx-hashes` prints them afresh.
+    // As drawn by app 0.981, theme by theme (BROWN first; LATTE and ONE as first drawn): `ui_test --print-fx-hashes` prints them afresh.
     const std::uint64_t asItWas[kThemes] = {0x1938aea8d818522cull, 0x530ebd4e9e705c84ull, 0x53e6ef1f5d2cb7cfull, 0xd0fcaf5e316104ecull,
-                                             0xa0c688e61ed10a38ull, 0x6a9f1275d065e274ull, 0x50c702634a228ec3ull, 0x680dc80723e348f7ull};
+                                             0xa0c688e61ed10a38ull, 0x6a9f1275d065e274ull, 0x50c702634a228ec3ull, 0x680dc80723e348f7ull,
+                                             0x79d2808d08a21250ull, 0x37531696659f5ac2ull}; // (LATTE and ONE: 2026-11-28)
     for (int t = 0; t < kThemes; ++t) {
         ui::useTheme(t);
         const unsigned long workedOut = dialsWorkedOut();

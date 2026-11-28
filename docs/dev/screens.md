@@ -261,7 +261,7 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     rectangles, 11,708 vertices (the piano roll's is 13,530; every view in `measured.md`). **No texture is drawn into**: a target texture is
     a render-pass switch on a tiled GPU, a new thing for a driver already suspected in two FX crashes, and it needs a
     rule for when it is stale; the kept dials need none. Pinned by `ui_test`'s `testFxDrawingIsPixelForPixel` (every
-    dial shape twice over and every effect's picture at rest, turned and playing, in all eight themes, folded into a
+    dial shape twice over and every effect's picture at rest, turned and playing, in all ten themes, folded into a
     number a theme taken from the drawing as it was) and `testKeptDialsFollowTheTheme`. The GPU draw calls (SDL's
     GLES2 renderer joins runs of rectangles and of letters) stay about 100 a frame, the grid's 80. **Not seen on the
     handheld**: whether the late blocks on FX went.
@@ -471,11 +471,12 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   and BOUNCE values still go round and SCALE, THEME, TEXT SIZE still stop (values, not the list).
   `app_test` `testTheEndsOfSetsRows`, `testTheSetupScreen`; `save_test` (the list of songs and its revs, a press
   and a run, `Rig::run`); `lights_test`, `theme_test` (the page with it).
-- **The drum grid's column is a ring both ways** (G35; `PatternScreen::moveCursor`): down from lane 8 is BARS, then
-  the tempo, then lane 1, as up from lane 1 was always the tempo, then BARS, then lane 8. Down from lane 8 went
+- **The drum grid's column is a ring both ways** (G35; `PatternScreen::moveCursor`): down from lane 8 is the tempo,
+  then lane 1, as up from lane 1 is the tempo, then lane 8. (BARS is LEFT of the tempo since 2026-11-28, owner:
+  one row, `notes-and-mods.md`; before, the ring ran lane 8, BARS, tempo, lane 1.) Down from lane 8 went
   straight to lane 1, skipping both. The brushes and B's drag skip the two stops (`onStep`). `ui_test`
   `testCursorMovesAndWraps`. (The KIT page's lanes have the same one-way ring: down from lane 8 is lane 1, up from
-  lane 1 the KIT stop. Not in the brief; left.)
+  lane 1 the KIT stop. Not in the brief; left. LEFT / RIGHT on the KIT stop step the kits since 2026-11-28.)
 - **On SET, L1 / R1 go to the first row of the heading before / after the cursor's, round the ends** (gesture
   audit G28, 2026-11-25; `SettingsScreen::jumpGroup`). TEMPO to THEME was 11 presses; it is 3 (R1, R1,
   DOWN). (TEMPO to CONTROLS, 17 presses on the stock port before the audit, is one since G35: UP from the first
@@ -783,7 +784,7 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   DRACULA, NORD, GRUVBOX, TOKYO, MONOKAI dark, SOLARIZED, GITHUB light: the
   owner, 2026-11-23, "more like common terminal or IDE themes"; they replaced
   BLUE, GREEN, BLACK, PAPER and GREY and took their numbers; `kThemeTable` in
-  `ui.hpp`, `kDarkThemes` the first six; kept as `theme N` in settings.txt, no
+  `ui.hpp`, `kDarkThemes` the first six; LATTE and ONE light, appended 2026-11-28 (below); kept as `theme N` in settings.txt, no
   line reads BROWN, which is the look as built to the number). Each new one is
   its namesake's colours moved in lightness, hues kept, until it met
   `theme_test`'s rules and stood apart from the others (a script, not by hand:
@@ -813,13 +814,50 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     four accents 15 apart in delta E as a reader without red or without
     green sees them (simulated, not seen by a person).
   - **`ctest -R theme` holds it.** `themeviews` has the program draw every
-    still in all six (`--themes PREFIX`) and finds, by pixels, any colour
+    still in all ten (`--themes PREFIX`) and finds, by pixels, any colour
     that is not the theme's or one of its laid over another (`Explain`); a
     new alpha given to `faded()` goes in its list there. **A drum hit's body (its CHANCE: any alpha)
     and the play line's glow over anything are in it** (2026-11-17: the stills play the demo, so the
     glow lands where the clock puts it, and over a ghost hit it failed now and then); a new
     translucent thing that moves with the clock is added the same way. A still in a theme:
     `--theme solarized`.
+  - **LATTE and ONE: two light themes for reading OUTDOORS** (owner, 2026-11-28: "it's very hard to see the
+    dark themes when you're outside, so I think we should build at least 2 more light themes"; ids 8 and 9,
+    appended after GITHUB, so `kDarkThemes` stays 6 and the four light ones stand together). A glossy cover
+    in sunlight adds a sheet of white glare over the screen: everything but the strongest contrast washes
+    out, a dark theme first. So these two are at the most contrast `theme_test` allows: lettering near black
+    (16 to 1) on a near-white ground, accents dark but still saturated, lines darker than GITHUB's.
+    - **The sources.** LATTE is Catppuccin Latte (bg from crust/mantle/base, cursor its teal, purple its
+      mauve, brass its yellow, stop its red); ONE is Atom One Light (its greys; cursor its blue, purple its
+      magenta, brass its gold, stop its darker red `#ca1243`: its orange-red `#e45649` sat beside the gold
+      for a reader without green, 7 where the rule is 15). Picked because both are cool, plain near-white
+      grounds (a cream like SOLARIZED's goes grey in glare) and their four accents are four clear hue
+      families that survive being darkened; and they stand apart from the two before (LATTE's cursor is
+      teal, not GITHUB's blue; ONE's purple is magenta, not GITHUB's violet). AYU (pale pastels; its
+      cursor is orange, brass's job) and DAWN (Rosé Pine Dawn: a cream ground, like SOLARIZED's) were weighed.
+    - **How.** Hue and HSL saturation kept, lightness moved by a script to a contrast on bg (the deepest
+      surface), then a search for the LIGHTEST accents (the most colour) that pass every `theme_test` rule
+      and beat SOLARIZED and GITHUB accent by accent. LATTE's bg needed more lavender than Latte's crust:
+      at its own tint it was 0.5 delta E from GITHUB's (the rule is 2). What bound it: an accent beating
+      SOLARIZED's teal (7.54) and stop (8.83) and GITHUB's brass (7.08); the cursor 1.4 in lightness from
+      purple and dim; and on ONE the colour-blind rule, which pushed its plum to 10.9 (any lighter purple
+      sat on the blue cursor for a reader without red): the darkest of its accents.
+    - **Held by `theme_test` `testTheOutdoorThemes`**: each beats SOLARIZED and GITHUB on dim, line and each
+      accent's lowest contrast, and its text is 15.9 or more (each clause has a mutant that breaks it alone).
+    - **Measured** (WCAG contrast, the lowest of bg / panel / panel2, which on a light theme is bg; `theme_test --measure`):
+
+      | Theme | text | dim | line | teal | purple | brass | stop | lowest accent |
+      | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+      | SOLARIZED | 10.61 | 4.93 | 2.18 | 7.54 | 5.31 | 5.21 | 8.83 | 5.21 |
+      | GITHUB | 13.07 | 5.04 | 2.51 | 7.28 | 4.68 | 7.08 | 4.52 | 4.52 |
+      | **LATTE** | **16.07** | **5.18** | **2.54** | **7.76** | **5.41** | **7.24** | **9.51** | **5.41** |
+      | **ONE** | **15.98** | **5.27** | **2.58** | **7.71** | **10.92** | **7.22** | **8.89** | **7.22** |
+
+      On panel and panel2 every figure is higher (LATTE's text 17.5 and 18.8, ONE's 17.5 and 18.7). Dim is
+      held near 5.2 by two rules at once: 2.0 from the line, and 1.4 in lightness from the cursor.
+    - Ring colour (LIGHT COLOUR at THEME): LATTE mauve, ONE magenta, unseen. FX style: CLEAN, as the light
+      ones' (`fxStyle()` falls to it). The WiFi pages do not follow the theme (`web_look.cpp` is BROWN's alone).
+    - **Not seen outdoors on the handheld**: only the numbers and desk stills.
 - **Each tab has an ACCENT, worn by the top bar only** (owner, 2026-11-28: "can we get some slight visual
   differentiation using some of the theme colors on all of the screens?"; `ui::tabAccent`, `topBar`). Slight,
   because the look is settled: no shape, size or place changed, only two things that were already drawn take
@@ -831,8 +869,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   | --- | --- | --- |
   | SONG | purple | where the song is playing: the scenes in time |
   | PTRN | teal | writing: the cursor's colour, as it was |
-  | DVICE | brass | the knobs, meters and a value changed |
-  | FX | teal | as it was; teal and not brass so DVICE and FX, side by side, differ |
+  | INST | brass | the knobs, meters and a value changed (the tab read DVICE until 2026-11-28) |
+  | FX | teal | as it was; teal and not brass so INST and FX, side by side, differ |
   | MOD | purple | automation, what moves by itself |
   | SET | text | the handheld's own: no musical job, the neutral lettering |
 
@@ -841,7 +879,7 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   on every tab, so "the cursor is teal" holds everywhere; a heading or title in the accent was weighed and
   left out (brass headings would read as "changed", teal ones as the cursor). Every chip's contrast is
   `theme_test`'s accent-under-bg rule, which every theme already meets; SET's chip is text under bg letters
-  (7 or more). Checked in all eight themes by `themeviews` and by `theme_test` `testEachTabHasItsAccent`
+  (7 or more). Checked in all ten themes by `themeviews` and by `theme_test` `testEachTabHasItsAccent`
   (which accent per tab, the foot across, the lit tab where it should be, neighbours differ); `modtab_test`
   finds each lit tab by its accent. Stills before and after: Brown and Solarized, LARGE and XL.
 - **The SET page is five groups under headings, and shows as many rows as fit** (owner, 2026-11-17:
@@ -884,7 +922,7 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   settings.txt, left out at THEME): premade colours, TRACK (twelve hues, the track up) and RAINBOW (a
   hue a LED, turning a LED a beat). **The owner has seen the colours and likes them** (2026-11-17).
   **THEME's colour is picked for the ring, theme by theme** (`ringThemeColour`: BROWN's is BRASS, the
-  owner's word; the other five are unseen picks; a new theme must be given one, a `static_assert`
+  owner's word; the others are unseen picks (LATTE mauve, ONE magenta); a new theme must be given one, a `static_assert`
   counts). A bar's first step is brass, or white where the ring is too near brass (`ringFirstFor`).
 - **NETWORK: our firmware's WiFi is joined on the SET page** (2026-11-18, `docs/plans/firmware-plan.md`
   section 14 on branch `firmware`; `app/wifi.hpp`, `tests/wifi_test.cpp`). The row is under WIFI PAGE,

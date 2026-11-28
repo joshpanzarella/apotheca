@@ -366,23 +366,16 @@ ChordShape NoteScreen::shapeAt(int index) const {
 }
 
 void NoteScreen::moveCursor(Button direction) {
-    if (onTempo_) {
-        // TEMPO sits above the grid, as on the drum grid (owner, 2026-11-28: it could only be reached from there):
-        // down goes back to the grid, up is BARS. Sideways does nothing.
-        if (direction == Button::Down) onTempo_ = false, step_ = 0;
-        if (direction == Button::Up) onTempo_ = false, onBars_ = true;
-        return;
-    }
-    if (onBars_) {
-        // BARS sits above the tempo; down goes to it, up comes round to the bottom.
-        // Left and right show the bar before or after, round the ends.
-        if (direction == Button::Left || direction == Button::Right) {
-            project_.bar = project_.current().barAfter(project_.scene, project_.bar, direction == Button::Right ? 1 : -1); // (its FILL after its last)
-        } else if (direction == Button::Down) {
-            onBars_ = false;
-            onTempo_ = true;
-        } else {
-            onBars_ = false;
+    if (onTempo_ || onBars_) {
+        // BARS and TEMPO are one row above the grid, as on the drum grid, side by side as the top bar draws them
+        // (owner, 2026-11-28: "the intuitive move is left right"; TEMPO was above the grid and BARS above that):
+        // LEFT is BARS, RIGHT TEMPO, the ends stop. Down goes back to the top step, up comes round to the cell's
+        // last step. The bar before or after, which LEFT / RIGHT showed on BARS, is A held + LEFT / RIGHT (press()).
+        if (direction == Button::Left) onTempo_ = false, onBars_ = true;
+        if (direction == Button::Right) onBars_ = false, onTempo_ = true;
+        if (direction == Button::Down) onTempo_ = onBars_ = false, step_ = 0;
+        if (direction == Button::Up) {
+            onTempo_ = onBars_ = false;
             project_.bar = 0;
             moveCursorTo(pitch_, -1); // past the cell's start: round to its last step
         }
@@ -391,7 +384,7 @@ void NoteScreen::moveCursor(Button direction) {
     if (carrying_ != Carry::Nothing) return carry(direction);
     if (direction == Button::Right) moveCursorTo(nextKey(pitch_, 1), step_); // (with a SCALE on: the next key of it)
     if (direction == Button::Left) moveCursorTo(nextKey(pitch_, -1), step_);
-    if (direction == Button::Up && project_.bar == 0 && step_ == 0) onTempo_ = true; // up from the top step: TEMPO, then BARS
+    if (direction == Button::Up && project_.bar == 0 && step_ == 0) onTempo_ = true; // up from the top step: TEMPO (BARS left of it)
     else if (direction == Button::Up) moveCursorTo(pitch_, step_ - 1);
     if (direction == Button::Down) moveCursorTo(pitch_, step_ + 1);
     if (painting_ && !offGrid()) paintHere();
@@ -792,9 +785,10 @@ void NoteScreen::press(Button b) {
         return;
     }
     if (onBars_) {
-        // BARS: up and down with A held set the cell's count; the rest (the bar before or
-        // after, off the stop) is the cursor's.
+        // BARS: up and down with A held set the cell's count, left and right with A held show the bar before or
+        // after (round the ends; its FILL after its last); without A, the cursor's (TEMPO to the right).
         if (shaping_ && (b == Button::Up || b == Button::Down)) stepBars(b == Button::Up ? 1 : -1);
+        else if (shaping_) project_.bar = project_.current().barAfter(project_.scene, project_.bar, b == Button::Right ? 1 : -1);
         else moveCursor(b);
         return;
     }
@@ -1831,13 +1825,15 @@ void NoteScreen::drawHints(SDL_Renderer* r, const Fonts& fonts, const NoteEvent*
             hint("A", "tap");
             hint("HOLD A", "tempo");
             hint("START", project_.playing ? "stop" : "play");
-            hint("UP", "bars"); // up from here is the BARS stop
+            hint("LEFT", "bars"); // BARS is left of the tempo (owner, 2026-11-28: it was UP)
         }
     } else if (onBars_) {
-        if (shaping_) hint("UP / DOWN", "more / fewer");
-        else {
+        if (shaping_) {
+            hint("UP / DOWN", "more / fewer");
             hint("LEFT / RIGHT", "bar");
+        } else {
             hint("HOLD A", "more / fewer");
+            hint("RIGHT", "tempo"); // (LEFT / RIGHT showed the bar: hold A now)
         }
     } else if (shaping_) {
         hint("LEFT / RIGHT", "level");

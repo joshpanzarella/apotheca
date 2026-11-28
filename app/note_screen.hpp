@@ -42,11 +42,12 @@
 //   TEMPO (up from step 1 of bar 1: the top bar's tempo, as on the drum grid)
 //                         A taps the tempo (TAP TEMPO). Hold A, up / down: a beat a
 //                         minute; left / right: ten; the stick up / down: freely.
-//                         No step of undo (a tempo change is not an edit).
-//   BARS (up from TEMPO)  left / right: the bar before or after, round the ends.
+//                         No step of undo (a tempo change is not an edit). LEFT: BARS.
+//   BARS (left of TEMPO)  hold A, left / right: the bar before or after, round the ends.
 //                         Hold A, up / down: the cell's count, more or fewer
 //                         (1, 2, 4 or 8, as the Song screen's hold A). One step
-//                         of undo. Down from BARS is TEMPO; up from BARS comes
+//                         of undo. RIGHT is TEMPO (owner, 2026-11-28: they were one
+//                         above the other). Down from either is the grid; up comes
 //                         round to the bottom.
 //   hold L1, R1           copy the bar on screen: its notes and chords
 //   hold L1, A            paste it over the bar on screen (another bar, cell, scene,
@@ -217,7 +218,7 @@ private:
     void keepInView();
     void followTheNotes(); // FOLLOW showed a bar: the keys to its notes (follow_bar.hpp, keysToShow)
     bool barsPushed_ = false; // the stick is pushed for a bar more or fewer, on the BARS stop (A held): once a push
-    bool onBars_ = false;     // BARS, above the tempo: the bar shown, and the cell's count
+    bool onBars_ = false;     // BARS, left of the tempo (one row above the grid): the bar shown, and the cell's count
     bool onTempo_ = false;    // TEMPO, above the grid (the top bar's tempo), as on the drum grid (owner, 2026-11-28)
     float tempoExact_ = 120.f; // the stick moves this; the project's tempo is it, rounded (as the drum grid's)
     bool offGrid() const { return onBars_ || onTempo_; } // the cursor is on BARS or TEMPO: nothing of the grid's

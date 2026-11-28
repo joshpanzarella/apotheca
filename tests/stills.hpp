@@ -38,7 +38,7 @@ inline const char* const kViews[] = {
     "fx-deleting", "fx-trying", "fx-mod-held", "fx-mod-stepper", "fx-mod-new", "fx-mod-full", "fx-sends-mod-held", "fx-modded",
     "mod", "mod-lfo", "mod-steps", "mod-depth", "mod-mixer", "mod-target", "mod-target --hold-a", "mod-off", "mod-drums", "mod-drums --hold-a", "mod-deleting", "mod-12", "mod-free",
     "device-mod-held", "device-mod-stepper", "device-mod-new", "device-mod-full", "device-mod-deleting", "device-modded", "device-mod-free", "change-instrument", "song-deleting", "song-head", "song-marks", "song-marks-12", "song-mixer", "song-mixer-master", "song-mixer-12", "song-mixer-master-12", "song-end-loop", "song-end-stop",
-    "bounce", "bounce-tail", "bounce-ready", "bounce-take", "panic", "wifi", "revs", "add-track", "chords", "chords-swap", "chords-smoke", "notes", "notes-tempo",
+    "bounce", "bounce-tail", "bounce-ready", "bounce-take", "panic", "wifi", "revs", "add-track", "chords", "chords-swap", "chords-smoke", "notes", "notes-tempo", "grid-tempo",
     "phazed", "page0", "page1", "page2", "page3", "page4", "page5", "page6", "page7", "page8", "page9", "jaxep", "jaxep0", "jaxep1", "jaxep2", "jaxep3", "jaxep4", "jaxep5", "jaxep-bank", "jaxep-held",
     "kit", "slices", "slices-32", "slices-name", "slices-name-feel", "slices-throw", "slices-hits", "slices-hits-name-held", "slices-hits-y", "slices-hits-64", "starts", "picker", "picker-in", "picker-deep", "picker-deleting", "picker-new", "picker-typing", "picker-carrying", "picker-folder-deleting", "sampler-picker", "sampler-sound",
     "feel", "feel-held", "feel-off-held", "feel-same-held", "feel-said", "feel-swing", "feel-swing-held",
