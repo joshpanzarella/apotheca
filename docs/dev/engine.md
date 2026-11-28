@@ -22,9 +22,13 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   number of helpers. **Anything a helper waits on is set with `wakeMutex_`
   held.** Setting the stop flag without it hung the quit. The helpers take
   the tracks from `taken_`, in track order, or heaviest first by last chunk's
-  times (`setHeaviestFirst`, off: only the SPEED TEST's rows ask for it, speed
-  plan batch 0); the mix always walks `active_`. `speed_test` holds both to
-  the bit.
+  times (`setHeaviestFirst`); the mix always walks `active_`. `speed_test` holds both to
+  the bit. **The program asks for heaviest first** (main.cpp, owner 2026-11-28: "yes", on the
+  freeze measurement's model, the busiest song about 56% of a handheld block in track order and
+  49% heaviest first with 3 helpers). It was "off: only the SPEED TEST's rows ask for it, speed
+  plan batch 0", left for the handheld's SPEED TEST to decide; its rows still time both orders,
+  so the device's own figures can overrule this. An Engine made anywhere else (tests, bench,
+  a bounce) keeps track order unless it asks.
 - **A helper takes a track by ONE atomic that holds the chunk's count and the next place** (`claims_`:
   count << 16 | place, 0 shut). Read apart, a helper that took a place past one chunk's end and then read
   the next chunk's larger count rendered a track another thread was rendering (review 2026-11-23).
