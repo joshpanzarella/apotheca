@@ -110,6 +110,8 @@ file gets only a new hard rule.**
   rule and sounds the same however it is cut into blocks. (`files.md`, `engine.md`)
 - **A song with nothing new in it is the same to the bit** (`effects_test --print`): a new feature at rest takes the
   old path. (`engine.md`)
+- **A new roll in the engine goes through `takeSeed(seed, take_)`** (the dice start from `setTake`): a bounce is a
+  TAKE, and a roll that skips it bounces the same in every take. Take 0 is the live song, to the bit. (`wifi-and-bounce.md`)
 - **Nothing on the app thread holds an `Effect` in a slot**; the WiFi server's thread never touches the `Project`.
 - **Anything below zero is not a track** (-1 master, -2 and -3 the buses): test `track >= 0`. (`screens.md`)
 - **Which bar of a cell plays goes through `fill_rule.hpp`** (`Engine::slotOf`, `Project::cellBarPlaying`),

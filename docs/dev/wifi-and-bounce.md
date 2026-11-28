@@ -218,3 +218,44 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   `bounces` folder beside the program. **It is not put on a lane by itself** (SET has no lane): pick it, then a tap
   of A on FIT. The row's note: `A: this scene's loop, into recordings`, then `done: "bounces/bass 1" in recordings`.
   Stopped with hold B as any bounce (nothing written). `sample_test` `testBouncingIntoSamples`; `textsize` (the row).
+- **A bounce is a TAKE** (owner, 2026-11-28: "a bounce could start its dice from a new number each time, so each
+  bounce is a fresh take. It could also say which take it is in the file name ("song take 3"), so a favourite can be
+  made again"). Before, a bounce's own engine started the chance dice at the same constant every time and every other
+  roll was seeded from position and pass, so bouncing a song twice gave the same file.
+  - **`Engine::setTake(n)`** (only before the first render, on the thread that renders: the bounce's own engine) starts
+    the dice at `takeSeed(kDiceStart, n)` and mixes the take into every per-note seed the engine hands out:
+    `chordSeed` (HUMAN TIME / LEVEL, LENGTHS, strum, an arpeggio's order), `glideSeed` (GLIDE FROM RANDOM),
+    `strikeSeed` (every synth's `noteSeed`: PHYSIC, CLOUD, MORPH), `feelSeed` (both of FEEL's sites) and the MODs
+    (`modOffsetAt`'s `take`, down to `modSeed`: RANDOM, DRIFT, a STEPPER's CHANCE and its SLEW's value before).
+    **`takeSeed(seed, 0) == seed`**: take 0 is the live engine and every pinned render, to the bit (`effects_test
+    --print`, `idle_test` untouched). A new roll in the engine goes through `takeSeed(..., take_)` too, or every take
+    of it bounces the same (CLAUDE.md). The screens' own copies of the rules (glide lines, the MOD tab) stay take 0:
+    they draw what plays live.
+  - **Kept in the song**: `takes N`, the last take made, a song-own line after `scale` (`cutSongAt` knows it), written
+    only when N > 0, so a song never bounced is written as before; held to 0..`kMostTakes`. Not a side file in the
+    bounces folder (Claude's choice): the count then follows a rename, a copy sent over WiFi and SEL + Y's revs, and
+    needs no second file to keep in step. It is no step of undo (undo puts back the song's own lines it names, one by
+    one: the master's mix, AT END, the scale, REPEATS and the lengths; `takes` is not one), so undoing past a bounce
+    never hands out its take again. Raised on the app thread when a bounce
+    STARTS (a stopped one spends its take too: the next is a fresh number either way); the autosave writes it.
+  - **Names**: THE SONG `<song> take 3.wav`, a track `<song> take 3 - 1 bass.wav` (EACH TRACK and THIS TRACK, all of
+    one go the same take, so stems line up with the song's take). **A name already in the folder gets the time after
+    the take** (`bounceNameTaken`: `<song> take 3.wav` for THE SONG, anything starting `<song> take 3 - ` for tracks),
+    so a remade take never writes over the first (a song of the same name, or the song changed since). **MIDI FILE has
+    no take** (no chance in it, `midiFileBytes`): its name is as before (`<song> 261128-141500.mid`) and no take is
+    spent. **TRACK TO SAMPLES** takes one too, after the number: `bounces/bass 1 take 3` (`freeSampleName`'s `after`);
+    the number counts the track's loops whatever their take (a number any `bass 1` or `bass 1 take ...` has is taken),
+    so it reads 1, 2, 3 and not 1, 1, 1.
+  - **The gesture: hold A + UP / DOWN on SET's BOUNCE row picks the take** (`Session::pickBounceTake`; UP a later one,
+    stopping at 1 and at the next new one; the stick's up and down too, a held D-pad at the list's pace), as NETWORK's
+    hold A + UP / DOWN picks a network. The press calls A's tap off (G15), so the let go bounces nothing; a tap of A
+    then makes the take picked (`startBounce(what, take)`; 0 or past the last is a new one). The row reads `THE SONG
+    TAKE 3`, its note `A: that take again` while an earlier one is picked, else (once there is an earlier take) `hold A +
+    up / down: earlier takes`; with A held the hints are `UP / DOWN take`. (A `HLD-A take` hint was tried and ran
+    the bar 31.6 px over at XL with L1 / R1 and SEL: `app_test`'s every-row check.) **A bounce started, or another song (`applyProject`), puts the pick back on the new one.** Not on MIDI
+    FILE (no take: up / down move the cursor). Claude's pick, open to the owner.
+  - Tests: `app_test` `testBounceTakes` (names, the count, take 1 again the same to the bit, a new take other hits, MIDI,
+    TRACK TO SAMPLES, the song file and a save and an open, the gesture), `engine_test` `testChance` (the dice),
+    `chordfx_test` `testTheNumbers` (`takeSeed`) and `testTheSameEveryTime`, `feel_test` `testTakes`, `glide_test`
+    `testRandomIsRolledForItsPlace`, `physic_test` `testSeeds`, `mod_test` `testTakes` and `testTheSameInAnyBlocks`
+    (a song with no roll is the same in every take). Still `bounce-take`.

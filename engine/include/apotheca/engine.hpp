@@ -578,6 +578,14 @@ public:
     // zero (all of it below 1e-30; see denormals.hpp), and a song must come out the
     // same to the last bit until the owner says otherwise. From any thread.
     void setFlushDenormals(bool on) { flush_.store(on, std::memory_order_relaxed); }
+    // A bounce's TAKE (owner, 2026-11-28: "each bounce is a fresh take"): another number for every roll
+    // that plays a song differently each time through: the chance dice's start, and the seed of each
+    // per-note roll (HUMAN, strum, an arpeggio's order, GLIDE FROM RANDOM, a PHYSIC strike, FEEL, a MOD's
+    // RANDOM, DRIFT and STEPPER chance: takeSeed, chord_rule.hpp). The same take plays the same to the bit;
+    // TAKE 0, as made, is the song as it has always played (the live engine never has another). Only
+    // before the first render, on the thread that renders it: a bounce's own engine.
+    void setTake(std::uint32_t take);
+    std::uint32_t take() const { return take_; }
     bool flushesDenormals() const { return flush_.load(std::memory_order_relaxed); }
     int workers() const { return static_cast<int>(workers_.size()); }
     // The helpers take the tracks heaviest first (by each one's time the chunk before) instead
@@ -1124,7 +1132,9 @@ private:
     bool chunkTapped_ = false;   // ...and it was worked out this chunk (written by whoever rendered it)
     std::uint64_t chunkAt_ = 0;  // caughtCount_ at this chunk's first frame
 
-    std::uint32_t dice_ = 0x2545F491u; // for chance; runs on, so no two bars need match
+    static constexpr std::uint32_t kDiceStart = 0x2545F491u; // (take 0's; setTake)
+    std::uint32_t dice_ = kDiceStart; // for chance; runs on, so no two bars need match
+    std::uint32_t take_ = 0;           // setTake: 0, the live song's own rolls
 
     std::atomic<int> scopeTrack_{-1};
     std::atomic<float> scope_[kScopeSize];

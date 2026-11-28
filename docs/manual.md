@@ -897,7 +897,8 @@ You have a loop going and want the next part of the song to start from it.
 ![Bouncing, on the SET tab](manual/bounce.png)
 
 **SET tab, BOUNCE row.** Left / right picks what, A starts it when it is let
-go (hold A + left / right only picks, as on other screens). **Hold B a second
+go (hold A + left / right only picks, as on other screens; **hold A + up / down
+picks the TAKE**, below). **Hold B a second
 stops one under way** (the row's bar fills); nothing of it is kept, not even
 the tracks of an EACH TRACK already finished. The row says `STOPPING IT` until
 it has stopped (a moment; longer if it was still loading the song's samples),
@@ -908,12 +909,41 @@ and A starts nothing meanwhile.
 | THE SONG | One WAV of the whole song: every scene as many times as it plays, then **for as long as its echoes and tails take to die away**. Muted tracks are left out. |
 | EACH TRACK | One WAV for every track by itself (stems), all the same length (the longest one's), so they line up in any other program |
 | THIS TRACK | The track being worked on, by itself |
-| TRACK TO SAMPLES | **A loop of this track, made into a recording** (to put on a lane or a sampler, and to free the handheld's work: a busy synth played back as a recording costs little). The track being worked on by itself (muted or not), the scene you are on played round once and then **the second time round kept**, so whatever rings past its end is heard at its start, as when it loops. **1, 2 or 4 whole bars** (the most the scene has, within twenty seconds: 4 bars at 120 BPM, 2 at 40); a scene under a bar, all of it. Stereo, 16-bit 48 kHz (one channel where both sides are the same), in `samples/bounces` ("bounces/bass 1", after the track's name), where the list of recordings sees it at once. **The cell's FILL is left out**: a loop is the plain cell. On a lane, **a tap of A on FIT fits it to its bars**. The row says `done: "bounces/bass 1" in recordings` |
+| TRACK TO SAMPLES | **A loop of this track, made into a recording** (to put on a lane or a sampler, and to free the handheld's work: a busy synth played back as a recording costs little). The track being worked on by itself (muted or not), the scene you are on played round once and then **the second time round kept**, so whatever rings past its end is heard at its start, as when it loops. **1, 2 or 4 whole bars** (the most the scene has, within twenty seconds: 4 bars at 120 BPM, 2 at 40); a scene under a bar, all of it. Stereo, 16-bit 48 kHz (one channel where both sides are the same), in `samples/bounces` ("bounces/bass 1 take 3", after the track's name and its TAKE), where the list of recordings sees it at once. **The cell's FILL is left out**: a loop is the plain cell. On a lane, **a tap of A on FIT fits it to its bars**. The row says `done: "bounces/bass 1 take 3" in recordings` |
 | MIDI FILE | One MIDI file of the whole song (Type 1): every scene as many times as it plays, one track per track, at the song's tempo. Notes and chords as written, with ratchets and nudges; drums as General MIDI on channel 10. Muted tracks are left out. Chance, swing and feel, strum, glide and automation have no MIDI in them and are left out |
 
 A bounce is **not recorded as the song plays**. A second engine works the
 song out again from the start, as fast as the handheld can. So you can
 carry on (even play) while it works.
+
+**Each bounce is a fresh TAKE.** Chance, the dice and every HUMAN, strum,
+arpeggio order, GLIDE FROM RANDOM, the dice of a PHYSIC, CLOUD or MORPH
+note, FEEL and a MOD's RANDOM, DRIFT or STEPPER CHANCE roll
+afresh, so two bounces of a song with any of those in it are two performances.
+The row says which take A will make (`THE SONG  TAKE 3`), and the file says it
+too:
+
+| Bounce | File |
+| --- | --- |
+| THE SONG | `my song take 3.wav` |
+| EACH TRACK, THIS TRACK | `my song take 3 - 1 drums.wav`, one a track |
+| TRACK TO SAMPLES | `bounces/bass 1 take 3` (the number counts that track's loops) |
+| MIDI FILE | no take (MIDI has no chance in it): `my song 261128-141500.mid` |
+
+- **A new song starts at TAKE 1**, and the count is kept in the song, so a
+  song bounced again tomorrow goes on from where it was.
+- **Make a favourite again: hold A + UP / DOWN** on the row to pick an earlier
+  take (DOWN goes back; it stops at 1 and at the next new one). The row says
+  `A: that take again`; let go, then tap A. (On the next new take, once there
+  are earlier ones, the row's note says `hold A + up / down: earlier takes`.) **The same take of the same song
+  is the same file to the last bit.** If you have changed the song since, it is
+  that take of the song as it is now. Where a file of that name is already
+  there, the time is added after the take (`my song take 3 261128-141500.wav`),
+  so nothing is written over.
+- After a bounce, and in another song, the row is back on the next new take.
+- A song with no chance or rolls in it bounces the same in every take.
+- What you hear as the song plays is not any take: playing is the song's own
+  rolls, the same from the top every time.
 
 **Where a bounce ends.** After the song's last step it runs on until there has
 been no sound for seven seconds, and the file ends half a second after the last
@@ -1383,7 +1413,7 @@ track makes a sound at once.
   and the panic fade them in 5 MS.
 - **Every grain's place, pitch, side and direction is a roll by where and
   when** (the key's start and the grain's count), not dice thrown as it plays:
-  Play from the top is the same cloud again, and a bounce is what you heard.
+  Play from the top is the same cloud again. A bounce is a TAKE of its own (see Bouncing).
 - **Y on MAIN rolls a new cloud**: SPRAY, SIZE, DENSITY, SCATTER, SHAPE, PITCH
   SPRAY, PITCH STEPS, REVERSE and STEREO. It never changes the recording,
   POSITION, SCAN, PITCH, TUNE, the envelope or the levels. One step of undo.
@@ -2138,9 +2168,9 @@ the drum), and:
   hits move together and share one level.
 - A hit written at full level can only get quieter (nothing is louder than
   full). At 90%, where A places them, it goes both ways (up to full).
-- **Play from the top is the same performance again**, and a bounce is what
-  was heard: the moves are worked out from where each hit is and which time
-  round it is, not from luck at the moment.
+- **Play from the top is the same performance again**: the moves are worked
+  out from where each hit is and which time round it is, not from luck at the
+  moment. A bounce rolls them afresh: each is a TAKE of its own (see Bouncing).
 - The song's very first hit cannot come before the top: it lands on it.
 - **Slices in order still play as one unbroken sound.** A run of slices
   (each on the step after the last) moves as one, by its first hit's move,
@@ -2759,7 +2789,7 @@ otherwise. One step of undo.
 
 **Random means fresh every time the chord plays.** No two times round the
 loop are alike. But pressing play from the top gives the same performance
-again, so a bounce is what you heard from the top.
+again. A bounce is a TAKE of its own: the rolls made afresh (see Bouncing).
 
 How the effects meet each other, and the edges:
 

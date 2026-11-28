@@ -850,9 +850,9 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples, doub
         // Which key of that moment: the track's GLIDE FROM.
         const bool glides = note.glide != kGlideOff && note.piece != kLaterPiece;
         const int trackIndex = static_cast<int>(&track - tracks_);
-        const GlideTrail::From from = glides ? track.trail.from(track.glideFrom, note.pitch, at, glideSeed(trackIndex, at)) : GlideTrail::From();
+        const GlideTrail::From from = glides ? track.trail.from(track.glideFrom, note.pitch, at, takeSeed(glideSeed(trackIndex, at), take_)) : GlideTrail::From();
         // The strike's roll (a synth with dice: PHYSIC), from where and which time it is struck.
-        track.synth->noteSeed(physic::strikeSeed(trackIndex, note.pitch, strikeAt));
+        track.synth->noteSeed(takeSeed(physic::strikeSeed(trackIndex, note.pitch, strikeAt), take_));
         track.synth->noteStep(samplesPerStep_ / sampleRate_);
         // From the note's own key: a tie for a synth that asks for it (ACID), a plain note for the rest.
         if (glides && from.pitch >= 0 && (from.pitch != note.pitch || track.synth->tiesSameKey())) {
@@ -907,7 +907,7 @@ void Engine::startChordNote(Track& track, int slot, const Note& note, bool top, 
     }
     // (The bar of its cell, not the scene's number: a scene put into the song or taken out moves
     // the scenes after it, and a chord that is playing must go on as the same chord.)
-    const std::uint32_t seed = chordSeed(static_cast<int>(&track - tracks_), slot % kMaxBars, note.step, static_cast<long>(stepAt));
+    const std::uint32_t seed = takeSeed(chordSeed(static_cast<int>(&track - tracks_), slot % kMaxBars, note.step, static_cast<long>(stepAt)), take_);
     if (seed != track.lastChord || track.strokes < 0) { // the first of its notes: another chord has begun
         track.lastChord = seed;
         ++track.strokes;
@@ -1898,7 +1898,7 @@ bool Engine::schedule(Track& track, int lane, const DrumScene& scene, int step, 
         const int head = headAt % kSteps;
         double moved = delaySamples;
         if (feel.time != 0) {
-            const std::uint32_t seed = feelSeed(static_cast<int>(&track - tracks_), lane, headAt / kSteps, head, stepAt - back);
+            const std::uint32_t seed = takeSeed(feelSeed(static_cast<int>(&track - tracks_), lane, headAt / kSteps, head, stepAt - back), take_);
             moved += feelSamples(feel.time, head, seed, static_cast<double>(sampleRate_) / 1000.0, samplesPerStep_);
         }
         // SWING: by the run's first hit too, so a break in order is one sound, swung or not as a whole.
@@ -1916,7 +1916,7 @@ bool Engine::schedule(Track& track, int lane, const DrumScene& scene, int step, 
         if (static_cast<float>(dice_ >> 8) * (1.f / 16777216.f) >= chance) return true;
     }
     float velocity = scene.level[lane][step];
-    if (feel.level != 0) velocity = feelLevel(velocity, feel.level, step, feelSeed(static_cast<int>(&track - tracks_), lane, bar, step, stepAt));
+    if (feel.level != 0) velocity = feelLevel(velocity, feel.level, step, takeSeed(feelSeed(static_cast<int>(&track - tracks_), lane, bar, step, stepAt), take_));
     playHit(track, lane, velocity, scene.start[lane][step], -1.f, scene.fx[lane][step], delaySamples, false, whole, late);
     return true;
 }
@@ -2632,7 +2632,7 @@ void Engine::runMods(double steps, double seconds, bool macros) {
             // always the same float).
             const int l = modDepthLane(m);
             const float lane = track.autoNow[l];
-            added[m] = modOffsetAt(mod, position, t, m, lane >= 0.f && lane != track.autoBase[l] ? modDepthFromLane(lane) : mod.depth);
+            added[m] = modOffsetAt(mod, position, t, m, lane >= 0.f && lane != track.autoBase[l] ? modDepthFromLane(lane) : mod.depth, take_);
             track.modShown[m].store(added[m], std::memory_order_relaxed);
             track.modPlace[m].store(stepperPlace(mod, position), std::memory_order_relaxed);
             track.modAt[m].store(position, std::memory_order_relaxed);
@@ -2890,6 +2890,13 @@ void Engine::workerLoop(void (*atStart)()) {
         flushDenormals(flush_.load(std::memory_order_relaxed)); // this thread only renders: as the engine is set, each time
         shareOutTracks();
     }
+}
+
+// A take's own start for the chance dice, and its number for every per-note roll (takeSeed). TAKE 0 is the
+// start the dice have always had.
+void Engine::setTake(std::uint32_t take) {
+    take_ = take;
+    dice_ = takeSeed(kDiceStart, take);
 }
 
 void Engine::useWorkers(int count, void (*atStart)()) {

@@ -465,6 +465,7 @@ void Session::bounceToSamples(BounceJob& job) {
     std::unique_ptr<Engine> engine(new Engine);
     engine->prepare(rate);
     engine->setFlushDenormals(true);
+    engine->setTake(static_cast<std::uint32_t>(job.take));
     std::unique_ptr<Project> copy(new Project(song));
     for (int t = 0; t < kNumTracks; ++t) copy->tracks[t].muted = t != job.track; // that track alone, muted or not
     // A loop is the plain cell: its FILL is left out. (Kept, the FILL would play in the round kept only when REPEATS
@@ -515,7 +516,31 @@ void Session::useBounceFolder(const std::string& folder) {
     if (!folder.empty() && !bouncing()) removeHalfBounces(folder);
 }
 
-bool Session::startBounce(Bounce what) {
+// A TAKE's file names: "<song> take 3.wav", or a track's "<song> take 3 - 1 bass.wav". Where a file this bounce
+// would write is in the folder already (that take made again, after the song changed perhaps, or a song of the same
+// name) the time is added, so an earlier bounce is not written over: "<song> take 3 261128-141500.wav". (THE SONG and its
+// tracks are other files: take 3's tracks beside take 3's song keep the plain name, and line up with it.)
+static bool bounceNameTaken(const std::string& folder, const std::string& name, bool tracks) {
+    const std::string start = name + (tracks ? " - " : ".wav");
+    bool taken = false;
+    if (DIR* dir = opendir(folder.c_str())) {
+        while (const dirent* e = readdir(dir)) {
+            const std::string n = e->d_name;
+            if (n.size() >= start.size() && n.compare(0, start.size(), start) == 0) taken = true;
+        }
+        closedir(dir);
+    }
+    return taken;
+}
+
+void Session::pickBounceTake(int by) {
+    const int to = bounceTake() + by;
+    bounceTakePicked_ = to < 1 ? 1 : (to > project.takes ? 0 : to);
+}
+
+int Session::bounceTakeMade() const { return bounce_ && bounce_->done.load() ? bounce_->take : 0; }
+
+bool Session::startBounce(Bounce what, int take) {
     if (bounce_ && !bounce_->done.load()) return false; // one at a time
     finishBounce();
     if (bounceFolder_.empty() && what != Bounce::ToSamples) return false; // (into samples: the samples folder is enough)
@@ -532,7 +557,13 @@ bool Session::startBounce(Bounce what) {
     char when[32];
     const std::time_t now = std::time(nullptr);
     std::strftime(when, sizeof when, "%y%m%d-%H%M%S", std::localtime(&now));
-    job->base = bounceFolder_ + "/" + (songName_.empty() ? std::string("song") : songName_) + " " + when;
+    const std::string song = songName_.empty() ? std::string("song") : songName_;
+    job->base = bounceFolder_ + "/" + song + " " + when; // (a MIDI file: no take, named as it always was)
+    if (what != Bounce::MidiFile) job->take = take >= 1 && take <= project.takes ? take : project.takes + 1;
+    if (what != Bounce::MidiFile && what != Bounce::ToSamples) {
+        const std::string name = song + " take " + std::to_string(job->take);
+        job->base = bounceFolder_ + "/" + (bounceNameTaken(bounceFolder_, name, what != Bounce::Song) ? name + " " + when : name);
+    }
     if (what == Bounce::ToSamples) {
         // Into the samples folder, where the list of recordings sees it: "bounces/bass 1", after the track's name.
         const int t = project.track;
@@ -540,10 +571,12 @@ bool Session::startBounce(Bounce what) {
         job->scene = project.scene;
         mkdir(sampleFolder_.c_str(), 0755);
         mkdir((sampleFolder_ + "/" + kBouncesInSamples).c_str(), 0755);
-        job->sample = freeSampleName(kBouncesInSamples, project.tracks[t].name[0] ? project.tracks[t].name : instrumentName(project.tracks[t].kind));
+        job->sample = freeSampleName(kBouncesInSamples, project.tracks[t].name[0] ? project.tracks[t].name : instrumentName(project.tracks[t].kind), " take " + std::to_string(job->take));
         if (job->sample.empty()) return false;
     }
     bounce_ = job;
+    if (job->take > project.takes) project.takes = job->take; // a new take: kept in the song (the autosave writes it)
+    bounceTakePicked_ = 0; // the row is on the next new one again
     job->thread = std::thread([job] {
         Project& song = *job->song;
         if (job->what == Bounce::MidiFile) {
@@ -592,6 +625,7 @@ bool Session::startBounce(Bounce what) {
             engine->prepare(rate);
             engine->setFlushDenormals(true); // as the program plays it
             engine->useWorkers(2); // a bounce is quicker for it too
+            engine->setTake(static_cast<std::uint32_t>(job->take)); // every track of it the same take: they line up with the song's
             std::unique_ptr<Project> copy(new Project(song));
             if (stems[n] >= 0)
                 for (int t = 0; t < kNumTracks; ++t) copy->tracks[t].muted = t != stems[n]; // a stem: that track alone, muted or not

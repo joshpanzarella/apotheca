@@ -375,7 +375,7 @@ public:
     // (Engine::setCatchTrack), so the engine remembers that track from when it was chosen.
     std::string catchLastBar(int track, int lane);
     // The next free name "folder/stem N" in the samples folder (N from 1; capitals not counted), or "" if none.
-    std::string freeSampleName(const std::string& folder, const std::string& stem) const;
+    std::string freeSampleName(const std::string& folder, const std::string& stem, const std::string& after = "") const; // (`after` follows the number: " take 2")
     int catchBars() const { return catchBars_; } // 1, 2 or 4
     int catchFrom() const { return catchFrom_ < project.trackCount() ? catchFrom_ : -1; } // -1: the mix; else a track there is
     void stepCatchBars(int by);  // 1, 2, 4: the ends stop
@@ -594,7 +594,17 @@ public:
     // fits it to its bars (G45). bounceSample() and bounceSampleSteps() say what it made.
     enum class Bounce { Song, EachTrack, ThisTrack, MidiFile, ToSamples };
     void useBounceFolder(const std::string& folder); // (and what a killed bounce left there is removed)
-    bool startBounce(Bounce what); // false if one is under way, or there is nowhere to put it
+    // A TAKE (owner, 2026-11-28): each bounce plays the song's chance and dice afresh (Engine::setTake), and its
+    // file says which ("song take 3.wav"). `take` 0, or past the song's last (project.takes), is a new one: the
+    // next, kept in the song. Another of 1..takes makes that one again, the same to the bit if the song is.
+    // A MIDI FILE has no take (no chance in it): none is spent and its name is as it was.
+    bool startBounce(Bounce what, int take = 0); // false if one is under way, or there is nowhere to put it
+    // SET's BOUNCE row: the take A will make, the one picked (hold A + UP / DOWN) or else the next new one
+    // (project.takes + 1). Another song, or a bounce started, puts it back to the new one.
+    int bounceTake() const { return bounceTakePicked_ > 0 && bounceTakePicked_ <= project.takes ? bounceTakePicked_ : project.takes + 1; }
+    bool bounceTakeIsNew() const { return bounceTake() > project.takes; }
+    void pickBounceTake(int by); // up or down, stopping at 1 and at the new one
+    int bounceTakeMade() const; // once done: the take the last bounce made (0: a MIDI file, or none)
     bool bouncing() const;
     float bounceProgress() const;  // 0..1: how much of the playing of the song is done (the tails are not counted: nobody knows how long they will be)
     // While a tail is being worked out: how many seconds of it there are so
@@ -1089,6 +1099,7 @@ private:
         std::string sampleFolder, base, last;
         std::string sample; // ToSamples: the recording's name, chosen when it starts
         int scene = 0, sampleSteps = 0;
+        int take = 0;       // its TAKE (Engine::setTake); 0 for a MIDI file
         bool seen = false;  // ...its being done told to the open lists (the app thread's)
         float cap = kBounceCapSeconds;
         std::atomic<float> progress{0.f}, tail{-1.f};
@@ -1096,6 +1107,7 @@ private:
         std::thread thread;
     };
     std::shared_ptr<BounceJob> bounce_;
+    int bounceTakePicked_ = 0; // 0: the next new take (bounceTake)
     static void bounceToSamples(BounceJob& job); // (on the bounce's thread)
     std::string bounceFolder_;
     float bounceCap_ = kBounceCapSeconds;

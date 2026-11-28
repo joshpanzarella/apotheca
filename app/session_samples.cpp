@@ -906,8 +906,8 @@ void Session::stepCatchFrom(int by) {
 
 namespace {
 // "breaks/amen" and 2: "breaks/amen 2", its name cut where the whole would not be a name (sampleNameOk: under 64).
-std::string numbered(const std::string& folder, std::string stem, int number) {
-    const std::string tail = " " + std::to_string(number), head = folder.empty() ? "" : folder + "/";
+std::string numbered(const std::string& folder, std::string stem, int number, const std::string& after = "") {
+    const std::string tail = " " + std::to_string(number) + after, head = folder.empty() ? "" : folder + "/";
     const std::size_t room = static_cast<std::size_t>(kSampleNameRoom - 1) - head.size() - tail.size();
     if (stem.size() > room) stem.resize(room);
     while (!stem.empty() && stem.back() == ' ') stem.pop_back();
@@ -969,14 +969,22 @@ Session::SaveSound Session::saveLaneSound(int track, int lane, float start, floa
     return SaveSound::Failed;
 }
 
-std::string Session::freeSampleName(const std::string& folder, const std::string& stem) const {
+std::string Session::freeSampleName(const std::string& folder, const std::string& stem, const std::string& after) const {
     if (sampleFolder_.empty()) return "";
     std::vector<std::string> taken = sampleNames(); // capitals not counted: a card may not tell them apart
     for (std::string& have : taken) have = lowered(have);
     for (int number = 1; number < 10000; ++number) {
-        const std::string candidate = numbered(folder, lowered(stem), number);
+        const std::string candidate = numbered(folder, lowered(stem), number, after);
         if (!sampleNameOk(candidate) || recordingThere(sampleFolder_, candidate)) continue;
         if (std::find(taken.begin(), taken.end(), lowered(candidate)) != taken.end()) continue;
+        // With something after the number (a bounce's " take 2"), the number is the track's count of them: one
+        // that any "drums 1" or "drums 1 take ..." has is taken, whichever take ("drums 1 take 1", "drums 2 take 2").
+        if (!after.empty()) {
+            const std::string plain = lowered(candidate.substr(0, candidate.size() - after.size()));
+            bool used = recordingThere(sampleFolder_, plain);
+            for (const std::string& have : taken) used = used || have == plain || have.compare(0, plain.size() + 1, plain + " ") == 0;
+            if (used) continue;
+        }
         return candidate;
     }
     return "";

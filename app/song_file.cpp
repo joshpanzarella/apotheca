@@ -762,6 +762,9 @@ void putHead(std::string& out, const ProjectHead& project) {
         put(out, "scale %.0f", project.scaleKey);
         put(out, " %.0f\n", project.scaleKind);
     }
+    // takes N: the last bounce's TAKE (wifi-and-bounce.md), so the next is a new one. Left out at 0, so a song
+    // never bounced is written as before.
+    if (project.takes > 0) put(out, "takes %.0f\n", project.takes);
     // master DB PAN: the master's level and pan on the mixer, as a track's `mix`. Left out at 0 0.
     if (project.masterDb != 0 || project.masterPan != 0) {
         put(out, "master %.0f", project.masterDb);
@@ -989,6 +992,9 @@ void readLines(SongReading& r, const std::string& text, std::size_t from, std::s
             if (!(in >> key >> kind)) continue;
             head.scaleKey = wholeIn(key, 0, 11);
             head.scaleKind = scaleKindOf(wholeIn(kind, 0, 255)); // (held as doubles first; a kind nobody knows: OFF)
+        } else if (word == "takes") {
+            double takes = 0;
+            if (in >> takes) head.takes = wholeIn(takes, 0, kMostTakes);
         } else if (word == "master") {
             double db = 0, pan = 0;
             if (!(in >> db)) continue;
@@ -1423,7 +1429,7 @@ bool cutSongAt(const std::string& text, std::vector<std::size_t>& starts) {
     starts.clear();
     if (!hasHead(text, "apotheca-song")) return false;
     bool inTrack = false;
-    static const char* const songsOwn[] = {"tempo", "length", "steps", "repeats", "stempi", "meter", "pack", "busfx", "master", "songend", "scale"};
+    static const char* const songsOwn[] = {"tempo", "length", "steps", "repeats", "stempi", "meter", "pack", "busfx", "master", "songend", "scale", "takes"};
     for (std::size_t at = 0; at < text.size();) {
         std::size_t end = text.find('\n', at);
         end = end == std::string::npos ? text.size() : end + 1;

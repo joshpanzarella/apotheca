@@ -778,8 +778,9 @@ static void testATempoChangeKeepsThePhase() {
 // and VOWEL's settings and a send, of each kind and several shapes (`gliding`: on SATURATE's
 // DRIVE and CHORUS's DEPTH instead, which glide a call at a time). No HALL (it is not
 // the same cut into other blocks), no automation (its glide moves at chunks).
-static std::vector<float> song(int block, int helpers, bool mods, int frames, bool phazedToo = true, bool gliding = false, float bpm = 133.f, bool free = false) {
+static std::vector<float> song(int block, int helpers, bool mods, int frames, bool phazedToo = true, bool gliding = false, float bpm = 133.f, bool free = false, std::uint32_t take = 0) {
     std::unique_ptr<Engine> e(new Engine);
+    e->setTake(take); // (a bounce's: Engine::setTake)
     e->prepare(48000.f);
     std::vector<float> out(2 * static_cast<std::size_t>(frames)), scratch(1024);
     e->send(make(Command::SetTempo, 0, 0, 0, bpm));
@@ -853,7 +854,47 @@ static void testTheSameInAnyBlocks() {
         const int whole = 2 * 16 * 6000; // two bars at 120
         const std::vector<float> at120 = song(64, 0, mods, whole, true, false, 120.f);
         CHECK(song(1, 0, mods, whole, true, false, 120.f) == at120 && song(333, 3, mods, whole, true, false, 120.f) == at120);
+        // A bounce's TAKE: DRIFT and the STEPPER's CHANCE rolled again, the same take the same in any blocks. With no
+        // MOD this song has no roll in it, and every take is the song as made.
+        const std::vector<float> take1 = song(64, 0, mods, frames, true, false, 133.f, false, 1);
+        CHECK(song(333, 3, mods, frames, true, false, 133.f, false, 1) == take1);
+        CHECK(mods ? take1 != plain && take1 != song(64, 0, mods, frames, true, false, 133.f, false, 2) : take1 == plain);
     }
+}
+
+// A bounce's TAKE in the rule (takeSeed, chord_rule.hpp): RANDOM, DRIFT and a STEPPER's rolls (its CHANCE, its
+// value, and the value its SLEW glides from) are the take's own; take 0 is the rule as it always was.
+static void testTakes() {
+    ModSettings m = lfo(autoLaneOfEffect(0, 0), 1.f, kModRandom, kModRateQuarter); // (4 steps a cycle)
+    const auto randomAt = [](long cycle, std::uint32_t take) { return chordSigned(takeSeed(chordSeed(2, 1, 0, cycle), take), kRollMod, 1 * 32 + kModRollValue); };
+    ModSettings d = m;
+    d.shape = kModDrift;
+    int otherTake = 0;
+    for (long cycle = 0; cycle < 40; ++cycle) {
+        CHECK(lfoValue(m, cycle * 4.0 + 1.0, 2, 1, 0) == lfoValue(m, cycle * 4.0 + 1.0, 2, 1) && lfoValue(m, cycle * 4.0 + 1.0, 2, 1, 5) == randomAt(cycle, 5));
+        CHECK(near(lfoValue(d, cycle * 4.0 + 2.0, 2, 1, 5), 0.5 * (randomAt(cycle, 5) + randomAt(cycle + 1, 5)), 1e-12)); // from this cycle's to the next's
+        CHECK(modOffsetAt(m, cycle * 4.0 + 1.0, 2, 1, 1.f, 5) == static_cast<float>(randomAt(cycle, 5)));
+        otherTake += randomAt(cycle, 5) != randomAt(cycle, 0);
+    }
+    CHECK(otherTake > 35);
+    ModSettings st = stepper(autoLaneOfEffect(0, 0), 1.f, kModRateStep, 1.f, 0.f, 5);
+    const auto rollAt = [](long index, std::uint32_t take) { return chordSigned(takeSeed(chordSeed(4, 0, static_cast<int>(index % 5), index / 5), take), kRollMod, 0 * 32 + kModRollValue); };
+    for (long index = 1; index < 50; ++index) {
+        CHECK(stepValue(st, index + 0.5, 4, 0, 0) == rollAt(index, 0) && stepValue(st, index + 0.5, 4, 0, 5) == rollAt(index, 5));
+        CHECK(modOffsetAt(st, index + 0.5, 4, 0, 1.f, 5) == static_cast<float>(rollAt(index, 5)));
+    }
+    st.slew = 0.5f; // a quarter in: halfway from the value before, the take's too
+    for (long index = 1; index < 50; ++index) CHECK(near(stepValue(st, index + 0.25, 4, 0, 5), rollAt(index - 1, 5) + (rollAt(index, 5) - rollAt(index - 1, 5)) * 0.5, 1e-12));
+    // CHANCE 0.5: which places roll is the take's too.
+    st.slew = 0.f;
+    st.chance = 0.5f;
+    for (int i = 0; i < kModSteps; ++i) st.steps[i] = 0.f;
+    std::string zero, five;
+    for (long index = 0; index < 60; ++index) {
+        zero += stepValue(st, index + 0.5, 4, 0, 0) == 0.0 ? '.' : 'x';
+        five += stepValue(st, index + 0.5, 4, 0, 5) == 0.0 ? '.' : 'x';
+    }
+    CHECK(zero != five);
 }
 
 // Known, not mended: an effect that glides a setting a CALL at a time (fx::Glide begun in each
@@ -1744,6 +1785,7 @@ int main(int argc, char** argv) {
         {"testThePosition", testThePosition},
         {"testTheShapes", testTheShapes},
         {"testRandomAndDrift", testRandomAndDrift},
+        {"testTakes", testTakes},
         {"testTheFreeRule", testTheFreeRule},
         {"testTheStepper", testTheStepper},
         {"testTheCombine", testTheCombine},

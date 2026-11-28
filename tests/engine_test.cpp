@@ -912,6 +912,25 @@ static void testChance() {
     int played = 0;
     for (int bar = 0; bar < 200; ++bar) played += peakOf(renderFrames(nudged, 16 * kStep)) > 0.f ? 1 : 0;
     CHECK(played > 70 && played < 130);
+
+    // A bounce's TAKE (Engine::setTake): the dice start from the take's own number. Which of 60 bars a hit
+    // at a half chance plays in: the same take the same bars, another take other bars, take 0 the engine as made.
+    const auto barsOf = [](bool setIt, std::uint32_t take, std::uint32_t before = 0) {
+        std::unique_ptr<Engine> engine(new Engine);
+        if (before) engine->setTake(before);
+        if (setIt) engine->setTake(take);
+        engine->send(step(RIM, 0, 1.f));
+        engine->send(make(Command::SetStepChance, 0, RIM, 0, 0.5f));
+        engine->send(make(Command::Play));
+        std::string bars;
+        for (int bar = 0; bar < 60; ++bar) bars += peakOf(renderFrames(*engine, 16 * kStep)) > 0.f ? 'x' : '.';
+        return bars;
+    };
+    const std::string asMade = barsOf(false, 0), one = barsOf(true, 1), two = barsOf(true, 2);
+    CHECK(barsOf(true, 0) == asMade && barsOf(true, 1) == one && barsOf(true, 2) == two);
+    CHECK(one != asMade && two != asMade && one != two);
+    CHECK(std::count(one.begin(), one.end(), 'x') > 15 && std::count(one.begin(), one.end(), 'x') < 45); // still a half chance
+    CHECK(barsOf(true, 0, 7) == asMade && barsOf(true, 2, 7) == two); // (another take, then this one: this one's)
 }
 
 static void testPatternLoopsAfterSixteenSteps() {
