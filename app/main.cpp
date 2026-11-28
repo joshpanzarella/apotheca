@@ -79,6 +79,7 @@
 #include "apotheca/engine.hpp"
 #include "app.hpp"
 #include "stills.hpp"
+#include "clip_record.hpp"
 #include "scales.hpp"
 #include "drum_voices.hpp"
 #include "power_off.hpp"
@@ -107,6 +108,7 @@ struct AudioState {
     std::atomic<int> realtime{-1}; // -1 not asked yet, 0 refused, 1 granted
     int rate = 48000;               // the card's, as opened (set before the sound starts)
     LateBlocks late;                // blocks that came late (late_blocks.hpp): written down on the handheld
+    AudioTap* tap = nullptr;        // a clip being recorded (--record): what was rendered, for its WAV
 };
 std::atomic<int> gHelpersRealtime{0}; // the helpers that were given realtime priority
 
@@ -135,6 +137,7 @@ void audioCallback(void* userdata, Uint8* stream, int bytes) {
     }
     const int frames = bytes / static_cast<int>(2 * sizeof(float));
     state->engine->render(reinterpret_cast<float*>(stream), frames);
+    if (state->tap) state->tap->write(reinterpret_cast<const float*>(stream), frames * 2);
     state->late.block(began, steadyUs() - began, static_cast<std::int64_t>(frames) * 1000000 / (state->rate > 0 ? state->rate : 48000));
 }
 
@@ -301,6 +304,7 @@ int main(int argc, char** argv) {
     const char* themes = nullptr; // --themes PREFIX: the last frame drawn in every theme, PREFIX0.bmp to PREFIX7.bmp (for theme_test)
     int theme = -1;              // --theme NAME: a still in that THEME (brown, dracula, nord, gruvbox, tokyo, monokai, solarized, github)
     int stillMs = 1000;          // --still-ms N: how long a still (or the smoke run) goes before its picture is taken
+    ClipOptions clip;            // --script FILE --record OUTDIR: a clip, on a virtual clock (clip_record.hpp)
     for (int i = 1; i < argc; ++i)
         if (std::strcmp(argv[i], "--bench") == 0) return runBench(); // the timings and nothing else: no window, no sound
     for (int i = 1; i < argc; ++i) {
@@ -320,6 +324,8 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--view") == 0 && i + 1 < argc) view = argv[++i];
         else if (std::strcmp(argv[i], "--shot") == 0 && i + 1 < argc) shot = argv[++i];
         else if (std::strcmp(argv[i], "--frames") == 0 && i + 1 < argc) framesDir = argv[++i];
+        else if (std::strcmp(argv[i], "--script") == 0 && i + 1 < argc) clip.script = argv[++i];
+        else if (std::strcmp(argv[i], "--record") == 0 && i + 1 < argc) clip.out = argv[++i];
         else if (std::strcmp(argv[i], "--battery") == 0 && i + 1 < argc) batteryFolder = argv[++i];
         else if (std::strcmp(argv[i], "--songs") == 0 && i + 1 < argc) songs = argv[++i];
         else if (std::strcmp(argv[i], "--samples") == 0 && i + 1 < argc) samples = argv[++i];
@@ -346,7 +352,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    if ((texts || themes) && !shot) shot = ""; // a still in every way, with no picture kept
+    if ((texts || themes || clip.script) && !shot) shot = ""; // a still in every way, with no picture kept
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
         std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         return 1;
@@ -577,7 +583,7 @@ int main(int argc, char** argv) {
         app.session().useSongFolder(folder, static_cast<std::uint32_t>(std::time(nullptr)));
         std::printf("songs: %s (open: %s)\n", folder.c_str(), app.session().songName().c_str());
     }
-    SDL_PauseAudioDevice(device, 0); // after the demo is in, so its commands are not racing the audio thread
+    if (!clip.script) SDL_PauseAudioDevice(device, 0); // (a clip renders its own sound) after the demo is in, so its commands are not racing the audio thread
 
     // ---- what to show, for stills (stills.cpp) ----------------------------------------
     {
@@ -587,8 +593,15 @@ int main(int argc, char** argv) {
         still.onName = onName, still.onTempo = onTempo, still.dice = dice, still.noMenu = noMenu, still.paint = paint;
         setUpStill(app, still, input, controlMap, stillMs);
     }
+    int clipResult = 0;
+    if (clip.script) {
+        static AudioTap tap;
+        audio.tap = &tap, audio.priorityAsked = true; // (the callback is called on this thread: no realtime asked for it)
+        clip.callback = audioCallback, clip.userdata = &audio, clip.tap = &tap, clip.rate = have.freq;
+        clipResult = clip.out ? recordClip(app, input, renderer, fonts, ttf, clip) : 1;
+    }
 
-    bool running = true;
+    bool running = !clip.script;
     bool startedFine = false;
     Uint32 stillClock = 0; // (stills: the App's clock, a frame a pass at most)
     bool reported = false;
@@ -862,6 +875,7 @@ int main(int argc, char** argv) {
     SDL_DestroyWindow(window);
     SDL_Quit();
 
+    if (clip.script) return clipResult;
     if (smoke) {
         if (app.drums().level(0, 0) <= 0.f) { std::fprintf(stderr, "smoke: pressing A placed no hit\n"); return 1; }
         if (!app.project().playing) { std::fprintf(stderr, "smoke: pressing START did not play\n"); return 1; }
