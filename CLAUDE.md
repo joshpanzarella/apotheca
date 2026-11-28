@@ -66,8 +66,10 @@ New screens and gestures keep these; do not invent a variant.
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
   `port/apotheca/apotheca` and `VERSION` from `build-handheld/` into `dist/`,
   commit, push to `main`. The owner updates over WiFi or from the SD card.
-- **The version is the build number N** (shown BUILD N; it was `0.N` until 2026-11-28), N = commits + 1 at build time. Only
-  `app/version.cpp` is compiled with it, so a new number rebuilds one file.
+- **The version is the build number N** (shown BUILD N; it was `0.N` until 2026-11-28). **N counts main's history only**:
+  the port and a desk build, main's commits + 1 (the "Ship the port" commit to come); the card's app (firmware branch,
+  `os/package/apotheca/apotheca.mk`), the commits of the last main commit merged in. So the same app code shows one N on
+  both (`docs/dev/layout.md`). Only `app/version.cpp` is compiled with it, so a new number rebuilds one file.
 - **Check a command's real exit code.** `ctest | tail` returns tail's. Use
   `set -o pipefail`. A commit went out past a failing test once this way.
 - **Restoring a file with `mv` keeps its old date** and the build then skips
