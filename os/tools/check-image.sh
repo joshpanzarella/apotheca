@@ -221,6 +221,8 @@ if shutil.which('mdir') and shutil.which('mtype'):
     check(len(append) == 1 and ' quiet ' not in append[0] and ' loglevel=5 ' in append[0]
           and 'initcall_debug' not in append[0] and 'loglevel=8' not in append[0],
           "extlinux.conf: loglevel=5 (above quiet, so the boot logo draws; the hunt's initcall_debug and loglevel=8 are off)")
+    check(len(append) == 1 and ' vt.global_cursor_default=0 ' in append[0] and ' fbcon=logo-count:1 ' in append[0],
+          "extlinux.conf: no text cursor below the start-up picture (vt.global_cursor_default=0), one logo (fbcon=logo-count:1)")
     # The kind of memory this card is for, and the memory's rail in every tree
     kind = mt('mtype', '-i', spec, '::memory-kind.txt').stdout.split(':')[0]
     check(kind in ('both', 'lpddr4', 'lpddr3'), "memory-kind.txt says which memory this card is for (%s)" % kind)
@@ -331,6 +333,8 @@ if unsquashfs:
         check(b'linux-report.txt' in cat('/etc/init.d/S90bootlog'), "S90bootlog copies the boot log to the boot partition (linux-report.txt)")
         check(b'tty1' in cat('/etc/profile.d/apotheca.sh'),
               "the login banner stays off the screen's own shell")
+        check(not any(l.strip().startswith(('tty0:', 'tty1:', 'tty2:', 'console:')) for l in inittab.splitlines()),
+              "inittab starts nothing on the screen's console (no prompt below the start-up picture)")
         check('::respawn:/usr/sbin/apotheca-power' in inittab, "inittab starts apotheca-power (and again if it stops)")
         check('::respawn:/usr/sbin/apotheca-keep apotheca /usr/libexec/apotheca/run' in inittab,
               "inittab starts Apotheca under apotheca-keep")

@@ -1,6 +1,7 @@
 # Said at every login shell on USB serial or UART. Not on the screen's own
 # shell (tty1): during a start that shell shares the screen with the
-# start-up picture, and no words go over it.
+# start-up picture, and no words go over it. (inittab starts no shell there
+# since 2026-11-28; the test stays, should one come back.)
 if [ -z "$APOTHECA_SAID" ] && [ "$(tty 2>/dev/null)" != "/dev/tty1" ]; then
     export APOTHECA_SAID=1
     echo

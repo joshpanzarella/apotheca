@@ -23,11 +23,16 @@ null::sysinit:/bin/ln -sf /proc/self/fd/2 /dev/stderr
 # Every way off goes through poweroff, so rcK's S95apotheca saves the song.
 ::respawn:/usr/sbin/apotheca-power
 
-# A shell on the screen (seen when Apotheca is not running), on USB serial
-# (the USB-C port), on the board's UART pins, and on qemu's serial port for
-# the desk test. Each one starts again when it ends. A console whose port is
-# not there sleeps. (Open, with no password, until batch 5: owner, 2026-11-17.)
-tty1::respawn:-/bin/sh
+# A shell on USB serial (the USB-C port), on the board's UART pins, and on
+# qemu's serial port for the desk test. Each one starts again when it ends.
+# A console whose port is not there sleeps. (Open, with no password, until
+# batch 5: owner, 2026-11-17.)
+# No shell on the screen (tty1) any more: its "# " prompt sat on the one text
+# line below the start-up picture, at start and again at turn-off, and the
+# volume keys typed into it while Apotheca ran (the kernel hands them to the
+# screen's console as escape codes: VOLUME DOWN is ESC [26~). The handheld
+# has no keyboard to use it with (owner, 2026-11-28: nothing on the screen
+# but the picture).
 ::respawn:/usr/libexec/apotheca/console ttyGS0
 ::respawn:/usr/libexec/apotheca/console ttyS0
 ::respawn:/usr/libexec/apotheca/console ttyAMA0

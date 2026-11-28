@@ -124,6 +124,15 @@ happens.
      with the LPDDR4-only card and the LPDDR3 unit with the LPDDR3-only
      card (plan, section 16). **This one image for both has run on
      neither yet.**
+   - **No text on the screen**, from the power key until Apotheca draws, and
+     at turn-off: only the picture. (Until 2026-11-28 one line of characters
+     showed below it: the prompt of a shell on the screen, and a blinking
+     cursor. The shell is gone and the cursor is off,
+     `vt.global_cursor_default=0` in `extlinux/extlinux.conf`.) The system's
+     messages still go to the serial console (below) and into the boot log,
+     `apotheca/logs/boot-latest.txt`. To see them on the screen for once, add
+     `console=tty1` to the `APPEND` line of `extlinux/extlinux.conf` on
+     APOTHBOOT.
 4. To turn it off: see the next section.
 
 ## Turning it off, the power key, the battery
