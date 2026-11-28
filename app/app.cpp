@@ -62,71 +62,7 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
     // All four shoulder buttons at once: panic. Silence now, whatever screen
     // this is. It lasts as long as they are held.
     const bool shoulder = b == Button::L1 || b == Button::R1 || b == Button::L2 || b == Button::R2;
-    if (shoulder && event.down) {
-        const int down = input.held(Button::L1) + input.held(Button::R1) + input.held(Button::L2) + input.held(Button::R2);
-        if (b == Button::R1) { // R1's press may copy or clear (a bar on the drum grid, a cell or a scene on SONG)
-            barCopiesAtR1_ = session_.barCopies();
-            sceneCopiesAtR1_ = session_.sceneCopies();
-            cellCopiesAtR1_ = song_.cellCopies();
-        }
-        if (down == 1) {
-            viewBeforeShoulders_ = session_.view; // the first of them: the triggers may turn the tabs on the way
-            slicingBeforeShoulders_ = drums_.slicing(); // ...and L1 may open or shut the slices
-            trackBeforeShoulders_ = session_.project.track; // ...or, on FX, L1 / R1 step the track
-            sceneBeforeShoulders_ = session_.project.scene;  // ...or R2 off SONG takes the cursor's cell, its scene and bar 1 (G46)
-            barBeforeShoulders_ = session_.project.bar;
-            setRowBeforeShoulders_ = settings_.cursorRow();  // ...or, on SET, L1 / R1 jump a heading (G28)
-            songBeforeShoulders_ = song_.visit();             // ...or the triggers open SONG, its cursor put on that cell (G46)
-            recBeforeShoulders_ = session_.recording(); // ...or, on a kit lane, the sampler or CLOUD's RECORDING, R1 records
-            typingBeforeShoulders_ = typingAName();     // ...or, on a synth's or the sampler's PRESET, R1 opens the name keys
-        }
-        if (down == 4) {
-            panicking_ = true;
-            panicNote_ = true;
-            session_.view = viewBeforeShoulders_;
-            if (drums_.slicing() != slicingBeforeShoulders_) drums_.setSlicing(slicingBeforeShoulders_);
-            if (trackBeforeShoulders_ < session_.project.trackCount()) session_.project.track = trackBeforeShoulders_;
-            session_.project.scene = sceneBeforeShoulders_;
-            session_.project.bar = barBeforeShoulders_;
-            if (settings_.cursorRow() != setRowBeforeShoulders_) settings_.goTo(setRowBeforeShoulders_);
-            song_.putBack(songBeforeShoulders_);
-            session_.wantSlices = -1;
-            // A copy or a clear made by this panic's R1 (on the grids L1 then R1 copy the bar; on SONG R1 copies or
-            // clears a cell or a scene) was on the way, not meant: it is taken back, the clipboard as it was just
-            // before that R1 went down. (Not as it was when the first shoulder did: a paste since, L1 + A on a grid
-            // or an R1 tapped on SONG, spent the copy, and it stays spent.)
-            bool tookBack = false;
-            if (session_.barCopies() != barCopiesAtR1_) session_.takeBackBarCopy(), tookBack = true;
-            if (session_.sceneCopies() != sceneCopiesAtR1_) session_.takeBackSceneCopy(), tookBack = true;
-            if (song_.cellCopies() != cellCopiesAtR1_) song_.takeBackCellCopy(), tookBack = true;
-            if (tookBack) {
-                saidSeen_ = session_.saidCount();
-                undoSaidUntil_ = 0;
-            }
-            // A recording begun on the way (R1 first) is called off, its take thrown away: it would replace
-            // the lane's or the track's sound when it ended. (One that was running is another thing: R1 first
-            // ends it, and its take is kept at once, as any R1 keeps it.)
-            const auto under = [](Session::Rec r) { return r == Session::Rec::Waiting || r == Session::Rec::Recording; };
-            if (under(session_.recording()) && !under(recBeforeShoulders_)) session_.dropRecording();
-            // The name keys opened on the way (R1 first on PRESET, perhaps on a tab R2 turned to) are closed, nothing
-            // kept: on one of the player's own they open with its name typed in, and the next B would replace its
-            // file. Keys that were up before the panic stay up, with what was typed.
-            if (!typingBeforeShoulders_) closePresetKeys();
-            song_.shouldersPressed();  // (L1 then R1 on a head was on its way here: no track is copied)
-            drums_.shouldersPressed(); // L1 let go after this is no tap of L1
-            notes_.shouldersPressed();
-            session_.panic(true);
-            return;
-        }
-        // L1 held and another shoulder pressed: L1 let go is then no tap (the slices, the zoom).
-        if (b != Button::L1 && input.held(Button::L1)) drums_.shouldersPressed(), notes_.shouldersPressed();
-        // With both triggers down the bumpers are on their way to a panic, not painting.
-        if ((b == Button::L1 || b == Button::R1) && input.held(Button::L2) && input.held(Button::R2)) return;
-    } else if (shoulder && panicking_) {
-        panicking_ = false;
-        panicNoteUntil_ = now_ + kPanicNoteMs;
-        session_.panic(false);
-    }
+    if (shoulderButton(event, input, shoulder)) return;
     // An update has arrived over WiFi and wants an answer. Nothing else
     // happens until it has one: hold A for a second to accept, hold B a second to delete it (a bar
     // fills for each, update()). Of A and B, the one pressed last is the one that fills; any other
@@ -190,6 +126,97 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         selectAlone_ = false;
     }
 
+    if (selectEditButton(event, input)) return;
+    if (selectAdjustButton(event, input)) return;
+
+    // The shoulder triggers walk along the tabs, round the ends (G35: SONG and SET are one press apart).
+    if (event.button == Button::L2 || event.button == Button::R2) {
+        triggerButton(event, input);
+        return;
+    }
+    screenNow().onButton(event, input);
+    takeSessionSaid();
+}
+
+// A shoulder button: the four at once are the panic. True when the press goes no further.
+bool App::shoulderButton(const ButtonEvent& event, const Input& input, bool shoulder) {
+    const Button b = event.button;
+    if (shoulder && event.down) {
+        const int down = input.held(Button::L1) + input.held(Button::R1) + input.held(Button::L2) + input.held(Button::R2);
+        if (b == Button::R1) { // R1's press may copy or clear (a bar on the drum grid, a cell or a scene on SONG)
+            barCopiesAtR1_ = session_.barCopies();
+            sceneCopiesAtR1_ = session_.sceneCopies();
+            cellCopiesAtR1_ = song_.cellCopies();
+        }
+        if (down == 1) {
+            viewBeforeShoulders_ = session_.view; // the first of them: the triggers may turn the tabs on the way
+            slicingBeforeShoulders_ = drums_.slicing(); // ...and L1 may open or shut the slices
+            trackBeforeShoulders_ = session_.project.track; // ...or, on FX, L1 / R1 step the track
+            sceneBeforeShoulders_ = session_.project.scene;  // ...or R2 off SONG takes the cursor's cell, its scene and bar 1 (G46)
+            barBeforeShoulders_ = session_.project.bar;
+            setRowBeforeShoulders_ = settings_.cursorRow();  // ...or, on SET, L1 / R1 jump a heading (G28)
+            songBeforeShoulders_ = song_.visit();             // ...or the triggers open SONG, its cursor put on that cell (G46)
+            recBeforeShoulders_ = session_.recording(); // ...or, on a kit lane, the sampler or CLOUD's RECORDING, R1 records
+            typingBeforeShoulders_ = typingAName();     // ...or, on a synth's or the sampler's PRESET, R1 opens the name keys
+        }
+        if (down == 4) {
+            startPanic();
+            return true;
+        }
+        // L1 held and another shoulder pressed: L1 let go is then no tap (the slices, the zoom).
+        if (b != Button::L1 && input.held(Button::L1)) drums_.shouldersPressed(), notes_.shouldersPressed();
+        // With both triggers down the bumpers are on their way to a panic, not painting.
+        if ((b == Button::L1 || b == Button::R1) && input.held(Button::L2) && input.held(Button::R2)) return true;
+    } else if (shoulder && panicking_) {
+        panicking_ = false;
+        panicNoteUntil_ = now_ + kPanicNoteMs;
+        session_.panic(false);
+    }
+    return false;
+}
+
+// All four shoulders down: silence, and whatever the shoulders did on the way there is put back.
+void App::startPanic() {
+    panicking_ = true;
+    panicNote_ = true;
+    session_.view = viewBeforeShoulders_;
+    if (drums_.slicing() != slicingBeforeShoulders_) drums_.setSlicing(slicingBeforeShoulders_);
+    if (trackBeforeShoulders_ < session_.project.trackCount()) session_.project.track = trackBeforeShoulders_;
+    session_.project.scene = sceneBeforeShoulders_;
+    session_.project.bar = barBeforeShoulders_;
+    if (settings_.cursorRow() != setRowBeforeShoulders_) settings_.goTo(setRowBeforeShoulders_);
+    song_.putBack(songBeforeShoulders_);
+    session_.wantSlices = -1;
+    // A copy or a clear made by this panic's R1 (on the grids L1 then R1 copy the bar; on SONG R1 copies or
+    // clears a cell or a scene) was on the way, not meant: it is taken back, the clipboard as it was just
+    // before that R1 went down. (Not as it was when the first shoulder did: a paste since, L1 + A on a grid
+    // or an R1 tapped on SONG, spent the copy, and it stays spent.)
+    bool tookBack = false;
+    if (session_.barCopies() != barCopiesAtR1_) session_.takeBackBarCopy(), tookBack = true;
+    if (session_.sceneCopies() != sceneCopiesAtR1_) session_.takeBackSceneCopy(), tookBack = true;
+    if (song_.cellCopies() != cellCopiesAtR1_) song_.takeBackCellCopy(), tookBack = true;
+    if (tookBack) {
+        saidSeen_ = session_.saidCount();
+        undoSaidUntil_ = 0;
+    }
+    // A recording begun on the way (R1 first) is called off, its take thrown away: it would replace
+    // the lane's or the track's sound when it ended. (One that was running is another thing: R1 first
+    // ends it, and its take is kept at once, as any R1 keeps it.)
+    const auto under = [](Session::Rec r) { return r == Session::Rec::Waiting || r == Session::Rec::Recording; };
+    if (under(session_.recording()) && !under(recBeforeShoulders_)) session_.dropRecording();
+    // The name keys opened on the way (R1 first on PRESET, perhaps on a tab R2 turned to) are closed, nothing
+    // kept: on one of the player's own they open with its name typed in, and the next B would replace its
+    // file. Keys that were up before the panic stay up, with what was typed.
+    if (!typingBeforeShoulders_) closePresetKeys();
+    song_.shouldersPressed();  // (L1 then R1 on a head was on its way here: no track is copied)
+    drums_.shouldersPressed(); // L1 let go after this is no tap of L1
+    notes_.shouldersPressed();
+    session_.panic(true);
+}
+
+// SELECT held with X (WRITE), B or A (undo, redo) or Y (NEXT SCENE). True when the press was theirs.
+bool App::selectEditButton(const ButtonEvent& event, const Input& input) {
+    const Button b = event.button;
     // SELECT held with L1 or R1: quieter or louder, from any screen. (The
     // handheld's own volume buttons belong to its firmware and may not
     // reach a running program.)
@@ -202,7 +229,7 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
             selectAlone_ = false;
             song_.selectWasUsed();
         }
-        return;
+        return true;
     }
 
     // SELECT held with B: undo. With A: redo. From any screen, playing or not.
@@ -218,7 +245,7 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
             selectAlone_ = false;
             song_.selectWasUsed();
         }
-        return;
+        return true;
     }
 
     // SELECT held with Y, on every tab: NEXT SCENE. The scene being worked on (on SONG the one under
@@ -230,7 +257,7 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
     // selectWasUsed.) The one exception: in the list of songs SELECT + Y is the list's, save a rev.
     if (b == Button::Y && nextSceneY_ && !event.down) {
         nextSceneY_ = false;
-        return;
+        return true;
     }
     if (b == Button::Y && input.held(Button::Select) && !(session_.view == View::Song && song_.listingSongs())) {
         if (event.down) nextSceneY_ = true;
@@ -242,15 +269,21 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
             undoSaidUntil_ = now_ + 1500;
             song_.selectWasUsed();
         }
-        return;
+        return true;
     }
+    return false;
+}
 
+// SELECT held with L1 / R1 (the volume), the D-pad (the tempo) or L2 / R2 (the scene's steps). True when the
+// press was theirs.
+bool App::selectAdjustButton(const ButtonEvent& event, const Input& input) {
+    const Button b = event.button;
     if ((b == Button::L1 || b == Button::R1) && input.held(Button::Select) && !panicking_) {
         if (event.down) {
             changeVolume(b == Button::R1 ? 0.1f : -0.1f);
             song_.selectWasUsed();
         }
-        return;
+        return true;
     }
 
     // SELECT held with the D-pad: the tempo, from any screen. Up and down a
@@ -262,7 +295,7 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
             session_.setTempo(project_->tempo + by);
             song_.selectWasUsed();
         }
-        return;
+        return true;
     }
 
     // SELECT held with L2 or R2, on every tab: the scene a step shorter or longer (the scene NEXT SCENE
@@ -279,43 +312,41 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
             selectAlone_ = false;
             song_.selectWasUsed();
         }
-        return;
+        return true;
     }
+    return false;
+}
 
-    // The shoulder triggers walk along the tabs, round the ends (G35: SONG and SET are one press apart).
-    if (event.button == Button::L2 || event.button == Button::R2) {
-        // With A held on a grid they nudge what A has hold of, early or late.
-        if (input.held(Button::A) && session_.view == View::Pattern && !panicking_) {
-            screenNow().onButton(event, input);
-            return;
-        }
-        // With Y held on the roll they halve or double the chord in hand (gesture audit G27). On the
-        // drum grid Y held is the dice, and they stay swallowed there (below).
-        if (input.held(Button::Y) && session_.view == View::Pattern && isSynth(project_->current().kind) && !panicking_) {
-            notes_.onButton(event, input);
-            const unsigned saidBefore = saidSeen_;
-            takeSessionSaid();
-            if (saidSeen_ != saidBefore) { // (the box covers the tiles: dropLengthSaid takes it away when the pick moves on)
-                lengthSaidUntil_ = undoSaidUntil_;
-                lengthSaidPick_[0] = notes_.handIndex(), lengthSaidPick_[1] = notes_.handInversion(), lengthSaidPick_[2] = session_.packIndex();
-            }
-            return;
-        }
-        // On the drum grid, R2 with R1 held turns R1's brush random. R2 by
-        // itself is the next screen, at once, like everywhere else.
-        const bool onDrums = session_.view == View::Pattern && !isSynth(project_->current().kind);
-        if (event.button == Button::R2 && onDrums && !panicking_ && drums_.painting() && !input.held(Button::L2)) {
-            drums_.onButton(event, input);
-            return;
-        }
-        if (!event.down || input.held(Button::A) || input.held(Button::Y)) return;
-        const int tabs = static_cast<int>(View::Settings) + 1;
-        const int next = (static_cast<int>(session_.view) + (event.button == Button::R2 ? 1 : tabs - 1)) % tabs;
-        showTab(static_cast<View>(next));
+// L2 / R2: the tabs, or (A or Y held on a grid, R1 painting) the screen's own.
+void App::triggerButton(const ButtonEvent& event, const Input& input) {
+    // With A held on a grid they nudge what A has hold of, early or late.
+    if (input.held(Button::A) && session_.view == View::Pattern && !panicking_) {
+        screenNow().onButton(event, input);
         return;
     }
-    screenNow().onButton(event, input);
-    takeSessionSaid();
+    // With Y held on the roll they halve or double the chord in hand (gesture audit G27). On the
+    // drum grid Y held is the dice, and they stay swallowed there (below).
+    if (input.held(Button::Y) && session_.view == View::Pattern && isSynth(project_->current().kind) && !panicking_) {
+        notes_.onButton(event, input);
+        const unsigned saidBefore = saidSeen_;
+        takeSessionSaid();
+        if (saidSeen_ != saidBefore) { // (the box covers the tiles: dropLengthSaid takes it away when the pick moves on)
+            lengthSaidUntil_ = undoSaidUntil_;
+            lengthSaidPick_[0] = notes_.handIndex(), lengthSaidPick_[1] = notes_.handInversion(), lengthSaidPick_[2] = session_.packIndex();
+        }
+        return;
+    }
+    // On the drum grid, R2 with R1 held turns R1's brush random. R2 by
+    // itself is the next screen, at once, like everywhere else.
+    const bool onDrums = session_.view == View::Pattern && !isSynth(project_->current().kind);
+    if (event.button == Button::R2 && onDrums && !panicking_ && drums_.painting() && !input.held(Button::L2)) {
+        drums_.onButton(event, input);
+        return;
+    }
+    if (!event.down || input.held(Button::A) || input.held(Button::Y)) return;
+    const int tabs = static_cast<int>(View::Settings) + 1;
+    const int next = (static_cast<int>(session_.view) + (event.button == Button::R2 ? 1 : tabs - 1)) % tabs;
+    showTab(static_cast<View>(next));
 }
 
 // The tabs (gesture audit G46, 2026-11-25). SONG's cursor never followed the cell being worked on, and a tab
