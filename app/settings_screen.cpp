@@ -485,42 +485,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char text[96];
 
     if (password_) {
-        // A network's password: the keys in three sets. What is typed is shown (the handheld is in
-        // your hand, and a wrong letter costs a minute); its end where it is too long for the box.
-        const std::string title = "PASSWORD FOR " + passwordFor_;
-        fonts.within(&Fonts::small, title.c_str(), kScreenW - 80.f).draw(r, 40.f, 46.f, title.c_str(), kDim);
-        box(r, 40, 66, kScreenW - 80, 52, kPanel2, kTeal);
-        std::snprintf(text, sizeof text, "%d OF %d", static_cast<int>(typed_.size()), kWifiPasswordMost);
-        const float countW = fonts.fixed().small.width("63 OF 63");
-        const Font& typedFont = fonts.fixed().medium;
-        const float tx = 56.f, room = kScreenW - 56.f - countW - 16.f - tx - 8.f;
-        std::string shown = typed_;
-        while (shown.size() > 1 && typedFont.width((std::string("...") + shown).c_str()) > room) shown.erase(0, 1);
-        if (shown.size() < typed_.size()) shown = "..." + shown;
-        typedFont.draw(r, tx, 66.f + (52.f - typedFont.capHeight()) / 2.f, shown.c_str(), kText);
-        if (static_cast<int>(typed_.size()) < kWifiPasswordMost) fill(r, static_cast<int>(tx + typedFont.width(shown.c_str()) + (shown.empty() ? 0 : 3)), 66 + 14, 2, 24, kTeal);
-        fonts.fixed().small.drawRight(r, kScreenW - 56.f, 66.f + (52.f - fonts.fixed().small.capHeight()) / 2.f, text, kDim);
-        if (!networkSaid_.empty()) fonts.fixed().small.drawRight(r, kScreenW - 40.f, 46.f, networkSaid_.c_str(), kBrass);
-        const int kw = 52, kh = 52, gx = (kScreenW - kKeyColumns * kw) / 2, gy = 140;
-        for (int i = 0; i < 40; ++i) {
-            const int x = gx + (i % kKeyColumns) * kw, y = gy + (i / kKeyColumns) * kh;
-            const bool here = i == key_;
-            const char c = kPasswordKeys[keySet_][i];
-            box(r, x + 2, y + 2, kw - 4, kh - 4, here ? kTeal : (c == '\x01' ? kBg : kPanel), here ? kTeal : kLine);
-            if (c == '\x01') continue;
-            char one[8];
-            std::snprintf(one, sizeof one, "%s", c == ' ' ? "SPACE" : std::string(1, c).c_str());
-            const Font& font = c == ' ' ? fonts.within(&Fonts::small, one, kw - 4 - 6.f) : fonts.fixed().large;
-            font.drawCentered(r, x + kw / 2.f, y + (kh - font.capHeight()) / 2.f, one, here ? kBg : kText);
-        }
-        const bool none = typed_.empty();
-        const bool short_ = static_cast<int>(typed_.size()) < kWifiPasswordLeast;
-        const Hint list[] = {{"A", "type"},
-                             {"Y", none ? nullptr : "delete"},
-                             {"X", kPasswordSetNames[(keySet_ + 1) % 3]},
-                             {"B", short_ ? "leave" : "join"},
-                             {"START", short_ ? nullptr : "join"}};
-        hints(r, fonts, list, 5);
+        drawPassword(r, fonts);
         return;
     }
     if (keys_.isOpen()) {
@@ -531,35 +496,10 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         return;
     }
     if (testing_) {
-        fonts.medium.draw(r, 24.f, 44.f, "BUTTON TEST", kText);
-        fonts.small.draw(r, 24.f, 66.f, "Press each button. It should light up here, and only while you hold it.", kDim);
-        fonts.small.draw(r, 24.f, 82.f, "One that stays lit, or never lights, was learned wrongly: set the controls up again.", kDim);
-        const Button order[15] = {Button::Up, Button::Down, Button::Left, Button::Right, Button::A, Button::B, Button::X, Button::Y,
-                                  Button::L1, Button::R1, Button::L2, Button::R2, Button::Start, Button::Select, Button::Menu};
-        for (int i = 0; i < 15; ++i) {
-            const int x = 24 + (i % 4) * 112, y = 112 + (i / 4) * 58;
-            const bool on = held_[static_cast<int>(order[i])];
-            box(r, x, y, 104, 48, on ? kTeal : kPanel, on ? kTeal : kLine);
-            fonts.medium.drawCentered(r, x + 52.f, y + (48.f - fonts.medium.capHeight()) / 2.f, buttonLabel(order[i]), on ? kBg : kDim);
-        }
-        // The stick: a dot in a square.
-        const int sx = 500, sy = 140, size = 110;
-        box(r, sx, sy, size, size, kPanel, kLine);
-        fill(r, sx + size / 2, sy + 1, 1, size - 2, kLine);
-        fill(r, sx + 1, sy + size / 2, size - 2, 1, kLine);
-        const int dx = sx + size / 2 + static_cast<int>(stickX_ * (size / 2 - 8)), dy = sy + size / 2 + static_cast<int>(stickY_ * (size / 2 - 8));
-        fill(r, dx - 5, dy - 5, 10, 10, stickX_ != 0.f || stickY_ != 0.f ? kTeal : kDim);
-        fonts.small.drawCentered(r, sx + size / 2.f, sy - 18.f, "THE STICK", kDim);
-        std::snprintf(text, sizeof text, "LAST PRESSED: %s", lastPressed_ == Button::None ? "nothing yet" : buttonLabel(lastPressed_));
-        fonts.medium.draw(r, 24.f, 360.f, text, kText);
-        fonts.small.draw(r, 24.f, 386.f, "Nothing else works while this is open. To leave: hands off for four seconds.", kDim);
-        hints(r, fonts, nullptr, 0);
+        drawButtonTest(r, fonts);
         return;
     }
 
-    const char* names[kRows] = {"TEMPO", "CHORD PACK", "KEY", "SCALE", "TRACK NAME", "BOUNCE", "CLICK", "COUNT IN", "MUTES", "USB KEYBOARD", "TEXT SIZE", "THEME", "PIANO ROLL",
-                                "VOLUME", "BRIGHTNESS", "STICK LIGHT", "LIGHT COLOUR", "RING LEVEL", "STICK SPEED", "WIFI PAGE", "NETWORK", "HOTSPOT", "BUTTONS", "CONTROLS"};
-    const int rowH = kRowH, w = kRowW; // (twelve rows shown: 34 a row, as it was with eleven, would run into the hints bar)
     // The heading of the first row in view, above the rows.
     const char* topHeading = groupName(groupOf(rowAt(first_)));
     fonts.small.draw(r, 16.f, static_cast<float>(kHeadingY), topHeading, kDim);
@@ -578,224 +518,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             fonts.small.draw(r, 16.f, y - static_cast<float>(kHeadingUp), groupName(groupOf(row)), kDim);
             lastHeadingY = y - static_cast<float>(kHeadingUp), lastHeading = groupName(groupOf(row));
         }
-        const bool here = row == row_;
-        float part = -1.f;
-        const char* note = "";
-        char said[96] = "";
-        bool lock = false, twoAddresses = false;
-        switch (row) {
-        case kTempo:
-            std::snprintf(text, sizeof text, "%d BPM", static_cast<int>(project_.tempo));
-            note = "A: tap it in time";
-            break;
-        case kPack: std::snprintf(text, sizeof text, "%s", session_.packs[session_.packIndex()].name.c_str()); break;
-        case kKey:
-            std::snprintf(text, sizeof text, "%s", keyName(project_.scaleKey));
-            note = project_.scaleKind == kScaleOff ? "with SCALE, the roll's key" : "the chords in hand move to it";
-            break;
-        case kScale:
-            std::snprintf(text, sizeof text, "%s", scaleName(project_.scaleKind));
-            note = project_.scaleKind == kScaleOff ? "the roll takes every key" : "the roll keeps to it";
-            break;
-        case kTrackName: {
-            char full[24];
-            trackName(project_, project_.track, full, sizeof full);
-            std::snprintf(text, sizeof text, "%s", full);
-            note = "left / right: from a list.  A: type one";
-            break;
-        }
-        case kBounce: {
-            static const char* what[kBounceKinds] = {"THE SONG", "EACH TRACK", "THIS TRACK", "MIDI FILE", "TRACK TO SAMPLES"};
-            if (session_.bouncing()) {
-                // The song's own length is known, so that part is a percentage. A tail's is not
-                // (it runs until it has died away): it says how much of it there is so far.
-                const float tail = session_.bounceTail();
-                if (tail >= 0.f) std::snprintf(text, sizeof text, "TAIL  %d S", static_cast<int>(tail));
-                else std::snprintf(text, sizeof text, "WORKING  %d%%", static_cast<int>(session_.bounceProgress() * 100.f));
-                part = session_.bounceProgress();
-                note = stopPart_ > 0.f || session_.bounceStopping() ? kStoppingWords : tail >= 0.f ? "until the echoes have died away" : "you can carry on meanwhile";
-            } else {
-                std::snprintf(text, sizeof text, "%s", what[bounceWhat_]);
-                const std::string sample = session_.bounceSample();
-                if (!sample.empty()) std::snprintf(bounced_, sizeof bounced_, "done: \"%s\" in recordings", sample.c_str());
-                else if (session_.bounceFiles() > 0) std::snprintf(bounced_, sizeof bounced_, "done: %d file%s, on the WiFi page", session_.bounceFiles(), session_.bounceFiles() == 1 ? "" : "s");
-                note = session_.bounceFiles() > 0 ? bounced_ : (bounceWhat_ == 3 ? "A: write it as a MIDI file" : bounceWhat_ == 4 ? "A: this scene's loop, into recordings" : "A: write it as a WAV file");
-            }
-            break;
-        }
-        case kVolume:
-            std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(session_.volume() * 100.f)));
-            part = session_.volume();
-            note = "also SEL + L1 / R1";
-            break;
-        case kBrightness:
-            std::snprintf(text, sizeof text, "%d%%", session_.brightness());
-            part = static_cast<float>(session_.brightness()) / 100.f;
-            note = "also MENU + volume keys";
-            break;
-        case kLight: {
-            static const char* const what[kRingModes] = {"OFF", "ON", "BEAT", "STEPS"};
-            static const char* const says[kRingModes] = {"the light round the stick", "steady, in LIGHT COLOUR",
-                                                         "a flash on every beat", "once round a scene"};
-            const int mode = session_.stickLight();
-            std::snprintf(text, sizeof text, "%s", what[mode]);
-            note = says[mode];
-            break;
-        }
-        case kLightColour: {
-            static const char* const what[kLightColours] = {"THEME", "TEAL", "PURPLE", "BRASS", "RED", "ORANGE", "YELLOW",
-                                                            "GREEN", "BLUE", "PINK", "WHITE", "TRACK", "RAINBOW"};
-            const int which = session_.lightColour();
-            std::snprintf(text, sizeof text, "%s", what[which]);
-            note = which == kLightTheme ? "a colour picked for the theme" : which == kLightTrack ? "a colour for each track" : which == kLightRainbow ? "turns a light a beat" : "";
-            break;
-        }
-        case kRingLevel:
-            std::snprintf(text, sizeof text, "%d%%", session_.ringLevel());
-            part = static_cast<float>(session_.ringLevel()) / 100.f;
-            note = "how bright the ring is";
-            break;
-        case kStick:
-            std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(session_.stickSpeed() * 100.f)));
-            part = (session_.stickSpeed() - Session::kStickSlowest) / (Session::kStickFastest - Session::kStickSlowest);
-            note = "how fast the stick moves things";
-            break;
-        case kTextSize:
-            std::snprintf(text, sizeof text, "%s", kTextSizeNames[session_.textSize()]);
-            note = "the bars and the strips stay as they are";
-            break;
-        case kTheme:
-            std::snprintf(text, sizeof text, "%s", kThemeTable[session_.theme()].name);
-            note = "four dark, two light";
-            break;
-        case kOctaves:
-            std::snprintf(text, sizeof text, "%d OCTAVE%s", session_.octavesShown(), session_.octavesShown() == 1 ? "" : "S");
-            note = "L1 on the piano roll does the same";
-            break;
-        case kMidi:
-            std::snprintf(text, sizeof text, "%s", session_.midiRecording() ? "PLAY + RECORD" : "PLAY ONLY");
-            note = session_.midiKeyboards() > 0 ? "a keyboard is plugged in" : "none plugged in just now";
-            break;
-        case kClick: {
-            static const char* const what[Session::kClickModes] = {"OFF", "ON", "RECORDING"};
-            static const char* const says[Session::kClickModes] = {"a click on the beat", "on every beat while playing",
-                                                                   "only with PLAY + RECORD"};
-            std::snprintf(text, sizeof text, "%s", what[session_.click()]);
-            note = says[session_.click()];
-            break;
-        }
-        case kCountIn:
-            std::snprintf(text, sizeof text, "%s", session_.countIn() ? "ONE BAR" : "OFF");
-            note = "clicks before PLAY + RECORD";
-            break;
-        case kMutes:
-            std::snprintf(text, sizeof text, "%s", session_.mutes() == Session::kMutesNextBar ? "NEXT BAR" : "AT ONCE");
-            note = "mute and solo while playing";
-            break;
-        case kWifi:
-            if (session_.transferOn()) std::snprintf(text, sizeof text, "ON   %s", session_.transferAddress().c_str());
-            else std::snprintf(text, sizeof text, "OFF");
-            note = session_.transferOn() ? "" : "files and updates from a browser";
-            if (session_.transferOn() && session_.wifiHere()) {
-                // Our firmware gives the handheld a name on the network: the name is the value, the
-                // address beside it (the same port and number after it). The address alone where the
-                // system says no name.
-                const std::string name = session_.transferName();
-                if (!name.empty()) {
-                    std::snprintf(text, sizeof text, "ON   %s", name.c_str());
-                    std::snprintf(said, sizeof said, "or %.60s", session_.transferAddress().c_str());
-                    note = said;
-                    twoAddresses = true;
-                }
-            }
-            break;
-        case kNetwork: {
-            const Wifi::Now now = session_.wifi().now();
-            const WifiStatus& status = now.status;
-            if (!session_.transferOn()) {
-                std::snprintf(text, sizeof text, "NONE");
-                note = "turn WIFI PAGE on first";
-            } else if (picking_) {
-                const bool one = pick_ >= 0 && pick_ < static_cast<int>(nets_.size());
-                std::snprintf(text, sizeof text, "%s", one ? nets_[static_cast<std::size_t>(pick_)].name.c_str() : "NONE");
-                lock = one && nets_[static_cast<std::size_t>(pick_)].needsPassword();
-                if (nets_.empty()) std::snprintf(said, sizeof said, "%s", now.scanned ? "NONE FOUND" : "LOOKING...");
-                else std::snprintf(said, sizeof said, "%d OF %d", one ? pick_ + 1 : 0, static_cast<int>(nets_.size()));
-                note = said;
-            } else {
-                std::snprintf(text, sizeof text, "%s", status.state == WifiState::Off ? "NONE" : status.name.c_str());
-                if (forgetPart_ > 0.f) note = kForgettingWords;
-                else if (!networkSaid_.empty()) std::snprintf(said, sizeof said, "%s", networkSaid_.c_str()), note = said;
-                else if (status.state == WifiState::Joining) note = "JOINING...";
-                else if (status.state == WifiState::WrongPassword) note = "WRONG PASSWORD";
-                else if (status.state == WifiState::NotFound) note = "NOT FOUND";
-                else if (status.state == WifiState::Joined || status.state == WifiState::Hotspot) std::snprintf(said, sizeof said, "%.40s", status.address.c_str()), note = said;
-                else if (!now.scanned) note = "LOOKING...";
-                else std::snprintf(said, sizeof said, "%d FOUND", static_cast<int>(now.networks.size())), note = said;
-            }
-            break;
-        }
-        case kHotspot: {
-            const WifiStatus& status = session_.wifi().now().status;
-            if (status.state == WifiState::Hotspot) {
-                std::snprintf(text, sizeof text, "ON");
-                std::snprintf(said, sizeof said, "%.40s", status.address.c_str());
-                note = said;
-            } else {
-                std::snprintf(text, sizeof text, "OFF");
-                note = "a phone joins it with one tap";
-            }
-            break;
-        }
-        case kTest:
-            std::snprintf(text, sizeof text, "TEST");
-            note = "see what Apotheca hears from each button";
-            break;
-        default:
-            std::snprintf(text, sizeof text, "SET UP AGAIN");
-            note = "asks for every button in turn";
-            break;
-        }
-        box(r, kRowX, y, w, rowH - 6, kPanel, kLine);
-        fonts.small.draw(r, kNameX, y + (rowH - 6 - fonts.small.capHeight()) / 2.f, names[row], kDim);
-        // A value and what is said about it share the row. Where the two would meet at XL (a track's
-        // name of ten wide letters), both are held at LARGE (Fonts::within).
-        const float valueRoom = kNoteRight - kValueX - (note[0] ? fonts.small.width(note) + kNoteGap : 0.f);
-        // (WIFI PAGE with the page's name beside its address is two addresses on one row: they do not fit in
-        // the large lettering at any size, so the address is drawn in the medium, or the small, of LARGE.)
-        const Font* addressFont = nullptr;
-        if (twoAddresses) {
-            const float room = kNoteRight - kValueX - kNoteGap - fonts.fixed().small.width(note);
-            addressFont = fonts.fixed().medium.width(text) <= room ? &fonts.fixed().medium : &fonts.fixed().small;
-        }
-        // (A network's name is the one value that may be too long even at LARGE: cut to its room there, "..."
-        // at its end, so it is the same words at every size.)
-        if (row == kNetwork) {
-            const float room = kNoteRight - kValueX - (note[0] ? fonts.fixed().small.width(note) + kNoteGap : 0.f) - (lock ? kLockW + 8 : 0);
-            for (std::size_t n = std::strlen(text); n > 4 && fonts.fixed().large.width(text) > room; --n) std::snprintf(text + n - 4, 5, "...");
-        }
-        const Font& valueFont = addressFont ? *addressFont : fonts.within(&Fonts::large, text, valueRoom - (lock ? kLockW + 8 : 0));
-        const Font& noteFont = (&valueFont == &fonts.large ? fonts : fonts.fixed()).small;
-        valueFont.draw(r, kValueX, y + (rowH - 6 - valueFont.capHeight()) / 2.f, text, here ? kTeal : kText);
-        if (lock) {
-            // It needs a password: a little lock after its name (a body, and a bow over it).
-            const int lx = static_cast<int>(kValueX + valueFont.width(text)) + 8, ly = y + (rowH - 6 - kLockH) / 2;
-            fill(r, lx, ly + 5, kLockW, kLockH - 5, kBrass);
-            outline(r, lx + 2, ly, kLockW - 4, 7, kBrass);
-        }
-        if (row == kNetwork && here && forgetPart_ > 0.f) fill(r, 16, y + rowH - 10, static_cast<int>(w * (forgetPart_ > 1.f ? 1.f : forgetPart_)), 4, kStop);
-        if (row == kBounce && here && stopPart_ > 0.f) fill(r, 16, y + rowH - 10, static_cast<int>(w * (stopPart_ > 1.f ? 1.f : stopPart_)), 4, kStop);
-        if (note[0]) noteFont.drawRight(r, kNoteRight, y + (rowH - 6 - noteFont.capHeight()) / 2.f, note, kDim);
-        if (part >= 0.f) {
-            // The bar, between the value and what is said: at 250 as it always was, or further right where
-            // the value is longer (BOUNCE's WORKING 37%), and shorter where the words beside it need the room.
-            int bx = 0, bw = 0;
-            barPlace(valueFont.width(text), note[0] ? noteFont.width(note) : 0.f, &bx, &bw);
-            fill(r, bx, y + rowH - 16, bw, 4, kLine);
-            fill(r, bx, y + rowH - 16, static_cast<int>(std::round(bw * (part > 1.f ? 1.f : part))), 4, here ? kTeal : kDim);
-        }
-        if (here) outline(r, 15, y - 1, w + 2, rowH - 4, holdPart_ > 0.f ? kBrass : kTeal, 2);
-        if (here && row == kControls && holdPart_ > 0.f) fill(r, 16, y + rowH - 10, static_cast<int>(w * (holdPart_ > 1.f ? 1.f : holdPart_)), 4, kBrass);
+        drawRow(r, fonts, row, y);
     }
     // A row out of sight below: an arrow after the last heading in view (after the UP arrow, where that is the top one's too).
     if (!fits(places() - 1, first_)) {
@@ -803,6 +526,311 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         drawKey(r, fonts, 16.f + fonts.small.width(lastHeading) + 6.f + (both ? kArrowsApart : 0.f), lastHeadingY, "DOWN", kDim);
     }
 
+    drawHints(r, fonts);
+}
+
+// A network's password being typed: the keys in three sets.
+void SettingsScreen::drawPassword(SDL_Renderer* r, const Fonts& fonts) const {
+    char text[96];
+    // A network's password: the keys in three sets. What is typed is shown (the handheld is in
+    // your hand, and a wrong letter costs a minute); its end where it is too long for the box.
+    const std::string title = "PASSWORD FOR " + passwordFor_;
+    fonts.within(&Fonts::small, title.c_str(), kScreenW - 80.f).draw(r, 40.f, 46.f, title.c_str(), kDim);
+    box(r, 40, 66, kScreenW - 80, 52, kPanel2, kTeal);
+    std::snprintf(text, sizeof text, "%d OF %d", static_cast<int>(typed_.size()), kWifiPasswordMost);
+    const float countW = fonts.fixed().small.width("63 OF 63");
+    const Font& typedFont = fonts.fixed().medium;
+    const float tx = 56.f, room = kScreenW - 56.f - countW - 16.f - tx - 8.f;
+    std::string shown = typed_;
+    while (shown.size() > 1 && typedFont.width((std::string("...") + shown).c_str()) > room) shown.erase(0, 1);
+    if (shown.size() < typed_.size()) shown = "..." + shown;
+    typedFont.draw(r, tx, 66.f + (52.f - typedFont.capHeight()) / 2.f, shown.c_str(), kText);
+    if (static_cast<int>(typed_.size()) < kWifiPasswordMost) fill(r, static_cast<int>(tx + typedFont.width(shown.c_str()) + (shown.empty() ? 0 : 3)), 66 + 14, 2, 24, kTeal);
+    fonts.fixed().small.drawRight(r, kScreenW - 56.f, 66.f + (52.f - fonts.fixed().small.capHeight()) / 2.f, text, kDim);
+    if (!networkSaid_.empty()) fonts.fixed().small.drawRight(r, kScreenW - 40.f, 46.f, networkSaid_.c_str(), kBrass);
+    const int kw = 52, kh = 52, gx = (kScreenW - kKeyColumns * kw) / 2, gy = 140;
+    for (int i = 0; i < 40; ++i) {
+        const int x = gx + (i % kKeyColumns) * kw, y = gy + (i / kKeyColumns) * kh;
+        const bool here = i == key_;
+        const char c = kPasswordKeys[keySet_][i];
+        box(r, x + 2, y + 2, kw - 4, kh - 4, here ? kTeal : (c == '\x01' ? kBg : kPanel), here ? kTeal : kLine);
+        if (c == '\x01') continue;
+        char one[8];
+        std::snprintf(one, sizeof one, "%s", c == ' ' ? "SPACE" : std::string(1, c).c_str());
+        const Font& font = c == ' ' ? fonts.within(&Fonts::small, one, kw - 4 - 6.f) : fonts.fixed().large;
+        font.drawCentered(r, x + kw / 2.f, y + (kh - font.capHeight()) / 2.f, one, here ? kBg : kText);
+    }
+    const bool none = typed_.empty();
+    const bool short_ = static_cast<int>(typed_.size()) < kWifiPasswordLeast;
+    const Hint list[] = {{"A", "type"},
+                         {"Y", none ? nullptr : "delete"},
+                         {"X", kPasswordSetNames[(keySet_ + 1) % 3]},
+                         {"B", short_ ? "leave" : "join"},
+                         {"START", short_ ? nullptr : "join"}};
+    hints(r, fonts, list, 5);
+}
+
+// The button test: every button lights while it is held.
+void SettingsScreen::drawButtonTest(SDL_Renderer* r, const Fonts& fonts) const {
+    char text[96];
+    fonts.medium.draw(r, 24.f, 44.f, "BUTTON TEST", kText);
+    fonts.small.draw(r, 24.f, 66.f, "Press each button. It should light up here, and only while you hold it.", kDim);
+    fonts.small.draw(r, 24.f, 82.f, "One that stays lit, or never lights, was learned wrongly: set the controls up again.", kDim);
+    const Button order[15] = {Button::Up, Button::Down, Button::Left, Button::Right, Button::A, Button::B, Button::X, Button::Y,
+                              Button::L1, Button::R1, Button::L2, Button::R2, Button::Start, Button::Select, Button::Menu};
+    for (int i = 0; i < 15; ++i) {
+        const int x = 24 + (i % 4) * 112, y = 112 + (i / 4) * 58;
+        const bool on = held_[static_cast<int>(order[i])];
+        box(r, x, y, 104, 48, on ? kTeal : kPanel, on ? kTeal : kLine);
+        fonts.medium.drawCentered(r, x + 52.f, y + (48.f - fonts.medium.capHeight()) / 2.f, buttonLabel(order[i]), on ? kBg : kDim);
+    }
+    // The stick: a dot in a square.
+    const int sx = 500, sy = 140, size = 110;
+    box(r, sx, sy, size, size, kPanel, kLine);
+    fill(r, sx + size / 2, sy + 1, 1, size - 2, kLine);
+    fill(r, sx + 1, sy + size / 2, size - 2, 1, kLine);
+    const int dx = sx + size / 2 + static_cast<int>(stickX_ * (size / 2 - 8)), dy = sy + size / 2 + static_cast<int>(stickY_ * (size / 2 - 8));
+    fill(r, dx - 5, dy - 5, 10, 10, stickX_ != 0.f || stickY_ != 0.f ? kTeal : kDim);
+    fonts.small.drawCentered(r, sx + size / 2.f, sy - 18.f, "THE STICK", kDim);
+    std::snprintf(text, sizeof text, "LAST PRESSED: %s", lastPressed_ == Button::None ? "nothing yet" : buttonLabel(lastPressed_));
+    fonts.medium.draw(r, 24.f, 360.f, text, kText);
+    fonts.small.draw(r, 24.f, 386.f, "Nothing else works while this is open. To leave: hands off for four seconds.", kDim);
+    hints(r, fonts, nullptr, 0);
+}
+
+// One row of the page: its name, its value, what is said of it, a bar, and the cursor.
+void SettingsScreen::drawRow(SDL_Renderer* r, const Fonts& fonts, int row, int y) const {
+    char text[96];
+    const char* names[kRows] = {"TEMPO", "CHORD PACK", "KEY", "SCALE", "TRACK NAME", "BOUNCE", "CLICK", "COUNT IN", "MUTES", "USB KEYBOARD", "TEXT SIZE", "THEME", "PIANO ROLL",
+                                "VOLUME", "BRIGHTNESS", "STICK LIGHT", "LIGHT COLOUR", "RING LEVEL", "STICK SPEED", "WIFI PAGE", "NETWORK", "HOTSPOT", "BUTTONS", "CONTROLS"};
+    const int rowH = kRowH, w = kRowW; // (twelve rows shown: 34 a row, as it was with eleven, would run into the hints bar)
+    const bool here = row == row_;
+    float part = -1.f;
+    const char* note = "";
+    char said[96] = "";
+    bool lock = false, twoAddresses = false;
+    rowValue(row, text, said, note, part, lock, twoAddresses);
+    box(r, kRowX, y, w, rowH - 6, kPanel, kLine);
+    fonts.small.draw(r, kNameX, y + (rowH - 6 - fonts.small.capHeight()) / 2.f, names[row], kDim);
+    // A value and what is said about it share the row. Where the two would meet at XL (a track's
+    // name of ten wide letters), both are held at LARGE (Fonts::within).
+    const float valueRoom = kNoteRight - kValueX - (note[0] ? fonts.small.width(note) + kNoteGap : 0.f);
+    // (WIFI PAGE with the page's name beside its address is two addresses on one row: they do not fit in
+    // the large lettering at any size, so the address is drawn in the medium, or the small, of LARGE.)
+    const Font* addressFont = nullptr;
+    if (twoAddresses) {
+        const float room = kNoteRight - kValueX - kNoteGap - fonts.fixed().small.width(note);
+        addressFont = fonts.fixed().medium.width(text) <= room ? &fonts.fixed().medium : &fonts.fixed().small;
+    }
+    // (A network's name is the one value that may be too long even at LARGE: cut to its room there, "..."
+    // at its end, so it is the same words at every size.)
+    if (row == kNetwork) {
+        const float room = kNoteRight - kValueX - (note[0] ? fonts.fixed().small.width(note) + kNoteGap : 0.f) - (lock ? kLockW + 8 : 0);
+        for (std::size_t n = std::strlen(text); n > 4 && fonts.fixed().large.width(text) > room; --n) std::snprintf(text + n - 4, 5, "...");
+    }
+    const Font& valueFont = addressFont ? *addressFont : fonts.within(&Fonts::large, text, valueRoom - (lock ? kLockW + 8 : 0));
+    const Font& noteFont = (&valueFont == &fonts.large ? fonts : fonts.fixed()).small;
+    valueFont.draw(r, kValueX, y + (rowH - 6 - valueFont.capHeight()) / 2.f, text, here ? kTeal : kText);
+    if (lock) {
+        // It needs a password: a little lock after its name (a body, and a bow over it).
+        const int lx = static_cast<int>(kValueX + valueFont.width(text)) + 8, ly = y + (rowH - 6 - kLockH) / 2;
+        fill(r, lx, ly + 5, kLockW, kLockH - 5, kBrass);
+        outline(r, lx + 2, ly, kLockW - 4, 7, kBrass);
+    }
+    if (row == kNetwork && here && forgetPart_ > 0.f) fill(r, 16, y + rowH - 10, static_cast<int>(w * (forgetPart_ > 1.f ? 1.f : forgetPart_)), 4, kStop);
+    if (row == kBounce && here && stopPart_ > 0.f) fill(r, 16, y + rowH - 10, static_cast<int>(w * (stopPart_ > 1.f ? 1.f : stopPart_)), 4, kStop);
+    if (note[0]) noteFont.drawRight(r, kNoteRight, y + (rowH - 6 - noteFont.capHeight()) / 2.f, note, kDim);
+    if (part >= 0.f) {
+        // The bar, between the value and what is said: at 250 as it always was, or further right where
+        // the value is longer (BOUNCE's WORKING 37%), and shorter where the words beside it need the room.
+        int bx = 0, bw = 0;
+        barPlace(valueFont.width(text), note[0] ? noteFont.width(note) : 0.f, &bx, &bw);
+        fill(r, bx, y + rowH - 16, bw, 4, kLine);
+        fill(r, bx, y + rowH - 16, static_cast<int>(std::round(bw * (part > 1.f ? 1.f : part))), 4, here ? kTeal : kDim);
+    }
+    if (here) outline(r, 15, y - 1, w + 2, rowH - 4, holdPart_ > 0.f ? kBrass : kTeal, 2);
+    if (here && row == kControls && holdPart_ > 0.f) fill(r, 16, y + rowH - 10, static_cast<int>(w * (holdPart_ > 1.f ? 1.f : holdPart_)), 4, kBrass);
+}
+
+// A row's value and what is said of it (`note`, which may point into `said`); `part` the bar's fill, or -1 for none;
+// `lock`, a network that needs a password; `twoAddresses`, WIFI PAGE with the page's name and its address.
+void SettingsScreen::rowValue(int row, char (&text)[96], char (&said)[96], const char*& note, float& part, bool& lock, bool& twoAddresses) const {
+    switch (row) {
+    case kTempo:
+        std::snprintf(text, sizeof text, "%d BPM", static_cast<int>(project_.tempo));
+        note = "A: tap it in time";
+        break;
+    case kPack: std::snprintf(text, sizeof text, "%s", session_.packs[session_.packIndex()].name.c_str()); break;
+    case kKey:
+        std::snprintf(text, sizeof text, "%s", keyName(project_.scaleKey));
+        note = project_.scaleKind == kScaleOff ? "with SCALE, the roll's key" : "the chords in hand move to it";
+        break;
+    case kScale:
+        std::snprintf(text, sizeof text, "%s", scaleName(project_.scaleKind));
+        note = project_.scaleKind == kScaleOff ? "the roll takes every key" : "the roll keeps to it";
+        break;
+    case kTrackName: {
+        char full[24];
+        trackName(project_, project_.track, full, sizeof full);
+        std::snprintf(text, sizeof text, "%s", full);
+        note = "left / right: from a list.  A: type one";
+        break;
+    }
+    case kBounce: {
+        static const char* what[kBounceKinds] = {"THE SONG", "EACH TRACK", "THIS TRACK", "MIDI FILE", "TRACK TO SAMPLES"};
+        if (session_.bouncing()) {
+            // The song's own length is known, so that part is a percentage. A tail's is not
+            // (it runs until it has died away): it says how much of it there is so far.
+            const float tail = session_.bounceTail();
+            if (tail >= 0.f) std::snprintf(text, sizeof text, "TAIL  %d S", static_cast<int>(tail));
+            else std::snprintf(text, sizeof text, "WORKING  %d%%", static_cast<int>(session_.bounceProgress() * 100.f));
+            part = session_.bounceProgress();
+            note = stopPart_ > 0.f || session_.bounceStopping() ? kStoppingWords : tail >= 0.f ? "until the echoes have died away" : "you can carry on meanwhile";
+        } else {
+            std::snprintf(text, sizeof text, "%s", what[bounceWhat_]);
+            const std::string sample = session_.bounceSample();
+            if (!sample.empty()) std::snprintf(bounced_, sizeof bounced_, "done: \"%s\" in recordings", sample.c_str());
+            else if (session_.bounceFiles() > 0) std::snprintf(bounced_, sizeof bounced_, "done: %d file%s, on the WiFi page", session_.bounceFiles(), session_.bounceFiles() == 1 ? "" : "s");
+            note = session_.bounceFiles() > 0 ? bounced_ : (bounceWhat_ == 3 ? "A: write it as a MIDI file" : bounceWhat_ == 4 ? "A: this scene's loop, into recordings" : "A: write it as a WAV file");
+        }
+        break;
+    }
+    case kVolume:
+        std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(session_.volume() * 100.f)));
+        part = session_.volume();
+        note = "also SEL + L1 / R1";
+        break;
+    case kBrightness:
+        std::snprintf(text, sizeof text, "%d%%", session_.brightness());
+        part = static_cast<float>(session_.brightness()) / 100.f;
+        note = "also MENU + volume keys";
+        break;
+    case kLight: {
+        static const char* const what[kRingModes] = {"OFF", "ON", "BEAT", "STEPS"};
+        static const char* const says[kRingModes] = {"the light round the stick", "steady, in LIGHT COLOUR",
+                                                     "a flash on every beat", "once round a scene"};
+        const int mode = session_.stickLight();
+        std::snprintf(text, sizeof text, "%s", what[mode]);
+        note = says[mode];
+        break;
+    }
+    case kLightColour: {
+        static const char* const what[kLightColours] = {"THEME", "TEAL", "PURPLE", "BRASS", "RED", "ORANGE", "YELLOW",
+                                                        "GREEN", "BLUE", "PINK", "WHITE", "TRACK", "RAINBOW"};
+        const int which = session_.lightColour();
+        std::snprintf(text, sizeof text, "%s", what[which]);
+        note = which == kLightTheme ? "a colour picked for the theme" : which == kLightTrack ? "a colour for each track" : which == kLightRainbow ? "turns a light a beat" : "";
+        break;
+    }
+    case kRingLevel:
+        std::snprintf(text, sizeof text, "%d%%", session_.ringLevel());
+        part = static_cast<float>(session_.ringLevel()) / 100.f;
+        note = "how bright the ring is";
+        break;
+    case kStick:
+        std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(session_.stickSpeed() * 100.f)));
+        part = (session_.stickSpeed() - Session::kStickSlowest) / (Session::kStickFastest - Session::kStickSlowest);
+        note = "how fast the stick moves things";
+        break;
+    case kTextSize:
+        std::snprintf(text, sizeof text, "%s", kTextSizeNames[session_.textSize()]);
+        note = "the bars and the strips stay as they are";
+        break;
+    case kTheme:
+        std::snprintf(text, sizeof text, "%s", kThemeTable[session_.theme()].name);
+        note = "four dark, two light";
+        break;
+    case kOctaves:
+        std::snprintf(text, sizeof text, "%d OCTAVE%s", session_.octavesShown(), session_.octavesShown() == 1 ? "" : "S");
+        note = "L1 on the piano roll does the same";
+        break;
+    case kMidi:
+        std::snprintf(text, sizeof text, "%s", session_.midiRecording() ? "PLAY + RECORD" : "PLAY ONLY");
+        note = session_.midiKeyboards() > 0 ? "a keyboard is plugged in" : "none plugged in just now";
+        break;
+    case kClick: {
+        static const char* const what[Session::kClickModes] = {"OFF", "ON", "RECORDING"};
+        static const char* const says[Session::kClickModes] = {"a click on the beat", "on every beat while playing",
+                                                               "only with PLAY + RECORD"};
+        std::snprintf(text, sizeof text, "%s", what[session_.click()]);
+        note = says[session_.click()];
+        break;
+    }
+    case kCountIn:
+        std::snprintf(text, sizeof text, "%s", session_.countIn() ? "ONE BAR" : "OFF");
+        note = "clicks before PLAY + RECORD";
+        break;
+    case kMutes:
+        std::snprintf(text, sizeof text, "%s", session_.mutes() == Session::kMutesNextBar ? "NEXT BAR" : "AT ONCE");
+        note = "mute and solo while playing";
+        break;
+    case kWifi:
+        if (session_.transferOn()) std::snprintf(text, sizeof text, "ON   %s", session_.transferAddress().c_str());
+        else std::snprintf(text, sizeof text, "OFF");
+        note = session_.transferOn() ? "" : "files and updates from a browser";
+        if (session_.transferOn() && session_.wifiHere()) {
+            // Our firmware gives the handheld a name on the network: the name is the value, the
+            // address beside it (the same port and number after it). The address alone where the
+            // system says no name.
+            const std::string name = session_.transferName();
+            if (!name.empty()) {
+                std::snprintf(text, sizeof text, "ON   %s", name.c_str());
+                std::snprintf(said, sizeof said, "or %.60s", session_.transferAddress().c_str());
+                note = said;
+                twoAddresses = true;
+            }
+        }
+        break;
+    case kNetwork: {
+        const Wifi::Now now = session_.wifi().now();
+        const WifiStatus& status = now.status;
+        if (!session_.transferOn()) {
+            std::snprintf(text, sizeof text, "NONE");
+            note = "turn WIFI PAGE on first";
+        } else if (picking_) {
+            const bool one = pick_ >= 0 && pick_ < static_cast<int>(nets_.size());
+            std::snprintf(text, sizeof text, "%s", one ? nets_[static_cast<std::size_t>(pick_)].name.c_str() : "NONE");
+            lock = one && nets_[static_cast<std::size_t>(pick_)].needsPassword();
+            if (nets_.empty()) std::snprintf(said, sizeof said, "%s", now.scanned ? "NONE FOUND" : "LOOKING...");
+            else std::snprintf(said, sizeof said, "%d OF %d", one ? pick_ + 1 : 0, static_cast<int>(nets_.size()));
+            note = said;
+        } else {
+            std::snprintf(text, sizeof text, "%s", status.state == WifiState::Off ? "NONE" : status.name.c_str());
+            if (forgetPart_ > 0.f) note = kForgettingWords;
+            else if (!networkSaid_.empty()) std::snprintf(said, sizeof said, "%s", networkSaid_.c_str()), note = said;
+            else if (status.state == WifiState::Joining) note = "JOINING...";
+            else if (status.state == WifiState::WrongPassword) note = "WRONG PASSWORD";
+            else if (status.state == WifiState::NotFound) note = "NOT FOUND";
+            else if (status.state == WifiState::Joined || status.state == WifiState::Hotspot) std::snprintf(said, sizeof said, "%.40s", status.address.c_str()), note = said;
+            else if (!now.scanned) note = "LOOKING...";
+            else std::snprintf(said, sizeof said, "%d FOUND", static_cast<int>(now.networks.size())), note = said;
+        }
+        break;
+    }
+    case kHotspot: {
+        const WifiStatus& status = session_.wifi().now().status;
+        if (status.state == WifiState::Hotspot) {
+            std::snprintf(text, sizeof text, "ON");
+            std::snprintf(said, sizeof said, "%.40s", status.address.c_str());
+            note = said;
+        } else {
+            std::snprintf(text, sizeof text, "OFF");
+            note = "a phone joins it with one tap";
+        }
+        break;
+    }
+    case kTest:
+        std::snprintf(text, sizeof text, "TEST");
+        note = "see what Apotheca hears from each button";
+        break;
+    default:
+        std::snprintf(text, sizeof text, "SET UP AGAIN");
+        note = "asks for every button in turn";
+        break;
+    }
+}
+
+void SettingsScreen::drawHints(SDL_Renderer* r, const Fonts& fonts) const {
     Hint list[6];
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
