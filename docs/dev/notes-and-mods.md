@@ -156,9 +156,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     just those.
 - **The roll has the drum grid's TEMPO stop** (owner, 2026-11-28: "you can only get to the TEMPO from the drum
   sequence. it isn't possible to get to it the same way from the piano roll and that is a bit confusing").
-  **Up from step 1 of bar 1 is TEMPO, up again BARS** (it was BARS at once), exactly the drum grid's column: up
-  from the top lane is the tempo, then BARS; down from BARS the tempo, then the grid (the roll: its top step).
-  Up from BARS still comes round to the cell's last step. On TEMPO: A taps it (`Session::tapTempo`), hold A +
+  **Up from step 1 of bar 1 is TEMPO** (it was BARS at once), exactly the drum grid's column. (BARS was then up
+  again from TEMPO; since the owner's call below it is LEFT of it.) On TEMPO: A taps it (`Session::tapTempo`), hold A +
   UP / DOWN a beat, + LEFT / RIGHT ten (`press`), hold A + the stick up / down `ui::kTempoPerSecond` (90 BPM a
   second, the drum grid's `Feel::tempoPerSecond` takes the same constant), the top bar's box drawn by the one
   `ui::tempoCursor` both use, the strip SONG / TEMPO / BPM and a bar, the hints word for word the drum grid's
@@ -168,6 +167,26 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   "bars"). No gesture was taken: TEMPO sits where BARS was, and BARS one further. `app_test` `testTheRollsTempo`
   (the walk, A's tap, the D-pad, the stick at the drum grid's rate and the same number on both, its ends, B X Y
   dead, no undo step), `copybar_test` (the hints on both grids, held too), `testRollBarsLength`.
+- **TEMPO and BARS are one row, side by side: LEFT / RIGHT between them** (owner, 2026-11-28: "moving between
+  the tempo and bar is up down, when the intuitive move is left right"; `PatternScreen::moveCursor`,
+  `NoteScreen::moveCursor`). The top bar draws BARS' box (round the track's name) left of the BPM box.
+  - **Now, both grids:** up from the top lane / step 1 of bar 1 is TEMPO, as before. On either stop LEFT is BARS,
+    RIGHT is TEMPO, and the ends stop (two stops: nothing to go round to). DOWN from either is the grid (the top
+    lane; the roll's top step of the bar shown). UP from either comes round to the bottom (lane 8; the roll's
+    cell's last step), as UP from BARS did. Down from lane 8 on the drum grid lands on TEMPO (it was BARS): the
+    column is still a ring both ways (G35), the row one stop of it.
+  - **Was:** UP from TEMPO was BARS, DOWN from BARS was TEMPO, UP from BARS the bottom. Plain LEFT / RIGHT on
+    TEMPO did nothing; **plain LEFT / RIGHT on BARS showed the bar before / after**. That job moved to **A held +
+    LEFT / RIGHT on BARS** (Y held too on the drum grid, as before; held, it runs on at the cursor's pace, G21),
+    where nothing was (A + sideways on BARS did the same thing already through the press, so nothing is lost).
+    Hold L1 + UP / DOWN still shows the bar before / after from anywhere. Held directions and the stick follow
+    the cursor's paces as every cursor move does (`ui::Repeat`, `stickPerSecond`).
+  - Hints: TEMPO says `LEFT bars` (it said `UP bars`); BARS says `HOLD A more / fewer`, START (drum grid) and
+    `RIGHT tempo`; A held on BARS `UP / DOWN more / fewer`, `LEFT / RIGHT bar`. `ui_test testCursorMovesAndWraps`,
+    `testTheBrushSkipsNamesAndTempo`; `copybar_test` (the hints, held too; `testRollBarsLength`,
+    `testDrumBarsLength`); `app_test` `testTheRollsTempo`, the stick's paces (the drum grid's ring is 9 stops
+    now). Stills `bars-stop-grid`, `bars-stop-roll`, `notes-tempo`, `grid-tempo` (the drum grid's TEMPO, A not
+    held). Not tried on the handheld.
 - **R1 held on a note or a chord carries it anywhere in the cell, whole** (owner, 2026-11-28: "moving a chord
   around on the piano roll isn't working right. I want to hold R1 and move it to wherever I want, not just
   transpose or shorten/lengthen the notes"; `NoteScreen::carry`, `carryBy`, `tests/carry_test.cpp`).
@@ -322,8 +341,10 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   knob's first, call C), B with A held, another track or another screen calls it off. Only
   `pickLineTargets` (through `modTargetFits`) says what is offered. Everything goes through
   `Session::setMod`, so undo needs nothing here.
-  - **The top bar's tabs read SONG, PTRN, DVICE, FX, MOD, SET, 5 pixels either side of each word**
-    (owner, 2026-11-18; `ui::kTabPad`; it was PATTERN and DEVICE at 3). The screen's words have 182
+  - **The top bar's tabs read SONG, PTRN, INST, FX, MOD, SET, 5 pixels either side of each word**
+    (owner, 2026-11-18; `ui::kTabPad`; it was PATTERN and DEVICE at 3; **DVICE became INST**, the instrument,
+    owner 2026-11-28, so a player sees a kit is picked there; one list, `ui::kTabNames`, which `modtab_test`
+    reads too). INST is narrower than DVICE, so the room below only grew (the numbers here are DVICE's). The screen's words have 182
     stopped, 109 playing (a track's name, "12 PHAZED", is 77), 47 playing with WRITE on
     (`TopBar::wordsRoom`). `modtab_test` holds the name to fit stopped and playing. **The help card
     says PTRN too; README and the web pages keep the full words.**

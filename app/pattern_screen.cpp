@@ -631,28 +631,26 @@ void PatternScreen::moveCursor(Button direction) {
         sliceUpDown(direction == Button::Up ? 1 : -1); // one lane is showing: up and down are the slice
         return;
     }
-    if (onBars_) {
-        // BARS sits above the tempo, and round below the bottom lane: down goes to the tempo, up to the bottom lane.
-        // Left and right show the bar before or after, round the ends.
-        if (direction == Button::Down) onBars_ = false, onTempo_ = true;
-        if (direction == Button::Up) onBars_ = false, lane_ = kDrumLanes - 1;
-        if (direction == Button::Left || direction == Button::Right) moveBar(direction == Button::Right ? 1 : -1);
+    if (onBars_ || onTempo_) {
+        // BARS and TEMPO are one row above the top lane, side by side as the top bar draws them: BARS left of the
+        // BPM box (owner, 2026-11-28: "moving between the tempo and bar is up down, when the intuitive move is left
+        // right"; TEMPO was above the top lane and BARS above that). LEFT is BARS, RIGHT TEMPO, the ends stop.
+        // Down is the top lane, up comes round to the bottom one (the column stays a ring, G35). The bar before or
+        // after, which LEFT / RIGHT showed on BARS, is A or Y held + LEFT / RIGHT there (direction()), or L1 + UP / DOWN.
+        if (direction == Button::Left) onTempo_ = false, onBars_ = true;
+        if (direction == Button::Right) onBars_ = false, onTempo_ = true;
+        if (direction == Button::Down) onTempo_ = onBars_ = false, lane_ = 0;
+        if (direction == Button::Up) onTempo_ = onBars_ = false, lane_ = kDrumLanes - 1;
         return;
     }
-    if (onTempo_) {
-        // The tempo sits above the top lane; up from it is BARS.
-        if (direction == Button::Down) onTempo_ = false, lane_ = 0;
-        if (direction == Button::Up) onTempo_ = false, onBars_ = true;
-        return;
-    }
-    // Up from the top lane is the tempo, then BARS; down from the bottom lane is BARS, then the tempo (G35:
-    // it skipped them, so the column was a ring one way only).
+    // Up from the top lane is the tempo (BARS is LEFT of it); down from the bottom lane is the tempo too, the row
+    // being one stop of the column (G35: it skipped them, so the column was a ring one way only).
     if (direction == Button::Up) {
         if (lane_ == 0) onTempo_ = true;
         else --lane_;
     }
     if (direction == Button::Down) {
-        if (lane_ == kDrumLanes - 1) onBars_ = true;
+        if (lane_ == kDrumLanes - 1) onTempo_ = true;
         else ++lane_;
     }
     // Sideways: the lane's name, then the bar's sixteen steps. Off the right
@@ -988,7 +986,7 @@ bool PatternScreen::barKeyButton(const ButtonEvent& event, const Input& input) {
         ySpent_ = true;
         return true;
     }
-    // (The bar shown and the cell's count live on the BARS stop too, above the tempo.)
+    // (The bar shown and the cell's count live on the BARS stop too, left of the tempo.)
     // Hold L1, up / down: the bar before or after, round the ends (as on the roll). Left / right:
     // the cell's bars, more or fewer. Only with L1 held first and nothing else going: shaping,
     // painting, the dice, the step effects and the feel keep the keys, and R1 or A held is a bar
@@ -1227,8 +1225,9 @@ void PatternScreen::stickRunsCursor(float x, float y, float dt) {
 
 // A press of the D-pad, and each of its held repeats: the same job (gesture audit G21: on BARS, A or Y held +
 // LEFT / RIGHT moved the bar on the press, and the repeat went to nudgeExact, which on BARS takes only up / down).
+// On BARS with A or Y held, LEFT / RIGHT show the bar before or after; without, they go between BARS and TEMPO.
 void PatternScreen::direction(Button b, const Input& input) {
-    if (onBars_ && (b == Button::Left || b == Button::Right)) moveBar(b == Button::Right ? 1 : -1);
+    if (onBars_ && (b == Button::Left || b == Button::Right) && (input.held(Button::A) || input.held(Button::Y))) moveBar(b == Button::Right ? 1 : -1);
     else if (feelHeld_) feelTurn(b);
     else if (fxHeld_) fxTurn(b);
     else if (input.held(Button::Y) && !ySpent_) nudgeExact(b, true);
@@ -1625,16 +1624,17 @@ void PatternScreen::drawHints(SDL_Renderer* r, const Fonts& fonts, bool onName, 
         hint("TAP Y", "reshuffle");
     } else if (shaping_) {
         hint("UP / DOWN", onTempo_ ? "tempo" : onBars_ ? "more / fewer" : "drum volume");
+        if (onBars_) hint("LEFT / RIGHT", "bar");
         if (slicing_ && onName) hint("LEFT / RIGHT", "cut at the hits"); // (SLICES AT THE HITS: EVEN, AT HITS 1..10)
     } else if (onBars_) {
-        hint("LEFT / RIGHT", "bar");
         hint("HOLD A", "more / fewer");
         hint("START", project_.playing ? "stop" : "play");
+        hint("RIGHT", "tempo"); // TEMPO is right of BARS (owner, 2026-11-28; LEFT / RIGHT showed the bar: hold A now)
     } else if (onTempo_) {
         hint("A", "tap");
         hint("HOLD A", "tempo");
         hint("START", project_.playing ? "stop" : "play");
-        hint("UP", "bars"); // up from here is the BARS stop
+        hint("LEFT", "bars"); // BARS is left of the tempo (owner, 2026-11-28: it was UP)
     } else if (onName) {
         hint("HOLD A", "volume");
         hint("HOLD Y", "dice");

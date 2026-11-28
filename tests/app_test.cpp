@@ -699,8 +699,8 @@ void testTheKeysScrollAndStopAtTheEnds() {
     CHECK(notes.cursorPitch() == NoteScreen::kLowest);
     rig->tap(UP);
     CHECK(notes.cursorOnTempo() && !notes.cursorOnBars()); // up from the top step: TEMPO (as the drum grid's)
-    rig->tap(UP);
-    CHECK(notes.cursorOnBars() && !notes.cursorOnTempo()); // then BARS
+    rig->tap(LEFT);
+    CHECK(notes.cursorOnBars() && !notes.cursorOnTempo()); // BARS is left of it (owner, 2026-11-28: it was up)
     rig->tap(UP);
     CHECK(!notes.cursorOnBars() && !notes.cursorOnTempo() && notes.cursorStep() == kSteps - 1); // up again: round to the bottom
     rig->tap(DOWN);
@@ -748,10 +748,24 @@ void testTheRollsTempo() {
     CHECK(rig->project().tempo == kMaxTempo);
     rig->key(A, false);
     CHECK(notes.cursorOnTempo() && notes.noteCount() == 0);
-    // The stick and the D-pad without A: sideways nothing, up BARS, down back to the grid's top step.
-    rig->tap(LEFT);
+    // The D-pad without A: right nothing, left BARS and right back, down the grid's top step (owner, 2026-11-28).
     rig->tap(RIGHT);
-    CHECK(notes.cursorOnTempo() && notes.cursorPitch() == 60);
+    CHECK(notes.cursorOnTempo() && !notes.cursorOnBars() && notes.cursorPitch() == 60);
+    rig->tap(LEFT);
+    CHECK(notes.cursorOnBars() && !notes.cursorOnTempo() && notes.cursorPitch() == 60);
+    rig->tap(RIGHT);
+    CHECK(notes.cursorOnTempo() && !notes.cursorOnBars() && notes.cursorPitch() == 60);
+    // The stick without A, the same: once a move at once, sideways (BARS, then back to TEMPO).
+    rig->key(STICK_LEFT, true);
+    rig->frames(1);
+    rig->key(STICK_LEFT, false);
+    rig->frames(1);
+    CHECK(notes.cursorOnBars() && !notes.cursorOnTempo());
+    rig->key(STICK_RIGHT, true);
+    rig->frames(1);
+    rig->key(STICK_RIGHT, false);
+    rig->frames(1);
+    CHECK(notes.cursorOnTempo() && !notes.cursorOnBars());
     // B, X and Y do nothing up here: no note, no chord, nothing heard.
     rig->tap(B);
     rig->tap(X);
@@ -773,9 +787,9 @@ void testTheRollsTempo() {
     rig->tap(UP);
     rig->key(A, false);
     CHECK(rig->project().tempo == 101.f);
-    rig->tap(UP);
+    rig->tap(LEFT);
     CHECK(notes.cursorOnBars());
-    rig->tap(DOWN);
+    rig->tap(RIGHT);
     CHECK(notes.cursorOnTempo());
     rig->tap(DOWN);
     CHECK(!notes.cursorOnTempo() && !notes.cursorOnBars() && notes.cursorStep() == 0 && rig->project().bar == 0);
@@ -905,16 +919,18 @@ void testCellsOfSeveralBars() {
     rig.tap(UP, 15);
     CHECK(rig.project().bar == 0 && notes.cursorStep() == 0);
     rig.tap(UP);
-    CHECK(notes.cursorOnTempo()); // up past the top step: TEMPO, then BARS
-    rig.tap(UP);
+    CHECK(notes.cursorOnTempo()); // up past the top step: TEMPO, and BARS left of it (owner, 2026-11-28)
+    rig.tap(LEFT);
     CHECK(notes.cursorOnBars());
+    rig.key(A, true); // A held: the bar before or after
     rig.tap(LEFT);
     CHECK(notes.cursorOnBars() && rig.project().bar == 3); // round to the last bar
     rig.tap(RIGHT);
     CHECK(notes.cursorOnBars() && rig.project().bar == 0);
-    rig.tap(DOWN, 2);
+    rig.key(A, false);
+    rig.tap(DOWN);
     CHECK(!notes.cursorOnBars() && !notes.cursorOnTempo() && rig.project().bar == 0 && notes.cursorStep() == 0);
-    rig.tap(UP, 2);
+    rig.tap(UP), rig.tap(LEFT);
     CHECK(notes.cursorOnBars());
     rig.tap(UP);
     CHECK(!notes.cursorOnBars() && rig.project().bar == 3 && notes.cursorStep() == 15); // up again: round to the bottom
@@ -1069,7 +1085,7 @@ void testStripCountsWithTheGrid() {
         for (int x = 400; x < ui::kScreenW; ++x) lit += canvas.is(x, 2, ui::kTeal) ? 1 : 0;
         CHECK(lit >= 40);
     }
-    rig.tap(UP);
+    rig.tap(LEFT);
     canvas.clear();
     rig.app.draw(canvas.r, fonts);
     CHECK(notes.cursorOnBars() && stripHas("BARS", ui::kText, 7.f, 60.f, 400.f, 445.f) && stripHas("1 OF 2", ui::kTeal, 99.f, 160.f, 400.f, 445.f));
@@ -4608,9 +4624,9 @@ void testThePianoRollZooms() {
     rig.tap(L1, 3);
     rig.frames(1);
     CHECK(notes.visibleKeys() == 24 && notes.lowestKeyShown() == 60);
-    // BARS, up from the top step and TEMPO: hold A with up and down: the cell's bars, more or fewer,
+    // BARS, up from the top step and left of TEMPO: hold A with up and down: the cell's bars, more or fewer,
     // stopping at the ends.
-    rig.tap(UP, 2);
+    rig.tap(UP), rig.tap(LEFT);
     CHECK(notes.cursorOnBars());
     rig.key(A, true);
     rig.tap(UP);
@@ -4623,15 +4639,15 @@ void testThePianoRollZooms() {
     CHECK(rig.project().tracks[1].bars[0] == 1);
     rig.key(A, false);
     CHECK(session.octavesShown() == 2); // (L1 was never held: no zoom)
-    // Left and right on BARS: the bar before or after, round the ends.
+    // A held + left and right on BARS: the bar before or after, round the ends.
     rig.key(A, true);
     rig.tap(UP, 2);
-    rig.key(A, false);
     CHECK(rig.project().tracks[1].bars[0] == 4 && rig.project().bar == 0);
     rig.tap(LEFT);
     CHECK(notes.cursorOnBars() && rig.project().bar == 3);
     rig.tap(RIGHT, 2);
     CHECK(notes.cursorOnBars() && rig.project().bar == 1);
+    rig.key(A, false);
     // The stick with A held on BARS: one step of bars for each push.
     rig.key(A, true);
     rig.key(STICK_UP, true);
@@ -14100,8 +14116,8 @@ void testTheStickIsTwiceTheDpad() {
         {"SONG's columns", [](Rig& rig) { for (int i = 0; i < 11; ++i) rig.app.session().addTrack(TrackKind::Drums); rig.app.session().view = View::Song; rig.app.song().moveCursorTo(0, 0); },
          [](Rig& rig) { return rig.app.song().cursorColumn(); }, 0, kNumTracks - 1, true, cursor, RIGHT, nullptr, 0},
         {"the drum grid's lanes", [](Rig& rig) { rig.app.session().view = View::Pattern; rig.app.drums().moveCursorTo(0, 0); },
-         [](Rig& rig) { const PatternScreen& d = rig.app.drums(); return d.cursorOnBars() ? kDrumLanes : d.cursorOnTempo() ? kDrumLanes + 1 : d.cursorLane(); },
-         kDrumLanes + 2, 0, false, cursor, DOWN, nullptr, 0}, // (down from the bottom lane: BARS, the tempo, the top lane)
+         [](Rig& rig) { const PatternScreen& d = rig.app.drums(); return d.cursorOnBars() || d.cursorOnTempo() ? kDrumLanes : d.cursorLane(); },
+         kDrumLanes + 1, 0, false, cursor, DOWN, nullptr, 0}, // (down from the bottom lane: the tempo, then the top lane; BARS is left of it)
         {"the roll's steps", [](Rig& rig) { addPhazed(rig); rig.project().track = 1; rig.app.session().view = View::Pattern; rig.app.notes().moveCursorTo(60, 0); },
          [](Rig& rig) { return rig.app.notes().cursorStep(); }, kSteps, 0, false, cursor, DOWN, nullptr, 0},
     };
@@ -14472,8 +14488,8 @@ void testTheStickWithAButtonHeld() {
         if (got != want) std::printf("FAIL %s: %d, %d, %d, %d, %d\n", name, got[0], got[1], got[2], got[3], got[4]);
         CHECK(got == want);
     };
-    // The drum grid's BARS (up from the top lane: the tempo, then BARS): it was a fill, 2.25 bars a second.
-    oncePushed("the drum grid's BARS", [](Rig& rig) { rig.app.session().view = View::Pattern; rig.app.drums().moveCursorTo(0, 0); rig.frames(1); rig.tap(UP, 2); },
+    // The drum grid's BARS (up from the top lane: the tempo, then LEFT to BARS): it was a fill, 2.25 bars a second.
+    oncePushed("the drum grid's BARS", [](Rig& rig) { rig.app.session().view = View::Pattern; rig.app.drums().moveCursorTo(0, 0); rig.frames(1); rig.tap(UP), rig.tap(LEFT); },
                [](Rig& rig) { return rig.project().tracks[0].bars[0]; }, {1, 2, 2, 4, 8});
     // The drum grid: Y on a lane's name (the dice) steps at twice the held D-pad's pace, the cursor's: 0.8 a frame
     // (no step at once: it was turned as a fill).
@@ -14493,7 +14509,7 @@ void testTheStickWithAButtonHeld() {
         CHECK(hits == 2);
     }
     // The roll's BARS (up from the top step): it was once a push past half, so just past the dead zone did nothing.
-    oncePushed("the roll's BARS", [](Rig& rig) { addPhazed(rig); rig.project().track = 1; rig.app.session().view = View::Pattern; rig.app.notes().moveCursorTo(60, 0); rig.frames(1); rig.tap(UP, 2); },
+    oncePushed("the roll's BARS", [](Rig& rig) { addPhazed(rig); rig.project().track = 1; rig.app.session().view = View::Pattern; rig.app.notes().moveCursorTo(60, 0); rig.frames(1); rig.tap(UP), rig.tap(LEFT); },
                [](Rig& rig) { return rig.project().tracks[1].bars[0]; }, {1, 2, 2, 4, 8}); // (up from the top step: TEMPO, then BARS)
     // VOICE's MODEL (the models, up and down): once a push as before, now just past the dead zone too.
     oncePushed("VOICE's MODEL", [](Rig& rig) {

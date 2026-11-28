@@ -849,6 +849,24 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   `easy_test kits` (`builtInKitProblems`). A kit put on goes through the lanes' own setters, so it is a
   step of undo as they are (its recordings too, since G04). A player's own are `kit N.kit` in the preset
   folder. Stills `kit-preset`, `-held`, `-own`. **Nobody has heard the kits.**
+- **The KIT stop reads as a control** (owner, 2026-11-28: "It's not very apparent that you can select or change
+  a kit from the device view"). It was the heading KIT and the kit's name, small, with a line under it on the
+  stop. Now it is **a box like a lane's** (`kKitBoxY` 29, `kKitBoxH` 18, between the top bar and lane 1; the
+  lanes' `kPanel2` and `kLine`, the cursor's 2-pixel outline on the stop, the deleting bar a 3-pixel red fill at
+  its foot) with KIT, the name and **two small arrows** at its right (dim off the stop, the cursor's colour on it).
+  - **LEFT / RIGHT on the stop step the kits**, A held or not (they did nothing there before): the kit before /
+    after, the same list and ends as hold A + UP / DOWN (`stepKit`; without A the folders are read on the press,
+    as A going down reads them). Held, a list's pace; **the stick sideways once a push** (a choice:
+    `kitPushed_`); up / down stay the cursor's. A kit put on is a step of undo (as ever); with A held, B puts the
+    kit A found back. This is a plain direction changing a value where the screen's other columns want hold A:
+    taken because the arrows invite it and the stop holds nothing else a direction could do, as SET's rows step
+    their values sideways.
+  - Hints on the stop: `LEFT / RIGHT kits`, `HOLD A try kits`, then Y save / HOLD B delete, START. **Lane 1 says
+    `UP kit`** in every column. To fit it, CHOKE's `HOLD A choke group` became `choke` and SOUND's `B default
+    drum` became `drum back` (the manual's words for it); `easy_test kits` holds every column of lane 1 to fit
+    (built in, a recording, a synth; stopped and playing). `testTheKitStopSideways` (the steps, the held pace,
+    the stick once a push, A + B put back, the box's pixels, the hints), `sample_test` (the folders by RIGHT,
+    before A has gone down on the screen). Not seen on the handheld.
 - **B with A held puts the sound back wherever hold A steps through sounds** (gesture audit G12,
   2026-11-25; `Session::keepSound` / `putSoundBack`, one function with the KIT stop's, whose own
   `kitBefore_` copy is gone). The KIT stop, a lane's SOUND, the sampler's SOUND and PRESET, a synth's

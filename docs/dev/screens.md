@@ -471,11 +471,12 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   and BOUNCE values still go round and SCALE, THEME, TEXT SIZE still stop (values, not the list).
   `app_test` `testTheEndsOfSetsRows`, `testTheSetupScreen`; `save_test` (the list of songs and its revs, a press
   and a run, `Rig::run`); `lights_test`, `theme_test` (the page with it).
-- **The drum grid's column is a ring both ways** (G35; `PatternScreen::moveCursor`): down from lane 8 is BARS, then
-  the tempo, then lane 1, as up from lane 1 was always the tempo, then BARS, then lane 8. Down from lane 8 went
+- **The drum grid's column is a ring both ways** (G35; `PatternScreen::moveCursor`): down from lane 8 is the tempo,
+  then lane 1, as up from lane 1 is the tempo, then lane 8. (BARS is LEFT of the tempo since 2026-11-28, owner:
+  one row, `notes-and-mods.md`; before, the ring ran lane 8, BARS, tempo, lane 1.) Down from lane 8 went
   straight to lane 1, skipping both. The brushes and B's drag skip the two stops (`onStep`). `ui_test`
   `testCursorMovesAndWraps`. (The KIT page's lanes have the same one-way ring: down from lane 8 is lane 1, up from
-  lane 1 the KIT stop. Not in the brief; left.)
+  lane 1 the KIT stop. Not in the brief; left. LEFT / RIGHT on the KIT stop step the kits since 2026-11-28.)
 - **On SET, L1 / R1 go to the first row of the heading before / after the cursor's, round the ends** (gesture
   audit G28, 2026-11-25; `SettingsScreen::jumpGroup`). TEMPO to THEME was 11 presses; it is 3 (R1, R1,
   DOWN). (TEMPO to CONTROLS, 17 presses on the stock port before the audit, is one since G35: UP from the first
@@ -831,8 +832,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   | --- | --- | --- |
   | SONG | purple | where the song is playing: the scenes in time |
   | PTRN | teal | writing: the cursor's colour, as it was |
-  | DVICE | brass | the knobs, meters and a value changed |
-  | FX | teal | as it was; teal and not brass so DVICE and FX, side by side, differ |
+  | INST | brass | the knobs, meters and a value changed (the tab read DVICE until 2026-11-28) |
+  | FX | teal | as it was; teal and not brass so INST and FX, side by side, differ |
   | MOD | purple | automation, what moves by itself |
   | SET | text | the handheld's own: no musical job, the neutral lettering |
 

@@ -147,6 +147,9 @@ SDL_Color faded(SDL_Color c, int alpha);
 // whether it is playing. Returns the x where the tempo's number ends and the
 // x of the play mark, for a screen that puts a cursor on the tempo.
 constexpr float kTabPad = 5.f; // either side of a tab's word in the top bar
+// The six tabs' words, in View's order. PTRN: owner, 2026-11-18, to give the tabs their room. INST, the instrument
+// (owner, 2026-11-28: it read DVICE, shortened from DEVICE, and a player did not see a kit is picked there).
+constexpr const char* kTabNames[6] = {"SONG", "PTRN", "INST", "FX", "MOD", "SET"};
 struct TopBar { float tempoNumberRight, tempoRight, wordsX = 0.f, wordsRoom = 0.f, wordsWidth = 0.f; }; // wordsX / wordsRoom: where the screen's own words start, and the room they had; wordsWidth: how wide they drew
 TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* context, const Project& project);
 // The cursor on the top bar's tempo (the drum grid's and the roll's TEMPO stop, up from the top of the grid): its box
@@ -161,7 +164,7 @@ constexpr float kTempoPerSecond = 90.f;
 // the screens"): one of the theme's own names, worn by the top bar only, in two places: the lit tab, and the
 // line along the bar's foot. Chosen by the colour's job (ui.hpp's Theme): purple, where the song plays and
 // what moves by itself, for SONG and MOD; teal, the writing cursor, for PTRN and FX; brass, the knobs and
-// meters, for DVICE; text, the handheld's own, for SET. Neighbouring tabs never share one. A screen's
+// meters, for INST; text, the handheld's own, for SET. Neighbouring tabs never share one. A screen's
 // cursor stays teal (brass held) on every tab: the accent never stands for the cursor.
 const SDL_Color& tabAccent(View view);
 

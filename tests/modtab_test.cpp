@@ -135,7 +135,10 @@ void testTheTabAndTheTopBar() {
     // Six tabs in the top bar, at LARGE: the bar is a tight row, the same at every TEXT SIZE (textviews holds
     // that for every still). The tabs and the chips end where the screen's words begin, and those words keep room.
     Canvas c;
-    const char* tabs[] = {"SONG", "PTRN", "DVICE", "FX", "MOD", "SET"};
+    const char* const* tabs = ui::kTabNames;
+    // The instrument's tab reads INST (owner, 2026-11-28; it was DVICE), and every tab keeps its word.
+    CHECK(std::strcmp(tabs[static_cast<int>(View::Device)], "INST") == 0);
+    CHECK(std::strcmp(tabs[static_cast<int>(View::Pattern)], "PTRN") == 0 && std::strcmp(tabs[static_cast<int>(View::Settings)], "SET") == 0);
     for (int v = 0; v <= static_cast<int>(View::Settings); ++v) {
         c.clear();
         const ui::TopBar bar = ui::topBar(c.r, *c.fonts, static_cast<View>(v), "", rig.project());

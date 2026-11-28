@@ -27,7 +27,7 @@ one to eight bars, each with its own repeat count. Four screens:
 - **PATTERN**: a drum grid (levels, nudge, chance, paint, lane dice, a live human feel and swing for each lane) or, for
   a synth, a piano roll on its side (keys across, time down) with chords
   from chord packs.
-- **DEVICE**: for a synth, a main panel of folder, preset and eight macros,
+- **INST** (the instrument): for a synth, a main panel of folder, preset and eight macros,
   with advanced pages behind it (nine for Phazed, five for JAX-EP, eight for FM-6, five for PHYSIC, three for CLOUD, five for MORPH).
   For drums, the kit: each lane plays its built-in drum or a recording.
 - **FX**: three effects on each track, two on the master, and two shared ones (ECHO and SPACE) that every track can send to.

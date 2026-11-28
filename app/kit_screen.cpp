@@ -321,8 +321,14 @@ void KitScreen::saveSound() {
 
 void KitScreen::press(Button b) {
     if (onKit_) {
-        if (holding_) {
-            if (b == Button::Up || b == Button::Down) stepKit(b == Button::Up ? 1 : -1), stepped_ = true;
+        if (holding_ && (b == Button::Up || b == Button::Down)) {
+            stepKit(b == Button::Up ? 1 : -1), stepped_ = true;
+            return;
+        }
+        if (b == Button::Left || b == Button::Right) { // the kits, a choice: one a press (owner, 2026-11-28: the stop is a box with arrows)
+            if (!holding_) folders_ = session_.kitFolders(), foldersSeen_ = session_.sampleFiles(); // (as A going down reads them)
+            stepKit(b == Button::Right ? 1 : -1);
+            stepped_ = stepped_ || holding_;
             return;
         }
         if (b == Button::Up) onKit_ = false, lane_ = kDrumLanes - 1; // (round, as the lanes go)
@@ -551,8 +557,15 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
     const float y = stickWait_ || choosing ? 0.f : holding_ ? stickAxes(input.stickX(), input.stickY()).y : input.stickY();
     const bool sideways = std::fabs(x) > std::fabs(y);
     const float push = sideways ? x : y;
-    const Pace runs = holding_ ? Pace::List : Pace::Cursor;
-    if (holding_ && column_ == kSource) { // SOURCE's three, a choice: once a push, however far it is pushed
+    // On the KIT stop LEFT / RIGHT step the kits, A held or not: a list's pace held, and the stick once a push (a choice).
+    const bool kitSideways = onKit_ && (repeating_ == Button::Left || repeating_ == Button::Right);
+    const Pace runs = holding_ || kitSideways ? Pace::List : Pace::Cursor;
+    const bool kitPush = onKit_ && !holding_ && sideways && x != 0.f;
+    if (kitPush) {
+        if (!kitPushed_) press(x > 0.f ? Button::Right : Button::Left);
+        saved_ = 0.f;
+        stickWas_ = false;
+    } else if (holding_ && column_ == kSource) { // SOURCE's three, a choice: once a push, however far it is pushed
         if (y != 0.f && !sourcePushed_) press(y > 0.f ? Button::Down : Button::Up);
         sourcePushed_ = y != 0.f;
         saved_ = 0.f;
@@ -568,6 +581,7 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
     }
     // A held D-pad: the lanes and columns are a cursor (gesture audit G08: they ran at the list's pace); with A
     // held it steps the sounds, FIT and CHOKE (and on the KIT stop the kits) at the list's, to hear each.
+    kitPushed_ = kitPush;
     while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), runs)) press(repeating_);
 }
 
@@ -900,7 +914,9 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const SDL_Color cursorColor = holding_ ? kBrass : kTeal;
     const int soundX = 8, soundW = 250, fitX = kFitX, chokeX = kChokeX, waveX = kWaveX, waveW = kWaveW;
 
-    // The KIT stop, where SOUND's heading stood: KIT and the kit the track's is (one of the list's, or YOUR OWN).
+    // The KIT stop, where SOUND's heading stood: a box like a lane's (owner, 2026-11-28: "it's not very apparent
+    // that you can select or change a kit"; it was KIT and the name as a heading, a line under it on the stop), with
+    // KIT, the kit the track's is (one of the list's, or YOUR OWN) and the arrows LEFT / RIGHT step it by.
     {
         const int now = const_cast<Session&>(session_).kitOf(project_.track);
         const std::vector<Session::Kit>& all = const_cast<Session&>(session_).kits();
@@ -908,14 +924,24 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const std::string folder = now < 0 ? session_.folderKitOf(project_.track) : "";
         std::string name = now >= 0 ? all[static_cast<std::size_t>(now)].name : folder.empty() ? "YOUR OWN" : "FOLDER " + folder;
         for (char& c : name) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+        const int y = kKitBoxY, h = kKitBoxH, arrowsW = 26;
+        box(r, soundX, y, soundW, h, kPanel2, kLine);
+        const float room = static_cast<float>(soundW - 14 - arrowsW);
         std::string whole = std::string("KIT ") + name;
-        const Font& f = fonts.within(&Fonts::small, whole.c_str(), static_cast<float>(soundW) - 12.f);
-        while (name.size() > 1 && f.width(("KIT " + name).c_str()) > soundW - 12) name.pop_back(); // (a long folder: cut, as a lane's name is)
-        f.draw(r, soundX + 2.f, 34.f, "KIT", kDim);
-        f.draw(r, soundX + 2.f + f.width("KIT") + 8.f, 34.f, name.c_str(), onKit_ ? cursorColor : now >= 0 || !folder.empty() ? kText : kDim);
-        // (Its line stands under the tallest lettering, XL's, and above lane 1.)
-        if (kitDeletePart_ > 0.f) fill(r, soundX, 48, static_cast<int>(soundW * (kitDeletePart_ > 1.f ? 1.f : kitDeletePart_)), 1, kStop);
-        else if (onKit_) fill(r, soundX, 48, soundW, 1, cursorColor);
+        const Font& f = fonts.within(&Fonts::small, whole.c_str(), room);
+        while (name.size() > 1 && f.width(("KIT " + name).c_str()) > room) name.pop_back(); // (a long folder: cut, as a lane's name is)
+        const float textY = y + (h - f.capHeight()) / 2.f;
+        f.draw(r, soundX + 7.f, textY, "KIT", kDim);
+        f.draw(r, soundX + 7.f + f.width("KIT") + 8.f, textY, name.c_str(), onKit_ ? cursorColor : now >= 0 || !folder.empty() ? kText : kDim);
+        // The arrows: it steps, a kit a press. In the cursor's colour on the stop.
+        const SDL_Color arrows = onKit_ ? cursorColor : kDim;
+        const int mid = y + h / 2, right = soundX + soundW - 8;
+        for (int i = 0; i < 5; ++i) {
+            fill(r, right - arrowsW + 6 + i, mid - i, 1, 2 * i + 1, arrows); // LEFT
+            fill(r, right - i, mid - i, 1, 2 * i + 1, arrows);               // RIGHT
+        }
+        if (onKit_) outline(r, soundX - 1, y - 1, soundW + 2, h + 2, cursorColor, 2);
+        if (kitDeletePart_ > 0.f) fill(r, soundX, y + h - 3, static_cast<int>(soundW * (kitDeletePart_ > 1.f ? 1.f : kitDeletePart_)), 3, kStop);
     }
     const std::string said = catchKey_.held() ? catchChoiceLine(session_) : said_; // (Y held: what its let go catches)
     if (said.empty()) {
@@ -1055,7 +1081,8 @@ void KitScreen::drawHints(SDL_Renderer* r, const Fonts& fonts) const {
             hint("UP / DOWN", folders_.empty() ? "next / previous kit" : "kits, then folders");
             hint("B", "as it was"); // (Session::putSoundBack, as SOUND's)
         } else {
-            hint("HOLD A", "kits");
+            hint("LEFT / RIGHT", "kits"); // (owner, 2026-11-28: the arrows on the box)
+            hint("HOLD A", "try kits"); // (UP / DOWN too, and B puts the kit back)
             if (now < 0) hint("Y", "save this kit");
             else if (const_cast<Session&>(session_).kits()[static_cast<std::size_t>(now)].own) hint("HOLD B", "delete this kit");
             hint("START", project_.playing ? "stop" : "play");
@@ -1090,8 +1117,10 @@ void KitScreen::drawHints(SDL_Renderer* r, const Fonts& fonts) const {
         hint("B", "fit off");
     } else {
         // On the name A picks within the lane's SOURCE, and says which (owner, 2026-11-28): a synth's knobs, else the list.
-        hint(column_ == kSound ? "A" : "HOLD A", column_ == kSound ? (trk().laneSynth[lane_].on() ? "synth knobs" : "sample list") : column_ == kFit ? "fit to steps" : "choke group");
-        hint("B", column_ == kSound ? "default drum" : column_ == kFit ? "fit off" : "no choke");
+        // (CHOKE's "choke group" and SOUND's B "default drum" were shortened for lane 1's UP kit, owner 2026-11-28:
+        // the column's heading says CHOKE, and the manual's word for B there is "the drum back".)
+        hint(column_ == kSound ? "A" : "HOLD A", column_ == kSound ? (trk().laneSynth[lane_].on() ? "synth knobs" : "sample list") : column_ == kFit ? "fit to steps" : "choke");
+        hint("B", column_ == kSound ? "drum back" : column_ == kFit ? "fit off" : "no choke");
     }
     if (!holding_ && !catchKey_.held()) {
         hint("Y", "catch");
@@ -1101,6 +1130,7 @@ void KitScreen::drawHints(SDL_Renderer* r, const Fonts& fonts) const {
         const bool slices = trk().laneSample[lane_][0] != 0;
         if (slices) hint("L1", "slices");
         if (!slices) hint("START", project_.playing ? "stop" : "play");
+        if (lane_ == 0) hint("UP", "kit"); // the KIT stop is above lane 1 (owner, 2026-11-28: it was not seen)
     }
     hints(r, fonts, list, count);
     picker_.draw(r, fonts); // over everything, when it is open

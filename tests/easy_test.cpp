@@ -1328,8 +1328,8 @@ void testTheKitStop() {
     rig.key(A, false);
     rig.frames(2);
     CHECK(kit.onKit() && !kit.editing() && !kit.voicing()); // (A let go opens nothing on the stop)
-    // Left and right, X and a tap of A do nothing to the kit here.
-    rig.tap(LEFT), rig.tap(RIGHT), rig.tap(A);
+    // X and a tap of A do nothing to the kit here (LEFT / RIGHT step it: testTheKitStopSideways).
+    rig.tap(X), rig.tap(A);
     CHECK(kit.onKit() && session.kitOf(0) == 0 && !kit.picker().isOpen());
     // Y on a kit of the list: said, nothing saved.
     rig.tap(Y);
@@ -1344,7 +1344,7 @@ void testTheKitStop() {
     rig.key(B, true);
     rig.frames(30);
     CHECK(kit.kitDeletePart() > 0.3f && kit.kitDeletePart() < 0.7f);
-    rig.tap(LEFT);
+    rig.tap(Y); // (IT IS KIT 1 ALREADY)
     CHECK(kit.kitDeletePart() == 0.f);
     rig.frames(60);
     rig.key(B, false);
@@ -1428,6 +1428,147 @@ void testTheKitStop() {
     rig.key(A, false);
     rig.frames(1);
     CHECK(kit.hears() == heard + 1);
+}
+
+// The KIT stop drawn as a control (owner, 2026-11-28: "It's not very apparent that you can select or change a kit
+// from the device view"): LEFT / RIGHT step the kits, A held or not, one a press; held, at a list's pace; the stick
+// once a push (a choice). The box, its arrows and its hints; lane 1 says UP kit.
+void testTheKitStopSideways() {
+    const std::string folder = tempFolder("easykitside");
+    Rig rig;
+    Session& session = rig.session();
+    session.usePresetFolder(folder);
+    session.view = View::Device;
+    rig.frames(2);
+    KitScreen& kit = rig.app.kit();
+    const int builtIn = static_cast<int>(session.kits().size());
+    CHECK(builtIn >= 3);
+    session.loadKit(0, 0);
+    kit.goToKit();
+    rig.frames(1);
+    // RIGHT the next kit, LEFT the one before, the ends stop; each heard, each one step of undo; the cursor stays.
+    rig.frames(60);
+    const int heard = kit.hears(), steps = session.undoSteps();
+    rig.tap(RIGHT);
+    CHECK(session.kitOf(0) == 1 && kit.onKit() && kit.hears() == heard + 1);
+    rig.tap(RIGHT);
+    CHECK(session.kitOf(0) == 2 && kit.onKit());
+    rig.tap(LEFT);
+    CHECK(session.kitOf(0) == 1 && kit.onKit() && kit.hears() == heard + 3);
+    rig.tap(LEFT), rig.tap(LEFT);
+    CHECK(session.kitOf(0) == 0 && kit.onKit() && kit.hears() == heard + 4); // (the start stops: nothing heard)
+    rig.frames(60);
+    CHECK(session.undoSteps() > steps);
+    // Held: one at once, then a list's pace (not the cursor's), never off the stop.
+    rig.key(RIGHT, true);
+    rig.frames(1);
+    CHECK(session.kitOf(0) == 1);
+    rig.frames(12); // (under the list's first wait)
+    const int held = session.kitOf(0);
+    rig.frames(40);
+    rig.key(RIGHT, false);
+    rig.frames(1);
+    CHECK(held == 1 && session.kitOf(0) > 1 && kit.onKit());
+    // The stick: once a push, however long it is held (a choice); pushed again, one more.
+    session.loadKit(0, 0);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(60);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(session.kitOf(0) == 1 && kit.onKit());
+    rig.key(STICK_RIGHT, true);
+    rig.frames(2);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(session.kitOf(0) == 2 && kit.onKit());
+    rig.key(STICK_LEFT, true);
+    rig.frames(30);
+    rig.key(STICK_LEFT, false);
+    rig.frames(1);
+    CHECK(session.kitOf(0) == 1 && kit.onKit());
+    // The stick up / down still moves the cursor off the stop.
+    rig.key(STICK_DOWN, true);
+    rig.frames(1);
+    rig.key(STICK_DOWN, false);
+    rig.frames(1);
+    CHECK(!kit.onKit() && kit.cursorLane() == 0 && session.kitOf(0) == 1);
+    // Off the stop LEFT / RIGHT are the columns again, the kit untouched.
+    rig.tap(RIGHT), rig.tap(LEFT);
+    CHECK(session.kitOf(0) == 1 && !kit.onKit());
+    // With A held, LEFT / RIGHT step too, and B puts back the kit A found.
+    kit.goToKit();
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(RIGHT);
+    CHECK(session.kitOf(0) == 2);
+    rig.tap(LEFT), rig.tap(LEFT);
+    CHECK(session.kitOf(0) == 0);
+    rig.tap(B);
+    CHECK(session.kitOf(0) == 1);
+    rig.key(A, false);
+    rig.frames(2);
+    CHECK(kit.onKit() && !kit.editing() && !kit.voicing() && !kit.picker().isOpen());
+    // The box: drawn, its arrows dim off the stop and in the cursor's teal on it; the hints say it, and fit.
+    Canvas canvas, scratch;
+    if (!canvas.ok) return;
+    const int top = ui::kScreenH - ui::kHintsH;
+    const auto barIs = [&](const ui::Hint* list, int count) {
+        scratch.clear();
+        ui::hints(scratch.r, *scratch.fonts, list, count);
+        return canvas.part(0, top, ui::kScreenW, ui::kHintsH) == scratch.part(0, top, ui::kScreenW, ui::kHintsH);
+    };
+    const auto drawn = [&] {
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+    };
+    session.loadKit(0, 0);
+    kit.goToKit();
+    rig.frames(1);
+    drawn();
+    const int boxX = 8, boxY = KitScreen::kKitBoxY, boxW = 250, boxH = KitScreen::kKitBoxH;
+    const int arrowRight = boxX + boxW - 8, mid = boxY + boxH / 2;
+    CHECK(canvas.is(arrowRight, mid, ui::kTeal) && canvas.is(arrowRight - 26 + 6, mid, ui::kTeal)); // the two arrows' points
+    CHECK(canvas.is(boxX - 1, mid, ui::kTeal)); // the cursor's outline round the box
+    CHECK(canvas.is(boxX + 100, boxY + 1, ui::kPanel2)); // the box's inside, a lane's colour
+    const ui::Hint stop[] = {{"LEFT / RIGHT", "kits"}, {"HOLD A", "try kits"}, {"HOLD B", "delete this kit"}, {"START", "play"}};
+    const ui::Hint builtInStop[] = {{"LEFT / RIGHT", "kits"}, {"HOLD A", "try kits"}, {"START", "play"}};
+    CHECK(barIs(builtInStop, 3) && ui::gHintsOver == 0.f);
+    session.setLaneSwing(0, 0, 35);
+    CHECK(!session.saveKit(0).empty());
+    rig.frames(1);
+    drawn();
+    CHECK(barIs(stop, 4) && ui::gHintsOver == 0.f); // one's own: HOLD B deletes it
+    rig.tap(DOWN);
+    drawn();
+    CHECK(canvas.is(arrowRight, mid, ui::kDim) && !canvas.is(boxX - 1, mid, ui::kTeal)); // off the stop: dim, no outline
+    // Lane 1 says UP kit (where up leads to the stop), and fits in every column; lane 2 does not.
+    const ui::Hint lane1[] = {{"HOLD A", "source"}, {"B", "built in"}, {"Y", "catch"}, {"R1", "record"}, {"START", "play"}, {"UP", "kit"}};
+    // Every column on lane 1 fits with it: a built-in drum, a recording (L1 slices), a synth voice, stopped and playing.
+    for (int source = 0; source < 3; ++source)
+        for (bool playing : {false, true}) {
+            if (source == 0) session.setLaneSample(0, 0, "");
+            if (source == 1) session.setLaneSample(0, 0, "a recording with a long name");
+            if (source == 2) session.setLaneSynth(0, 0, drumsynth::usualVoice(drumsynth::modelFromWord("kick")));
+            rig.project().playing = playing;
+            for (int column = 0; column < KitScreen::kColumns; ++column) {
+                kit.goTo(0, column);
+                rig.frames(1);
+                drawn();
+                CHECK(ui::gHintsOver == 0.f);
+            }
+        }
+    rig.project().playing = false;
+    for (int lane : {0, 1}) {
+        session.setLaneSample(0, lane, "");
+        for (int column = 0; column < KitScreen::kColumns; ++column) {
+            kit.goTo(lane, column);
+            rig.frames(1);
+            drawn();
+            CHECK(ui::gHintsOver == 0.f);
+            if (column == KitScreen::kSource) CHECK(barIs(lane1, lane == 0 ? 6 : 5));
+            if (column == KitScreen::kSource && lane == 1) CHECK(!barIs(lane1, 6));
+        }
+    }
 }
 
 // ---- the owner's five (2026-11-18): the looks ---------------------------------------------------
@@ -2426,7 +2567,7 @@ int main(int argc, char** argv) {
         {"even", [] { testTheEvenRule(), testEvenOnALane(); }},
         {"looks", [] { testTheLooks(); }},
         {"mutes", [] { testTheWaitingGate(), testQueuedMutesInTheApp(); }},
-        {"kits", [] { testTheKitsText(), testKitsInTheSession(), testTheKitStop(); }},
+        {"kits", [] { testTheKitsText(), testKitsInTheSession(), testTheKitStop(), testTheKitStopSideways(); }},
         {"stick", [] { testTheStickCarriesAsTheDpad(), testXLetGoWithTheStickPushed(), testTheStickOnRepeats(); }},
         {"xempty", [] { testXAndBEmptyAHit(), testXAndBEmptyALanesFeel(), testXAndBEmptyANoteAndAChord(); }},
         {"chordlength", [] { testTheTriggersSetTheChordsLength(), testTheLengthsBoxMakesWay(); }},

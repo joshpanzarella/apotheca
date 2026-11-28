@@ -413,13 +413,15 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         app.session().setCellBars(1, 0, 2);
         app.notes().moveCursorTo(60, 0);
         app.project().bar = 0;
-        tapKey(SDLK_UP, 2); // tempo, BARS (the roll has had a TEMPO stop since 2026-11-28)
+        tapKey(SDLK_UP);   // TEMPO (the roll has had a TEMPO stop since 2026-11-28)
+        tapKey(SDLK_LEFT); // BARS, left of it (owner, 2026-11-28: it was up)
     } else if (std::strcmp(view, "bars-stop-grid") == 0) { // the drums with the cursor on BARS
         app.project().track = 0;
         app.session().view = View::Pattern;
         app.session().setCellBars(0, 0, 2);
         app.drums().moveCursorTo(0, 0);
-        tapKey(SDLK_UP, 2); // lane, tempo, BARS
+        tapKey(SDLK_UP);   // the tempo
+        tapKey(SDLK_LEFT); // BARS, left of it (owner, 2026-11-28: it was up)
     } else if (std::strncmp(view, "bars", 4) == 0) {
         // Scene 1 with cells of different lengths: the pads four bars (a
         // chord a bar, the last held over two), the bass two, the drums one.
@@ -709,6 +711,10 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         app.project().track = 1;
         app.project().bar = 0;
         app.notes().moveCursorTo(60, 0);
+        tapKey(SDLK_UP);
+    } else if (std::strcmp(view, "grid-tempo") == 0) {
+        // The drum grid's TEMPO stop, up from lane 1, A not held (--on-tempo holds it): LEFT bars (owner, 2026-11-28).
+        app.drums().moveCursorTo(0, 0);
         tapKey(SDLK_UP);
     } else if (std::strcmp(view, "phazed") == 0) {
         app.project().track = 1;

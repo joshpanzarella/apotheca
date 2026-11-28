@@ -11,9 +11,9 @@ the bottom bar always says what the buttons do where you are.
 - [Note effects](#note-effects)
 - [Chords](#chords)
 - [Chord effects](#chord-effects)
-- [DEVICE, drums: the kit](#device-drums-the-kit)
-- [DEVICE, the sampler](#device-the-sampler)
-- [DEVICE, a synth](#device-a-synth)
+- [INST, drums: the kit](#inst-drums-the-kit)
+- [INST, the sampler](#inst-the-sampler)
+- [INST, a synth](#inst-a-synth)
 - [ACID](#acid)
 - [CLOUD](#cloud)
 - [FM-6](#fm-6)
@@ -148,24 +148,25 @@ hold A + left / right on FIT), mutes, names, a recording
 deleted from the card and a track deleted or given another instrument are
 not. The song keeps playing while you undo.
 
-**L2 and R2** walk along the screens: SONG, PATTERN, DEVICE, FX, MOD, SET,
+**L2 and R2** walk along the screens: SONG, PATTERN, INST, FX, MOD, SET,
 **round the ends**: L2 on SONG is SET, R2 on SET is SONG.
 **SONG opens with its cursor on the cell you are working on.** Move it, and
-the next L2 or R2 takes the cell it is on to PATTERN, DEVICE, FX and MOD, from
+the next L2 or R2 takes the cell it is on to PATTERN, INST, FX and MOD, from
 its first bar, as a tap of A on it does (brought back to the cell you were
 working on, that cell keeps its bar). Leave it alone, or leave it on a track's
 head, REPEATS, + TRACK or MASTER, and nothing changes. So a trip to mute or solo
 another track (Y or X) on its head leaves your cell; on one of its cells it
 takes that track.
-The bar at the top writes PATTERN as **PTRN** and DEVICE as **DVICE**, to give
-the six tabs room; this manual keeps the full words.
+The bar at the top writes PATTERN as **PTRN**, to give the six tabs room; this
+manual keeps the full word. **INST** is the instrument: the track's synth, its
+sampler or its drum kit (the tab read DVICE before).
 **SELECT**, tapped by itself, goes to SONG from anywhere (and on SONG opens
 the list of songs). **START** plays and stops: the song from
 the SONG screen, the scene being worked on from the others. A stop fades
 sounding samples fast, so nothing plays on. **SELECT + START**
 quits.
 
-## DEVICE, the sampler
+## INST, the sampler
 
 ![The sampler](manual/sampler.png)
 
@@ -355,7 +356,7 @@ right for a recording played as it is, near enough for one tuned up or down.
 
 ![The FX screen](manual/fx.png)
 
-A fourth screen, after DEVICE. **Two columns, and everything is in view.**
+A fourth screen, after INST. **Two columns, and everything is in view.**
 
 | Column | Holds |
 | --- | --- |
@@ -867,7 +868,7 @@ three effects, its ECHO and SPACE sends, GLIDE FROM and its two MODs.
 - **A new track starts plain** on its synth's first preset, whatever that
   preset holds.
 - The mixer's LEVEL and PAN are never in a preset.
-- **R1 on PRESET** on the DEVICE screen saves the sound as a preset of its
+- **R1 on PRESET** on the INST screen saves the sound as a preset of its
   own: the name keys come up (A types, Y deletes a letter, **B saves and
   leaves**, as START does; with nothing typed B leaves and saves nothing; 24
   letters at most). It lands in the USER folder with everything above, on
@@ -1044,7 +1045,7 @@ SAMPLES is the exception: its one file is a recording, in `samples/bounces`.)
 A macro, or a setting of a track's effect, can be **moved by the pattern**.
 
 1. **SELECT + X** turns WRITE on. A red WRITE chip shows in the top bar.
-2. Play the song, and move the thing: hold A on a macro (DEVICE) or on an
+2. Play the song, and move the thing: hold A on a macro (INST) or on an
    effect's setting or a send (FX) and turn it.
 3. What you do is written into the cell that is playing, step by step.
    Turn WRITE off (SELECT + X again) and it plays back every time round.
@@ -1074,14 +1075,14 @@ one of two kinds:
 | **LFO** | A slow wave: SINE, TRIANGLE, RAMP UP, RAMP DOWN, SQUARE, RANDOM (a new value each cycle) or DRIFT (glides between random values). In time with the song, or **FREE**: at a speed of its own in Hz |
 | **STEPPER** | A row of up to 16 values, one held for each note length, round and round |
 
-Each track has **two MODs**. Each one is aimed at one knob: a macro (DEVICE),
+Each track has **two MODs**. Each one is aimed at one knob: a macro (INST),
 a setting of one of the track's effects, a send (FX), or the track's LEVEL or
 PAN on the mixer (aimed from the MOD tab). On LEVEL a MOD at 100% swings from
 silence to twice the mixer's level; on PAN from the middle it reaches either
 side. The mixer still shows its own LEVEL and PAN. A setting that is a
 choice (a filter's TYPE, a delay's TIME, Phazed's CHORUS and OCTAVE) takes no MOD.
 
-**Hold X on the knob.** While X is held its MOD shows: on DEVICE where LIVE
+**Hold X on the knob.** While X is held its MOD shows: on INST where LIVE
 OUTPUT was, on FX where the heading was (on SENDS, in the other send's row).
 Each button's chip in the bottom bar stands under the field it sets.
 
@@ -1105,7 +1106,7 @@ WRITE records the knob, never the wobble. Undo (SELECT + B) takes a MOD
 back like any other change. A song saves its MODs.
 
 While a MOD runs (the song playing, or X held with it stopped), the knob's own
-bar on DEVICE or FX has a **thin brass mark** where the knob is this moment:
+bar on INST or FX has a **thin brass mark** where the knob is this moment:
 the bar shows where the knob rests, the mark where the MOD has it.
 
 **A MOD's DEPTH can change from scene to scene.** Turn DEPTH (on the knob or
@@ -1697,7 +1698,7 @@ The track columns share the width of the screen: with few tracks they are wide.
 | --- | --- | --- | --- | --- |
 | A cell | Opens it on PATTERN | Left / right: how long it is (1, 2, 4 or 8 bars). **Up / down: TRANSPOSE** its notes and chords a semitone (the stick up / down: an octave), every bar of it; the box above the bar says how far (MOVED +3 SEMITONES). A drum cell does not move. If a key would pass C0 or C8 nothing moves (NO ROOM). One step of undo | Empties it (on letting go) | **R1** copies it; **R1** on another cell pastes it there, on its let go, and **the copy is cleared** (its brass mark too), so the next R1 copies the cell it is on. Notes go on notes (any synth or sampler) and drums on drums (NO PASTE: OTHER KIND; the copy is kept for elsewhere). **R1** on the copied cell clears the copy without pasting. Each paste is one step of undo |
 | A track's head (up from the top scene, with the D-pad) | **A** (a quick tap) changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go (the list warns UNSAVED PATCHES WILL BE LOST). This cannot be undone. Held, it is the mixer: once its card is up, letting go never changes it, turned or not. While it is held the head fills with the level, as a lane's name does. **R1**, on its let go, types its name. **Hold L1 and press R1** copies the track: a new track right after it with the same instrument, sound, effects, sends, MODs, mixer, name and every scene's patterns (the tracks after it move a place along; twelve is the most). The copy is not soloed. It is not undone by SELECT + B: hold B on the copy deletes it. **Hold B** two seconds deletes the track. Y and X work there as on its cells. | | | |
-| A track (any of its cells) | **Y** mutes it and **X** solos it, each a tap, at once, playing or not; again to undo. X does not hear the track here: on its DEVICE page it does. L1 does nothing on a track. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. SELECT + Y there is NEXT SCENE, not a mute. | | | |
+| A track (any of its cells) | **Y** mutes it and **X** solos it, each a tap, at once, playing or not; again to undo. X does not hear the track here: on its INST page it does. L1 does nothing on a track. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. SELECT + Y there is NEXT SCENE, not a mute. | | | |
 | A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell: when B is let go, or at once if you move or press another button, not A, in its first half second.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted, the cell neither. **It is the track B went down on: moving the cursor (D-pad or stick) or pressing any other button calls it off.** The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
 | A repeat count (on the last time round, each cell's FILL plays in the scene's last bar: see "A FILL") | Tap: 1, 2, 4, 8. **R1** copies the whole scene; **R1** on another row pastes it there, on its let go, and **the copy is cleared** (its brass mark too). **R1** on the copied scene clears it without pasting | Up / down: times the scene plays, 1 to 16. Left / right: how many steps the scene's bars have, 16 or fewer (as the D-pad's). One job a push | Back to 1; held half a second, empties the whole scene (one step of undo) | |
 | The song's end (the REPEATS box of the first empty row, just past the last scene) | Switches what the song does at its end: LOOP (a loop arrow) or STOP (a square) | | Back to LOOP | |
@@ -1771,9 +1772,11 @@ A **cell** (one track in one scene) can be **1, 2, 4 or 8 bars** long.
 - On the PATTERN screen the grid shows one bar. Run the cursor off the end
   of step 16 and you are in the next bar; the top bar says **BAR 2 OF 4**.
   On the drum grid the lane's name is always one left of step 1.
-- **Up from the top is the tempo, then the BARS stop** (up from the top lane
-  on the drums, from step 1 of bar 1 on the roll): left / right show the bar before or
-  after, and hold A with up / down sets the cell's count. The bottom bar
+- **Up from the top is the tempo, and left of it the BARS stop**, as the top
+  bar draws them (up from the top lane on the drums, from step 1 of bar 1 on
+  the roll; **left** is BARS, **right** the tempo, down back to the grid). On
+  BARS hold A with up / down sets the cell's count, and hold A with left /
+  right shows the bar before or after. The bottom bar
   says so while you are there. Quicker, from anywhere on either grid:
   **hold L1, up / down** turns to the bar before or after, and **hold L1,
   left / right** sets the cell's count.
@@ -2091,10 +2094,10 @@ as the SONG screen's hold A). **Hold L1 and press Y** makes the cell's FILL,
 goes to it, or on it turns it off and on (see "A FILL: one bar for the
 scene's last time round"). Y's let go after it does nothing else: no dice,
 no chance, no maybe hit.
-**Up from the tempo is the BARS stop**: left / right turn to the bar before
-or after, round the ends (held, they run on, with A held too); hold A with
-up / down sets the cell's bars, more or fewer (1, 2, 4 or 8, as the SONG
-screen's hold A).
+**Left of the tempo is the BARS stop** (left goes to it, right back to the
+tempo): hold A with left / right turns to the bar before or after, round the
+ends (held, they run on; Y held does the same); hold A with up / down sets the
+cell's bars, more or fewer (1, 2, 4 or 8, as the SONG screen's hold A).
 
 Hold **R1** and drag to paint hits at one level (the level of the hit you
 started on, or 90%). **Add R2 while R1 is held** and the brush paints
@@ -2116,8 +2119,10 @@ is let go, **left / right turn the pattern a step** later or earlier. It writes
 over the lane's bar as the dice do (a hit that stays where one was keeps its
 level and effects; a new one is placed at 90%), the box says EVEN: 5 HITS,
 TURNED 2, and undo puts the lane back.
-Up from the top lane is the tempo, and down from the bottom lane is the BARS
-stop (then the tempo, then the top lane: the column goes round either way).
+Up from the top lane is the tempo, and down from the bottom lane is the tempo
+too: BARS and the tempo are one row above the lanes, BARS on the left (up
+from either is the bottom lane, down the top lane: the column goes round
+either way).
 On the tempo hold A + up / down turns it, and **A tapped in
 time sets it** (from the second tap: the beat of the last five taps; a pause of
 two seconds starts again). SETUP's TEMPO row taps the same way.
@@ -2385,7 +2390,7 @@ playing in. The picture draws each cut where it is.
 - It is all undone by SELECT + B, and kept in the song and in a kit.
 - The sampler's CHOP still cuts its recording into 16 even slices.
 
-## DEVICE, drums: the kit
+## INST, drums: the kit
 
 ![The kit](manual/kit.png)
 
@@ -2410,10 +2415,15 @@ the lane as it was when A went down; B on SOURCE puts the built-in drum back.
 A on the lane's name still picks within its source: the list of recordings,
 or a synth lane's knobs.
 
-**Kits.** UP from lane 1 is the kit's own stop, at the top left: KIT and its
-name. Hold A + UP / DOWN there puts on the next / previous kit: seven
+**Kits.** UP from lane 1 is the kit's own stop, the box at the top left: KIT,
+its name and two arrows. **LEFT / RIGHT there puts on the previous / next
+kit**, one a press (held, they run on; the stick, one a push). Hold A + UP /
+DOWN (or LEFT / RIGHT) does the same, and B with A still held gives back the
+kit you had (and plays it). Each kit put on is heard, and is one step of
+undo. The list: seven
 built-in kits (DRUMS, SYNTH, TIGHT, BIG, ELECTRO, DUSTY, HAND DRUMS), then
-your own, **then each folder of `samples` that holds recordings**. B with A still held gives back the kit you had (and plays it). Y saves the kit as
+your own, **then each folder of `samples` that holds recordings**; the ends
+stop. Y saves the kit as
 it is now as KIT 1, KIT 2... (a file `kit 1.kit` beside the presets). Hold B
 a second deletes one of your own; the track keeps its sound. A kit is each
 lane's sound with its EDIT, FIT, VOLUME, CHOKE, FEEL and SWING, not the
@@ -2684,8 +2694,8 @@ is loud; holding A shapes it the way it is drawn.
 | L1 | Zoom: a tap goes closer (2 octaves, 1, then round to 3). Only a tap: anything done while L1 is held, a stick move included, zooms nothing |
 | Hold L1, up / down | The bar before or after, round the ends (through the FILL, once there is one), from anywhere on the grid |
 | Hold L1, left / right | The cell's count, more or fewer (1, 2, 4 or 8, as the SONG screen's hold A). One step of undo |
-| **TEMPO** (up from step 1 of bar 1, as up from the top lane on the drum grid) | The top bar's tempo, outlined. **A tapped in time sets it** (from the second tap: the beat of the last five taps; a pause of two seconds starts again). **Hold A, up / down**: a beat a minute; **left / right**: ten at a time; **the stick** up / down: freely, fast. The same as the drum grid's tempo; no step of undo (SELECT + B does not put a tempo back) |
-| BARS (up from TEMPO) | Left / right: the bar before or after, round the ends. **Hold A, up / down**: the cell's count, more or fewer (1, 2, 4 or 8, as the SONG screen's hold A). One step of undo. Down is TEMPO again; up comes round to the bottom of the cell |
+| **TEMPO** (up from step 1 of bar 1, as up from the top lane on the drum grid) | The top bar's tempo, outlined. **Left** is BARS; down is the grid again, up comes round to the bottom of the cell. **A tapped in time sets it** (from the second tap: the beat of the last five taps; a pause of two seconds starts again). **Hold A, up / down**: a beat a minute; **left / right**: ten at a time; **the stick** up / down: freely, fast. The same as the drum grid's tempo; no step of undo (SELECT + B does not put a tempo back) |
+| BARS (left of TEMPO) | **Hold A, left / right**: the bar before or after, round the ends. **Hold A, up / down**: the cell's count, more or fewer (1, 2, 4 or 8, as the SONG screen's hold A). One step of undo. Right is TEMPO again; down is the grid, up comes round to the bottom of the cell |
 | Hold L1, R1 / A | **Copy** the bar on screen (let go of R1 unmoved) / **paste** it over the bar on screen (see "Copy a bar, paste it on another"). The tap's zoom does not happen as well |
 | Hold L1, Y | **The FILL**: made as a copy of the bar on screen and shown; on it, off and on; from another bar, gone to (see "A FILL: one bar for the scene's last time round"). No chord is picked or placed, and the tap's zoom does not happen |
 
@@ -2885,7 +2895,7 @@ In the song file a chord's effects are one line after it, left out when none
 is set: `chordplay STEP STRUM ORDER TIME LEVEL LENGTHS`. A program from
 before chord effects skips the line and plays the chord plain.
 
-## DEVICE, a synth
+## INST, a synth
 
 ![A synth's panel](manual/phazed.png)
 

@@ -5502,6 +5502,18 @@ void testAFolderAsAKit() {
     TrackData& track = rig.project().tracks[0];
     const int kits = static_cast<int>(session.kits().size());
     kit.goToKit();
+    // LEFT / RIGHT without A (owner, 2026-11-28) step the same list, the folders after the kits, read on the press
+    // (A has not gone down on this screen yet).
+    session.loadKit(0, kits - 1);
+    rig.frames(1);
+    rig.tap(RIGHT);
+    CHECK(session.kitOf(0) == -1 && session.folderKitOf(0) == "drums");
+    rig.tap(RIGHT);
+    CHECK(session.folderKitOf(0) == "drums/inner");
+    rig.tap(LEFT), rig.tap(LEFT);
+    CHECK(session.kitOf(0) == kits - 1);
+    session.loadKit(0, 0);
+    rig.frames(2);
     rig.key(A, true);
     rig.frames(1);
     CHECK(hintsFit(rig)); // (kits, then folders)
@@ -5529,6 +5541,7 @@ void testAFolderAsAKit() {
     CHECK(session.kitOf(0) == 0 && track.laneSample[0][0] == 0);
     rig.key(A, false);
     rig.frames(2);
+
     // The stop reads FOLDER and its name while the kit is as it was put on; YOUR OWN once a lane changes.
     rig.frames(60);
     const int steps = session.undoSteps();
@@ -5538,8 +5551,8 @@ void testAFolderAsAKit() {
     Canvas canvas, scratch;
     if (canvas.ok) {
         rig.app.draw(canvas.r, *canvas.fonts);
-        const float x = 8 + 2.f + canvas.fonts->small.width("KIT") + 8.f;
-        CHECK(inked(canvas, scratch, 0, x, 34.f, "FOLDER DRUMS", ui::kTeal));
+        const float x = 8 + 7.f + canvas.fonts->small.width("KIT") + 8.f; // (in the KIT stop's box, owner 2026-11-28)
+        CHECK(inked(canvas, scratch, 0, x, KitScreen::kKitBoxY + (KitScreen::kKitBoxH - canvas.fonts->small.capHeight()) / 2.f, "FOLDER DRUMS", ui::kTeal));
     }
     session.setLaneLevel(0, 4, 0.5f);
     CHECK(session.folderKitOf(0).empty());

@@ -866,8 +866,8 @@ void testTheWordsFit() {
         rig.app.draw(canvas.r, *canvas.fonts);
     };
     const ui::Hint held[] = {{"UP / DOWN", "change bar"}, {"LEFT / RIGHT", "bar count"}, {"R1", "copy bar"}, {"A", "paste bar"}, {"Y", "make fill"}}; // (Y: the FILL, fillapp_test)
-    const ui::Hint grid[] = {{"LEFT / RIGHT", "bar"}, {"HOLD A", "more / fewer"}, {"START", "play"}};
-    const ui::Hint roll[] = {{"LEFT / RIGHT", "bar"}, {"HOLD A", "more / fewer"}};
+    const ui::Hint grid[] = {{"HOLD A", "more / fewer"}, {"START", "play"}, {"RIGHT", "tempo"}}; // (owner, 2026-11-28: TEMPO is right of BARS)
+    const ui::Hint roll[] = {{"HOLD A", "more / fewer"}, {"RIGHT", "tempo"}};
     drawn();
     CHECK(!barIs(held, 5));
     rig.key(L1, true);
@@ -879,16 +879,30 @@ void testTheWordsFit() {
     rig.frames(1);
     rig.app.drums().moveCursorTo(0, 0);
     rig.tap(UP);
-    rig.tap(UP);
+    rig.tap(LEFT);
     drawn();
     CHECK(rig.app.drums().cursorOnBars() && barIs(grid, 3) && ui::gHintsOver == 0);
+    // A held on BARS: the count up / down, the bar shown left / right (what a plain LEFT / RIGHT did before).
+    const ui::Hint barsHeld[] = {{"UP / DOWN", "more / fewer"}, {"LEFT / RIGHT", "bar"}};
+    rig.key(A, true);
+    rig.frames(1);
+    drawn();
+    CHECK(barIs(barsHeld, 2) && ui::gHintsOver == 0);
+    rig.key(A, false);
+    rig.frames(1);
     CHECK(rig.session().addTrack(TrackKind::Phazed));
     rig.project().track = 1;
     rig.frames(1);
     rig.app.notes().moveCursorTo(60, 0);
-    rig.tap(UP, 2); // (TEMPO, then BARS)
+    rig.tap(UP), rig.tap(LEFT); // (TEMPO, then BARS left of it)
     drawn();
     CHECK(rig.app.notes().cursorOnBars() && barIs(roll, 2) && ui::gHintsOver == 0);
+    rig.key(A, true);
+    rig.frames(1);
+    drawn();
+    CHECK(barIs(barsHeld, 2) && ui::gHintsOver == 0);
+    rig.key(A, false);
+    rig.frames(1);
     rig.key(L1, true);
     rig.frames(1);
     drawn();
@@ -903,8 +917,8 @@ void testTheWordsFit() {
     CHECK(rig.said() == "BAR 1 COPIED");
     rig.frames(100); // (1.5 s: gone)
     CHECK(rig.said().empty());
-    // From the grid, UP advertises BARS exactly where up leads to it.
-    const ui::Hint tempo[] = {{"A", "tap"}, {"HOLD A", "tempo"}, {"START", "play"}, {"UP", "bars"}};
+    // On TEMPO, LEFT advertises BARS exactly where it leads to it (owner, 2026-11-28: it was UP).
+    const ui::Hint tempo[] = {{"A", "tap"}, {"HOLD A", "tempo"}, {"START", "play"}, {"LEFT", "bars"}};
     rig.project().track = 0;
     rig.app.drums().moveCursorTo(0, 0);
     rig.tap(UP);
@@ -912,7 +926,7 @@ void testTheWordsFit() {
     CHECK(rig.app.drums().cursorOnTempo() && barIs(tempo, 4) && ui::gHintsOver == 0);
     rig.tap(DOWN);
     drawn();
-    CHECK(!barIs(tempo, 4)); // back on the lanes: no UP bars
+    CHECK(!barIs(tempo, 4)); // back on the lanes: no LEFT bars
     // The roll's TEMPO, up from its top step (owner, 2026-11-28): the drum grid's hints, word for word, and with A
     // held the same one.
     const ui::Hint tempoHeld[] = {{"UP / DOWN", "tempo"}};
@@ -974,8 +988,8 @@ void testTheWordsFit() {
 
 } // namespace
 
-// BARS IN THE ROLL: up from the top step is the BARS stop: hold A with up / down steps the
-// cell's bars along 1, 2, 4, 8 (as the Song screen's hold A); left / right turn to the bar
+// BARS IN THE ROLL: up from the top step is TEMPO, and LEFT of it the BARS stop: hold A with up / down steps
+// the cell's bars along 1, 2, 4, 8 (as the Song screen's hold A); hold A + left / right turn to the bar
 // before or after, round the ends. L1 is never held: no zoom.
 void testRollBarsLength() {
     Rig rig;
@@ -986,7 +1000,7 @@ void testRollBarsLength() {
     CHECK(rig.track(1).bars[0] == 1);
     const int zoom = rig.session().octavesShown();
     roll.moveCursorTo(60, 0);
-    rig.tap(UP, 2); // (TEMPO, then BARS)
+    rig.tap(UP), rig.tap(LEFT); // (TEMPO, then BARS left of it)
     CHECK(roll.cursorOnBars());
     rig.key(A, true);
     rig.tap(UP);
@@ -1007,38 +1021,57 @@ void testRollBarsLength() {
     rig.tap(DOWN);
     CHECK(rig.track(1).bars[0] == 1 && roll.noteHere() && roll.noteHere()->length == 2.f);
     rig.key(A, false);
-    // Left / right turn the bar shown: round the ends, the cursor keeping its place.
+    // A held + left / right turn the bar shown: round the ends, the cursor keeping its place. Without A they go
+    // between BARS and TEMPO, side by side (owner, 2026-11-28), and the ends stop.
     rig.session().setCellBars(1, 0, 4);
     rig.project().bar = 0;
     roll.moveCursorTo(60, 3);
-    rig.tap(UP, 5);
-    CHECK(roll.cursorOnBars());
+    rig.tap(UP, 4);
+    CHECK(roll.cursorOnTempo() && !roll.cursorOnBars());
     rig.tap(RIGHT);
-    CHECK(rig.project().bar == 1 && roll.cursorPitch() == 60 && roll.cursorStep() == 0);
+    CHECK(roll.cursorOnTempo() && !roll.cursorOnBars() && rig.project().bar == 0); // (nothing right of TEMPO)
+    rig.tap(LEFT);
+    CHECK(roll.cursorOnBars() && !roll.cursorOnTempo() && rig.project().bar == 0);
+    rig.tap(LEFT);
+    CHECK(roll.cursorOnBars() && rig.project().bar == 0); // (nothing left of BARS)
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    CHECK(rig.project().bar == 1 && roll.cursorOnBars() && roll.cursorPitch() == 60 && roll.cursorStep() == 0);
     rig.tap(RIGHT, 3);
     CHECK(rig.project().bar == 0); // round the end
     rig.tap(LEFT);
-    CHECK(rig.project().bar == 3); // ...and back round the start
+    CHECK(rig.project().bar == 3 && roll.cursorOnBars()); // ...and back round the start
+    rig.key(A, false);
     CHECK(rig.session().octavesShown() == zoom);
-    // Down from BARS is TEMPO, then the grid, at the top of the bar shown; up from BARS rounds to the bottom.
-    rig.tap(DOWN);
-    CHECK(!roll.cursorOnBars() && roll.cursorOnTempo() && rig.project().bar == 3);
+    rig.tap(RIGHT);
+    CHECK(roll.cursorOnTempo() && rig.project().bar == 3);
+    rig.tap(LEFT);
+    CHECK(roll.cursorOnBars() && rig.project().bar == 3);
+    // Down from BARS is the grid, at the top of the bar shown, and from TEMPO the same; up from either rounds to the bottom.
     rig.tap(DOWN);
     CHECK(!roll.cursorOnBars() && !roll.cursorOnTempo() && rig.project().bar == 3 && roll.cursorStep() == 0);
+    rig.tap(UP), rig.tap(DOWN);
+    CHECK(!roll.cursorOnBars() && !roll.cursorOnTempo() && roll.cursorStep() == 0);
     roll.moveCursorTo(60, 0);
     rig.project().bar = 0;
-    rig.tap(UP, 2);
+    rig.tap(UP), rig.tap(LEFT);
     CHECK(roll.cursorOnBars());
     rig.tap(UP);
     CHECK(!roll.cursorOnBars() && rig.project().bar == 3 && roll.cursorStep() == 15);
+    rig.project().bar = 0;
+    roll.moveCursorTo(60, 0);
+    rig.tap(UP);
+    CHECK(roll.cursorOnTempo());
+    rig.tap(UP);
+    CHECK(!roll.cursorOnTempo() && !roll.cursorOnBars() && rig.project().bar == 3 && roll.cursorStep() == 15);
     // Shortening under the bar shown puts the roll back on its first bar.
     rig.session().setCellBars(1, 0, 1);
     rig.frames(1);
     CHECK(rig.project().bar == 0);
 }
 
-// BARS ON THE GRID: up from the tempo is the BARS stop: hold A with up / down steps the cell's
-// bars; left / right turn the bar shown before or after, round the ends. L1 is never held.
+// BARS ON THE GRID: left of the tempo is the BARS stop: hold A with up / down steps the cell's
+// bars; A or Y held + left / right turn the bar shown before or after, round the ends. L1 is never held.
 void testDrumBarsLength() {
     Rig rig;
     PatternScreen& grid = rig.app.drums();
@@ -1046,7 +1079,7 @@ void testDrumBarsLength() {
     grid.moveCursorTo(0, 0);
     rig.tap(UP);
     CHECK(grid.cursorOnTempo());
-    rig.tap(UP);
+    rig.tap(LEFT);
     CHECK(grid.cursorOnBars());
     rig.key(A, true);
     rig.tap(UP);
@@ -1055,15 +1088,31 @@ void testDrumBarsLength() {
     CHECK(rig.track(0).bars[0] == 1);
     rig.key(A, false);
     CHECK(grid.cursorOnBars() && grid.cursorLane() == 0 && grid.cursorStep() == 0); // the cursor never moved
-    // Left / right turn the bar shown: round the ends, the cursor keeping its place.
+    // With A or Y held, left / right turn the bar shown: round the ends, the cursor keeping its place. Without,
+    // they go between BARS and TEMPO (owner, 2026-11-28), the bar shown staying.
     rig.session().setCellBars(0, 0, 4);
     rig.project().bar = 1;
     rig.tap(LEFT);
-    CHECK(rig.project().bar == 0 && grid.cursorLane() == 0 && grid.cursorStep() == 0);
-    rig.tap(LEFT);
-    CHECK(rig.project().bar == 3); // round the start
+    CHECK(rig.project().bar == 1 && grid.cursorOnBars()); // (nothing left of BARS)
     rig.tap(RIGHT);
-    CHECK(rig.project().bar == 0); // ...and back round the end
+    CHECK(rig.project().bar == 1 && grid.cursorOnTempo() && !grid.cursorOnBars());
+    rig.tap(RIGHT);
+    CHECK(rig.project().bar == 1 && grid.cursorOnTempo() && rig.project().tempo == 120.f); // (nothing right of TEMPO)
+    rig.tap(LEFT);
+    CHECK(grid.cursorOnBars());
+    for (SDL_Keycode with : {A, Y}) {
+        rig.project().bar = 1;
+        rig.key(with, true);
+        rig.frames(1);
+        rig.tap(LEFT);
+        CHECK(rig.project().bar == 0 && grid.cursorLane() == 0 && grid.cursorStep() == 0 && grid.cursorOnBars());
+        rig.tap(LEFT);
+        CHECK(rig.project().bar == 3); // round the start
+        rig.tap(RIGHT);
+        CHECK(rig.project().bar == 0 && grid.cursorOnBars()); // ...and back round the end
+        rig.key(with, false);
+        rig.frames(1);
+    }
     // Held, with A or Y held too, it runs on as the press did (gesture audit G21: the press turned the bar and
     // the held repeat did nothing). 13 frames: the press, and one repeat after the cursor's 170 wait.
     for (SDL_Keycode with : {A, Y}) {
@@ -1081,14 +1130,12 @@ void testDrumBarsLength() {
         rig.frames(1);
         CHECK(rig.project().bar == 3 && rig.track(0).bars[0] == 4 && grid.cursorOnBars());
     }
-    // Down from BARS is back through the tempo to the lanes; up from BARS rounds to the bottom.
+    // Down from BARS is the lanes; up from BARS rounds to the bottom.
     rig.tap(DOWN);
-    CHECK(!grid.cursorOnBars() && grid.cursorOnTempo());
-    rig.tap(DOWN);
-    CHECK(!grid.cursorOnTempo() && grid.cursorLane() == 0);
+    CHECK(!grid.cursorOnBars() && !grid.cursorOnTempo() && grid.cursorLane() == 0);
     rig.tap(UP);
     CHECK(grid.cursorOnTempo());
-    rig.tap(UP);
+    rig.tap(LEFT);
     CHECK(grid.cursorOnBars());
     rig.tap(UP);
     CHECK(!grid.cursorOnBars() && !grid.cursorOnTempo() && grid.cursorLane() == kDrumLanes - 1);
