@@ -271,6 +271,7 @@ public:
     // LEFT from the first is the list, RIGHT on the last stops), only the ways that do something: "LEFT" on the last
     // (and on a line of one dial), else "LEFT / RIGHT"; nullptr in the list. `last` is how many dials the line has.
     static const char* walkKeyFor(int column, int last);
+    static const char* sendWalkKeyFor(int column); // the SENDS line's: DOWN on ECHO, UP on SPACE (owner, 2026-11-28)
 
 private:
     static bool sends(int row) { return row == kSendsRow; }

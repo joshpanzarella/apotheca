@@ -1165,10 +1165,10 @@ void testDrawnOnFx() {
     CHECK(rig.chips().empty());
     rig.key(X, false);
     rig.draw();
-    // (No HOLD X: MOD on a send since LEFT / RIGHT walk the dials, 2026-11-25: on ECHO it would be 43 pixels over.)
-    const ui::Hint sendsBar[] = {{"LEFT", "dial"}, {"HOLD A", "turn"}, {"B", "none"}, {"L1 / R1", "track"}, {"START", "play"}};
+    // (No HOLD X: MOD on a send since the walk took its room, 2026-11-25; the sends walk UP / DOWN since 2026-11-28.)
+    const ui::Hint sendsBar[] = {{"UP", "ECHO"}, {"LEFT", "list"}, {"HOLD A", "turn"}, {"B", "none"}, {"L1 / R1", "track"}, {"START", "play"}};
     if (printing) std::printf("FX, a send: %.1f over\n", static_cast<double>(ui::gHintsOver));
-    CHECK(rig.plainBar(sendsBar, 5) && ui::gHintsOver == 0.f);
+    CHECK(rig.plainBar(sendsBar, 6) && ui::gHintsOver == 0.f);
     // A bus's setting: no HOLD X: MOD.
     fx.goTo(FxScreen::kBusRow, 1);
     rig.draw();

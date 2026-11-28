@@ -488,6 +488,14 @@ void FxScreen::press(Button b) {
             if (b == Button::Up) goTo(row_ - 1, 0);
             if (b == Button::Down) goTo(row_ + 1, 0);
             if (b == Button::Right && settings(row_) > 0) goTo(row_, last_[row_]);
+        } else if (sends(row_)) {
+            // The sends are drawn one above the other, so UP / DOWN walk them (owner, 2026-11-28: "it feels weird
+            // switching between the ECHO and SPACE sends because it's left/right, when I think it should be
+            // up/down"): DOWN from ECHO is SPACE, UP from SPACE is ECHO, the ends stop. LEFT from either is the
+            // list, on the same line (it passes through: last_ keeps the send it left); RIGHT does nothing.
+            if (b == Button::Down) goTo(row_, column_ + 1);
+            if (b == Button::Up && column_ > 1) goTo(row_, column_ - 1);
+            if (b == Button::Left) column_ = 0;
         } else {
             // In the settings, which sit side by side as dials: LEFT / RIGHT walk them (owner, 2026-11-25: "moving
             // up and down to traverse the parameters is odd"). LEFT from the first is back to the list, on the same
@@ -683,6 +691,11 @@ const char* FxScreen::typeKeyFor(int column, int types, int at) {
 const char* FxScreen::walkKeyFor(int column, int last) {
     if (column < 1) return nullptr;
     return column < last ? "LEFT / RIGHT" : "LEFT";
+}
+
+const char* FxScreen::sendWalkKeyFor(int column) {
+    if (column < 1) return nullptr;
+    return column > 1 ? "UP" : "DOWN";
 }
 
 // With A held on a slot's setting: the direction(s) that switch its TYPE, or nullptr (not held, the list,
@@ -1170,6 +1183,14 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (move) hint("HOLD Y", "move");
         hint("L1 / R1", "track");
         if (!move) hint("START", project_.playing ? "stop" : "play");
+    } else if (onSends) {
+        // The sends' walk is up and down (owner, 2026-11-28): the one way that goes to the other send, and LEFT the list.
+        hint(sendWalkKeyFor(column_), column_ > 1 ? "ECHO" : "SPACE");
+        hint("LEFT", "list");
+        hint("HOLD A", "turn");
+        hint("B", "none");
+        hint("L1 / R1", "track");
+        hint("START", project_.playing ? "stop" : "play");
     } else {
         // The walk (owner, 2026-11-25): the ways that do something, as L1 / R1 "track" says the one before / after;
         // on the first dial LEFT is the list too.
