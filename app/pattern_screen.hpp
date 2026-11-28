@@ -282,6 +282,26 @@ private:
     // The marks a hit's step effects put on its block (pattern_slices.cpp). `rise` is how far the pitch dash moves for a semitone.
     static void drawFxMarks(SDL_Renderer* renderer, const StepFx& fx, int x, int y, int w, int h, int middleY, float rise);
     void drawSlices(SDL_Renderer* renderer, const Fonts& fonts) const; // pattern_slices.cpp
+    void drawSliceLane(SDL_Renderer* r, const Fonts& fonts, bool onName, SDL_Color cursorColor, int count, bool own) const; // (its parts)
+    void drawSliceSteps(SDL_Renderer* r, const Fonts& fonts, bool onName, bool held, SDL_Color cursorColor, int playStep) const;
+    // onButton(), in its parts (pattern_screen.cpp). Those that return a bool: true when the press was theirs.
+    void triggerButton(const ButtonEvent& event);
+    bool sliceDiceButton(const ButtonEvent& event, const Input& input);
+    bool effectsButton(const ButtonEvent& event);
+    bool barKeyButton(const ButtonEvent& event, const Input& input);
+    void xButton(const ButtonEvent& event, const Input& input);
+    void yButton(const ButtonEvent& event);
+    // update(), in its parts (pattern_screen.cpp).
+    void updateCutDelete(const Input& input, Uint32 nowMs);
+    void stickTurnsEffects(float x, float y, float dt);
+    void stickShapes(float x, float y, float dt);
+    void stickRunsCursor(float x, float y, float dt);
+    // draw(), in its parts (pattern_screen.cpp).
+    void drawGrid(SDL_Renderer* r, const Fonts& fonts, bool onName, bool held, SDL_Color cursorColor) const;
+    void drawHits(SDL_Renderer* r, bool onName, bool held) const;
+    void drawStrip(SDL_Renderer* r, const Fonts& tight, bool onName, SDL_Color cursorColor) const;
+    void drawHitStrip(SDL_Renderer* r, const Fonts& tight) const;
+    void drawHints(SDL_Renderer* r, const Fonts& fonts, bool onName, bool held) const;
     void turnStart(float amount);    // with Y, sideways
     const char* laneLabel(int lane) const; // the drum's name, or its recording's
 

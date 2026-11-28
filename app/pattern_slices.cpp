@@ -24,6 +24,9 @@ void line(SDL_Renderer* r, int x1, int y1, int x2, int y2, SDL_Color c) {
     SDL_SetRenderDrawColor(r, c.r, c.g, c.b, c.a);
     SDL_RenderDrawLine(r, x1, y1, x2, y2);
 }
+
+// Where a point of the recording (0 to 1) is across the picture.
+int xOf(float start) { return kWaveX + static_cast<int>(std::round(start * kWaveW)); }
 } // namespace
 
 // A hit's step effects, as marks on its block and beside it. Inside: slits
@@ -52,32 +55,12 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
     const int count = slices();
     const float sliceW = static_cast<float>(kWaveW) / static_cast<float>(count);
     const Session::LaneSound& sound = session_.laneSound(project_.track, lane_);
-    const auto xOf = [&](float start) { return kWaveX + static_cast<int>(std::round(start * kWaveW)); };
     // SLICES AT THE HITS: a lane of its own cuts has slices of their own widths (EVEN: as it always was drawn).
     const bool own = !trk().laneCuts[lane_].even();
     const auto sliceX = [&](int k) { return own ? xOf(cutAt(k)) : xOf(static_cast<float>(k) / count); };
     const auto sliceWidth = [&](int k) { return own ? (k + 1 < count ? xOf(cutAt(k + 1)) : kWaveX + kWaveW) - xOf(cutAt(k)) : static_cast<int>(std::ceil(sliceW)); };
 
-    // ---- the lane: its name, its volume, and what a hit plays ------------------------
-    box(r, kNameX, kWaveY, kNameW, kWaveH, kBg, kLine);
-    const int filled = static_cast<int>(std::round((kNameW - 2) * trk().laneLevel[lane_]));
-    fill(r, kNameX + 1, kWaveY + 1, filled, kWaveH - 2, onName && shaping_ ? faded(kBrass, 110) : kPanel);
-    if (onName) outline(r, kNameX - 1, kWaveY - 1, kNameW + 2, kWaveH + 2, cursorColor, 2);
-    // Medium if it fits both at the size chosen and at LARGE, else small: so a smaller size never draws it bigger than
-    // LARGE does (it did at MEDIUM once MEDIUM was made smaller: the name fitted there in medium, at LARGE it did not).
-    (fonts.medium.width(laneLabel(lane_)) <= kNameW - 15 && fonts.fixed().medium.width(laneLabel(lane_)) <= kNameW - 15 ? fonts.medium : fonts.small).draw(r, static_cast<float>(kNameTextX), kWaveY + 10.f, laneLabel(lane_), kTeal);
-    fonts.small.draw(r, static_cast<float>(kNameTextX), kWaveY + 44.f, "EACH HIT", kDim);
-    fonts.small.draw(r, static_cast<float>(kNameTextX), kWaveY + 60.f, "PLAYS", kDim);
-    const char* plays = trk().laneOneSlice[lane_] ? "ONE SLICE" : "RUNS ON";
-    fonts.within(&Fonts::medium, plays, kNameW - 13.f).draw(r, static_cast<float>(kNameTextX), kWaveY + 78.f, plays, trk().laneOneSlice[lane_] ? kPurple : kText);
-    std::snprintf(text, sizeof text, count == 1 ? "%d SLICE" : "%d SLICES", count);
-    fonts.small.draw(r, static_cast<float>(kNameTextX), kWaveY + kWaveH - 22.f, text, kDim);
-    // ...and how they are cut, above it: EVEN, AT HITS 5, BY HAND (SLICES AT THE HITS).
-    cutsWord(text, sizeof text);
-    fonts.within(&Fonts::small, text, kNameW - 13.f).draw(r, static_cast<float>(kNameTextX), kWaveY + kWaveH - 40.f, text, own ? kPurple : kDim);
-    drawFeelMark(r, kWaveY, trk().laneFeel[lane_]); // the lane's feel, as on the grid
-    drawSwingMark(r, kWaveY, trk().laneSwing[lane_]); // ...its SWING
-    drawChokeMark(r, kWaveY, trk().laneChoke[lane_]); // ...and its CHOKE group
+    drawSliceLane(r, fonts, onName, cursorColor, count, own);
 
     // ---- which slices this bar's hits play, and which is playing ------------------------
     bool used[64] = {};
@@ -155,6 +138,39 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
     // Where the hit under the cursor comes in, exactly (it need not be on a cut).
     if (hitHere()) fill(r, xOf(pat().start[lane_][step_]), kWaveY - 2, 2, kWaveH + 4, turning_ == Turning::Start ? kBrass : cursorColor);
 
+    drawSliceSteps(r, fonts, onName, held, cursorColor, playStep);
+}
+
+// The lane: its name, its volume, and what a hit plays.
+void PatternScreen::drawSliceLane(SDL_Renderer* r, const Fonts& fonts, bool onName, SDL_Color cursorColor, int count, bool own) const {
+    char text[32];
+    // ---- the lane: its name, its volume, and what a hit plays ------------------------
+    box(r, kNameX, kWaveY, kNameW, kWaveH, kBg, kLine);
+    const int filled = static_cast<int>(std::round((kNameW - 2) * trk().laneLevel[lane_]));
+    fill(r, kNameX + 1, kWaveY + 1, filled, kWaveH - 2, onName && shaping_ ? faded(kBrass, 110) : kPanel);
+    if (onName) outline(r, kNameX - 1, kWaveY - 1, kNameW + 2, kWaveH + 2, cursorColor, 2);
+    // Medium if it fits both at the size chosen and at LARGE, else small: so a smaller size never draws it bigger than
+    // LARGE does (it did at MEDIUM once MEDIUM was made smaller: the name fitted there in medium, at LARGE it did not).
+    (fonts.medium.width(laneLabel(lane_)) <= kNameW - 15 && fonts.fixed().medium.width(laneLabel(lane_)) <= kNameW - 15 ? fonts.medium : fonts.small).draw(r, static_cast<float>(kNameTextX), kWaveY + 10.f, laneLabel(lane_), kTeal);
+    fonts.small.draw(r, static_cast<float>(kNameTextX), kWaveY + 44.f, "EACH HIT", kDim);
+    fonts.small.draw(r, static_cast<float>(kNameTextX), kWaveY + 60.f, "PLAYS", kDim);
+    const char* plays = trk().laneOneSlice[lane_] ? "ONE SLICE" : "RUNS ON";
+    fonts.within(&Fonts::medium, plays, kNameW - 13.f).draw(r, static_cast<float>(kNameTextX), kWaveY + 78.f, plays, trk().laneOneSlice[lane_] ? kPurple : kText);
+    std::snprintf(text, sizeof text, count == 1 ? "%d SLICE" : "%d SLICES", count);
+    fonts.small.draw(r, static_cast<float>(kNameTextX), kWaveY + kWaveH - 22.f, text, kDim);
+    // ...and how they are cut, above it: EVEN, AT HITS 5, BY HAND (SLICES AT THE HITS).
+    cutsWord(text, sizeof text);
+    fonts.within(&Fonts::small, text, kNameW - 13.f).draw(r, static_cast<float>(kNameTextX), kWaveY + kWaveH - 40.f, text, own ? kPurple : kDim);
+    drawFeelMark(r, kWaveY, trk().laneFeel[lane_]); // the lane's feel, as on the grid
+    drawSwingMark(r, kWaveY, trk().laneSwing[lane_]); // ...its SWING
+    drawChokeMark(r, kWaveY, trk().laneChoke[lane_]); // ...and its CHOKE group
+}
+
+// The steps under the recording, each hit with a line up to the slice it plays.
+void PatternScreen::drawSliceSteps(SDL_Renderer* r, const Fonts& fonts, bool onName, bool held, SDL_Color cursorColor, int playStep) const {
+    char text[32];
+    const bool own = !trk().laneCuts[lane_].even();
+    const float sliceW = static_cast<float>(kWaveW) / static_cast<float>(slices());
     // ---- the steps, and a line from each hit to its slice ----------------------------------
     for (int s = 0; s < kSteps; ++s) {
         const int x = kGridLeft + s * kStepW;
