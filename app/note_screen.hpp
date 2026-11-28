@@ -225,7 +225,7 @@ private:
     bool zooming_ = false, zoomUsed_ = false; // L1 is held; it did something (copied, pasted, moved)
     bool l1First_ = false; // L1 is held and went down with nothing else held: R1 let go unmoved copies the bar, A pastes it
     bool copyBarArmed_ = false; // ...R1 went down after it: let go where it went down, the bar copies
-    int copyBarPitch_ = 0, copyBarStep_ = 0;
+    int copyBarPitch_ = 0, copyBarStep_ = 0, copyBarBar_ = 0;
     int shownKeys_ = 24;
     int low_ = 48;   // the lowest key shown: C3, so middle C sits in the middle
 
@@ -243,10 +243,19 @@ private:
         float handLength = 4.f;
     } pickWas_;
     bool painting_ = false; // R1 is held
-    // X is held on a note or a chord: the cursor carries it.
+    // R1 is held on a note or a chord: the D-pad and the stick carry it, anywhere in the cell, in pitch and
+    // in time, its shape and length kept (owner, 2026-11-28: "hold R1 and move it to wherever I want").
     enum class Carry { Nothing, Note, Chord };
     Carry carrying_ = Carry::Nothing;
-    int carried_ = 0; // its slot
+    int carried_ = 0;       // its slot, in the bar carriedBar_ (not always the bar shown: see carryCursor)
+    int carriedBar_ = 0;
+    bool carryOnFill_ = false; // taken on the FILL: it stays on the FILL (a bar by itself)
+    int carryGrab_ = 0;     // how many steps into it the cursor took hold of it
+    struct CarryWas {       // what R1 found when it went down (B puts it back)
+        NoteEvent note;
+        ChordEvent chord;
+        int slot = 0, bar = 0, pitch = 0, step = 0;
+    } carryWas_;
     void fxRoll();                      // with X held, Y: the dice set the ratchet and the glide
     void fxThrow();                     // with X held, A: the note's or the chord's THROW a step round
     void fxFrom(int by);                // with X held on a note, L1 (-1) / R1 (+1): the track's GLIDE FROM, a click
@@ -262,9 +271,14 @@ private:
     bool fxWait_ = false; // the stick was already over when X went down: it does nothing until it has been let go
     bool fxLastFrame_ = false; // X was held on a note or chord last frame (its note can go from under it)
     bool stickWait_ = false;   // X let go with the stick still pushed: the stick does nothing until it comes back (as FX and DEVICE)
-    void carry(Button direction);       // the D-pad: a whole step, or a key
-    bool carryBy(int keys, int steps);  // false if it cannot go there
-    void carryFree(float steps);        // the stick: any distance in time, off the grid
+    enum class CarryTry { Moved, Taken, Edge };
+    void carry(Button direction);           // the D-pad and the stick: a whole step, or a key (over what is in the way)
+    CarryTry carryBy(int keys, int steps);  // exactly that far, or why not (Taken: try further; Edge: stop)
+    int carryCellSteps() const;             // the steps it may be carried over: the cell's bars, or the FILL's one
+    int carryAt(int bar, int step) const { return carryOnFill_ ? step : bar * kSteps + step; } // a place in them
+    bool carrySpanFree(int pitch, int from, float length) const; // nothing else of its kind there (-1 pitch: a chord)
+    void carryCursor(int pitch);            // the cursor on it again, in the bar its start is in
+    void putCarryBack();                    // B with R1 held: as R1 found it
     bool erasing_ = false;  // B is held: the cursor deletes what it crosses
     void eraseHere();
     float brush_ = kPlacedLevel;

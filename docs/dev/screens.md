@@ -536,7 +536,7 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     | the roll, Y held: chords / inversions | 5.25 / 3.75 | 13.6 / 13.6 |
     | the roll, A held: a note's length | 7.5 steps | 7.5 steps (its own rate, kept) |
     | the roll, A on BARS | once a push past half | once a push, any push (a choice) |
-    | the roll, R1 carrying: keys / in time | 7.5 / 4.5 steps | 50 / 4.5 (in time its own rate, kept) |
+    | the roll, R1 carrying: keys / in time | 7.5 / 4.5 steps | 50 / 50 (whole steps, both ways in one push: 2026-11-28, `notes-and-mods.md`) |
     | FX's and MOD's lines | 10.5, climbing to 31.5 | 50 |
     | FX's list of effects and a TYPE; MOD's targets and a choice with A | 3.75 | 13.6 |
     | FX's choice dial with A (TIME, TYPE, SHAPE) | 3.75 | 13.6 (twice the list's: a choice) |
@@ -558,8 +558,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     grid's tempo row (90 BPM) and its fills (a hit's level, a lane's level, nudge, chance, a slice's start: 3),
     SONG's scene tempo with L1 (90 BPM), the mixer (24 dB, 60 pan steps), MACRO (2), a MOD's DEPTH (1.2), FX's
     and MOD's turns (0.9, 1.8), a synth's setting (1.5 of its range), the sampler's settings, EDIT's boxes and
-    VOICE's knobs (their range), the roll's level (3), **the roll's note length (10 steps) and a carried note
-    slid in time (6 steps)**, a slice's cut with Y held in the slice view (a quarter second of sound, `kCutSlideSeconds`;
+    VOICE's knobs (their range), the roll's level (3), **the roll's note length (10 steps)** (a carried note slid in time, 6 steps, was one
+    until 2026-11-28: a carry now goes by whole steps at the cursor's pace, `notes-and-mods.md`), a slice's cut with Y held in the slice view (a quarter second of sound, `kCutSlideSeconds`;
     SLICES AT THE HITS, on merging the sampling lane). A turn is now as fast at the dead zone's edge as all the way over: the fine move is
     the D-pad's.
   - **A choice clicks** (CLAUDE.md: "Choices (a filter type) click once per push; they are not sliders").
@@ -575,6 +575,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     the cursor's a push of any length passed several types; at 3.75 a second, before, a push clicked once.
   - **Values turned, not steps run** ([owner-fix] review, 2026-11-25): the roll's note length with A held and
     a carried note slid in time with R1 are free (to any point in a step), where the D-pad goes a whole step.
+    (**The carry's slide is gone since 2026-11-28**: it left chords off the grid, which was half of "it does not
+    go where I want"; a carry is whole steps and keys, the stick at the cursor's pace, both ways at once.
+    `notes-and-mods.md`. The length's stays.)
     At twice the cursor's pace (50 steps a second at 75%, 0.8 of a step a frame) the stick could no longer land
     between the step lines, and the same A-held gesture had its level on its own rate and its length on the
     cursor's. Back on `kLengthStepsPerSecond` 10 and `kCarryStepsPerSecond` 6, push depth ignored, times STICK
