@@ -10,16 +10,16 @@ run --demo --view kit --samples $STEREO
 from 2.2
 length 20.0
 
-2.4 say Lane 6 plays a stereo recording: a ping-pong, left, right, left.
-4.6 say A on the sound's picture opens its EDIT.
+2.4 say Lane 6: a stereo ping-pong.
+4.6 say A on the picture: EDIT.
 4.6 tap RIGHT 4 0.25
 5.8 tap A
-7.0 say A stereo recording says STEREO at the top. Up from the boxes goes there.
+7.0 say Up: STEREO, at the top.
 7.4 tap UP
-9.0 say Hold A and press up: MONO. Both sides mixed into one, in the middle.
+9.0 say Hold A, up: MONO. Both in the middle.
 9.0 hold A 1.0
 9.4 tap UP
-13.4 say Hold A and press down: STEREO again, as the file is.
+13.4 say Hold A, down: STEREO again.
 13.4 hold A 1.0
 13.8 tap DOWN
-16.6 say The file itself is never changed. It is kept with the song.
+16.6 say The file is not changed.

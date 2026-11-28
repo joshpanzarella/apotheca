@@ -9,28 +9,28 @@ run --demo --view song
 from 2.4
 length 19.0
 
-2.6 say The pad track's MAIN page: a preset and eight macros.
+2.6 say A pad's MAIN page: eight macros.
 3.6 tap DOWN
 4.0 tap LEFT 2 0.3
-4.8 say Hold A and push the stick: TONE turns.
+4.8 say Hold A, push the stick: TONE.
 4.8 hold A 2.0
 5.2 stick UP 0.3
 6.0 stick DOWN 0.15
 7.0 tap RIGHT
-7.4 say MOTION: the sound starts to move.
+7.4 say MOTION: the sound moves.
 7.4 hold A 1.6
 7.8 stick UP 0.4
 9.2 tap DOWN
 9.5 tap LEFT
-9.9 say DETUNE: the second line goes out of tune.
+9.9 say DETUNE: out of tune.
 9.9 hold A 1.6
 10.3 stick UP 0.25
 11.7 tap RIGHT 3 0.3
-12.8 say OCTAVE is a choice: one click a push.
+12.8 say OCTAVE: one click a push.
 12.8 hold A 2.2
 13.2 stick UP 0.3
 14.0 stick UP 0.3
-15.6 say B puts a macro back as the preset has it.
+15.6 say B: back as the preset has it.
 15.6 tap B
 16.4 tap LEFT 3 0.3
 17.6 tap B

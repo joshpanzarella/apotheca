@@ -104,7 +104,7 @@ the chips read on a phone.
 | 07-kit | SOURCE: the snare to SYNTH, back to BUILT IN, to SAMPLE (the list); its EDIT: END, PITCH, REVERSE, X, B |
 | 08-catch-slices | Hold Y (1 bar), a tap of Y catches, L1 opens the slices, hold A + right on the name (AT HITS), R1 drag |
 | 09-fill | L1 + Y makes the FILL, a roll painted on it with R1, it plays on the last time round, FILL OFF / ON |
-| 10-bounce | SET's BOUNCE row: what, A, WORKING and TAIL, done; hold A + down for an earlier TAKE |
+| 10-bounce | SET's BOUNCE row: what, A, WORKING (TAIL too, if the desk is slow enough to show it), done; hold A + down for an earlier TAKE |
 | 11-stereo | A stereo ping-pong on lane 6 (the drums soloed), EDIT's STEREO box, MONO and back |
 
 The web pages (the files page, the sound designer) are a browser's, not the handheld's: no clip.

@@ -6,19 +6,19 @@ run --demo --view song
 from 0.4
 length 22.0
 
-0.6 say SONG: scenes down the side, tracks across. The song plays them in turn.
-3.4 say R1 on a cell copies it.
+0.6 say SONG: scenes down, tracks across.
+3.4 say R1 copies a cell.
 3.6 tap R1
 4.6 tap DOWN 3 0.35
-6.0 say R1 on another cell pastes it there. Now scene 4 has drums too.
+6.0 say R1 on another pastes it. Scene 4 plays.
 6.2 tap R1
-8.6 say Up from the top scene is the track's head.
+8.6 say Up from scene 1: the track's head.
 8.6 tap RIGHT 2 0.3
 9.4 tap UP 4 0.25
-11.0 say Hold A on the head: the mixer. Up and down set the level.
+11.0 say Hold A: the mixer. Up, down: level.
 11.0 hold A 5.6
 11.8 tap DOWN 5 0.2
-13.6 say Left and right pan it.
+13.6 say Left, right: pan.
 13.6 tap LEFT 4 0.25
 15.0 tap RIGHT 2 0.25
-17.4 say A changed track has a brass square on its head.
+17.4 say A changed track: a brass square.

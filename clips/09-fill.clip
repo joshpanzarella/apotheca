@@ -6,19 +6,19 @@ run --demo
 from 0.5
 length 22.0
 
-0.7 say The drum grid. This scene plays twice round.
-2.2 say Hold L1 and press Y: the FILL, a copy of the bar.
+0.7 say This scene plays twice.
+2.2 say Hold L1, Y: the FILL, a copy of the bar.
 2.2 hold L1 1.0
 2.6 tap Y
 4.0 tap RIGHT 7 0.15
-5.4 say Hold R1 and drag: a snare roll on its last steps.
+5.4 say Hold R1, drag: a snare roll.
 5.4 hold R1 1.2
 5.6 tap RIGHT 3 0.25
 7.0 tap DOWN 4 0.15
 7.8 hold R1 1.4
 8.0 tap LEFT 3 0.3
-9.8 say The FILL plays instead of the bar on the scene's last time round.
-14.6 say Hold L1 and press Y on it: FILL OFF. Again: on.
+9.8 say It plays on the last time round.
+14.6 say L1 + Y on it: off. Again: on.
 14.6 hold L1 1.0
 15.0 tap Y
 18.0 hold L1 1.0

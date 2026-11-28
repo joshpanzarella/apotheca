@@ -6,15 +6,15 @@ run --demo --view bounce-ready
 from 0.5
 length 18.0
 
-0.7 say SET, the BOUNCE row: the song made into a WAV file.
-2.0 say Left and right pick what: the whole song, each track, this track...
+0.7 say SET: BOUNCE.
+2.0 say Left, right: what to bounce.
 2.2 tap RIGHT 3 0.6
 4.4 tap LEFT 3 0.3
-5.8 say Each bounce is a fresh TAKE: chance and the dice roll again.
-7.2 say A starts it. The song plays on while it works.
+5.4 say Each one is a new TAKE.
+7.0 say A starts it.
 7.4 tap A
-9.0 say WORKING: how much of the song is done. Then TAIL: until the echoes die away.
-12.2 say Done: the next press makes TAKE 2.
-13.8 say Hold A and press down: an earlier take, to make it again.
+8.6 say WORKING: how far it is.
+12.2 say Done. Next: TAKE 2.
+13.8 say Hold A, down: an earlier take.
 13.8 hold A 2.4
 14.4 tap DOWN

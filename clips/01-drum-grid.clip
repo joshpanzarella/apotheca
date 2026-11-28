@@ -6,24 +6,24 @@ run --demo --view drums
 from 1.0
 length 17.0
 
-1.2 say The drum grid, with the song playing.
+1.2 say The drum grid.
 2.0 tap RIGHT 2 0.3
 2.8 tap A
 2.8 say A places a hit.
 3.4 tap RIGHT 3 0.3
 4.4 tap A
-5.4 say Hold A and press down or up: the hit gets softer or louder.
+5.4 say Hold A, down or up: softer, louder.
 5.4 hold A 2.8
 5.8 tap DOWN 4 0.3
 7.2 tap UP 2 0.3
-8.6 say Hold A and press right: the hit plays a little late.
+8.6 say Hold A, right: a little late.
 8.6 hold A 1.6
 9.1 tap RIGHT 2 0.4
-10.8 say Y on a hit lowers its chance: now it plays only sometimes.
+10.8 say Y: its chance goes down.
 11.0 tap Y
 11.8 tap Y
 13.0 say B deletes it.
 13.4 tap B
-14.4 say Y on an empty step places a maybe hit.
+14.4 say Y on an empty step: a maybe hit.
 14.6 tap LEFT
 15.2 tap Y

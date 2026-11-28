@@ -6,24 +6,24 @@ run --demo --view fx
 from 0.6
 length 21.0
 
-0.8 say FX: the track's three effects, its sends, the buses and the master.
+0.8 say The FX screen.
 2.2 tap DOWN
-2.6 say The FILTER line. Right goes into its dials.
+2.6 say Right: the dials.
 3.0 tap RIGHT
-4.0 say Hold A and push the stick: the filter closes, then opens.
+4.0 say Hold A, stick: the filter closes, opens.
 4.0 hold A 3.0
 4.4 stick DOWN 0.5
 5.6 stick UP 0.6
-7.4 say Left and right walk the dials.
+7.4 say Left, right: the next dial.
 7.6 tap RIGHT 2 0.6
 8.9 tap LEFT 3 0.5
-10.6 say Hold A on a line: the list of effects. Each one is heard as you step to it.
+10.6 say Hold A on a line: every effect, heard.
 10.6 hold A 6.2
 11.8 tap DOWN
-14.0 say Left and right pick its TYPE: DRIVE, SATURATE, FOLD.
+14.0 say Left, right: its TYPE.
 14.2 tap RIGHT 2 1.0
-16.8 say Let go of A and the one you are on goes in.
-18.4 say Hold A, then B: back as it was.
+16.8 say Let go: it goes in.
+18.4 say Hold A, then B: as it was.
 18.6 hold A 1.6
 19.0 tap DOWN
 19.6 tap B

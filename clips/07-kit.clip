@@ -6,32 +6,32 @@ run --demo --view kit-source --samples $SAMPLES
 from 0.6
 length 24.0
 
-0.8 say The kit: a row for each lane. SOURCE says where its sound comes from.
-2.4 say Hold A and press down: the snare becomes a SYNTH, a drum made from knobs.
+0.8 say The kit: one row a lane.
+2.4 say SOURCE. Hold A, down: SYNTH.
 2.4 hold A 1.2
 2.9 tap DOWN
-4.4 say Hold A and press up: BUILT IN again, then SAMPLE. The list of recordings opens.
+4.4 say Hold A, up: BUILT IN, then SAMPLE.
 4.4 hold A 2.0
 4.9 tap UP 2 0.8
 7.0 tap DOWN
 7.6 tap A
-9.0 say A on the sound's picture opens the lane's EDIT.
+9.0 say A on the picture: EDIT.
 9.0 tap RIGHT
 9.6 tap A
 10.6 tap RIGHT
-11.2 say Hold A and push the stick on END: only the first part plays.
+11.2 say Hold A on END: shorter.
 11.2 hold A 1.4
 11.6 stick DOWN 0.35
 13.0 tap DOWN
-13.4 say PITCH: three semitones down.
+13.4 say PITCH: three down.
 13.4 hold A 1.6
 13.8 tap DOWN 3 0.35
 15.4 tap RIGHT 2 0.3
-16.2 say REVERSE: the part played, end first.
+16.2 say REVERSE: end first.
 16.2 hold A 1.0
 16.6 tap UP
-17.6 say Hold X to hear the lane as edited. The file itself is never changed.
+17.6 say Hold X: hear it. The file is not changed.
 17.6 hold X 2.6
-20.8 say B puts the box back as it was. B again goes back to the kit.
+20.8 say B: the box back. B again: the kit.
 21.2 tap B
 22.0 tap B
