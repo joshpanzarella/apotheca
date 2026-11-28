@@ -180,6 +180,24 @@ private:
     void moveCursor(Button direction, bool pressed = false); // pressed: a press of the D-pad itself, not a run of it or the stick
     void setRepeats(int count);
     void playFromCursor(); // START: the song from the cursor's scene, or stop it
+
+    // onButton(), in its parts (song_screen.cpp). Those that return a bool: true when the press was theirs.
+    void listButton(const ButtonEvent& event, const Input& input);
+    void choosingButton(const ButtonEvent& event, const Input& input);
+    bool mixerButton(const ButtonEvent& event, const Input& input, bool deleteCalledOff);
+    bool headButton(const ButtonEvent& event, const Input& input);
+    void aButton(const ButtonEvent& event, bool deleteCalledOff);
+    void r1Button(const ButtonEvent& event);
+    void directionButton(Button b);
+    // draw(), in its parts (song_screen.cpp).
+    void drawHeads(SDL_Renderer* r, const Fonts& fonts, int colW, SDL_Color cursorColor) const; // the tracks', + TRACK and MASTER
+    void drawSceneRow(SDL_Renderer* r, const Fonts& fonts, int row, int colW, SDL_Color cursorColor) const;
+    void drawCell(SDL_Renderer* r, int t, int scene, int y, int colW, SDL_Color cursorColor, bool inSong, bool playingHere) const;
+    void drawMixCard(SDL_Renderer* r, const Fonts& fonts) const;
+    void drawSongList(SDL_Renderer* r, const Fonts& fonts) const;
+    void drawRevList(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int rowH, int shown, const char* saved) const;
+    void drawInstrumentList(SDL_Renderer* r, const Fonts& fonts) const;
+    void drawHints(SDL_Renderer* r, const Fonts& fonts) const;
     void stepBars(int by);
     void stepSceneTempo(int scene, int by);
     void stepSceneMeter(int scene, int by);

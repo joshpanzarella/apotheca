@@ -849,32 +849,13 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         return;
     }
     if (voicing_) {
-        std::snprintf(text, sizeof text, "%s / LANE %d VOICE", name, lane_ + 1);
-        topBar(r, fonts, View::Device, text, project_);
-        drawVoice(r, fonts);
-        scopeStrip(r, fonts, session_.engine);
-        Hint list[6];
-        int count = 0;
-        const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
-        const drumsynth::Voice& v = trk().laneSynth[lane_];
-        const bool onModel = voicePlace_ == kVoiceModel;
-        if (holding_) {
-            hint("UP / DOWN", onModel ? "model" : "turn it");
-            if (onModel) hint("LEFT / RIGHT", "voice");
-        } else {
-            hint("HOLD A", onModel ? "model" : "turn");
-            hint("B", onModel || bLeavesAfterY(voicePlace_) || v.dial[voicePlace_] == drumsynth::usualVoice(v.model).dial[voicePlace_] ? "back" : "default");
-            hint("Y", "roll");
-            hint("L1 / R1", "lane");
-            hint("START", project_.playing ? "stop" : "play");
-        }
-        hints(r, fonts, list, count);
+        drawVoicePage(r, fonts, name);
         return;
     }
     std::snprintf(text, sizeof text, "%s / KIT", name);
     topBar(r, fonts, View::Device, text, project_);
     const SDL_Color cursorColor = holding_ ? kBrass : kTeal;
-    const int rowH = kLaneRowH, top = kLaneTop, soundX = 8, soundW = 250, fitX = kFitX, fitW = kFitW, chokeX = kChokeX, chokeW = kChokeW, waveX = kWaveX, waveW = kWaveW;
+    const int soundX = 8, soundW = 250, fitX = kFitX, chokeX = kChokeX, waveX = kWaveX, waveW = kWaveW;
 
     // The KIT stop, where SOUND's heading stood: KIT and the kit the track's is (one of the list's, or YOUR OWN).
     {
@@ -902,77 +883,113 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fonts.within(&Fonts::small, said.c_str(), waveX + waveW - fitX - 4.f).draw(r, fitX + 2.f, 34.f, said.c_str(), kBrass);
     }
     for (int lane = 0; lane < kDrumLanes; ++lane) {
-        const int y = top + lane * rowH, h = rowH - kLaneGap;
-        const Session::LaneSound& sound = session_.laneSound(project_.track, lane);
-        const char* file = trk().laneSample[lane];
-        const bool here = lane == lane_;
-        const float textY = y + (h - fonts.medium.capHeight()) / 2.f;
-
-        const drumsynth::Voice& voice = trk().laneSynth[lane];
-        box(r, soundX, y, soundW, h, file[0] || voice.on() ? kPanel2 : kPanel, kLine);
-        std::snprintf(text, sizeof text, "%d", lane + 1);
-        fonts.small.draw(r, soundX + 7.f, y + (h - fonts.small.capHeight()) / 2.f, text, kDim);
-        if (voice.on()) { // a synth voice: its model's name, and SYNTH where a built-in drum says BUILT IN
-            fonts.medium.draw(r, soundX + 26.f, textY, drumsynth::modelName(voice.model), kText);
-            fonts.small.drawRight(r, soundX + soundW - 8.f, y + (h - fonts.small.capHeight()) / 2.f, "SYNTH", kDim);
-        } else if (file[0]) {
-            // Its own name, and the folder it is in (if any) small on the right.
-            std::string upper = sampleLabel(file), folder = sampleLabel(sampleFolderOf(file)); // (the folder it is in: of two, the inner one)
-            for (char& c : upper) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
-            for (char& c : folder) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
-            // (At XL a name that does not fit whole is held at LARGE, and cut as it is cut at LARGE: never shorter.)
-            const Font& folderFont = fonts.within(&Fonts::small, folder.c_str(), 70.f);
-            while (!folder.empty() && folderFont.width(folder.c_str()) > 70) folder.pop_back();
-            const float room = soundW - 34.f - (folder.empty() ? 0.f : folderFont.width(folder.c_str()) + 14.f);
-            const Font& nameFont = fonts.within(&Fonts::medium, upper.c_str(), room);
-            while (!upper.empty() && nameFont.width(upper.c_str()) > room) upper.pop_back();
-            nameFont.draw(r, soundX + 26.f, y + (h - nameFont.capHeight()) / 2.f, upper.c_str(), sound.missing ? kDim : kText);
-            if (!folder.empty()) folderFont.drawRight(r, soundX + soundW - 8.f, y + (h - folderFont.capHeight()) / 2.f, folder.c_str(), kDim);
-        } else {
-            fonts.medium.draw(r, soundX + 26.f, textY, DrumKit::laneName(lane), kDim);
-            fonts.small.drawRight(r, soundX + soundW - 8.f, y + (h - fonts.small.capHeight()) / 2.f, "BUILT IN", kLine);
-        }
-        if (here && !onKit_ && column_ == kSound) outline(r, soundX - 1, y - 1, soundW + 2, h + 2, cursorColor, 2);
-
-        const int fit = trk().laneFit[lane];
-        box(r, fitX, y, fitW, h, kPanel, kLine);
-        const bool fits = file[0] || voice.on(); // (a synth voice is fitted as a recording; the built-in drum is not)
-        if (!fits) std::snprintf(text, sizeof text, "-");
-        else laneFitText(fit, project_.meterOf(project_.scene), text, sizeof text);
-        fonts.medium.draw(r, fitX + 9.f, textY, text, fit > 0 && fits ? kPurple : kDim);
-        if (here && !onKit_ && column_ == kFit) outline(r, fitX - 1, y - 1, fitW + 2, h + 2, cursorColor, 2);
-
-        // CHOKE: NONE, or the group, in the colour of the mark on the drum grid's lane name.
-        const int group = trk().laneChoke[lane];
-        box(r, chokeX, y, chokeW, h, kPanel, kLine);
-        fonts.medium.draw(r, chokeX + 9.f, textY, laneChokeText(group), group == kChokeNone ? kDim : kBrass);
-        if (here && !onKit_ && column_ == kChoke) outline(r, chokeX - 1, y - 1, chokeW + 2, h + 2, cursorColor, 2);
-
-        // The recording's outline, and what is being done with it.
-        if (sound.missing) { // (on two short lines: the column is narrower since CHOKE)
-            const char* gone = "FILE NOT FOUND.";
-            const char* plays = "THE DRUM PLAYS.";
-            const Font& goneFont = fonts.within(&Fonts::small, plays, waveW - 6.f); // (the longer: both lines in its lettering)
-            const float lineGap = 4.f, linesH = 2.f * goneFont.capHeight() + lineGap;
-            goneFont.draw(r, waveX + 4.f, y + (h - linesH) / 2.f, gone, kBrass);
-            goneFont.draw(r, waveX + 4.f, y + (h - linesH) / 2.f + goneFont.capHeight() + lineGap, plays, kBrass);
-        } else if (!sound.peaks.empty()) {
-            const int count = static_cast<int>(sound.peaks.size()), ww = waveW - 70;
-            for (int i = 0; i < count; ++i) {
-                const int ph = 1 + static_cast<int>(sound.peaks[static_cast<std::size_t>(i)] * (h - 3));
-                fill(r, waveX + ww * i / count, y + (h - ph) / 2, 1, ph, here ? kText : kDim);
-            }
-            if (lane == headLane_) drawPlayhead(r, head_, lastMs_, waveX, y + 1, ww, h - 2);
-            if (sound.shaping) std::snprintf(text, sizeof text, "MAKING");
-            else if (sound.waiting) std::snprintf(text, sizeof text, "FITTING");
-            else std::snprintf(text, sizeof text, "%.1f S", sound.seconds);
-            const bool edited = !trk().laneEdit[lane].atRest(); // (its seconds purple, as a FIT that is on)
-            fonts.small.drawRight(r, waveX + waveW - 2.f, y + (h - fonts.small.capHeight()) / 2.f, text, sound.waiting ? kBrass : edited ? kPurple : kDim);
-        }
-        if (here && !onKit_ && column_ == kEdit) outline(r, waveX - 1, y - 1, waveW + 2, h + 2, cursorColor, 2);
+        drawLaneRow(r, fonts, lane, cursorColor);
     }
     scopeStrip(r, fonts, session_.engine);
 
+    drawHints(r, fonts);
+}
+
+// A lane's synth voice (its VOICE view), with its hints.
+void KitScreen::drawVoicePage(SDL_Renderer* r, const Fonts& fonts, const char* name) const {
+    char text[64];
+    std::snprintf(text, sizeof text, "%s / LANE %d VOICE", name, lane_ + 1);
+    topBar(r, fonts, View::Device, text, project_);
+    drawVoice(r, fonts);
+    scopeStrip(r, fonts, session_.engine);
+    Hint list[6];
+    int count = 0;
+    const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
+    const drumsynth::Voice& v = trk().laneSynth[lane_];
+    const bool onModel = voicePlace_ == kVoiceModel;
+    if (holding_) {
+        hint("UP / DOWN", onModel ? "model" : "turn it");
+        if (onModel) hint("LEFT / RIGHT", "voice");
+    } else {
+        hint("HOLD A", onModel ? "model" : "turn");
+        hint("B", onModel || bLeavesAfterY(voicePlace_) || v.dial[voicePlace_] == drumsynth::usualVoice(v.model).dial[voicePlace_] ? "back" : "default");
+        hint("Y", "roll");
+        hint("L1 / R1", "lane");
+        hint("START", project_.playing ? "stop" : "play");
+    }
+    hints(r, fonts, list, count);
+}
+
+// A lane's row: its sound, FIT TO, CHOKE and the recording's picture.
+void KitScreen::drawLaneRow(SDL_Renderer* r, const Fonts& fonts, int lane, SDL_Color cursorColor) const {
+    char text[64];
+    const int rowH = kLaneRowH, top = kLaneTop, soundX = 8, soundW = 250, fitX = kFitX, fitW = kFitW, chokeX = kChokeX, chokeW = kChokeW, waveX = kWaveX, waveW = kWaveW;
+    const int y = top + lane * rowH, h = rowH - kLaneGap;
+    const Session::LaneSound& sound = session_.laneSound(project_.track, lane);
+    const char* file = trk().laneSample[lane];
+    const bool here = lane == lane_;
+    const float textY = y + (h - fonts.medium.capHeight()) / 2.f;
+
+    const drumsynth::Voice& voice = trk().laneSynth[lane];
+    box(r, soundX, y, soundW, h, file[0] || voice.on() ? kPanel2 : kPanel, kLine);
+    std::snprintf(text, sizeof text, "%d", lane + 1);
+    fonts.small.draw(r, soundX + 7.f, y + (h - fonts.small.capHeight()) / 2.f, text, kDim);
+    if (voice.on()) { // a synth voice: its model's name, and SYNTH where a built-in drum says BUILT IN
+        fonts.medium.draw(r, soundX + 26.f, textY, drumsynth::modelName(voice.model), kText);
+        fonts.small.drawRight(r, soundX + soundW - 8.f, y + (h - fonts.small.capHeight()) / 2.f, "SYNTH", kDim);
+    } else if (file[0]) {
+        // Its own name, and the folder it is in (if any) small on the right.
+        std::string upper = sampleLabel(file), folder = sampleLabel(sampleFolderOf(file)); // (the folder it is in: of two, the inner one)
+        for (char& c : upper) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+        for (char& c : folder) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+        // (At XL a name that does not fit whole is held at LARGE, and cut as it is cut at LARGE: never shorter.)
+        const Font& folderFont = fonts.within(&Fonts::small, folder.c_str(), 70.f);
+        while (!folder.empty() && folderFont.width(folder.c_str()) > 70) folder.pop_back();
+        const float room = soundW - 34.f - (folder.empty() ? 0.f : folderFont.width(folder.c_str()) + 14.f);
+        const Font& nameFont = fonts.within(&Fonts::medium, upper.c_str(), room);
+        while (!upper.empty() && nameFont.width(upper.c_str()) > room) upper.pop_back();
+        nameFont.draw(r, soundX + 26.f, y + (h - nameFont.capHeight()) / 2.f, upper.c_str(), sound.missing ? kDim : kText);
+        if (!folder.empty()) folderFont.drawRight(r, soundX + soundW - 8.f, y + (h - folderFont.capHeight()) / 2.f, folder.c_str(), kDim);
+    } else {
+        fonts.medium.draw(r, soundX + 26.f, textY, DrumKit::laneName(lane), kDim);
+        fonts.small.drawRight(r, soundX + soundW - 8.f, y + (h - fonts.small.capHeight()) / 2.f, "BUILT IN", kLine);
+    }
+    if (here && !onKit_ && column_ == kSound) outline(r, soundX - 1, y - 1, soundW + 2, h + 2, cursorColor, 2);
+
+    const int fit = trk().laneFit[lane];
+    box(r, fitX, y, fitW, h, kPanel, kLine);
+    const bool fits = file[0] || voice.on(); // (a synth voice is fitted as a recording; the built-in drum is not)
+    if (!fits) std::snprintf(text, sizeof text, "-");
+    else laneFitText(fit, project_.meterOf(project_.scene), text, sizeof text);
+    fonts.medium.draw(r, fitX + 9.f, textY, text, fit > 0 && fits ? kPurple : kDim);
+    if (here && !onKit_ && column_ == kFit) outline(r, fitX - 1, y - 1, fitW + 2, h + 2, cursorColor, 2);
+
+    // CHOKE: NONE, or the group, in the colour of the mark on the drum grid's lane name.
+    const int group = trk().laneChoke[lane];
+    box(r, chokeX, y, chokeW, h, kPanel, kLine);
+    fonts.medium.draw(r, chokeX + 9.f, textY, laneChokeText(group), group == kChokeNone ? kDim : kBrass);
+    if (here && !onKit_ && column_ == kChoke) outline(r, chokeX - 1, y - 1, chokeW + 2, h + 2, cursorColor, 2);
+
+    // The recording's outline, and what is being done with it.
+    if (sound.missing) { // (on two short lines: the column is narrower since CHOKE)
+        const char* gone = "FILE NOT FOUND.";
+        const char* plays = "THE DRUM PLAYS.";
+        const Font& goneFont = fonts.within(&Fonts::small, plays, waveW - 6.f); // (the longer: both lines in its lettering)
+        const float lineGap = 4.f, linesH = 2.f * goneFont.capHeight() + lineGap;
+        goneFont.draw(r, waveX + 4.f, y + (h - linesH) / 2.f, gone, kBrass);
+        goneFont.draw(r, waveX + 4.f, y + (h - linesH) / 2.f + goneFont.capHeight() + lineGap, plays, kBrass);
+    } else if (!sound.peaks.empty()) {
+        const int count = static_cast<int>(sound.peaks.size()), ww = waveW - 70;
+        for (int i = 0; i < count; ++i) {
+            const int ph = 1 + static_cast<int>(sound.peaks[static_cast<std::size_t>(i)] * (h - 3));
+            fill(r, waveX + ww * i / count, y + (h - ph) / 2, 1, ph, here ? kText : kDim);
+        }
+        if (lane == headLane_) drawPlayhead(r, head_, lastMs_, waveX, y + 1, ww, h - 2);
+        if (sound.shaping) std::snprintf(text, sizeof text, "MAKING");
+        else if (sound.waiting) std::snprintf(text, sizeof text, "FITTING");
+        else std::snprintf(text, sizeof text, "%.1f S", sound.seconds);
+        const bool edited = !trk().laneEdit[lane].atRest(); // (its seconds purple, as a FIT that is on)
+        fonts.small.drawRight(r, waveX + waveW - 2.f, y + (h - fonts.small.capHeight()) / 2.f, text, sound.waiting ? kBrass : edited ? kPurple : kDim);
+    }
+    if (here && !onKit_ && column_ == kEdit) outline(r, waveX - 1, y - 1, waveW + 2, h + 2, cursorColor, 2);
+}
+
+void KitScreen::drawHints(SDL_Renderer* r, const Fonts& fonts) const {
     Hint list[8];
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };

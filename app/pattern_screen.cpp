@@ -776,165 +776,14 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
 
     if (b == Button::L2 || b == Button::R2) {
-        // The app sends these here only while A is held: nudge, early or late,
-        // a tenth of a step. The same as A with the D-pad sideways.
-        if (shaping_) {
-            if (event.down && hitHere()) nudgeExact(b == Button::R2 ? Button::Right : Button::Left, false);
-            return;
-        }
-        // R2 while R1 is painting: the brush paints random levels for as
-        // long as R2 is held too. (R2 by itself is "next screen"; the app
-        // only sends it here with R1 down.)
-        if (b != Button::R2) return;
-        if (event.down && paint_ == Paint::OneLevel) {
-            paint_ = Paint::Random;
-            paintHere();
-        } else if (!event.down && paint_ == Paint::Random) {
-            paint_ = Paint::OneLevel;
-        }
+        triggerButton(event);
         return;
     }
-    if (fxHeld_ && (b == Button::L1 || b == Button::R1)) {
-        // With X held on a hit: L1 turns it backwards and back, R1 steps its cut round.
-        if (event.down && hitHere()) {
-            StepFx fx = pat().fx[lane_][step_];
-            if (b == Button::L1) fx.reverse = fx.reverse ? 0 : 1;
-            else fx.cut = static_cast<std::uint8_t>(fx.cut + 1); // past the last, setFx makes it "off" again
-            setFx(lane_, step_, fx);
-            if (!project_.playing) hearHit();
-        }
-        return;
-    }
-    if (dicing_ && !ySpent_ && !onTempo_ && step_ == kLaneName && !feelHeld_ && (b == Button::L1 || b == Button::R1)) {
-        // EVEN: one hit more (R1) or fewer (L1), spread evenly. Its own turn kept while Y stays held.
-        if (event.down) {
-            const int now = evening_ ? evenHits_ : laneHits();
-            if (!evening_) evenTurn_ = 0;
-            evening_ = true;
-            evenLane(now + (b == Button::R1 ? 1 : -1), evenTurn_);
-        }
-        return;
-    }
-    if (slicing_ && dicing_ && hitHere() && b == Button::R1 && !input.held(Button::L1)) { // (X held: R1 is CUT, above; Y spent on X's dice is no dicing_)
-        // SAVE A SLICE (batch S1, 2026-11-25): with Y held on a hit (where its sound starts is Y's), R1 saves the
-        // slice it plays as a new recording (R1 saves, as in a lane's EDIT view and on the preset stops). Y's let
-        // go is then no tap: the hit's chance stays.
-        if (event.down) {
-            saveSlice();
-            yDidSomething_ = true;
-        }
-        return;
-    }
-    if (event.down && b != Button::B) cutDeleting_ = false; // any other press calls a held B off
-    if (!event.down && b == Button::B && cutDeleting_) { // let go before the bar filled: nothing deleted
-        cutDeleting_ = false;
-        std::snprintf(said_, sizeof said_, "HOLD B TO DELETE THE CUT");
-        saidUntil_ = lastMs_ + 2500;
-        return;
-    }
-    if (slicing_ && dicing_ && !ySpent_ && hitHere() && (b == Button::A || b == Button::B) && !input.held(Button::L1)) {
-        // SLICES AT THE HITS (batch S2): with Y held on a hit (where its sound starts is Y's), A adds a cut inside
-        // its slice and a held B deletes the cut its slice begins at, once its bar has filled (review fix,
-        // 2026-11-25: it was a tap, "never another button" in the buttons' standards). Y's let go is then no tap:
-        // the hit's chance stays. A's press is spent (its hold shapes nothing).
-        if (event.down) {
-            if (b == Button::A) {
-                addCut(), aSpent_ = true;
-            } else {
-                cutDeleting_ = true;
-                cutDeleteSince_ = lastMs_;
-                cutDeletePart_ = 0.f;
-                cutDeleteLane_ = lane_, cutDeleteStep_ = step_;
-            }
-            yDidSomething_ = true;
-        }
-        return;
-    }
-    if (feelHeld_ && (b == Button::L1 || b == Button::R1)) {
-        // SWING, a click less or more. (The slices and the brush wait until X is let go.)
-        if (event.down) swingTurn(b == Button::R1 ? 1 : -1);
-        return;
-    }
-    if ((fxHeld_ || feelHeld_) && b == Button::Y) {
-        // The dice, for what this hit does, or for the lane's feel. (Y's own jobs wait until X is let go;
-        // and if X is let go first, Y coming up after it is not a tap: it rolls nothing and steps no chance.)
-        // Nor is it Y's hold if X is let go first and Y stays down: `ySpent_`, until Y comes up.)
-        if (event.down) {
-            yDidSomething_ = true;
-            ySpent_ = true;
-            if (feelHeld_) feelRoll();
-            else fxRoll();
-        }
-        return;
-    }
-    if ((fxHeld_ || feelHeld_) && b == Button::B) {
-        if (event.down) fxEmpty(); // what X shows, emptied. (B's own delete waits until X is let go.)
-        return;
-    }
-    if (feelHeld_ && b == Button::A) {
-        // This lane's feel onto every lane. (A's own jobs wait until X is let go, and this press of A
-        // does none of them even then: `aSpent_`. It was pressed for the feel.)
-        if (event.down) feelToAll(), aSpent_ = true;
-        return;
-    }
-    if (fxHeld_ && b == Button::A) {
-        if (event.down) fxThrow(), aSpent_ = true; // THROW, a step round. (A's own jobs, placing and shaping, wait until X is let go and A is pressed again.)
-        return;
-    }
-    // L1 held (pressed first): R1 copies the bar shown, A pastes over it. Nothing else of R1's or A's.
-    if (event.down && b != Button::L1 && l1First_) l1Used_ = true; // L1 let go is then no tap
-    if (event.down && l1First_ && input.held(Button::L1) && !input.held(Button::X) && (b == Button::R1 || b == Button::A)) {
-        if (b == Button::R1) session_.copyBarHere();
-        else session_.pasteBarHere(), aSpent_ = true; // (A's hold does nothing either: no nudge with the D-pad)
-        return;
-    }
-    // L1 held (pressed first) + Y: the FILL (Session::fillKeyHere): made from the bar shown and gone to, gone to,
-    // or on it, off and on. Y was pressed for that: its let go rolls no dice and steps no chance, and its hold is
-    // not the dice (no "maybe" hit on its press either).
-    if (event.down && l1First_ && input.held(Button::L1) && !input.held(Button::X) && b == Button::Y) {
-        session_.fillKeyHere();
-        yDidSomething_ = true;
-        ySpent_ = true;
-        return;
-    }
-    // (The bar shown and the cell's count live on the BARS stop too, above the tempo.)
-    // Hold L1, up / down: the bar before or after, round the ends (as on the roll). Left / right:
-    // the cell's bars, more or fewer. Only with L1 held first and nothing else going: shaping,
-    // painting, the dice, the step effects and the feel keep the keys, and R1 or A held is a bar
-    // copy or paste on its way.
-    if (event.down && l1First_ && input.held(Button::L1) && !input.held(Button::X) && !shaping_ && paint_ == Paint::None && !dicing_ && !fxHeld_ && !feelHeld_ && !onTempo_ && !onBars_ &&
-        !input.held(Button::R1) && !input.held(Button::A)) {
-        if (b == Button::Up || b == Button::Down) {
-            moveBar(b == Button::Down ? 1 : -1); // (1 ... the last bar, then the FILL once made, then 1)
-            return;
-        }
-        if (b == Button::Left || b == Button::Right) {
-            stepBars(b == Button::Right ? 1 : -1);
-            return;
-        }
-    }
+    if (sliceDiceButton(event, input)) return;
+    if (effectsButton(event)) return;
+    if (barKeyButton(event, input)) return;
     if (b == Button::X) {
-        // X let go with the stick still pushed for the effects or the feel: the stick moves nothing until it
-        // has come back, as on FX and DEVICE (gesture audit G14), so the cursor does not jump off.
-        if (!event.down && (fxHeld_ || feelHeld_)) stickWait_ = input.stickX() != 0.f || input.stickY() != 0.f;
-        // Hears what is under the cursor, as everywhere. On a hit it is also a hold: the stick then sets its step effects.
-        fxHeld_ = event.down && hitHere() && !shaping_ && !dicing_ && paint_ == Paint::None;
-        // On a lane's name it is the same hold for the lane's FEEL, and the drum is heard as ever
-        // (for as long as X is held: a recording to its end; the Session lets it go).
-        feelHeld_ = event.down && !onTempo_ && !onBars_ && step_ == kLaneName && !shaping_ && !dicing_ && paint_ == Paint::None;
-        fxSaved_ = 0.f;
-        fxWas_ = false;
-        // A direction that was already held (the cursor was on its way here) is not a turn of the
-        // effect: X only heard the hit. It must be let go and pushed again.
-        fxWait_ = input.stickX() != 0.f || input.stickY() != 0.f;
-        if (fxHeld_ || feelHeld_) repeating_ = Button::None;
-        axis_ = Axis::None;
-        if (!event.down || onTempo_ || onBars_) return;
-        // On the lane's name or an empty step it sounds for as long as X is held (the Session lets it
-        // go). A hit is heard as the pattern plays it: X held there is the step effects' hold.
-        if (hitHere()) hearHit();
-        else if (slicing_ && onStep()) session_.hearLaneHeld(project_.track, lane_, kNewHitLevel, this, ownStart(step_), slicePart(ownStart(step_))); // the slice a hit placed here would play
-        else session_.hearLaneHeld(project_.track, lane_, kNewHitLevel, this);
+        xButton(event, input);
         return;
     }
     if (b == Button::L1) {
@@ -961,23 +810,7 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (b == Button::Y) {
-        if (event.down) {
-            yDidSomething_ = false;
-            if (onStep() && !hitHere()) {
-                placeHit(kMaybe); // a "maybe" hit
-                yDidSomething_ = true;
-            }
-        } else if (!yDidSomething_ && !onTempo_ && !onBars_ && step_ == kLaneName) {
-            diceReshuffle(); // a plain tap on a lane's name rolls the dice
-        } else if (!yDidSomething_ && hitHere()) {
-            // A plain tap on a hit steps its chance down a quarter, and round again.
-            const float now = pat().chance[lane_][step_];
-            setChance(lane_, step_, now > 0.76f ? 0.75f : now > 0.51f ? 0.5f : now > 0.26f ? 0.25f : 1.f);
-        }
-        dicing_ = event.down && !onBars_;
-        diceSaved_ = 0.f;
-        axis_ = Axis::None;
-        if (!event.down && !shaping_) turning_ = Turning::Nothing;
+        yButton(event);
         return;
     }
     if (b == Button::R1) {
@@ -1015,6 +848,211 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
 }
 
+// L2 / R2: the App sends them here only while A is held (a nudge) or R1 paints (random levels).
+void PatternScreen::triggerButton(const ButtonEvent& event) {
+    const Button b = event.button;
+    // The app sends these here only while A is held: nudge, early or late,
+    // a tenth of a step. The same as A with the D-pad sideways.
+    if (shaping_) {
+        if (event.down && hitHere()) nudgeExact(b == Button::R2 ? Button::Right : Button::Left, false);
+        return;
+    }
+    // R2 while R1 is painting: the brush paints random levels for as
+    // long as R2 is held too. (R2 by itself is "next screen"; the app
+    // only sends it here with R1 down.)
+    if (b != Button::R2) return;
+    if (event.down && paint_ == Paint::OneLevel) {
+        paint_ = Paint::Random;
+        paintHere();
+    } else if (!event.down && paint_ == Paint::Random) {
+        paint_ = Paint::OneLevel;
+    }
+}
+
+// With X held on a hit or Y held (the dice, a slice's cut): L1 / R1, A and B. True when the press was theirs.
+bool PatternScreen::sliceDiceButton(const ButtonEvent& event, const Input& input) {
+    const Button b = event.button;
+    if (fxHeld_ && (b == Button::L1 || b == Button::R1)) {
+        // With X held on a hit: L1 turns it backwards and back, R1 steps its cut round.
+        if (event.down && hitHere()) {
+            StepFx fx = pat().fx[lane_][step_];
+            if (b == Button::L1) fx.reverse = fx.reverse ? 0 : 1;
+            else fx.cut = static_cast<std::uint8_t>(fx.cut + 1); // past the last, setFx makes it "off" again
+            setFx(lane_, step_, fx);
+            if (!project_.playing) hearHit();
+        }
+        return true;
+    }
+    if (dicing_ && !ySpent_ && !onTempo_ && step_ == kLaneName && !feelHeld_ && (b == Button::L1 || b == Button::R1)) {
+        // EVEN: one hit more (R1) or fewer (L1), spread evenly. Its own turn kept while Y stays held.
+        if (event.down) {
+            const int now = evening_ ? evenHits_ : laneHits();
+            if (!evening_) evenTurn_ = 0;
+            evening_ = true;
+            evenLane(now + (b == Button::R1 ? 1 : -1), evenTurn_);
+        }
+        return true;
+    }
+    if (slicing_ && dicing_ && hitHere() && b == Button::R1 && !input.held(Button::L1)) { // (X held: R1 is CUT, above; Y spent on X's dice is no dicing_)
+        // SAVE A SLICE (batch S1, 2026-11-25): with Y held on a hit (where its sound starts is Y's), R1 saves the
+        // slice it plays as a new recording (R1 saves, as in a lane's EDIT view and on the preset stops). Y's let
+        // go is then no tap: the hit's chance stays.
+        if (event.down) {
+            saveSlice();
+            yDidSomething_ = true;
+        }
+        return true;
+    }
+    if (event.down && b != Button::B) cutDeleting_ = false; // any other press calls a held B off
+    if (!event.down && b == Button::B && cutDeleting_) { // let go before the bar filled: nothing deleted
+        cutDeleting_ = false;
+        std::snprintf(said_, sizeof said_, "HOLD B TO DELETE THE CUT");
+        saidUntil_ = lastMs_ + 2500;
+        return true;
+    }
+    if (slicing_ && dicing_ && !ySpent_ && hitHere() && (b == Button::A || b == Button::B) && !input.held(Button::L1)) {
+        // SLICES AT THE HITS (batch S2): with Y held on a hit (where its sound starts is Y's), A adds a cut inside
+        // its slice and a held B deletes the cut its slice begins at, once its bar has filled (review fix,
+        // 2026-11-25: it was a tap, "never another button" in the buttons' standards). Y's let go is then no tap:
+        // the hit's chance stays. A's press is spent (its hold shapes nothing).
+        if (event.down) {
+            if (b == Button::A) {
+                addCut(), aSpent_ = true;
+            } else {
+                cutDeleting_ = true;
+                cutDeleteSince_ = lastMs_;
+                cutDeletePart_ = 0.f;
+                cutDeleteLane_ = lane_, cutDeleteStep_ = step_;
+            }
+            yDidSomething_ = true;
+        }
+        return true;
+    }
+    return false;
+}
+
+// With X held on a lane's name (its FEEL) or on a hit (its step effects): their own L1 / R1, Y, B and A.
+// True when the press was theirs.
+bool PatternScreen::effectsButton(const ButtonEvent& event) {
+    const Button b = event.button;
+    if (feelHeld_ && (b == Button::L1 || b == Button::R1)) {
+        // SWING, a click less or more. (The slices and the brush wait until X is let go.)
+        if (event.down) swingTurn(b == Button::R1 ? 1 : -1);
+        return true;
+    }
+    if ((fxHeld_ || feelHeld_) && b == Button::Y) {
+        // The dice, for what this hit does, or for the lane's feel. (Y's own jobs wait until X is let go;
+        // and if X is let go first, Y coming up after it is not a tap: it rolls nothing and steps no chance.)
+        // Nor is it Y's hold if X is let go first and Y stays down: `ySpent_`, until Y comes up.)
+        if (event.down) {
+            yDidSomething_ = true;
+            ySpent_ = true;
+            if (feelHeld_) feelRoll();
+            else fxRoll();
+        }
+        return true;
+    }
+    if ((fxHeld_ || feelHeld_) && b == Button::B) {
+        if (event.down) fxEmpty(); // what X shows, emptied. (B's own delete waits until X is let go.)
+        return true;
+    }
+    if (feelHeld_ && b == Button::A) {
+        // This lane's feel onto every lane. (A's own jobs wait until X is let go, and this press of A
+        // does none of them even then: `aSpent_`. It was pressed for the feel.)
+        if (event.down) feelToAll(), aSpent_ = true;
+        return true;
+    }
+    if (fxHeld_ && b == Button::A) {
+        if (event.down) fxThrow(), aSpent_ = true; // THROW, a step round. (A's own jobs, placing and shaping, wait until X is let go and A is pressed again.)
+        return true;
+    }
+    return false;
+}
+
+// Hold L1 (pressed first): the bar key. True when the press was its.
+bool PatternScreen::barKeyButton(const ButtonEvent& event, const Input& input) {
+    const Button b = event.button;
+    // L1 held (pressed first): R1 copies the bar shown, A pastes over it. Nothing else of R1's or A's.
+    if (event.down && b != Button::L1 && l1First_) l1Used_ = true; // L1 let go is then no tap
+    if (event.down && l1First_ && input.held(Button::L1) && !input.held(Button::X) && (b == Button::R1 || b == Button::A)) {
+        if (b == Button::R1) session_.copyBarHere();
+        else session_.pasteBarHere(), aSpent_ = true; // (A's hold does nothing either: no nudge with the D-pad)
+        return true;
+    }
+    // L1 held (pressed first) + Y: the FILL (Session::fillKeyHere): made from the bar shown and gone to, gone to,
+    // or on it, off and on. Y was pressed for that: its let go rolls no dice and steps no chance, and its hold is
+    // not the dice (no "maybe" hit on its press either).
+    if (event.down && l1First_ && input.held(Button::L1) && !input.held(Button::X) && b == Button::Y) {
+        session_.fillKeyHere();
+        yDidSomething_ = true;
+        ySpent_ = true;
+        return true;
+    }
+    // (The bar shown and the cell's count live on the BARS stop too, above the tempo.)
+    // Hold L1, up / down: the bar before or after, round the ends (as on the roll). Left / right:
+    // the cell's bars, more or fewer. Only with L1 held first and nothing else going: shaping,
+    // painting, the dice, the step effects and the feel keep the keys, and R1 or A held is a bar
+    // copy or paste on its way.
+    if (event.down && l1First_ && input.held(Button::L1) && !input.held(Button::X) && !shaping_ && paint_ == Paint::None && !dicing_ && !fxHeld_ && !feelHeld_ && !onTempo_ && !onBars_ &&
+        !input.held(Button::R1) && !input.held(Button::A)) {
+        if (b == Button::Up || b == Button::Down) {
+            moveBar(b == Button::Down ? 1 : -1); // (1 ... the last bar, then the FILL once made, then 1)
+            return true;
+        }
+        if (b == Button::Left || b == Button::Right) {
+            stepBars(b == Button::Right ? 1 : -1);
+            return true;
+        }
+    }
+    return false;
+}
+
+// X: hears what is under the cursor; held on a hit, its step effects; on a lane's name, its FEEL.
+void PatternScreen::xButton(const ButtonEvent& event, const Input& input) {
+    // X let go with the stick still pushed for the effects or the feel: the stick moves nothing until it
+    // has come back, as on FX and DEVICE (gesture audit G14), so the cursor does not jump off.
+    if (!event.down && (fxHeld_ || feelHeld_)) stickWait_ = input.stickX() != 0.f || input.stickY() != 0.f;
+    // Hears what is under the cursor, as everywhere. On a hit it is also a hold: the stick then sets its step effects.
+    fxHeld_ = event.down && hitHere() && !shaping_ && !dicing_ && paint_ == Paint::None;
+    // On a lane's name it is the same hold for the lane's FEEL, and the drum is heard as ever
+    // (for as long as X is held: a recording to its end; the Session lets it go).
+    feelHeld_ = event.down && !onTempo_ && !onBars_ && step_ == kLaneName && !shaping_ && !dicing_ && paint_ == Paint::None;
+    fxSaved_ = 0.f;
+    fxWas_ = false;
+    // A direction that was already held (the cursor was on its way here) is not a turn of the
+    // effect: X only heard the hit. It must be let go and pushed again.
+    fxWait_ = input.stickX() != 0.f || input.stickY() != 0.f;
+    if (fxHeld_ || feelHeld_) repeating_ = Button::None;
+    axis_ = Axis::None;
+    if (!event.down || onTempo_ || onBars_) return;
+    // On the lane's name or an empty step it sounds for as long as X is held (the Session lets it
+    // go). A hit is heard as the pattern plays it: X held there is the step effects' hold.
+    if (hitHere()) hearHit();
+    else if (slicing_ && onStep()) session_.hearLaneHeld(project_.track, lane_, kNewHitLevel, this, ownStart(step_), slicePart(ownStart(step_))); // the slice a hit placed here would play
+    else session_.hearLaneHeld(project_.track, lane_, kNewHitLevel, this);
+}
+
+// Y: a "maybe" hit on its press; a tap rolls a lane's dice or steps a hit's chance; held, the dice.
+void PatternScreen::yButton(const ButtonEvent& event) {
+    if (event.down) {
+        yDidSomething_ = false;
+        if (onStep() && !hitHere()) {
+            placeHit(kMaybe); // a "maybe" hit
+            yDidSomething_ = true;
+        }
+    } else if (!yDidSomething_ && !onTempo_ && !onBars_ && step_ == kLaneName) {
+        diceReshuffle(); // a plain tap on a lane's name rolls the dice
+    } else if (!yDidSomething_ && hitHere()) {
+        // A plain tap on a hit steps its chance down a quarter, and round again.
+        const float now = pat().chance[lane_][step_];
+        setChance(lane_, step_, now > 0.76f ? 0.75f : now > 0.51f ? 0.5f : now > 0.26f ? 0.25f : 1.f);
+    }
+    dicing_ = event.down && !onBars_;
+    diceSaved_ = 0.f;
+    axis_ = Axis::None;
+    if (!event.down && !shaping_) turning_ = Turning::Nothing;
+}
+
 void PatternScreen::update(const Input& input, Uint32 nowMs) {
     // A button let go while another screen was showing (a song opened, a tab turned) never told this
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
@@ -1028,24 +1066,7 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
     if (!input.held(Button::Y)) ySpent_ = false;
     if (!input.held(Button::L1)) l1First_ = false;
 
-    // Y held on a hit in the slice view, B held: the bar fills, then the slice's cut is deleted. B let go early is
-    // said by onButton; Y let go, the cursor or the view moved: called off without a word.
-    if (cutDeleting_ && (!input.held(Button::Y) || !slicing_ || lane_ != cutDeleteLane_ || step_ != cutDeleteStep_ || !hitHere())) cutDeleting_ = false;
-    if (cutDeleting_ && !input.held(Button::B)) { // let go before the bar filled (whichever this screen hears first)
-        cutDeleting_ = false;
-        std::snprintf(said_, sizeof said_, "HOLD B TO DELETE THE CUT");
-        saidUntil_ = nowMs + 2500;
-    }
-    if (!cutDeleting_) {
-        cutDeletePart_ = 0.f;
-    } else {
-        cutDeletePart_ = static_cast<float>(nowMs - cutDeleteSince_) / static_cast<float>(kCutDeleteMs);
-        if (cutDeletePart_ >= 1.f) {
-            cutDeleting_ = false;
-            cutDeletePart_ = 0.f;
-            deleteCut();
-        }
-    }
+    updateCutDelete(input, nowMs);
 
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
@@ -1081,83 +1102,11 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
     if (std::round(tempoExact_) != project_.tempo) tempoExact_ = project_.tempo;
 
     if (fxHeld_ || feelHeld_) {
-        // X is held on a hit: the stick clicks its step effects. One way per push (up / down is the
-        // pitch, sideways the ratchet); a click at once, then a steady run while it is held over.
-        // On a lane's name it clicks the lane's feel the same way (sideways HUMAN TIME, up / down
-        // HUMAN LEVEL): six clicks end to end. All at twice the held D-pad's pace for clicks (gesture audit G32), however
-        // far it is pushed.
-        if (x == 0.f && y == 0.f) {
-            axis_ = Axis::None;
-            fxSaved_ = 0.f;
-            fxWas_ = false;
-            fxWait_ = false;
-        } else if (!fxWait_) {
-            if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
-            const float push = axis_ == Axis::UpDown ? -y : x;
-            if (push != 0.f) {
-                fxSaved_ += fxWas_ ? ui::stickPerSecond(Pace::Click) * dt : 1.f; // (G32: the clicks' pace, every way)
-                fxWas_ = true;
-                for (; fxSaved_ >= 1.f; fxSaved_ -= 1.f) {
-                    const Button way = axis_ == Axis::UpDown ? (push > 0.f ? Button::Up : Button::Down) : (push > 0.f ? Button::Right : Button::Left);
-                    if (feelHeld_) feelTurn(way);
-                    else fxTurn(way);
-                }
-            }
-        }
-        stickX_ = stickY_ = 0.f;
-        stickWasX_ = stickWasY_ = false;
+        stickTurnsEffects(x, y, dt);
     } else if (shaping_ || dicing_) {
-        // The stick does one job per push. Whichever way it leaves the centre
-        // is the job until it comes back, so setting a level cannot also
-        // slide the hit sideways.
-        if (x == 0.f && y == 0.f) axis_ = Axis::None, rolled_ = false;
-        else if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
-
-        // However far it is pushed (owner, 2026-11-25: the D-pad for a fine adjustment; it was by the square of the push).
-        const float up = -stickWay(y) * feel.fillPerSecond * dt;
-        const float right = stickWay(x) * feel.fillPerSecond * dt;
-        // BARS with A held, a choice (1, 2, 4, 8): a bar more or fewer once for each push up or down, however far it is
-        // pushed, as on the roll (CLAUDE.md: choices click once per push; it was a slow fill, 2.25 bars a second).
-        const bool barsPush = shaping_ && !dicing_ && onBars_ && axis_ == Axis::UpDown && y != 0.f;
-        if (barsPush && !barsPushed_) stepBars(y < 0.f ? 1 : -1);
-        barsPushed_ = barsPush;
-        if (dicing_) {
-            const float seconds = session_.laneSound(project_.track, lane_).seconds;
-            if (axis_ == Axis::UpDown) turnChance(up);
-            else if (axis_ == Axis::Sideways && slicing_ && hitHere()) { // the slice view: its cut slides (SLICES AT THE HITS)
-                if (seconds > 0.f) moveCut(stickWay(x) * kCutSlideSeconds * dt / seconds); // (however far it is pushed: the D-pad's millisecond is the fine move)
-            } else if (axis_ == Axis::Sideways) turnStart(right * 0.5f);
-        } else if (axis_ == Axis::UpDown) {
-            turnUpDown(up);
-        } else if (axis_ == Axis::Sideways && slicing_ && !onTempo_ && !onBars_ && step_ == kLaneName) {
-            // The slice view's lane name: SLICES AT THE HITS' SENSITIVITY, a click at once and then at twice the list's
-            // pace while pushed, however far (ui::stickPerSecond; a choice, not a slider: each is the hits found again).
-            senseSaved_ += senseWas_ ? ui::stickPerSecond(Pace::List) * dt : 1.f;
-            senseWas_ = true;
-            for (; senseSaved_ >= 1.f; senseSaved_ -= 1.f) senseTurn(x > 0.f ? 1 : -1);
-        } else if (axis_ == Axis::Sideways) {
-            turnSideways(right * 0.5f); // the whole range is one step wide: half the speed is plenty
-        }
-        if (axis_ != Axis::Sideways) senseSaved_ = 0.f, senseWas_ = false;
-        stickX_ = stickY_ = 0.f;
-        stickWasX_ = stickWasY_ = false;
+        stickShapes(x, y, dt);
     } else {
-        axis_ = Axis::None;
-        // Nothing held: the stick runs the cursor. One move at once, then at twice the held D-pad's pace (the
-        // cursor's), however far it is pushed; a slight drift off one axis is not the other (ui::stickAxes).
-        const StickAxes both = stickAxes(x, y);
-        if (both.x == 0.f) stickX_ = 0.f, stickWasX_ = false;
-        else {
-            stickX_ += stickWasX_ ? ui::stickPerSecond(Pace::Cursor) * dt : 1.f;
-            stickWasX_ = true;
-            for (; stickX_ >= 1.f; stickX_ -= 1.f) dragCursor(both.x > 0.f ? Button::Right : Button::Left);
-        }
-        if (both.y == 0.f) stickY_ = 0.f, stickWasY_ = false;
-        else {
-            stickY_ += stickWasY_ ? ui::stickPerSecond(Pace::Cursor) * dt : 1.f;
-            stickWasY_ = true;
-            for (; stickY_ >= 1.f; stickY_ -= 1.f) dragCursor(both.y > 0.f ? Button::Down : Button::Up);
-        }
+        stickRunsCursor(x, y, dt);
     }
 
     // A held D-pad direction repeats what its press did: the cursor's pace, and with X held the clicks' (clicks,
@@ -1165,6 +1114,115 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
     // (The SENSITIVITY of SLICES AT THE HITS, A held on the slice view's lane name, is a choice: a list's pace.)
     const bool choosing = slicing_ && shaping_ && !onTempo_ && !onBars_ && step_ == kLaneName && (repeating_ == Button::Left || repeating_ == Button::Right);
     while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), feelHeld_ || fxHeld_ ? Pace::Click : choosing ? Pace::List : Pace::Cursor)) direction(repeating_, input);
+}
+
+// Y held on a hit in the slice view, B held: the bar fills, and at full the slice's cut is deleted.
+void PatternScreen::updateCutDelete(const Input& input, Uint32 nowMs) {
+    // Y held on a hit in the slice view, B held: the bar fills, then the slice's cut is deleted. B let go early is
+    // said by onButton; Y let go, the cursor or the view moved: called off without a word.
+    if (cutDeleting_ && (!input.held(Button::Y) || !slicing_ || lane_ != cutDeleteLane_ || step_ != cutDeleteStep_ || !hitHere())) cutDeleting_ = false;
+    if (cutDeleting_ && !input.held(Button::B)) { // let go before the bar filled (whichever this screen hears first)
+        cutDeleting_ = false;
+        std::snprintf(said_, sizeof said_, "HOLD B TO DELETE THE CUT");
+        saidUntil_ = nowMs + 2500;
+    }
+    if (!cutDeleting_) {
+        cutDeletePart_ = 0.f;
+    } else {
+        cutDeletePart_ = static_cast<float>(nowMs - cutDeleteSince_) / static_cast<float>(kCutDeleteMs);
+        if (cutDeletePart_ >= 1.f) {
+            cutDeleting_ = false;
+            cutDeletePart_ = 0.f;
+            deleteCut();
+        }
+    }
+}
+
+// X held on a hit or a lane's name: the stick clicks its step effects, or the lane's feel.
+void PatternScreen::stickTurnsEffects(float x, float y, float dt) {
+    // X is held on a hit: the stick clicks its step effects. One way per push (up / down is the
+    // pitch, sideways the ratchet); a click at once, then a steady run while it is held over.
+    // On a lane's name it clicks the lane's feel the same way (sideways HUMAN TIME, up / down
+    // HUMAN LEVEL): six clicks end to end. All at twice the held D-pad's pace for clicks (gesture audit G32), however
+    // far it is pushed.
+    if (x == 0.f && y == 0.f) {
+        axis_ = Axis::None;
+        fxSaved_ = 0.f;
+        fxWas_ = false;
+        fxWait_ = false;
+    } else if (!fxWait_) {
+        if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
+        const float push = axis_ == Axis::UpDown ? -y : x;
+        if (push != 0.f) {
+            fxSaved_ += fxWas_ ? ui::stickPerSecond(Pace::Click) * dt : 1.f; // (G32: the clicks' pace, every way)
+            fxWas_ = true;
+            for (; fxSaved_ >= 1.f; fxSaved_ -= 1.f) {
+                const Button way = axis_ == Axis::UpDown ? (push > 0.f ? Button::Up : Button::Down) : (push > 0.f ? Button::Right : Button::Left);
+                if (feelHeld_) feelTurn(way);
+                else fxTurn(way);
+            }
+        }
+    }
+    stickX_ = stickY_ = 0.f;
+    stickWasX_ = stickWasY_ = false;
+}
+
+// A or Y held: the stick shapes what is under the cursor, one job per push.
+void PatternScreen::stickShapes(float x, float y, float dt) {
+    // The stick does one job per push. Whichever way it leaves the centre
+    // is the job until it comes back, so setting a level cannot also
+    // slide the hit sideways.
+    if (x == 0.f && y == 0.f) axis_ = Axis::None, rolled_ = false;
+    else if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
+
+    // However far it is pushed (owner, 2026-11-25: the D-pad for a fine adjustment; it was by the square of the push).
+    const float up = -stickWay(y) * feel.fillPerSecond * dt;
+    const float right = stickWay(x) * feel.fillPerSecond * dt;
+    // BARS with A held, a choice (1, 2, 4, 8): a bar more or fewer once for each push up or down, however far it is
+    // pushed, as on the roll (CLAUDE.md: choices click once per push; it was a slow fill, 2.25 bars a second).
+    const bool barsPush = shaping_ && !dicing_ && onBars_ && axis_ == Axis::UpDown && y != 0.f;
+    if (barsPush && !barsPushed_) stepBars(y < 0.f ? 1 : -1);
+    barsPushed_ = barsPush;
+    if (dicing_) {
+        const float seconds = session_.laneSound(project_.track, lane_).seconds;
+        if (axis_ == Axis::UpDown) turnChance(up);
+        else if (axis_ == Axis::Sideways && slicing_ && hitHere()) { // the slice view: its cut slides (SLICES AT THE HITS)
+            if (seconds > 0.f) moveCut(stickWay(x) * kCutSlideSeconds * dt / seconds); // (however far it is pushed: the D-pad's millisecond is the fine move)
+        } else if (axis_ == Axis::Sideways) turnStart(right * 0.5f);
+    } else if (axis_ == Axis::UpDown) {
+        turnUpDown(up);
+    } else if (axis_ == Axis::Sideways && slicing_ && !onTempo_ && !onBars_ && step_ == kLaneName) {
+        // The slice view's lane name: SLICES AT THE HITS' SENSITIVITY, a click at once and then at twice the list's
+        // pace while pushed, however far (ui::stickPerSecond; a choice, not a slider: each is the hits found again).
+        senseSaved_ += senseWas_ ? ui::stickPerSecond(Pace::List) * dt : 1.f;
+        senseWas_ = true;
+        for (; senseSaved_ >= 1.f; senseSaved_ -= 1.f) senseTurn(x > 0.f ? 1 : -1);
+    } else if (axis_ == Axis::Sideways) {
+        turnSideways(right * 0.5f); // the whole range is one step wide: half the speed is plenty
+    }
+    if (axis_ != Axis::Sideways) senseSaved_ = 0.f, senseWas_ = false;
+    stickX_ = stickY_ = 0.f;
+    stickWasX_ = stickWasY_ = false;
+}
+
+// Nothing held: the stick runs the cursor.
+void PatternScreen::stickRunsCursor(float x, float y, float dt) {
+    axis_ = Axis::None;
+    // Nothing held: the stick runs the cursor. One move at once, then at twice the held D-pad's pace (the
+    // cursor's), however far it is pushed; a slight drift off one axis is not the other (ui::stickAxes).
+    const StickAxes both = stickAxes(x, y);
+    if (both.x == 0.f) stickX_ = 0.f, stickWasX_ = false;
+    else {
+        stickX_ += stickWasX_ ? ui::stickPerSecond(Pace::Cursor) * dt : 1.f;
+        stickWasX_ = true;
+        for (; stickX_ >= 1.f; stickX_ -= 1.f) dragCursor(both.x > 0.f ? Button::Right : Button::Left);
+    }
+    if (both.y == 0.f) stickY_ = 0.f, stickWasY_ = false;
+    else {
+        stickY_ += stickWasY_ ? ui::stickPerSecond(Pace::Cursor) * dt : 1.f;
+        stickWasY_ = true;
+        for (; stickY_ >= 1.f; stickY_ -= 1.f) dragCursor(both.y > 0.f ? Button::Down : Button::Up);
+    }
 }
 
 // A press of the D-pad, and each of its held repeats: the same job (gesture audit G21: on BARS, A or Y held +
@@ -1240,6 +1298,20 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (slicing_) {
         drawSlices(r, fonts); // one lane, with its recording cut into slices (pattern_slices.cpp)
     } else {
+        drawGrid(r, fonts, onName, held, cursorColor);
+    }
+
+    // ---- what is under the cursor, spelled out -----------------------------------
+    // A scene of fewer than sixteen steps: the steps past its end are never played, and are shaded.
+    if (const int steps = project_.barSteps(project_.scene, sceneBar()); steps < kSteps && !slicing_)
+        fill(r, kGridLeft + steps * kStepW - 1, kGridTop - 14, (kSteps - steps) * kStepW, kDrumLanes * kLaneH + 12, faded(kBg, 185));
+    drawStrip(r, tight, onName, cursorColor);
+    drawHints(r, fonts, onName, held);
+}
+
+// The drum grid: the step numbers, the lanes' names and cells, the hits, the cursor and the play line.
+void PatternScreen::drawGrid(SDL_Renderer* r, const Fonts& fonts, bool onName, bool held, SDL_Color cursorColor) const {
+    char text[64];
     // ---- step numbers --------------------------------------------------------
     for (int s = 0; s < kSteps; ++s) {
         // Counted through the cell, as the piano roll counts: bar 2 reads 17 to 32; past the scene's end, "-".
@@ -1279,6 +1351,20 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         }
     }
 
+    drawHits(r, onName, held);
+    if (onStep()) {
+        outline(r, kGridLeft + step_ * kStepW - 1, kGridTop + lane_ * kLaneH - 1, kCellW + 2, kCellH + 2, cursorColor, 2);
+    }
+    // The play line shows when the bar on screen is the one sounding: a short cell goes round under a long scene.
+    const int playStep = project_.playScene == project_.scene && project_.cellBarPlaying(project_.track) == project_.bar ? project_.playStep : -1;
+    if (playStep >= 0) {
+        SDL_Color glow = kPurple;
+        glow.a = 76;
+        fill(r, kGridLeft + playStep * kStepW, kGridTop, kCellW, kDrumLanes * kLaneH - 3, glow);
+    }
+}
+
+void PatternScreen::drawHits(SDL_Renderer* r, bool onName, bool held) const {
     // ---- hits ------------------------------------------------------------------------
     // Drawn after every cell, because a nudged hit sits across a cell's edge.
     // One block says three things: how tall is how loud, where it sits is
@@ -1317,23 +1403,11 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             drawFxMarks(r, pat().fx[lane][s], bx, y + 4 + kBlockFull - h, kBlockW, h, y + kCellH / 2, 1.1f);
         }
     }
-    if (onStep()) {
-        outline(r, kGridLeft + step_ * kStepW - 1, kGridTop + lane_ * kLaneH - 1, kCellW + 2, kCellH + 2, cursorColor, 2);
-    }
-    // The play line shows when the bar on screen is the one sounding: a short cell goes round under a long scene.
-    const int playStep = project_.playScene == project_.scene && project_.cellBarPlaying(project_.track) == project_.bar ? project_.playStep : -1;
-    if (playStep >= 0) {
-        SDL_Color glow = kPurple;
-        glow.a = 76;
-        fill(r, kGridLeft + playStep * kStepW, kGridTop, kCellW, kDrumLanes * kLaneH - 3, glow);
-    }
+}
 
-    }
-
-    // ---- what is under the cursor, spelled out -----------------------------------
-    // A scene of fewer than sixteen steps: the steps past its end are never played, and are shaded.
-    if (const int steps = project_.barSteps(project_.scene, sceneBar()); steps < kSteps && !slicing_)
-        fill(r, kGridLeft + steps * kStepW - 1, kGridTop - 14, (kSteps - steps) * kStepW, kDrumLanes * kLaneH + 12, faded(kBg, 185));
+// The strip under the grid: what is under the cursor, spelled out, and anything said for a moment.
+void PatternScreen::drawStrip(SDL_Renderer* r, const Fonts& tight, bool onName, SDL_Color cursorColor) const {
+    char text[64];
     const int stripY = kStripY;
     const auto field = [&](float fx, const char* name, const char* value, SDL_Color color) {
         tight.small.draw(r, fx, stripY, name, kDim);
@@ -1394,72 +1468,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             field(430.f, "DICE HITS", text, dicing_ ? kBrass : kText);
         }
     } else {
-        tight.small.draw(r, 8.f, stripY, "LANE", kDim);
-        tight.fit(laneLabel(lane_), 104.f).draw(r, 8.f, stripY + 16.f, laneLabel(lane_), kText);
-        std::snprintf(text, sizeof text, "%d", sceneBar() * project_.meterOf(project_.scene) + step_ + 1);
-        field(120.f, "STEP", text, kText);
-        if (!hitHere()) {
-            field(190.f, "LEVEL", "-", kDim);
-            field(290.f, "NUDGE", "-", kDim);
-            field(420.f, "CHANCE", "-", kDim);
-            field(520.f, slicing_ ? "SLICE" : "START", "-", kDim);
-        } else if (fxHeld_) {
-            // X is held: the strip is the hit's step effects, and nothing else.
-            const StepFx& fx = pat().fx[lane_][step_];
-            if (fx.pitch == 0) std::snprintf(text, sizeof text, "0");
-            else std::snprintf(text, sizeof text, "%+d", fx.pitch);
-            // (Five of them: closer together than the four a hit has when X is not held.)
-            field(kFxPitchX, "PITCH", text, fx.pitch ? kBrass : kText);
-            std::snprintf(text, sizeof text, fx.hits() > 1 ? "x%d" : "OFF", fx.hits());
-            field(kFxRatchetX, "RATCHET", text, fx.hits() > 1 ? kBrass : kText);
-            field(kFxReverseX, "REVERSE", fx.reverse ? "ON" : "OFF", fx.reverse ? kBrass : kText);
-            field(kFxCutX, "CUT", fx.cut == 1 ? "1 STEP" : fx.cut == 2 ? "1/2 STEP" : fx.cut == 3 ? "1/4 STEP" : "OFF", fx.cut ? kBrass : kText);
-            field(kFxThrowX, "THROW", throwName(fx.throwTo), fx.throwTo ? kBrass : kText);
-        } else {
-            // The one the stick has hold of is brass; the others are quiet.
-            const auto shade = [&](Turning t) { return turning_ == t ? kBrass : (turning_ == Turning::Nothing ? kTeal : kText); };
-            std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(pat().level[lane_][step_] * 100.f)));
-            field(190.f, "LEVEL", text, shade(Turning::Level));
-            const int n = static_cast<int>(std::round(pat().nudge[lane_][step_] * 100.f));
-            if (n == 0) std::snprintf(text, sizeof text, "ON GRID");
-            else std::snprintf(text, sizeof text, "%d%% %s", std::abs(n), n < 0 ? "EARLY" : "LATE");
-            field(290.f, "NUDGE", text, shade(Turning::Nudge));
-            std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(pat().chance[lane_][step_] * 100.f)));
-            field(420.f, "CHANCE", text, shade(Turning::Chance));
-            // Where in the sound it begins, with a picture of the sound when there is one.
-            const float start = pat().start[lane_][step_];
-            if (slicing_) {
-                // Which slice, and how far past its cut if the start has been slid off it (a share of the slice).
-                const float into = trk().laneCuts[lane_].even() ? start * slices() - sliceOf(step_) : (start - cutAt(sliceOf(step_))) / slicePart(cutAt(sliceOf(step_)));
-                if (into > 0.01f) std::snprintf(text, sizeof text, "%d + %d%%", sliceOf(step_) + 1, static_cast<int>(std::round(into * 100.f)));
-                else std::snprintf(text, sizeof text, "%d OF %d", sliceOf(step_) + 1, slices());
-            } else if (start <= 0.f) std::snprintf(text, sizeof text, "THE TOP");
-            else std::snprintf(text, sizeof text, "%d%% IN", static_cast<int>(std::round(start * 100.f)));
-            field(520.f, slicing_ ? "SLICE" : "START", text, shade(Turning::Start));
-            // Its step effects, in a line: what X held would show in full.
-            const StepFx& fx = pat().fx[lane_][step_];
-            if (fx.any() && !said()[0]) { // (the said line has the row while it shows: SAVED, as the feel's summary)
-                std::string summary;
-                const auto add = [&](const char* word) { summary += (summary.empty() ? "" : "   ") + std::string(word); };
-                if (fx.pitch) std::snprintf(text, sizeof text, "PITCH %+d", fx.pitch), add(text);
-                if (fx.hits() > 1) std::snprintf(text, sizeof text, "RATCHET x%d", fx.hits()), add(text);
-                if (fx.reverse) add("REVERSE");
-                if (fx.cut) add(fx.cut == 1 ? "CUT 1 STEP" : fx.cut == 2 ? "CUT 1/2" : "CUT 1/4");
-                if (fx.throwTo) std::snprintf(text, sizeof text, "THROW %s", throwName(fx.throwTo)), add(text);
-                tight.small.drawRight(r, 632.f, stripY + 44.f, summary.c_str(), kPurple);
-            }
-            const Session::LaneSound& sound = session_.laneSound(project_.track, lane_);
-            if (!slicing_ && !sound.peaks.empty() && (turning_ == Turning::Start || start > 0.f)) {
-                const int wx = 8, wy = stripY + 38, ww = fx.any() ? 300 : 624, wh = 20; // narrower, to leave the effects their room
-                const int count = static_cast<int>(sound.peaks.size());
-                for (int i = 0; i < count; ++i) {
-                    const int px = wx + ww * i / count, ph = 1 + static_cast<int>(sound.peaks[static_cast<std::size_t>(i)] * (wh - 1));
-                    const bool played = static_cast<float>(i) / count >= start;
-                    fill(r, px, wy + (wh - ph) / 2, ww / count, ph, played ? kText : kLine);
-                }
-                fill(r, wx + static_cast<int>(start * ww), wy - 2, 2, wh + 4, turning_ == Turning::Start ? kBrass : kPurple);
-            }
-        }
+        drawHitStrip(r, tight);
     }
 
     // Something said for a moment (why L1 did not open the slices).
@@ -1470,7 +1479,85 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else if (said()[0]) {
         tight.small.draw(r, 8.f, stripY + 44.f, cutToRoom(said(), tight.small, 624.f).c_str(), kBrass);
     }
+}
 
+// The strip on a step: its hit's level, nudge, chance and start (or, X held, its step effects).
+void PatternScreen::drawHitStrip(SDL_Renderer* r, const Fonts& tight) const {
+    char text[64];
+    const int stripY = kStripY;
+    const auto field = [&](float fx, const char* name, const char* value, SDL_Color color) {
+        tight.small.draw(r, fx, stripY, name, kDim);
+        tight.large.draw(r, fx, stripY + 16.f, value, color);
+    };
+    tight.small.draw(r, 8.f, stripY, "LANE", kDim);
+    tight.fit(laneLabel(lane_), 104.f).draw(r, 8.f, stripY + 16.f, laneLabel(lane_), kText);
+    std::snprintf(text, sizeof text, "%d", sceneBar() * project_.meterOf(project_.scene) + step_ + 1);
+    field(120.f, "STEP", text, kText);
+    if (!hitHere()) {
+        field(190.f, "LEVEL", "-", kDim);
+        field(290.f, "NUDGE", "-", kDim);
+        field(420.f, "CHANCE", "-", kDim);
+        field(520.f, slicing_ ? "SLICE" : "START", "-", kDim);
+    } else if (fxHeld_) {
+        // X is held: the strip is the hit's step effects, and nothing else.
+        const StepFx& fx = pat().fx[lane_][step_];
+        if (fx.pitch == 0) std::snprintf(text, sizeof text, "0");
+        else std::snprintf(text, sizeof text, "%+d", fx.pitch);
+        // (Five of them: closer together than the four a hit has when X is not held.)
+        field(kFxPitchX, "PITCH", text, fx.pitch ? kBrass : kText);
+        std::snprintf(text, sizeof text, fx.hits() > 1 ? "x%d" : "OFF", fx.hits());
+        field(kFxRatchetX, "RATCHET", text, fx.hits() > 1 ? kBrass : kText);
+        field(kFxReverseX, "REVERSE", fx.reverse ? "ON" : "OFF", fx.reverse ? kBrass : kText);
+        field(kFxCutX, "CUT", fx.cut == 1 ? "1 STEP" : fx.cut == 2 ? "1/2 STEP" : fx.cut == 3 ? "1/4 STEP" : "OFF", fx.cut ? kBrass : kText);
+        field(kFxThrowX, "THROW", throwName(fx.throwTo), fx.throwTo ? kBrass : kText);
+    } else {
+        // The one the stick has hold of is brass; the others are quiet.
+        const auto shade = [&](Turning t) { return turning_ == t ? kBrass : (turning_ == Turning::Nothing ? kTeal : kText); };
+        std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(pat().level[lane_][step_] * 100.f)));
+        field(190.f, "LEVEL", text, shade(Turning::Level));
+        const int n = static_cast<int>(std::round(pat().nudge[lane_][step_] * 100.f));
+        if (n == 0) std::snprintf(text, sizeof text, "ON GRID");
+        else std::snprintf(text, sizeof text, "%d%% %s", std::abs(n), n < 0 ? "EARLY" : "LATE");
+        field(290.f, "NUDGE", text, shade(Turning::Nudge));
+        std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(pat().chance[lane_][step_] * 100.f)));
+        field(420.f, "CHANCE", text, shade(Turning::Chance));
+        // Where in the sound it begins, with a picture of the sound when there is one.
+        const float start = pat().start[lane_][step_];
+        if (slicing_) {
+            // Which slice, and how far past its cut if the start has been slid off it (a share of the slice).
+            const float into = trk().laneCuts[lane_].even() ? start * slices() - sliceOf(step_) : (start - cutAt(sliceOf(step_))) / slicePart(cutAt(sliceOf(step_)));
+            if (into > 0.01f) std::snprintf(text, sizeof text, "%d + %d%%", sliceOf(step_) + 1, static_cast<int>(std::round(into * 100.f)));
+            else std::snprintf(text, sizeof text, "%d OF %d", sliceOf(step_) + 1, slices());
+        } else if (start <= 0.f) std::snprintf(text, sizeof text, "THE TOP");
+        else std::snprintf(text, sizeof text, "%d%% IN", static_cast<int>(std::round(start * 100.f)));
+        field(520.f, slicing_ ? "SLICE" : "START", text, shade(Turning::Start));
+        // Its step effects, in a line: what X held would show in full.
+        const StepFx& fx = pat().fx[lane_][step_];
+        if (fx.any() && !said()[0]) { // (the said line has the row while it shows: SAVED, as the feel's summary)
+            std::string summary;
+            const auto add = [&](const char* word) { summary += (summary.empty() ? "" : "   ") + std::string(word); };
+            if (fx.pitch) std::snprintf(text, sizeof text, "PITCH %+d", fx.pitch), add(text);
+            if (fx.hits() > 1) std::snprintf(text, sizeof text, "RATCHET x%d", fx.hits()), add(text);
+            if (fx.reverse) add("REVERSE");
+            if (fx.cut) add(fx.cut == 1 ? "CUT 1 STEP" : fx.cut == 2 ? "CUT 1/2" : "CUT 1/4");
+            if (fx.throwTo) std::snprintf(text, sizeof text, "THROW %s", throwName(fx.throwTo)), add(text);
+            tight.small.drawRight(r, 632.f, stripY + 44.f, summary.c_str(), kPurple);
+        }
+        const Session::LaneSound& sound = session_.laneSound(project_.track, lane_);
+        if (!slicing_ && !sound.peaks.empty() && (turning_ == Turning::Start || start > 0.f)) {
+            const int wx = 8, wy = stripY + 38, ww = fx.any() ? 300 : 624, wh = 20; // narrower, to leave the effects their room
+            const int count = static_cast<int>(sound.peaks.size());
+            for (int i = 0; i < count; ++i) {
+                const int px = wx + ww * i / count, ph = 1 + static_cast<int>(sound.peaks[static_cast<std::size_t>(i)] * (wh - 1));
+                const bool played = static_cast<float>(i) / count >= start;
+                fill(r, px, wy + (wh - ph) / 2, ww / count, ph, played ? kText : kLine);
+            }
+            fill(r, wx + static_cast<int>(start * ww), wy - 2, 2, wh + 4, turning_ == Turning::Start ? kBrass : kPurple);
+        }
+    }
+}
+
+void PatternScreen::drawHints(SDL_Renderer* r, const Fonts& fonts, bool onName, bool held) const {
     // ---- hints -------------------------------------------------------------------
     // Only what does something here, and what the ONE stick does right now.
     Hint hints[7];

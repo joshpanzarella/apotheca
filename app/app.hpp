@@ -118,6 +118,12 @@ public:
     void sayUpdateAcceptedForStill() { updateSaid_ = 1, updateSaidUntil_ = ~0u; } // (--view update-accepted)
 
 private:
+    // onButton(), in its parts (app.cpp). Those that return a bool: true when the press goes no further.
+    bool shoulderButton(const ButtonEvent& event, const Input& input, bool shoulder);
+    void startPanic();
+    bool selectEditButton(const ButtonEvent& event, const Input& input);
+    bool selectAdjustButton(const ButtonEvent& event, const Input& input);
+    void triggerButton(const ButtonEvent& event, const Input& input);
     Screen& screenNow();
     // A name is being typed (name_keys.hpp) on the screen up: a new folder in the list of recordings, or a
     // synth's or the sampler's preset. Every button is the keys' then, the tabs, SELECT and L3 too; only the

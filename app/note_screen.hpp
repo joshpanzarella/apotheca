@@ -171,6 +171,35 @@ private:
     void nudgeBy(float steps);
     void paintHere();
 
+    // onButton(), in its parts (note_screen.cpp).
+    bool effectsButton(const ButtonEvent& event); // X held on a note or chord: true when the press was its
+    void pickButton(const ButtonEvent& event);    // Y held: the chord's own buttons
+    void l1Button(const ButtonEvent& event);
+    bool barKeyButton(const ButtonEvent& event, const Input& input); // hold L1 + a direction: true when it was
+    void r1Button(const ButtonEvent& event, const Input& input);
+    void holdX(const Input& input); // X pressed: heard, and the hold for what a note does
+    // draw(), in its parts (note_screen.cpp).
+    int keyX(int pitch) const;   // a key's column on the roll
+    int stepY(int step) const;   // a step's row
+    bool keyShows(int pitch) const;
+    void drawKeyboard(SDL_Renderer* r, const Fonts& fonts, SDL_Color cursorColor) const;
+    void drawGrid(SDL_Renderer* r, const Fonts& fonts) const;
+    void drawBlock(SDL_Renderer* r, int pitch, int step, float length, float level, SDL_Color edge, SDL_Color inside, float nudge = 0.f) const;
+    bool chordNameBox(const Fonts& fonts, const ChordEvent& c, SDL_Rect* box) const;
+    void drawChord(SDL_Renderer* r, const Fonts& fonts, const ChordEvent& c, bool live, bool ghost, bool nameOnly = false) const;
+    void drawEarlierNotes(SDL_Renderer* r) const;
+    void drawNotesAndChords(SDL_Renderer* r, const Fonts& fonts, bool held, const NoteEvent* under, const ChordEvent* chordUnder) const;
+    void drawMarks(SDL_Renderer* r, int pitch, int step, float nudge, float length, int ratchet, bool glide, int throwTo, int inset = 0, bool chord = false,
+                   bool plays = false) const;
+    void drawChordMarks(SDL_Renderer* r, const Fonts& fonts, const ChordEvent* chordUnder) const;
+    void drawNotesInside(SDL_Renderer* r, bool held, const NoteEvent* under) const;
+    void drawGlideLines(SDL_Renderer* r) const;
+    void drawStrip(SDL_Renderer* r, const Fonts& fonts, const NoteEvent* under, const ChordEvent* chordUnder, SDL_Color cursorColor) const;
+    void drawPackStrip(SDL_Renderer* r, const Fonts& tight, int stripY) const;
+    void drawNoteStrip(SDL_Renderer* r, const Fonts& tight, int stripY, const NoteEvent* under, const ChordEvent* chordUnder, SDL_Color cursorColor) const;
+    void drawStripValues(SDL_Renderer* r, const Fonts& tight, int stripY, const NoteEvent* under, const ChordEvent* chordUnder, bool chordFx) const;
+    void drawHints(SDL_Renderer* r, const Fonts& fonts, const NoteEvent* under, const ChordEvent* chordUnder, bool held) const;
+
     Session& session_;
     Project& project_;
     int pitch_ = 60; // middle C

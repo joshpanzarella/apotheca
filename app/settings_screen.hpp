@@ -151,6 +151,12 @@ public:
     float holdPart() const { return holdPart_; } // how far through that second, 0..1
 
 private:
+    // draw(), in its parts (settings_screen.cpp).
+    void drawPassword(SDL_Renderer* r, const Fonts& fonts) const;
+    void drawButtonTest(SDL_Renderer* r, const Fonts& fonts) const;
+    void drawRow(SDL_Renderer* r, const Fonts& fonts, int row, int y) const;
+    void rowValue(int row, char (&text)[96], char (&said)[96], const char*& note, float& part, bool& lock, bool& twoAddresses) const;
+    void drawHints(SDL_Renderer* r, const Fonts& fonts) const;
     void change(int by);
     void usual(); // B on a setting's row: its usual value (G17)
 

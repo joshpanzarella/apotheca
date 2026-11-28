@@ -179,6 +179,10 @@ private:
     void voiceUpdate(const Input& input, Uint32 nowMs, float dt);
     void setVoice(const drumsynth::Voice& voice); // kept, and heard if the song is stopped
     void drawVoice(SDL_Renderer* r, const Fonts& fonts) const;
+    // draw(), in its parts (kit_screen.cpp).
+    void drawVoicePage(SDL_Renderer* r, const Fonts& fonts, const char* name) const;
+    void drawLaneRow(SDL_Renderer* r, const Fonts& fonts, int lane, SDL_Color cursorColor) const;
+    void drawHints(SDL_Renderer* r, const Fonts& fonts) const;
     void hear(bool held = false); // held: X is down, and it sounds until X is let go
     void hearFromList(SamplePicker::Hear how); // the list of recordings' preview (SamplePicker::Hear)
 

@@ -263,6 +263,12 @@ private:
     void drawPicture(SDL_Renderer* r, const Fonts& fonts) const;
     void drawTablePicture(SDL_Renderer* r, const Fonts& fonts) const;
     void drawScreen(SDL_Renderer* r, const Fonts& fonts) const;
+    // drawScreen(), in its parts (synth_screen.cpp).
+    void drawMain(SDL_Renderer* r, const Fonts& fonts) const;
+    void drawMainHints(SDL_Renderer* r, const Fonts& fonts) const;
+    void drawSettingsPage(SDL_Renderer* r, const Fonts& fonts) const;
+    void drawEnvelopePage(SDL_Renderer* r, const Fonts& fonts) const;
+    void drawAdvancedHints(SDL_Renderer* r, const Fonts& fonts) const;
     bool wasRecording_ = false;
 };
 
