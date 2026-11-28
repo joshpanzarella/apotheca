@@ -1,0 +1,29 @@
+# 04: FX. Walking the dials, turning one with A held, trying effects in the list with A held.
+title FX
+about The drum track's effects while the song plays: walk the dials with left and right, hold A to turn one, and hold A on a line to try other effects by ear.
+caption FX
+run --demo --view fx
+from 0.6
+length 21.0
+
+0.8 say The FX screen.
+2.2 tap DOWN
+2.6 say Right: the dials.
+3.0 tap RIGHT
+4.0 say Hold A, stick: the filter closes, opens.
+4.0 hold A 3.0
+4.4 stick DOWN 0.5
+5.6 stick UP 0.6
+7.4 say Left, right: the next dial.
+7.6 tap RIGHT 2 0.6
+8.9 tap LEFT 3 0.5
+10.6 say Hold A on a line: every effect, heard.
+10.6 hold A 6.2
+11.8 tap DOWN
+14.0 say Left, right: its TYPE.
+14.2 tap RIGHT 2 1.0
+16.8 say Let go: it goes in.
+18.4 say Hold A, then B: as it was.
+18.6 hold A 1.6
+19.0 tap DOWN
+19.6 tap B

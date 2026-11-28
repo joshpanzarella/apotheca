@@ -117,3 +117,7 @@ scripts/  the handheld build and the port launcher.
   `engine/include/apotheca/phazed.hpp`.
 - **Handheld first.** A feature is designed on the handheld's buttons. A
   keyboard key only ever stands in for one of them.
+
+## Tip
+
+Apotheca is free. If it is useful to you, you can [tip me on PayPal](https://paypal.me/jpanzarella8). Optional, and thank you.

@@ -1,0 +1,28 @@
+# 08: CATCH (a tap of Y on a kit lane) and the slice view, cut at the hits.
+title CATCH AND SLICES
+about Y on a kit lane catches the last bars the song played and puts them on the lane. L1 opens its slices; hold A and push right on the lane's name and the slices are cut where the drums land.
+caption CATCH + SLICES
+run --demo --view kit --samples $SAMPLES
+from 4.2
+length 25.0
+
+4.4 say The kit.
+5.6 say Hold Y, left: CATCH one bar.
+5.6 hold Y 2.2
+6.4 tap LEFT
+8.6 say Tap Y: the last bar, on the lane.
+9.0 tap Y
+11.4 say L1: its slices.
+11.6 tap L1
+13.4 say On the name, hold A, right: cut at the hits.
+13.4 tap LEFT 5 0.18
+14.4 hold A 2.8
+14.8 tap RIGHT 3 0.6
+17.6 say Hold R1, drag: in order.
+17.6 tap RIGHT
+18.0 hold R1 2.4
+18.3 press RIGHT 1.8
+21.0 say Up, down: another slice.
+21.0 tap LEFT 5 0.15
+22.0 tap UP 3 0.4
+23.4 tap DOWN 2 0.4

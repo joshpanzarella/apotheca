@@ -25,10 +25,10 @@ constexpr int kCellH = kRowH - 2;
 constexpr int kOctaveTop = 33, kOctaveH = 11, kKeysTop = 45;
 constexpr int kStripGap = 4; // from the grid down to the strip
 constexpr float kNewLevel = kPlacedLevel, kMinLevel = 0.05f; // a note or a chord placed (project.hpp)
-// Values turned by the stick, however far it is pushed (times STICK SPEED): a note's level and length with A held, and
-// a carried note slid freely in time with R1 held. Their own rates, not twice a held D-pad's: the D-pad's UP / DOWN go
-// to the step lines, the stick to any point in a step (owner, 2026-11-25: "d-pad for detailed ones").
-constexpr float kFillPerSecond = 3.f, kLengthStepsPerSecond = 10.f, kCarryStepsPerSecond = 6.f;
+// Values turned by the stick, however far it is pushed (times STICK SPEED): a note's level and length with A held.
+// Their own rates, not twice a held D-pad's: the D-pad's UP / DOWN go to the step lines, the stick to any point in a
+// step (owner, 2026-11-25: "d-pad for detailed ones"). A note carried with R1 held goes by whole steps (carry()).
+constexpr float kFillPerSecond = 3.f, kLengthStepsPerSecond = 10.f;
 constexpr float kShortestLength = 0.1f; // of a step
 constexpr float kMostNudge = 0.5f;      // half a step early or late
 
@@ -178,88 +178,159 @@ void NoteScreen::followTheNotes() {
     if (pitch_ > low_ + keys - 1) pitch_ = low_ + keys - 1;
 }
 
-// X held on a note or chord: it goes one key or one step that way, and the
-// cursor with it. It does not leave the bar, go off the keyboard, or land
-// on top of another note (a chord: on steps another chord has).
-bool NoteScreen::carryBy(int dp, int ds) {
-    NotePattern& p = pat();
-    if (step_ + ds < 0 || step_ + ds >= kSteps) return false; // the cursor has hold of it somewhere along its length, and stays in the bar too
-    if (carrying_ == Carry::Note) {
-        NoteEvent& n = p.notes[carried_];
-        const int pitch = n.pitch + dp, step = n.step + ds;
-        if (n.velocity <= 0.f || pitch < kLowest || pitch > kHighest || step < 0 || step >= kSteps) return false;
-        // Is the place it would start on taken by another note of that key?
-        const float v = n.velocity;
-        n.velocity = 0.f; // out of the way while looking
-        const bool taken = p.at(pitch, step) >= 0;
-        n.velocity = v;
-        if (taken) return false;
-        n.pitch = pitch;
-        n.step = step;
-        if (dp != 0 && !project_.playing) session_.audition(project_.track, pitch, v);
-    } else {
-        ChordEvent& c = p.chords[carried_];
-        const int step = c.step + ds;
-        if (c.velocity <= 0.f || step < 0 || step >= kSteps) return false;
-        ChordEvent moved = c;
-        moved.root += dp;
-        moved.step = step;
-        int was[kChordNotes], now[kChordNotes];
-        const int n = c.pitches(was);
-        if (moved.pitches(now) != n) return false; // a note of it would fall off the keyboard
-        for (int i = 0; i < n; ++i)
-            if (now[i] < kLowest || now[i] > kHighest) return false;
-        // Chords do not overlap in time.
-        const float v = c.velocity;
-        c.velocity = 0.f;
-        bool taken = false;
-        for (int at = step; at < step + static_cast<int>(std::ceil(moved.length)) && at < kSteps; ++at) taken = taken || p.chordAt(at) >= 0;
-        c.velocity = v;
-        if (taken) return false;
-        c = moved;
-        if (dp != 0) hearChord(c);
+// R1 held on a note or a chord: it is carried, whole, anywhere in the cell (owner, 2026-11-28: "I want to hold R1 and
+// move it to wherever I want, not just transpose or shorten/lengthen the notes"). Its length, its shape (a chord's
+// keys, its effects) and its nudge go with it; it crosses the bar lines of the cell into the bar it lands in. It stops
+// at an edge (the keyboard's ends, the cell's start, its end with the whole of it inside: never cut or squashed) and
+// is never left on top of another of its kind: what is in the way is jumped over (carry()).
+
+int NoteScreen::carryCellSteps() const { return carryOnFill_ ? kSteps : cellBars() * kSteps; }
+
+// Is [from, from + length) clear of every other note on `pitch` (or, pitch -1, every other chord), in the bars it can
+// be carried over? A span takes whole steps, as at() and chordAt() see it: a note 1.5 long at 4 has steps 4 and 5.
+bool NoteScreen::carrySpanFree(int pitch, int from, float length) const {
+    const TrackData& cell = static_cast<const Project&>(project_).current(); // (read only: makes no scene piece)
+    const auto steps = [](float len) { const int n = static_cast<int>(std::ceil(len)); return n < 1 ? 1 : n; };
+    const int to = from + steps(length);
+    const int first = carryOnFill_ ? carriedBar_ : 0, last = carryOnFill_ ? carriedBar_ : cellBars() - 1;
+    for (int bar = first; bar <= last; ++bar) {
+        const NotePattern& p = cell.notes[project_.scene][bar];
+        for (int i = 0; pitch >= 0 && i < kMaxNotes; ++i) {
+            const NoteEvent& n = p.notes[i];
+            if (n.velocity <= 0.f || n.pitch != pitch || (bar == carriedBar_ && i == carried_ && carrying_ == Carry::Note)) continue;
+            const int at = carryAt(bar, n.step);
+            if (at < to && from < at + steps(n.length)) return false;
+        }
+        for (int i = 0; pitch < 0 && i < kMaxChords; ++i) {
+            const ChordEvent& c = p.chords[i];
+            if (c.velocity <= 0.f || (bar == carriedBar_ && i == carried_ && carrying_ == Carry::Chord)) continue;
+            const int at = carryAt(bar, c.step);
+            if (at < to && from < at + steps(c.length)) return false;
+        }
     }
-    resend();
-    moveCursorTo(pitch_ + dp, step_ + ds);
     return true;
 }
 
+// The cursor on the carried note or chord, as far into it as R1 took hold of it (`carryGrab_`), but in the bar its
+// start is in: a note that runs on over a bar line is drawn in its own bar only, and that bar is the one shown.
+void NoteScreen::carryCursor(int pitch) {
+    const NotePattern& p = static_cast<const Project&>(project_).current().notes[project_.scene][carriedBar_];
+    const int start = carrying_ == Carry::Note ? p.notes[carried_].step : p.chords[carried_].step;
+    const float length = carrying_ == Carry::Note ? p.notes[carried_].length : p.chords[carried_].length;
+    int into = carryGrab_, most = static_cast<int>(std::ceil(length)) - 1;
+    if (most > kSteps - 1 - start) most = kSteps - 1 - start;
+    if (into > most) into = most;
+    if (into < 0) into = 0;
+    project_.bar = carriedBar_;
+    moveCursorTo(pitch, start + into);
+}
+
+// Exactly `dp` keys and `ds` steps, or why not: Taken (another note on that key, another chord, there: further on may
+// be free) or Edge (off the keyboard or the cell, or no room in the bar it would go to: stop).
+NoteScreen::CarryTry NoteScreen::carryBy(int dp, int ds) {
+    TrackData& cell = project_.current();
+    NotePattern& from = cell.notes[project_.scene][carriedBar_];
+    const bool note = carrying_ == Carry::Note;
+    if (carrying_ == Carry::Nothing || (note ? from.notes[carried_].velocity : from.chords[carried_].velocity) <= 0.f) return CarryTry::Edge;
+    const int start = note ? from.notes[carried_].step : from.chords[carried_].step;
+    const float length = note ? from.notes[carried_].length : from.chords[carried_].length;
+    const int at = carryAt(carriedBar_, start) + ds;
+    if (at < 0) return CarryTry::Edge;
+    if (ds > 0 && static_cast<float>(at) + length > static_cast<float>(carryCellSteps()) + 0.0001f) return CarryTry::Edge; // all of it in the cell (so it starts in it too)
+    int keys = 0, pitch = -1;
+    if (note) {
+        pitch = from.notes[carried_].pitch + dp;
+        if (pitch < kLowest || pitch > kHighest) return CarryTry::Edge;
+    } else {
+        ChordEvent moved = from.chords[carried_];
+        moved.root += dp;
+        int was[kChordNotes], now[kChordNotes];
+        keys = from.chords[carried_].pitches(was);
+        if (moved.pitches(now) != keys) return CarryTry::Edge; // a key of it would fall off the keyboard
+        for (int i = 0; i < keys; ++i)
+            if (now[i] < kLowest || now[i] > kHighest) return CarryTry::Edge;
+    }
+    if (!carrySpanFree(pitch, at, length)) return CarryTry::Taken;
+    const int bar = carryOnFill_ ? carriedBar_ : at / kSteps, step = carryOnFill_ ? at : at % kSteps;
+    if (bar != carriedBar_) {
+        // Into another bar of the cell: a slot there, and room among its sixty-four notes.
+        NotePattern& to = cell.notes[project_.scene][bar];
+        const int slot = note ? to.freeSlot() : to.freeChord(); // (-1 only when the room is gone too, or every step has a
+                                                                // chord there: a guard, reached by no test)
+        if (slot < 0 || to.used() + (note ? 1 : keys) > kMaxNotes) return CarryTry::Edge;
+        if (note) {
+            to.notes[slot] = from.notes[carried_];
+            from.notes[carried_] = NoteEvent();
+        } else {
+            to.chords[slot] = from.chords[carried_];
+            from.chords[carried_] = ChordEvent();
+        }
+        session_.sendNoteBar(project_.track, project_.scene, carriedBar_);
+        carriedBar_ = bar;
+        carried_ = slot;
+    }
+    NotePattern& p = cell.notes[project_.scene][carriedBar_];
+    if (note) {
+        p.notes[carried_].pitch = pitch;
+        p.notes[carried_].step = step;
+        if (dp != 0 && !project_.playing) session_.audition(project_.track, pitch, p.notes[carried_].velocity);
+    } else {
+        p.chords[carried_].root += dp;
+        p.chords[carried_].step = step;
+        if (dp != 0) hearChord(p.chords[carried_]);
+    }
+    session_.sendNoteBar(project_.track, project_.scene, carriedBar_);
+    carryCursor(pitch_ + dp);
+    return CarryTry::Moved;
+}
+
+// One push of the D-pad (or a step of the stick's): a step earlier or later, or the next key (with a SCALE on, a note
+// goes to the scale's next key; a chord a semitone), over whatever is in the way to the next place that is free. With
+// L1 held, sideways is an octave.
 void NoteScreen::carry(Button direction) {
-    int dp = direction == Button::Right ? 1 : direction == Button::Left ? -1 : 0;
+    const int dp = direction == Button::Right ? 1 : direction == Button::Left ? -1 : 0;
+    const int ds = direction == Button::Down ? 1 : direction == Button::Up ? -1 : 0;
     if (zooming_ && dp != 0) { // L1 held: an octave at a time, a note or a chord
         zoomUsed_ = true;      // (letting go of L1 is no zoom: it was a carry)
         carryBy(dp * 12, 0);
         return;
     }
-    // A note carried sideways with a SCALE on goes to the next key of the scale (a chord a semitone, as before).
-    if (dp != 0 && carrying_ == Carry::Note && project_.scaleKind != kScaleOff) {
-        const int from = pat().notes[carried_].pitch;
-        int to = from + dp;
-        while (to >= kLowest && to <= kHighest && !inScale(project_.scaleKey, project_.scaleKind, to)) to += dp;
-        if (to < kLowest || to > kHighest) return;
-        dp = to - from;
+    if (ds != 0) {
+        for (int by = ds; carryBy(0, by) == CarryTry::Taken; by += ds) {
+        }
+        return;
     }
-    carryBy(dp, direction == Button::Down ? 1 : direction == Button::Up ? -1 : 0);
+    const bool note = carrying_ == Carry::Note;
+    const int from = note ? project_.current().notes[project_.scene][carriedBar_].notes[carried_].pitch : 0;
+    for (int by = dp;; by += dp) {
+        if (note && project_.scaleKind != kScaleOff) {
+            if (from + by < kLowest || from + by > kHighest) return;
+            if (!inScale(project_.scaleKey, project_.scaleKind, from + by)) continue;
+        }
+        if (carryBy(by, 0) != CarryTry::Taken) return;
+    }
 }
 
-// The stick, up and down, with X held: the note slides freely in time, off
-// the grid. It sits early or late of its step by up to half a step, and
-// passes on to the next step when it goes further. Where it cannot go on
-// (the end of the bar, another note in the way) it stops at the half step.
-void NoteScreen::carryFree(float steps) {
-    if (steps == 0.f || carrying_ == Carry::Nothing) return;
-    const auto nudgeOf = [&]() -> float& { return carrying_ == Carry::Note ? pat().notes[carried_].nudge : pat().chords[carried_].nudge; };
-    float t = nudgeOf() + steps;
-    while (t > kMostNudge) {
-        if (!carryBy(0, 1)) { t = kMostNudge; break; }
-        t -= 1.f;
+// B with R1 held: the note or chord goes back as R1 found it (its bar, step and key), and the cursor where it was.
+// R1 stays down but carries nothing more: the D-pad moves the cursor again. (A held pick's B, CLAUDE.md.)
+void NoteScreen::putCarryBack() {
+    TrackData& cell = project_.current();
+    NotePattern& now = cell.notes[project_.scene][carriedBar_];
+    const bool note = carrying_ == Carry::Note;
+    if ((note ? now.notes[carried_].velocity : now.chords[carried_].velocity) > 0.f) {
+        if (note) now.notes[carried_] = NoteEvent();
+        else now.chords[carried_] = ChordEvent();
+        session_.sendNoteBar(project_.track, project_.scene, carriedBar_);
+        NotePattern& was = cell.notes[project_.scene][carryWas_.bar];
+        int slot = carryWas_.slot;
+        if ((note ? was.notes[slot].velocity : was.chords[slot].velocity) > 0.f) slot = note ? was.freeSlot() : was.freeChord();
+        if (slot >= 0 && note) was.notes[slot] = carryWas_.note;
+        if (slot >= 0 && !note) was.chords[slot] = carryWas_.chord;
+        session_.sendNoteBar(project_.track, project_.scene, carryWas_.bar);
     }
-    while (t < -kMostNudge) {
-        if (!carryBy(0, -1)) { t = -kMostNudge; break; }
-        t += 1.f;
-    }
-    nudgeOf() = t;
-    resend();
+    carrying_ = Carry::Nothing;
+    project_.bar = carryWas_.bar;
+    moveCursorTo(carryWas_.pitch, carryWas_.step);
 }
 
 bool NoteScreen::keyStop(int pitch) const {
@@ -827,7 +898,9 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         repeat_.restart();
         return;
     }
-    if (b == Button::B && !input.held(Button::A) && !offGrid()) {
+    if (b == Button::B && carrying_ != Carry::Nothing) {
+        putCarryBack(); // B in a held pick: as the press found it (it deleted what R1 was carrying)
+    } else if (b == Button::B && !input.held(Button::A) && !offGrid()) {
         // Deletes what is under the cursor, and, held, whatever the cursor is dragged over.
         erasing_ = true;
         eraseHere();
@@ -940,11 +1013,17 @@ void NoteScreen::r1Button(const ButtonEvent& event, const Input& input) {
     if (event.down && !shaping_ && !erasing_ && !offGrid() && (slot >= 0 || chord >= 0)) {
         carrying_ = slot >= 0 ? Carry::Note : Carry::Chord;
         carried_ = slot >= 0 ? slot : chord;
-        axis_ = Axis::None; // a new hold is a new choice of job for the stick
+        carriedBar_ = project_.bar;
+        carryOnFill_ = onFill();
+        carryWas_.slot = carried_, carryWas_.bar = project_.bar, carryWas_.pitch = pitch_, carryWas_.step = step_;
+        if (slot >= 0) carryWas_.note = pat().notes[slot];
+        else carryWas_.chord = pat().chords[chord];
+        carryGrab_ = step_ - (slot >= 0 ? pat().notes[slot].step : pat().chords[chord].step);
         if (barTap) {
             copyBarArmed_ = true;
             copyBarPitch_ = pitch_;
             copyBarStep_ = step_;
+            copyBarBar_ = project_.bar;
         }
     } else if (event.down && !shaping_ && !barTap && !offGrid()) {
         painting_ = true;
@@ -954,9 +1033,10 @@ void NoteScreen::r1Button(const ButtonEvent& event, const Input& input) {
         copyBarArmed_ = true;
         copyBarPitch_ = pitch_;
         copyBarStep_ = step_;
+        copyBarBar_ = project_.bar;
     } else if (!event.down && copyBarArmed_) {
         copyBarArmed_ = false;
-        if (pitch_ == copyBarPitch_ && step_ == copyBarStep_) session_.copyBarHere();
+        if (pitch_ == copyBarPitch_ && step_ == copyBarStep_ && project_.bar == copyBarBar_) session_.copyBarHere();
     }
 }
 
@@ -989,6 +1069,10 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
     if (!input.held(Button::B)) erasing_ = false;
     if (!input.held(Button::R1)) carrying_ = Carry::Nothing;
     if (!input.held(Button::R1)) copyBarArmed_ = false;
+    if (carrying_ != Carry::Nothing) { // what R1 carries went from under it (an undo): it carries nothing
+        const NotePattern& p = static_cast<const Project&>(project_).current().notes[project_.scene][carriedBar_];
+        if ((carrying_ == Carry::Note ? p.notes[carried_].velocity : p.chords[carried_].velocity) <= 0.f) carrying_ = Carry::Nothing;
+    }
     if (!input.held(Button::X) || (!noteHere() && !chordHere())) fxHeld_ = false;
     if (!input.held(Button::L1)) zooming_ = false, l1First_ = false;
     if (!input.held(Button::Y)) picking_ = false; // (let go properly, the chord has landed already)
@@ -1084,27 +1168,27 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
         stickX_ = stickY_ = 0.f;
         stickWasX_ = stickWasY_ = false;
     } else if (carrying_ != Carry::Nothing) {
-        // R1 has hold of a note or a chord. One job per push, as with A held: whichever way the stick
-        // leaves the centre is the job until it comes back. Sideways it goes as the D-pad does
-        // (carry(): a SCALE's next key; with L1 held an octave, once a push: at the stick's pace an
-        // octave would fly), at twice the held D-pad's pace (the cursor's); up and down it slides freely in time,
-        // at its own rate (a value turned: the D-pad's UP / DOWN carry it a whole step). Both however far it is
-        // pushed (owner, 2026-11-25).
-        if (x == 0.f && y == 0.f) axis_ = Axis::None;
-        else if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
-        if (axis_ != Axis::Sideways || x == 0.f) {
+        // R1 has hold of a note or a chord: the stick carries it as the D-pad does (carry(): whole steps and keys, over
+        // what is in the way), both ways at once as the cursor goes, at twice the held D-pad's pace (the cursor's),
+        // however far it is pushed. With L1 held, sideways is an octave once a push (at the stick's pace an octave would
+        // fly off the keyboard). (It was one job a push, and up / down slid it off the grid: owner, 2026-11-28.)
+        const StickAxes both = stickAxes(x, y);
+        if (both.x == 0.f) {
             stickX_ = 0.f, stickWasX_ = false;
         } else if (zooming_) {
-            if (!stickWasX_) carry(x > 0.f ? Button::Right : Button::Left);
+            if (!stickWasX_) carry(both.x > 0.f ? Button::Right : Button::Left);
             stickX_ = 0.f, stickWasX_ = true;
         } else {
             stickX_ += stickWasX_ ? ui::stickPerSecond(Pace::Cursor) * dt : 1.f;
             stickWasX_ = true;
-            for (; stickX_ >= 1.f; stickX_ -= 1.f) carry(x > 0.f ? Button::Right : Button::Left);
+            for (; stickX_ >= 1.f && carrying_ != Carry::Nothing; stickX_ -= 1.f) carry(both.x > 0.f ? Button::Right : Button::Left);
         }
-        if (axis_ == Axis::UpDown) carryFree(stickWay(y) * kCarryStepsPerSecond * dt);
-        stickY_ = 0.f;
-        stickWasY_ = false;
+        if (both.y == 0.f) stickY_ = 0.f, stickWasY_ = false;
+        else {
+            stickY_ += stickWasY_ ? ui::stickPerSecond(Pace::Cursor) * dt : 1.f;
+            stickWasY_ = true;
+            for (; stickY_ >= 1.f && carrying_ != Carry::Nothing; stickY_ -= 1.f) carry(both.y > 0.f ? Button::Down : Button::Up);
+        }
     } else {
         axis_ = Axis::None;
         // The keys and the steps: one at once, then at twice the held D-pad's pace (the cursor's), however far it is
@@ -1734,10 +1818,9 @@ void NoteScreen::drawHints(SDL_Renderer* r, const Fonts& fonts, const NoteEvent*
         hint("A", "paste bar");
         if (const char* fill = Session::fillKeyHint(project_.current(), project_.scene, project_.bar)) hint("Y", fill); // the FILL
     } else if (carrying_ != Carry::Nothing) {
-        hint("STICK UP / DOWN", "slide in time");
-        hint("D-PAD", "whole steps");
-        hint("LEFT / RIGHT", "another key");
+        hint("D-PAD / STICK", "move");
         hint("L1", "octave");
+        hint("B", "as it was");
     } else if (painting_) {
         std::snprintf(brushText, sizeof brushText, "paint notes at %d%%", static_cast<int>(std::round(brush_ * 100.f)));
         hint("DRAG", brushText);

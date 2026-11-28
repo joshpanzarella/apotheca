@@ -18,7 +18,7 @@
 //
 // And the gesture audit's (docs/plans/gesture-audit.md), batch B2:
 //   stick      G14: the stick means what the D-pad means. A carry on the roll keeps to a SCALE and goes an
-//              octave a push with L1; one job a push; X let go with the stick pushed moves nothing on either
+//              octave a push with L1; both ways in one push (2026-11-28); X let go with the stick pushed moves nothing on either
 //              grid; L1 or A held on SONG's REPEATS turns what the D-pad turns there.
 //   xempty     G11: X held + B empties what X shows (a hit's, a note's, a chord's effects; a lane's FEEL and
 //              SWING), keeps the hit or note, one step of undo of its own, nothing to empty no step.
@@ -1865,15 +1865,18 @@ void testTheStickCarriesAsTheDpad() {
     rig.key(L1, false);
     rig.frames(1);
     CHECK(session.octavesShown() == octaves); // (L1 was the octave: no zoom)
-    // One job a push: pushed up first (sliding in time), sideways as well does not change the key.
+    // Both ways in one push (it was one job a push: owner, 2026-11-28, "move it to wherever I want"): up first, then
+    // up and right together, and it goes up and across, by whole steps and the scale's keys, never off the grid.
     rig.key(STICK_UP, true);
-    rig.frames(2);
+    rig.frames(1);
+    CHECK(bar.notes[0].step == 3 && bar.notes[0].pitch == from);
     rig.key(STICK_RIGHT, true);
-    rig.frames(10);
+    rig.frames(3);
     rig.key(STICK_UP, false);
     rig.key(STICK_RIGHT, false);
     rig.frames(1);
-    CHECK(bar.notes[0].pitch == from);
+    CHECK(bar.notes[0].step < 3 && bar.notes[0].pitch > from && inScale(2, kScaleMajor, bar.notes[0].pitch) && bar.notes[0].nudge == 0.f);
+    CHECK(roll.cursorPitch() == bar.notes[0].pitch && roll.cursorStep() == bar.notes[0].step);
     rig.key(R1, false);
     rig.frames(1);
 }

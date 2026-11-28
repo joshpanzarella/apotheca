@@ -1,0 +1,25 @@
+# 11: stereo. A stereo recording on a kit lane, and EDIT's STEREO / MONO box.
+title STEREO
+about A stereo recording on a drum lane plays in stereo. In its EDIT, up from the boxes is STEREO: hold A and press up for MONO, both sides in the middle.
+caption STEREO
+run --demo --view kit --samples $STEREO
+# (not recorded: on SONG, X solos the drum track; back to the kit)
+0.3 tap L2 2 0.3
+1.0 tap X
+1.4 tap R2 2 0.3
+from 2.2
+length 20.0
+
+2.4 say Lane 6: a stereo ping-pong.
+4.6 say A on the picture: EDIT.
+4.6 tap RIGHT 4 0.25
+5.8 tap A
+7.0 say Up: STEREO, at the top.
+7.4 tap UP
+9.0 say Hold A, up: MONO. Both in the middle.
+9.0 hold A 1.0
+9.4 tap UP
+13.4 say Hold A, down: STEREO again.
+13.4 hold A 1.0
+13.8 tap DOWN
+16.6 say The file is not changed.
