@@ -909,7 +909,7 @@ and A starts nothing meanwhile.
 | THE SONG | One WAV of the whole song: every scene as many times as it plays, then **for as long as its echoes and tails take to die away**. Muted tracks are left out. |
 | EACH TRACK | One WAV for every track by itself (stems), all the same length (the longest one's), so they line up in any other program |
 | THIS TRACK | The track being worked on, by itself |
-| TRACK TO SAMPLES | **A loop of this track, made into a recording** (to put on a lane or a sampler, and to free the handheld's work: a busy synth played back as a recording costs little). The track being worked on by itself (muted or not), the scene you are on played round once and then **the second time round kept**, so whatever rings past its end is heard at its start, as when it loops. **1, 2 or 4 whole bars** (the most the scene has, within twenty seconds: 4 bars at 120 BPM, 2 at 40); a scene under a bar, all of it. Stereo, 16-bit 48 kHz (one channel where both sides are the same), in `samples/bounces` ("bounces/bass 1 take 3", after the track's name and its TAKE), where the list of recordings sees it at once. **The cell's FILL is left out**: a loop is the plain cell. On a lane, **a tap of A on FIT fits it to its bars**. The row says `done: "bounces/bass 1 take 3" in recordings` |
+| TRACK TO SAMPLES | **A loop of this track, made into a recording** (to put on a lane or a sampler, and to free the handheld's work: a busy synth played back as a recording costs little). The track being worked on by itself (muted or not), the scene you are on played round once and then **the second time round kept**, so whatever rings past its end is heard at its start, as when it loops. **1, 2 or 4 whole bars** (the most the scene has, within twenty seconds: 4 bars at 120 BPM, 2 at 40); a scene under a bar, all of it. Stereo, 16-bit 48 kHz, in `samples/bounces` ("bounces/bass 1 take 3", after the track's name and its TAKE), where the list of recordings sees it at once. **The cell's FILL is left out**: a loop is the plain cell. On a lane, **a tap of A on FIT fits it to its bars**. The row says `done: "bounces/bass 1 take 3" in recordings` |
 | MIDI FILE | One MIDI file of the whole song (Type 1): every scene as many times as it plays, one track per track, at the song's tempo. Notes and chords as written, with ratchets and nudges; drums as General MIDI on channel 10. Muted tracks are left out. Chance, swing and feel, strum, glide and automation have no MIDI in them and are left out |
 
 A bounce is **not recorded as the song plays**. A second engine works the
@@ -2531,9 +2531,8 @@ to catch. The choice stays until you change it (it is not saved with the song).
   to the buses. The handheld starts remembering a track when you choose it, so its bars count from
   then: choose, let a bar or more go by, then tap Y. Before a whole bar of it has gone by nothing is
   caught, and the line says `NO WHOLE BAR OF 3 BASS YET: LET ONE GO BY`.
-- **A catch is a stereo file** (two channels, 16-bit, 48 kHz), left and right as they were heard. One with
-  nothing off the middle at all (both sides the same, sample for sample: the plain kit, nothing panned, no
-  stereo effect) is saved as one channel: the same sound, half the size.
+- **A catch is a stereo file** (two channels, 16-bit, 48 kHz), left and right as they were heard, always: even one with
+  nothing off the middle (both sides the same) stays two channels.
 
 **R1 is Record.** (One channel: the input is taken as one.) With a USB microphone or audio interface plugged into the
 USB-C port: R1 on a lane starts it waiting for sound, so there is no silence

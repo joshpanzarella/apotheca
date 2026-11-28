@@ -1128,8 +1128,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     | NORMALIZE, TRIM SILENCE | on the louder side at each sample (`Clip::loudest`) |
     | The pictures (`outlineOf`: the KIT, EDIT, the sampler, the designer page) | the louder side at each point: the same look |
     | SLICES AT THE HITS (`hitsIn`) | hits found on the two mixed to one; one set of cuts for both |
-    | CATCH (`catchLastBar`, `Engine::lastBars`) | **stereo**: the engine keeps each side in its own ring (four 25 s rings now, 19.2 MB an engine; `Caught::right`); `lastBar()` mixes them to one as before. Written as two channels, or one where the sides are the same to the bit (`oneIfSame`: the plain kit, nothing panned: the same sound, half the file; Claude's pick, open to the owner) |
-    | BOUNCE TRACK TO SAMPLES (`bounceToSamples`) | stereo, as the song plays it; one channel where the sides are the same |
+    | CATCH (`catchLastBar`, `Engine::lastBars`) | **stereo**: the engine keeps each side in its own ring (four 25 s rings now, 19.2 MB an engine; `Caught::right`); `lastBar()` mixes them to one as before. Written as two channels, always (owner, 2026-11-28: identical-sided catches stay stereo; it was "one where the sides are the same to the bit (`oneIfSame`)", Claude's pick, now gone) |
+    | BOUNCE TRACK TO SAMPLES (`bounceToSamples`) | stereo, as the song plays it, always two channels (owner, 2026-11-28) |
     | SAVE A COPY, SAVE A SLICE (`saveLaneSound`) | what the lane plays: two channels for a stereo sound, one with MONO on |
     | RECORD (`finishRecording`) | **one channel, as before**: the input is read as one (`AudioInput::read`) |
     | The WiFi page (a file sent: `parseWav`) | any channels, as before; file sizes are the file's own |

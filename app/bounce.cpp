@@ -504,7 +504,7 @@ void Session::bounceToSamples(BounceJob& job) {
         job.progress.store(static_cast<float>(at) / static_cast<float>(round + keep));
     }
     if (job.cancel.load()) return;
-    sound.oneIfSame(); // (nothing off the middle: one channel, as it always was)
+    // (Both sides kept even where they are the same: owner, 2026-11-28, every catch and loop stereo.)
     if (!writeWav(job.sampleFolder + "/" + job.sample + ".wav", sound, static_cast<int>(rate))) return;
     job.files = 1;
     job.sampleSteps = steps;

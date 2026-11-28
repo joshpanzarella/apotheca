@@ -172,10 +172,6 @@ void testReadingAndWriting() {
     CHECK(writeWav(folder + "/long.wav", Clip(longer, longer), 48000));
     Clip cut;
     CHECK(readWav(folder + "/long.wav", cut) && cut.size() == 960000u && cut.stereo() && cut.back() == 0.f && cut.right.back() == 0.f && cut.right == cut.left());
-    // Two sides the same are one (a catch or a bounce with nothing off the middle).
-    Clip same(left, left), apart(left, right);
-    CHECK(same.oneIfSame() && !same.stereo() && same.left() == left);
-    CHECK(!apart.oneIfSame() && apart.stereo());
 }
 
 // ---- the engine: a drum lane, the sampler, CLOUD -------------------------------------------------------------------
@@ -599,14 +595,14 @@ void testCatchInStereo() {
     rig.frames(3 * 16 * kStep / 256 + 8);
     caught = rig.engine->lastBars(1, 0);
     CHECK(caught.bars == 1 && peakOf(caught.sound) > 0.2f && peakOf(caught.right) < 1e-6f);
-    // Nothing off the middle: one channel, the same sound.
+    // Nothing off the middle: still two channels (owner, 2026-11-28: every catch stereo; it was saved as one).
     session.stepCatchFrom(-1);
     session.setMix(0, 0, 0);
     session.setLaneSample(0, 1, "");
     rig.frames(1);
     rig.frames(2 * 16 * kStep / 256 + 8);
     const std::string middle = session.catchLastBar(0, 6);
-    CHECK(!middle.empty() && readTextFile(folder + "/" + middle + ".wav", bytes) && wavChannels(bytes) == 1);
+    CHECK(!middle.empty() && readTextFile(folder + "/" + middle + ".wav", bytes) && wavChannels(bytes) == 2);
     session.togglePlay(false);
 }
 

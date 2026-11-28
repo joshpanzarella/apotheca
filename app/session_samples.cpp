@@ -866,8 +866,8 @@ std::string Session::catchLastBar(int track, int lane) {
     // and the line says to let a bar go by. (The mix is always heard: no whole bar there is a bar's worth, as ever.)
     caughtNoBar_ = from >= 0 && caught.bars == 0;
     if (caughtNoBar_) return "";
-    Clip bar(caught.sound, caught.right); // STEREO: both sides, as heard (a WAV of two channels)...
-    bar.oneIfSame();                      // ...or one, where nothing was off the middle (the same sound, half the file)
+    Clip bar(caught.sound, caught.right); // STEREO: both sides, as heard (a WAV of two channels), even where they are
+                                          // the same (owner, 2026-11-28: every catch stereo; it was one channel then)
     const int barSteps = caught.steps;
     float peak = 0.f;
     for (float v : bar) peak = std::fabs(v) > peak ? std::fabs(v) : peak;

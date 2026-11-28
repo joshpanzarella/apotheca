@@ -35,9 +35,6 @@ struct Clip : std::vector<float> {
     // The louder of the two sides, sample by sample (|L| or |R|): what a picture, TRIM SILENCE and a
     // peak are taken from. A mono one: its own size.
     std::vector<float> loudest() const;
-    // Two sides the same to the bit are one: kept as a mono recording (a catch or a bounce of a song with nothing
-    // off the middle: the file half the size, and it plays as it did). True if it was so.
-    bool oneIfSame();
 };
 
 // False if the file is not there or is not a WAV this can read.

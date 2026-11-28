@@ -155,13 +155,6 @@ std::vector<float> Clip::mono() const {
     return out;
 }
 
-bool Clip::oneIfSame() {
-    if (right.empty()) return false;
-    if (right.size() == size() && right != left()) return false;
-    right.clear();
-    return true;
-}
-
 std::vector<float> Clip::loudest() const {
     if (!stereo()) return left();
     std::vector<float> out(size());
