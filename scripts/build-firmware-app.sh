@@ -22,7 +22,7 @@ out="$here/build-image/output"
 strip="$out/host/bin/aarch64-linux-strip"
 [ -x "$strip" ] || { echo "build the card image once first: scripts/build-image.sh" >&2; exit 1; }
 
-# reconfigure, not rebuild: the version shown (0.N) is a cmake -D, set at
+# reconfigure, not rebuild: the version shown (BUILD N) is a cmake -D, set at
 # configure time from the commit count (os/package/apotheca/apotheca.mk)
 "$here/scripts/build-image.sh" -- apotheca-reconfigure
 

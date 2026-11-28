@@ -23,7 +23,7 @@ APOTHECA_LICENSE_FILES = third_party/easycz/LICENSE third_party/msfa/LICENSE \
 APOTHECA_REDISTRIBUTE = NO
 
 APOTHECA_DEPENDENCIES = sdl2
-# The version shown on screen is 0.N, N the commits plus one. git is read
+# The version shown on screen is BUILD N, N the commits plus one (it was 0.N until 2026-11-28). git is read
 # here, in the repository: the copy being built has no history.
 APOTHECA_CHANGES := $(shell git -C $(BR2_EXTERNAL_APOTHECA_PATH) rev-list --count HEAD 2>/dev/null || echo 0)
 # -O3, as the desk and the port build (Buildroot's flags say -O2; the build type's come after them): the same sound
@@ -47,7 +47,7 @@ define APOTHECA_INSTALL_TARGET_CMDS
 	$(INSTALL) -m 0644 $(@D)/third_party/signalsmith/LICENSE-stretch.txt $(APOTHECA_LIB)/licences/signalsmith-stretch-LICENSE.txt
 	$(INSTALL) -m 0644 $(@D)/third_party/signalsmith/LICENSE-linear.txt $(APOTHECA_LIB)/licences/signalsmith-linear-LICENSE.txt
 	$(INSTALL) -m 0644 $(@D)/assets/fonts/routed-gothic-LICENSE.txt $(APOTHECA_LIB)/licences/
-	echo "0.$$(( $(APOTHECA_CHANGES) + 1 ))" > $(APOTHECA_LIB)/VERSION
+	echo "$$(( $(APOTHECA_CHANGES) + 1 ))" > $(APOTHECA_LIB)/VERSION
 endef
 
 $(eval $(cmake-package))
