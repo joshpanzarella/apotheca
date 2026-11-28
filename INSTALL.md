@@ -228,7 +228,3 @@ ports folder). Send what is there.
 | `logs/off.log` | way A: each step of turning off (send it if it will not turn off) |
 | `logs/boot-latest.txt` | way A: the system's start, the sound card, the buttons |
 | `device-info.log` | way B: what the firmware offers |
-
-## Tip
-
-Apotheca is free. If it is useful to you, you can [tip me on PayPal](https://paypal.me/jpanzarella8). Optional, and thank you.

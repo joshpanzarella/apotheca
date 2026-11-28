@@ -34,6 +34,14 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
 12. **A wavetable synth, MORPH** (owner, 2026-11-17: "let's do the wavetable after that"; `docs/plans/wavetable-plan.md`): batches 0 to 5 built and joined to main (0.718): the rule, the tables and the voice, the app, the 32 presets, the designer page's picture, the review and the qemu bit check. Left: batch 6, a player's own table from a recording (the owner's call 7). Not heard, not run on the handheld; the owner's 17 calls are at the plan's picks.
 13. **More scenes: 64** (owner, 2026-11-17: "would it be possible to push the max scenes past 16?"; `docs/plans/scenes-plan.md`): built on branch `scenes` (batches 0 to 5): a scene's patterns are made when something is first written there, in the app and in the engine, so the 48 more cost nothing until used. Not joined, not run on the handheld; the owner's four calls are at the plan's picks.
 
+14. **BACKUP and RESTORE on the WiFi page** (owner, 2026-11-28: "for later"; "easy access to a tool that can do all
+of that for them instead of doing it manually and missing something"). Not built, not planned yet. The idea: one
+button saves the whole `apotheca` folder (songs, samples, presets, bounces, recordings, settings) to the computer as
+one zip with the date in its name; RESTORE takes such a zip back, shows what it holds, and puts it back (all of it,
+or only the songs or only the samples), never overwriting without saying so. It needs the memory guard's care (a
+zip can be bigger than free memory: stream it, never hold it whole) and the same checks as an upload. It would
+also make INSTALL.md's "back up the apotheca folder before a new card image" one click.
+
 Open: FM-6's banks ROM2A, 3A and 4A (in the same archive; not taken: the job asked for the B sides), more presets, own WiFi hotspot, an automation
 step-editor, a picture of FM-6's ALGORITHM (its wiring; msfa's table says each). **Twin Analog is gone** (owner, 2026-11-11: rethink it; 2026-11-13: it
 becomes a faithful Roland JX-3P clone, which is what it was meant to be). The
