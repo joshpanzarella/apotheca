@@ -141,6 +141,14 @@ void testTheServer() {
     CHECK(a.status == 200 && a.body.find("APOTHECA") != std::string::npos && a.body.find("<script>") != std::string::npos);
     CHECK(get(port, door + "/").status == 200);
     CHECK(get(port, "/").status == 403 && get(port, "/0000x").status == 403 && get(port, door + "9").status == 403);
+    // A browser at the bare address (or a wrong number, nothing after it) is asked for the number on a page of
+    // its own, still a 403 (and a wrong number still counted: testTooManyWrongNumbers); anything else, the sentence.
+    const std::string sentence = "Open the address shown on the Apotheca screen, with its four-digit number.";
+    a = get(port, "/");
+    CHECK(a.head.find("text/html") != std::string::npos && a.body.find(sentence) != std::string::npos && a.body.find("<form") != std::string::npos && a.body.find("@@") == std::string::npos);
+    CHECK(get(port, door + "9").body.find("<form") != std::string::npos); // (a wrong number: two of the five a minute, with the one above)
+    CHECK(get(port, "/0000x").body == sentence + "\n" && get(port, "/favicon.ico").body == sentence + "\n" && get(port, "/0000x/").body == sentence + "\n");
+    CHECK(put(port, "/", "x").body == sentence + "\n"); // only a GET is shown the page
     CHECK(get(port, "/list").status == 403 && put(port, "/samples/kick.wav", aWav()).status == 403);
     CHECK(get(port, "/" + std::string(transfer.pin().rbegin(), transfer.pin().rend()) + "x/list").status == 403);
     CHECK(!exists(samples + "/kick.wav"));
@@ -1065,7 +1073,23 @@ static void testTheSpeedTest() {
     CHECK(a.status == 200 && a.body.find("half\n") != std::string::npos && a.body.find("did not finish") != std::string::npos);
     Transfer::benchCommand = was;
     const std::string page = raw(port, "GET " + door + "/ HTTP/1.1\r\n\r\n").body;
-    CHECK(page.find("/bench") != std::string::npos); // the page has the button
+    CHECK(page.find("/speed") != std::string::npos); // the page has the button: SPEED TEST's own page, which reads /bench
+    const std::string speed = raw(port, "GET " + door + "/speed HTTP/1.1\r\n\r\n").body;
+    CHECK(speed.find("/bench") != std::string::npos && speed.find("getReader") != std::string::npos && speed.find("@@") == std::string::npos);
+    CHECK(page.find("@@") == std::string::npos && page.find("--teal") != std::string::npos); // the look filled in (web_look.cpp)
+    // The lettering: none set, none served; set, served whole and kept by the browser. Only behind the number.
+    CHECK(raw(port, "GET " + door + "/font.ttf HTTP/1.1\r\n\r\n").status == 404);
+    CHECK(raw(port, "GET /font.ttf HTTP/1.1\r\n\r\n").status == 403);
+    {
+        Transfer lettered;
+        lettered.setLettering(std::string("\0\1\0\0 the lettering", 18));
+        CHECK(lettered.hasLettering() && lettered.start(root + "/samples", root + "/songs", root + "/chords", 0, 31));
+        lettered.setLettering(""); // (not while it runs: the server's thread reads it)
+        const Answer font = raw(lettered.port(), "GET /" + lettered.pin() + "/font.ttf HTTP/1.1\r\n\r\n");
+        CHECK(font.status == 200 && font.body == std::string("\0\1\0\0 the lettering", 18) && font.head.find("font/ttf") != std::string::npos &&
+              font.head.find("max-age=31536000") != std::string::npos);
+        CHECK(raw(lettered.port(), "GET /" + lettered.pin() + "/list HTTP/1.1\r\n\r\n").head.find("no-store") != std::string::npos); // the rest is never kept
+    }
     // And the parts that take a whole folder (their working is checked in a browser, by hand: see CLAUDE.md).
     CHECK(page.find("webkitdirectory") != std::string::npos && page.find("function planFolders") != std::string::npos && page.find("webkitGetAsEntry") != std::string::npos);
     // A recording sent into a folder that is not there yet makes the folder, spaces in the names and all: what a folder sent whole relies on.

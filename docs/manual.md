@@ -694,9 +694,9 @@ designer".
   is in it at once, one put there another way within five seconds). The page
   does not save presets; the handheld's PRESET row does. Every change is the
   handheld's own: undo, the song file and the SAMPLER screen follow.
-- **A DRUMS track** shows its kit: **all eight lanes**, each a card (two
-  side by side on a computer, one under another on a phone). A lane's card
-  has its sound (the built-in drum, a synth model, or a recording from the
+- **A DRUMS track** shows its kit: **all eight lanes as pads** down the left
+  (each with its sound, a small picture and a PLAY to hold); click a pad and
+  its lane fills the right-hand side. A lane has its sound (the built-in drum, a synth model, or a recording from the
   card, picked from its list; a synth lane also has its named voices and
   its knobs, read as the handheld reads them), its picture with **START and END to drag**, **PLAY** (held:
   heard until it is let go; or hold 1 to 8 on the computer's keyboard), its
@@ -709,9 +709,12 @@ designer".
   handheld, the file on the card is never changed, and a lane's recording,
   EDIT, FIT, VOLUME, CHOKE, FEEL, SWING and synth voice are undone with undo.
 - Every setting of the synth is on the page, in the same groups as the
-  handheld's pages, with the eight macros at the top. Phazed's envelopes
-  are drawn as lines. Turn something on the handheld and the page shows it.
-- Every page ends with **EFFECTS** and **MODS**, whatever the instrument.
+  handheld's pages: **one tab a page**, with the eight macros (and a
+  recording's or MORPH's picture) always in view above the tabs. **ALL
+  PAGES** shows every page at once. Phazed's envelopes are drawn as lines.
+  Turn something on the handheld and the page shows it. On a computer the
+  page fits one screen; only the tab's own panel scrolls.
+- Every page has **EFFECTS** and **MODS** tabs, whatever the instrument.
   EFFECTS is the track's three slots (each: which effect it holds, then its
   settings, read as the handheld reads them), its two sends, the ECHO and
   SPACE buses, the master's two slots, and the track's LEVEL and PAN on the
@@ -1799,7 +1802,20 @@ at 150% three times. How far it is pushed never changes its speed.
 
 **L1 in the song list** turns it on. The list then shows an address, like
 `192.168.1.23/4821` (`:8080` before the number on the stock firmware). Open it in a browser on any computer or phone on
-the same network.
+the same network. Opened without the number (or with a wrong one), the page asks for it.
+
+**What is where.** On a computer the page fits one screen and nothing is below its foot: each list scrolls in its
+own panel.
+
+| Where | What |
+| --- | --- |
+| Top bar | The version and the room left on the card; **SOUND DESIGNER**, **SPEED TEST**, **UPDATE APOTHECA** |
+| Left, the big panel | **RECORDINGS**: the folders down its left side, the folder picked on the right, FIND at the top |
+| Right, top | **SEND TO THE HANDHELD**: CHOOSE FILES, CHOOSE A FOLDER, RECORDINGS GO IN |
+| Right, middle | **SENT AND DONE**: each file sent, moved or deleted, with its bar and result (only while there is something) |
+| Right, bottom | **SONGS**, **BOUNCES** and **CHORD PACKS**, as three tabs |
+
+On a phone it is one column: SEND first, then the recordings (the folders a row to swipe along), then the tabs.
 
 - **Send files**: CHOOSE FILES, or drop them on the page: recordings
   (`.wav`), chord packs (`.json`), songs (`.song`). Many at once is fine;
@@ -1828,15 +1844,18 @@ the same network.
   out. While it runs there is one row with a count and a STOP; only what is
   refused gets a row of its own.
 - **SPEED TEST** (top of the page) times every instrument and effect on the
-  device and shows the numbers in a new tab, each row as it is timed, the
+  device and shows the numbers in a new tab, each row as it is timed (SAVE AS TEXT keeps them), the
   busiest song with 24 MODs running among them. Stop the song first; it takes
   about four minutes on the handheld. It also says how fast the
   processor is let run and what the sound card takes.
 - **Recordings are shown by folder**, the loose ones as UNSORTED. Click a
-  folder to open or shut it. FIND narrows the list by name.
-- **To send into a folder**: drop the files on it, or press its ADD FILES
-  (the way on a phone), or pick it under RECORDINGS GO IN. NEW FOLDER there
-  takes a name; the folder is made when the first file lands in it.
+  folder in the list on the left to see what is in it. FIND looks through
+  every folder at once and shows each match under its folder's name.
+- **To send into a folder**: drop the files on it (on its name in the list,
+  or on the folder shown), or press its ADD FILES (the way on a phone), or
+  pick it under RECORDINGS GO IN. **+ NEW FOLDER** at the foot of the list of
+  folders, or NEW FOLDER under RECORDINGS GO IN, takes a name; the folder is
+  made when the first file lands in it.
 - **PLAY** plays a recording or a bounce in the browser.
 - **DOWNLOAD** fetches a file back: a catch, a recording, a song, a bounce.
 - **Several at once.** Tick the box on each recording (or CHOOSE ALL on a
@@ -1866,7 +1885,7 @@ the same network.
   sampler track is silent. Send a recording of that name again (into any
   folder, if it is the only one of that name) and it is back on the next
   frame. Deleting a recording changes no saved song.
-- The top line shows the version and the room left on the card.
+- The top bar shows the version and the room left on the card.
 - The four digits on the end are made up each time it is turned on. A
   request without them is refused, so someone on the network who has not
   seen the handheld's screen cannot get in. It is not encryption: use it on
@@ -1889,9 +1908,9 @@ For a script, the same things by hand (`ADDRESS` is what the screen shows):
 | Delete | `DELETE` the same address |
 | Rename or move a recording | `POST` its address with a header `X-To: breaks/808.wav` (spaces as `%20`) |
 
-**Updating Apotheca the same way.** The page has an UPDATE APOTHECA button:
-choose the new `apotheca` program file (inside the `apotheca` folder of the
-zip).
+**Updating Apotheca the same way.** The page has an UPDATE APOTHECA button at
+the top: it opens a small box; choose the new `apotheca` program file (inside
+the `apotheca` folder of the zip). Its bar is in SENT AND DONE.
 
 1. The page sends it. It is checked (a program for this processor, 30 MB at
    most) and only set aside. The network alone installs nothing.

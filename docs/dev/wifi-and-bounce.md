@@ -82,6 +82,72 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - `design_test` `testSamplerFromThePage`, `testKitFromThePage`; `APOTHECA_DESIGN_SAMPLER=1` or
     `APOTHECA_DESIGN_KIT=1` with `APOTHECA_DESIGN_HOLD` holds a page open for a browser (the KIT's
     lanes are printed whenever one changes on the handheld).
+- **The pages' layout and look (web redesign, owner, 2026-11-28: "laid out logically ... minimal vertical scroll
+  ... more in the vein of the shapetaker family").** Every endpoint and every guard is as it was; only the layout,
+  the look and three additions below changed.
+  - **One look for every page** (`app/web_look.cpp`): each page is one raw string marked `page` with `@@LOOK@@`
+    (the shared style sheet), `@@BRAND@@` (the emblem, the Shapetaker wordmark, APOTHECA) and `@@FONT@@` (the
+    lettering's loader) in it, filled once by `withWebLook` (`pageWithLook` in transfer.cpp: a function's static,
+    made once whichever thread asks first). The colours are the BROWN theme's surfaces with the Shapetaker
+    accents: near-black leather (two SVG `feTurbulence` grains, under 1 KB, no picture), brass edges and screws
+    on every plate, cream lettering, teal `#00ffb4` for "on" and the main key, purple for the loose recordings,
+    MORPH's B and the UPDATE key, amber for a refusal. `--dim` lettering is 6:1 or more on its ground.
+  - **The device's lettering** (Routed Gothic Narrow) is served at `/PIN/font.ttf`, whole and unchanged (the
+    OFL: a subset or a WOFF would be a Modified Version, under the font's reserved name), **kept by the browser
+    a year** (`Cache-Control: private, max-age=31536000, immutable`; every other answer stays `no-store`): a weak
+    WiFi pays its 57 KB once. `Transfer::setLettering` takes the bytes before `start` (the server's thread only
+    reads them); `Session::toggleTransfer` reads them once with `loadFontFile()`. None: 404, and the pages keep
+    the browser's letters. It is for the page's own words: **a file's name, a size, a number typed or read
+    (a setting's value, a picture's marks) are in the browser's plain letters** (`--data`), because the
+    lettering's 1 reads as an I ("round I", "I6 B").
+  - **The files page on a computer** (960 px wide and 560 high or more) **is one screen high**: the header
+    (version, free space, SOUND DESIGNER, SPEED TEST, UPDATE APOTHECA), then RECORDINGS as the big plate on the
+    left (the folders down its left side, each a place to drop on; the folder picked on the right; FIND shows
+    every match in every folder, under its folder's name), and down the right SEND TO THE HANDHELD, SENT AND
+    DONE (only when there is something), and SONGS / BOUNCES / CHORD PACKS as tabs of one plate (the last one
+    looked at kept in `localStorage`). **Every list scrolls inside its own plate**: nothing is below the
+    screen's foot (measured at 1440x900: BOUNCES was 221 px down with one folder open and 1,953 px with every
+    folder open, UPDATE 944 and 2,676; now 0, the page does not scroll). The folder plan and the update are
+    boxes over the page. On a phone it is one column: SEND first, then the recordings (the folders a row to
+    swipe along), then the tabs.
+  - **The recordings as folders down the left** replace the open-and-shut folders: CHOOSE ALL, ADD FILES and
+    DELETE FOLDER are on the folder shown, dropping and dragging onto a folder work on its name in the list,
+    and **+ NEW FOLDER** in that list names one there (as RECORDINGS GO IN's NEW FOLDER: made on the card when
+    the first recording lands in it). Files sent are shown in the folder they go into; a move does not change
+    the folder shown.
+  - **The door**: a GET of the bare address, or of a wrong number with nothing after it, is answered with a
+    page that asks for the number (still a 403, and a wrong number still counted). Anything else keeps the
+    plain sentence. The door loads no lettering: asking for `/NUMBER/font.ttf` would be another try.
+    `transfer_test` holds both.
+  - **SPEED TEST has a page of its own** (`/PIN/speed`), which reads `/bench` as it comes and puts its parts in
+    plates, the numbers in teal, three across on a computer; SAVE AS TEXT keeps what was printed (a second
+    `/bench` would time it all again). `/bench` is as it was.
+  - **The sound designer** is one screen high on a computer too: the picture (a recording, CLOUD's band,
+    MORPH's tables) and the eight MACROS stay in view, and the handheld's pages, EFFECTS (the track's three
+    slots, then SENDS AND MIXER, the buses, the master) and MODS are tabs (ALL PAGES: every one, two across).
+    **A KIT is eight pads down the left** (number, sound, a small picture, a PLAY to hold) and the lane picked on
+    the right: its sound, its picture, LANE, EDIT and VOICE side by side. Every lane's card is still built and
+    kept up to date; only the one picked is shown (the ids `sound L`, `play L`, `normalize L`, `voice L` are as
+    they were). The tab and the lane picked are kept in `localStorage`.
+  - **A fault found on the way**: the KIT page did not draw at all with a built-in drum on any lane (every fresh
+    kit): `laneCard` greyed FIT with `box.querySelector('select')`, and FIT is a slider, so it threw, and
+    `look()` said "The handheld is not answering". Now `querySelector('select, input')`. A MOD's SHAPE, PHASE
+    and STEPPER rows were never hidden either (`.fxkind`'s `display:flex` beat `hidden`): the shared look's
+    `[hidden]{display:none!important}` hides them.
+  - Sizes served (bytes, no compression; the server sends none): files page 42,252 before, 59,570 after (18,778
+    gzipped, for comparison); designer 51,278, then 72,775; the speed test page 17,306 (before: plain text); the
+    door 14,729; the lettering 57,532 once. The growth is the shared look (about 9 KB) and the wordmark (3.6 KB)
+    on the designer.
+  - Tried in Chromium with Playwright against a `Transfer` started by a small program with made-up content
+    (forty-odd recordings in folders, songs, bounces, chord packs) and against `design_test`'s held pages (every
+    kind), 2026-11-28: send into a folder, find, rename, move by the form and by dragging onto a folder,
+    download, play, several moved into a NEW FOLDER and deleted, delete (asked once more), + NEW FOLDER, ADD
+    FILES, DELETE FOLDER, a song sent, fetched and deleted, the three tabs, a folder's plan, the update (a WAV
+    refused), a 17 MB upload under way (its percent) and saved, SPEED TEST's page to `done`; on the designer a
+    macro, a tab, a setting, a held key heard and let go, a picture clicked, ALL PAGES, an effect put in a
+    slot, a MOD made a STEPPER; on the KIT a pad picked, VOLUME, START dragged, a pad's PLAY and key 3 heard,
+    a recording on a lane, NORMALIZE, a named voice. No script errors. Not tried: Safari, Firefox, a real
+    phone, the handheld's own WiFi.
 - **The page's own script has no test in `ctest`.** A change to it is tried
   in a browser (Playwright is installed) against a `Transfer` started by a
   small program, as the folder import was (`planFolders` can be called from
