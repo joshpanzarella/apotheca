@@ -5,6 +5,9 @@ warm glow behind it, the seven old planet signs round its band, the four element
 air sign at its heart; SHAPETAKER between brass rules; APOTHECA engraved (a brass shadow); a scale under it.
 It writes the 224-colour PPM the kernel builds in (os/board/rg40xxv/logo/logo_apotheca_clut224.ppm;
 CONFIG_LOGO_LINUX_CLUT224_FILE in linux.fragment, copied into the kernel tree by external.mk).
+It also writes splash.bin (os/package/apotheca-tools/src/, installed as /usr/share/apotheca/splash.bin): the same
+picture to the pixel, and the planet band in pieces for apotheca-splash.c, which turns the signs at start-up and at
+turn-off. The kernel's picture is not changed by it (--splash none writes the PPM alone). Needs numpy for that.
 
     python3 os/tools/make-logo.py [--png PREVIEW.png]
 
@@ -86,10 +89,14 @@ def star(d, x, y, r, col):
         rr = r if k % 2 == 0 else r * 0.28
         pts.append(polar(x, y, rr, k * 45 - 90))
     d.polygon([(s(a), s(b)) for a, b in pts], fill=col)
-def finish(img, word, wy=254, ramp=None):
+def finish(img, word, wy=254, ramp=None, palette=None):
+    """The picture made small, the wordmark in, held to the kernel's colours. Returns it and its palette; given a
+    palette (the kernel picture's), uses that one instead (the splash's picture without the planet signs)."""
     small = img.resize((W, H), Image.LANCZOS)
     region = small.crop((WORD_AT[0], wy, WORD_AT[0] + word.size[0], wy + word.size[1]))
     small.paste(ImageChops.lighter(region, word), (WORD_AT[0], wy))
+    if palette is not None:
+        return small.quantize(palette=palette, dither=Image.NONE).convert("RGB"), palette
     # 220 colours at most (the kernel takes 224): the accents are kept exactly, the rest shared out.
     keep = [BG, CREAM, BRASS, BRASS_HI, BRASS_LO, TEAL, PURPLE, DIM, LINE]
     if ramp:  # the glow's fade, every shade from black to its colour, so it has no edge
@@ -97,23 +104,33 @@ def finish(img, word, wy=254, ramp=None):
     rest = small.quantize(colors=220 - len(keep), method=Image.FASTOCTREE, dither=Image.NONE).convert("RGB")
     pal = Image.new("P", (1, 1)); flat = [c for col in keep for c in col] + [c for col in (rest.getcolors(1 << 20) or []) for c in col[1]]
     pal.putpalette(flat[:220 * 3] + [0] * (768 - len(flat[:220 * 3])))
-    return small.quantize(palette=pal, dither=Image.NONE).convert("RGB")
+    return small.quantize(palette=pal, dither=Image.NONE).convert("RGB"), pal
 
 
-def draw(font, symbols, word):
-    cx, cy = 320, 148
+CX, CY = 320, 148        # the dial's centre
+PLANETS = "☉☽☿♀♂♃♄"
+
+
+def planet_signs(d, symbols, fill):
+    """The seven planet signs round the band (between 84 and 96): the part the splash turns."""
+    sym = ImageFont.truetype(symbols, s(12))
+    for k, ch in enumerate(PLANETS):
+        deg = -90 + 360 * (k + 0.5) / 7
+        x, y = polar(CX, CY, 90, deg)
+        d.text((s(x), s(y)), ch, font=sym, fill=fill, anchor="mm")
+
+
+def draw(font, symbols, word, signs=True, palette=None):
+    cx, cy = CX, CY
     # ---- A. BRASS GLOW ----
     img = Image.new("RGB", (W * S, H * S), BG)
     glow(img, cx, cy, 96, GLOW, 1.0)
     d = ImageDraw.Draw(img)
     ring(d, cx, cy, 98, LINE, 1)
     # the planet band: between 84 and 96, the seven signs
-    sym = ImageFont.truetype(symbols, s(12))
     ring(d, cx, cy, 96, BRASS_LO, 1.5); ring(d, cx, cy, 84, BRASS_LO, 1.5)
-    for k, ch in enumerate("☉☽☿♀♂♃♄"):
-        deg = -90 + 360 * (k + 0.5) / 7
-        x, y = polar(cx, cy, 90, deg)
-        d.text((s(x), s(y)), ch, font=sym, fill=BRASS, anchor="mm")
+    if signs:
+        planet_signs(d, symbols, BRASS)
     # a bevelled rim: the dark under, the bright over the top
     ring(d, cx, cy, 77, BRASS_LO, 5); ring(d, cx, cy, 77, BRASS, 3)
     d.arc([s(cx - 77), s(cy - 77), s(cx + 77), s(cy + 77)], 200, 330, fill=BRASS_HI, width=s(1.6))
@@ -123,7 +140,96 @@ def draw(font, symbols, word):
     d.ellipse([s(cx - 6), s(cy - 4), s(cx + 6), s(cy + 8)], outline=BRASS_HI, width=s(2))
     elements(d, cx, cy, 77)
     lockup(img, d, font, shadow=True)
-    return finish(img, word, ramp=GLOW)
+    return finish(img, word, ramp=GLOW, palette=palette)
+
+
+# ---- the splash: the same picture with its planet band turning (apotheca-splash.c) ----
+SPLASH = os.path.join(HERE, "..", "package", "apotheca-tools", "src", "splash.bin")
+SIGMA = 0.36             # the signs' smoothing, in pixels (a round Gaussian: one that turns with them; 0.36 is the
+                         # closest round one to the kernel's Lanczos, which is square and would not turn)
+
+
+def splash_layers(symbols):
+    """The parts the splash needs at four times the size: the signs alone (coverage), what is under them (the glow
+    and the band's rings, drawn before them) and what covers them (the rim and the four element discs, drawn after:
+    the signs pass under the discs, which reach into the band)."""
+    signs = Image.new("L", (W * S, H * S), 0)
+    planet_signs(ImageDraw.Draw(signs), symbols, 255)
+    under = Image.new("RGB", (W * S, H * S), BG)
+    glow(under, CX, CY, 96, GLOW, 1.0)
+    d = ImageDraw.Draw(under)
+    ring(d, CX, CY, 98, LINE, 1); ring(d, CX, CY, 96, BRASS_LO, 1.5); ring(d, CX, CY, 84, BRASS_LO, 1.5)
+    front = Image.new("L", (W * S, H * S), 0)
+    d = ImageDraw.Draw(front)
+    d.ellipse([s(CX - 77), s(CY - 77), s(CX + 77), s(CY + 77)], fill=255)
+    for deg in (-90, 0, 90, 180):
+        x, y = polar(CX, CY, 77, deg)
+        d.ellipse([s(x - 11), s(y - 11), s(x + 11), s(y + 11)], fill=255)
+    return signs, under, front
+
+
+def smooth_signs(signs, x0, y0, n):
+    """The signs' coverage in the n x n pixels from (x0, y0), smoothed by a round Gaussian and kept at four samples
+    a pixel: sample j is at x0 + j/4 (the kernel's own pixel centre x + 0.5 is sample 4(x - x0) + 2). Turned, it
+    is the same picture turned, which the kernel's square filter would not be."""
+    import numpy as np
+    a = np.asarray(signs, dtype=np.float64)[y0 * S:(y0 + n) * S, x0 * S:(x0 + n) * S] / 255.0
+    N = 8
+    m = (np.arange(-N, N + 2) - 0.5) / S
+    rr = np.hypot(m[None, :], m[:, None])
+    h = np.exp(-rr * rr / (2 * SIGMA * SIGMA)); h /= h.sum()
+    k = a.shape[0] + h.shape[0]
+    f = np.fft.irfft2(np.fft.rfft2(a, (k, k)) * np.fft.rfft2(h, (k, k)), (k, k))
+    return np.clip(f[N:N + n * S, N:N + n * S], 0.0, 1.0)
+
+
+def write_splash(path, kernel, pal, base, symbols):
+    """splash.bin, read by apotheca-splash.c (little-endian; the layout is in that file's header)."""
+    import struct
+    import numpy as np
+    signs, under, front = splash_layers(symbols)
+    x0, y0, n = CX - 100, CY - 100, 200
+    f = smooth_signs(signs, x0, y0, n)
+    under1 = np.asarray(under.resize((W, H), Image.LANCZOS), dtype=np.float64)
+    cover = np.asarray(front.resize((W, H), Image.LANCZOS), dtype=np.float64) / 255.0
+    kern = np.asarray(kernel, dtype=np.int32)
+    base = np.asarray(base, dtype=np.int32)
+    # Where the turning signs can reach: the band between the smallest and largest radius they cover, and a pixel
+    ys, xs = np.nonzero(f >= 0.5 / 255)
+    rad = np.hypot(x0 + xs / S - CX, y0 + ys / S - CY)
+    r0, r1 = rad.min() - 1.0, rad.max() + 1.0
+    yy, xx = np.mgrid[0:H, 0:W]
+    r = np.hypot(xx + 0.5 - CX, yy + 0.5 - CY)
+    # (and the few pixels under the discs where the kernel's Lanczos lets a sign show through: two, today)
+    band = (r >= r0) & (r <= r1) & ((cover < 1.0) | np.any(base != kern, axis=2))
+    # Outside the band the picture without the signs is the kernel's, pixel for pixel; inside, the splash adds
+    # the signs: base + coverage * (1 - front) * (BRASS - under).
+    outside = ~band & np.any(base != kern, axis=2)
+    if outside.any():
+        sys.exit("make-logo: the splash's picture differs from the kernel's at %d pixels outside the band" % outside.sum())
+    py, px = np.nonzero(band)
+    delta = (1.0 - cover[py, px])[:, None] * (np.array(BRASS, dtype=np.float64)[None, :] - under1[py, px])
+    f[f < 0.5 / 255] = 0.0
+    nz = np.nonzero(f.max(axis=0) > 0)[0]; gx0, gx1 = nz.min(), nz.max() + 1
+    nz = np.nonzero(f.max(axis=1) > 0)[0]; gy0, gy1 = nz.min(), nz.max() + 1
+    grid = np.rint(f[gy0:gy1, gx0:gx1] * 255).astype(np.uint8)
+    # The still as the kernel's own colours (at most 224) and one byte a pixel. (Not Pillow's quantize to a
+    # palette: that one is near, not exact, by up to 6 levels.)
+    used = sorted(c for _, c in kernel.getcolors(256))
+    lut = {c: i for i, c in enumerate(used)}
+    code = (kern[:, :, 0] << 16) | (kern[:, :, 1] << 8) | kern[:, :, 2]
+    idx = np.zeros((H, W), dtype=np.uint8)
+    for c, i in lut.items():
+        idx[code == ((c[0] << 16) | (c[1] << 8) | c[2])] = i
+    colours = [v for c in used for v in c] + [0] * (3 * (256 - len(used)))
+    with open(path, "wb") as o:
+        o.write(b"APSPLSH1" + struct.pack("<HHH", W, H, 256) + bytes(colours) + idx.tobytes())
+        o.write(struct.pack("<ii", CX * 256, CY * 256))
+        o.write(struct.pack("<I", len(px)) + px.astype("<u2").tobytes() + py.astype("<u2").tobytes())
+        o.write(base[py, px].astype(np.uint8).tobytes())
+        o.write(np.rint(delta * 64).astype("<i2").tobytes())
+        o.write(struct.pack("<iiHH", x0 * 256 + gx0 * 64, y0 * 256 + gy0 * 64, gx1 - gx0, gy1 - gy0) + grid.tobytes())
+    return len(px), r0, r1, (gx1 - gx0, gy1 - gy0)
 
 
 def find(given, places, what):
@@ -153,16 +259,23 @@ def main():
     a.add_argument("--symbols")
     a.add_argument("--png")
     a.add_argument("--out", default=OUT)
+    a.add_argument("--splash", default=SPLASH, help="the splash's file (apotheca-splash); 'none' writes none")
     o = a.parse_args()
     font = find(o.font, [os.path.join(HERE, "..", "..", "assets", "fonts", "routed-gothic-narrow.ttf"),
                          "/home/user/apotheca/assets/fonts/routed-gothic-narrow.ttf"], "the app's font (--font)")
     symbols = find(o.symbols, ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/TTF/DejaVuSans.ttf",
                                "/Library/Fonts/DejaVuSans.ttf"], "DejaVu Sans (--symbols)")
-    img = draw(font, symbols, Image.open(WORDMARK).convert("RGB"))
+    word = Image.open(WORDMARK).convert("RGB")
+    img, pal = draw(font, symbols, word)
     n = write_ppm(img, o.out)
     if o.png:
         img.save(o.png)
     print("make-logo: %s, %dx%d, %d colours" % (os.path.relpath(o.out), img.size[0], img.size[1], n))
+    if o.splash != "none":
+        base, _ = draw(font, symbols, word, signs=False, palette=pal)
+        k, r0, r1, g = write_splash(o.splash, img, pal, base, symbols)
+        print("make-logo: %s, %d pixels turning (radius %.1f to %.1f), the signs' grid %dx%d, %d bytes"
+              % (os.path.relpath(o.splash), k, r0, r1, g[0], g[1], os.path.getsize(o.splash)))
     return 0 if n <= 224 else 1
 
 

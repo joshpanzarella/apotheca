@@ -19,9 +19,16 @@
 # KILL and left behind (a process stuck in the kernel cannot be waited
 # for), the log says so with where it is stuck, and the code is 124.
 #
+# off_splash: the start-up picture with its band turning (apotheca-splash
+# --off), once Apotheca is not running (it has the screen while it runs), and
+# only once. It goes into the background at once, holds nothing on /data, and
+# turns until init's TERM at the very end; the last frame stays on the screen.
+#
 # Every place is overridable for the desk test (os/tools/off-test.sh):
-# APOTHECA_OFF_LOG, APOTHECA_OFF_KMSG, APOTHECA_OFF_RUN, and APOTHECA_POWEROFF
-# (what off_poweroff runs in place of poweroff; init is then never signalled).
+# APOTHECA_OFF_LOG, APOTHECA_OFF_KMSG, APOTHECA_OFF_RUN, APOTHECA_SPLASH,
+# APOTHECA_APP_NAME (the program pidof looks for), and
+# APOTHECA_POWEROFF (what off_poweroff runs in place of poweroff; init is then
+# never signalled).
 
 OFF_LOG=${APOTHECA_OFF_LOG:-/data/apotheca/logs/off.log}
 OFF_KMSG=${APOTHECA_OFF_KMSG:-/dev/kmsg}
@@ -160,6 +167,21 @@ off_limit() {
     off_now
     off_took=$(off_s $(( off_now - _off_began )))
     return $_off_code
+}
+
+off_splash() {
+    _off_splash=${APOTHECA_SPLASH:-/usr/libexec/apotheca/apotheca-splash}
+    [ -x "$_off_splash" ] || return 0
+    pidof "${APOTHECA_APP_NAME:-apotheca}" > /dev/null 2>&1 && return 0
+    [ -e "$OFF_RUN/off-splash" ] && return 0
+    mkdir -p "$OFF_RUN" 2>/dev/null
+    touch "$OFF_RUN/off-splash" 2>/dev/null
+    # (one from the start-up still turning, Apotheca never having drawn: this one replaces it)
+    _off_old=$(pidof "${_off_splash##*/}" 2>/dev/null)
+    [ -n "$_off_old" ] && kill $_off_old 2>/dev/null
+    _off_pid=$("$_off_splash" --off 2>/dev/null)
+    off_log "splash: the picture, its band turning, until the power goes (pid ${_off_pid:-none})"
+    return 0
 }
 
 # The handheld off: init asked to power off (it runs rcK, which logs the

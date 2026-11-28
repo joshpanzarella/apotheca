@@ -1,7 +1,10 @@
 # Apotheca's /etc/inittab, read by BusyBox init (no runlevels, no systemd).
 # <tty>::<action>:<program>
 
-# Start the system: mounts, then /etc/init.d/S* in order
+# Start the system: the start-up picture's band turning (apotheca-splash: it
+# goes into the background at once and stops by itself when Apotheca's
+# picture is on the screen), mounts, then /etc/init.d/S* in order
+::sysinit:/usr/libexec/apotheca/apotheca-splash --boot
 ::sysinit:/bin/mount -t proc proc /proc
 ::sysinit:/bin/mkdir -p /dev/pts /dev/shm
 ::sysinit:/bin/mount -a

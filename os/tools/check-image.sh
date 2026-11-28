@@ -16,7 +16,9 @@
 #     Apotheca and read by apotheca-keep, Apotheca that knows the mark, and
 #     the turn-off's log (off.log) with its time limits in every step, and
 #     the CPU fallback (gpu-off): softpipe and kms_swrast in Mesa, and run
-#     telling both GBM and EGL
+#     telling both GBM and EGL; the start-up picture's band turning
+#     (apotheca-splash, its splash.bin the kernel's picture to the pixel,
+#     started first by inittab and at turn-off by off and S95apotheca)
 #   - partition 3: empty (the second system slot)
 #   - partition 4: zeros (the first boot grows it and makes it exFAT)
 #
@@ -406,6 +408,34 @@ if unsquashfs:
               "BusyBox's udhcpd is there to hand out addresses on our own network")
         check(b'start) avahiStart' in cat('/usr/libexec/apotheca/wifi-address'),
               "wifi-address starts avahi on our own network too (apotheca.local)")
+        # The start-up picture's band turning (apotheca-splash, splash.bin from make-logo.py): at start-up
+        # (inittab's first line) and at turn-off (off and S95apotheca, through off.sh's off_splash).
+        check(mode('/usr/libexec/apotheca/apotheca-splash').startswith('-rwx'),
+              "p2 holds /usr/libexec/apotheca/apotheca-splash, executable (%s)" % (mode('/usr/libexec/apotheca/apotheca-splash') or "missing"))
+        tool = cat('/usr/libexec/apotheca/apotheca-splash')
+        check(tool[:4] == b'\x7fELF' and tool[18:20] == b'\xb7\x00' and b'/usr/share/apotheca/splash.bin' in tool,
+              "apotheca-splash is an arm64 program that reads /usr/share/apotheca/splash.bin")
+        splash = cat('/usr/share/apotheca/splash.bin')
+        ok = len(splash) > 14 + 768 and splash[:8] == b'APSPLSH1'
+        sw, sh = struct.unpack_from('<HH', splash, 8) if ok else (0, 0)
+        still = None
+        if ok and len(splash) >= 14 + 768 + sw * sh:
+            pal = splash[14:14 + 768]
+            idx = splash[14 + 768:14 + 768 + sw * sh]
+            still = bytes(b for i in idx for b in pal[3 * i:3 * i + 3])
+        logo = os.path.join(sys.argv[3], 'os', 'board', 'rg40xxv', 'logo', 'logo_apotheca_clut224.ppm')
+        kernel = None
+        if os.path.exists(logo):
+            nums = [w for line in open(logo).read().splitlines()[1:] if not line.startswith('#') for w in line.split()]
+            kw, kh = int(nums[0]), int(nums[1])
+            kernel = (kw, kh, bytes(int(v) for v in nums[3:]))
+        check(still is not None and kernel is not None and (sw, sh) == kernel[:2] and still == kernel[2],
+              "splash.bin's still is the kernel's start-up picture to the pixel (%dx%d; no jump when it takes over)" % (sw, sh))
+        check(inittab.splitlines() and [l for l in inittab.splitlines() if l.startswith('::sysinit:')][:1] == ['::sysinit:/usr/libexec/apotheca/apotheca-splash --boot'],
+              "inittab starts the turning picture first of all (apotheca-splash --boot)")
+        check(b'off_splash()' in offsh and b'--off' in offsh and b'off_splash' in cat('/usr/libexec/apotheca/off')
+              and b'off_splash' in cat('/etc/init.d/S95apotheca'),
+              "the turn-off starts the turning picture once Apotheca has stopped (off, S95apotheca: off_splash)")
 else:
     print("skip  p2's files (no unsquashfs)")
 

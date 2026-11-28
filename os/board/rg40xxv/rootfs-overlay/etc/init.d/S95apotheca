@@ -47,6 +47,9 @@ stop() {
         say "Apotheca stopped (in $((i / 10)).$((i % 10)) s), its song saved"
         off_log "S95apotheca: Apotheca stopped in $((i / 10)).$((i % 10)) s"
     fi
+    # The screen is free again: the picture, its band turning (not when
+    # Apotheca is still running; once only: off may have started it).
+    off_splash
     off_log "S95apotheca: sync (at most 10 s)"
     off_limit 10 "S95apotheca: sync" sync && off_log "S95apotheca: sync done in $off_took s"
 }

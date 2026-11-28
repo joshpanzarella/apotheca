@@ -22,6 +22,9 @@
 #   wifi         WiFi on (an interface up) is turned off after S95apotheca,
 #                timed; one that hangs is cut short at 5 s; WiFi off is not
 #                touched
+#   splash       the turning picture (apotheca-splash --off, a stand-in) is
+#                started by off and by S95apotheca once Apotheca is not
+#                running, once only, and logged; never while it runs
 #   time         what the logging costs a line (on the desk's disk, not
 #                the SD card: info, and a loose bound for the desk's sh)
 #
@@ -54,7 +57,11 @@ export APOTHECA_INITD="$t/initd"
 export APOTHECA_POWEROFF=true
 export APOTHECA_NET="$t/net"
 export APOTHECA_WIFI_CMD="$t/wifi"
+export APOTHECA_SPLASH="$t/splash"
+export APOTHECA_APP_NAME=apotheca-off-test-app
 mkdir -p "$t/net" "$t/bin"
+printf '#!/bin/sh\necho "$*" >> "%s/splash-said"\necho 4242\n' "$t" > "$t/splash"
+chmod 755 "$t/splash"
 printf '#!/bin/sh\necho "$*" >> "%s/wifi-said"\n' "$t" > "$t/wifi"
 chmod 755 "$t/wifi"
 log=$APOTHECA_OFF_LOG
@@ -179,6 +186,30 @@ check $(has "$log" "off: WiFi off: CUT SHORT after 5 s") "a WiFi off that hangs 
 pgrep -f "sleep 1000" > /dev/null; check $([ $? -ne 0 ]; echo $?) "the hanging WiFi off was killed"
 printf '#!/bin/sh\necho "$*" >> "%s/wifi-said"\n' "$t" > "$t/wifi"
 rm -rf "$t/net"; mkdir -p "$t/net"
+
+# ---- splash: the turning picture once Apotheca has stopped, once only
+setup
+rm -f "$t/splash-said"
+$shell "$overlay/usr/libexec/apotheca/off" apotheca-keep "apotheca asked (quit)"
+check $(has "$t/splash-said" "^--off$") "off, Apotheca stopped: the turning picture is started (--off)"
+check $(has "$log" "off: splash: the picture, its band turning, until the power goes (pid 4242)") "and logged, with its pid"
+$shell -c ". '$overlay/usr/lib/apotheca/off.sh'; off_splash"
+check $([ "$(grep -c . "$t/splash-said")" = 1 ]; echo $?) "started once only (off, then S95apotheca)"
+setup
+rm -f "$t/splash-said"
+cp "$(command -v sleep)" "$t/bin/$APOTHECA_APP_NAME"
+"$t/bin/$APOTHECA_APP_NAME" 30 &
+app=$!
+sleep 0.2
+$shell "$overlay/usr/libexec/apotheca/off" apotheca-power "power key held"
+check $([ ! -e "$t/splash-said" ]; echo $?) "off while Apotheca runs (the power key): no picture yet"
+kill $app 2>/dev/null; wait $app 2>/dev/null
+$shell -c ". '$overlay/usr/lib/apotheca/off.sh'; off_splash"
+check $(has "$t/splash-said" "^--off$") "then, Apotheca stopped (S95apotheca), it is started"
+setup
+rm -f "$t/splash-said"
+APOTHECA_SPLASH="$t/none" $shell "$overlay/usr/libexec/apotheca/off" apotheca-keep "quit"
+check $([ ! -e "$t/splash-said" ] && ! grep -q "splash:" "$log"; echo $?) "no apotheca-splash: nothing started, nothing said"
 
 # ---- time: what a logged turn-off costs a line (the real sync, the desk's disk)
 setup

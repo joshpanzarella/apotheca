@@ -99,7 +99,7 @@ happens.
    | 2 | **red alone**, and **the screen lit but empty** | the boot loader (U-Boot) is running |
    | 3 | the red goes out, **the green blinks in pairs** (blink-blink, pause) | Linux has started |
    | 4 | the red on again for a moment (often too short to see) | Linux's first program is looking for the card |
-   | 5 | the red out, **the green blinks evenly**, about once a second; the screen says **APOTHECA STARTING**, then **Apotheca** | the system is starting |
+   | 5 | the red out, **the green blinks evenly**, about once a second; the start-up picture's **outer ring of signs starts turning**, then **Apotheca** | the system is starting |
    | 6 | you press any button: **the green light stays on** | this screen now counts as seen working |
 
    **If it stops on the way:**
@@ -133,6 +133,14 @@ happens.
      `apotheca/logs/boot-latest.txt`. To see them on the screen for once, add
      `console=tty1` to the `APPEND` line of `extlinux/extlinux.conf` on
      APOTHBOOT.
+   - **The outer ring turns** (since 2026-11-28): as soon as the system's
+     first program runs, the ring of seven planet signs round the dial turns
+     slowly clockwise (one turn in 10 s, 30 pictures a second), so you can
+     see it is doing something. Everything else stays exactly the kernel's
+     picture. It stops by itself the moment Apotheca's own picture is on the
+     screen. The same turning picture comes back at turn-off, from the
+     moment Apotheca has saved and stopped until the power goes. See "The
+     turning picture" below.
 4. To turn it off: see the next section.
 
 ## Turning it off, the power key, the battery
@@ -172,6 +180,10 @@ cost about 1 s of a whole turn-off, plus what the steps themselves take.)
 [66.10] off: S05data: unmounting /data (at most 10 s; ...): the LAST line on the card
 ```
 
+Once Apotheca has stopped, the screen shows the start-up picture with its
+outer ring turning until the power goes (`splash:` in the log). When the
+power key is held the screen is dark by then, so it is not seen.
+
 WiFi, if any of it is on, is turned off right after Apotheca stops (`WiFi:
 turning it off`, at most 5 s, then `WiFi: off in ... s`), so a slow radio
 shows in the log instead of holding the very end of the turn-off.
@@ -183,6 +195,37 @@ one cut short says `CUT SHORT`, with what was still running and where it
 waited. The lines after the unmount (and every line, if the card stopped
 answering) go to the kernel's own log only. The file keeps its last 200
 lines.
+
+## The turning picture (start-up and turn-off)
+
+`apotheca-splash` (`package/apotheca-tools/src/apotheca-splash.c`) draws the
+start-up picture with its ring of planet signs turning. **Not yet seen on a
+handheld**: only on the desk (its frames) and in qemu.
+
+| When | Started by | Stops |
+| --- | --- | --- |
+| start-up | inittab's very first line (`--boot`), before any start-up script | when Apotheca's picture is on the screen (it watches the display); or the screen has been another program's for 10 s; or after 90 s |
+| turn-off | `off` (Apotheca quit or idle) or `S95apotheca` (power key, battery, shell `poweroff`), once Apotheca has stopped | init's TERM at the very end: the last picture stays until the power goes (at most 120 s) |
+
+- **The picture is the kernel's own, to the pixel**: `os/tools/make-logo.py`
+  writes the kernel's logo and `splash.bin` together, and `check-image.sh`
+  compares them. Only the band between radius 82 and 98 round the dial is
+  drawn again (8,803 pixels); the signs pass under the four element discs,
+  as in the picture.
+- **Cost**: on the desk 0.12 to 0.13 ms a frame; the handheld is 13 to 20
+  times slower, so about 1.6 to 2.7 ms a frame, **5 to 8% of one of the
+  four cores** at 30 a second, at nice 10. (Under qemu, which emulates the
+  CPU and is no guide to speed, 2.5 to 3.8 ms.) That is an estimate, not a
+  measurement: the boot log's line `apotheca-splash: start-up: stopped
+  (...) ... ms a frame to draw` gives the real number.
+- Each frame is copied in just after the screen's vertical blank, so it
+  should not tear (only the handheld can show that).
+- **It never holds anything up**: it goes into the background at once,
+  opens nothing on the APOTHECA drive, and with no `/dev/fb0` or any other
+  failure it ends quietly. Its start and stop, and why it stopped, are lines
+  `apotheca-splash:` in the kernel's log (the boot log has the start-up's).
+- To see it on the desk: `apotheca-splash --data splash.bin --frames DIR N`
+  writes N frames as pictures, `--bench N` times them.
 
 ## Headphones or speaker, one or the other
 
@@ -437,13 +480,14 @@ scripts/build-firmware-app.sh                # Apotheca alone: dist/firmware/apo
 os/tools/panel-dtb.sh IN.dtb NEW.panel OUT.dtb   # a panel file into a device tree
 python3 -I os/tools/power-test.py           # apotheca-power on the desk, a made-up /sys (about 1 min)
 os/tools/off-test.sh [SHELL]                 # the turn-off's log and time limits on the desk (about 30 s)
+python3 os/tools/make-logo.py                # the start-up picture (the kernel's) and splash.bin (the turning ring)
 ```
 
 `os/` is a Buildroot "external tree": `configs/apotheca_rg40xxv_defconfig`
 (what goes in), `board/rg40xxv/` (kernel patches and config, device trees,
 U-Boot settings, the card layout `genimage.cfg`, the files laid over the
 system in `rootfs-overlay/`), `package/` (our own packages: Apotheca, the
-joypad driver, apotheca-power, padprobe and fakepad), `patches-to-buildroot/` (two changes to
+joypad driver, apotheca-power, apotheca-splash, padprobe and fakepad), `patches-to-buildroot/` (two changes to
 Buildroot's Mesa package, each saying why). The first build takes about three
 hours on four cores (LLVM and clang, for Mesa's shaders, are most of it) and
 about 13 GB; `--tidy` gives back the biggest part afterwards and **keeps the

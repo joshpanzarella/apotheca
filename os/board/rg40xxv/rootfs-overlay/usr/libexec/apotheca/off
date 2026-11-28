@@ -13,4 +13,8 @@ why=${2:-$APOTHECA_OFF_WHY}
 mkdir -p "$OFF_RUN" 2>/dev/null
 echo "$who: ${why:-no reason given}" > "$OFF_RUN/off-asked" 2>/dev/null
 off_log "$who asks for the handheld off: ${why:-no reason given}"
+# Apotheca has stopped already when it asked (quit, idle): the turning
+# picture now. (Asked by apotheca-power it still runs: S95apotheca starts the
+# picture once it has stopped it.)
+off_splash
 off_poweroff

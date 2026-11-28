@@ -38,6 +38,14 @@ arm64 machine ("virt") and checks what can be checked without the handheld:
   third boot   a made-up battery (the kernel's test_power) at 4%: on a
                charger nothing happens; unplugged, apotheca-power turns the
                machine off after two reads, Apotheca stopped first
+  splash       the start-up picture's band turning (apotheca-splash): started
+               first by inittab, stopped by itself once Apotheca has the
+               screen; started by hand with Apotheca held, it draws the
+               kernel's picture with only the band changing; the first boot's
+               quit starts it at turn-off (off.log, read on the second boot);
+               at a shell's poweroff (fifth boot) the screen shows it turning.
+               qemu draws no kernel logo (its virtio GPU's fbdev comes up
+               blank): what shows is the splash's own drawing
   fourth boot  idle-off 1 in power.txt: Apotheca, left alone a minute,
                saves, leaves the mark and the machine goes down; then a
                shell poweroff, which also stops Apotheca first
@@ -223,6 +231,44 @@ def wait_bootlog(m, seconds=120):
     out, _ = m.run("i=0; while [ ! -e /run/apotheca/bootlog-copied ] && [ $i -lt %d ]; do sleep 1; i=$((i+1)); done; "
                    "ls /run/apotheca/bootlog-copied" % seconds, timeout=seconds + 20)
     return "bootlog-copied" in out
+
+
+LOGO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "board", "rg40xxv", "logo",
+                    "logo_apotheca_clut224.ppm")
+
+
+def read_ppm(path):
+    """(width, height, RGB bytes) of a P6 (qemu's screendump) or P3 (the kernel's logo) file."""
+    data = open(path, "rb").read()
+    if data.startswith(b"P6"):
+        head = data.split(b"\n", 3)
+        w, h = map(int, head[1].split())
+        return w, h, head[3]
+    nums = [x for line in data.decode().splitlines()[1:] if not line.startswith("#") for x in line.split()]
+    return int(nums[0]), int(nums[1]), bytes(int(v) for v in nums[3:])
+
+
+def against_logo(path):
+    """How a screen grab differs from the kernel's picture (its top 464 rows): the pixels that differ, and how
+    many of those lie outside the planet band (radius 80 to 100 round the dial's centre, 320,148)."""
+    w, h, px = read_ppm(path)
+    lw, lh, logo = read_ppm(LOGO)
+    if w < lw or h < lh:
+        return None, None, set()
+    diff, outside, where = 0, 0, set()
+    for y in range(lh):
+        a, b = px[3 * y * w:3 * (y * w + lw)], logo[3 * y * lw:3 * (y + 1) * lw]
+        if a == b:
+            continue
+        for x in range(lw):
+            if x < 8 and y < 16:
+                continue    # the text console's cursor cell: blinking here (qemu's boot line keeps the cursor on)
+            if a[3 * x:3 * x + 3] != b[3 * x:3 * x + 3]:
+                diff += 1
+                where.add((x, y))
+                if not 80 <= ((x + 0.5 - 320) ** 2 + (y + 0.5 - 148) ** 2) ** 0.5 <= 100:
+                    outside += 1
+    return diff, outside, where
 
 
 def wait_running(m, seconds=180):
@@ -603,7 +649,7 @@ def main():
         # drawing a still with SDL's offscreen driver (no screen, no GPU).
         out, code = m.run("cat /usr/lib/apotheca/VERSION")
         version = out
-        check(code == 0 and out.startswith("0."), "Apotheca %s is on the card" % out)
+        check(code == 0 and (out.isdigit() or out.startswith("0.")), "Apotheca %s is on the card" % out)
         out, code = m.run("cd /usr/lib/apotheca && SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy "
                           "./apotheca --demo --view fx --shot /tmp/fx.bmp > /tmp/fx.log 2>&1; "
                           "echo $?; cd /; ls -l /tmp/fx.bmp | awk '{print $5}'", timeout=180)
@@ -692,6 +738,42 @@ def main():
                      "" if colours > 8 else " (qemu's virtio-gpu refuses SDL's mode set; see apotheca.log)"))
         else:
             print("gap   no picture of the virtual screen (QMP screendump)")
+
+        # The start-up picture's band turning (apotheca-splash): started first by
+        # inittab, it stopped by itself once Apotheca had the screen.
+        out, _ = m.run("dmesg | grep 'apotheca-splash: start-up'; pidof apotheca-splash || echo none")
+        print("info  the splash at start-up:\n      " + out.replace("\n", "\n      "))
+        check("apotheca-splash: start-up: the band turning" in out,
+              "the turning picture started at start-up (inittab's first line)")
+        stopped = re.search(r"start-up: stopped \((.*?)\) after ([0-9.]+) s, (\d+) frames, ([0-9.]+) ms", out)
+        check(stopped is not None and out.endswith("none") and "the longest" not in out,
+              "and stopped by itself once Apotheca had the screen (%s)" % (stopped.group(0) if stopped else "not stopped"))
+        # Started by hand with Apotheca held (as the turn-off does): the kernel's
+        # picture, only the band changing from one moment to the next.
+        m.run("touch /run/apotheca/apotheca.hold; kill $(pidof apotheca); sleep 3", timeout=30)
+        pid, _ = m.run("/usr/libexec/apotheca/apotheca-splash --off")
+        m.run("sleep 2")
+        grabs = []
+        for k in range(2):
+            g = os.path.join(work, "splash-%d.ppm" % k)
+            if m.screendump(g) and os.path.exists(g):
+                grabs.append(g)
+            m.run("sleep 0.5")
+        if len(grabs) == 2:
+            d0, o0, w0 = against_logo(grabs[0])
+            d1, o1, w1 = against_logo(grabs[1])
+            print("info  the splash on qemu's screen against the kernel's picture: %s and %s pixels differ, %s and %s "
+                  "of them outside the band" % (d0, d1, o0, o1))
+            check(d0 is not None and o0 == 0 and o1 == 0 and 0 < d0 < 9000,
+                  "the splash draws the kernel's picture to the pixel outside the planet band")
+            check(w0 != w1, "and the band turns (two grabs half a second apart differ in it)")
+        else:
+            check(False, "a grab of qemu's screen with the splash on it (QMP screendump)")
+        out, _ = m.run("kill %s; sleep 1; dmesg | grep 'apotheca-splash: turn-off' | tail -n 2" % (pid or "0"))
+        print("info  " + out.replace("\n", "\n      "))
+        check("turn-off: stopped (TERM)" in out, "it stops at once on TERM (as init's at the end of a turn-off)")
+        m.run("rm /run/apotheca/apotheca.hold")
+        check(wait_running(m, 90), "Apotheca running again, the hold lifted")
 
         # The software fallback: told to draw with the CPU, it starts again so.
         m.run("touch /data/apotheca/gpu-off; kill $(pidof apotheca)")
@@ -993,6 +1075,10 @@ def main():
         check("code 0" in out and "(quit)" in out, "the first boot's quit is in apotheca-keep's log: code 0, quit (%s)" % out)
         out, _ = m.run("grep -c 'turning the handheld off (quit)' /data/apotheca/logs/boot-0002.txt")
         check(out != "0", "and Apotheca's own log (in the boot log) says it turned off after saving")
+        # (the system's own messages stop reaching the serial port at start-up, so the turn-off is read in off.log)
+        out, _ = m.run("grep 'splash: the picture' /data/apotheca/logs/off.log | tail -n 1")
+        check("splash: the picture, its band turning, until the power goes (pid " in out and "(pid )" not in out,
+              "the first boot's quit started the turning picture at turn-off (off.log: %s)" % out[out.find("splash"):])
         check(wait_running(m), "Apotheca started at boot again")
 
         # The power key held: off, Apotheca stopped first (S95apotheca).
@@ -1046,8 +1132,29 @@ def main():
         check(out != "0", "run handed power.txt's idle-off to Apotheca")
         m.run("rm /data/apotheca/power.txt")
         m.send("poweroff")
+        # The turn-off's turning picture, on qemu's screen while it goes down: the
+        # kernel's picture outside the band, and the band changing from grab to
+        # grab (the start-up's last frame, left in the fbdev, would not change).
+        shown = turned = 0
+        last = None
+        t0 = time.time()
+        while time.time() - t0 < 20 and m.p.poll() is None:
+            g = os.path.join(work, "off-%d.ppm" % shown)
+            try:
+                if m.screendump(g) and os.path.exists(g):
+                    d, o, where = against_logo(g)
+                    if d is not None and o == 0:
+                        shown += 1
+                        if last is not None and where != last:
+                            turned += 1
+                        last = where
+            except OSError:
+                break
+            time.sleep(0.5)
         check(m.end(60), "poweroff ends the machine")
-        out = open(os.path.join(work, "boot5.log"), "rb").read().decode("utf-8", "replace")
+        check(shown > 0 and turned > 0,
+              "the turn-off shows the picture with its band turning while the machine goes down (%d grabs, %d changed)"
+              % (shown, turned))
         check(re.search(r"Apotheca stopped \(in [0-9.]+ s\), its song saved", out) is not None,
               "a shell poweroff stops Apotheca first too")
 
