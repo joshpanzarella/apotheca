@@ -837,7 +837,7 @@ void testUndoAndASongSentAgain() {
     CHECK(rig.played() == rig.grid());
 }
 
-// ---- a bounce is what was heard --------------------------------------------------------------------
+// ---- a bounce: the song, a TAKE of its own ---------------------------------------------------------
 
 void testABounce() {
     const TempFolder temp;
@@ -876,7 +876,10 @@ void testABounce() {
             last = frame;
         }
     }
-    CHECK(heard.size() == 16 && bounced == heard);
+    // A bounce is a TAKE of its own (wifi-and-bounce.md): its HUMAN TIME rolled afresh, so not where the live hits
+    // were, but every hit there, each near its step, the song's one bar (and not the scene alone).
+    CHECK(heard.size() == 16 && bounced.size() == 16 && bounced != heard);
+    for (std::size_t i = 0; i < bounced.size() && i < heard.size(); ++i) CHECK(std::labs(bounced[i] - heard[i]) < kStep / 2);
     // The file is the bar and nothing of a second: the last step asked nothing early of the first.
     CHECK(last < kBar);
     CHECK(last > kBar - kStep - 600);

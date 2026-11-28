@@ -23,6 +23,12 @@ float editPart(const LaneEdit& e, int row) {
 bool editFromMiddle(int row) { return row == kEditGain || row == kEditPitch || row == kEditFine; }
 }
 
+bool EditView::stereo() const {
+    if (!target_.sound) return false;
+    const Session::LaneSound& sound = target_.sound();
+    return sound.source && sound.source->stereo() && !sound.missing;
+}
+
 void EditView::open(const Target& target, int row) {
     target_ = target;
     open_ = true;
@@ -32,6 +38,11 @@ void EditView::open(const Target& target, int row) {
     holding_ = deleting_ = bBack_ = false;
     deletePart_ = 0.f;
     repeating_ = Button::None;
+    monoFrom_ = 0;
+    if (row == kEditMono && has(kEditMono)) {
+        row_ = kEditMono;
+        return;
+    }
     row_ = row < 0 ? 0 : (row >= kEditRows ? kEditRows - 1 : row);
     if (!has(row_)) row_ = shownNear(row_ / 4, row_ % 4);
     if (row_ < 0) row_ = 0;
@@ -69,6 +80,19 @@ void EditView::set(const LaneEdit& edit) {
 
 void EditView::press(Button b) {
     if (!holding_) {
+        // MONO, on the sound's box above the rows: DOWN back to the box it came from (or the nearest it has).
+        if (row_ == kEditMono) {
+            if (!has(kEditMono) || b == Button::Down) {
+                const int to = has(monoFrom_) ? monoFrom_ : shownNear(0, monoFrom_ % 4);
+                row_ = to >= 0 ? to : 0;
+            }
+            return;
+        }
+        if (b == Button::Up && row_ / 4 == 0 && has(kEditMono)) { // UP from the top row: MONO (a stereo sound's)
+            monoFrom_ = row_;
+            row_ = kEditMono;
+            return;
+        }
         // Two rows of four: left / right along a row, up / down between the rows, the boxes it has not passed by.
         // The ends stop.
         const int row = row_ / 4, column = row_ % 4;
@@ -144,6 +168,7 @@ void EditView::onButton(const ButtonEvent& event, const Input& input) {
 
 void EditView::update(const Input& input, Uint32 nowMs, float dt) {
     lastMs_ = nowMs;
+    if (row_ == kEditMono && !has(kEditMono)) row_ = has(monoFrom_) ? monoFrom_ : 0; // (the sound is mono now: MONO has gone)
     if (!input.held(Button::A)) holding_ = false;
     hearWhenDone(input, nowMs);
     // B held: the bar fills for half a second (kDeleteHoldMs: undo brings it back, G29), then every edit goes (undo brings them back).
@@ -166,8 +191,8 @@ void EditView::update(const Input& input, Uint32 nowMs, float dt) {
         // pushed (owner, 2026-11-25; it was by the square of the push).
         const LaneEdit& e = target_.edit();
         const float upDown = stickAxes(x, y).y; // (not by a sideways push that drifts)
-        if (row_ == kEditReverse) { // a choice, up ON and down OFF: once a push
-            if (upDown != 0.f && !reversePushed_) set(laneEditWith(e, kEditReverse, upDown < 0.f ? 1 : 0));
+        if (row_ == kEditReverse || row_ == kEditMono) { // a choice, up ON and down OFF: once a push
+            if (upDown != 0.f && !reversePushed_) set(laneEditWith(e, row_, upDown < 0.f ? 1 : 0));
             reversePushed_ = upDown != 0.f;
         } else {
             turned_ += -stickWay(upDown) * static_cast<float>(laneEditRange(row_)) * dt;
@@ -224,7 +249,18 @@ void EditView::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else {
         fonts.within(&Fonts::small, target_.quiet.c_str(), sw - 120.f).draw(r, sx + 7.f, sy + 7.f, target_.quiet.c_str(), kDim);
     }
-    fonts.within(&Fonts::large, target_.title.c_str(), sw - 14.f).draw(r, sx + 7.f, sy + 23.f, target_.title.c_str(), sound.missing ? kDim : kText);
+    // MONO's stop (a stereo sound's only): STEREO or MONO at the right of the name, the name kept clear of it.
+    float titleRoom = sw - 14.f;
+    if (has(kEditMono)) {
+        const char* sides = e.mono ? "MONO" : "STEREO";
+        const bool on = row_ == kEditMono;
+        const SDL_Color accent = holding_ ? kBrass : kTeal;
+        const float w = fonts.large.width("STEREO"), right = sx + sw - 8.f;
+        fonts.large.drawRight(r, right, sy + 23.f, sides, on ? accent : e.mono ? kPurple : kText);
+        if (on) outline(r, static_cast<int>(right - w) - 5, static_cast<int>(sy + 20.f), static_cast<int>(w) + 10, static_cast<int>(fonts.large.capHeight()) + 7, accent, 2);
+        titleRoom -= w + 20.f;
+    }
+    fonts.within(&Fonts::large, target_.title.c_str(), titleRoom).draw(r, sx + 7.f, sy + 23.f, target_.title.c_str(), sound.missing ? kDim : kText);
     const float wordsY = kWaveY + (kWaveH - fonts.small.capHeight()) / 2.f;
     if (sound.missing) {
         fonts.small.draw(r, sx + 7.f, wordsY, target_.missing.c_str(), kBrass);
@@ -260,7 +296,7 @@ void EditView::draw(SDL_Renderer* r, const Fonts& fonts) const {
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     if (holding_) {
-        hint("UP / DOWN", row_ == kEditReverse ? "on / off" : "turn it");
+        hint("UP / DOWN", row_ == kEditReverse ? "on / off" : row_ == kEditMono ? "mono / stereo" : "turn it");
     } else {
         hint("HOLD A", "turn");
         hint("B", bLeavesAfterY(row_) || laneEditValue(e, row_) == laneEditValue(LaneEdit(), row_) ? "back" : "default");

@@ -109,6 +109,7 @@ public:
 
     // To a row; one that is not here gives the next that is (or the one before, at the end).
     void goTo(int row);
+    int row() const { return row_; } // the row the cursor is on
     // Up or down a place. A press of the D-pad at an end goes round to the other (G35); a held D-pad
     // or the stick stops there (ui::listStep).
     void step(int by, bool pressed = false) { goTo(rowAt(ui::listStep(placeOf(row_), by, places(), pressed))); }
@@ -167,6 +168,9 @@ private:
     mutable char bounced_[64] = "";
     int bounceWhat_ = 0; // 0 the song, 1 each track, 2 this track, 3 a MIDI file, 4 this track into samples (batch S3)
     static constexpr int kBounceKinds = 5;
+    // BOUNCE's TAKE (wifi-and-bounce.md): hold A + UP / DOWN picks it, on a kind that has one (not a MIDI file).
+    bool takeKeys(const Input& input) const;
+    bool takeHeld_ = false; // ...A is held so this frame (for the hints)
     NameKeys keys_;         // a track's name being typed
     bool fromSong_ = false; // the keyboard was asked for from the SONG screen, and goes back there
     void openName(bool fromSong); // the name keys, with the track's name typed in

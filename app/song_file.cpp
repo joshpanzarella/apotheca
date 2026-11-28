@@ -603,9 +603,10 @@ void putKit(std::string& out, const TrackData& track) {
             if (track.laneOneSlice[lane]) put(out, " %.0f", lane + 1);
         out += "\n";
     }
-    // laneedit LANE START END GAIN FADEIN FADEOUT REVERSE PITCH FINE: what a lane does to its sound
+    // laneedit LANE START END GAIN FADEIN FADEOUT REVERSE PITCH FINE [MONO]: what a lane does to its sound
     // (lane_edit.hpp). START and END as parts of the file (0..1), GAIN in dB, the fades in ms, REVERSE
-    // 0 or 1, PITCH in semitones, FINE in cents. Left out when every edit is at rest.
+    // 0 or 1, PITCH in semitones, FINE in cents, MONO 1 (STEREO, 2026-11-28: appended, and written only when on,
+    // so a song without it is written as it always was). Left out when every edit is at rest.
     for (int lane = 0; lane < kDrumLanes; ++lane) {
         const LaneEdit& e = track.laneEdit[lane];
         if (e.atRest()) continue;
@@ -617,7 +618,9 @@ void putKit(std::string& out, const TrackData& track) {
         put(out, " %.0f", e.fadeOut);
         put(out, " %.0f", e.reverse);
         put(out, " %.0f", e.pitch);
-        put(out, " %.0f\n", e.fine);
+        put(out, " %.0f", e.fine);
+        if (e.mono) put(out, " %.0f", e.mono);
+        out += "\n";
     }
     // feel LANE TIME LEVEL: a lane's HUMAN TIME and HUMAN LEVEL, each 0..100. Left out when both are off.
     for (int lane = 0; lane < kDrumLanes; ++lane) {
@@ -672,8 +675,8 @@ void putTrack(std::string& out, const TrackData& track) {
             // and LOOP START (appended, S4) are left out at their usual (100%, and 0: START), so a sampler that does
             // not use them is written as it always was; one that does writes every number up to it.
             // chop: chopped into 16 slices from C1 up (left out whole).
-            // sampleredit START END GAIN FADEIN FADEOUT REVERSE: its EDIT (S4, as a lane's laneedit without PITCH
-            // and FINE), left out at rest.
+            // sampleredit START END GAIN FADEIN FADEOUT REVERSE [MONO]: its EDIT (S4, as a lane's laneedit without PITCH
+            // and FINE; MONO as there, written only when on), left out at rest.
             if (track.sample[0]) out += std::string("sound ") + track.sample + "\n";
             out += "sampler";
             int upTo = sampler::End - 1;
@@ -689,7 +692,9 @@ void putTrack(std::string& out, const TrackData& track) {
                 put(out, " %.6g", e.gain / 10.0);
                 put(out, " %.0f", e.fadeIn);
                 put(out, " %.0f", e.fadeOut);
-                put(out, " %.0f\n", e.reverse);
+                put(out, " %.0f", e.reverse);
+                if (e.mono) put(out, " %.0f", e.mono);
+                out += "\n";
             }
         } else {
             if (track.kind == TrackKind::Cloud && track.sample[0]) out += std::string("sound ") + track.sample + "\n"; // (CLOUD's recording: the sampler's line)
@@ -757,6 +762,9 @@ void putHead(std::string& out, const ProjectHead& project) {
         put(out, "scale %.0f", project.scaleKey);
         put(out, " %.0f\n", project.scaleKind);
     }
+    // takes N: the last bounce's TAKE (wifi-and-bounce.md), so the next is a new one. Left out at 0, so a song
+    // never bounced is written as before.
+    if (project.takes > 0) put(out, "takes %.0f\n", project.takes);
     // master DB PAN: the master's level and pan on the mixer, as a track's `mix`. Left out at 0 0.
     if (project.masterDb != 0 || project.masterPan != 0) {
         put(out, "master %.0f", project.masterDb);
@@ -984,6 +992,9 @@ void readLines(SongReading& r, const std::string& text, std::size_t from, std::s
             if (!(in >> key >> kind)) continue;
             head.scaleKey = wholeIn(key, 0, 11);
             head.scaleKind = scaleKindOf(wholeIn(kind, 0, 255)); // (held as doubles first; a kind nobody knows: OFF)
+        } else if (word == "takes") {
+            double takes = 0;
+            if (in >> takes) head.takes = wholeIn(takes, 0, kMostTakes);
         } else if (word == "master") {
             double db = 0, pan = 0;
             if (!(in >> db)) continue;
@@ -1086,7 +1097,7 @@ void readLines(SongReading& r, const std::string& text, std::size_t from, std::s
         } else if (word == "laneedit" && track->kind == TrackKind::Drums) {
             // Each number held as a double first; one missing or not a number ends the line there, the
             // rest at rest. END is held after START (by a unit: the file's length is not known here).
-            double lane = 0, v[8] = {0, 1, 0, 0, 0, 0, 0, 0};
+            double lane = 0, v[9] = {0, 1, 0, 0, 0, 0, 0, 0, 0};
             if (!(in >> lane) || !(lane >= 1) || lane > kDrumLanes || !isWhole(lane)) continue;
             for (double& one : v) {
                 double read = 0;
@@ -1102,6 +1113,7 @@ void readLines(SongReading& r, const std::string& text, std::size_t from, std::s
             e.reverse = wholeIn(v[5], 0, 1);
             e.pitch = wholeIn(v[6], -kPitchMost, kPitchMost);
             e.fine = wholeIn(v[7], -kFineMost, kFineMost);
+            e.mono = wholeIn(v[8], 0, 1);
             track->laneEdit[static_cast<int>(lane) - 1] = laneEditHeld(e, 0.f);
         } else if (word == "feel" && track->kind == TrackKind::Drums) {
             double lane, time = 0, level = 0;
@@ -1142,7 +1154,7 @@ void readLines(SongReading& r, const std::string& text, std::size_t from, std::s
             track->samplerChop = true;
         } else if (word == "sampleredit" && track->kind == TrackKind::Sampler) {
             // As laneedit's numbers (no lane, no PITCH or FINE): one missing or not a number ends the line there.
-            double v[6] = {0, 1, 0, 0, 0, 0};
+            double v[7] = {0, 1, 0, 0, 0, 0, 0};
             for (double& one : v) {
                 double read = 0;
                 if (!(in >> read)) break;
@@ -1155,6 +1167,7 @@ void readLines(SongReading& r, const std::string& text, std::size_t from, std::s
             e.fadeIn = wholeIn(v[3], 0, kFadeMost);
             e.fadeOut = wholeIn(v[4], 0, kFadeMost);
             e.reverse = wholeIn(v[5], 0, 1);
+            e.mono = wholeIn(v[6], 0, 1);
             track->samplerEdit = laneEditHeld(e, 0.f);
         } else if (oldSound && (word == "preset" || word == "macros" || word == "settings")) {
             continue; // an old Twin Analog or QMOD track's sound: it plays the first preset, the knobs in the middle
@@ -1416,7 +1429,7 @@ bool cutSongAt(const std::string& text, std::vector<std::size_t>& starts) {
     starts.clear();
     if (!hasHead(text, "apotheca-song")) return false;
     bool inTrack = false;
-    static const char* const songsOwn[] = {"tempo", "length", "steps", "repeats", "stempi", "meter", "pack", "busfx", "master", "songend", "scale"};
+    static const char* const songsOwn[] = {"tempo", "length", "steps", "repeats", "stempi", "meter", "pack", "busfx", "master", "songend", "scale", "takes"};
     for (std::size_t at = 0; at < text.size();) {
         std::size_t end = text.find('\n', at);
         end = end == std::string::npos ? text.size() : end + 1;

@@ -70,10 +70,13 @@ struct HitPlay {
     bool audition = false; // heard with X held: letGo() fades it. A pattern's hit never is one.
 };
 
-// A recording to play on a lane in place of the kit's drum: mono, at the
-// engine's sample rate.
+// A recording to play on a lane in place of the kit's drum (or as a sampler's or a CLOUD's), at the
+// engine's sample rate: `data` is the sound, mono, or the left side of a stereo one whose right side is
+// `right`, as long (STEREO, 2026-11-28). `right` empty: mono, played as it always was.
 struct SampleData {
     std::vector<float> data;
+    std::vector<float> right;
+    bool stereo() const { return !right.empty() && right.size() == data.size(); }
 };
 
 // Plays a kit. render() is realtime safe; the kit must outlive the machine
@@ -121,7 +124,9 @@ public:
     // Play this recording on a lane in place of the kit's drum; nullptr goes
     // back to the kit's. What was ringing on the lane stops. The samples
     // must stay alive until replaced. Survives reset().
-    void setLaneSample(int lane, const float* data, int length);
+    // `right`, if given, is the recording's right side (as long as `data`, which is then its left): the lane
+    // plays in stereo, each side to its own. A THROW sends both sides mixed to one. nullptr: mono, as always.
+    void setLaneSample(int lane, const float* data, int length, const float* right = nullptr);
 
     // A lane's own volume, 0..1. Takes effect at once, on sounds already
     // ringing too. Survives reset().
@@ -183,14 +188,15 @@ private:
     // How many samples from here are plain (drums.cpp, RUNS); 0: the next is not.
     template <bool kThrown>
     static int plainRun(const Voice& v, int length, int most);
-    template <bool kThrown>
-    int renderVoice(Voice& v, const float* sample, int length, float laneLevel, float* left, int frames, float* const* thrownOut, int wrote);
+    template <bool kThrown, bool kStereo>
+    int renderVoice(Voice& v, const float* sample, const float* sampleR, int length, float laneLevel, float* left, float* right, int frames, float* const* thrownOut, int wrote);
 
     const DrumKit* kit_ = nullptr;
     Voice voices_[kDrumLanes][2];
     int next_[kDrumLanes] = {};
     const float* own_[kDrumLanes] = {}; // a lane's recording, or nullptr for the kit's drum
     int ownLength_[kDrumLanes] = {};
+    const float* ownRight_[kDrumLanes] = {}; // its right side, for a stereo recording; nullptr: mono
     float laneLevel_[kDrumLanes] = {1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
     float lanePart_[kDrumLanes] = {};
     float cuts_[kDrumLanes][kMaxCuts] = {}; // SLICES AT THE HITS: each lane's own cuts (setLaneCuts)...

@@ -66,7 +66,7 @@ public:
     void noteOff(int note) override;
     void allNotesOff() override; // Play, panic: every key fades out over 5 ms
     void stopNotes() override;   // Stop: every key let go (RELEASE; its grains go on under it)
-    void setSample(const float* data, int length) override; // every grain ends at once
+    void setSample(const float* data, int length, const float* right = nullptr) override; // every grain ends at once; `right`: a stereo one's right side
     void render(float* left, float* right, int frames) override;
     int grainPlaces(float* places, int most) const override;
 

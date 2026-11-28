@@ -1104,3 +1104,67 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     `setLaneSample` / `setTrackSample` as before. Tests: `engine_test` `testCatchingSeveralBars`,
     `testCatchingOneTrack`; `sample_test` `testCatchingBarsAndATrack`; `app_test` (CLOUD's Y held); `textsize`
     (the choice at its longest at XL, the hints).
+- **STEREO: a recording plays as its file is** (owner, 2026-11-28: "it would be even better if the user had an
+  option (or it defaults to whatever the sample is)"; built on branch `stereo`). Until then every file was mixed to
+  one when read and CATCH, a bounce into samples and SAVE A COPY all wrote one channel.
+  - **Reading**: `parseWav` / `readWav` into a `Clip` (samples.hpp: a `std::vector<float>` that is the mono sound
+    or the LEFT side, with `right` the right side; `right` empty is mono) keeps a two-channel file's sides apart; 3
+    to 8 channels are mixed to one as before. Into a plain `std::vector<float>` it is the old read, both sides
+    mixed, to the bit. A mono file read into a `Clip` gives the old samples to the bit. A file cut at 20 s fades
+    both sides. **Whatever takes a `std::vector<float>` takes a `Clip` as its left side alone**: what must hear
+    both asks for `right`, `mono()` or `loudest()`. That is the trap of the type: grep its users before adding one.
+  - **Writing**: `wavBytes` / `writeWav` of a `Clip` write two channels, 16-bit interleaved, for a stereo one and
+    the old bytes for a mono one. `Clip::oneIfSame` makes two sides the same to the bit into one channel.
+  - **Every place that reads or writes recordings**:
+
+    | Where | Now |
+    | --- | --- |
+    | A drum lane (`loadLane`, `shapeLane`, `installLane`, `install`) | as the file is; `LaneSound::recording`, `source`, `shaped`, `fitted` are `Clip`s; the engine gets `SampleData::right` |
+    | The sampler, one recording (`loadTrackSample`, `shapeSampler`, `installSampler`) | as the file is |
+    | The sampler, a multisample (`multisampleOf`) | each note's file as it is (`SampleZone::right`); a note may be stereo beside a mono one |
+    | CLOUD | as the file is (each grain reads both sides at one place); the built-in TONE is mono |
+    | EDIT (`makeShape`, `makeLevel` of a `Clip`) | each side with the same edit; MONO first mixes the two (`Clip::mono()`, `(L + R) / 2`, as a two-channel file was read) |
+    | FIT (`fitTo`, `stretchTo`, `stretchSmooth` of a `Clip`) | Signalsmith Stretch takes the two as one stereo sound (its two channels, phase kept together); the simpler method finds each piece's place on the two mixed to one and lays the same piece on each side. A mono one is the old stretch to the bit |
+    | NORMALIZE, TRIM SILENCE | on the louder side at each sample (`Clip::loudest`) |
+    | The pictures (`outlineOf`: the KIT, EDIT, the sampler, the designer page) | the louder side at each point: the same look |
+    | SLICES AT THE HITS (`hitsIn`) | hits found on the two mixed to one; one set of cuts for both |
+    | CATCH (`catchLastBar`, `Engine::lastBars`) | **stereo**: the engine keeps each side in its own ring (four 25 s rings now, 19.2 MB an engine; `Caught::right`); `lastBar()` mixes them to one as before. Written as two channels, always (owner, 2026-11-28: identical-sided catches stay stereo; it was "one where the sides are the same to the bit (`oneIfSame`)", Claude's pick, now gone) |
+    | BOUNCE TRACK TO SAMPLES (`bounceToSamples`) | stereo, as the song plays it, always two channels (owner, 2026-11-28) |
+    | SAVE A COPY, SAVE A SLICE (`saveLaneSound`) | what the lane plays: two channels for a stereo sound, one with MONO on |
+    | RECORD (`finishRecording`) | **one channel, as before**: the input is read as one (`AudioInput::read`) |
+    | The WiFi page (a file sent: `parseWav`) | any channels, as before; file sizes are the file's own |
+    | The song and bounce to the bounces folder | stereo as always |
+  - **MONO** (`LaneEdit::mono`, appended last in the struct, a ninth stop `kEditMono` after the eight boxes, which
+    keep their ids): a stereo sound's two sides mixed to one for that lane or that sampler. **It is a shape**
+    (`shapes()`), so FIT and the slices work on the mixed sound; **it is not a level** (`levelAtRest()`: MONO
+    alone puts no fades, GAIN or guard on the sound, since two sides mixed are never louder than the louder of
+    them; a loud file with MONO on plays to the bit as the file does). In the song an appended tenth number of
+    `laneedit` and seventh of `sampleredit` (and of a sampler preset's `edit`), **written only when on**, so a
+    song without it is written as it always was. Undo hashes the struct whole, so it is undone with the rest.
+    On the designer page it is the kit field `kKitMono` (14, appended).
+  - **The view** (`EditView`): MONO is a stop on the sound's box, at the right of its name, reading STEREO or
+    MONO (purple when MONO). **UP from the top row goes there, DOWN back to the box it came from**; hold A + UP
+    MONO, + DOWN STEREO, once a push (REVERSE's way); B STEREO. **Only a stereo sound has it**: a mono one looks
+    and moves as it always did (no new row, no restyle). Claude's pick, 2026-11-28, open to the owner: the brief
+    said "a MONO switch where a sound is edited", and the eight boxes are full; a ninth box would have changed the
+    layout. Still `kit-edit-mono`.
+  - **PAN on a stereo sound is a balance**: the track's pan is the same equal-power law after the instrument
+    (nothing new in the engine), so turned one way the other side goes down to nothing and the near side up 3 dB.
+    A stereo sound with nothing on its left, panned hard left, is silence (tested in `stereo_test`).
+  - **Memory**: a stereo recording takes twice the RAM. A lane holds the file, its shape or fit and the engine's
+    copy (two to four copies of 7.7 MB), so a stereo 20 s file on a lane is about 15 to 31 MB (mono 8 to 15). The
+    handheld has 1 GB and nothing guards it: 12 tracks x 8 lanes of 20 s stereo files (1.5 to 3 GB) or a 48-file stereo multisample of
+    20 s each (about 370 MB, twice the mono 184 MB) is past what it holds, and **past it the program is killed by
+    the system** (no message), as a mono worst case already could. Real drums are short; a few long stereo loops
+    are fine. **Not measured on the handheld.**
+  - **Cost** (measured.md): every drum lane of the busiest song on a stereo recording, +0.8% of its instructions
+    and +4% of its cache misses against mono recordings; the sampler's 8 notes and CLOUD's full pool about +0.01
+    and +0.07% of a desk core. An `Engine` is made in 7.7 ms on the desk (it was about 3 to 5: the two new rings
+    are zeroed with it).
+  - Tests: `stereo_test` (the file both ways, a lane, the sampler and its zones, CLOUD at every read, MONO and its
+    song line, undo, the preset, the view's stop, SAVE A COPY and a slice, NORMALIZE and TRIM SILENCE, the
+    picture, the hits, CATCH of the mix, of a pan and of one track, the bounce into samples, FIT both ways);
+    `design_test` (the page's MONO). **61 mutants, 59 killed; 2 survive as equivalents**: a plain CLOUD grain's
+    sample-by-an-end read of the right side (never reached: a plain grain's place is always inside the recording,
+    so `clearRun` covers every sample) and UP to MONO without the stereo check (the same frame's `update` puts the
+    cursor back, so nothing is drawn or done on it). **Nobody has heard any of it; not run on the handheld.**

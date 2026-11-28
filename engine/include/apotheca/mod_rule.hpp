@@ -247,7 +247,7 @@ inline double modPosition(long stepsFired, double samplesPerStep, double untilSt
 // which time round. Bar 0 is a stepper's row, bar 1 an LFO's cycles, so the two never roll alike.
 // `what` within the MOD: kModRollChance, kModRollValue.
 enum ModRollWhat { kModRollChance = 0, kModRollValue = 1 };
-inline std::uint32_t modSeed(int track, int bar, int place, long timesRound) { return chordSeed(track, bar, place, timesRound); }
+inline std::uint32_t modSeed(int track, int bar, int place, long timesRound, std::uint32_t take = 0) { return takeSeed(chordSeed(track, bar, place, timesRound), take); } // (take: a bounce's, Engine::setTake)
 inline double modRoll(std::uint32_t seed, int mod, int what) { return chordSigned(seed, kRollMod, mod * 32 + what); } // -1 up to 1
 inline double modRollUnit(std::uint32_t seed, int mod, int what) { return chordUnit(seed, kRollMod, mod * 32 + what); } // 0 up to 1
 
@@ -273,7 +273,7 @@ inline double lfoPositionAt(const ModSettings& m, double cycles) {
 // The cycle is the rate's length, started at Play, moved on by PHASE quarters. SINE starts at 0
 // going up, as do TRIANGLE; the RAMPs and SQUARE are at an edge. RANDOM holds one seeded value a
 // cycle; DRIFT glides (a cosine) from each cycle's value to the next's.
-inline double lfoValue(const ModSettings& m, double position, int track, int mod) {
+inline double lfoValue(const ModSettings& m, double position, int track, int mod, std::uint32_t take = 0) {
     const double cycles = lfoCycles(m, position);
     const long whole = modFloor(cycles);
     const double p = cycles - static_cast<double>(whole); // 0 up to 1 in the cycle
@@ -282,10 +282,10 @@ inline double lfoValue(const ModSettings& m, double position, int track, int mod
     case kModRampUp: return 2.0 * p - 1.0;
     case kModRampDown: return 1.0 - 2.0 * p;
     case kModSquare: return p < 0.5 ? 1.0 : -1.0;
-    case kModRandom: return modRoll(modSeed(track, 1, 0, whole), mod, kModRollValue);
+    case kModRandom: return modRoll(modSeed(track, 1, 0, whole, take), mod, kModRollValue);
     case kModDrift: {
-        const double from = modRoll(modSeed(track, 1, 0, whole), mod, kModRollValue);
-        const double to = modRoll(modSeed(track, 1, 0, whole + 1), mod, kModRollValue);
+        const double from = modRoll(modSeed(track, 1, 0, whole, take), mod, kModRollValue);
+        const double to = modRoll(modSeed(track, 1, 0, whole + 1, take), mod, kModRollValue);
         return from + (to - from) * 0.5 * (1.0 - std::cos(3.14159265358979323846 * p));
     }
     default: return std::sin(2.0 * 3.14159265358979323846 * p);
@@ -297,25 +297,25 @@ inline double lfoValue(const ModSettings& m, double position, int track, int mod
 // round each place plays its written value, or a fresh roll with CHANCE. SLEW glides into a value
 // over that part of its time, from the value before (worked out the same way, not remembered);
 // the first value after Play does not glide in.
-inline double stepperHeld(const ModSettings& m, long index, int track, int mod) {
+inline double stepperHeld(const ModSettings& m, long index, int track, int mod, std::uint32_t take = 0) {
     const int length = modLength(m.length);
     const long round = index >= 0 ? index / length : -((-index + length - 1) / length);
     const int place = static_cast<int>(index - round * length);
-    const std::uint32_t seed = modSeed(track, 0, place, round);
+    const std::uint32_t seed = modSeed(track, 0, place, round, take);
     const float chance = m.chance > 0.f ? (m.chance < 1.f ? m.chance : 1.f) : 0.f;
     if (chance > 0.f && modRollUnit(seed, mod, kModRollChance) < chance) return modRoll(seed, mod, kModRollValue);
     const float v = m.steps[place];
     return v > 1.f ? 1.0 : (v < -1.f ? -1.0 : (v == v ? v : 0.0));
 }
-inline double stepValue(const ModSettings& m, double position, int track, int mod) {
+inline double stepValue(const ModSettings& m, double position, int track, int mod, std::uint32_t take = 0) {
     const ModRateInfo& r = modRateInfo(modRate(m.rate));
     const double at = position * r.den / r.num;
     const long index = modFloor(at);
-    const double now = stepperHeld(m, index, track, mod);
+    const double now = stepperHeld(m, index, track, mod, take);
     const float slew = m.slew > 0.f ? (m.slew < 1.f ? m.slew : 1.f) : 0.f;
     const double into = at - static_cast<double>(index);
     if (slew <= 0.f || index <= 0 || into >= slew) return now;
-    const double before = stepperHeld(m, index - 1, track, mod);
+    const double before = stepperHeld(m, index - 1, track, mod, take);
     return before + (now - before) * (into / slew);
 }
 
@@ -332,10 +332,10 @@ inline int stepperPlace(const ModSettings& m, double position) {
 // What one MOD adds at a position: `depth` x its shape (0 when OFF, aimed at nothing or at no
 // depth). The engine hands it the depth now (the MOD's own, or its DEPTH lane's: batch 7), and the
 // position in the MOD's own terms (modPositionFor: steps, or a FREE LFO's seconds).
-inline float modOffsetAt(const ModSettings& m, double position, int track, int mod, float depth) {
+inline float modOffsetAt(const ModSettings& m, double position, int track, int mod, float depth, std::uint32_t take = 0) {
     depth = depth > 1.f ? 1.f : (depth < -1.f ? -1.f : depth);
     if (!m.runs() || depth == 0.f || depth != depth) return 0.f; // (not a number: none)
-    const double shape = modKind(m.kind) == kModLfo ? lfoValue(m, position, track, mod) : stepValue(m, position, track, mod);
+    const double shape = modKind(m.kind) == kModLfo ? lfoValue(m, position, track, mod, take) : stepValue(m, position, track, mod, take);
     return static_cast<float>(depth * shape);
 }
 // ...at the MOD's own DEPTH.

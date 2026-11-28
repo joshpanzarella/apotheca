@@ -74,8 +74,8 @@ int fadeStopPlace(int ms) {
 float LaneEdit::speed() const { return std::pow(2.f, (static_cast<float>(pitch) + static_cast<float>(fine) / 100.f) / 12.f); }
 
 const char* laneEditName(int row) {
-    static const char* const names[kEditRows] = {"START", "END", "FADE IN", "FADE OUT", "GAIN", "PITCH", "FINE", "REVERSE"};
-    return row >= 0 && row < kEditRows ? names[row] : "";
+    static const char* const names[kEditRows + 1] = {"START", "END", "FADE IN", "FADE OUT", "GAIN", "PITCH", "FINE", "REVERSE", "MONO"};
+    return row >= 0 && row <= kEditMono ? names[row] : "";
 }
 
 int laneEditValue(const LaneEdit& e, int row) {
@@ -88,6 +88,7 @@ int laneEditValue(const LaneEdit& e, int row) {
     case kEditPitch: return e.pitch;
     case kEditFine: return e.fine;
     case kEditReverse: return e.reverse;
+    case kEditMono: return e.mono;
     default: return 0;
     }
 }
@@ -102,6 +103,7 @@ LaneEdit laneEditWith(LaneEdit e, int row, int value) {
     case kEditPitch: e.pitch = value; break;
     case kEditFine: e.fine = value; break;
     case kEditReverse: e.reverse = value; break;
+    case kEditMono: e.mono = value; break;
     default: break;
     }
     return e;
@@ -121,6 +123,7 @@ LaneEdit laneEditHeld(LaneEdit e, float seconds) {
     e.fadeIn = held(e.fadeIn, 0, kFadeMost);
     e.fadeOut = held(e.fadeOut, 0, kFadeMost);
     e.reverse = e.reverse ? 1 : 0;
+    e.mono = e.mono ? 1 : 0;
     e.pitch = held(e.pitch, -kPitchMost, kPitchMost);
     e.fine = held(e.fine, -kFineMost, kFineMost);
     return e;
@@ -170,7 +173,7 @@ LaneEdit laneEditStepped(const LaneEdit& e, int row, int by, float seconds) {
         return laneEditHeld(laneEditWith(e, row, to), seconds);
     }
     if (row == kEditGain) return laneEditHeld(laneEditWith(e, row, v + by * kGainStep), seconds);
-    if (row == kEditReverse) return laneEditWith(e, row, by > 0 ? 1 : 0);
+    if (row == kEditReverse || row == kEditMono) return laneEditWith(e, row, by > 0 ? 1 : 0);
     return laneEditHeld(laneEditWith(e, row, v + by), seconds);
 }
 
@@ -234,6 +237,13 @@ std::vector<float> makeShape(const std::vector<float>& in, const LaneEdit& e, fl
     return part;
 }
 
+Clip makeShape(const Clip& in, const LaneEdit& e, float sampleRate) {
+    if (!in.stereo()) return Clip(makeShape(in.left(), e, sampleRate)); // (MONO does nothing to one side)
+    if (e.mono) return Clip(makeShape(in.mono(), e, sampleRate));
+    if (!e.shapes()) return in;
+    return Clip(makeShape(in.left(), e, sampleRate), makeShape(in.right, e, sampleRate));
+}
+
 float guarded(float x) {
     const float a = std::fabs(x);
     if (a <= kKnee) return x;
@@ -251,6 +261,28 @@ void makeLevel(const float* in, int n, const LaneEdit& e, float sampleRate, floa
         if (n - 1 - i < fadeOut) g *= static_cast<float>(n - 1 - i) / static_cast<float>(fadeOut);
         out[i] = guarded(in[i] * g);
     }
+}
+
+void makeLevel(const Clip& in, const LaneEdit& e, float sampleRate, Clip& out) {
+    out.left().resize(in.size());
+    makeLevel(in.data(), static_cast<int>(in.size()), e, sampleRate, out.data());
+    if (in.stereo()) {
+        out.right.resize(in.size());
+        makeLevel(in.right.data(), static_cast<int>(in.size()), e, sampleRate, out.right.data());
+    } else {
+        out.right.clear();
+    }
+}
+
+bool normalGain(const Clip& in, int& gain) {
+    if (!in.stereo()) return normalGain(in.data(), static_cast<int>(in.size()), gain);
+    const std::vector<float> loud = in.loudest();
+    return normalGain(loud.data(), static_cast<int>(loud.size()), gain);
+}
+
+bool silenceEnds(const Clip& file, float sampleRate, int& start, int& end) {
+    if (!file.stereo()) return silenceEnds(file.left(), sampleRate, start, end);
+    return silenceEnds(file.loudest(), sampleRate, start, end);
 }
 
 bool normalGain(const float* in, int n, int& gain) {

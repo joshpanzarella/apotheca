@@ -54,7 +54,7 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     under the picture, so the walk goes across. **LEFT from the first dial is the list, on
     the same line; RIGHT on the last stops.** LEFT has one job again: the 2026-11-14
     awkwardness was LEFT being both the TYPE and the list; the TYPE stays on A held, so
-    plain LEFT is only the cursor. SENDS' two dials (ECHO, SPACE, side by side) the same.
+    plain LEFT is only the cursor. (SENDS were the same until 2026-11-28: next rule.)
     The stick across walks them (it presses LEFT / RIGHT through `press`), up / down does
     nothing; a held D-pad repeats at the cursor's pace. Hold Y on BAND's FREQ, GAIN or Q
     is untouched: the D-pad is the grip there, not the cursor. Approved table, as built:
@@ -70,6 +70,17 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     two arrows and "list, dial" put ECHO 43 pixels over; a setting's bar never had room for it, and the help card
     says it), and **"the setting last used" was nearly always the first**, since a walk out to the list passed
     it: fixed 2026-11-28 (above: a LEFT passes through). SENDS' HOLD X is not the owner's call yet.
+  - **The keys follow the layout: dials side by side walk with LEFT / RIGHT, the stacked sends with UP / DOWN**
+    (owner, 2026-11-28: "it feels weird switching between the ECHO and SPACE sends because it's left/right, when I
+    think it should be up/down"). SENDS draws ECHO and SPACE as two wide boxes one above the other, so on SENDS
+    alone (`FxScreen::press`, the `sends(row_)` branch): **DOWN from ECHO is SPACE, UP from SPACE is ECHO, the ends
+    stop; LEFT from either is the list**, on the same line; RIGHT does nothing. A LEFT out passes through as on the
+    dials, so RIGHT from the list lands on the send last used. Hold A + UP / DOWN turns the send under the cursor
+    and hold A + LEFT / RIGHT does nothing there, both as before. The stick follows (it presses through `press`:
+    up / down walks the two, to the left is the list). The effects' and the buses' own dials keep LEFT / RIGHT.
+    The bar (`sendWalkKeyFor`): ECHO says DOWN "SPACE", SPACE says UP "ECHO", then LEFT "list", HOLD A "turn",
+    B "none", L1 / R1 "track", START; it fits (`gHintsOver` 0; the bar is the same at every text size).
+    `app_test` `testFxSendsWalkUpAndDown` pins it, with `testTheEffectsScreen` and `modknob`'s send bar.
   - **A slot remembers each type's own settings** (`Session::rememberType` /
     `rememberedType`, `switchEffectType` in fx_screen.cpp): a switch goes through
     `changeEffectType` (lanes moved as always: **a remembered type's automation is not

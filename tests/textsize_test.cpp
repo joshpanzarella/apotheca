@@ -2244,7 +2244,25 @@ void testTheOtherScreens() {
     rig.tap(SDLK_LEFT); // round to the last: TRACK TO SAMPLES (batch S3)
     rig.frames(1);
     holds(rig, "BOUNCE: TRACK TO SAMPLES");
-    CHECK(drew("TRACK TO SAMPLES"));
+    CHECK(drew("TRACK TO SAMPLES  TAKE 1")); // (its TAKE: the next new one)
+    // An earlier take picked, of a song with many (hold A + UP / DOWN): the row's longest, and A held's hints.
+    rig.project().takes = 123456;
+    session.pickBounceTake(-100000);
+    rig.frames(1);
+    holds(rig, "BOUNCE: an earlier take");
+    CHECK(drew("TRACK TO SAMPLES  TAKE 23457") && drew("A: that take again"));
+    rig.key(SDLK_x, true); // A held: UP / DOWN pick the take (and a let go after one bounces nothing)
+    rig.tap(SDLK_UP);
+    rig.frames(1);
+    holds(rig, "BOUNCE: A held, the take");
+    CHECK(drew("take") && drew("TRACK TO SAMPLES  TAKE 23458"));
+    rig.key(SDLK_x, false);
+    rig.frames(1);
+    session.pickBounceTake(200000); // the next new one, with earlier ones to pick: the note says how
+    rig.frames(1);
+    holds(rig, "BOUNCE: earlier takes to pick");
+    CHECK(drew("TRACK TO SAMPLES  TAKE 123457") && drew("hold A + up / down: earlier takes"));
+    rig.project().takes = 0;
     rig.tap(SDLK_RIGHT);
     session.pretendBounce(0.37f, -1.f);
     rig.frames(1);

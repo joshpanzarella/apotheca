@@ -15,6 +15,7 @@
 #include "apotheca/engine.hpp"
 #include "chords.hpp"
 #include "recorder.hpp"
+#include "samples.hpp"
 #include "song_file.hpp"
 #include "synth_spec.hpp"
 #include "transfer.hpp"
@@ -374,7 +375,7 @@ public:
     // (Engine::setCatchTrack), so the engine remembers that track from when it was chosen.
     std::string catchLastBar(int track, int lane);
     // The next free name "folder/stem N" in the samples folder (N from 1; capitals not counted), or "" if none.
-    std::string freeSampleName(const std::string& folder, const std::string& stem) const;
+    std::string freeSampleName(const std::string& folder, const std::string& stem, const std::string& after = "") const; // (`after` follows the number: " take 2")
     int catchBars() const { return catchBars_; } // 1, 2 or 4
     int catchFrom() const { return catchFrom_ < project.trackCount() ? catchFrom_ : -1; } // -1: the mix; else a track there is
     void stepCatchBars(int by);  // 1, 2, 4: the ends stop
@@ -384,7 +385,7 @@ public:
     bool caughtNoWholeBar() const { return caughtNoBar_; } // ...nothing: one track, no whole bar heard since it was chosen
     // SAVE AS A RECORDING (batch S1, 2026-11-25; sampling-gaps.md 1): what the lane plays, as EDIT and FIT make it (a
     // DRUM SYNTH voice, the built-in drum too: not its VOLUME, a hit's level or step effects, or the track's
-    // effects), written as a new recording, 16-bit mono 48 kHz as CATCH writes, on this (the app) thread. Of it,
+    // effects), written as a new recording, 16-bit 48 kHz as CATCH writes, stereo where what it plays is (STEREO), on this (the app) thread. Of it,
     // from `start` (0..1 of it) for `part` of it (1: to its end): one slice, from the slice view, with the 1 ms
     // fade a hit's part ends with where it is cut short. Named after its source with the next free number
     // ("breaks/amen 1", "amen 2"...: never over a file, capitals not counted), in its folder; a voice or the
@@ -401,10 +402,12 @@ public:
     bool normalizeLane(int track, int lane); // GAIN so the part played peaks at kNormalDb. False: silence
     bool trimLaneSilence(int track, int lane); // START and END at the first and last sound. False: silence
     struct LaneSound {
-        std::shared_ptr<const std::vector<float>> recording; // as it came off the card; null on a built-in lane
-        std::shared_ptr<const std::vector<float>> source;    // what the edits start from: the recording, or the built-in drum
-        std::shared_ptr<const std::vector<float>> shaped;    // ...cut, turned round and pitched (the source itself if nothing does)
-        std::shared_ptr<const std::vector<float>> fitted;    // ...and FIT to its steps, once that is made
+        // Each as its file has it (STEREO, 2026-11-28): a stereo recording keeps its two sides all the way to the engine,
+        // unless MONO mixes them to one (in the shape).
+        std::shared_ptr<const Clip> recording; // as it came off the card; null on a built-in lane
+        std::shared_ptr<const Clip> source;    // what the edits start from: the recording, or the built-in drum
+        std::shared_ptr<const Clip> shaped;    // ...cut, turned round and pitched (the source itself if nothing does)
+        std::shared_ptr<const Clip> fitted;    // ...and FIT to its steps, once that is made
         std::vector<float> sourcePeaks; // the source's outline (the edit view draws all of it)
         float sourceSeconds = 0.f;
         std::vector<float> peaks; // the outline of what the lane plays, for drawing (none for a built-in drum left as it is)
@@ -420,7 +423,7 @@ public:
         unsigned version = 0;     // goes up whenever the lane's sound changes
         // SLICES AT THE HITS: its hits as found (slice_rule.hpp), once a shape: `hitsOf` is the shape they were found in.
         std::vector<slices::Found> hits;
-        std::shared_ptr<const std::vector<float>> hitsOf;
+        std::shared_ptr<const Clip> hitsOf;
     };
     const LaneSound& laneSound(int track, int lane) const { return sounds_[track][lane]; }
     // A sampler track's one recording, and its settings (sampler.hpp).
@@ -591,7 +594,17 @@ public:
     // fits it to its bars (G45). bounceSample() and bounceSampleSteps() say what it made.
     enum class Bounce { Song, EachTrack, ThisTrack, MidiFile, ToSamples };
     void useBounceFolder(const std::string& folder); // (and what a killed bounce left there is removed)
-    bool startBounce(Bounce what); // false if one is under way, or there is nowhere to put it
+    // A TAKE (owner, 2026-11-28): each bounce plays the song's chance and dice afresh (Engine::setTake), and its
+    // file says which ("song take 3.wav"). `take` 0, or past the song's last (project.takes), is a new one: the
+    // next, kept in the song. Another of 1..takes makes that one again, the same to the bit if the song is.
+    // A MIDI FILE has no take (no chance in it): none is spent and its name is as it was.
+    bool startBounce(Bounce what, int take = 0); // false if one is under way, or there is nowhere to put it
+    // SET's BOUNCE row: the take A will make, the one picked (hold A + UP / DOWN) or else the next new one
+    // (project.takes + 1). Another song, or a bounce started, puts it back to the new one.
+    int bounceTake() const { return bounceTakePicked_ > 0 && bounceTakePicked_ <= project.takes ? bounceTakePicked_ : project.takes + 1; }
+    bool bounceTakeIsNew() const { return bounceTake() > project.takes; }
+    void pickBounceTake(int by); // up or down, stopping at 1 and at the new one
+    int bounceTakeMade() const; // once done: the take the last bounce made (0: a MIDI file, or none)
     bool bouncing() const;
     float bounceProgress() const;  // 0..1: how much of the playing of the song is done (the tails are not counted: nobody knows how long they will be)
     // While a tail is being worked out: how many seconds of it there are so
@@ -1086,6 +1099,7 @@ private:
         std::string sampleFolder, base, last;
         std::string sample; // ToSamples: the recording's name, chosen when it starts
         int scene = 0, sampleSteps = 0;
+        int take = 0;       // its TAKE (Engine::setTake); 0 for a MIDI file
         bool seen = false;  // ...its being done told to the open lists (the app thread's)
         float cap = kBounceCapSeconds;
         std::atomic<float> progress{0.f}, tail{-1.f};
@@ -1093,6 +1107,7 @@ private:
         std::thread thread;
     };
     std::shared_ptr<BounceJob> bounce_;
+    int bounceTakePicked_ = 0; // 0: the next new take (bounceTake)
     static void bounceToSamples(BounceJob& job); // (on the bounce's thread)
     std::string bounceFolder_;
     float bounceCap_ = kBounceCapSeconds;
@@ -1255,7 +1270,7 @@ private:
     // SLICES AT THE HITS: a long sound's hits found on a thread of their own (cutLaneAtHits), one at a time.
     struct HitsJob {
         int track = 0, lane = 0;
-        std::shared_ptr<const std::vector<float>> of; // the shape looked at
+        std::shared_ptr<const Clip> of; // the shape looked at
         std::vector<slices::Found> found;
         std::atomic<bool> done{false};
         std::thread thread;
@@ -1294,8 +1309,8 @@ private:
     int recTrack_ = 0, recLane_ = 0;
     std::string lastRecorded_;
     void loadTrackSample(int track);
-    std::unique_ptr<sampler::SampleZoneSet> multisampleOf(const std::string& name, std::vector<float>& main);
-    void install(int track, int lane, const std::vector<float>& samples);
+    std::unique_ptr<sampler::SampleZoneSet> multisampleOf(const std::string& name, Clip& main);
+    void install(int track, int lane, const Clip& samples);
     void madeLane(int track, int lane, std::vector<float> made); // a synth voice made: the lane's recording, then shapeLane
     void shapeLane(int track, int lane);   // the lane's sound made again from its source, from the cut on (then FIT, then installLane)
     void installLane(int track, int lane); // the fades, GAIN and the guard on what is shaped (or fitted), into the engine
@@ -1312,8 +1327,8 @@ private:
         bool make = false;  // the lane's synth voice made, and nothing more (collectJob then shapes it)
         drumsynth::Voice voice;
         LaneEdit edit;
-        std::shared_ptr<const std::vector<float>> in;
-        std::vector<float> shaped, out;
+        std::shared_ptr<const Clip> in;
+        Clip shaped, out;
         std::atomic<bool> done{false};
         std::thread thread;
     };

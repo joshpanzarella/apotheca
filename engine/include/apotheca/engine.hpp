@@ -531,8 +531,8 @@ public:
     void readScope(float* out, int count) const; // the newest `count` samples (up to kScopeSize), oldest first
 
     float sampleRate() const { return sampleRate_; }
-    // Catch: the engine remembers the last twenty seconds it put out (both
-    // sides mixed to one). This copies out the last whole bar the song
+    // Catch: the engine remembers the last twenty seconds it put out (each side
+    // to its own ring since STEREO; this one mixes them to one). This copies out the last whole bar the song
     // played, exactly, bar line to bar line, also just after it has been
     // stopped. If there is no such bar (the song is in its first bar, or
     // something has been played by hand since it stopped, or there was a
@@ -546,8 +546,10 @@ public:
     // played since Play (or since the ring began following that track, setCatchTrack), or where `bars`
     // of them would not fit the twenty seconds. None at all: `bars` bars' worth up to now, as lastBar's, no
     // longer than what has been heard of the track. From the control thread; allocates.
+    // STEREO (2026-11-28): both sides, `sound` the left and `right` the right (as long). lastBar() mixes them to one.
     struct Caught {
         std::vector<float> sound;
+        std::vector<float> right;
         int steps = kSteps; // how many steps it is (to fit it to)
         int bars = 0;       // how many whole bars it is; 0: a bar's worth up to now, not whole bars
     };
@@ -576,6 +578,14 @@ public:
     // zero (all of it below 1e-30; see denormals.hpp), and a song must come out the
     // same to the last bit until the owner says otherwise. From any thread.
     void setFlushDenormals(bool on) { flush_.store(on, std::memory_order_relaxed); }
+    // A bounce's TAKE (owner, 2026-11-28: "each bounce is a fresh take"): another number for every roll
+    // that plays a song differently each time through: the chance dice's start, and the seed of each
+    // per-note roll (HUMAN, strum, an arpeggio's order, GLIDE FROM RANDOM, a PHYSIC strike, FEEL, a MOD's
+    // RANDOM, DRIFT and STEPPER chance: takeSeed, chord_rule.hpp). The same take plays the same to the bit;
+    // TAKE 0, as made, is the song as it has always played (the live engine never has another). Only
+    // before the first render, on the thread that renders it: a bounce's own engine.
+    void setTake(std::uint32_t take);
+    std::uint32_t take() const { return take_; }
     bool flushesDenormals() const { return flush_.load(std::memory_order_relaxed); }
     int workers() const { return static_cast<int>(workers_.size()); }
     // The helpers take the tracks heaviest first (by each one's time the chunk before) instead
@@ -1101,7 +1111,8 @@ private:
     float masterPanL_ = 1.f, masterPanR_ = 1.f, masterPanLNow_ = 1.f, masterPanRNow_ = 1.f;
     void runMaster(float* mixL, float* mixR, int frames);
     float volume_ = 1.f, volumeNow_ = 1.f; // where it is going, and where it has got to (it glides, so a change does not click)
-    std::unique_ptr<std::atomic<float>[]> caught_; // a ring of kCatchFrames
+    std::unique_ptr<std::atomic<float>[]> caught_; // a ring of kCatchFrames: the left side (STEREO, 2026-11-28)...
+    std::unique_ptr<std::atomic<float>[]> caughtR_; // ...and the right
     std::atomic<std::uint64_t> caughtCount_{0};    // frames ever written to it
     long long barBeganStep_ = 0;                   // stepsFired_ when the bar playing began
     std::atomic<int> barFramesNow_{96000};         // a bar at the present tempo
@@ -1113,6 +1124,7 @@ private:
     std::atomic<std::uint64_t> lineCount_{0}, runFrom_{0};
     // CATCH of one track: a second ring, fed by the track catchTrack_ names, from followFrom_ on.
     std::unique_ptr<std::atomic<float>[]> trackCaught_;
+    std::unique_ptr<std::atomic<float>[]> trackCaughtR_; // (its right side)
     std::atomic<int> catchTrack_{-1};
     std::atomic<int> following_{-1};             // the track the ring holds since followFrom_ (-1: none)
     std::atomic<std::uint64_t> followFrom_{0};
@@ -1120,7 +1132,9 @@ private:
     bool chunkTapped_ = false;   // ...and it was worked out this chunk (written by whoever rendered it)
     std::uint64_t chunkAt_ = 0;  // caughtCount_ at this chunk's first frame
 
-    std::uint32_t dice_ = 0x2545F491u; // for chance; runs on, so no two bars need match
+    static constexpr std::uint32_t kDiceStart = 0x2545F491u; // (take 0's; setTake)
+    std::uint32_t dice_ = kDiceStart; // for chance; runs on, so no two bars need match
+    std::uint32_t take_ = 0;           // setTake: 0, the live song's own rolls
 
     std::atomic<int> scopeTrack_{-1};
     std::atomic<float> scope_[kScopeSize];

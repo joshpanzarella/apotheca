@@ -67,8 +67,12 @@ Engine::Engine() {
     for (int& m : meter_) m = kSteps;
     caught_.reset(new std::atomic<float>[kCatchFrames]);
     trackCaught_.reset(new std::atomic<float>[kCatchFrames]);
+    caughtR_.reset(new std::atomic<float>[kCatchFrames]);
+    trackCaughtR_.reset(new std::atomic<float>[kCatchFrames]);
     for (int i = 0; i < kCatchFrames; ++i) caught_[i].store(0.f, std::memory_order_relaxed);
     for (int i = 0; i < kCatchFrames; ++i) trackCaught_[i].store(0.f, std::memory_order_relaxed);
+    for (int i = 0; i < kCatchFrames; ++i) caughtR_[i].store(0.f, std::memory_order_relaxed);
+    for (int i = 0; i < kCatchFrames; ++i) trackCaughtR_[i].store(0.f, std::memory_order_relaxed);
     for (auto& at : lineAt_) at.store(0, std::memory_order_relaxed);
     for (auto& n : lineSteps_) n.store(kSteps, std::memory_order_relaxed);
     for (auto& s : scope_) s.store(0.f, std::memory_order_relaxed);
@@ -245,6 +249,8 @@ bool Engine::setLaneSample(int track, int lane, std::unique_ptr<SampleData> samp
 std::vector<float> Engine::lastBar(int* steps) const {
     Caught caught = lastBars(1);
     if (steps) *steps = caught.steps;
+    // Both sides mixed to one, as the one ring held it before STEREO (0.5 * (L + R), to the bit).
+    for (std::size_t i = 0; i < caught.sound.size() && i < caught.right.size(); ++i) caught.sound[i] = 0.5f * (caught.sound[i] + caught.right[i]);
     return std::move(caught.sound);
 }
 
@@ -252,6 +258,7 @@ Engine::Caught Engine::lastBars(int bars, int track) const {
     bars = bars < 1 ? 1 : (bars > kCatchMostBars ? kCatchMostBars : bars);
     const bool alone = track >= 0;
     const std::atomic<float>* ring = alone ? trackCaught_.get() : caught_.get();
+    const std::atomic<float>* ringR = alone ? trackCaughtR_.get() : caughtR_.get();
     Caught out;
     std::uint64_t now = 0, lines[kCatchMostBars + 1] = {};
     int steps[kCatchMostBars + 1] = {};
@@ -304,10 +311,12 @@ Engine::Caught Engine::lastBars(int bars, int track) const {
         if (alone && frames <= 0) return out;
     }
     out.sound.assign(static_cast<std::size_t>(frames), 0.f);
+    out.right.assign(static_cast<std::size_t>(frames), 0.f);
     for (int i = 0; i < frames; ++i) {
         const std::uint64_t back = static_cast<std::uint64_t>(frames - i);
         if (back > end) continue; // before the engine began: silence
         out.sound[static_cast<std::size_t>(i)] = ring[(end - back) % kCatchFrames].load(std::memory_order_relaxed);
+        out.right[static_cast<std::size_t>(i)] = ringR[(end - back) % kCatchFrames].load(std::memory_order_relaxed);
     }
     return out;
 }
@@ -841,9 +850,9 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples, doub
         // Which key of that moment: the track's GLIDE FROM.
         const bool glides = note.glide != kGlideOff && note.piece != kLaterPiece;
         const int trackIndex = static_cast<int>(&track - tracks_);
-        const GlideTrail::From from = glides ? track.trail.from(track.glideFrom, note.pitch, at, glideSeed(trackIndex, at)) : GlideTrail::From();
+        const GlideTrail::From from = glides ? track.trail.from(track.glideFrom, note.pitch, at, takeSeed(glideSeed(trackIndex, at), take_)) : GlideTrail::From();
         // The strike's roll (a synth with dice: PHYSIC), from where and which time it is struck.
-        track.synth->noteSeed(physic::strikeSeed(trackIndex, note.pitch, strikeAt));
+        track.synth->noteSeed(takeSeed(physic::strikeSeed(trackIndex, note.pitch, strikeAt), take_));
         track.synth->noteStep(samplesPerStep_ / sampleRate_);
         // From the note's own key: a tie for a synth that asks for it (ACID), a plain note for the rest.
         if (glides && from.pitch >= 0 && (from.pitch != note.pitch || track.synth->tiesSameKey())) {
@@ -898,7 +907,7 @@ void Engine::startChordNote(Track& track, int slot, const Note& note, bool top, 
     }
     // (The bar of its cell, not the scene's number: a scene put into the song or taken out moves
     // the scenes after it, and a chord that is playing must go on as the same chord.)
-    const std::uint32_t seed = chordSeed(static_cast<int>(&track - tracks_), slot % kMaxBars, note.step, static_cast<long>(stepAt));
+    const std::uint32_t seed = takeSeed(chordSeed(static_cast<int>(&track - tracks_), slot % kMaxBars, note.step, static_cast<long>(stepAt)), take_);
     if (seed != track.lastChord || track.strokes < 0) { // the first of its notes: another chord has begun
         track.lastChord = seed;
         ++track.strokes;
@@ -1279,7 +1288,7 @@ bool Engine::applyDrums(const Command& c) {
             Track& track = tracks_[c.track];
             trash.pointer = track.laneSamples[c.a];
             track.laneSamples[c.a] = incoming;
-            track.drums.setLaneSample(c.a, incoming ? incoming->data.data() : nullptr, incoming ? static_cast<int>(incoming->data.size()) : 0);
+            track.drums.setLaneSample(c.a, incoming ? incoming->data.data() : nullptr, incoming ? static_cast<int>(incoming->data.size()) : 0, incoming && incoming->stereo() ? incoming->right.data() : nullptr);
         } else {
             trash.pointer = incoming; // nowhere to put it
         }
@@ -1350,7 +1359,7 @@ bool Engine::applySound(const Command& c) {
                 track.trackZones = nullptr;
                 bin(zones);
             }
-            track.synth->setSample(incoming ? incoming->data.data() : nullptr, incoming ? static_cast<int>(incoming->data.size()) : 0);
+            track.synth->setSample(incoming ? incoming->data.data() : nullptr, incoming ? static_cast<int>(incoming->data.size()) : 0, incoming && incoming->stereo() ? incoming->right.data() : nullptr);
         } else {
             trash.pointer = incoming;
         }
@@ -1889,7 +1898,7 @@ bool Engine::schedule(Track& track, int lane, const DrumScene& scene, int step, 
         const int head = headAt % kSteps;
         double moved = delaySamples;
         if (feel.time != 0) {
-            const std::uint32_t seed = feelSeed(static_cast<int>(&track - tracks_), lane, headAt / kSteps, head, stepAt - back);
+            const std::uint32_t seed = takeSeed(feelSeed(static_cast<int>(&track - tracks_), lane, headAt / kSteps, head, stepAt - back), take_);
             moved += feelSamples(feel.time, head, seed, static_cast<double>(sampleRate_) / 1000.0, samplesPerStep_);
         }
         // SWING: by the run's first hit too, so a break in order is one sound, swung or not as a whole.
@@ -1907,7 +1916,7 @@ bool Engine::schedule(Track& track, int lane, const DrumScene& scene, int step, 
         if (static_cast<float>(dice_ >> 8) * (1.f / 16777216.f) >= chance) return true;
     }
     float velocity = scene.level[lane][step];
-    if (feel.level != 0) velocity = feelLevel(velocity, feel.level, step, feelSeed(static_cast<int>(&track - tracks_), lane, bar, step, stepAt));
+    if (feel.level != 0) velocity = feelLevel(velocity, feel.level, step, takeSeed(feelSeed(static_cast<int>(&track - tracks_), lane, bar, step, stepAt), take_));
     playHit(track, lane, velocity, scene.start[lane][step], -1.f, scene.fx[lane][step], delaySamples, false, whole, late);
     return true;
 }
@@ -2623,7 +2632,7 @@ void Engine::runMods(double steps, double seconds, bool macros) {
             // always the same float).
             const int l = modDepthLane(m);
             const float lane = track.autoNow[l];
-            added[m] = modOffsetAt(mod, position, t, m, lane >= 0.f && lane != track.autoBase[l] ? modDepthFromLane(lane) : mod.depth);
+            added[m] = modOffsetAt(mod, position, t, m, lane >= 0.f && lane != track.autoBase[l] ? modDepthFromLane(lane) : mod.depth, take_);
             track.modShown[m].store(added[m], std::memory_order_relaxed);
             track.modPlace[m].store(stepperPlace(mod, position), std::memory_order_relaxed);
             track.modAt[m].store(position, std::memory_order_relaxed);
@@ -2775,8 +2784,11 @@ void Engine::renderTrack(int t) {
         scopeWritten_.store(written, std::memory_order_relaxed);
     }
     if (t == chunkCatch_) { // CATCH of this track alone: as the scope hears it (after its effects and level)
-        for (int i = 0; i < frames; ++i)
-            trackCaught_[(chunkAt_ + static_cast<std::uint64_t>(i)) % kCatchFrames].store(0.5f * (left[i] + right[i]) * track.level, std::memory_order_relaxed);
+        for (int i = 0; i < frames; ++i) {
+            const std::uint64_t at = (chunkAt_ + static_cast<std::uint64_t>(i)) % kCatchFrames;
+            trackCaught_[at].store(left[i] * track.level, std::memory_order_relaxed); // STEREO: each side to its own ring
+            trackCaughtR_[at].store(right[i] * track.level, std::memory_order_relaxed);
+        }
         chunkTapped_ = true;
     }
     float peak = chunkPeaks_[t];
@@ -2878,6 +2890,13 @@ void Engine::workerLoop(void (*atStart)()) {
         flushDenormals(flush_.load(std::memory_order_relaxed)); // this thread only renders: as the engine is set, each time
         shareOutTracks();
     }
+}
+
+// A take's own start for the chance dice, and its number for every per-note roll (takeSeed). TAKE 0 is the
+// start the dice have always had.
+void Engine::setTake(std::uint32_t take) {
+    take_ = take;
+    dice_ = takeSeed(kDiceStart, take);
 }
 
 void Engine::useWorkers(int count, void (*atStart)()) {
@@ -3181,10 +3200,14 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
     const auto remember = [&] {
         std::uint64_t at = caughtCount_.load(std::memory_order_relaxed);
         for (int i = 0; i < frames; ++i, ++at) {
-            caught_[at % kCatchFrames].store(0.5f * (interleaved[2 * i] + interleaved[2 * i + 1]), std::memory_order_relaxed);
+            caught_[at % kCatchFrames].store(interleaved[2 * i], std::memory_order_relaxed); // STEREO: each side to its own ring
+            caughtR_[at % kCatchFrames].store(interleaved[2 * i + 1], std::memory_order_relaxed);
         }
         if (chunkCatch_ >= 0 && !chunkTapped_) // the track followed was not worked out (none there): silence
-            for (int i = 0; i < frames; ++i) trackCaught_[(chunkAt_ + static_cast<std::uint64_t>(i)) % kCatchFrames].store(0.f, std::memory_order_relaxed);
+            for (int i = 0; i < frames; ++i) {
+                trackCaught_[(chunkAt_ + static_cast<std::uint64_t>(i)) % kCatchFrames].store(0.f, std::memory_order_relaxed);
+                trackCaughtR_[(chunkAt_ + static_cast<std::uint64_t>(i)) % kCatchFrames].store(0.f, std::memory_order_relaxed);
+            }
         caughtCount_.store(at, std::memory_order_relaxed);
         barFramesNow_.store(static_cast<int>(samplesPerStep_ * kSteps), std::memory_order_relaxed);
     };

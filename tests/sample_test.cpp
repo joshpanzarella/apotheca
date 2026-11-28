@@ -1119,7 +1119,7 @@ void testBouncingIntoSamples() {
     session.finishBounce();
     CHECK(session.bounceFiles() == 1 && session.bounceSampleSteps() == 16);
     const std::string name = session.bounceSample();
-    CHECK(name == "bounces/drums 1");
+    CHECK(name == "bounces/drums 1 take 1");
     std::vector<float> file;
     CHECK(readWav(folder + "/" + name + ".wav", file) && file.size() == 16u * kStep);
     // The second time round: the long one from the bar before rings in its first 4 steps (the first time round, silence).
@@ -1158,14 +1158,14 @@ void testBouncingIntoSamples() {
     CHECK(rig.project().tracks[0].laneFit[4] == 16);
     session.setSceneTempo(rig.project().scene, 0.f);
     rig.frames(2);
-    // The next is "drums 3"; a named track goes by its name.
+    // The next is "drums 3" (each its take after: TAKE 3); a named track goes by its name.
     CHECK(session.startBounce(Session::Bounce::ToSamples));
     session.finishBounce();
-    CHECK(session.bounceSample() == "bounces/drums 3");
+    CHECK(session.bounceSample() == "bounces/drums 3 take 3");
     session.setTrackName(0, "BEAT");
     CHECK(session.startBounce(Session::Bounce::ToSamples));
     session.finishBounce();
-    CHECK(session.bounceSample() == "bounces/beat 1");
+    CHECK(session.bounceSample() == "bounces/beat 1 take 4");
     // How long: 4, 2 or 1 whole bars within twenty seconds; under a bar, all of it.
     Project song;
     song.tracks[0].kind = TrackKind::Drums;

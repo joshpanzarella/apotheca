@@ -250,6 +250,11 @@ back to the whole; the rest stay. A preset keeps the EDIT. **A multisample has
 no EDIT**: each note is its own file, and A on the picture says so (NO EDIT FOR
 A MULTISAMPLE). Nor does CLOUD.
 
+**A stereo recording plays in stereo** (as on a kit lane: each side to its own, PAN a balance), each note of
+a multisample as its own file is, and EDIT's **MONO** (UP from the top row, hold A + UP) mixes the one
+recording into one. CLOUD plays a stereo recording in stereo too: each grain reads both sides at one place,
+and its STEREO spread then turns each grain's sides up and down as a balance.
+
 **PITCH is semitones up or down, and up is higher.** (It used to be ROOT, a
 key, which ran the other way. Old songs open as they were.) **X hears it at
 middle C**: its own pitch at PITCH 0, and the change when PITCH or TUNE is
@@ -348,12 +353,15 @@ to the sound just now.
 | | Hold A, then **B** | **As it was**: nothing tried goes in. Leaving the screen or the track with A held does the same |
 | | Hold B | **Deletes the effect**, with its settings and its automation: a bar fills for half a second, and the heading says DELETING THIS EFFECT. Let go sooner and it stays. **SELECT + B brings it back**, its settings and automation with it. On SENDS a tap of B: nothing sent. |
 | | Hold Y + up / down | On one of the track's own three lines: **moves it** there, settings, automation and MODs with it. The cursor goes with it; the ends stop. One step of undo. The buses' and the master's never move. |
-| The settings | Left / right | The next dial, across: they sit side by side. **Left from the first is back to the list**, on the same line. Right on the last stops. The stick across does the same. A dial left passes through is not remembered as the one last used |
+| The settings | Left / right | The next dial, across: they sit side by side (on SENDS, see below). **Left from the first is back to the list**, on the same line. Right on the last stops. The stick across does the same. A dial left passes through is not remembered as the one last used |
 | | Up / down | Nothing, without A (hold A to turn the dial) |
 | | **Hold A + left / right** | **The TYPE before / after** (COMP to DUCK), at once, in the same grip that turns the value: the cursor stays on its row. The first and the last type stop. |
 | | Hold A + up / down | The stick turns it. The D-pad moves it a twentieth, or to the next choice (BAND's FREQ: a third of an octave). |
 | | **Hold Y** on BAND's FREQ, GAIN or Q | **Moves the band two ways at once**: left / right is FREQ, up / down is GAIN (on the Q dial, Q). The stick does both together (push it on a slant); the D-pad moves each a push (FREQ a third of an octave, GAIN or Q a twentieth). The cursor stays. Not on SHAPE, and with A held A's jobs stand (left / right is still the TYPE). With WRITE on, both are recorded. The bar says it only while Y is held: it has no room before. |
 | | B | Its usual value. A send: nothing sent. |
+| SENDS' two sends | Up / down | **ECHO and SPACE sit one above the other, so up / down goes between them**: down from ECHO to SPACE, up from SPACE to ECHO; the ends stop. The stick up / down the same |
+| | Left / right | **Left is back to the list** from either; right does nothing. Right from the list lands on the send last used |
+| | Hold A + up / down | Turns the send under the cursor, as a dial (hold A + left / right: nothing) |
 
 **A slot remembers each type's own settings.** Turn a COMP, switch to the
 DUCK, then back: the COMP is exactly as you left it, not rebuilt from the
@@ -889,7 +897,8 @@ You have a loop going and want the next part of the song to start from it.
 ![Bouncing, on the SET tab](manual/bounce.png)
 
 **SET tab, BOUNCE row.** Left / right picks what, A starts it when it is let
-go (hold A + left / right only picks, as on other screens). **Hold B a second
+go (hold A + left / right only picks, as on other screens; **hold A + up / down
+picks the TAKE**, below). **Hold B a second
 stops one under way** (the row's bar fills); nothing of it is kept, not even
 the tracks of an EACH TRACK already finished. The row says `STOPPING IT` until
 it has stopped (a moment; longer if it was still loading the song's samples),
@@ -900,12 +909,41 @@ and A starts nothing meanwhile.
 | THE SONG | One WAV of the whole song: every scene as many times as it plays, then **for as long as its echoes and tails take to die away**. Muted tracks are left out. |
 | EACH TRACK | One WAV for every track by itself (stems), all the same length (the longest one's), so they line up in any other program |
 | THIS TRACK | The track being worked on, by itself |
-| TRACK TO SAMPLES | **A loop of this track, made into a recording** (to put on a lane or a sampler, and to free the handheld's work: a busy synth played back as a recording costs little). The track being worked on by itself (muted or not), the scene you are on played round once and then **the second time round kept**, so whatever rings past its end is heard at its start, as when it loops. **1, 2 or 4 whole bars** (the most the scene has, within twenty seconds: 4 bars at 120 BPM, 2 at 40); a scene under a bar, all of it. One channel, 16-bit 48 kHz, in `samples/bounces` ("bounces/bass 1", after the track's name), where the list of recordings sees it at once. **The cell's FILL is left out**: a loop is the plain cell. On a lane, **a tap of A on FIT fits it to its bars**. The row says `done: "bounces/bass 1" in recordings` |
+| TRACK TO SAMPLES | **A loop of this track, made into a recording** (to put on a lane or a sampler, and to free the handheld's work: a busy synth played back as a recording costs little). The track being worked on by itself (muted or not), the scene you are on played round once and then **the second time round kept**, so whatever rings past its end is heard at its start, as when it loops. **1, 2 or 4 whole bars** (the most the scene has, within twenty seconds: 4 bars at 120 BPM, 2 at 40); a scene under a bar, all of it. Stereo, 16-bit 48 kHz, in `samples/bounces` ("bounces/bass 1 take 3", after the track's name and its TAKE), where the list of recordings sees it at once. **The cell's FILL is left out**: a loop is the plain cell. On a lane, **a tap of A on FIT fits it to its bars**. The row says `done: "bounces/bass 1 take 3" in recordings` |
 | MIDI FILE | One MIDI file of the whole song (Type 1): every scene as many times as it plays, one track per track, at the song's tempo. Notes and chords as written, with ratchets and nudges; drums as General MIDI on channel 10. Muted tracks are left out. Chance, swing and feel, strum, glide and automation have no MIDI in them and are left out |
 
 A bounce is **not recorded as the song plays**. A second engine works the
 song out again from the start, as fast as the handheld can. So you can
 carry on (even play) while it works.
+
+**Each bounce is a fresh TAKE.** Chance, the dice and every HUMAN, strum,
+arpeggio order, GLIDE FROM RANDOM, the dice of a PHYSIC, CLOUD or MORPH
+note, FEEL and a MOD's RANDOM, DRIFT or STEPPER CHANCE roll
+afresh, so two bounces of a song with any of those in it are two performances.
+The row says which take A will make (`THE SONG  TAKE 3`), and the file says it
+too:
+
+| Bounce | File |
+| --- | --- |
+| THE SONG | `my song take 3.wav` |
+| EACH TRACK, THIS TRACK | `my song take 3 - 1 drums.wav`, one a track |
+| TRACK TO SAMPLES | `bounces/bass 1 take 3` (the number counts that track's loops) |
+| MIDI FILE | no take (MIDI has no chance in it): `my song 261128-141500.mid` |
+
+- **A new song starts at TAKE 1**, and the count is kept in the song, so a
+  song bounced again tomorrow goes on from where it was.
+- **Make a favourite again: hold A + UP / DOWN** on the row to pick an earlier
+  take (DOWN goes back; it stops at 1 and at the next new one). The row says
+  `A: that take again`; let go, then tap A. (On the next new take, once there
+  are earlier ones, the row's note says `hold A + up / down: earlier takes`.) **The same take of the same song
+  is the same file to the last bit.** If you have changed the song since, it is
+  that take of the song as it is now. Where a file of that name is already
+  there, the time is added after the take (`my song take 3 261128-141500.wav`),
+  so nothing is written over.
+- After a bounce, and in another song, the row is back on the next new take.
+- A song with no chance or rolls in it bounces the same in every take.
+- What you hear as the song plays is not any take: playing is the song's own
+  rolls, the same from the top every time.
 
 **Where a bounce ends.** After the song's last step it runs on until there has
 been no sound for seven seconds, and the file ends half a second after the last
@@ -1375,7 +1413,7 @@ track makes a sound at once.
   and the panic fade them in 5 MS.
 - **Every grain's place, pitch, side and direction is a roll by where and
   when** (the key's start and the grain's count), not dice thrown as it plays:
-  Play from the top is the same cloud again, and a bounce is what you heard.
+  Play from the top is the same cloud again. A bounce is a TAKE of its own (see Bouncing).
 - **Y on MAIN rolls a new cloud**: SPRAY, SIZE, DENSITY, SCATTER, SHAPE, PITCH
   SPRAY, PITCH STEPS, REVERSE and STEREO. It never changes the recording,
   POSITION, SCAN, PITCH, TUNE, the envelope or the levels. One step of undo.
@@ -2130,9 +2168,9 @@ the drum), and:
   hits move together and share one level.
 - A hit written at full level can only get quieter (nothing is louder than
   full). At 90%, where A places them, it goes both ways (up to full).
-- **Play from the top is the same performance again**, and a bounce is what
-  was heard: the moves are worked out from where each hit is and which time
-  round it is, not from luck at the moment.
+- **Play from the top is the same performance again**: the moves are worked
+  out from where each hit is and which time round it is, not from luck at the
+  moment. A bounce rolls them afresh: each is a TAKE of its own (see Bouncing).
 - The song's very first hit cannot come before the top: it lands on it.
 - **Slices in order still play as one unbroken sound.** A run of slices
   (each on the step after the last) moves as one, by its first hit's move,
@@ -2403,8 +2441,14 @@ the edits make it, and eight boxes laid out as the sampler's.
   sound, END after the last: under 40 dB below its loudest is silence).
   **Y anywhere else: NORMALIZE**: GAIN so the part played peaks at about
   -1 dB, never over it. Both only set the boxes, and are undone like any edit.
+- **MONO (a stereo sound only).** A stereo recording shows **STEREO** at the
+  right of its name, at the top. UP from the top row of boxes goes there (DOWN
+  comes back). **Hold A + UP: MONO**, both sides mixed into one, heard the same
+  on both; **hold A + DOWN: STEREO** again, as the file is. B puts it back to
+  STEREO. It never changes the file, it is kept with the song and undone like
+  any edit. A mono recording has no such word: there is nothing to mix.
 - **R1: SAVE A COPY.** What the lane plays, as its EDIT and FIT make it, is
-  written as a new recording (16-bit, one channel, 48 kHz, as Catch writes),
+  written as a new recording (16-bit, 48 kHz, as Catch writes; two channels for a stereo sound, one with MONO on),
   beside the lane's file and named after it with the next free number:
   `amen 1`, `amen 2`... (never over a file). A synth voice or a built-in drum
   goes in `samples` itself, after its model or drum (`kick 1`). The line at
@@ -2463,7 +2507,7 @@ screen, another track, Play or a new song stops it.
 into slices (see "Slices: chopping a break").
 
 **Y is Catch.** The engine remembers the last 25 seconds it played. A tap of Y on a
-lane takes the last whole bars the song played, saves them as `catch 1.wav`, `catch 2.wav`... in
+lane takes the last whole bars the song played, **in stereo, as they were heard**, saves them as `catch 1.wav`, `catch 2.wav`... in
 `samples/catches`, and puts them on that lane **fitted to their steps** (2 bars: 32). It catches when Y
 is let go. It works just after stopping too. SELECT + B puts back what the lane had, its FIT, cut and
 synth voice with it (the catch's file stays in `catches`).
@@ -2487,8 +2531,10 @@ to catch. The choice stays until you change it (it is not saved with the song).
   to the buses. The handheld starts remembering a track when you choose it, so its bars count from
   then: choose, let a bar or more go by, then tap Y. Before a whole bar of it has gone by nothing is
   caught, and the line says `NO WHOLE BAR OF 3 BASS YET: LET ONE GO BY`.
+- **A catch is a stereo file** (two channels, 16-bit, 48 kHz), left and right as they were heard, always: even one with
+  nothing off the middle (both sides the same) stays two channels.
 
-**R1 is Record.** With a USB microphone or audio interface plugged into the
+**R1 is Record.** (One channel: the input is taken as one.) With a USB microphone or audio interface plugged into the
 USB-C port: R1 on a lane starts it waiting for sound, so there is no silence
 on the front. R1 again stops it, on any lane or box and on the KIT stop; it
 stops by itself at twenty seconds. Silence
@@ -2521,7 +2567,18 @@ tempo is undone). A scene with its own tempo still plays at its own.
 Nothing happens on the built-in drum or a synth voice.
 
 - WAV files of 8, 16, 24 or 32 bits or 32-bit float, at 4 kHz to 192 kHz,
-  with 1 to 8 channels. They are played as one channel at 48 kHz.
+  with 1 to 8 channels, played at 48 kHz. **A sound plays as its file is**: a
+  stereo file (two channels) in stereo, each side to its own; a mono file as
+  one sound in the middle. A file of 3 to 8 channels is mixed into one. EDIT's
+  MONO mixes a stereo one into one for that lane.
+- **PAN on a stereo sound is a balance**: turned one way, the other side is
+  turned down (to nothing at the end) and the side it turns to comes up a
+  little (3 dB at the end), as a mono sound's does. So a stereo sound with
+  nothing on its left, panned hard left, is silent. The slices, FIT, step
+  effects, CHOKE and THROW work on both sides alike (THROW sends both sides
+  mixed into one, as a bus is fed one sound).
+- **A stereo recording takes twice the memory** of a mono one of the same
+  length.
 - **Twenty seconds** of each is used; a longer file is cut there, with a short fade so it does not click.
 - The song file keeps each lane's file by name and each hit's start. If the
   file is not on the card, the lane plays its drum and says so (FILE NOT
@@ -2731,7 +2788,7 @@ otherwise. One step of undo.
 
 **Random means fresh every time the chord plays.** No two times round the
 loop are alike. But pressing play from the top gives the same performance
-again, so a bounce is what you heard from the top.
+again. A bounce is a TAKE of its own: the rolls made afresh (see Bouncing).
 
 How the effects meet each other, and the edges:
 

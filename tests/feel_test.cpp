@@ -414,6 +414,27 @@ static void testLevel() {
     CHECK(mostBeat <= 0.0751 && mostBeat > 0.04 && most <= 0.1501 && most > 0.12);
 }
 
+// A bounce's TAKE (Engine::setTake): HUMAN TIME and HUMAN LEVEL each rolled again, apart. The same take is
+// the same to the bit, another take another, and take 0 as made.
+static std::vector<float> feltTake(int time, int level, std::uint32_t take, bool setIt = true) {
+    Rig rig;
+    if (setIt) rig.engine->setTake(take);
+    rig.clicks(0);
+    for (int s = 0; s < kSteps; ++s) rig.hit(4, s, 0.6f);
+    rig.feel(4, time, level);
+    rig.play();
+    rig.render(2 * kBar);
+    return rig.out;
+}
+static void testTakes() {
+    for (int which = 0; which < 2; ++which) {
+        const int time = which == 0 ? 100 : 0, level = which == 0 ? 0 : 100;
+        const std::vector<float> asMade = feltTake(time, level, 0, false), one = feltTake(time, level, 1), two = feltTake(time, level, 2);
+        CHECK(feltTake(time, level, 0) == asMade && feltTake(time, level, 1) == one);
+        CHECK(one != asMade && two != asMade && one != two);
+    }
+}
+
 // ---- 5 -------------------------------------------------------------------------------------------
 
 static void testTopAndNudge() {
@@ -1045,7 +1066,7 @@ int main(int argc, char** argv) {
         void (*run)();
     };
     const Test tests[] = {
-        {"testRule", testRule}, {"testAtRest", testAtRest}, {"testTime", testTime}, {"testLevel", testLevel}, {"testTopAndNudge", testTopAndNudge},
+        {"testRule", testRule}, {"testAtRest", testAtRest}, {"testTime", testTime}, {"testLevel", testLevel}, {"testTakes", testTakes}, {"testTopAndNudge", testTopAndNudge},
         {"testRatchet", testRatchet}, {"testBlocksAndHelpers", testBlocksAndHelpers}, {"testPlayTwice", testPlayTwice}, {"testOnce", testOnce},
         {"testTurnedWhilePlaying", testTurnedWhilePlaying}, {"testSlices", testSlices}, {"testDuckAndThrow", testDuckAndThrow}, {"testGoneAndLimits", testGoneAndLimits}, {"testAskedAgain", testAskedAgain}, {"testASceneMoved", testASceneMoved},
     };

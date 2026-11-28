@@ -2276,6 +2276,165 @@ void testBouncing() {
     CHECK(wavsIn().size() == whole + 1);
 }
 
+// A bounce's TAKE (owner, 2026-11-28: "each bounce is a fresh take ... say which take it is in the file name").
+// Each new bounce plays the chance and the dice afresh (Engine::setTake) and is named for its take; the take is
+// kept in the song; hold A + UP / DOWN on SET's BOUNCE picks an earlier one, made again to the bit.
+void testBounceTakes() {
+    const std::string folder = tempFolder("takes");
+    const std::string samples = folder + "/samples";
+    mkdir(samples.c_str(), 0755);
+    const auto read = [&](const std::string& name) { return readWav(folder + "/" + name); };
+    Rig rig;
+    Session& session = rig.app.session();
+    session.useBounceFolder(folder);
+    session.useSampleFolder(samples);
+    // A kick on every step at a half chance, two bars of it.
+    PatternScreen& drums = rig.app.drums();
+    for (int step = 0; step < kSteps; ++step) {
+        drums.setStep(0, step, 1.f);
+        drums.setChance(0, step, 0.5f);
+    }
+    rig.project().repeats[0] = 2;
+    rig.frames(2);
+    CHECK(rig.project().takes == 0 && session.bounceTake() == 1 && session.bounceTakeIsNew());
+    const auto bounce = [&](Session::Bounce what, int take) {
+        const bool ok = session.startBounce(what, take);
+        session.finishBounce();
+        return ok ? session.bounceLast() : std::string("(none)");
+    };
+    const auto named = [&](const char* rest) { return session.songName() + rest; }; // (the rig's song: "untitled")
+    const auto timed = [&](const std::string& n, const char* take) { // the take, then the time: "untitled take 1 261128-141500.wav"
+        const std::string head = session.songName() + take + " ";
+        return n.compare(0, head.size(), head) == 0 && n.size() == head.size() + std::strlen("261128-141500.wav") && n.compare(n.size() - 4, 4, ".wav") == 0;
+    };
+    const auto same = [](const Wav& a, const Wav& b) { return !a.left.empty() && a.left == b.left && a.right == b.right; };
+    // Two new bounces: takes 1 and 2, kept in the song, and other hits in each.
+    const std::string one = bounce(Session::Bounce::Song, 0);
+    CHECK(one == named(" take 1.wav") && session.bounceTakeMade() == 1 && rig.project().takes == 1 && session.bounceTake() == 2);
+    const std::string two = bounce(Session::Bounce::Song, 0);
+    CHECK(two == named(" take 2.wav") && session.bounceTakeMade() == 2 && rig.project().takes == 2 && session.bounceTake() == 3);
+    const Wav a = read(one), b = read(two);
+    CHECK(a.left.size() >= static_cast<std::size_t>(2 * kBar) && !same(a, b));
+    // Take 1 again: the same to the bit. Its name is taken, so this one has the time after it; no take is spent.
+    const std::string again = bounce(Session::Bounce::Song, 1);
+    CHECK(timed(again, " take 1"));
+    CHECK(session.bounceTakeMade() == 1 && rig.project().takes == 2 && same(read(again), a));
+    // A take past the last is a new one (as 0 is).
+    CHECK(bounce(Session::Bounce::Song, 9) == named(" take 3.wav") && rig.project().takes == 3);
+    // A track's own file: the take, then the track (" - 1 DRUMS"), and its take's hits: take 2's again is take 2's.
+    rig.project().track = 0;
+    CHECK(bounce(Session::Bounce::ThisTrack, 0) == named(" take 4 - 1 DRUMS.wav") && rig.project().takes == 4);
+    const std::string drums2 = bounce(Session::Bounce::ThisTrack, 2);
+    CHECK(drums2 == named(" take 2 - 1 DRUMS.wav") && same(read(drums2), b)); // (one track: the song's own sound)
+    // A MIDI FILE has no chance in it: no take is spent, and its name is as it always was (the song and the time).
+    const std::string mid = bounce(Session::Bounce::MidiFile, 0);
+    CHECK(mid.size() > 4 && mid.compare(mid.size() - 4, 4, ".mid") == 0 && mid.find("take") == std::string::npos);
+    CHECK(session.bounceTakeMade() == 0 && rig.project().takes == 4);
+    // TRACK TO SAMPLES: the take after the number ("bounces/drums 1 take 5").
+    CHECK(session.startBounce(Session::Bounce::ToSamples));
+    session.finishBounce();
+    CHECK(session.bounceSample() == "bounces/drums 1 take 5" && rig.project().takes == 5);
+    CHECK(session.startBounce(Session::Bounce::ToSamples, 5));
+    session.finishBounce();
+    CHECK(session.bounceSample() == "bounces/drums 2 take 5" && rig.project().takes == 5); // (the number: how many of the track's)
+    std::vector<float> loop5, loop5again, loop1;
+    CHECK(apotheca::readWav(samples + "/bounces/drums 1 take 5.wav", loop5) && apotheca::readWav(samples + "/bounces/drums 2 take 5.wav", loop5again));
+    CHECK(session.startBounce(Session::Bounce::ToSamples, 1));
+    session.finishBounce();
+    CHECK(session.bounceSample() == "bounces/drums 3 take 1" && apotheca::readWav(samples + "/" + session.bounceSample() + ".wav", loop1));
+    CHECK(!loop5.empty() && loop5 == loop5again && loop1.size() == loop5.size() && loop1 != loop5); // its take's hits
+    // Kept in the song: written as "takes 5" (only once there is one), and read back.
+    const std::string text = songText(rig.project());
+    CHECK(text.find("\ntakes 5\n") != std::string::npos);
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back) && back->takes == 5 && songText(*back) == text);
+    CHECK(songText(*std::unique_ptr<Project>(new Project)).find("takes") == std::string::npos);
+    CHECK(parseSong("apotheca-song 1\ntempo 120\ntakes 1e12\n", *back) && back->takes == kMostTakes);
+    CHECK(parseSong("apotheca-song 1\ntempo 120\ntakes -3\n", *back) && back->takes == 0);
+    CHECK(parseSong("apotheca-song 1\ntempo 120\n", *back) && back->takes == 0); // a song from before: none yet
+    std::vector<std::size_t> starts;
+    CHECK(!cutSongAt("apotheca-song 1\ntrack drums\ntakes 3\n", starts)); // the song's own word, not a track's
+    // ...and kept across a save and a load (the song shut, another opened, and it again).
+    session.useSongFolder(folder + "/songs", 7u);
+    const std::string name = session.songName();
+    rig.project().takes = 5;
+    rig.app.drums().setStep(1, 3, 1.f); // (something in it, so it is saved)
+    CHECK(session.saveNow());
+    CHECK(session.newSong() && rig.project().takes == 0 && session.bounceTake() == 1);
+    CHECK(session.openSong(name) && rig.project().takes == 5 && session.bounceTake() == 6);
+
+    // SET's BOUNCE row: hold A + UP / DOWN picks the take (DOWN an earlier one, stopping at 1 and at the new one);
+    // a let go after it bounces nothing; a tap of A then makes the take picked, and the row goes back to the new one.
+    const Wav first = read(bounce(Session::Bounce::Song, 1)); // (this song's take 1, which has another name and another kit)
+    CHECK(first.left.size() >= static_cast<std::size_t>(2 * kBar) && rig.project().takes == 5);
+    session.view = View::Settings;
+    SettingsScreen& setup = rig.app.settings();
+    setup.goTo(SettingsScreen::kBounce);
+    rig.frames(1);
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(DOWN, 3);
+    CHECK(session.bounceTake() == 3 && !session.bounceTakeIsNew());
+    rig.tap(UP, 9);
+    CHECK(session.bounceTake() == 6 && session.bounceTakeIsNew());
+    rig.tap(DOWN, 9);
+    CHECK(session.bounceTake() == 1 && setup.row() == SettingsScreen::kBounce); // (the cursor stayed: UP / DOWN were the take's)
+    rig.frames(1);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(!session.bouncing() && session.bounceTake() == 1 && rig.project().takes == 5);
+    rig.tap(A); // take 1 again: the same sound
+    session.finishBounce();
+    CHECK(session.bounceTakeMade() == 1 && session.bounceTakeIsNew() && session.bounceTake() == 6 && rig.project().takes == 5);
+    CHECK(timed(session.bounceLast(), " take 1") && same(read(session.bounceLast()), first));
+    rig.tap(A); // and a tap with nothing picked: a new one
+    session.finishBounce();
+    CHECK(session.bounceTakeMade() == 6 && rig.project().takes == 6 && session.bounceLast() == named(" take 6.wav"));
+    // A held D-pad runs (the list's pace), and so does the stick: down an earlier take, up a later.
+    rig.key(A, true);
+    rig.key(DOWN, true);
+    rig.frames(90);
+    rig.key(DOWN, false);
+    CHECK(session.bounceTake() == 1);
+    rig.stick(0.f, -1.f);
+    rig.frames(3);
+    rig.stick(0.f, 0.f);
+    rig.frames(1);
+    CHECK(session.bounceTake() > 1 && setup.row() == SettingsScreen::kBounce);
+    rig.key(UP, true);
+    rig.frames(200);
+    rig.key(UP, false);
+    CHECK(session.bounceTake() == 7 && session.bounceTakeIsNew());
+    rig.key(A, false);
+    rig.frames(1);
+    // Without A held, UP / DOWN move the cursor as ever; another song puts the pick back to its next new take.
+    rig.key(A, true);
+    rig.tap(DOWN);
+    rig.key(A, false);
+    CHECK(session.bounceTake() == 6);
+    rig.tap(DOWN);
+    CHECK(setup.row() != SettingsScreen::kBounce);
+    // On MIDI FILE (no take) hold A + DOWN moves the cursor, and picks nothing.
+    setup.goTo(SettingsScreen::kBounce);
+    rig.tap(RIGHT, 3); // THE SONG, EACH TRACK, THIS TRACK, MIDI FILE
+    rig.key(A, true);
+    rig.tap(DOWN);
+    rig.key(A, false);
+    CHECK(setup.row() != SettingsScreen::kBounce && session.bounceTake() == 6);
+    // A pick past the song's last take (none can be made so; a guard) is the new one.
+    session.pickBounceTake(-1);
+    CHECK(session.bounceTake() == 5);
+    rig.project().takes = 2;
+    CHECK(session.bounceTake() == 3 && session.bounceTakeIsNew());
+    // Another song puts the pick back to ITS next new take, though it has the take picked here.
+    rig.project().takes = 7;
+    session.pickBounceTake(9); // (to the new one, 8)
+    session.pickBounceTake(-3);
+    CHECK(session.bounceTake() == 5 && session.newSong() && session.bounceTake() == 1);
+    CHECK(session.openSong(name) && rig.project().takes == 7 && session.bounceTake() == 8 && session.bounceTakeIsNew());
+    CHECK(session.newSong() && session.bounceTake() == 1 && session.bounceTakeIsNew());
+}
+
 // WHERE A BOUNCE ENDS, by itself: made-up tails, no engine and no file.
 void testWhereABounceEnds() {
     const int block = 256;
@@ -6086,15 +6245,15 @@ void testTheFxScreensList() {
     fx.goTo(3, 0);
     rig.tap(RIGHT);
     CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 1); // the ECHO send
-    rig.tap(RIGHT, 3);
-    CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 2); // the SPACE send, and the end
-    rig.tap(UP, 3);
     rig.tap(DOWN, 3);
-    CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 2); // (up / down without A: nothing)
-    rig.tap(LEFT);
+    CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 2); // the SPACE send, below it, and the end (owner, 2026-11-28)
+    rig.tap(RIGHT, 3);
+    CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 2); // (RIGHT on a send: nothing)
+    rig.tap(UP);
     CHECK(fx.cursorColumn() == 1);
+    rig.tap(DOWN);
     rig.tap(LEFT);
-    CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 0);
+    CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 0); // LEFT from SPACE: the list at once
     // Each line remembers its own last setting (as L1 / R1 or a tab leaves it: a walk out with LEFT passes the
     // first, so leaves that).
     fx.goTo(4, 3); // ECHO's TAPE: AGE
@@ -6148,7 +6307,7 @@ void testTheFxScreensList() {
     rig.key(A, false);
     rig.tap(RIGHT);
     CHECK(fx.cursorColumn() == 2); // where the line was last (goTo, above)
-    rig.tap(LEFT);
+    rig.tap(UP);
     rig.key(A, true);
     rig.tap(UP, 3);
     CHECK(near(project.tracks[0].send[0], 0.15f) && project.tracks[0].send[1] == 0.f);
@@ -6160,7 +6319,7 @@ void testTheFxScreensList() {
     rig.tap(RIGHT); // sideways with A held does nothing to a send, and does not move off it
     CHECK(project.tracks[0].send[0] == 0.f && project.tracks[0].send[1] == 0.f && fx.cursorColumn() == 1);
     rig.key(A, false);
-    rig.tap(RIGHT);
+    rig.tap(DOWN);
     rig.key(A, true);
     rig.tap(UP, 25);
     CHECK(project.tracks[0].send[1] == 1.f && project.tracks[0].send[0] == 0.f);
@@ -6176,7 +6335,7 @@ void testTheFxScreensList() {
     CHECK(std::fabs(turned / 0.05f - std::round(turned / 0.05f)) > 0.02f); // smoothly: not in twentieths
     // ...the first send as the second.
     rig.key(A, false);
-    rig.tap(LEFT);
+    rig.tap(UP);
     rig.key(A, true);
     rig.key(STICK_UP, true);
     rig.frames(10);
@@ -6186,7 +6345,7 @@ void testTheFxScreensList() {
     CHECK(echo > 0.02f && echo < 0.3f && std::fabs(echo / 0.05f - std::round(echo / 0.05f)) > 0.02f);
     rig.key(A, false);
     session.setSend(0, 0, 0.f);
-    rig.tap(RIGHT);
+    rig.tap(DOWN);
     // It reaches the engine: a hit now wakes the SPACE bus and not the ECHO bus.
     Command hit;
     hit.type = Command::Trigger;
@@ -6203,7 +6362,7 @@ void testTheFxScreensList() {
     rig.tap(B);
     CHECK(project.tracks[0].send[1] == 0.f && project.tracks[0].send[0] == 0.4f && fx.cursorColumn() == 2);
     CHECK(!session.hasAutomation(0, 0, autoLaneOfSend(1)) && session.hasAutomation(0, 0, autoLaneOfSend(0)) && session.hasAutomation(0, 2, autoLaneOfSend(1)));
-    rig.tap(LEFT);
+    rig.tap(UP);
     rig.tap(B);
     CHECK(project.tracks[0].send[0] == 0.f && !session.hasAutomation(0, 0, autoLaneOfSend(0)));
     // B on the SENDS line itself: nothing sent to either, and both automations of this cell go.
@@ -6768,7 +6927,7 @@ void testTheFxScreenAsDrawn() {
         CHECK(hinted("sends") && hinted("send nothing") && !hinted("effects"));
         fx.goTo(F::kSendsRow, 2);
         draw();
-        CHECK(hinted("dial") && hinted("turn") && hinted("none") && !hinted("default"));
+        CHECK(hinted("ECHO") && hinted("list") && hinted("turn") && hinted("none") && !hinted("default") && !hinted("dial"));
         fx.goTo(0, 2);
         draw();
         CHECK(hinted("dial") && hinted("turn, type") && hinted("default")); // (DELAY has types: HOLD A turns and switches)
@@ -11272,7 +11431,8 @@ void testFxSwitchesType() {
             CHECK(session.effectData(0, 0).kind == static_cast<int>(next) && fx.cursorColumn() == effectInfo(next).params);
             break;
         }
-        // The sends switch nothing; A up, RIGHT on the last (SPACE) stops and LEFT walks back to the list.
+        // The sends switch nothing; A up, RIGHT does nothing on a send and LEFT is the list
+        // (the sends walk with UP / DOWN: testFxSendsWalkUpAndDown).
         fx.goTo(FxScreen::kSendsRow, 2);
         typeTap(rig, RIGHT);
         typeTap(rig, LEFT);
@@ -11464,7 +11624,7 @@ void testFxSwitchesType() {
             CHECK(draw() && keyInk() == 0 && fx.typeKey() == nullptr && hintKeyed(canvas, scratch, "LEFT / RIGHT", fx.cursorColumn() == 1 ? "list, dial" : "dial"));
             // SENDS have no types: no key held or not, and HOLD A only turns.
             fx.goTo(F::kSendsRow, 2);
-            CHECK(draw() && hintKeyed(canvas, scratch, "LEFT", "dial") && hintKeyed(canvas, scratch, "HOLD A", "turn") && !hintKeyed(canvas, scratch, "HOLD A", "turn, type"));
+            CHECK(draw() && hintKeyed(canvas, scratch, "UP", "ECHO") && hintKeyed(canvas, scratch, "HOLD A", "turn") && !hintKeyed(canvas, scratch, "HOLD A", "turn, type"));
             rig.key(A, true);
             CHECK(draw() && fx.typeKey() == nullptr && !hintKeyed(canvas, scratch, "RIGHT", "type"));
             rig.key(A, false);
@@ -11506,7 +11666,8 @@ void testFxSwitchesType() {
 // on the handheld: "moving up and down to traverse the parameters is odd... that should be changed to
 // left/right"; the table he approved). LEFT from the FIRST dial is the list, on the same line; RIGHT on the last
 // stops; UP / DOWN do nothing without A. With A held: LEFT / RIGHT the TYPE, UP / DOWN turn, as before. The
-// stick across walks, up / down nothing. SENDS the same. The bar names the ways that work.
+// stick across walks, up / down nothing. SENDS are the one exception (UP / DOWN: testFxSendsWalkUpAndDown). The bar
+// names the ways that work.
 void testFxDialsWalkAcross() {
     Rig rig;
     Session& session = rig.app.session();
@@ -11604,26 +11765,21 @@ void testFxDialsWalkAcross() {
     rig.key(STICK_LEFT, false);
     rig.frames(1);
     CHECK(at(0, 0));
-    // SENDS: its two dials the same. LEFT from ECHO is the list, on SENDS; RIGHT on SPACE stops; UP / DOWN
-    // without A turn nothing; with A held they turn the send.
+    // SENDS are the exception: drawn one above the other, they walk with UP / DOWN (owner, 2026-11-28;
+    // testFxSendsWalkUpAndDown has the rest).
     session.setSend(0, 0, 0.35f);
     session.setSend(0, 1, 0.5f);
     fx.goTo(FxScreen::kSendsRow, 0);
     rig.tap(RIGHT);
     CHECK(at(FxScreen::kSendsRow, 1));
-    rig.tap(RIGHT);
-    CHECK(at(FxScreen::kSendsRow, 2));
     rig.tap(RIGHT, 2);
-    CHECK(at(FxScreen::kSendsRow, 2));
-    rig.tap(UP);
+    CHECK(at(FxScreen::kSendsRow, 1));
     rig.tap(DOWN);
     CHECK(at(FxScreen::kSendsRow, 2) && project.tracks[0].send[0] == 0.35f && project.tracks[0].send[1] == 0.5f);
     rig.key(A, true);
     rig.tap(UP);
     rig.key(A, false);
     CHECK(at(FxScreen::kSendsRow, 2) && project.tracks[0].send[1] > 0.5f);
-    rig.tap(LEFT);
-    CHECK(at(FxScreen::kSendsRow, 1));
     rig.tap(LEFT);
     CHECK(at(FxScreen::kSendsRow, 0));
     // The bar's key: both ways where both do something, LEFT alone on the last; the list in the words on the first.
@@ -11648,12 +11804,161 @@ void testFxDialsWalkAcross() {
         fx.goTo(0, dials);
         CHECK(draw() && hintKeyed(canvas, scratch, "LEFT", "dial"));
         fx.goTo(FxScreen::kSendsRow, 1);
-        CHECK(draw() && hintKeyed(canvas, scratch, "LEFT / RIGHT", "list, dial"));
+        CHECK(draw() && hintKeyed(canvas, scratch, "DOWN", "SPACE") && hintKeyed(canvas, scratch, "LEFT", "list") && !hintKeyed(canvas, scratch, "LEFT / RIGHT", "list, dial"));
         fx.goTo(FxScreen::kSendsRow, 2);
-        CHECK(draw() && hintKeyed(canvas, scratch, "LEFT", "dial"));
+        CHECK(draw() && hintKeyed(canvas, scratch, "UP", "ECHO") && hintKeyed(canvas, scratch, "LEFT", "list") && !hintKeyed(canvas, scratch, "LEFT", "dial"));
         fx.goTo(FxScreen::kBusRow, 1);
         CHECK(draw() && hintKeyed(canvas, scratch, "LEFT / RIGHT", "list, dial"));
     }
+}
+
+// The two sends are drawn one above the other, so UP / DOWN walk them (owner, 2026-11-28: "it feels weird
+// switching between the ECHO and SPACE sends because it's left/right, when I think it should be up/down"): DOWN
+// from ECHO is SPACE, UP from SPACE is ECHO, the ends stop; LEFT from either is the list, on SENDS; RIGHT does
+// nothing. RIGHT from the list goes back to the send last used. Hold A + UP / DOWN turns the send under the cursor,
+// hold A + LEFT / RIGHT does nothing, as before. The stick follows. The bar names the keys, and fits.
+void testFxSendsWalkUpAndDown() {
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& project = rig.app.project();
+    FxScreen& fx = rig.app.fx();
+    session.view = View::Effects;
+    session.setSend(0, 0, 0.35f);
+    session.setSend(0, 1, 0.5f);
+    rig.frames(1);
+    const int S = FxScreen::kSendsRow;
+    const auto at = [&](int column) { return fx.cursorRow() == S && fx.cursorColumn() == column; };
+    const auto untouched = [&] { return project.tracks[0].send[0] == 0.35f && project.tracks[0].send[1] == 0.5f; };
+    // From the list: RIGHT is ECHO (never used yet). DOWN is SPACE; DOWN again stops; UP is ECHO; UP again stops,
+    // on SENDS (not the line above). RIGHT on either does nothing.
+    fx.goTo(S, 0);
+    rig.tap(RIGHT);
+    CHECK(at(1));
+    rig.tap(RIGHT, 2);
+    CHECK(at(1));
+    rig.tap(DOWN);
+    CHECK(at(2));
+    rig.tap(DOWN, 2);
+    CHECK(at(2));
+    rig.tap(RIGHT, 2);
+    CHECK(at(2));
+    rig.tap(UP);
+    CHECK(at(1));
+    rig.tap(UP, 2);
+    CHECK(at(1) && untouched());
+    // LEFT from SPACE is the list at once (not ECHO), and RIGHT is SPACE again; from ECHO the same, back to ECHO.
+    rig.tap(DOWN);
+    rig.tap(LEFT);
+    CHECK(at(0));
+    rig.tap(RIGHT);
+    CHECK(at(2));
+    rig.tap(UP);
+    rig.tap(LEFT);
+    CHECK(at(0));
+    rig.tap(RIGHT);
+    CHECK(at(1) && untouched());
+    // In the list UP / DOWN are still the lines.
+    rig.tap(LEFT);
+    rig.tap(DOWN);
+    CHECK(fx.cursorRow() == S + 1 && fx.cursorColumn() == 0);
+    rig.tap(UP);
+    CHECK(at(0));
+    // Held, DOWN runs to SPACE and stops; UP back to ECHO.
+    fx.goTo(S, 1);
+    rig.key(DOWN, true);
+    rig.frames(90);
+    rig.key(DOWN, false);
+    rig.frames(1);
+    CHECK(at(2));
+    rig.key(UP, true);
+    rig.frames(90);
+    rig.key(UP, false);
+    rig.frames(1);
+    CHECK(at(1) && untouched());
+    // Hold A + UP / DOWN turns the one under the cursor; hold A + LEFT / RIGHT does nothing (no TYPE, no move).
+    fx.goTo(S, 2);
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(at(2) && project.tracks[0].send[0] == 0.35f && project.tracks[0].send[1] > 0.5f);
+    rig.tap(DOWN);
+    CHECK(at(2) && untouched());
+    rig.tap(LEFT);
+    rig.tap(RIGHT);
+    CHECK(at(2) && untouched());
+    rig.key(A, false);
+    fx.goTo(S, 1);
+    rig.key(A, true);
+    rig.tap(DOWN);
+    CHECK(at(1) && project.tracks[0].send[0] < 0.35f && project.tracks[0].send[1] == 0.5f);
+    rig.tap(UP);
+    rig.tap(RIGHT);
+    rig.tap(LEFT);
+    rig.key(A, false);
+    CHECK(at(1) && untouched());
+    // The stick, A up: down is SPACE, up ECHO, across to the right nothing, to the left the list.
+    fx.goTo(S, 1);
+    rig.key(STICK_DOWN, true);
+    rig.frames(1);
+    rig.key(STICK_DOWN, false);
+    rig.frames(1);
+    CHECK(at(2));
+    rig.key(STICK_RIGHT, true);
+    rig.frames(60);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(at(2));
+    rig.key(STICK_UP, true);
+    rig.frames(1);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    CHECK(at(1));
+    rig.key(STICK_DOWN, true);
+    rig.frames(60);
+    rig.key(STICK_DOWN, false);
+    rig.frames(1);
+    CHECK(at(2) && untouched());
+    rig.key(STICK_LEFT, true);
+    rig.frames(1);
+    rig.key(STICK_LEFT, false);
+    rig.frames(1);
+    CHECK(at(0));
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(at(2) && untouched()); // (the send last used)
+    // A bus's dials, side by side, still walk across: DOWN does nothing there.
+    fx.goTo(FxScreen::kBusRow, 1);
+    rig.tap(DOWN);
+    CHECK(fx.cursorRow() == FxScreen::kBusRow && fx.cursorColumn() == 1);
+    rig.tap(RIGHT);
+    CHECK(fx.cursorRow() == FxScreen::kBusRow && fx.cursorColumn() == 2);
+    // The bar's key: DOWN on ECHO, UP on SPACE.
+    CHECK(FxScreen::sendWalkKeyFor(0) == nullptr);
+    CHECK(std::strcmp(FxScreen::sendWalkKeyFor(1), "DOWN") == 0 && std::strcmp(FxScreen::sendWalkKeyFor(2), "UP") == 0);
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    const auto draw = [&] {
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        if (ui::gHintsOver != 0.f) std::printf("    FX, a send: %.1f over\n", static_cast<double>(ui::gHintsOver));
+        return ui::gHintsOver == 0.f;
+    };
+    for (int menu = 0; menu < 2; ++menu) {
+        ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP";
+        for (int playing = 0; playing < 2; ++playing) {
+            if (project.playing != (playing == 1)) session.togglePlay(false);
+            fx.goTo(S, 1);
+            CHECK(draw() && hintKeyed(canvas, scratch, "DOWN", "SPACE") && hintKeyed(canvas, scratch, "LEFT", "list") && hintKeyed(canvas, scratch, "HOLD A", "turn"));
+            CHECK(!hintKeyed(canvas, scratch, "UP", "ECHO") && !hintKeyed(canvas, scratch, "LEFT / RIGHT", "list, dial"));
+            fx.goTo(S, 2);
+            CHECK(draw() && hintKeyed(canvas, scratch, "UP", "ECHO") && hintKeyed(canvas, scratch, "LEFT", "list") && hintKeyed(canvas, scratch, "B", "none"));
+            CHECK(!hintKeyed(canvas, scratch, "DOWN", "SPACE") && !hintKeyed(canvas, scratch, "LEFT", "dial"));
+        }
+    }
+    if (project.playing) session.togglePlay(false);
 }
 
 // What the review of the TYPE switch found (2026-11-14).
@@ -14502,6 +14807,7 @@ int main(int argc, char** argv) {
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     if (argc > 1 && std::string(argv[1]) == "--bounce") { // just the bouncing (for trying a change; ctest runs everything)
         testBouncing();
+        testBounceTakes();
         testWhereABounceEnds();
         testABounceRunsUntilTheTailEnds();
         if (failures == 0) std::printf("app tests passed (bouncing only)\n");
@@ -14564,6 +14870,7 @@ int main(int argc, char** argv) {
         testHoldYMovesABandTwoWays();
         testFxSwitchesType();
         testFxDialsWalkAcross();
+        testFxSendsWalkUpAndDown();
         testFxSwitchMends();
         testTheFxScreensList();
         testTheFxScreenAsDrawn();
@@ -14746,6 +15053,7 @@ int main(int argc, char** argv) {
     testTheBattery();
     testBatteryLog();
     testBouncing();
+    testBounceTakes();
     testWhereABounceEnds();
     testABounceRunsUntilTheTailEnds();
     testRecordingAutomation();
@@ -14787,6 +15095,7 @@ int main(int argc, char** argv) {
     testHoldYMovesABandTwoWays();
     testFxSwitchesType();
     testFxDialsWalkAcross();
+    testFxSendsWalkUpAndDown();
     testFxSwitchMends();
     testEffectsThroughTheSession();
     testSendsThroughTheSession();

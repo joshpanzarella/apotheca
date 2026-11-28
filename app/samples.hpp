@@ -3,9 +3,12 @@
 //
 // Whatever the file holds (8, 16, 24 or 32-bit whole numbers or 32-bit
 // floats, 4 kHz to 192 kHz, 1 to 8 channels: parseWav) comes out the way the
-// engine plays it: one channel, 48 kHz, and no longer than kMaxSampleSeconds (twenty seconds).
+// engine plays it: 48 kHz, and no longer than kMaxSampleSeconds (twenty seconds); into a
+// std::vector<float> as one channel (both sides mixed to one, as before STEREO), into a Clip
+// as the file has it: one channel, or two (STEREO, 2026-11-28; 3 to 8 are mixed to one).
 
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace apotheca {
@@ -13,13 +16,44 @@ namespace apotheca {
 constexpr float kSampleRate = 48000.f;
 constexpr float kMaxSampleSeconds = 20.f; // a recording read from a file (owner, 2026-11-18: it was 10)
 
+// A recording in memory as its file has it (STEREO, 2026-11-28): the samples themselves are a mono
+// recording, or the LEFT side of a stereo one, whose right side is `right` (as long). `right` empty: mono.
+// Whatever takes a std::vector<float> takes a Clip as its left side alone: what must hear both asks for
+// `right` (or mono()).
+struct Clip : std::vector<float> {
+    std::vector<float> right;
+    Clip() = default;
+    explicit Clip(std::vector<float> left) : std::vector<float>(std::move(left)) {}
+    Clip(std::vector<float> left, std::vector<float> rightSide) : std::vector<float>(std::move(left)), right(std::move(rightSide)) {
+        if (right.size() != size()) right.clear(); // (two sides of different lengths are no stereo recording)
+    }
+    bool stereo() const { return !right.empty() && right.size() == size(); }
+    const std::vector<float>& left() const { return *this; }
+    std::vector<float>& left() { return *this; }
+    // Both sides mixed to one, as a mono file of the two would be read ((L + R) / 2); a mono one as it is.
+    std::vector<float> mono() const;
+    // The louder of the two sides, sample by sample (|L| or |R|): what a picture, TRIM SILENCE and a
+    // peak are taken from. A mono one: its own size.
+    std::vector<float> loudest() const;
+};
+
 // False if the file is not there or is not a WAV this can read.
 bool readWav(const std::string& path, std::vector<float>& out);
 bool parseWav(const std::string& bytes, std::vector<float>& out);
+// As the file has it: two channels stay two (STEREO), one is one, 3 to 8 mixed to one. A mono file
+// gives the same samples to the bit as the std::vector<float> forms.
+bool readWav(const std::string& path, Clip& out);
+bool parseWav(const std::string& bytes, Clip& out);
+// The channels the file says it has (0: not a WAV this can read), without reading its sound.
+int wavChannels(const std::string& bytes);
 
 // One channel, 16-bit.
 std::string wavBytes(const std::vector<float>& samples, int sampleRate);
 bool writeWav(const std::string& path, const std::vector<float>& samples, int sampleRate);
+// As the Clip is: two channels for a stereo one (16-bit, interleaved), one for a mono one (the same
+// bytes as above).
+std::string wavBytes(const Clip& sound, int sampleRate);
+bool writeWav(const std::string& path, const Clip& sound, int sampleRate);
 
 // The .wav files in a folder, by name, without the ".wav". Those in a folder
 // inside it too, and in a folder inside that (two levels down and no further),

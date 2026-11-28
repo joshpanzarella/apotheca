@@ -463,6 +463,8 @@ inline int songEndKind(int number) { return number == kSongStop ? kSongStop : kS
 // Everything a Project holds but its tracks: the song's own lines and where the screens are. Kept
 // apart so a song can be read back in place (parseSong) and a step of undo read without a whole
 // Project (Session::readStep): each is a few hundred bytes, where the tracks are 12 MB.
+constexpr int kMostTakes = 999999; // a song's bounces, TAKE 1 up to this (a song file's "takes" is held to it)
+
 struct ProjectHead {
     int repeats[kMaxScenes];
     int steps[kMaxScenes]; // how many steps each scene lasts, if it is cut short: 23 is a bar and seven steps. 0: every step of its longest cell
@@ -481,6 +483,7 @@ struct ProjectHead {
     int scaleKey = 0;  // SCALE LOCK (scales.hpp): the song's key, 0 C .. 11 B
     int scaleKind = 0; // ...and its scale, kScaleOff (the roll is free) to kScaleBlues
     char chordPack[32] = {}; // the chord pack this song picks from; empty is the built-in one
+    int takes = 0; // the last TAKE bounced of this song (Session::startBounce; the next new one is takes + 1). 0: none yet
     int track = 0; // the track and scene the Pattern and Device screens show
     int scene = 0;
     int bar = 0;   // ...and which bar of that cell

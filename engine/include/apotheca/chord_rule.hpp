@@ -125,6 +125,11 @@ inline std::uint32_t chordSeed(int track, int bar, int step, long stepsSincePlay
     h = chordHash(h ^ (static_cast<std::uint32_t>(stepsSincePlay) * 0x27D4EB2Fu + 3u));
     return h;
 }
+// A bounce's TAKE (Engine::setTake) mixed into a roll's seed: take 0 leaves it as it is, to the bit, so the
+// live song and every take-0 render play as they always have; any other take is another set of rolls.
+inline std::uint32_t takeSeed(std::uint32_t seed, std::uint32_t take) {
+    return take == 0u ? seed : chordHash(seed ^ chordHash(take * 0x9E3779B1u + 0x632BE5ABu));
+}
 enum ChordRoll : std::uint32_t { kRollTime = 1, kRollLevel = 2, kRollLengths = 3, kRollOrder = 4, kRollGlide = 5, kRollMod = 6, kRollStrike = 7 }; // (kRollGlide: glide_rule.hpp, GLIDE FROM RANDOM; kRollMod: mod_rule.hpp; kRollStrike: physic_rule.hpp, a PHYSIC note's dice)
 // A number from 0 up to (not reaching) 1 for one thing about one note of that playing.
 inline double chordUnit(std::uint32_t seed, ChordRoll what, int which) {

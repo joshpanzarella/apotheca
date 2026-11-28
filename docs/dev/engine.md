@@ -22,9 +22,13 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   number of helpers. **Anything a helper waits on is set with `wakeMutex_`
   held.** Setting the stop flag without it hung the quit. The helpers take
   the tracks from `taken_`, in track order, or heaviest first by last chunk's
-  times (`setHeaviestFirst`, off: only the SPEED TEST's rows ask for it, speed
-  plan batch 0); the mix always walks `active_`. `speed_test` holds both to
-  the bit.
+  times (`setHeaviestFirst`); the mix always walks `active_`. `speed_test` holds both to
+  the bit. **The program asks for heaviest first** (main.cpp, owner 2026-11-28: "yes", on the
+  freeze measurement's model, the busiest song about 56% of a handheld block in track order and
+  49% heaviest first with 3 helpers). It was "off: only the SPEED TEST's rows ask for it, speed
+  plan batch 0", left for the handheld's SPEED TEST to decide; its rows still time both orders,
+  so the device's own figures can overrule this. An Engine made anywhere else (tests, bench,
+  a bounce) keeps track order unless it asks.
 - **A helper takes a track by ONE atomic that holds the chunk's count and the next place** (`claims_`:
   count << 16 | place, 0 shut). Read apart, a helper that took a place past one chunk's end and then read
   the next chunk's larger count rendered a track another thread was rendering (review 2026-11-23).
@@ -148,6 +152,15 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     sample to the next makes `plainRun` say 0 while it moves**, or the run
     skips it. `speed_test` (`testDrumRuns`) holds the two ways side by side
     (`setRunsForTests`). Twelve drum tracks 1.47% to 0.43% of a desk core.
+  - **STEREO recordings (2026-11-28)**: `SampleData::right` (empty: mono) reaches a lane as `ownRight_`, the
+    sampler as `Voice::right` (a zone's `SampleZone::right` too), CLOUD as `State::right`. Each render does
+    **every mono voice first, exactly as before, then the copy to `right`, then the stereo voices**
+    (`renderVoice<kThrown, true>`, `Sampler::renderVoice<true>`, `runGrain<kPlain, true>`), so a block with no
+    stereo voice sounding is the old block to the bit, and a stereo voice whose two sides are the same writes
+    the same bits as the mono one (both tested). A stereo drum voice's THROW is its two sides mixed to one
+    (`0.5 * (L + R)`): the buses are fed one sound. A CLOUD grain reads both sides at the same place through
+    the same window; its pan (gl, gr) weighs them. The track's PAN is unchanged (equal power, after the
+    instrument), so on a stereo sound it acts as a balance with +3 dB on the side it turns to at the end.
   - **A track that throws nothing takes the old loop in `feedBuses`**, which
     is why a song without throws is the same to the bit (the pinned song).
   - `letGoOfNotes` shuts every send a THROW held (Play, Stop, panic), as do

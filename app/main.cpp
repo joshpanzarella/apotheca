@@ -38,7 +38,7 @@
 //                  times from a timer while the passes rest: 108 BPM when main.cpp read them all, textviews)
 //                  picker, picker-in, picker-deep, picker-deleting, picker-new, picker-typing, picker-carrying, picker-folder-deleting, sampler-picker (with --samples: the list
 //                  of recordings in its columns: on SAMPLES, in a folder, two folders down, B held, the sampler's)
-//                  kit-edit, kit-edit-held, kit-edit-deleting, kit-edit-column (a lane's EDIT view: with --samples
+//                  kit-edit, kit-edit-held, kit-edit-deleting, kit-edit-column, kit-edit-mono (a lane's EDIT view: with --samples
 //                  on a recording, else on the built-in kick)
 //                  kit-synth (the KIT page with four lanes of synth voices), kit-voice, kit-voice-held,
 //                  kit-voice-deleting, kit-voice-clap (a lane's VOICE view: KICK on TUNE, A held, B held;
@@ -497,6 +497,11 @@ int main(int argc, char** argv) {
         const unsigned cores = std::thread::hardware_concurrency();
         const int helpers = helpersFor(cores);
         if (!smoke && !shot) engine.useWorkers(helpers, [] { if (makeThreadRealtime(69)) gHelpersRealtime.fetch_add(1); });
+        // The heaviest tracks to the helpers first (owner, 2026-11-28: "yes", on the freeze measurement: the busiest song
+        // modelled at about 56% of a block in track order, 49% heaviest first). The same to the bit either way (the mix
+        // walks the tracks in order: speed_test holds both); two clock reads a track a chunk. The SPEED TEST's rows still
+        // time both orders, so the handheld's own figures can overrule this.
+        engine.setHeaviestFirst(true);
         std::printf("processor cores: %u; tracks shared across %d\n", cores, engine.workers() + 1);
     } // real sound: if it cannot keep up, do plainer work, not stutter
     std::printf("Apotheca build %s, built %s\n", kVersion, kBuilt);
