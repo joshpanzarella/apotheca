@@ -73,6 +73,13 @@ if [ -f controls.txt ] && grep -qx 'X button 2 0 0' controls.txt && grep -qx 'Y 
 fi
 [ -f controls.txt ] || cp /usr/share/apotheca/controls-rg40xxv.txt controls.txt
 
+# The owner's settings on a new card (2026-11-28: "I change these every single time"): TEXT SIZE small,
+# STICK SPEED 100, BRIGHTNESS 100, RING LEVEL 50. Put there only when the card has no settings.txt
+# yet (a fresh card, or one flashed again); anything set on SET from then on is kept as always. A line
+# not in the file is the app's own usual value. The numbers are settings.txt's own (Session::loadSettings:
+# "text 0" is SMALL).
+[ -f settings.txt ] || cp /usr/share/apotheca/settings-first.txt settings.txt
+
 if [ -f apotheca.new ]; then
     rm -f apotheca.old update-tries
     if mv apotheca apotheca.old && mv apotheca.new apotheca; then

@@ -1,0 +1,4 @@
+stick 100
+text 0
+brightness 100
+ringlevel 50

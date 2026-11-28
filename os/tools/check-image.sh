@@ -385,6 +385,9 @@ if unsquashfs:
               "apotheca-start runs a program copied onto the card by hand (found by its sum)")
         check(b'7f454c460201????????????????????????b700' in start,
               "and runs it only if it is an arm64 program")
+        check(cat('/usr/share/apotheca/settings-first.txt') == b'stick 100\ntext 0\nbrightness 100\nringlevel 50\n'
+              and b'[ -f settings.txt ] || cp /usr/share/apotheca/settings-first.txt settings.txt' in start,
+              "a new card starts with the owner's settings (TEXT SIZE small, STICK SPEED 100, BRIGHTNESS 100, RING LEVEL 50)")
         check(b'apotheca.rolledback' in cat('/usr/libexec/apotheca/run'),
               "run does not fall back to the CPU for the program put back after a new one failed")
         # The CPU fallback (gpu-off): Mesa's softpipe and its KMS path
