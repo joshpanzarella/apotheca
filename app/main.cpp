@@ -90,6 +90,7 @@
 #include "joysticks.hpp"
 #include "crash_report.hpp"
 #include "late_blocks.hpp"
+#include "memory.hpp"
 #include "realtime.hpp"
 #include "song_file.hpp"
 #include "text.hpp"
@@ -273,6 +274,7 @@ void fillDemoSong(App& app) {
 } // namespace
 
 int main(int argc, char** argv) {
+    memory::settle(); // first: a recording let go gives its memory back (the memory guard reads what is left)
     // MORPH's 16 tables (wavetable-plan.md, section 2) are made on a thread of their own from the start:
     // seconds on the handheld (a guess), so the first MORPH track does not wait. Joined at the end.
     struct Tables {

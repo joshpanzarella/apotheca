@@ -404,6 +404,10 @@ void Session::update(Uint32 nowMs) {
         bounce_->seen = true;
         if (bounce_->files > 0) ++sampleFiles_;
     }
+    if (bounce_ && bounce_->done.load() && bounce_->noMemory.load() && !bounce_->noMemorySaid) { // THE MEMORY GUARD
+        bounce_->noMemorySaid = true;
+        say(kNoMemoryToBounce);
+    }
     if (wifi_.here()) wifi_.update(nowMs, transferOn(), view == View::Settings && wifiLooking); // (each call on the WiFi's own thread)
     engine.collectGarbage();
     {
@@ -1461,6 +1465,7 @@ void Session::putTrackSound(int track, const TrackSound& sound) {
 // the song file writes it (sameAsText). A track whose text is the step's (same[t]) is as it was,
 // and is not looked at.
 void Session::restoreSounds(const StepRead& was, const bool same[kNumTracks]) {
+    LoadAll all(*this); // (THE MEMORY GUARD: a recording put back that does not fit is NOT LOADED, its name kept)
     for (int t = 0; t < kNumTracks; ++t) {
         TrackData& now = project.tracks[t];
         if (same[t] || now.kind == TrackKind::None || now.kind != was.kind[t] || !was.read[t]) continue;
@@ -2429,6 +2434,8 @@ void Session::sendSong() {
     dropHearing();
 
     for (int track = 0; track < kNumTracks; ++track) engine.removeTrack(track); // those with nothing say so; fine
+    LoadAll all(*this); // THE MEMORY GUARD: every recording that fits, the rest NOT LOADED, said once
+    settleBy_ = engine.sampleBytes() > 0 ? engine.sampleBytesFreed() + engine.sampleBytes() : 0; // (the old song's, on their way)
     for (auto& track : sounds_)
         for (LaneSound& sound : track) {
             const unsigned version = sound.version + 1;
@@ -2570,6 +2577,7 @@ void Session::sendSong() {
     engine.send(c);
     syncSong(); // the song's length, if it differs from the last one's
     sendMutes(); // the song's mutes; nothing is soloed in a song just opened
+    settleBy_ = 0; // (a load refused from now on does not wait for the old song's)
 }
 
 } // namespace apotheca

@@ -7,6 +7,7 @@
 // std::vector<float> as one channel (both sides mixed to one, as before STEREO), into a Clip
 // as the file has it: one channel, or two (STEREO, 2026-11-28; 3 to 8 are mixed to one).
 
+#include <cstddef>
 #include <string>
 #include <utility>
 #include <vector>
@@ -46,6 +47,21 @@ bool readWav(const std::string& path, Clip& out);
 bool parseWav(const std::string& bytes, Clip& out);
 // The channels the file says it has (0: not a WAV this can read), without reading its sound.
 int wavChannels(const std::string& bytes);
+
+// What reading a recording's file will take in memory, from its header alone (the memory guard, 2026-11-28):
+// nothing of its sound is read. A file is read no further than its first kMaxSampleSeconds (and one frame more,
+// so the cut and its fade are as they were): a longer one costs no more to read than that.
+struct WavSize {
+    int channels = 0;           // as a Clip holds it: 2 for a two-channel file, else 1 (0: not a WAV this can read)
+    std::size_t frames = 0;     // each side's length in memory, at 48 kHz, held to kMaxSampleSeconds
+    std::size_t fileFrames = 0; // ...at the file's own rate, as it is read before it is made 48 kHz
+    std::size_t readBytes = 0;  // the file's bytes held while it is read
+    // One copy of the sound as the program keeps it (each side's floats).
+    std::size_t clipBytes() const { return frames * static_cast<std::size_t>(channels) * sizeof(float); }
+    // Held while it is read, on top of the copy it makes: the bytes, and the sound at the file's own rate.
+    std::size_t readingBytes() const { return readBytes + fileFrames * static_cast<std::size_t>(channels) * sizeof(float); }
+};
+bool wavSize(const std::string& path, WavSize& out); // false: not there, or not a WAV this can read
 
 // One channel, 16-bit.
 std::string wavBytes(const std::vector<float>& samples, int sampleRate);

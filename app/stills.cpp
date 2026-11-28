@@ -28,6 +28,7 @@
 #include "text.hpp"
 #include "stills.hpp"
 #include "samples.hpp"
+#include "memory.hpp"
 
 namespace apotheca {
 
@@ -412,7 +413,7 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         app.session().setCellBars(1, 0, 2);
         app.notes().moveCursorTo(60, 0);
         app.project().bar = 0;
-        tapKey(SDLK_UP);
+        tapKey(SDLK_UP, 2); // tempo, BARS (the roll has had a TEMPO stop since 2026-11-28)
     } else if (std::strcmp(view, "bars-stop-grid") == 0) { // the drums with the cursor on BARS
         app.project().track = 0;
         app.session().view = View::Pattern;
@@ -596,9 +597,11 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         for (SDL_Keycode key : {SDLK_1, SDLK_2, SDLK_q, SDLK_w}) pushKey(key, true); // all four shoulder buttons
         for (SDL_Keycode key : {SDLK_1, SDLK_2, SDLK_q, SDLK_w}) pushKey(key, false);
     } else if (std::strcmp(view, "wifi") == 0) {
+        // Files over WiFi on, as L1 turns it on (pretended: a still runs no server), on the stock
+        // firmware: its address, :8080 before the number (the manual's picture).
+        app.session().pretendWifi(Wifi::Now(), "192.168.1.23:8080/4821");
         app.session().view = View::Song;
         tapKey(SDLK_BACKSPACE); // SELECT: the list
-        tapKey(SDLK_q);         // L1: files over WiFi
     } else if (std::strcmp(view, "revs") == 0) {
         app.session().view = View::Song;
         tapKey(SDLK_BACKSPACE); // SELECT
@@ -1206,8 +1209,12 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
     } else if (std::strcmp(view, "help") == 0 || std::strcmp(view, "help-load") == 0) {
         pushKey(SDLK_TAB, true); // MENU, held
         // How hard the program works, above the battery: the owner's example, or (help-load) the longest it can say.
+        // The memory line (THE MEMORY GUARD) from a pretended system, so the still is the same on every desk:
+        // 300 MB free (as a handheld with a few songs' recordings might be), or (help-load) four figures.
         if (std::strcmp(view, "help") == 0) app.pretendLoad(43, 88, 37);
         else app.pretendLoad(100, 999, 100);
+        const long long free = std::strcmp(view, "help") == 0 ? 300 : 9999;
+        memory::pretend([free] { return free * memory::kMegabyte + memory::kMargin; });
     } else if (std::strncmp(view, "next-scene", 10) == 0) {
         // NEXT SCENE (SELECT + Y) just pressed: on the drum grid, on the piano roll ("next-scene-notes"),
         // and with every scene of the song used ("next-scene-full").

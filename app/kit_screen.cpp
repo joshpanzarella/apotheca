@@ -597,7 +597,8 @@ void KitScreen::openEdit(int row) {
     else std::snprintf(text, sizeof text, "%s  /  %s", sampleFolderOf(file).c_str(), sampleLabel(file).c_str());
     for (char* c = text; *c; ++c) *c = static_cast<char>(*c >= 'a' && *c <= 'z' ? *c - 32 : *c);
     t.title = text;
-    t.missing = "NOT IN THE SAMPLES FOLDER. THE DRUM PLAYS, AS IT IS.";
+    t.missing = session_.laneSound(project_.track, lane).noMemory ? "NOT LOADED: NOT ENOUGH MEMORY. THE DRUM PLAYS, AS IT IS."
+                                                                   : "NOT IN THE SAMPLES FOLDER. THE DRUM PLAYS, AS IT IS.";
     edit_.open(t, row);
 }
 
@@ -1019,7 +1020,7 @@ void KitScreen::drawLaneRow(SDL_Renderer* r, const Fonts& fonts, int lane, SDL_C
 
     // The recording's outline, and what is being done with it.
     if (sound.missing) { // (on two short lines: the column is narrower since CHOKE, and again since SOURCE)
-        const char* gone = "NOT FOUND:";
+        const char* gone = sound.noMemory ? "NO MEMORY:" : "NOT FOUND:"; // (NOT LOADED: there was not the memory for it)
         const char* plays = "DRUM PLAYS";
         const Font& goneFont = fonts.within(&Fonts::small, plays, waveW - 6.f); // (the longer: both lines in its lettering)
         const float lineGap = 4.f, linesH = 2.f * goneFont.capHeight() + lineGap;

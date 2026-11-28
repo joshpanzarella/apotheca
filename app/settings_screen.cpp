@@ -713,7 +713,8 @@ void SettingsScreen::rowValue(int row, char (&text)[96], char (&said)[96], const
             if (!sample.empty()) std::snprintf(bounced_, sizeof bounced_, "done: \"%s\" in recordings", sample.c_str());
             else if (session_.bounceFiles() > 0) std::snprintf(bounced_, sizeof bounced_, "done: %d file%s, on the WiFi page", session_.bounceFiles(), session_.bounceFiles() == 1 ? "" : "s");
             // (The take's gesture is said here, not in the hints: the bar has no room for it. Only once there is an earlier take.)
-            note = bounceWhat_ != 3 && !session_.bounceTakeIsNew() ? "A: that take again" : session_.bounceFiles() > 0 ? bounced_
+            note = session_.bounceNoMemory() ? "not enough memory: nothing written"
+                 : bounceWhat_ != 3 && !session_.bounceTakeIsNew() ? "A: that take again" : session_.bounceFiles() > 0 ? bounced_
                  : bounceWhat_ != 3 && project_.takes > 0 ? "hold A + up / down: earlier takes" : (bounceWhat_ == 3 ? "A: write it as a MIDI file" : bounceWhat_ == 4 ? "A: this scene's loop, into recordings" : "A: write it as a WAV file");
         }
         break;

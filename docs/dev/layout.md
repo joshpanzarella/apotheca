@@ -95,3 +95,24 @@ another (COMP and DUCK) starts at its usual values.
 Its `process()` must look at `Unit::bus_` and, when set, put out only what it
 adds (wet times MIX) and none of what came in. `effects_test` checks every
 effect in those two groups and fails one that does not.
+
+## The build number (one N for the port and the card)
+
+The version shown is **BUILD N**, and **N counts main's history only** (2026-11-28; until then the card's app
+counted the firmware branch's own commits too, merges and `os/` changes, and showed 1028 where the port of the
+same code showed 979).
+
+| Build | N | Where |
+| --- | --- | --- |
+| The port, and a desk build | main's commits + 1 | `scripts/build-handheld.sh`, `CMakeLists.txt` |
+| The card's app | the commits of the **last main commit merged into firmware** (its merge base with `main` and `origin/main`, the newer) | `os/package/apotheca/apotheca.mk` on the firmware branch |
+
+The ship order makes them equal. The port is built from main at commit X (C commits): it shows C + 1. The
+"Ship the port" commit follows on main: it is commit C + 1. main is merged into firmware and the card's app is
+built: its last main commit is that ship commit, which counts C + 1. **Both show C + 1** (BUILD 979 for both, for
+the port shipped in `cc357d1`). Firmware's own commits never move it.
+
+Two things to know. A firmware build with main merged at a commit that is not a ship commit shows that commit's
+count, one less than a port built from it. With no `main` or `origin/main` in the repository the card counts its
+own branch (Make warns). The number is only shown (screen, log, the WiFi page); nothing compares it, so the card's
+N going down from 1028 to 979 changes nothing else.

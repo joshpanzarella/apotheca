@@ -139,6 +139,91 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     preset, the page's picture and the view's empty boxes, B back, a multisample, a CLOUD); `textsize` (the view
     with the longest name a file can have, A held; the picture's heading; every stop's hints fit); stills
     `sampler-edit`, `sampler-loop`. **Nobody has heard it; not run on the handheld.**
+- **THE MEMORY GUARD** (owner approved, 2026-11-28; branch `memory-guard`): a recording that would not fit in memory is
+  not loaded, and the screen says so, so the system never kills the program for it (the OOM killer: past the RAM the
+  kernel ends the program with no word, and unsaved work goes). `app/memory.hpp`, the Session's half in
+  `session_samples.cpp` ("the memory guard"), `tests/memory_test.cpp`.
+  - **Why it is needed**: the handheld has 1 GB shared with its system and `realtime.cpp` calls `mlockall`, so every
+    byte the program takes is held in RAM. The program itself is about 40 MB (`bench --app`, measured.md). A 20 s
+    stereo file on a lane is 15 to 31 MB (STEREO, above); 96 lanes of them, or a 48-file stereo multisample, is past
+    the RAM. The only cap was 20 s a recording.
+  - **The count** (`Session::recordingBytes`, the HELP card's RECORDINGS): every distinct `Clip` the session holds in
+    `sounds_` (recording, source, shaped, fitted, hitsOf: a copy shared is one copy, by its pointer; the built-in drums
+    are the program's and not counted), a multisample's notes while they are read (`building_`), and the engine's own
+    (`Engine::sampleBytes`: added when a `SampleData` or `SampleZoneSet` is sent, taken off in `destroy` when the
+    trash is freed, so one the audio thread has let go and not yet handed back still counts; `sampleBytesFreed` is the
+    running total freed). The session's half is read from what is held each time it is asked, so it cannot drift; the
+    engine's is counted where made and freed. Capacities, not sizes.
+  - **The system's figure** (`memory::available`): `/proc/meminfo` MemAvailable; none (not Linux, unreadable) means
+    no guard, so the desk and the tests behave as before unless a test pretends one (`memory::pretend`, a function:
+    the tests use "a limit less recordingBytes()", which moves as loading and letting go would move the real one).
+    **FREE is MemAvailable less the margin** (`memory::room`), so a refusal is exactly "needs more than FREE".
+  - **The margin, 96 MB** (`memory::kMargin`), kept after every load for what is never asked first: a bounce's
+    second engine (21 MB with its catch rings, measured.md), a file sent over WiFi (30 MB at most, now asked too),
+    a FIT on the helper thread (Signalsmith's own buffers beside the copies), SAVE A COPY's and CATCH's file in
+    memory (up to 8 MB), undo's texts (20 steps of the song's text: 0.7 MB for the bench's song, 44 MB for the
+    largest), and the system's own programs. Their sum is about 70 MB at the worst together; 96 leaves some over.
+    **Not measured on the handheld**: its real MemAvailable while Apotheca runs is the one figure to take there.
+  - **Freed memory must go back to the system, or MemAvailable never rises again** (`memory::settle`, first thing in
+    `main`): glibc's mmap threshold rises to the largest block freed (up to 32 MB), so after the first 20 s recording
+    is let go every later one comes from the program's own heap, and is kept by the program when freed. Measured on
+    the desk (a scratch program, `mlockall` as the app, twenty 4 MB blocks made and freed with a small block kept
+    between each, three rounds): the program held 82 MB after freeing them, every round after the first; with
+    `mallopt(M_MMAP_THRESHOLD, 128 KB)` (set at all, the threshold stops moving) it was back to 6 MB each time. Only
+    blocks of 128 KB and more (a third of a second of mono) are mapped; the audio thread allocates nothing, so it
+    costs it nothing.
+  - **The estimate, from the file's header alone** (`wavSize`, samples.hpp: the "fmt " and "data" chunks in the first
+    64 KB, the file's size): each side's frames at 48 kHz held to 20 s, its channels as a `Clip` holds them (2 or 1),
+    and what reading takes (`readingBytes`: the file's bytes and the sound at its own rate as floats). A lane's need
+    (`laneNeeds`): the source, the shape where EDIT shapes it (START to END over PITCH's speed; MONO one side), the
+    FIT (steps at the tempo now), and the engine's copy of what plays, twice where the level is made (an edit off
+    rest: `levelAtRest`). A sampler's is the same with no FIT; a multisample's other notes are asked one by one (their
+    read and their one copy, moved into the zones).
+  - **A file is read no further than its first 20 s** (`readWavBytes`): the header, then 20 s and one frame more, so
+    a cut file is still seen as cut and faded. The same samples to the bit (memory_test reads files of 20 s and a
+    frame either side, and 25 s, both ways). A file over 64 MB used to be refused whole (`kLargestRead`); one whose
+    header is in its first 64 KB now plays its first 20 s like any long file.
+  - **Where it is asked** (every path that reads a recording or makes a copy of one):
+
+    | Where | Refused |
+    | --- | --- |
+    | A pick: `setLaneSample`, `setTrackSample` (the kit and sampler lists, CLOUD's SOURCE, the designer page, a sampler preset, RECORD's and CATCH's new take) | nothing changes, `NO MEMORY: NEEDS 31 MB` said. What this lane alone holds counts as room (`heldBy`: freed before the read); the engine's copy does not (it goes a moment later) |
+    | `loadLane`, `loadTrackSample` (a song opened or sent again, a kit, undo, a file found or arrived, `readyLane`) | the lane is left NOT LOADED (`LaneSound::noMemory`, with `missing`: shown as a missing file is, in words of its own) |
+    | A multisample's other notes (`multisampleOf`) | left out, as a file that will not read is |
+    | `setLaneEdit`, `setSamplerEdit` | the edit is not made (in a LoadAll: made, and the lane NOT LOADED) |
+    | `startJob` (FIT, a shape on the helper thread) | not started; `noFit` until the lane's FIT or shape changes, and the lane plays what it has |
+    | A DRUM SYNTH voice (`loadLane`) | as a recording, from `drumsynth::kLongestSeconds` (6 s, one side) |
+    | A bounce (its own session loads the song again) | `refusals() > 0` stops it, nothing written; `NO MEMORY TO BOUNCE`, and SET's row says so |
+    | A file sent over WiFi (`transfer.cpp`) | `503`, "not enough memory on the handheld just now", before any of it is taken: 3 x its size for a WAV (checked as floats), its size otherwise; the program update too |
+
+    **Not asked**: CATCH's rings (fixed, made with the engine), the bounce's second engine, SAVE A COPY's and CATCH's
+    file in memory, the pictures (512 points), `hitsIn`'s and `mono()`'s passing copies: the margin is for them.
+  - **LoadAll** (a song sent, a kit put on, undo's `restoreSounds`, `putSoundBack`, `findMissing`,
+    `recordingChanged`, a multisample's notes): the names are kept and what does not fit is NOT LOADED, said once at
+    the end (`NO MEMORY: 3 NOT LOADED`). They nest; the outer one says. Outside one, a pick is refused whole.
+  - **A song sent again waits for the old one's recordings** (`settleBy_`): `sendSong` takes every track away, and the
+    engine's old copies are freed a few milliseconds later when the audio thread hands them back. A load refused
+    meanwhile waits for them (collecting, 2 ms at a time, at most `kSettleMs`, 150 ms), once a sending, and asks
+    again; without it a song that filled memory, sent again (a track moved, undo of a whole song), would leave a third
+    of itself NOT LOADED. `testASongSentAgainWaitsForTheOldOnes` runs a real audio thread for it.
+  - **Words** (each held to the App's box at LARGE, `testTheFigureAndTheWords`): `NO MEMORY: NEEDS 31 MB`,
+    `NO MEMORY: 3 NOT LOADED`, `NO MEMORY TO BOUNCE`; the kit's lane NO MEMORY: / DRUM PLAYS; the sampler NOT LOADED:
+    NOT ENOUGH MEMORY. THIS TRACK IS SILENT.; CLOUD NO MEMORY (its picture: NOT LOADED, NO MEMORY: THE TONE PLAYS);
+    the EDIT views' NOT LOADED: NOT ENOUGH MEMORY. THE DRUM PLAYS, AS IT IS. The brief's "NOT ENOUGH MEMORY: 120 MB
+    FREE, NEEDS 180" is 410 px at LARGE (the box holds 248), so the refusal says the need and the HELP card the FREE.
+    The designer page (a browser) still says a NOT LOADED lane is missing from the card: not changed.
+  - **The HELP card** (`Session::memoryLine`): `RECORDINGS 412 MB, 300 MB FREE`, right of the WITH SEL HELD heading,
+    the card's one row with room for it (Claude's pick, 2026-11-28, open to the owner; nothing else moved). Read when
+    the card is drawn (one read of /proc/meminfo, tens of microseconds). The stills `help` and `help-load` pretend
+    300 and 9999 MB free, so they are the same on every desk.
+  - **A NOT LOADED recording is not tried again by itself**: the song opened again, or picked again, tries.
+  - Tests: `memory_test` (the header's sizes and the read to the bit; the count up and down, stereo twice, an EDIT,
+    a song sent again, a file deleted; a pick, at the byte either side, stereo, with the lane's own as room, with no
+    figure; an EDIT, GAIN and a FIT refused and said once; a song opened leaving two NOT LOADED, said once; the wait
+    for the old song's; a kit; the sampler and a multisample; a bounce; the figure, the HELP line and the words);
+    `transfer_test` (a WAV sent with no room, at the byte either side). **40 mutants, all killed** (three survived the
+    first run and got tests: the lane's own copy counted as room while something else still holds it, a 4-channel
+    file's size as one side, a sampler's recording in a song opened). **Nothing of it has run on the handheld.**
 - **A recording is 20 s at most** (owner, 2026-11-18: it was 10): `kMaxSampleSeconds` for a file read
   (a longer one is cut there and faded) and `Recorder::kMaxSeconds` for RECORD; `sample_test` holds both
   (15 s kept whole). **A catch is held to it since batch S3** (`kCatchLongest`, 20 s; the rings are 25 s: below).
@@ -1154,9 +1239,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   - **Memory**: a stereo recording takes twice the RAM. A lane holds the file, its shape or fit and the engine's
     copy (two to four copies of 7.7 MB), so a stereo 20 s file on a lane is about 15 to 31 MB (mono 8 to 15). The
     handheld has 1 GB and nothing guards it: 12 tracks x 8 lanes of 20 s stereo files (1.5 to 3 GB) or a 48-file stereo multisample of
-    20 s each (about 370 MB, twice the mono 184 MB) is past what it holds, and **past it the program is killed by
-    the system** (no message), as a mono worst case already could. Real drums are short; a few long stereo loops
-    are fine. **Not measured on the handheld.**
+    20 s each (about 370 MB, twice the mono 184 MB) is past what it holds, and **past it the program was killed by
+    the system** (no message), as a mono worst case already could. **Since 2026-11-28 the memory guard refuses
+    such a load and says so** (below, "THE MEMORY GUARD"). **Not measured on the handheld.**
   - **Cost** (measured.md): every drum lane of the busiest song on a stereo recording, +0.8% of its instructions
     and +4% of its cache misses against mono recordings; the sampler's 8 notes and CLOUD's full pool about +0.01
     and +0.07% of a desk core. An `Engine` is made in 7.7 ms on the desk (it was about 3 to 5: the two new rings

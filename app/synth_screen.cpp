@@ -660,7 +660,7 @@ void SynthScreen::drawPicture(SDL_Renderer* r, const Fonts& fonts) const {
         fill(r, gx, y + 2, 2, kTickH - 1, kTeal);
         fill(r, gx, y + h - 1 - kTickH, 2, kTickH - 1, kTeal);
     }
-    std::string label = !t.sample[0] ? std::string("TONE (BUILT IN)") : sound.missing ? std::string("FILE NOT FOUND: THE TONE PLAYS") : sampleLabel(t.sample);
+    std::string label = !t.sample[0] ? std::string("TONE (BUILT IN)") : sound.noMemory ? std::string("NOT LOADED, NO MEMORY: THE TONE PLAYS") : sound.missing ? std::string("FILE NOT FOUND: THE TONE PLAYS") : sampleLabel(t.sample);
     for (char& c : label) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
     fonts.fixed().small.draw(r, x + 8.f, y + 2.f + kTickH, label.c_str(), tone ? kDim : kText); // (a text over a picture: the tight row's lettering)
 }
@@ -858,7 +858,7 @@ void SynthScreen::drawSettingsPage(SDL_Renderer* r, const Fonts& fonts) const {
         const int x = 8 + (i % 4) * kMacroPitchX, y = settingY(rows, i / 4);
         if (it.id == kRecordingId) { // CLOUD's recording: its name, cut to the box (or the TONE)
             const Session::LaneSound& sound = session_.trackSound(project_.track);
-            std::string shown = !trk().sample[0] ? std::string("TONE") : sound.missing ? std::string("NOT FOUND") : sampleLabel(trk().sample);
+            std::string shown = !trk().sample[0] ? std::string("TONE") : sound.noMemory ? std::string("NO MEMORY") : sound.missing ? std::string("NOT FOUND") : sampleLabel(trk().sample);
             for (char& c : shown) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
             const Font& valueFont = boxFonts.large;
             while (shown.size() > 1 && valueFont.width(shown.c_str()) > kMacroW - 14.f) shown.pop_back();

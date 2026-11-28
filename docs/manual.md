@@ -113,6 +113,13 @@ reading each second while it is open:
 | SOUND 43% | Over the last second, making the sound took 43% of the time that sound lasts. At 100% or over it cannot keep up, and the sound stutters |
 | CPU 37% | The whole program (the sound, its helpers, the screen, the WiFi page) as a share of the whole processor, all its cores together. 25% on a four-core handheld is one core kept busy. Shown from a second after the card opens |
 
+**Beside WITH SEL HELD the card says how much memory the recordings take**:
+`RECORDINGS 412 MB, 300 MB FREE`. RECORDINGS is every recording loaded, with
+the copies Apotheca keeps of it (what EDIT and FIT make, and the copy the sound
+plays from). FREE is what more recordings may still take: the handheld's
+memory left over, less 96 MB kept back for everything else. A stereo
+recording takes twice what a mono one of the same length does.
+
 Measuring costs nothing you could notice: two looks at the clock for each
 slice of sound (about 50 billionths of a second, 0.001% of a slice). The bar at the bottom of each screen lists
 only what is particular to where the cursor is. A direction that either the
@@ -320,6 +327,26 @@ silent. So files can be sorted into folders on a computer, with the card out,
 and the songs still find them. Renaming a file that way does break the link
 (rename on the WiFi page instead: see Files over WiFi).
 
+**When the memory is full, a recording is not loaded, and Apotheca says so**
+(it used to be closed by the system, without a word, losing what was not
+saved). The handheld has 1 GB shared with its own system, and a 20 s stereo
+recording on a lane can take 15 to 31 MB with its copies. Before a recording
+is read, Apotheca works out what it will take from the file itself:
+
+| What you did | What happens when it does not fit |
+| --- | --- |
+| Picked a recording (a lane, the sampler, CLOUD, a preset, a new take or CATCH) | Nothing changes: the lane keeps what it had. The box says `NO MEMORY: NEEDS 31 MB` |
+| Opened a song, put on a kit, undid a step | Every recording that fits is loaded. The rest are **NOT LOADED**, and the song keeps their names: a lane says NO MEMORY: / DRUM PLAYS, a sampler track is silent, CLOUD plays its TONE. The box says `NO MEMORY: 3 NOT LOADED` once |
+| A multisample | The notes that fit play; the box says how many did not |
+| An EDIT (PITCH down, GAIN...) | The edit is not made; `NO MEMORY: NEEDS ...` |
+| FIT | The lane plays the recording as it is, not fitted, until its FIT is changed |
+| BOUNCE | Nothing is written: `NO MEMORY TO BOUNCE` (a bounce loads the song a second time) |
+| A file sent over WiFi | The page says the handheld has not the memory for it just now |
+
+To get a NOT LOADED recording back, make room (delete lanes you do not use,
+use shorter or mono recordings) and open the song again. The
+HELP card shows how much is free.
+
 **A line runs across the picture while a recording is heard**, here and on
 the kit's rows and the sampler's own picture. It is timed, not measured:
 right for a recording played as it is, near enough for one tuned up or down.
@@ -333,7 +360,7 @@ A fourth screen, after DEVICE. **Two columns, and everything is in view.**
 | Column | Holds |
 | --- | --- |
 | Left: the list | Eight lines, always there. **THIS TRACK**: its three effects, one after the other, then its **SENDS** (how much of it goes to ECHO, how much to SPACE). **BUSES**: what **ECHO** and **SPACE** hold, one effect each, shared by every track. **MASTER**: the two effects on everything, after the tracks are mixed. |
-| Right: the line picked | Large. A heading (where it is, the effect, its TYPE, what it is doing just now), then each setting as a wide row: its name, its value, a bar. For SENDS: the two sends. |
+| Right: the line picked | Large. A heading (where it is, the effect, its TYPE, what it is doing just now), a picture of what the effect does, then its settings as dials side by side: each its name and its value. For SENDS: the two sends. |
 
 Both columns go down to the hints bar.
 
@@ -535,7 +562,7 @@ before the panic stay up with what was typed.
 ![The SET tab](manual/volume.png)
 
 **Which version this is** shows at the top right of the SET tab (and on the
-help card, the WiFi page, and the first line of `apotheca.log`): `0.104`
+help card, the WiFi page, and the first line of `apotheca.log`): `BUILD 979`
 and the day it was built. The number goes up by one with every build.
 
 The rows stand under five headings: **SONG** (TEMPO, CHORD PACK, KEY, SCALE,

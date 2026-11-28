@@ -62,7 +62,9 @@ pack="$out/port"
 rm -rf "$pack"
 mkdir -p "$pack/apotheca"
 
-# The version: the build number N, the number of changes kept so far plus this one (shown BUILD N; it was 0.N).
+# The version: the build number N, the number of changes kept so far plus this one (shown BUILD N; it was 0.N):
+# main's commits + 1, the "Ship the port" commit that follows. The card's app counts the same commit once main is
+# merged into firmware (os/package/apotheca/apotheca.mk), so both show one N (docs/dev/layout.md).
 version="$(( $(git -C "$here" rev-list --count HEAD 2>/dev/null || echo 0) + 1 ))"
 built=$(date +%Y-%m-%d)
 echo "building $version..."
