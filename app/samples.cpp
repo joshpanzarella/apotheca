@@ -47,7 +47,9 @@ std::vector<float> toEngineRate(const std::vector<float>& in, double rate) {
 
 } // namespace
 
-bool parseWav(const std::string& bytes, std::vector<float>& out) {
+namespace {
+// `stereo`: a file of two channels is read as two (into out and right); else every channel mixed to one.
+bool parseWavInto(const std::string& bytes, std::vector<float>& out, std::vector<float>* right) {
     if (bytes.size() < 12 || bytes.compare(0, 4, "RIFF") != 0 || bytes.compare(8, 4, "WAVE") != 0) return false;
     int format = 0, channels = 0, bits = 0;
     double rate = 0;
@@ -77,7 +79,8 @@ bool parseWav(const std::string& bytes, std::vector<float>& out) {
     const std::size_t most = static_cast<std::size_t>(kMaxSampleSeconds * rate);
     const bool cut = frames > most;
     if (cut) frames = most;
-    std::vector<float> mono(frames);
+    const bool two = right && channels == 2; // STEREO: each side kept to itself
+    std::vector<float> mono(frames), side(two ? frames : 0);
     for (std::size_t i = 0; i < frames; ++i) {
         float sum = 0.f;
         for (int c = 0; c < channels; ++c) {
@@ -97,17 +100,42 @@ bool parseWav(const std::string& bytes, std::vector<float>& out) {
             } else {
                 v = static_cast<float>(static_cast<std::int32_t>(u32(bytes, at))) / 2147483648.f;
             }
-            sum += v;
+            if (two && c == 1) side[i] = v;
+            else sum += v;
         }
-        mono[i] = sum / static_cast<float>(channels);
+        mono[i] = two ? sum : sum / static_cast<float>(channels);
     }
     out = toEngineRate(mono, rate);
+    if (right) *right = two ? toEngineRate(side, rate) : std::vector<float>();
     // Cut at kMaxSampleSeconds (20 s): fade the last few milliseconds so it does not click.
     if (cut) {
         const std::size_t fade = out.size() < 480 ? out.size() : 480;
         for (std::size_t i = 0; i < fade; ++i) out[out.size() - 1 - i] *= static_cast<float>(i) / static_cast<float>(fade);
+        if (right && right->size() == out.size())
+            for (std::size_t i = 0; i < fade; ++i) (*right)[right->size() - 1 - i] *= static_cast<float>(i) / static_cast<float>(fade);
     }
     return true;
+}
+} // namespace
+
+bool parseWav(const std::string& bytes, std::vector<float>& out) { return parseWavInto(bytes, out, nullptr); }
+
+bool parseWav(const std::string& bytes, Clip& out) {
+    Clip read;
+    if (!parseWavInto(bytes, read.left(), &read.right)) return false;
+    if (read.right.size() != read.size()) read.right.clear();
+    out = std::move(read);
+    return true;
+}
+
+int wavChannels(const std::string& bytes) {
+    if (bytes.size() < 12 || bytes.compare(0, 4, "RIFF") != 0 || bytes.compare(8, 4, "WAVE") != 0) return 0;
+    for (std::size_t at = 12; at + 8 <= bytes.size();) {
+        const std::size_t size = u32(bytes, at + 4), body = at + 8;
+        if (bytes.compare(at, 4, "fmt ") == 0 && size >= 16 && body + 16 <= bytes.size()) return static_cast<int>(u16(bytes, body + 2));
+        at = body + size + (size & 1);
+    }
+    return 0;
 }
 
 bool readWav(const std::string& path, std::vector<float>& out) {
@@ -115,30 +143,73 @@ bool readWav(const std::string& path, std::vector<float>& out) {
     return readTextFile(path, bytes) && parseWav(bytes, out);
 }
 
-std::string wavBytes(const std::vector<float>& samples, int sampleRate) {
+bool readWav(const std::string& path, Clip& out) {
+    std::string bytes;
+    return readTextFile(path, bytes) && parseWav(bytes, out);
+}
+
+std::vector<float> Clip::mono() const {
+    if (!stereo()) return left();
+    std::vector<float> out(size());
+    for (std::size_t i = 0; i < size(); ++i) out[i] = ((*this)[i] + right[i]) / 2.f; // (as a two-channel file is read as one)
+    return out;
+}
+
+bool Clip::oneIfSame() {
+    if (right.empty()) return false;
+    if (right.size() == size() && right != left()) return false;
+    right.clear();
+    return true;
+}
+
+std::vector<float> Clip::loudest() const {
+    if (!stereo()) return left();
+    std::vector<float> out(size());
+    for (std::size_t i = 0; i < size(); ++i) out[i] = std::fabs((*this)[i]) > std::fabs(right[i]) ? std::fabs((*this)[i]) : std::fabs(right[i]);
+    return out;
+}
+
+namespace {
+void putSample(std::string& s, float v) {
+    if (!(v > -1.f)) v = -1.f; // also NaN
+    if (v > 1.f) v = 1.f;
+    put16(s, static_cast<std::uint32_t>(static_cast<std::int32_t>(std::lround(v * 32767.f))) & 0xFFFF);
+}
+// 16-bit, one or two channels (`right`: the second, as long as `samples`).
+std::string wavOf(const std::vector<float>& samples, const std::vector<float>* right, int sampleRate) {
+    const std::uint32_t channels = right ? 2 : 1;
     std::string s = "RIFF";
-    const std::uint32_t dataSize = static_cast<std::uint32_t>(samples.size() * 2);
+    const std::uint32_t dataSize = static_cast<std::uint32_t>(samples.size() * 2 * channels);
+    s.reserve(44 + dataSize);
     put32(s, 36 + dataSize);
     s += "WAVEfmt ";
     put32(s, 16);
     put16(s, 1); // whole numbers
-    put16(s, 1); // one channel
+    put16(s, channels);
     put32(s, static_cast<std::uint32_t>(sampleRate));
-    put32(s, static_cast<std::uint32_t>(sampleRate) * 2);
-    put16(s, 2);
+    put32(s, static_cast<std::uint32_t>(sampleRate) * 2 * channels);
+    put16(s, 2 * channels);
     put16(s, 16);
     s += "data";
     put32(s, dataSize);
-    for (float v : samples) {
-        if (!(v > -1.f)) v = -1.f; // also NaN
-        if (v > 1.f) v = 1.f;
-        put16(s, static_cast<std::uint32_t>(static_cast<std::int32_t>(std::lround(v * 32767.f))) & 0xFFFF);
+    for (std::size_t i = 0; i < samples.size(); ++i) {
+        putSample(s, samples[i]);
+        if (right) putSample(s, (*right)[i]);
     }
     return s;
 }
+} // namespace
+
+std::string wavBytes(const std::vector<float>& samples, int sampleRate) { return wavOf(samples, nullptr, sampleRate); }
+
+std::string wavBytes(const Clip& sound, int sampleRate) { return wavOf(sound.left(), sound.stereo() ? &sound.right : nullptr, sampleRate); }
 
 bool writeWav(const std::string& path, const std::vector<float>& samples, int sampleRate) {
     return writeTextFile(path, wavBytes(samples, sampleRate));
+}
+
+bool writeWav(const std::string& path, const Clip& sound, int sampleRate) {
+    return writeTextFile(path, wavBytes(sound, sampleRate));
 }
 
 namespace {

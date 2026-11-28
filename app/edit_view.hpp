@@ -16,6 +16,10 @@
 //           a new recording beside its file; the sound keeps its own
 //   X       hear it as edited (held: to its end). A box turned is heard once it is done, with the song stopped
 //   START   play / stop
+// MONO (STEREO, 2026-11-28): on a stereo sound, a stop of its own on the sound's box, at the right of its name,
+// reading STEREO or MONO: UP from the top row goes to it, DOWN back. Hold A + UP is MONO (both sides mixed to one),
+// + DOWN STEREO, once a push (REVERSE's way); B its usual, STEREO. A mono sound has no such stop and looks as
+// it always did.
 //
 // What it edits is the Target's: the edit, how to set it, the sound (Session::LaneSound) and the rest.
 
@@ -82,7 +86,8 @@ public:
     static constexpr Uint32 kHearAfterMs = 300;
 
 private:
-    bool has(int row) const { return row >= 0 && row < kEditRows && (target_.rows >> row & 1u); }
+    bool has(int row) const { return row == kEditMono ? stereo() : row >= 0 && row < kEditRows && (target_.rows >> row & 1u); }
+    bool stereo() const; // the sound's source has two sides: MONO is offered (on the sound's box)
     int shownNear(int row, int column) const; // the box it has nearest `column` in a row (the column first, then the left)
     void press(Button direction);
     void set(const LaneEdit& edit); // kept, and heard once the turning is done
@@ -99,7 +104,8 @@ private:
     int row_ = 0;
     bool holding_ = false;       // A is held
     float turned_ = 0.f;         // the stick's part-turned box
-    bool reversePushed_ = false; // the stick is pushed on REVERSE: it clicks once a push
+    bool reversePushed_ = false; // the stick is pushed on REVERSE (or MONO): it clicks once a push
+    int monoFrom_ = 0;           // the box the cursor went up to MONO from (DOWN goes back to it)
     bool deleting_ = false, deleteTimed_ = false, bBack_ = false; // B held; bBack_: its tap goes back
     // Y (trim or normalize) was the last press, on this box: a B straight after it goes back and keeps what Y
     // set (gesture audit G16, 2026-11-25: it put the box under the cursor back).

@@ -38,7 +38,7 @@
 //                  times from a timer while the passes rest: 108 BPM when main.cpp read them all, textviews)
 //                  picker, picker-in, picker-deep, picker-deleting, picker-new, picker-typing, picker-carrying, picker-folder-deleting, sampler-picker (with --samples: the list
 //                  of recordings in its columns: on SAMPLES, in a folder, two folders down, B held, the sampler's)
-//                  kit-edit, kit-edit-held, kit-edit-deleting, kit-edit-column (a lane's EDIT view: with --samples
+//                  kit-edit, kit-edit-held, kit-edit-deleting, kit-edit-column, kit-edit-mono (a lane's EDIT view: with --samples
 //                  on a recording, else on the built-in kick)
 //                  kit-synth (the KIT page with four lanes of synth voices), kit-voice, kit-voice-held,
 //                  kit-voice-deleting, kit-voice-clap (a lane's VOICE view: KICK on TUNE, A held, B held;
