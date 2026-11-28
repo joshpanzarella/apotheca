@@ -62,8 +62,8 @@ pack="$out/port"
 rm -rf "$pack"
 mkdir -p "$pack/apotheca"
 
-# The version: 0.N, N being the number of changes kept so far plus this one.
-version="0.$(( $(git -C "$here" rev-list --count HEAD 2>/dev/null || echo 0) + 1 ))"
+# The version: the build number N, the number of changes kept so far plus this one (shown BUILD N; it was 0.N).
+version="$(( $(git -C "$here" rev-list --count HEAD 2>/dev/null || echo 0) + 1 ))"
 built=$(date +%Y-%m-%d)
 echo "building $version..."
 # -O3, as the desk builds: the same sound to the bit (no fast maths), and PLATE and HALL 17 to 20% cheaper measured

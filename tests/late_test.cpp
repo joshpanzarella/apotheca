@@ -91,8 +91,8 @@ void testTheLine() {
 // The log's first line says the block the card took and what the card holds, so the next log confirms the buffer.
 void testTheFirstLine() {
     char line[240];
-    soundFirstLine(line, sizeof line, "0.99", 48000, 384, "alsa", true, 3, 3);
-    CHECK(std::strcmp(line, "Apotheca 0.99: sound at 48000 Hz, 384 frames a block (8.0 ms), the card holds two: 16.0 ms (alsa); realtime priority granted, helpers 3 of 3") == 0);
+    soundFirstLine(line, sizeof line, "999", 48000, 384, "alsa", true, 3, 3);
+    CHECK(std::strcmp(line, "Apotheca build 999: sound at 48000 Hz, 384 frames a block (8.0 ms), the card holds two: 16.0 ms (alsa); realtime priority granted, helpers 3 of 3") == 0);
     soundFirstLine(line, sizeof line, "0.99", 48000, 384, "", true, 3, 3);
     CHECK(std::strstr(line, "16.0 ms (no driver);") != nullptr);
     soundFirstLine(line, sizeof line, "0.99", 48000, 512, nullptr, false, 0, 3);

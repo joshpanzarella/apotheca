@@ -507,7 +507,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const auto more = [&](float y, const char* section, const char* way) { drawKey(r, fonts, 16.f + fonts.small.width(section) + 6.f, y, way, kDim); };
     if (first_ > 0) more(static_cast<float>(kHeadingY), topHeading, "UP");
     // Which Apotheca this is.
-    std::snprintf(text, sizeof text, "APOTHECA %s   %s", kVersion, kBuilt);
+    std::snprintf(text, sizeof text, "APOTHECA BUILD %s   %s", kVersion, kBuilt);
     fonts.small.drawRight(r, kScreenW - 16.f, static_cast<float>(kHeadingY), text, kDim);
     float lastHeadingY = static_cast<float>(kHeadingY);
     const char* lastHeading = topHeading;

@@ -99,7 +99,7 @@ inline int soundFirstLine(char* out, int size, const char* version, int rate, in
     if (!out || size <= 0) return 0;
     const int at = rate > 0 ? rate : 48000;
     return std::snprintf(out, static_cast<std::size_t>(size),
-                         "Apotheca %s: sound at %d Hz, %d frames a block (%.1f ms), the card holds two: %.1f ms (%s); realtime priority %s, helpers %d of %d",
+                         "Apotheca build %s: sound at %d Hz, %d frames a block (%.1f ms), the card holds two: %.1f ms (%s); realtime priority %s, helpers %d of %d",
                          version ? version : "?", rate, frames, 1000.0 * frames / at, cardHoldsMs(frames, rate), driver && *driver ? driver : "no driver",
                          realtime ? "granted" : "NOT granted", helpersRealtime, helpers);
 }

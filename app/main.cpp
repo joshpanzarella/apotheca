@@ -499,7 +499,7 @@ int main(int argc, char** argv) {
         if (!smoke && !shot) engine.useWorkers(helpers, [] { if (makeThreadRealtime(69)) gHelpersRealtime.fetch_add(1); });
         std::printf("processor cores: %u; tracks shared across %d\n", cores, engine.workers() + 1);
     } // real sound: if it cannot keep up, do plainer work, not stutter
-    std::printf("Apotheca %s, built %s\n", kVersion, kBuilt);
+    std::printf("Apotheca build %s, built %s\n", kVersion, kBuilt);
     std::printf("audio: %d Hz, %d frames per buffer\n", have.freq, have.samples);
 
     std::string soundLog; // where late sound blocks are written: the handheld only (empty: nowhere)

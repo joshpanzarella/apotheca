@@ -284,7 +284,7 @@ async function list() {
   all.sizes = all.sizes || {};
   for (const f of [...made]) if ((all.folders || []).includes(f)) made.delete(f);
   if (first) { first = false; shownFolder = all.samples.some(n => !n.includes('/')) ? '' : (split(all.samples.find(n => n.includes('/')) || '')[0]); }
-  $('version').textContent = all.version ? 'version ' + all.version + (all.built ? ' · built ' + all.built : '') : '';
+  $('version').textContent = all.version ? 'build ' + all.version + (all.built ? ' · built ' + all.built : '') : '';
   $('free').textContent = all.free >= 0 ? (all.free >= 1024 ? (all.free / 1024).toFixed(1) + ' GB' : all.free + ' MB') + ' free on the card' : '';
   $('free').classList.toggle('hid', !(all.free >= 0));
   draw();
@@ -791,7 +791,7 @@ function line(s) {
   said += s + '\n';
   if (!s.trim()) return;
   lines++;
-  if (lines == 1 && /^Apotheca /.test(s)) { $('version').textContent = s.replace(/^Apotheca /, 'version '); return; }
+  if (lines == 1 && /^Apotheca build /.test(s)) { $('version').textContent = s.replace(/^Apotheca build /, 'build '); return; }
   if (s == '(done)') { $('lamp').className = 'lamp ok'; $('what').textContent = 'done'; $('says').textContent = ''; return; }
   if (/^\(.*\)$/.test(s)) { $('lamp').className = 'lamp no'; $('what').textContent = s.slice(1, -1); $('says').textContent = ''; return; }
   if (/^The rows come/.test(s)) { $('says').textContent = s; return; }
@@ -1342,7 +1342,7 @@ void Transfer::answer(int fd) {
     // the end, the page stood blank all that while). No length: the closed connection ends it.
     if (method == "GET" && path == "/bench") {
         const char* head = "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n\r\n";
-        std::string first = "Apotheca " + std::string(kVersion) + ", built " + std::string(kBuilt) + "\n" + kBenchSays;
+        std::string first = "Apotheca build " + std::string(kVersion) + ", built " + std::string(kBuilt) + "\n" + kBenchSays;
         if (!sendAll(fd, head, std::strlen(head)) || !sendAll(fd, first.data(), first.size())) return;
         const std::string command = benchCommand.empty() ? selfCommand("--bench 2>&1") : benchCommand;
         // Run through /bin/sh in a process group of its own (so `stop` can end it, shell and all),

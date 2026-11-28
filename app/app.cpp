@@ -721,7 +721,7 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         fonts.small.draw(renderer, x + 150.f, ly - 22.f, "all four at once", kText);
         fonts.small.drawRight(renderer, x + w - 18.f, y + 14.f, "LET GO TO CLOSE", kDim);
         char version[48];
-        std::snprintf(version, sizeof version, "APOTHECA %s", kVersion);
+        std::snprintf(version, sizeof version, "APOTHECA BUILD %s", kVersion);
         fonts.small.drawRight(renderer, x + w - 18.f, y + h - 22.f, version, kDim);
         if (battery_ >= 0) {
             // The battery: a small cell that empties, and the number.
