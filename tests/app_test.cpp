@@ -6086,15 +6086,15 @@ void testTheFxScreensList() {
     fx.goTo(3, 0);
     rig.tap(RIGHT);
     CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 1); // the ECHO send
-    rig.tap(RIGHT, 3);
-    CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 2); // the SPACE send, and the end
-    rig.tap(UP, 3);
     rig.tap(DOWN, 3);
-    CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 2); // (up / down without A: nothing)
-    rig.tap(LEFT);
+    CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 2); // the SPACE send, below it, and the end (owner, 2026-11-28)
+    rig.tap(RIGHT, 3);
+    CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 2); // (RIGHT on a send: nothing)
+    rig.tap(UP);
     CHECK(fx.cursorColumn() == 1);
+    rig.tap(DOWN);
     rig.tap(LEFT);
-    CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 0);
+    CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 0); // LEFT from SPACE: the list at once
     // Each line remembers its own last setting (as L1 / R1 or a tab leaves it: a walk out with LEFT passes the
     // first, so leaves that).
     fx.goTo(4, 3); // ECHO's TAPE: AGE
@@ -6148,7 +6148,7 @@ void testTheFxScreensList() {
     rig.key(A, false);
     rig.tap(RIGHT);
     CHECK(fx.cursorColumn() == 2); // where the line was last (goTo, above)
-    rig.tap(LEFT);
+    rig.tap(UP);
     rig.key(A, true);
     rig.tap(UP, 3);
     CHECK(near(project.tracks[0].send[0], 0.15f) && project.tracks[0].send[1] == 0.f);
@@ -6160,7 +6160,7 @@ void testTheFxScreensList() {
     rig.tap(RIGHT); // sideways with A held does nothing to a send, and does not move off it
     CHECK(project.tracks[0].send[0] == 0.f && project.tracks[0].send[1] == 0.f && fx.cursorColumn() == 1);
     rig.key(A, false);
-    rig.tap(RIGHT);
+    rig.tap(DOWN);
     rig.key(A, true);
     rig.tap(UP, 25);
     CHECK(project.tracks[0].send[1] == 1.f && project.tracks[0].send[0] == 0.f);
@@ -6176,7 +6176,7 @@ void testTheFxScreensList() {
     CHECK(std::fabs(turned / 0.05f - std::round(turned / 0.05f)) > 0.02f); // smoothly: not in twentieths
     // ...the first send as the second.
     rig.key(A, false);
-    rig.tap(LEFT);
+    rig.tap(UP);
     rig.key(A, true);
     rig.key(STICK_UP, true);
     rig.frames(10);
@@ -6186,7 +6186,7 @@ void testTheFxScreensList() {
     CHECK(echo > 0.02f && echo < 0.3f && std::fabs(echo / 0.05f - std::round(echo / 0.05f)) > 0.02f);
     rig.key(A, false);
     session.setSend(0, 0, 0.f);
-    rig.tap(RIGHT);
+    rig.tap(DOWN);
     // It reaches the engine: a hit now wakes the SPACE bus and not the ECHO bus.
     Command hit;
     hit.type = Command::Trigger;
@@ -6203,7 +6203,7 @@ void testTheFxScreensList() {
     rig.tap(B);
     CHECK(project.tracks[0].send[1] == 0.f && project.tracks[0].send[0] == 0.4f && fx.cursorColumn() == 2);
     CHECK(!session.hasAutomation(0, 0, autoLaneOfSend(1)) && session.hasAutomation(0, 0, autoLaneOfSend(0)) && session.hasAutomation(0, 2, autoLaneOfSend(1)));
-    rig.tap(LEFT);
+    rig.tap(UP);
     rig.tap(B);
     CHECK(project.tracks[0].send[0] == 0.f && !session.hasAutomation(0, 0, autoLaneOfSend(0)));
     // B on the SENDS line itself: nothing sent to either, and both automations of this cell go.
@@ -6768,7 +6768,7 @@ void testTheFxScreenAsDrawn() {
         CHECK(hinted("sends") && hinted("send nothing") && !hinted("effects"));
         fx.goTo(F::kSendsRow, 2);
         draw();
-        CHECK(hinted("dial") && hinted("turn") && hinted("none") && !hinted("default"));
+        CHECK(hinted("ECHO") && hinted("list") && hinted("turn") && hinted("none") && !hinted("default") && !hinted("dial"));
         fx.goTo(0, 2);
         draw();
         CHECK(hinted("dial") && hinted("turn, type") && hinted("default")); // (DELAY has types: HOLD A turns and switches)
@@ -11272,7 +11272,8 @@ void testFxSwitchesType() {
             CHECK(session.effectData(0, 0).kind == static_cast<int>(next) && fx.cursorColumn() == effectInfo(next).params);
             break;
         }
-        // The sends switch nothing; A up, RIGHT on the last (SPACE) stops and LEFT walks back to the list.
+        // The sends switch nothing; A up, RIGHT does nothing on a send and LEFT is the list
+        // (the sends walk with UP / DOWN: testFxSendsWalkUpAndDown).
         fx.goTo(FxScreen::kSendsRow, 2);
         typeTap(rig, RIGHT);
         typeTap(rig, LEFT);
@@ -11464,7 +11465,7 @@ void testFxSwitchesType() {
             CHECK(draw() && keyInk() == 0 && fx.typeKey() == nullptr && hintKeyed(canvas, scratch, "LEFT / RIGHT", fx.cursorColumn() == 1 ? "list, dial" : "dial"));
             // SENDS have no types: no key held or not, and HOLD A only turns.
             fx.goTo(F::kSendsRow, 2);
-            CHECK(draw() && hintKeyed(canvas, scratch, "LEFT", "dial") && hintKeyed(canvas, scratch, "HOLD A", "turn") && !hintKeyed(canvas, scratch, "HOLD A", "turn, type"));
+            CHECK(draw() && hintKeyed(canvas, scratch, "UP", "ECHO") && hintKeyed(canvas, scratch, "HOLD A", "turn") && !hintKeyed(canvas, scratch, "HOLD A", "turn, type"));
             rig.key(A, true);
             CHECK(draw() && fx.typeKey() == nullptr && !hintKeyed(canvas, scratch, "RIGHT", "type"));
             rig.key(A, false);
@@ -11506,7 +11507,8 @@ void testFxSwitchesType() {
 // on the handheld: "moving up and down to traverse the parameters is odd... that should be changed to
 // left/right"; the table he approved). LEFT from the FIRST dial is the list, on the same line; RIGHT on the last
 // stops; UP / DOWN do nothing without A. With A held: LEFT / RIGHT the TYPE, UP / DOWN turn, as before. The
-// stick across walks, up / down nothing. SENDS the same. The bar names the ways that work.
+// stick across walks, up / down nothing. SENDS are the one exception (UP / DOWN: testFxSendsWalkUpAndDown). The bar
+// names the ways that work.
 void testFxDialsWalkAcross() {
     Rig rig;
     Session& session = rig.app.session();
@@ -11604,26 +11606,21 @@ void testFxDialsWalkAcross() {
     rig.key(STICK_LEFT, false);
     rig.frames(1);
     CHECK(at(0, 0));
-    // SENDS: its two dials the same. LEFT from ECHO is the list, on SENDS; RIGHT on SPACE stops; UP / DOWN
-    // without A turn nothing; with A held they turn the send.
+    // SENDS are the exception: drawn one above the other, they walk with UP / DOWN (owner, 2026-11-28;
+    // testFxSendsWalkUpAndDown has the rest).
     session.setSend(0, 0, 0.35f);
     session.setSend(0, 1, 0.5f);
     fx.goTo(FxScreen::kSendsRow, 0);
     rig.tap(RIGHT);
     CHECK(at(FxScreen::kSendsRow, 1));
-    rig.tap(RIGHT);
-    CHECK(at(FxScreen::kSendsRow, 2));
     rig.tap(RIGHT, 2);
-    CHECK(at(FxScreen::kSendsRow, 2));
-    rig.tap(UP);
+    CHECK(at(FxScreen::kSendsRow, 1));
     rig.tap(DOWN);
     CHECK(at(FxScreen::kSendsRow, 2) && project.tracks[0].send[0] == 0.35f && project.tracks[0].send[1] == 0.5f);
     rig.key(A, true);
     rig.tap(UP);
     rig.key(A, false);
     CHECK(at(FxScreen::kSendsRow, 2) && project.tracks[0].send[1] > 0.5f);
-    rig.tap(LEFT);
-    CHECK(at(FxScreen::kSendsRow, 1));
     rig.tap(LEFT);
     CHECK(at(FxScreen::kSendsRow, 0));
     // The bar's key: both ways where both do something, LEFT alone on the last; the list in the words on the first.
@@ -11648,12 +11645,161 @@ void testFxDialsWalkAcross() {
         fx.goTo(0, dials);
         CHECK(draw() && hintKeyed(canvas, scratch, "LEFT", "dial"));
         fx.goTo(FxScreen::kSendsRow, 1);
-        CHECK(draw() && hintKeyed(canvas, scratch, "LEFT / RIGHT", "list, dial"));
+        CHECK(draw() && hintKeyed(canvas, scratch, "DOWN", "SPACE") && hintKeyed(canvas, scratch, "LEFT", "list") && !hintKeyed(canvas, scratch, "LEFT / RIGHT", "list, dial"));
         fx.goTo(FxScreen::kSendsRow, 2);
-        CHECK(draw() && hintKeyed(canvas, scratch, "LEFT", "dial"));
+        CHECK(draw() && hintKeyed(canvas, scratch, "UP", "ECHO") && hintKeyed(canvas, scratch, "LEFT", "list") && !hintKeyed(canvas, scratch, "LEFT", "dial"));
         fx.goTo(FxScreen::kBusRow, 1);
         CHECK(draw() && hintKeyed(canvas, scratch, "LEFT / RIGHT", "list, dial"));
     }
+}
+
+// The two sends are drawn one above the other, so UP / DOWN walk them (owner, 2026-11-28: "it feels weird
+// switching between the ECHO and SPACE sends because it's left/right, when I think it should be up/down"): DOWN
+// from ECHO is SPACE, UP from SPACE is ECHO, the ends stop; LEFT from either is the list, on SENDS; RIGHT does
+// nothing. RIGHT from the list goes back to the send last used. Hold A + UP / DOWN turns the send under the cursor,
+// hold A + LEFT / RIGHT does nothing, as before. The stick follows. The bar names the keys, and fits.
+void testFxSendsWalkUpAndDown() {
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& project = rig.app.project();
+    FxScreen& fx = rig.app.fx();
+    session.view = View::Effects;
+    session.setSend(0, 0, 0.35f);
+    session.setSend(0, 1, 0.5f);
+    rig.frames(1);
+    const int S = FxScreen::kSendsRow;
+    const auto at = [&](int column) { return fx.cursorRow() == S && fx.cursorColumn() == column; };
+    const auto untouched = [&] { return project.tracks[0].send[0] == 0.35f && project.tracks[0].send[1] == 0.5f; };
+    // From the list: RIGHT is ECHO (never used yet). DOWN is SPACE; DOWN again stops; UP is ECHO; UP again stops,
+    // on SENDS (not the line above). RIGHT on either does nothing.
+    fx.goTo(S, 0);
+    rig.tap(RIGHT);
+    CHECK(at(1));
+    rig.tap(RIGHT, 2);
+    CHECK(at(1));
+    rig.tap(DOWN);
+    CHECK(at(2));
+    rig.tap(DOWN, 2);
+    CHECK(at(2));
+    rig.tap(RIGHT, 2);
+    CHECK(at(2));
+    rig.tap(UP);
+    CHECK(at(1));
+    rig.tap(UP, 2);
+    CHECK(at(1) && untouched());
+    // LEFT from SPACE is the list at once (not ECHO), and RIGHT is SPACE again; from ECHO the same, back to ECHO.
+    rig.tap(DOWN);
+    rig.tap(LEFT);
+    CHECK(at(0));
+    rig.tap(RIGHT);
+    CHECK(at(2));
+    rig.tap(UP);
+    rig.tap(LEFT);
+    CHECK(at(0));
+    rig.tap(RIGHT);
+    CHECK(at(1) && untouched());
+    // In the list UP / DOWN are still the lines.
+    rig.tap(LEFT);
+    rig.tap(DOWN);
+    CHECK(fx.cursorRow() == S + 1 && fx.cursorColumn() == 0);
+    rig.tap(UP);
+    CHECK(at(0));
+    // Held, DOWN runs to SPACE and stops; UP back to ECHO.
+    fx.goTo(S, 1);
+    rig.key(DOWN, true);
+    rig.frames(90);
+    rig.key(DOWN, false);
+    rig.frames(1);
+    CHECK(at(2));
+    rig.key(UP, true);
+    rig.frames(90);
+    rig.key(UP, false);
+    rig.frames(1);
+    CHECK(at(1) && untouched());
+    // Hold A + UP / DOWN turns the one under the cursor; hold A + LEFT / RIGHT does nothing (no TYPE, no move).
+    fx.goTo(S, 2);
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(at(2) && project.tracks[0].send[0] == 0.35f && project.tracks[0].send[1] > 0.5f);
+    rig.tap(DOWN);
+    CHECK(at(2) && untouched());
+    rig.tap(LEFT);
+    rig.tap(RIGHT);
+    CHECK(at(2) && untouched());
+    rig.key(A, false);
+    fx.goTo(S, 1);
+    rig.key(A, true);
+    rig.tap(DOWN);
+    CHECK(at(1) && project.tracks[0].send[0] < 0.35f && project.tracks[0].send[1] == 0.5f);
+    rig.tap(UP);
+    rig.tap(RIGHT);
+    rig.tap(LEFT);
+    rig.key(A, false);
+    CHECK(at(1) && untouched());
+    // The stick, A up: down is SPACE, up ECHO, across to the right nothing, to the left the list.
+    fx.goTo(S, 1);
+    rig.key(STICK_DOWN, true);
+    rig.frames(1);
+    rig.key(STICK_DOWN, false);
+    rig.frames(1);
+    CHECK(at(2));
+    rig.key(STICK_RIGHT, true);
+    rig.frames(60);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(at(2));
+    rig.key(STICK_UP, true);
+    rig.frames(1);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    CHECK(at(1));
+    rig.key(STICK_DOWN, true);
+    rig.frames(60);
+    rig.key(STICK_DOWN, false);
+    rig.frames(1);
+    CHECK(at(2) && untouched());
+    rig.key(STICK_LEFT, true);
+    rig.frames(1);
+    rig.key(STICK_LEFT, false);
+    rig.frames(1);
+    CHECK(at(0));
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(at(2) && untouched()); // (the send last used)
+    // A bus's dials, side by side, still walk across: DOWN does nothing there.
+    fx.goTo(FxScreen::kBusRow, 1);
+    rig.tap(DOWN);
+    CHECK(fx.cursorRow() == FxScreen::kBusRow && fx.cursorColumn() == 1);
+    rig.tap(RIGHT);
+    CHECK(fx.cursorRow() == FxScreen::kBusRow && fx.cursorColumn() == 2);
+    // The bar's key: DOWN on ECHO, UP on SPACE.
+    CHECK(FxScreen::sendWalkKeyFor(0) == nullptr);
+    CHECK(std::strcmp(FxScreen::sendWalkKeyFor(1), "DOWN") == 0 && std::strcmp(FxScreen::sendWalkKeyFor(2), "UP") == 0);
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    const auto draw = [&] {
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        if (ui::gHintsOver != 0.f) std::printf("    FX, a send: %.1f over\n", static_cast<double>(ui::gHintsOver));
+        return ui::gHintsOver == 0.f;
+    };
+    for (int menu = 0; menu < 2; ++menu) {
+        ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP";
+        for (int playing = 0; playing < 2; ++playing) {
+            if (project.playing != (playing == 1)) session.togglePlay(false);
+            fx.goTo(S, 1);
+            CHECK(draw() && hintKeyed(canvas, scratch, "DOWN", "SPACE") && hintKeyed(canvas, scratch, "LEFT", "list") && hintKeyed(canvas, scratch, "HOLD A", "turn"));
+            CHECK(!hintKeyed(canvas, scratch, "UP", "ECHO") && !hintKeyed(canvas, scratch, "LEFT / RIGHT", "list, dial"));
+            fx.goTo(S, 2);
+            CHECK(draw() && hintKeyed(canvas, scratch, "UP", "ECHO") && hintKeyed(canvas, scratch, "LEFT", "list") && hintKeyed(canvas, scratch, "B", "none"));
+            CHECK(!hintKeyed(canvas, scratch, "DOWN", "SPACE") && !hintKeyed(canvas, scratch, "LEFT", "dial"));
+        }
+    }
+    if (project.playing) session.togglePlay(false);
 }
 
 // What the review of the TYPE switch found (2026-11-14).
@@ -14564,6 +14710,7 @@ int main(int argc, char** argv) {
         testHoldYMovesABandTwoWays();
         testFxSwitchesType();
         testFxDialsWalkAcross();
+        testFxSendsWalkUpAndDown();
         testFxSwitchMends();
         testTheFxScreensList();
         testTheFxScreenAsDrawn();
@@ -14787,6 +14934,7 @@ int main(int argc, char** argv) {
     testHoldYMovesABandTwoWays();
     testFxSwitchesType();
     testFxDialsWalkAcross();
+    testFxSendsWalkUpAndDown();
     testFxSwitchMends();
     testEffectsThroughTheSession();
     testSendsThroughTheSession();
