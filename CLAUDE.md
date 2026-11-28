@@ -66,7 +66,7 @@ New screens and gestures keep these; do not invent a variant.
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
   `port/apotheca/apotheca` and `VERSION` from `build-handheld/` into `dist/`,
   commit, push to `main`. The owner updates over WiFi or from the SD card.
-- **The version is `0.N`**, N = commits + 1 at build time. Only
+- **The version is the build number N** (shown BUILD N; it was `0.N` until 2026-11-28), N = commits + 1 at build time. Only
   `app/version.cpp` is compiled with it, so a new number rebuilds one file.
 - **Check a command's real exit code.** `ctest | tail` returns tail's. Use
   `set -o pipefail`. A commit went out past a failing test once this way.

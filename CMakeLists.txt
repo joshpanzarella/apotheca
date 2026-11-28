@@ -32,7 +32,8 @@ add_library(msfa STATIC
   third_party/msfa/lfo.cc third_party/msfa/pitchenv.cc third_party/msfa/sin.cc)
 target_compile_options(msfa PRIVATE -fwrapv -Wall -Wextra)
 
-# The version shown on screen: 0.N, N being the number of changes kept so far plus this one.
+# The version shown on screen: BUILD N, N being the number of changes kept so far plus this one (it was 0.N until
+# N passed 1000 and 0.1002 read as older than 0.997: owner, 2026-11-28, "I guess 1002").
 # (A build from a copy with no git history, as the system image's, passes -DAPOTHECA_CHANGES=N.)
 if(NOT DEFINED APOTHECA_CHANGES)
   execute_process(COMMAND git rev-list --count HEAD WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} OUTPUT_VARIABLE APOTHECA_CHANGES OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
@@ -190,7 +191,7 @@ if(APOTHECA_BUILD_APP)
   target_compile_options(apotheca_app PRIVATE -Wall -Wextra -Wno-missing-field-initializers) # (as the handheld build: a note or a kit's line is written in part on purpose)
   # stb_truetype is someone else's code; do not hold it to our warnings.
   set_source_files_properties(app/text.cpp PROPERTIES COMPILE_OPTIONS "-Wno-unused-function")
-  set_source_files_properties(app/version.cpp PROPERTIES COMPILE_DEFINITIONS "APOTHECA_VERSION=\"0.${APOTHECA_CHANGES}\";APOTHECA_BUILT=\"${APOTHECA_BUILT}\"")
+  set_source_files_properties(app/version.cpp PROPERTIES COMPILE_DEFINITIONS "APOTHECA_VERSION=\"${APOTHECA_CHANGES}\";APOTHECA_BUILT=\"${APOTHECA_BUILT}\"")
   if(TARGET SDL2::SDL2)
     target_link_libraries(apotheca_app PUBLIC apotheca_engine SDL2::SDL2 Threads::Threads)
   else()
