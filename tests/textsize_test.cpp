@@ -34,6 +34,7 @@
 #include "chord_effects.hpp"
 #include "chords.hpp"
 #include "controls.hpp"
+#include "memory.hpp"
 #include "note_marks.hpp"
 #include "pattern_layout.hpp"
 #include "samples.hpp"
@@ -3009,6 +3010,9 @@ int main(int argc, char** argv) {
     for (TrackKind kind : {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Physic, TrackKind::Acid, TrackKind::Cloud, TrackKind::Morph}) useBuiltInDataForTests(kind, PresetData());
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     if (argc >= 3 && std::strcmp(argv[1], "views") == 0) return runViews(argv[2], argc >= 4 ? argv[3] : nullptr);
+    // A fixed free memory: the help card says it (the memory guard's line), and a desk's own figure moves
+    // between one text size's drawing and the next (14916 MB, then 14914: "other words than at LARGE").
+    memory::pretend([] { return 2000 * memory::kMegabyte + memory::kMargin; });
     CHECK(screens().canvas.ok);
     if (argc >= 2 && std::strcmp(argv[1], "--fx-list") == 0) { // just the list of effects (ctest runs everything)
         testTheListOfEffectsHoldsTheLaterTypes();
