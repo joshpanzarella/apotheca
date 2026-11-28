@@ -7,95 +7,160 @@
 // setting shows up without touching this file. The spec's "page" says what
 // kind of track it is: "synth", "sampler" (its settings, and a picture of
 // its recording with START and END on it to drag: `wave()` below) or "kit"
-// (eight lanes, each a card with its sound, its picture by `wave()`, its
-// settings and EDIT). Every page ends with EFFECTS (the track's slots, its
-// sends, the buses, the master's slots, the mixer's LEVEL and PAN) and MODS
-// (the two MODs with their rows of steps): `buildFx()` and `buildMods()`.
+// (eight lanes: a pad each down the left, and the lane picked as a card on
+// the right with its sound, its picture by `wave()`, its settings and EDIT).
+// Every page has EFFECTS (the track's slots, its sends, the buses, the
+// master's slots, the mixer's LEVEL and PAN) and MODS (the two MODs with
+// their rows of steps): `buildFx()` and `buildMods()`.
+//
+// The layout (2026-11-28, the web redesign; wifi-and-bounce.md): what is
+// always wanted stays in view above (a recording's or MORPH's picture, the
+// eight macros), and the handheld's pages, EFFECTS and MODS are tabs under it
+// (ALL PAGES shows them one under another, as the page used to). On a
+// computer the page is one screen high and only the tab's plate scrolls. Its
+// look is web_look.cpp's, shared with the files page.
 
 namespace apotheca {
 
 extern const char* const kDesignPage;
 const char* const kDesignPage = R"page(<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Apotheca sound designer</title>
-<style>
-:root{--bg:#14110e;--panel:#1f1a16;--panel2:#2a231d;--line:#43392f;--text:#e0d5bf;--dim:#8f8370;--teal:#6fbfa3;--purple:#9a76b0;--brass:#c9a15a}
-*{box-sizing:border-box}
-body{background:var(--bg);color:var(--text);font:14px/1.4 system-ui,sans-serif;margin:0;padding:20px 24px 150px}
-h1{font-size:18px;letter-spacing:.14em;margin:0} h2{font-size:12px;letter-spacing:.14em;color:var(--dim);margin:0 0 10px;font-weight:600}
-a{color:var(--teal)} .dim{color:var(--dim)}
-header{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;margin-bottom:18px}
-header .grow{flex:1}
-select,input[type=text],button{font:inherit;background:var(--panel2);color:var(--text);border:1px solid var(--line);padding:6px 8px;border-radius:0}
-button{background:var(--teal);color:var(--bg);border:0;padding:7px 14px;cursor:pointer;font-weight:600;letter-spacing:.06em}
-button.quiet{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
-section{background:var(--panel);border:1px solid var(--line);padding:14px 16px;margin:0 0 14px}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px 22px}
-.ctl label{display:flex;justify-content:space-between;font-size:11px;letter-spacing:.1em;color:var(--dim);margin-bottom:2px}
-.ctl label b{color:var(--text);font-weight:600;letter-spacing:.04em}
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='20' r='18' fill='%2317120d' stroke='%23c9a15a' stroke-width='3'/%3E%3Cpath d='M20 9 30 28H10z' fill='none' stroke='%23e3c47f' stroke-width='3'/%3E%3C/svg%3E">
+<style>@@LOOK@@
+/* ---- the sound designer: what is always wanted (the picture, the macros) above, the handheld's pages as tabs below ---- */
+.tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:9px 16px;border-bottom:1px solid rgba(110,88,56,.5);background:rgba(20,16,13,.6)}
+.tools label{display:flex;align-items:center;gap:7px;font-size:13px;letter-spacing:.12em;color:var(--dim)}
+.tools .grow{flex:1}
+#said{font:14px var(--data);min-height:18px;padding:0 16px;margin:8px 0 0} .ok{color:var(--teal)} .no{color:var(--warn)}
+#nothing{margin:24px 16px;padding:28px;font-size:17px;color:var(--dim)}
+.work{padding:10px 16px 16px;display:flex;flex-direction:column;gap:12px;min-height:0}
+#pinned{display:flex;flex-direction:column;gap:12px}
+#pinned:empty{display:none}
+.panes>.plate{margin:0}
+.panes{min-height:0}
+.tabs{margin-bottom:-1px;position:relative;z-index:1}
+.panes>[data-pane]{border-top-left-radius:0}
+h3{font-weight:normal;font-size:13px;letter-spacing:.16em;color:var(--brass2);margin:0 0 8px;text-transform:uppercase}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px 22px}
+.ctl{min-width:0}
+.ctl label{display:flex;justify-content:space-between;gap:8px;font-size:12px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase;margin-bottom:1px}
+.ctl label b{color:var(--text);font:13px var(--data);white-space:nowrap}
 .ctl select{width:100%}
-input[type=range]{width:100%;accent-color:var(--teal);margin:2px 0}
-.env{display:grid;grid-template-columns:54px repeat(8,1fr);gap:4px 8px;align-items:center;margin-top:10px}
-.env .h{font-size:11px;color:var(--dim);letter-spacing:.1em;text-align:center}
-.env .r{font-size:11px;color:var(--dim);letter-spacing:.1em}
-.env .cell{text-align:center;font-size:11px}
+.macros .grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px 18px}
+.env{display:grid;grid-template-columns:54px repeat(8,minmax(0,1fr));gap:4px 8px;align-items:center;margin-top:10px}
+.env .h{font-size:12px;color:var(--dim);letter-spacing:.1em;text-align:center}
+.env .r{font-size:12px;color:var(--brass2);letter-spacing:.1em}
 .envtop{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end}
-.envtop svg{flex:1;min-width:260px;height:90px;background:var(--bg);border:1px solid var(--line)}
-.envtop .ctl{width:150px}
-#keys{position:fixed;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid var(--line);padding:10px 24px 12px}
-#keys .row{display:flex;gap:14px;align-items:center;margin-bottom:8px;font-size:12px;color:var(--dim)}
-#board{position:relative;height:64px;user-select:none;touch-action:none}
-#board div{position:absolute;top:0;border:1px solid var(--bg)}
-#board .w{background:var(--text);height:64px} #board .b{background:#000;height:38px;z-index:1;border-color:var(--line)}
-#board .on{background:var(--teal)!important}
-.steps{display:grid;grid-template-columns:repeat(8,1fr);gap:6px 12px;margin-top:4px}
-.steps .ctl label{font-size:10px}
+.envtop svg{flex:1;min-width:260px;height:90px}
+.envtop .ctl{width:160px}
+.screen,.wave canvas,.envtop svg{background:linear-gradient(rgba(0,255,180,.045) 1px,transparent 1px) 0 0/100% 25%,linear-gradient(90deg,rgba(0,255,180,.035) 1px,transparent 1px) 0 0/10% 100%,#0a0907;
+border:1px solid #5d4b33;border-radius:4px;box-shadow:inset 0 0 14px rgba(0,0,0,.9),0 0 0 3px #17120d,0 0 0 4px #4b3d2f}
+.wave canvas{display:block;width:100%;height:150px;touch-action:none;cursor:ew-resize}
+.wave .note{font:13px/1.4 var(--data);color:var(--dim);margin-top:8px}
+.wavetop{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-bottom:12px}
+.wavetop select{min-width:220px;max-width:100%}
+.tables{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:14px}
+.tables .wave canvas{height:150px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,270px),1fr));gap:12px}
+.card{background:rgba(0,0,0,.2);border:1px solid var(--line);border-radius:5px;padding:10px 12px;min-width:0}
+.card .grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 16px}
 .fxkind{display:flex;gap:8px;align-items:center;margin-bottom:10px}
 .fxkind select{flex:1;min-width:0}
-#said{font-size:12px;min-height:18px} .ok{color:var(--teal)} .no{color:#d98a6a}
-#nothing{padding:40px 0;color:var(--dim);font-size:16px}
-.wavetop{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin-bottom:10px}
-.wavetop select{min-width:220px;max-width:100%}
-.wave canvas{display:block;width:100%;height:150px;background:var(--bg);border:1px solid var(--line);touch-action:none;cursor:ew-resize}
-.wave .note{font-size:11px;color:var(--dim);margin-top:4px}
-.tables{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:14px}
-.tables .wave canvas{height:170px}
-body.kit{padding-bottom:24px}
-#kithelp{font-size:12px;color:var(--dim);margin:2px 0 12px}
-.lanes{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,480px),1fr));gap:14px}
-.lane{margin:0;min-width:0}
-.lane .top{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;margin-bottom:8px}
-.lane .num{font-weight:700;font-size:16px;color:var(--brass);min-width:16px}
+.fxkind .dim{font-size:12px;letter-spacing:.12em;min-width:58px}
+.steps{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px 10px;margin-top:4px}
+.steps .ctl label{font-size:11px}
+.mods{grid-template-columns:repeat(auto-fill,minmax(min(100%,460px),1fr))}
+/* the KIT: the eight lanes down the left as pads, the lane picked on the right */
+.kitgrid{display:grid;grid-template-columns:minmax(230px,290px) minmax(0,1fr);gap:14px;align-items:start}
+.pads{display:flex;flex-direction:column;gap:6px}
+.pad{display:grid;grid-template-columns:28px minmax(0,1fr) auto;grid-template-rows:auto 26px;gap:2px 8px;align-items:center;padding:7px 8px;border:1px solid var(--line);border-radius:5px;
+background:linear-gradient(180deg,#2d251d,#211b15);cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,236,200,.06)}
+.pad:hover{border-color:var(--brass)}
+.pad.now{border-color:var(--teal);box-shadow:inset 0 0 0 1px rgba(0,255,180,.35),0 0 12px rgba(0,255,180,.15)}
+.pad .num{grid-row:1/3;font:22px var(--data);color:var(--brass2);text-align:center}
+.pad.now .num{color:var(--teal)}
+.pad .what{font:13px var(--data);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:uppercase}
+.pad canvas{grid-column:2;width:100%;height:26px;display:block}
+.pad button{grid-row:1/3;grid-column:3;padding:9px 10px}
+.lane .top{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;margin-bottom:12px}
+.lane .num{font:22px var(--data);color:var(--teal);min-width:22px}
 .lane .top select{flex:1;min-width:0;max-width:100%}
-.lane .wave canvas{height:96px}
-.lane h3{font-size:11px;letter-spacing:.14em;color:var(--dim);margin:12px 0 6px;font-weight:600}
-.lane .grid{grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:8px 16px}
-.lane .grid.five{grid-template-columns:repeat(auto-fill,minmax(96px,1fr))}
-.lane .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-button.on{background:var(--brass)}
-@media (max-width:600px){body{padding:14px 16px 150px} body.kit{padding-bottom:24px} #keys{padding:10px 16px 12px} section{padding:12px}}
+.lane .wave canvas{height:160px}
+.lanecols{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px}
+.lanecols .card .grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
+.acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+/* the keys: cream and black, lit teal where held */
+#keys{background:linear-gradient(180deg,#2a221b,#1a1511);border-top:1px solid var(--edge);padding:8px 16px 12px;box-shadow:0 -6px 18px rgba(0,0,0,.4)}
+#keys .row{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;margin-bottom:7px;font-size:13px;color:var(--dim);letter-spacing:.04em}
+#keys .row b{font-weight:normal;color:var(--brass2)}
+#board{position:relative;height:64px;user-select:none;touch-action:none}
+#board div{position:absolute;top:0;border:1px solid #0d0b09;border-radius:0 0 4px 4px}
+#board .w{background:linear-gradient(180deg,#d9ccb0,#f3e9d2 70%,#cbbd9e);height:64px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.18)}
+#board .b{background:linear-gradient(180deg,#0b0a09,#2a241e);height:38px;z-index:1;border-color:#000;box-shadow:0 2px 3px rgba(0,0,0,.6)}
+#board .on{background:linear-gradient(180deg,#00e6a2,#00ffb4)!important}
+/* a computer's screen: one screen high, the tab's own plate scrolling if it must */
+@media (min-width:960px) and (min-height:600px){
+ html,body{height:100%}
+ body{display:flex;flex-direction:column}
+ .work{flex:1;overflow:hidden}
+ .panes{flex:1;display:flex;flex-direction:column}
+ .panes>[data-pane]:not([hidden]){flex:1;overflow:auto;min-height:0}
+ body.all .panes>[data-pane]:not([hidden]){flex:none;overflow:visible}
+ body.all .work{overflow:auto}
+ body.all .panes{flex:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,640px),1fr));gap:12px}
+ body.all .panes>[data-pane=fx],body.all .panes>[data-pane=mods]{grid-column:1/-1}
+ body.all .tabs{grid-column:1/-1}
+ .kitgrid .pads{position:sticky;top:0}
+}
+@media (max-width:959px){
+ .kitgrid{grid-template-columns:1fr}
+ .pads{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+ #keys{position:sticky;bottom:0;z-index:5}
+}
+@media (max-width:560px){
+ .tools{padding:8px 12px}.work{padding:8px 10px 14px}
+ .tools label{flex:1 1 100%}.tools label input,.tools label select{flex:1}
+ .grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
+ .steps{grid-template-columns:repeat(4,minmax(0,1fr))}
+ .env{grid-template-columns:44px repeat(8,minmax(0,1fr));gap:3px 4px}
+ .env .ctl label{display:none}
+ .pads{grid-template-columns:1fr}
+ .pad{grid-template-rows:auto;padding:5px 8px}
+ .pad canvas{display:none}
+ .pad .num{grid-row:1;font-size:18px}
+ .pad button{grid-row:1;padding:7px 10px}
+}
 </style></head><body>
-<header>
-  <h1>SOUND DESIGNER</h1><span id="what" class="dim"></span>
-  <span class="grow"></span>
-  <label class="dim">TRACK NAME <input id="called" type="text" maxlength="10" size="11" placeholder="ITS INSTRUMENT"></label>
-  <label class="dim" id="presetbox">PRESET <select id="preset"></select></label>
-  <input id="name" type="text" maxlength="24" placeholder="NAME FOR A NEW PRESET" size="24">
-  <button id="roll" class="quiet" hidden>ROLL A NEW SOUND</button>
-  <button id="save">SAVE AS PRESET</button>
-  <a id="files" href="#">files</a>
+<header class="top">
+  <a class="brand" id="home" href="#">@@BRAND@@<span class="page">SOUND DESIGNER</span></a>
+  <div class="chips"><span class="chip" id="what"></span></div>
+  <nav><a class="btn" id="files" href="#">Files</a></nav>
 </header>
+<div class="tools">
+  <label>TRACK NAME <input id="called" type="text" maxlength="10" size="11" placeholder="ITS INSTRUMENT"></label>
+  <label id="presetbox">PRESET <select id="preset"></select></label>
+  <span class="grow"></span>
+  <input id="name" type="text" maxlength="24" placeholder="NAME FOR A NEW PRESET" size="22">
+  <button id="save" class="main">Save as preset</button>
+  <button id="roll" class="violet" hidden>Roll a new sound</button>
+</div>
 <div id="said" class="dim">The handheld makes the sound. Turn it up, or plug headphones into it.</div>
-<div id="nothing" hidden>The track being worked on has no instrument. On the handheld, go to the SONG screen and move to a PHAZED, JAX-EP, FM-6, PHYSIC, ACID, CLOUD, MORPH, SAMPLER or DRUMS track (or add one with + TRACK).</div>
-<div id="all"></div>
+<div id="nothing" class="plate" hidden>The track being worked on has no instrument. On the handheld, go to the SONG screen and move to a PHAZED, JAX-EP, FM-6, PHYSIC, ACID, CLOUD, MORPH, SAMPLER or DRUMS track (or add one with + TRACK).</div>
+<div class="work" id="work">
+  <div id="pinned"></div>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div class="panes" id="all"></div>
+</div>
 <div id="keys">
-  <div class="row"><span>PLAY: click the keys, or use the computer keyboard: A W S E D F T G Y H U J K. Z and X: octave down / up.</span><span id="oct"></span></div>
+  <div class="row"><span><b>PLAY</b>: click the keys, or use the computer keyboard: A W S E D F T G Y H U J K. Z and X: octave down / up.</span><span id="oct"></span></div>
   <div id="board"></div>
 </div>
-<script>
+<script>@@FONT@@
 const base = location.pathname.replace(/\/design\/?$/, '');
-document.getElementById('files').href = base + '/';
+document.getElementById('files').href = document.getElementById('home').href = base + '/';
 const $ = id => document.getElementById(id);
+const lettering = 'px system-ui, -apple-system, "Segoe UI", sans-serif'; // a canvas's words: numbers in plain letters (the device's 1 reads as an I)
 let spec = null, specSerial = -1, state = null, controls = {}, macroControls = [], touched = {}, envs = [], waves = [];
 
 // ---- talking to the handheld: one request at a time, newest value wins ----
@@ -115,6 +180,10 @@ async function get(path) { return (await fetch(base + path, {cache: 'no-store'})
 
 // ---- building the page from what the synth has ----
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+// A fader's groove is lit as far as it is turned.
+function paint(r) { const lo = +r.min, hi = +r.max; r.style.setProperty('--p', (hi > lo ? (r.value - lo) / (hi - lo) * 100 : 0) + '%'); }
+function paintAll() { for (const r of document.querySelectorAll('input[type=range]')) paint(r); }
+document.addEventListener('input', e => { if (e.target.type === 'range') paint(e.target); });
 // A setting with "stops" takes only those values (a kit's FADE, FIT, HUMAN TIME and LEVEL): its place
 // among them is the last at or under the value, as on the handheld.
 function stopPlace(item, v) { let k = 0; item.stops.forEach((s, i) => { if (s <= v) k = i; }); return k; }
@@ -193,12 +262,13 @@ function wave(w) {
   cv.addEventListener('pointermove', e => { if (drag >= 0) move(e); });
   for (const up of ['pointerup', 'pointercancel']) cv.addEventListener(up, () => { drag = -1; });
   function draw() {
+    if (!cv.clientWidth) return; // (on a tab not shown: drawn when it is)
     const css = getComputedStyle(document.documentElement), c = n => css.getPropertyValue(n).trim();
     const dpr = window.devicePixelRatio || 1, W = Math.max(1, Math.round(cv.clientWidth * dpr)), H = Math.max(1, Math.round(cv.clientHeight * dpr));
     if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
     const g = cv.getContext('2d'); g.clearRect(0, 0, W, H);
     if (!w.peaks.length) {
-      g.fillStyle = c('--dim'); g.font = (14 * dpr) + 'px system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillStyle = c('--dim'); g.font = (14 * dpr) + lettering; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillText(w.emptyText || (w.missing ? 'MISSING FROM THE CARD: ' + w.recording : 'NO RECORDING: PICK ONE ABOVE'), W / 2, H / 2);
       note.textContent = ''; return;
     }
@@ -212,7 +282,7 @@ function wave(w) {
       g.fillStyle = played ? c('--teal') : c('--line');
       g.fillRect(px, mid - h, 1, 2 * h);
     }
-    g.font = (11 * dpr) + 'px system-ui,sans-serif'; g.textBaseline = 'top';
+    g.font = (12 * dpr) + lettering; g.textBaseline = 'top';
     w.marks.forEach((id, k) => {
       const mx = Math.min(W - 2 * dpr, Math.max(0, x(id) - dpr)), last = k === w.marks.length - 1;
       g.fillStyle = c('--brass'); g.fillRect(mx, 0, 2 * dpr, H);
@@ -221,7 +291,7 @@ function wave(w) {
       g.textAlign = last ? 'right' : 'left';
       const lx = last ? mx - 4 * dpr : mx + 6 * dpr, lw = g.measureText(label).width; // (on a patch of the background, to read over the picture)
       g.fillStyle = c('--bg'); g.fillRect(last ? lx - lw - 3 * dpr : lx - 3 * dpr, H - 18 * dpr, lw + 6 * dpr, 15 * dpr);
-      g.fillStyle = c('--brass'); g.fillText(label, lx, H - 16 * dpr);
+      g.fillStyle = c('--brass2'); g.fillText(label, lx, H - 16 * dpr);
     });
     const s = w.seconds;
     if (w.noteText) { note.textContent = w.noteText(); return; }
@@ -241,12 +311,12 @@ function wave(w) {
     }
     const mx = Math.min(W - 2 * dpr, Math.max(0, pos * W - dpr));
     g.fillStyle = c('--brass'); g.fillRect(mx, 0, 2 * dpr, H); g.fillRect(mx - 4 * dpr, 0, 10 * dpr, 10 * dpr);
-    g.font = (11 * dpr) + 'px system-ui,sans-serif'; g.textBaseline = 'top';
+    g.font = (12 * dpr) + lettering; g.textBaseline = 'top';
     const label = 'POSITION ' + at(w.band[0]) + '%  SPRAY ' + (spray * 100).toFixed(spray < 0.0995 ? 1 : 0) + '%', right = pos > 0.6;
     g.textAlign = right ? 'right' : 'left';
     const lx = right ? mx - 6 * dpr : mx + 8 * dpr, lw = g.measureText(label).width;
     g.fillStyle = c('--bg'); g.fillRect(right ? lx - lw - 3 * dpr : lx - 3 * dpr, H - 18 * dpr, lw + 6 * dpr, 15 * dpr);
-    g.fillStyle = c('--brass'); g.fillText(label, lx, H - 16 * dpr);
+    g.fillStyle = c('--brass2'); g.fillText(label, lx, H - 16 * dpr);
     note.textContent = (w.tone ? (w.missing ? w.recording + ' is missing from the card: the built-in TONE plays' : 'No recording: the built-in TONE plays') : w.recording) + ' · ' +
       w.seconds.toFixed(2) + ' S · the grains come from the lit part, the brass mark is POSITION. Click or drag to move it.';
   }
@@ -272,13 +342,14 @@ function tableWave(o) {
   cv.addEventListener('pointermove', e => { if (dragging) move(e); });
   for (const up of ['pointerup', 'pointercancel']) cv.addEventListener(up, () => { dragging = false; });
   function draw() {
+    if (!cv.clientWidth) return;
     const css = getComputedStyle(document.documentElement), c = n => css.getPropertyValue(n).trim();
     const dpr = window.devicePixelRatio || 1, W = Math.max(1, Math.round(cv.clientWidth * dpr)), H = Math.max(1, Math.round(cv.clientHeight * dpr));
     if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
     const g = cv.getContext('2d'); g.clearRect(0, 0, W, H);
     const t = table(), T = spec.tables;
     if (t < 0 || t >= T.names.length) {
-      g.fillStyle = c('--dim'); g.font = (14 * dpr) + 'px system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillStyle = c('--dim'); g.font = (14 * dpr) + lettering; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillText(o.name + ' IS OFF: TABLE ' + o.name + ' TURNS IT ON', W / 2, H / 2);
       note.textContent = ''; return;
     }
@@ -303,9 +374,9 @@ function tableWave(o) {
     // POSITION along the bottom: a brass mark, and the FRAME it reads.
     const mx = Math.min(W - 2 * dpr, Math.max(0, at(o.position) / 100 * W - dpr));
     g.fillStyle = c('--brass'); g.fillRect(mx, H - 8 * dpr, 2 * dpr, 8 * dpr);
-    g.font = (11 * dpr) + 'px system-ui,sans-serif'; g.textBaseline = 'top'; g.textAlign = 'left';
+    g.font = (12 * dpr) + lettering; g.textBaseline = 'top'; g.textAlign = 'left';
     g.fillStyle = c('--text'); g.fillText(o.name + '  ' + T.names[t], 6 * dpr, 6 * dpr);
-    g.fillStyle = c('--brass'); g.textAlign = 'right'; g.fillText('FRAME ' + (pos + 1).toFixed(2) + ' OF ' + F, W - 6 * dpr, 6 * dpr);
+    g.fillStyle = c('--brass2'); g.textAlign = 'right'; g.fillText('FRAME ' + (pos + 1).toFixed(2) + ' OF ' + F, W - 6 * dpr, 6 * dpr);
     note.textContent = 'POSITION ' + o.name + ' ' + at(o.position) + '%: the bright wave is the frame it reads. Click or drag to move it.';
   }
   waves.push({draw});
@@ -313,20 +384,43 @@ function tableWave(o) {
 }
 function drawWaves() { for (const w of waves) w.draw(); }
 window.addEventListener('resize', drawWaves);
+
+// ---- the tabs: the handheld's pages, EFFECTS and MODS, one at a time (ALL shows every page, one under another) ----
+let tabNow = '';
+function tabKey() { return 'apotheca.designTab.' + (spec ? spec.page + '.' + spec.name : ''); }
+function pane(name, label) { // a plate for a tab, and its tab
+  const p = el('section', 'plate'); p.dataset.pane = name; p.dataset.section = label; p.hidden = true;
+  const b = el('button', '', label); b.setAttribute('role', 'tab'); b.dataset.tab = name; b.onclick = () => showTab(name);
+  $('tabs').append(b); $('all').append(p);
+  return p;
+}
+function showTab(name) {
+  const tabs = [...$('tabs').children];
+  if (!tabs.some(b => b.dataset.tab === name)) name = tabs.length ? tabs[0].dataset.tab : '';
+  tabNow = name;
+  const every = name === '*';
+  document.body.classList.toggle('all', every);
+  for (const b of tabs) b.setAttribute('aria-selected', b.dataset.tab === name);
+  for (const p of $('all').children) p.hidden = every ? p.dataset.pane === '*' : p.dataset.pane !== name;
+  try { localStorage.setItem(tabKey(), name); } catch (e) {}
+  drawWaves(); drawEnvs();
+}
 function build() {
-  const all = $('all'); all.textContent = ''; controls = {}; macroControls = []; envs = []; waves = []; fxControls = {}; fxKinds = {}; modCards = [];
+  const all = $('all'); all.textContent = ''; $('pinned').textContent = ''; $('tabs').textContent = '';
+  controls = {}; macroControls = []; envs = []; waves = []; fxControls = {}; fxKinds = {}; modCards = []; pads = [];
   const none = !spec || !spec.name, sampler = !none && spec.page === 'sampler', kit = !none && spec.page === 'kit';
-  $('nothing').hidden = !none; $('keys').hidden = none || kit; $('roll').hidden = none || !spec.roll;
+  $('nothing').hidden = !none; $('work').hidden = none; $('keys').hidden = none || kit; $('roll').hidden = none || !spec.roll;
   document.body.classList.toggle('kit', kit);
   // A sampler keeps no presets (its sound is its recording), nor does a kit.
   for (const id of ['presetbox', 'name', 'save']) $(id).hidden = none || sampler || kit;
   if (none) return;
-  if (kit) { buildKit(all); buildFx(all); buildMods(all); return; }
-  if (sampler || spec.waves) for (const w of spec.waves) all.append(recordingSection(w)); // (a CLOUD's too)
+  let want = tabNow; try { want = localStorage.getItem(tabKey()) || tabNow; } catch (e) {}
+  if (kit) { buildKit(); buildFx(); buildMods(); showTab(want); paintAll(); return; }
+  if (sampler || spec.waves) for (const w of spec.waves) $('pinned').append(recordingSection(w)); // (a CLOUD's too)
   if (spec.tables) { // MORPH: A's and B's tables, side by side
-    const s = el('section'), row = el('div', 'tables'); s.append(el('h2', '', 'TABLES'));
+    const s = el('section', 'plate'), row = el('div', 'tables'); s.append(el('h3', '', 'TABLES')); s.dataset.section = 'TABLES';
     for (const o of spec.oscs) row.append(tableWave(o));
-    s.append(row); all.append(s);
+    s.append(row); $('pinned').append(s);
   }
   // presets, in their folders
   const sel = $('preset'); sel.textContent = ''; let group = null, folder = null;
@@ -334,24 +428,25 @@ function build() {
     if (p.folder !== folder) { folder = p.folder; group = el('optgroup'); group.label = folder; sel.append(group); }
     const o = el('option', '', p.name); o.value = i; group.append(o);
   });
-  // macros
+  // macros: always in view, above the pages
   if (spec.macros.length) {
-  const ms = el('section'); ms.append(el('h2', '', 'MACROS (the eight on the handheld\'s main page)'));
-  const mg = el('div', 'grid');
-  spec.macros.forEach((name, m) => {
-    const box = el('div', 'ctl'), lab = el('label'), val = el('b'), input = el('input');
-    input.type = 'range'; input.min = 0; input.max = 200; input.step = 1;
-    const show = () => { const v = input.value - 100; val.textContent = (v > 0 ? '+' : '') + v; };
-    input.addEventListener('input', () => { touched['m' + m] = Date.now(); show(); tell('macro' + m, 'macro ' + m + ' ' + (input.value / 200)); });
-    input.addEventListener('dblclick', () => { input.value = 100; input.dispatchEvent(new Event('input')); });
-    lab.append(el('span', '', name), val); box.append(lab, input); mg.append(box);
-    macroControls.push({input, show});
-  });
-  ms.append(mg); all.append(ms);
+    const ms = el('section', 'plate macros'); ms.dataset.section = 'MACROS'; ms.append(el('h3', '', 'MACROS · the eight on the handheld\'s main page (double-click one: back to the middle)'));
+    const mg = el('div', 'grid');
+    spec.macros.forEach((name, m) => {
+      const box = el('div', 'ctl'), lab = el('label'), val = el('b'), input = el('input');
+      input.type = 'range'; input.min = 0; input.max = 200; input.step = 1;
+      const show = () => { const v = input.value - 100; val.textContent = (v > 0 ? '+' : '') + v; };
+      input.addEventListener('input', () => { touched['m' + m] = Date.now(); show(); tell('macro' + m, 'macro ' + m + ' ' + (input.value / 200)); });
+      input.addEventListener('dblclick', () => { input.value = 100; input.dispatchEvent(new Event('input')); });
+      lab.append(el('span', '', name), val); box.append(lab, input); mg.append(box);
+      macroControls.push({input, show});
+    });
+    ms.append(mg); $('pinned').append(ms);
   }
-  // the pages
-  for (const page of spec.pages) {
-    const s = el('section'); s.append(el('h2', '', page.name));
+  // the pages: a tab each
+  spec.pages.forEach((page, n) => {
+    const s = pane('p' + n, page.name);
+    if (spec.pages.length > 1) s.append(el('h3', '', page.name));
     if (page.env && page.items.length >= 18) {
       const top = el('div', 'envtop'), svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('viewBox', '0 0 400 100'); svg.setAttribute('preserveAspectRatio', 'none');
@@ -364,16 +459,19 @@ function build() {
     } else {
       const g = el('div', 'grid'); for (const item of page.items) g.append(control(item)); s.append(g);
     }
-    all.append(s);
-  }
-  buildFx(all); buildMods(all);
-  drawWaves();
+  });
+  buildFx(); buildMods();
+  if (spec.pages.length > 1) pane('*', 'All pages');
+  showTab(want);
+  paintAll();
 }
 // A sampler's recording: which one (the names on the card, in their folders), its picture, and a
 // key that plays it at its own pitch for as long as it is held (as X on the handheld).
 function recordingSection(w) {
-  const s = el('section'), top = el('div', 'wavetop'), pick = el('select'), play = el('button');
-  s.append(el('h2', '', 'RECORDING'));
+  const s = el('section', 'plate'), top = el('div', 'wavetop'), pick = el('select'), play = el('button', 'main');
+  s.dataset.section = 'RECORDING';
+  top.append(el('h3', '', 'RECORDING'));
+  top.firstChild.style.margin = '0';
   pick.id = 'recording';
   recordingOptions(pick, w.band ? 'THE BUILT-IN TONE' : 'NONE', w.recording);
   pick.addEventListener('change', () => { tell('sample', ('sample ' + pick.value).trim()); pick.blur(); });
@@ -397,10 +495,11 @@ function recordingOptions(pick, first, now) {
   pick.value = now;
 }
 
-// ---- a drum KIT: a card a lane ----
+// ---- a drum KIT: a pad a lane down the left, the lane picked on the right ----
 // Each lane's settings are ids of their own (lane * spec.stride + field), so a lane's control sends
 // `set` as any other. Fields 0 to 7 are EDIT's rows (START, END, FADE IN, FADE OUT, GAIN, PITCH, FINE,
-// REVERSE); then FIT, CHOKE, VOLUME, HUMAN TIME, HUMAN LEVEL, SWING.
+// REVERSE); then FIT, CHOKE, VOLUME, HUMAN TIME, HUMAN LEVEL, SWING. Every lane's card is built (and
+// kept up to date); only the one picked is shown.
 const kEdit = {start: 0, end: 1, fadeIn: 2, fadeOut: 3, gain: 4, pitch: 5, fine: 6, reverse: 7}, kFit = 8, kChoke = 9, kVolume = 10, kHumanTime = 11, kHumanLevel = 12, kSwing = 13;
 // The guard and how loud a point of the file is made, for the picture only: lane_edit.cpp's guarded()
 // and laneEditLevelAt(), which the KIT page's EDIT view draws with. Keep them the same.
@@ -419,18 +518,47 @@ function levelAt(v, b, at, seconds) {
 // START and END as the handheld reads them (laneEditText): a time into the lane's own file. Shown
 // while a mark is dragged; the handheld's own reading takes its place when it comes.
 function timeText(v, seconds) { const s = v / 100000 * seconds; return s < 1 ? (s * 1000).toFixed(1) + ' MS' : s.toFixed(3) + ' S'; }
-function buildKit(all) {
-  const help = el('div', '', 'PLAY a lane: hold its PLAY, or hold 1 to 8 on the computer\'s keyboard. Drag START and END on a picture. A lane\'s SOUND may be a SYNTH voice, made from its knobs. The files on the card are never changed.');
-  help.id = 'kithelp'; all.append(help);
-  const lanes = el('div', 'lanes');
-  for (const w of spec.waves) lanes.append(laneCard(w));
-  all.append(lanes);
+let laneNow = 0, pads = [];
+function buildKit() {
+  const p = pane('lanes', 'Lanes');
+  p.append(el('p', 'say', 'PLAY a lane: hold its PLAY, or hold 1 to 8 on the computer\'s keyboard. Pick a lane on the left; drag START and END on its picture. A lane\'s SOUND may be a SYNTH voice, made from its knobs. The files on the card are never changed.'));
+  const kit = el('div', 'kitgrid'), left = el('div', 'pads'), right = el('div');
+  try { laneNow = +localStorage.getItem('apotheca.lane') || 0; } catch (e) {}
+  if (!(laneNow >= 0 && laneNow < spec.waves.length)) laneNow = 0;
+  for (const w of spec.waves) { left.append(lanePad(w)); right.append(laneCard(w)); }
+  kit.append(left, right); p.append(kit);
+  pickLane(laneNow);
+}
+function pickLane(lane) {
+  laneNow = lane;
+  for (const c of document.querySelectorAll('.lane')) c.hidden = +c.dataset.lane !== lane;
+  for (const pd of pads) pd.el.classList.toggle('now', pd.lane === lane);
+  try { localStorage.setItem('apotheca.lane', lane); } catch (e) {}
   drawWaves();
 }
+// A lane's pad: its number, its sound, a small picture, and PLAY (held). A click elsewhere on it picks it.
+function lanePad(w) {
+  const pad = el('div', 'pad'), what = el('span', 'what'), cv = el('canvas'), play = el('button', 'main', 'PLAY');
+  pad.append(el('span', 'num', String(w.lane + 1)), what, play, cv);
+  pad.addEventListener('click', e => { if (e.target !== play) pickLane(w.lane); });
+  play.addEventListener('pointerdown', e => { hear(w.lane, true); play.setPointerCapture(e.pointerId); e.preventDefault(); });
+  for (const up of ['pointerup', 'pointercancel']) play.addEventListener(up, () => hear(w.lane, false));
+  const draw = () => {
+    what.textContent = w.synth ? w.synth.name + ' · SYNTH' : w.recording ? w.recording.slice(w.recording.lastIndexOf('/') + 1) : w.drum + ' · BUILT IN';
+    if (!cv.clientWidth) return;
+    const dpr = window.devicePixelRatio || 1, W = Math.round(cv.clientWidth * dpr), H = Math.round(cv.clientHeight * dpr);
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+    const g = cv.getContext('2d'), n = w.peaks.length; g.clearRect(0, 0, W, H);
+    g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue(laneNow === w.lane ? '--teal' : '--teal2').trim();
+    for (let px = 0; px < W && n; ++px) { const h = Math.max(dpr, w.peaks[Math.min(n - 1, Math.floor(px / W * n))] / 1000 * H / 2); g.fillRect(px, H / 2 - h, 1, 2 * h); }
+  };
+  waves.push({draw}); pads.push({el: pad, lane: w.lane, play});
+  return pad;
+}
 function laneCard(w) {
-  const lane = w.lane, base = lane * spec.stride, card = el('section', 'lane'), top = el('div', 'top');
+  const lane = w.lane, base = lane * spec.stride, card = el('div', 'lane'), top = el('div', 'top');
   card.dataset.lane = lane;
-  const pick = el('select'), play = el('button', '', 'PLAY');
+  const pick = el('select'), play = el('button', 'main', 'PLAY');
   pick.id = 'sound' + lane; play.id = 'play' + lane;
   recordingOptions(pick, 'BUILT-IN ' + w.drum, w.recording);
   // DRUM SYNTH: the twelve models after the built-in drum (value "synth:WORD"), as on the handheld.
@@ -446,7 +574,8 @@ function laneCard(w) {
   });
   play.addEventListener('pointerdown', e => { hear(lane, true); play.setPointerCapture(e.pointerId); e.preventDefault(); });
   for (const up of ['pointerup', 'pointercancel']) play.addEventListener(up, () => hear(lane, false));
-  top.append(el('span', 'num', String(lane + 1)), pick, play);
+  top.append(el('span', 'num', String(lane + 1)), el('h3', '', 'SOUND'), pick, play);
+  top.children[1].style.margin = '0';
   card.append(top);
   const laneState = () => state && state.lanes ? state.lanes[lane] : null;
   // A setting of this lane: what the handheld reads, once it has the value shown.
@@ -467,25 +596,27 @@ function laneCard(w) {
     return what + ' · ' + (s.making ? 'MAKING IT...' : s.fitting ? 'FITTING...' : 'PLAYS ' + s.plays.toFixed(2) + ' S' + (fit > 0 && w.recording ? ', FITTED' : ''));
   };
   card.append(wave(w));
-  const g = el('div', 'grid five');
+  const cols = el('div', 'lanecols'), mix = el('div', 'card'), g = el('div', 'grid');
+  mix.append(el('h3', '', 'LANE'));
   for (const f of [kVolume, kChoke, kFit, kHumanTime, kHumanLevel, kSwing]) {
     const box = control(item(f));
-    if (f === kFit && !w.recording && !w.synth) { box.querySelector('select').disabled = true; box.title = 'FIT stretches a recording: a built-in drum has none.'; }
+    if (f === kFit && !w.recording && !w.synth) { box.querySelector('select, input').disabled = true; box.title = 'FIT stretches a recording: a built-in drum has none.'; }
     g.append(box);
   }
-  card.append(g);
-  if (w.synth) card.append(synthBox(w, lane, laneState));
-  card.append(el('h3', '', 'EDIT'));
-  const e = el('div', 'grid');
+  mix.append(g); cols.append(mix);
+  const ed = el('div', 'card'), e = el('div', 'grid');
+  ed.append(el('h3', '', 'EDIT'));
   for (const f of [kEdit.start, kEdit.end, kEdit.fadeIn, kEdit.fadeOut, kEdit.gain, kEdit.pitch, kEdit.fine, kEdit.reverse]) e.append(control(item(f)));
-  const acts = el('div', 'acts'), norm = el('button', 'quiet', 'NORMALIZE'), trim = el('button', 'quiet', 'TRIM SILENCE');
+  const acts = el('div', 'acts'), norm = el('button', '', 'NORMALIZE'), trim = el('button', '', 'TRIM SILENCE');
   norm.id = 'normalize' + lane; trim.id = 'trim' + lane;
   // Done on the handheld (it knows the sound): the boxes take what it made of them.
   const after = fields => { for (const f of fields) touched[base + f] = 0; setTimeout(look, 250); };
   norm.addEventListener('click', () => { tell('normalize' + lane, 'normalize ' + lane); after([kEdit.gain]); });
   trim.addEventListener('click', () => { tell('trim' + lane, 'trim ' + lane); after([kEdit.start, kEdit.end]); });
   acts.append(norm, trim);
-  card.append(e, acts);
+  ed.append(e, acts); cols.append(ed);
+  if (w.synth) cols.append(synthBox(w, lane, laneState));
+  card.append(cols);
   return card;
 }
 // What a lane's SOUND choice shows: its synth model, else its recording ('' : the built-in drum).
@@ -493,8 +624,8 @@ function soundOf(w) { return w.synth ? 'synth:' + w.synth.word : w.recording; }
 // A synth lane's VOICE (DRUM SYNTH): its named voices, then its knobs, each a dial 0..100 whose reading
 // the handheld gives (it hangs on the model), shown as the number while it is on its way.
 function synthBox(w, lane, laneState) {
-  const box = el('div'); box.append(el('h3', '', 'VOICE: ' + w.synth.name));
-  const row = el('div', 'acts'), pick = el('select');
+  const box = el('div', 'card'); box.append(el('h3', '', 'VOICE: ' + w.synth.name));
+  const row = el('div', 'fxkind'), pick = el('select');
   pick.id = 'voice' + lane;
   const turned = el('option', '', 'TURNED BY HAND'); turned.value = -1; turned.disabled = true; pick.append(turned);
   w.synth.voices.forEach((name, i) => { const o = el('option', '', name); o.value = i; pick.append(o); });
@@ -521,6 +652,7 @@ function hear(lane, on) {
   on ? lanesDown.add(lane) : lanesDown.delete(lane);
   tell('h' + (++serial), 'hear ' + lane + ' ' + (on ? 1 : 0));
   const b = $('play' + lane); if (b) b.classList.toggle('on', on);
+  for (const pd of pads) if (pd.lane === lane) pd.play.classList.toggle('on', on);
 }
 
 // ---- EFFECTS and MODs: every instrument's page ends with them ----
@@ -567,7 +699,7 @@ function fxTell(fxid, v) {
 // One slot: which effect it holds, and the settings of that one. A slot given another effect is a
 // new spec, so the page is built again (as a preset picked: the boxes let go, and look soon).
 function fxSlot(name, base, slotNo, kinds, params) {
-  const card = el('section', 'lane'), row = el('div', 'fxkind'), pick = el('select');
+  const card = el('div', 'card'), row = el('div', 'fxkind'), pick = el('select');
   card.append(el('h3', '', name));
   for (const k of kinds) { const o = el('option', '', k.name); o.value = k.id; pick.append(o); }
   pick.addEventListener('change', () => { tell('fxtype' + slotNo, 'fxtype ' + slotNo + ' ' + pick.value); touched = {}; pick.blur(); setTimeout(look, 250); });
@@ -578,21 +710,22 @@ function fxSlot(name, base, slotNo, kinds, params) {
   card.append(g);
   return card;
 }
-function buildFx(all) {
+function buildFx() {
   const fx = spec.fx; if (!fx) return;
-  const s = el('section'); s.append(el('h2', '', 'EFFECTS'));
-  const cards = el('div', 'lanes');
+  const s = pane('fx', 'Effects');
+  const cards = el('div', 'cards');
   fx.slots.forEach((slot, i) => cards.append(fxSlot(slot.name, i * 4, i, slot.kinds, slot.params)));
-  fx.buses.forEach((bus, b) => cards.append(fxSlot(bus.name, kFxBus + b * 4, 3 + b, bus.kinds, bus.params)));
-  fx.master.forEach((slot, i) => cards.append(fxSlot(slot.name, kFxMaster + i * 4, 5 + i, slot.kinds, slot.params)));
-  s.append(cards);
-  const g = el('div', 'grid');
+  // the track on the mixer: its two sends, LEVEL and PAN, beside its slots
+  const mixer = el('div', 'card'), g = el('div', 'grid');
+  mixer.append(el('h3', '', 'SENDS AND MIXER'));
   fx.sends.forEach((send, b) => g.append(fxControl(kFxSends + b, send.name + ' SEND', null)));
   const mix = fx.mix, db = el('div', 'ctl'), pan = el('div', 'ctl');
   db.append(mixRow('LEVEL', mix.dbmin, mix.dbmax, v => (v > 0 ? '+' : '') + v + ' dB', kFxMixDb));
   pan.append(mixRow('PAN', -mix.pan, mix.pan, v => v === 0 ? 'CENTER' : v < 0 ? (-v) + ' L' : v + ' R', kFxMixPan));
-  g.append(db, pan);
-  s.append(g); all.append(s);
+  g.append(db, pan); mixer.append(g); cards.append(mixer);
+  fx.buses.forEach((bus, b) => cards.append(fxSlot(bus.name, kFxBus + b * 4, 3 + b, bus.kinds, bus.params)));
+  fx.master.forEach((slot, i) => cards.append(fxSlot(slot.name, kFxMaster + i * 4, 5 + i, slot.kinds, slot.params)));
+  s.append(cards);
 }
 // The mixer's LEVEL and PAN: whole numbers over their range.
 function mixRow(name, lo, hi, text, fxid) {
@@ -611,7 +744,7 @@ function mixRow(name, lo, hi, text, fxid) {
 // PHASE), a STEPPER's RATE (in time alone), LENGTH, SLEW, CHANCE and its row of 16 steps. Aiming an
 // OFF MOD at something wakes it as an LFO (ModKnob::fresh), so KIND picked first is picked again.
 function modCard(m) {
-  const card = el('section', 'lane'); card.append(el('h3', '', 'MOD ' + (m + 1)));
+  const card = el('div', 'card'); card.append(el('h3', '', 'MOD ' + (m + 1)));
   const box = {lfo: [], stepper: [], free: []};
   const sel = (name, options, field) => {
     const row = el('div', 'fxkind'), lab = el('span', 'dim', name), pick = el('select');
@@ -633,7 +766,7 @@ function modCard(m) {
   box.stepper.push(box.length.box, box.slew.box, box.chance.box);
   box.speed = modSlider(card, 'SPEED', 2, 2000, v => (v / 100).toFixed(2) + ' HZ', v => modTell(m, kMod.speed, v / 100), v => v * 100);
   box.free.push(box.speed.box);
-  const sh = el('h3', '', 'STEPS'); card.append(sh);
+  const sh = el('h3', '', 'STEPS'); sh.style.marginTop = '10px'; card.append(sh);
   const steps = el('div', 'steps');
   box.steps = [];
   for (let s = 0; s < 16; ++s) {
@@ -670,12 +803,12 @@ function modTell(m, f, v) {
   }
   tell('mod' + m + '_' + f, 'modset ' + m + ' ' + f + ' ' + v);
 }
-function buildMods(all) {
+function buildMods() {
   if (!spec.mods) return;
-  const s = el('section'); s.append(el('h2', '', 'MODS'));
-  const cards = el('div', 'lanes');
+  const s = pane('mods', 'Mods');
+  const cards = el('div', 'cards mods');
   for (let m = 0; m < 2; ++m) cards.append(modCard(m));
-  s.append(cards); all.append(s);
+  s.append(cards);
 }
 // Put the handheld's EFFECTS and MODs on the page, except a control being moved right now.
 function fillFxMods() {
@@ -724,8 +857,8 @@ function drawEnvs() {
       if (hold === i + 1) { holdX = x; x += 40; pts.push([x, v(8 + i)]); }
     }
     const px = p => (p[0] / total * 396 + 2).toFixed(1) + ',' + (96 - p[1] / 99 * 92).toFixed(1);
-    e.svg.innerHTML = '<polyline fill="none" stroke="#6fbfa3" stroke-width="2" vector-effect="non-scaling-stroke" points="' + pts.map(px).join(' ') + '"/>' +
-      (holdX >= 0 ? '<rect x="' + (holdX / total * 396 + 2).toFixed(1) + '" y="0" width="' + (40 / total * 396).toFixed(1) + '" height="100" fill="#c9a15a" opacity=".12"/>' : '');
+    e.svg.innerHTML = '<polyline fill="none" stroke="#00ffb4" stroke-width="2" vector-effect="non-scaling-stroke" points="' + pts.map(px).join(' ') + '"/>' +
+      (holdX >= 0 ? '<rect x="' + (holdX / total * 396 + 2).toFixed(1) + '" y="0" width="' + (40 / total * 396).toFixed(1) + '" height="100" fill="#c9a15a" opacity=".16"/>' : '');
   }
 }
 // Put the handheld's values on the page, except a control being moved right now.
@@ -749,6 +882,7 @@ function fill() {
     const v = $('voice' + w.lane); if (v && s && s.synth && document.activeElement !== v) v.value = s.synth.voice;
   }
   fillFxMods();
+  paintAll();
   drawEnvs(); drawWaves();
 }
 async function look() {
@@ -759,7 +893,7 @@ async function look() {
     if (!spec || state.spec !== specSerial) { specSerial = state.spec; spec = await get('/design/spec'); build(); }
     if (!state.name) $('what').textContent = 'TRACK ' + state.track;
     fill();
-  } catch (e) { say('The handheld is not answering. Is the WiFi page still on?', 'no'); }
+  } catch (e) { say('The handheld is not answering. Is the WiFi page still on?', 'no'); if (window.console) console.error(e); }
 }
 $('preset').addEventListener('change', () => { tell('preset', 'preset ' + $('preset').value); touched = {}; $('preset').blur(); setTimeout(look, 250); });
 for (const box of [$('called'), $('name')]) box.addEventListener('keydown', e => { if (e.key === 'Enter') box.blur(); });
@@ -773,7 +907,7 @@ $('save').addEventListener('click', () => {
 
 // ---- the keyboard ----
 let octave = 4; const down = new Set();
-function note(key, on) { if (key < 0 || key > 127 || on === down.has(key)) return; on ? down.add(key) : down.delete(key); tell('n' + (++serial), 'note ' + key + ' ' + (on ? 1 : 0)); paint(); }
+function note(key, on) { if (key < 0 || key > 127 || on === down.has(key)) return; on ? down.add(key) : down.delete(key); tell('n' + (++serial), 'note ' + key + ' ' + (on ? 1 : 0)); paintKeys(); }
 function board() {
   const b = $('board'); b.textContent = ''; const whites = [0, 2, 4, 5, 7, 9, 11], blacks = {1: 1, 3: 2, 6: 4, 8: 5, 10: 6}, n = 21, w = 100 / n;
   for (let o = 0; o < 3; ++o) {
@@ -782,7 +916,7 @@ function board() {
   }
   $('oct').textContent = 'lowest key: C' + (octave - 1);
 }
-function paint() { for (const k of $('board').children) k.classList.toggle('on', down.has(octave * 12 + +k.dataset.semi)); }
+function paintKeys() { for (const k of $('board').children) k.classList.toggle('on', down.has(octave * 12 + +k.dataset.semi)); }
 let pointerKey = -1;
 $('board').addEventListener('pointerdown', e => { if (e.target.dataset.semi === undefined) return; pointerKey = octave * 12 + +e.target.dataset.semi; note(pointerKey, true); e.preventDefault(); });
 for (const up of ['pointerup', 'pointercancel', 'pointerleave']) window.addEventListener(up, () => { if (pointerKey >= 0) note(pointerKey, false); pointerKey = -1; });

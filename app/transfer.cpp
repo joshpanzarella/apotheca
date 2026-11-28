@@ -28,6 +28,7 @@
 #include "samples.hpp"
 #include "song_file.hpp"
 #include "version.hpp"
+#include "web_look.hpp"
 
 extern char** environ;
 
@@ -42,120 +43,186 @@ namespace {
 const char* const kBenchSays = "The rows come as they are timed: about four minutes on the handheld. Leave the song stopped.\n\n";
 const char* const kTooManyWrong = "too many wrong numbers: wait a minute\n";
 
+// The files page (its look: web_look.cpp). Served as withWebLook(kPage), made once.
 const char* const kPage = R"page(<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Apotheca</title>
-<style>
-*{box-sizing:border-box}
-body{background:#14110e;color:#e0d5bf;font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;margin:0}
-main{max-width:880px;margin:0 auto;padding:20px 16px 60px}
-header{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 16px;border-bottom:1px solid #43392f;padding-bottom:12px}
-h1{font-size:20px;letter-spacing:.16em;margin:0;font-weight:600}
-.mark{height:11px;width:auto;color:#cdbb98;opacity:.8;align-self:center} /* the Shapetaker wordmark, as at the foot of the VCV Rack panels (Clairaudient.svg, Neokurat) */
-.dim,.size,.count{color:#8f8370}
-.meta{font-size:12px;letter-spacing:.06em;color:#8f8370;text-transform:uppercase}
-header a{margin-left:auto}
-h2{font-size:12px;font-weight:600;letter-spacing:.16em;color:#8f8370;margin:30px 0 8px;text-transform:uppercase;display:flex;align-items:center;gap:10px}
-h2 .count{font-weight:400;letter-spacing:.06em}
-p{color:#8f8370;margin:0 0 10px}
-a{color:#6fbfa3}
-button,.btn{background:none;color:#e0d5bf;border:1px solid #43392f;border-radius:3px;padding:5px 10px;font:inherit;font-size:11px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;text-decoration:none;white-space:nowrap;line-height:1.5}
-button:hover,.btn:hover{border-color:#8f8370}
-button.main{background:#6fbfa3;border-color:#6fbfa3;color:#14110e;font-weight:600;padding:9px 16px;font-size:12px}
-button.del{color:#c45446}
-button.sure{background:#c45446;border-color:#c45446;color:#14110e;font-weight:600}
-button.play{color:#6fbfa3;min-width:54px}
-button.play.on{background:#6fbfa3;border-color:#6fbfa3;color:#14110e}
-input[type=text],select{background:#14110e;color:#e0d5bf;border:1px solid #43392f;border-radius:3px;padding:6px 8px;font:inherit;max-width:100%}
-input[type=text]:focus,select:focus{outline:0;border-color:#6fbfa3}
-.hid{display:none!important}
-#drop{background:#1f1a16;border:1px dashed #43392f;border-radius:4px;padding:16px;margin-top:18px}
-#drop.over,.folder.over{border-color:#6fbfa3;background:#232a25}
-#plan{margin-top:12px;padding:12px;background:#1f1a16;border:1px solid #6fbfa3;border-radius:4px}
-#plan h3{margin:0 0 8px;font-size:15px;letter-spacing:.06em}
-#plan p{margin:4px 0;font-size:13px}
-#plan details{border-top:1px solid #2a231d;padding:5px 0;font-size:13px}
-#plan summary{cursor:pointer}
-#plan summary b{display:inline-block;min-width:210px}
-#plan ul{margin:6px 0 2px 18px;padding:0;list-style:none;max-height:220px;overflow:auto}
-#plan li{padding:1px 0}
-#plan .was{color:#8a7f72}
-#plan .warn{color:#e0a458}
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='20' r='18' fill='%2317120d' stroke='%23c9a15a' stroke-width='3'/%3E%3Cpath d='M20 9 30 28H10z' fill='none' stroke='%23e3c47f' stroke-width='3'/%3E%3C/svg%3E">
+<style>@@LOOK@@
+/* ---- the files page: the recordings the big plate on the left, sending and the rest on the right ---- */
+.grow{flex:1}
 .line{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}
-.line label{font-size:11px;letter-spacing:.1em;color:#8f8370;text-transform:uppercase}
+label{font-size:13px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase}
+.desk{display:grid;grid-template-columns:minmax(0,1fr) clamp(340px,31vw,520px);gap:14px;padding:14px 16px 16px}
+.side{display:flex;flex-direction:column;gap:14px;min-width:0}
 ul{list-style:none;padding:0;margin:0}
-#log{margin-top:10px}
-#log li{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:6px 0;border-top:1px solid #2a231d;font-size:14px}
+#find{width:190px;margin-left:auto}
+/* the recordings: folders down the left, the folder shown on the right */
+.browser{display:grid;grid-template-columns:minmax(150px,210px) minmax(0,1fr);gap:12px}
+#folders{display:flex;flex-direction:column;gap:2px;padding-right:10px;border-right:1px solid rgba(110,88,56,.45)}
+.fold{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:transparent;border:1px solid transparent;box-shadow:none;padding:7px 8px;letter-spacing:.1em;font-size:14px;color:var(--text)}
+.fold:hover{border-color:var(--line);background:rgba(255,235,200,.04)}
+.fold .fname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.fold.sub{padding-left:24px}
+.fold.sub .fname::before{content:"";display:inline-block;width:8px;height:8px;border-left:1px solid var(--brass);border-bottom:1px solid var(--brass);margin:0 6px 3px -12px;vertical-align:middle}
+.fold.loose .fname{color:var(--purple)}
+.fold.now{background:linear-gradient(90deg,rgba(0,255,180,.14),rgba(0,255,180,.02));border-color:rgba(0,255,180,.45);color:var(--teal)}
+.fold.now .fname{color:var(--teal)}
+.fold.none{opacity:.45}
+.fold.newf{color:var(--brass2);border:1px dashed var(--line);margin-top:6px;justify-content:center}
+.folder.over,#drop.over{border-color:var(--teal)!important;background:rgba(0,255,180,.09)!important;box-shadow:0 0 0 1px var(--teal),0 0 18px rgba(0,255,180,.2)}
+.group{border:1px solid transparent;border-radius:4px;margin-bottom:10px}
+.fhead{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:7px 8px;position:sticky;top:0;z-index:2;background:#28211a;border:1px solid var(--line);border-radius:4px}
+.fhead .fname{font-size:15px;letter-spacing:.16em;text-transform:uppercase;color:var(--brass2);margin-right:auto;overflow-wrap:anywhere}
+.fhead .fname.loose{color:var(--purple)}
+.fhead button{padding:5px 9px;font-size:12px}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:6px 8px;border-bottom:1px solid rgba(75,61,47,.55)}
+.row:hover{background:rgba(255,235,200,.035)}
+.row .name,.row .size,#log .what,#log .state,#plan li,#plan summary b,.chip{font-family:var(--data);letter-spacing:0}
+.row .name{flex:1 1 150px;min-width:0;overflow-wrap:anywhere;font-size:15px}
+.row .size{font-size:13px;color:var(--dim);min-width:58px;text-align:right}
+.acts{display:flex;gap:5px;flex-wrap:wrap}
+.acts button,.acts .btn,.row>button{padding:5px 8px;font-size:12px}
+button.play{min-width:58px;color:var(--teal)}
+button.play.on{background:linear-gradient(180deg,#1fe3aa,#00b07e);border-color:var(--teal);color:#08130e}
+input.pick{width:18px;height:18px;margin:0;cursor:pointer;flex:none}
+.edit{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--well);border:1px solid var(--edge);padding:10px;border-radius:4px}
+.edit input{flex:1 1 150px}
+.none{padding:10px 8px;color:var(--dim);font-size:14px}
+#bulk{position:sticky;top:0;z-index:5;background:linear-gradient(180deg,#203a30,#1a2c25);border:1px solid var(--teal);border-radius:4px;padding:8px 10px;margin:0 0 10px}
+#bulk b{color:var(--teal);font-weight:normal;letter-spacing:.08em}
+/* sending */
+#drop{border-style:solid}
+#drop .well{border:1px dashed var(--edge);border-radius:5px;padding:12px;background:rgba(0,0,0,.18);display:flex;flex-direction:column;gap:10px}
+#drop .say{margin:0}
+.small{font-size:13px}
+#activity{display:flex;flex-direction:column}
+#log li{display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:3px 9px;align-items:center;padding:6px 2px;border-bottom:1px solid rgba(75,61,47,.55);font-size:14px}
+#log li::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--brass2);box-shadow:0 0 7px var(--brass)}
+#log li.ok::before{background:var(--teal);box-shadow:0 0 7px var(--teal)}
+#log li.no::before{background:var(--warn);box-shadow:0 0 7px var(--warn)}
 #log .what{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#log .state{color:#8f8370}
-#log .ok .state{color:#6fbfa3}
-#log .no .state{color:#c9a15a;white-space:normal;text-align:right}
-.bar{grid-column:1/3;height:3px;background:#2a231d}
-.bar i{display:block;height:3px;width:0;background:#6fbfa3}
-.no .bar i{background:#c9a15a}
-.folder,.panel{background:#1f1a16;border:1px solid #2a231d;border-radius:4px;margin-bottom:6px}
-.fhead{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;user-select:none}
-.fhead .tw{width:10px;color:#c9a15a;font-weight:600}
-.fhead .fname{letter-spacing:.12em;font-size:13px;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fhead .loose{color:#9a76b0}
-.fhead .count{font-size:12px;margin-right:auto}
-.row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:7px 12px;border-top:1px solid #2a231d}
-.row .name{flex:1 1 180px;min-width:0;overflow-wrap:anywhere}
-.row .size{font-size:12px;min-width:56px;text-align:right}
-.acts{display:flex;gap:6px;flex-wrap:wrap}
-.edit{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:#2a231d;padding:10px;border-radius:3px}
-.edit input{flex:1 1 150px;min-width:0}
-input.pick{width:17px;height:17px;margin:0;accent-color:#6fbfa3;cursor:pointer;flex:none}
-#bulk{position:sticky;top:0;z-index:5;background:#2a231d;border:1px solid #6fbfa3;border-radius:3px;padding:9px 12px;margin:0 0 8px}
-#bulk b{color:#6fbfa3;font-weight:600;letter-spacing:.06em}
-.none{padding:8px 12px;color:#8f8370;font-size:13px;border-top:1px solid #2a231d}
-.panel>.none:first-child,.panel>ul>.row:first-child{border-top:0}
-#find{margin-left:auto;width:150px;font-size:13px;padding:4px 8px;letter-spacing:0;text-transform:none}
-@media (max-width:560px){
- button,.btn{padding:8px 9px}
- .row .name{flex:1 1 0}
- .acts{flex-basis:100%}
- .acts>*{flex:1 1 auto;text-align:center}
- #find{width:110px}
- .fhead{flex-wrap:wrap;row-gap:6px}
- .fhead .fname{flex:1 1 60%}
+#log .state{color:var(--dim);text-align:right}
+#log .ok .state{color:var(--teal)}
+#log .no .state{color:var(--warn);white-space:normal;grid-column:2/-1;text-align:left}
+#log li>button{grid-column:3;padding:4px 8px;font-size:12px}
+.bar{grid-column:1/-1;height:4px;background:var(--well);border-radius:2px;overflow:hidden;box-shadow:inset 0 1px 1px #000}
+.bar i{display:block;height:4px;width:0;background:linear-gradient(90deg,var(--teal2),var(--teal))}
+.no .bar i{background:var(--warn)}
+/* songs, bounces, chord packs */
+.lib{display:flex;flex-direction:column}
+.lib .tabs{border-bottom:1px solid var(--edge);margin:-2px 0 10px}
+.lib .tabs button{display:flex;gap:7px;align-items:center}
+.tabbody .row .name{flex-basis:120px}
+/* a box over the page: the plan of a folder sent whole, and the update */
+.dialog{position:fixed;z-index:30;left:50%;top:50%;transform:translate(-50%,-50%);width:min(680px,calc(100vw - 24px));max-height:calc(100vh - 40px);overflow:auto;
+box-shadow:0 0 0 100vmax rgba(6,5,4,.74),0 12px 40px #000;padding:18px 20px}
+.dialog h2,.dialog h3{font-weight:normal;font-size:17px;letter-spacing:.14em;color:var(--brass2);margin:0 0 10px;text-transform:uppercase}
+.dialog p{margin:6px 0;font-size:15px}
+#plan details{border-top:1px solid rgba(75,61,47,.7);padding:6px 0;font:14px var(--data)}
+#plan summary{cursor:pointer}
+#plan summary b{display:inline-block;min-width:200px;font-weight:normal;color:var(--text);letter-spacing:.06em}
+#plan ul{margin:6px 0 2px 18px;max-height:220px;overflow:auto}
+#plan li{padding:1px 0}
+#plan .was{color:var(--dim)}
+#plan .warn{color:var(--warn)}
+#updateBox ol{margin:8px 0 12px;padding-left:22px;color:var(--dim)}
+#updateBox li{margin:3px 0}
+#updateBox li b{color:var(--text);font-weight:normal}
+/* a computer's screen: the whole page in one screen, each list scrolling in its own plate */
+@media (min-width:960px) and (min-height:560px){
+ .app{height:100vh;display:flex;flex-direction:column}
+ .desk{flex:1;min-height:0}
+ .recs{display:flex;flex-direction:column;min-height:0}
+ .browser{flex:1;min-height:0}
+ #folders,#recordings{overflow:auto;min-height:0}
+ .side{min-height:0}
+ #activity{max-height:34%;flex:none}
+ #log{overflow:auto;min-height:0}
+ .lib{flex:1;min-height:180px}
+ .tabbody{flex:1;overflow:auto;min-height:0}
 }
-</style></head><body><main>
-<header><h1>APOTHECA</h1><svg class="mark" viewBox="39.390 125.100 22.820 2.141" role="img" aria-label="Shapetaker"><path fill="currentColor" d="m 40.636498,126.14073 c -0.16369,-0.0705 -0.285044,-0.10724 -0.434622,-0.14111 -0.206023,-0.048 -0.400756,-0.127 -0.400756,-0.29351 0,-0.0169 0.0028,-0.0339 0.0056,-0.0508 0.03104,-0.15804 0.220134,-0.26811 0.437445,-0.27093 0.0028,0 0.0028,0 0.0056,0 0.180622,0 0.372533,0.0621 0.510822,0.2032 l 0.174977,-0.16369 c -0.121355,-0.13547 -0.386644,-0.27375 -0.680155,-0.27375 -0.0056,0 -0.01129,0.003 -0.01693,0.003 -0.454377,0.006 -0.660399,0.30198 -0.680155,0.48824 -0.0028,0.0169 -0.0056,0.0367 -0.0056,0.0536 0,0.2286 0.180622,0.42898 0.462844,0.50518 0.183444,0.0508 0.333022,0.079 0.530577,0.16087 0.09596,0.0423 0.194733,0.11571 0.194733,0.24553 0,0.0254 -0.0028,0.0536 -0.01129,0.0819 -0.05644,0.1778 -0.253999,0.254 -0.437444,0.26246 -0.01129,0.003 -0.0254,0.003 -0.03669,0.003 -0.259644,0 -0.533399,-0.11571 -0.62371,-0.22577 l -0.191911,0.15522 c 0.149577,0.19473 0.536222,0.30762 0.82691,0.30762 0.285045,0 0.612422,-0.13547 0.697089,-0.43744 0.01693,-0.0508 0.02258,-0.1016 0.02258,-0.14676 0,-0.2032 -0.124177,-0.37253 -0.349955,-0.46567 z m 2.473677,-0.94826 v 0.76764 h -1.114777 v -0.76764 H 41.75551 v 1.9558 h 0.239888 V 126.2 h 1.114777 v 0.94827 h 0.239889 v -1.9558 z m 1.948742,-0.0395 -1.018822,1.99531 h 0.268111 l 0.333022,-0.65194 h 0.832555 l 0.333022,0.65194 h 0.270933 z m -0.299156,1.11477 0.299155,-0.58702 0.299155,0.58702 z m 3.385253,-0.92851 c -0.112888,-0.0903 -0.259645,-0.14675 -0.417688,-0.14675 h -0.959555 v 1.9558 h 0.239888 v -0.61807 h 0.719666 c 0.369711,0 0.668866,-0.29915 0.668866,-0.66886 0,-0.21167 -0.09878,-0.39794 -0.251177,-0.52212 z m 0.01129,0.52212 c 0,0.23706 -0.191911,0.42897 -0.428977,0.42897 h -0.719666 v -0.85513 h 0.719666 c 0.237065,0 0.428977,0.19191 0.428977,0.42616 z m 1.231901,1.04704 v -0.6604 h 1.03011 v -0.23989 h -1.03011 v -0.57291 h 1.219199 v -0.24271 h -1.459088 v 1.9558 h 1.498599 v -0.23989 z m 1.849967,-1.71591 v 0.24271 h 0.694267 v 1.71309 h 0.239888 v -1.71309 h 0.694266 v -0.24271 z m 2.865963,-0.0395 -1.018821,1.99531 h 0.26811 l 0.333022,-0.65194 h 0.832555 l 0.333022,0.65194 h 0.270933 z m -0.299155,1.11477 0.299155,-0.58702 0.299156,0.58702 z m 2.727676,-0.0931 0.97931,-0.98213 h -0.341488 l -0.809977,0.80998 -0.307622,-0.30763 v -0.50235 h -0.242711 v 1.9558 h 0.242711 v -1.11478 l 1.114776,1.11478 h 0.341488 z m 1.920522,0.73378 v -0.6604 h 1.03011 v -0.23989 h -1.03011 v -0.57291 h 1.219199 v -0.24276 h -1.459089 v 1.9558 h 1.498599 v -0.23989 z m 3.706988,0.23989 -0.451555,-0.44874 c 0.231422,-0.14393 0.383822,-0.39793 0.383822,-0.69144 0,-0.44873 -0.364067,-0.81562 -0.815622,-0.81562 h -0.812799 v 1.95862 h 0.239889 v -1.13453 l 1.13171,1.13453 z m -0.307622,-1.14018 c 0,0.20038 -0.110066,0.40922 -0.318911,0.51647 l -0.829732,-0.82974 v -0.25964 h 0.57291 c 0.316089,0 0.575733,0.25682 0.575733,0.57291 z"/></svg><span class="meta" id="version"></span><span class="meta" id="free"></span><a class="btn" id="bench" href="#" target="_blank" title="Times the engine on this device. Stop the song first. Takes about four minutes; the rows come as they are timed.">Speed test</a><a class="btn" id="design" href="#">Open the sound designer</a></header>
-
-<div id="drop">
-<div class="line"><button class="main" id="pick">Choose files</button><button id="pickFolder">Choose a folder</button><span class="dim">or drop files or a whole folder on the page.</span></div>
-<div class="line" style="margin-top:12px"><label for="into">Recordings go in</label><select id="into"></select><input id="intoNew" class="hid" type="text" maxlength="49" placeholder="new folder, or folder/inner"></div>
-<p style="margin:10px 0 0;font-size:13px">Recordings (.wav), chord packs (.json), songs (.song). 30 MB at most each. Every file is checked before it is kept.</p>
-<input id="files" class="hid" type="file" multiple accept=".wav,.json,.song,audio/wav,audio/x-wav">
-<input id="dir" class="hid" type="file" webkitdirectory multiple>
-<div id="plan" class="hid"></div>
-<ul id="log"></ul>
-<div class="line hid" id="logEnd" style="margin-top:8px"><button id="clear">Clear the list</button></div>
+/* a phone: one column, sending first, then the recordings, folders as a row to swipe along */
+@media (max-width:959px){
+ .desk{display:flex;flex-direction:column;padding:10px}
+ .side{display:contents}
+ #drop{order:1}#activity{order:2}.recs{order:3}.lib{order:4}
+ .browser{grid-template-columns:1fr}
+ #folders{flex-direction:row;overflow-x:auto;border-right:0;padding:0 0 8px;border-bottom:1px solid rgba(110,88,56,.45)}
+ .fold{width:auto;flex:none;border-color:var(--line)}
+ .fold.sub{padding-left:8px}.fold.sub .fname::before{display:none}
+ .fold.newf{margin-top:0}
+ #activity #log{max-height:40vh;overflow:auto}
+}
+@media (max-width:560px){
+ .plate{padding:12px}
+ #find{width:100%;order:9}
+ .row .name{flex:1 1 0}
+ .recs .acts{flex-basis:100%}
+ .recs .acts>*{flex:1 1 auto;text-align:center}
+ .lib .tabs button{padding:7px 8px;letter-spacing:.06em}
+ button,.btn{padding:9px 10px}
+}
+</style></head><body>
+<div class="app">
+<header class="top">
+ <a class="brand" id="home" href="#">@@BRAND@@<span class="page">FILES</span></a>
+ <div class="chips"><span class="chip" id="version"></span><span class="chip" id="free"></span></div>
+ <nav><a class="btn main" id="design" href="#">Sound designer</a><a class="btn" id="bench" href="#" target="_blank" title="Times the engine on this device. Stop the song first. Takes about four minutes; the rows come as they are timed.">Speed test</a><button id="openUpdate" class="violet">Update Apotheca</button></nav>
+</header>
+<main class="desk">
+<section class="plate recs" data-section="Recordings">
+ <div class="head"><h2>Recordings</h2><span class="count" id="nSamples"></span><input id="find" type="search" placeholder="find a recording" aria-label="find"></div>
+ <div class="line hid" id="bulk"><b id="nPicked"></b><label for="bulkTo">move to</label><select id="bulkTo"></select><input id="bulkNew" class="hid" type="text" maxlength="49" placeholder="new folder, or folder/inner"><button id="bulkMove" class="main">Move</button><button id="bulkDelete" class="del">Delete</button><button id="bulkNone">Choose none</button></div>
+ <div class="browser"><nav id="folders" aria-label="folders"></nav><div id="recordings"></div></div>
+</section>
+<div class="side">
+<section class="plate" id="drop" data-section="Send">
+ <div class="head"><h2>Send to the handheld</h2></div>
+ <div class="well">
+  <div class="line"><button class="main" id="pick">Choose files</button><button id="pickFolder">Choose a folder</button></div>
+  <p class="say">or drop files or a whole folder anywhere on the page.</p>
+  <div class="line"><label for="into">Recordings go in</label><select id="into"></select><input id="intoNew" class="hid" type="text" maxlength="49" placeholder="new folder, or folder/inner"></div>
+ </div>
+ <p class="say small" style="margin:10px 0 0">Recordings (.wav), chord packs (.json), songs (.song). 30 MB at most each. Every file is checked before it is kept.</p>
+ <input id="files" class="hid" type="file" multiple accept=".wav,.json,.song,audio/wav,audio/x-wav">
+ <input id="dir" class="hid" type="file" webkitdirectory multiple>
+</section>
+<section class="plate hid" id="activity" data-section="Activity">
+ <div class="head"><h2>Sent and done</h2><span class="grow"></span><button id="clear">Clear the list</button></div>
+ <ul id="log"></ul>
+</section>
+<section class="plate lib" data-section="Songs">
+ <div class="tabs" role="tablist"><button role="tab" data-tab="songs">Songs <span class="count" id="nSongs"></span></button><button role="tab" data-tab="bounces">Bounces <span class="count" id="nBounces"></span></button><button role="tab" data-tab="chords">Chord packs <span class="count" id="nChords"></span></button></div>
+ <div class="tabbody">
+  <div data-pane="songs"><ul id="songs"></ul></div>
+  <div data-pane="bounces"><p class="say">Your songs as sound files, and as MIDI.</p><ul id="bounces"></ul></div>
+  <div data-pane="chords"><ul id="chords"></ul></div>
+ </div>
+</section>
 </div>
-
-<h2>Recordings <span class="count" id="nSamples"></span><input id="find" type="text" placeholder="find"></h2>
-<div class="line hid" id="bulk"><b id="nPicked"></b><label for="bulkTo">move to</label><select id="bulkTo"></select><input id="bulkNew" class="hid" type="text" maxlength="49" placeholder="new folder, or folder/inner"><button id="bulkMove" class="main">Move</button><button id="bulkDelete" class="del">Delete</button><button id="bulkNone">Choose none</button></div>
-<div id="recordings"></div>
-<h2>Bounces <span class="count" id="nBounces"></span></h2><p>Your songs as sound files, and as MIDI.</p><div class="panel"><ul id="bounces"></ul></div>
-<h2>Songs <span class="count" id="nSongs"></span></h2><div class="panel"><ul id="songs"></ul></div>
-<h2>Chord packs <span class="count" id="nChords"></span></h2><div class="panel"><ul id="chords"></ul></div>
-
-<h2>Update Apotheca</h2>
-<p>Choose the new <b>apotheca</b> program file (inside the apotheca folder of the zip). It is only sent here; you accept it on the handheld by holding A, and it is used the next time Apotheca starts.</p>
-<button id="pickUpdate">Choose the program file</button><input id="update" class="hid" type="file">
 </main>
-<script>
+</div>
+<div id="plan" class="dialog plate hid" role="dialog" aria-modal="true"></div>
+<div id="updateBox" class="dialog plate hid" role="dialog" aria-modal="true" data-section="Update">
+ <h2>Update Apotheca</h2>
+ <p>Choose the new <b>apotheca</b> program file (inside the apotheca folder of the zip).</p>
+ <ol><li>It is sent and checked, and only set aside: <b>the network alone installs nothing</b>.</li><li>On the handheld, <b>hold A</b> to accept it (hold B deletes it).</li><li>It is used the next time Apotheca starts.</li></ol>
+ <div class="line"><button id="pickUpdate" class="main">Choose the program file</button><button id="closeUpdate">Close</button></div>
+ <input id="update" class="hid" type="file">
+</div>
+<script>@@FONT@@
 const base = location.pathname.replace(/\/$/, '');
 const $ = id => document.getElementById(id);
 const kinds = {wav: 'samples', json: 'chords', song: 'songs'};
 const NEW = '*new'; // a folder name cannot have a * in it
 let all = {samples: [], songs: [], chords: [], bounces: [], folders: [], sizes: {}};
 const picked = new Set(); // recordings ticked, to move or delete together
-const open = new Set(), made = new Set(); // folders showing their files; folders named here with nothing in them yet
-let first = true, filter = '', playing = '', audio = null, into = '';
+const made = new Set(); // folders named here with nothing in them yet
+let first = true, filter = '', playing = '', audio = null, into = '', shownFolder = null; // shownFolder: the folder on the right ('' UNSORTED)
 $('design').href = base + '/design';
-$('bench').href = base + '/bench';
+$('bench').href = base + '/speed';
+$('home').href = base + '/';
 
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function btn(text, act, cls) { const b = el('button', cls, text); b.dataset.act = act; return b; }
@@ -189,12 +256,12 @@ function folders() {
 // A folder with nothing in it: no recording, no folder inside it. (One with a file that is no recording is refused by the handheld.)
 function emptyFolder(f) { return f && !all.samples.some(n => split(n)[0] == f || n.startsWith(f + '/')) && !folders().some(g => g.startsWith(f + '/')); }
 async function removeFolder(f) {
-  if (!(all.folders || []).includes(f)) { made.delete(f); open.delete(f); if (into == f) into = ''; draw(); return; } // named here, never on the card
+  if (!(all.folders || []).includes(f)) { made.delete(f); if (shownFolder == f) shownFolder = null; if (into == f) into = ''; draw(); return; } // named here, never on the card
   let r;
   try { const got = await fetch(base + '/folders/' + f.split('/').map(encodeURIComponent).join('/'), {method: 'DELETE'}); r = {ok: got.ok, text: (await got.text()).trim()}; }
   catch (e) { r = {ok: false, text: 'no answer from the handheld'}; }
   note('folder ' + f, r.ok ? r.text : r.text.startsWith('not deleted') ? r.text : 'not deleted: ' + r.text, r.ok ? 'ok' : 'no');
-  if (r.ok) { made.delete(f); open.delete(f); if (into == f) into = ''; }
+  if (r.ok) { made.delete(f); if (shownFolder == f) shownFolder = null; if (into == f) into = ''; }
   list();
 }
 function folderSelect(sel, now) {
@@ -206,19 +273,20 @@ function folderSelect(sel, now) {
 // ---- the list of what was done ----
 function note(what, state, cls) {
   const li = el('li', cls), w = el('span', 'what', what), s = el('span', 'state', state);
-  li.append(w, s); $('log').prepend(li); $('logEnd').classList.remove('hid');
+  li.append(w, s); $('log').prepend(li); $('activity').classList.remove('hid');
   return {li, state: s, what: w};
 }
-$('clear').onclick = () => { for (const li of [...$('log').children]) if (!li.classList.contains('busy')) li.remove(); if (!$('log').children.length) $('logEnd').classList.add('hid'); };
+$('clear').onclick = () => { for (const li of [...$('log').children]) if (!li.classList.contains('busy')) li.remove(); if (!$('log').children.length) $('activity').classList.add('hid'); };
 
 // ---- what is on the handheld ----
 async function list() {
   try { const r = await fetch(base + '/list'); if (!r.ok) { note('the handheld', (await r.text()).trim(), 'no'); return; } all = await r.json(); } catch (e) { note('the handheld', 'no answer: is the WiFi page still on?', 'no'); return; }
   all.sizes = all.sizes || {};
   for (const f of [...made]) if ((all.folders || []).includes(f)) made.delete(f);
-  if (first) { first = false; if (all.samples.filter(n => !n.includes('/')).length <= 60) open.add(''); }
-  $('version').textContent = all.version ? 'version ' + all.version + (all.built ? ', built ' + all.built : '') : '';
+  if (first) { first = false; shownFolder = all.samples.some(n => !n.includes('/')) ? '' : (split(all.samples.find(n => n.includes('/')) || '')[0]); }
+  $('version').textContent = all.version ? 'version ' + all.version + (all.built ? ' · built ' + all.built : '') : '';
   $('free').textContent = all.free >= 0 ? (all.free >= 1024 ? (all.free / 1024).toFixed(1) + ' GB' : all.free + ' MB') + ' free on the card' : '';
+  $('free').classList.toggle('hid', !(all.free >= 0));
   draw();
 }
 function draw() {
@@ -246,40 +314,51 @@ function row(kind, name, label, size) {
   li.append(el('span', 'name', label.replace(/\.(wav|song|json|mid)$/i, '')), el('span', 'size', sizeText(size)), acts); // the title, without its ending
   return li;
 }
+// The folders down the left (each one a place to drop on); the folder picked there on the right, or,
+// with something in the find box, every match in every folder, under its folder's name.
 function drawRecordings() {
-  const box = $('recordings'), groups = new Map([['', []]]);
-  for (const f of folders()) groups.set(f, []);
+  const groups = new Map([['', []]]), totals = new Map([['', 0]]);
+  for (const f of folders()) groups.set(f, []), totals.set(f, 0);
   all.samples.forEach((name, i) => {
     const [f, file] = split(name);
+    totals.set(f, totals.get(f) + 1);
     if (!filter || name.toLowerCase().includes(filter)) groups.get(f).push([name, file, (all.sizes.samples || [])[i]]);
   });
+  if (shownFolder == null || !groups.has(shownFolder)) shownFolder = '';
   $('nSamples').textContent = all.samples.length || '';
+  const pane = document.createDocumentFragment();
+  for (const [f, rows] of groups) {
+    const b = el('button', 'fold folder' + (f.includes('/') ? ' sub' : '') + (f ? '' : ' loose') + (!filter && f == shownFolder ? ' now' : '') + (filter && !rows.length ? ' none' : ''));
+    b.dataset.folder = f; b.dataset.act = 'show'; b.title = f ? 'show ' + f + ', or drop recordings on it' : 'recordings in no folder';
+    b.append(el('span', 'fname', f ? split(f)[1] || f : 'UNSORTED'), el('span', 'count', filter ? rows.length : totals.get(f)));
+    pane.append(b);
+  }
+  pane.append(btn('+ new folder', 'newfolder', 'fold newf'));
+  $('folders').textContent = ''; $('folders').append(pane);
   const page = document.createDocumentFragment();
   let shown = 0;
   for (const [f, rows] of groups) {
-    if (filter && !rows.length) continue;
+    if (filter ? !rows.length : f != shownFolder) continue;
     shown += rows.length;
-    const isOpen = filter ? true : open.has(f), sec = el('section', 'folder'), head = el('div', 'fhead');
-    sec.dataset.folder = f; head.dataset.act = 'toggle';
-    head.append(el('span', 'tw', isOpen ? '-' : '+'), el('span', 'fname' + (f ? '' : ' loose'), f || 'UNSORTED'), el('span', 'count', rows.length), btn(rows.length && rows.every(r => picked.has(r[0])) ? 'choose none' : 'choose all', 'all'), btn('add files', 'add'));
+    const sec = el('section', 'folder group'), head = el('div', 'fhead');
+    sec.dataset.folder = f;
+    head.append(el('span', 'fname' + (f ? '' : ' loose'), f ? f.replace('/', ' / ') : 'UNSORTED'), el('span', 'count', rows.length), btn(rows.length && rows.every(r => picked.has(r[0])) ? 'choose none' : 'choose all', 'all'), btn('add files', 'add'));
     if (emptyFolder(f)) head.append(btn('delete folder', 'delfolder', 'del')); // a folder stays when its last recording goes: deleted only on purpose
     sec.append(head);
-    if (isOpen) { // a shut folder draws no rows, so hundreds of files stay quick
-      const ul = el('ul');
-      for (const [name, file, size] of rows) ul.append(row('samples', name, file, size));
-      if (!rows.length) ul.append(el('li', 'none', f ? 'nothing in it yet: drop recordings here' : 'none'));
-      sec.append(ul);
-    }
+    const ul = el('ul');
+    for (const [name, file, size] of rows) ul.append(row('samples', name, file, size));
+    if (!rows.length) ul.append(el('li', 'none', f ? 'nothing in it yet: drop recordings here' : 'none: recordings sent with no folder land here'));
+    sec.append(ul);
     page.append(sec);
   }
   if (filter && !shown) page.append(el('div', 'none', 'nothing by that name'));
-  box.textContent = ''; box.append(page);
+  const box = $('recordings'); box.textContent = ''; box.append(page);
   bulkBar();
 }
 
 // ---- several at once ----
 // Tick recordings (or CHOOSE ALL on a folder), then move or delete them together. They go one
-// after another, each with its own line in the list above, and the page is read again once at the end.
+// after another, each with its own line in the list, and the page is read again once at the end.
 function bulkBar() {
   for (const n of [...picked]) if (!all.samples.includes(n)) picked.delete(n);
   $('bulk').classList.toggle('hid', !picked.size);
@@ -300,7 +379,6 @@ $('bulkMove').onclick = async () => {
     if (tooLong(f, split(from)[1])) { note(from + ' to ' + to, 'refused: ' + tooLong(f, split(from)[1]), 'no'); continue; }
     if (await moveOne(from, to)) picked.delete(from);
   }
-  if (f) open.add(f);
   $('bulkNew').value = ''; $('bulkNew').classList.add('hid');
   list();
 };
@@ -329,6 +407,7 @@ $('find').oninput = () => { filter = $('find').value.trim().toLowerCase(); drawR
 // ---- sending ----
 const queue = []; let busy = false;
 function send(files, folder) {
+  let shown = false;
   for (const file of files) {
     const kind = kinds[file.name.split('.').pop().toLowerCase()];
     if (!kind) { note(file.name, 'refused: not a .wav, .json or .song', 'no'); continue; }
@@ -336,8 +415,9 @@ function send(files, folder) {
     const bad = (f && wrongFolder(f) && 'folder: ' + wrongFolder(f)) || wrong(file.name, 60) || tooLong(f, file.name) || (file.size > 30 * 1048576 && 'too big: 30 MB at most');
     if (bad) { note(name, 'refused: ' + bad, 'no'); continue; }
     add(name, urlOf(kind, name), file, (all[kind] || []).includes(name));
-    if (f) open.add(f);
+    if (kind == 'samples' && !shown && !filter) { shown = true; shownFolder = f; } // the folder they go into, shown as they land
   }
+  if (shown) drawRecordings();
 }
 function add(name, url, file, replaces) {
   const n = note(name, 'waiting', 'busy'), bar = el('div', 'bar'), fill = el('i');
@@ -380,7 +460,7 @@ async function run() { // one after another: the handheld takes one at a time
   busy = false;
   list();
 }
-function target() { // the folder chosen at the top, or null if it is not a name that will do
+function target() { // the folder chosen under RECORDINGS GO IN, or null if it is not a name that will do
   if ($('into').value != NEW) return $('into').value;
   const f = $('intoNew').value.trim(), bad = f ? wrongFolder(f) : wrong(f, 24);
   if (bad) { note('new folder', bad, 'no'); $('intoNew').focus(); return null; }
@@ -391,8 +471,11 @@ let pickFor = null;
 $('pick').onclick = () => { pickFor = null; $('files').click(); };
 $('files').onchange = () => { const f = pickFor != null ? pickFor : target(); if (f != null) send([...$('files').files], f); $('files').value = ''; };
 $('into').onchange = () => { const isNew = $('into').value == NEW; $('intoNew').classList.toggle('hid', !isNew); if (isNew) $('intoNew').focus(); else into = $('into').value; };
+$('openUpdate').onclick = () => $('updateBox').classList.remove('hid');
+$('closeUpdate').onclick = () => $('updateBox').classList.add('hid');
 $('pickUpdate').onclick = () => $('update').click();
-$('update').onchange = () => { const file = $('update').files[0]; if (file && file.size > 30 * 1048576) note('update: ' + file.name, 'refused: too big: 30 MB at most', 'no'); else if (file) add('update: ' + file.name, base + '/update/apotheca', file, false); $('update').value = ''; };
+$('update').onchange = () => { const file = $('update').files[0]; if (file && file.size > 30 * 1048576) note('update: ' + file.name, 'refused: too big: 30 MB at most', 'no'); else if (file) add('update: ' + file.name, base + '/update/apotheca', file, false); $('update').value = ''; if (file) $('updateBox').classList.add('hid'); };
+document.addEventListener('keydown', e => { if (e.key == 'Escape') $('updateBox').classList.add('hid'); });
 
 // ---- a whole folder: every recording in it, however deep, each into ONE folder here ----
 // Each folder there becomes ONE folder here, so "Drums/Kicks/808.wav" arrives as folder
@@ -483,19 +566,19 @@ function showPlan(p, title) {
     box.append(d);
   }
   const line = el('div', 'line'), go = el('button', 'main', 'Send ' + n), no = el('button', '', 'Cancel');
-  line.style.marginTop = '10px';
+  line.style.marginTop = '12px';
   go.id = 'planGo'; no.id = 'planNo';
   go.disabled = !n || (all.free >= 0 && mb > all.free);
   go.onclick = () => { box.classList.add('hid'); sendPlan(p, title); };
   no.onclick = () => { box.classList.add('hid'); box.textContent = ''; };
   line.append(go, no); box.append(line);
   box.classList.remove('hid');
-  box.scrollIntoView({block: 'nearest'});
+  box.scrollTop = 0;
 }
 function sendPlan(p, title) {
   if (!p.jobs.length) return;
   const n = note(title, 'waiting', 'busy'), bar = el('div', 'bar'), fill = el('i'), stop = el('button', '', 'Stop');
-  bar.append(fill); n.li.append(bar, stop);
+  n.li.append(stop, bar); bar.append(fill);
   const lot = {title, total: p.jobs.length, done: 0, failed: 0, silent: 0, bytes: p.bytes, sent: 0, n, stop, stopped: false};
   stop.onclick = () => { // what has gone stays; the rest is not sent
     if (lot.stopped) return;
@@ -571,7 +654,7 @@ async function ask(method, kind, name, headers) {
   try { const r = await fetch(urlOf(kind, name), {method, headers}); return {ok: r.ok, text: (await r.text()).trim()}; }
   catch (e) { return {ok: false, text: 'no answer from the handheld'}; }
 }
-async function remove(kind, name) {
+async function deleteFile(kind, name) {
   if (playing == kind + '/' + name) stop();
   const r = await ask('DELETE', kind, name);
   note(name, r.ok ? r.text : 'not deleted: ' + r.text, r.ok ? 'ok' : 'no');
@@ -581,7 +664,6 @@ async function moveOne(from, to) { // one move, and its line in the list; true i
   if (playing == 'samples/' + from) stop();
   const r = await ask('POST', 'samples', from, {'X-To': to.split('/').map(encodeURIComponent).join('/')});
   note(from + ' to ' + to, r.ok ? r.text : 'refused: ' + r.text, r.ok ? 'ok' : 'no');
-  if (r.ok && split(to)[0]) open.add(split(to)[0]);
   return r.ok;
 }
 async function move(from, to) { await moveOne(from, to); list(); }
@@ -607,9 +689,24 @@ function edit(li, moving) { // one small form for both: the name, and the folder
   li.draggable = false; // so the words in the box can be picked out with the mouse
   if (moving) sel.focus(); else { name.focus(); name.select(); }
 }
+// A new folder from the list of folders: named here, shown, and made on the card when the first recording lands in it.
+function newFolder(b) {
+  const box = el('div', 'edit'), name = el('input'), ok = btn('make', '', 'main'), no = btn('cancel', '');
+  name.type = 'text'; name.maxLength = 49; name.placeholder = 'new folder, or folder/inner';
+  const go = () => {
+    const f = name.value.trim(), bad = f ? wrongFolder(f) : 'it needs a name';
+    if (bad) { note('new folder', bad, 'no'); name.focus(); return; }
+    made.add(f); shownFolder = f; draw();
+  };
+  ok.onclick = go; no.onclick = () => box.replaceWith(b);
+  box.onkeydown = e => { if (e.key == 'Enter') go(); if (e.key == 'Escape') box.replaceWith(b); };
+  box.append(name, ok, no); b.replaceWith(box); name.focus();
+}
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-act]'); if (!t || !t.dataset.act) return;
   const li = t.closest('li.row'), sec = t.closest('.folder'), act = t.dataset.act;
+  if (act == 'show') { shownFolder = sec.dataset.folder; if (filter) { filter = ''; $('find').value = ''; } drawRecordings(); $('recordings').scrollTop = 0; return; }
+  if (act == 'newfolder') { newFolder(t); return; }
   if (act == 'add') { e.stopPropagation(); pickFor = sec.dataset.folder; $('files').click(); return; }
   if (act == 'all') { // every recording in this folder (as the find box has narrowed it), or none of them
     const f = sec.dataset.folder, names = all.samples.filter(n => split(n)[0] == f && (!filter || n.toLowerCase().includes(filter)));
@@ -617,7 +714,6 @@ document.addEventListener('click', e => {
     for (const n of names) if (every) picked.delete(n); else picked.add(n);
     drawRecordings(); return;
   }
-  if (act == 'toggle') { const f = sec.dataset.folder; if (open.has(f)) open.delete(f); else open.add(f); drawRecordings(); return; }
   if (act == 'delfolder') { // asks once more, there in its heading
     t.textContent = 'delete it'; t.className = 'sure'; t.dataset.act = 'surefolder';
     const keep = btn('keep', 'keepfolder'); t.after(keep);
@@ -626,6 +722,7 @@ document.addEventListener('click', e => {
   }
   if (act == 'keepfolder') { const d = t.previousSibling; d.textContent = 'delete folder'; d.className = 'del'; d.dataset.act = 'delfolder'; t.remove(); return; }
   if (act == 'surefolder') { removeFolder(sec.dataset.folder); return; }
+  if (!li) return;
   const kind = li.dataset.kind, name = li.dataset.name;
   if (act == 'play') play(t, kind, name);
   if (act == 'rename' || act == 'move') edit(li, act == 'move');
@@ -635,11 +732,134 @@ document.addEventListener('click', e => {
     setTimeout(() => { if (t.isConnected && t.dataset.act == 'sure') { t.textContent = 'delete'; t.className = 'del'; t.dataset.act = 'delete'; keep.remove(); } }, 6000);
   }
   if (act == 'keep') { const d = t.previousSibling; d.textContent = 'delete'; d.className = 'del'; d.dataset.act = 'delete'; t.remove(); }
-  if (act == 'sure') remove(kind, name);
+  if (act == 'sure') deleteFile(kind, name);
 });
+// SONGS, BOUNCES and CHORD PACKS share a plate, one at a time (the one last looked at is kept, in this browser).
+function tab(name) {
+  for (const b of document.querySelectorAll('[data-tab]')) b.setAttribute('aria-selected', b.dataset.tab == name);
+  for (const p of document.querySelectorAll('[data-pane]')) p.hidden = p.dataset.pane != name;
+  try { localStorage.setItem('apotheca.tab', name); } catch (e) {}
+}
+for (const b of document.querySelectorAll('[data-tab]')) b.onclick = () => tab(b.dataset.tab);
+let lastTab = 'songs'; try { lastTab = localStorage.getItem('apotheca.tab') || 'songs'; } catch (e) {}
+tab(['songs', 'bounces', 'chords'].includes(lastTab) ? lastTab : 'songs');
 list();
 </script></body></html>
 )page";
+
+// The SPEED TEST's page: /bench's rows as they come, in plates.
+const char* const kSpeedPage = R"page(<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apotheca speed test</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='20' r='18' fill='%2317120d' stroke='%23c9a15a' stroke-width='3'/%3E%3Cpath d='M20 9 30 28H10z' fill='none' stroke='%23e3c47f' stroke-width='3'/%3E%3C/svg%3E">
+<style>@@LOOK@@
+.wrap{padding:14px 16px 24px}
+.status{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-bottom:14px}
+.status .what{font-size:16px;letter-spacing:.08em;text-transform:uppercase}
+.status .say{margin:0}
+#rows{columns:3 380px;column-gap:14px}
+.part{break-inside:avoid;margin:0 0 14px;padding:12px 14px}
+.part h2{font-weight:normal;font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:var(--brass2);margin:0 0 8px;padding-bottom:6px;border-bottom:1px solid rgba(201,161,90,.32)}
+.part table{width:100%;border-collapse:collapse;font-size:15px}
+.part td{font-family:var(--data);padding:3px 0;border-bottom:1px solid rgba(75,61,47,.5);vertical-align:top}
+.part td+td{text-align:right;color:var(--teal);padding-left:12px;white-space:nowrap}
+.part p{margin:2px 0;font:15px var(--data);color:var(--text);white-space:pre-wrap}
+.top nav{margin-left:auto}
+</style></head><body>
+<header class="top">
+ <a class="brand" id="home" href="#">@@BRAND@@<span class="page">SPEED TEST</span></a>
+ <div class="chips"><span class="chip" id="version"></span></div>
+ <nav><a class="btn" id="files" href="#">Files</a><a class="btn" id="save" href="#" download="apotheca speed test.txt">Save as text</a></nav>
+</header>
+<div class="wrap">
+ <div class="status"><span class="lamp busy" id="lamp"></span><span class="what" id="what">timing</span><p class="say" id="says"></p></div>
+ <div id="rows"></div>
+</div>
+<script>@@FONT@@
+// The speed test's rows as they are timed (/bench sends them a line at a time), put in plates: a line
+// that does not start with a space and ends in ":" begins a part; an indented one is a row, its name
+// and its numbers cut where two spaces or more stand between them.
+const base = location.pathname.replace(/\/speed\/?$/, '');
+const $ = id => document.getElementById(id);
+$('home').href = $('files').href = base + '/';
+let said = ''; // every line as it came, for SAVE AS TEXT (a second /bench would time it all again)
+$('save').onclick = () => { $('save').href = URL.createObjectURL(new Blob([said], {type: 'text/plain'})); };
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+let part = null, lines = 0;
+function partOf(title) { const p = el('section', 'plate part'); p.append(el('h2', '', title)); part = p; $('rows').append(p); return p; }
+function line(s) {
+  said += s + '\n';
+  if (!s.trim()) return;
+  lines++;
+  if (lines == 1 && /^Apotheca /.test(s)) { $('version').textContent = s.replace(/^Apotheca /, 'version '); return; }
+  if (s == '(done)') { $('lamp').className = 'lamp ok'; $('what').textContent = 'done'; $('says').textContent = ''; return; }
+  if (/^\(.*\)$/.test(s)) { $('lamp').className = 'lamp no'; $('what').textContent = s.slice(1, -1); $('says').textContent = ''; return; }
+  if (/^The rows come/.test(s)) { $('says').textContent = s; return; }
+  if (!/^\s/.test(s) && /:$/.test(s)) { partOf(s.slice(0, -1)); return; }
+  const p = part || partOf('the device');
+  const m = /^\s+(.*?\S)\s{2,}(\S.*)$/.exec(s);
+  if (m) { let t = p.querySelector('table'); if (!t) p.append(t = el('table')); const tr = el('tr'); tr.append(el('td', '', m[1]), el('td', '', m[2])); t.append(tr); }
+  else p.append(el('p', '', s.trim()));
+}
+(async () => {
+  try {
+    const r = await fetch(base + '/bench', {cache: 'no-store'});
+    const reader = r.body.getReader(), words = new TextDecoder();
+    let held = '';
+    for (;;) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      held += words.decode(value, {stream: true});
+      const cut = held.split('\n'); held = cut.pop();
+      cut.forEach(line);
+    }
+    line(held);
+    if ($('lamp').classList.contains('busy')) { $('lamp').className = 'lamp no'; $('what').textContent = 'the speed test did not finish'; }
+  } catch (e) { $('lamp').className = 'lamp no'; $('what').textContent = 'no answer from the handheld'; }
+})();
+</script></body></html>
+)page";
+
+// The door: a browser at the address with no number, or a wrong one, is asked for it (still a 403).
+const char* const kDoorPage = R"page(<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apotheca</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='20' r='18' fill='%2317120d' stroke='%23c9a15a' stroke-width='3'/%3E%3Cpath d='M20 9 30 28H10z' fill='none' stroke='%23e3c47f' stroke-width='3'/%3E%3C/svg%3E">
+<style>@@LOOK@@
+body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+.door{width:min(440px,100%);text-align:center;padding:26px 24px 22px}
+.door .brand{justify-content:center;margin-bottom:18px}
+.door .brand .emblem{width:54px;height:54px}
+.door p{margin:8px 0;font-size:16px}
+form{display:flex;gap:8px;justify-content:center;margin:18px 0 8px}
+#pin{width:7.5em;font-size:26px;letter-spacing:.3em;text-align:center;padding:6px 4px 6px 12px}
+#wrongNumber{color:var(--warn)}
+</style></head><body>
+<main class="plate door">
+ <div class="brand">@@BRAND@@</div>
+ <p id="wrongNumber" hidden>That number is not the one on the screen.</p>
+ <p>Open the address shown on the Apotheca screen, with its four-digit number.</p>
+ <form id="go"><input id="pin" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" aria-label="the four-digit number" placeholder="0000" autofocus><button class="main">Open</button></form>
+ <p class="say">The number is on the handheld, after the address (SET, WIFI PAGE). Five wrong numbers and the page waits a minute.</p>
+</main>
+<script>
+// (No lettering loaded here: asking for /NUMBER/font.ttf with a wrong number would count as another try.)
+// A number in the address that was not the right one: said so. (The server counts it; this only reads the address.)
+if (/^\/\d+\/?$/.test(location.pathname)) document.getElementById('wrongNumber').hidden = false;
+document.getElementById('go').onsubmit = e => {
+  e.preventDefault();
+  const n = document.getElementById('pin').value.replace(/\D/g, '');
+  if (n.length) location.href = '/' + n + '/';
+};
+</script></body></html>
+)page";
+
+// Each page with its look filled in, once (a function's own static is made once, whichever thread asks first).
+const std::string& pageWithLook(int which) {
+    static const std::string pages[] = {withWebLook(kPage), withWebLook(kSpeedPage), withWebLook(kDoorPage), withWebLook(kDesignPage)};
+    return pages[which];
+}
+enum { kFilesPage, kSpeedTestPage, kDoorWayPage, kDesignerPage };
 
 bool sendAll(int fd, const char* data, std::size_t size) {
     while (size > 0) {
@@ -651,11 +871,12 @@ bool sendAll(int fd, const char* data, std::size_t size) {
     return true;
 }
 
-void reply(int fd, const char* status, const char* type, const std::string& body) {
+// `keep`: the browser may keep it (the lettering: the same bytes every time); everything else is asked for afresh.
+void reply(int fd, const char* status, const char* type, const std::string& body, bool keep = false) {
     char head[256];
     const int n = std::snprintf(head, sizeof head,
-                                "HTTP/1.1 %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n", status,
-                                type, body.size());
+                                "HTTP/1.1 %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nConnection: close\r\nCache-Control: %s\r\n\r\n", status,
+                                type, body.size(), keep ? "private, max-age=31536000, immutable" : "no-store");
     if (sendAll(fd, head, static_cast<std::size_t>(n))) sendAll(fd, body.data(), body.size());
 }
 
@@ -1063,11 +1284,22 @@ void Transfer::answer(int fd) {
                 return reply(fd, "429 Too Many", "text/plain", kTooManyWrong);
             }
         }
+        // A browser at the bare address, or at a wrong number and nothing after it, gets the door: a box for the
+        // number (still 403, and counted as above). Anything else gets the sentence alone.
+        const bool askNumber = method == "GET" && (path == "/" || (!first.empty() && first.find_first_not_of("0123456789") == std::string::npos &&
+                                                               (ends == std::string::npos || ends + 1 == path.size())));
+        if (askNumber) return reply(fd, "403 Forbidden", "text/html; charset=utf-8", pageWithLook(kDoorWayPage));
         return reply(fd, "403 Forbidden", "text/plain", "Open the address shown on the Apotheca screen, with its four-digit number.\n");
     }
     path = path.substr(door.size());
 
-    if (method == "GET" && (path.empty() || path == "/")) return reply(fd, "200 OK", "text/html; charset=utf-8", kPage);
+    if (method == "GET" && (path.empty() || path == "/")) return reply(fd, "200 OK", "text/html; charset=utf-8", pageWithLook(kFilesPage));
+    if (method == "GET" && path == "/speed") return reply(fd, "200 OK", "text/html; charset=utf-8", pageWithLook(kSpeedTestPage));
+    // The device's own lettering, for the pages (web_look.cpp). Kept by the browser: sent once.
+    if (method == "GET" && path == "/font.ttf") {
+        if (lettering_.empty()) return reply(fd, "404 Not Found", "text/plain", "no lettering here\n");
+        return reply(fd, "200 OK", "font/ttf", lettering_, true);
+    }
     if (method == "GET" && path == "/list") {
         const std::vector<std::string> samples = recordingsIn(samples_), songs = filesEnding(songs_, ".song"), chords = filesEnding(chords_, ".json");
         std::vector<std::string> bounces = filesEnding(bounces_, ".wav");
@@ -1084,7 +1316,7 @@ void Transfer::answer(int fd) {
     // The sound-designer page and what it says to the program.
     if (path == "/design" || path.compare(0, 8, "/design/") == 0) {
         if (!desk_) return reply(fd, "404 Not Found", "text/plain", "no sound designer here\n");
-        if (method == "GET" && path == "/design") return reply(fd, "200 OK", "text/html; charset=utf-8", kDesignPage);
+        if (method == "GET" && path == "/design") return reply(fd, "200 OK", "text/html; charset=utf-8", pageWithLook(kDesignerPage));
         if (method == "GET" && path == "/design/spec") return reply(fd, "200 OK", "application/json", desk_->spec());
         if (method == "GET" && path == "/design/state") return reply(fd, "200 OK", "application/json", desk_->state());
         if (path != "/design/do" || (method != "POST" && method != "PUT")) return reply(fd, "404 Not Found", "text/plain", "no such thing\n");

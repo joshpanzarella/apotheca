@@ -1,6 +1,7 @@
 // Session: recordings. The lanes' sounds, recording, catching, fitting to tempo, the WiFi page and updates.
 #include "session.hpp"
 #include "instruments.hpp"
+#include "text.hpp"
 #include "ui.hpp"
 
 #include <dirent.h>
@@ -477,6 +478,10 @@ bool Session::toggleTransfer(unsigned seed) {
     const std::string chords = chordFolder_.empty() ? folder_ + "/../chords" : chordFolder_;
     // 80 if it binds (no port to type; needs root: our firmware), else 8080 if it is free, else whatever is.
     transfer_.setDesk(&designer_);
+    if (!transfer_.hasLettering()) { // the pages' lettering: read from the card once, the first time the page goes on
+        const std::vector<unsigned char> ttf = loadFontFile();
+        transfer_.setLettering(std::string(ttf.begin(), ttf.end()));
+    }
     transfer_.setBounceFolder(bounceFolder_);
     transfer_.setOpenSong(songName_); // (and again from update() whenever it changes)
     toldOpenSong_ = songName_;

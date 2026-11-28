@@ -68,6 +68,10 @@ public:
     void setProgramFolder(const std::string& folder) { program_ = folder; }
     // The sound-designer page is served only when there is one of these.
     void setDesk(DesignDesk* desk) { desk_ = desk; }
+    // The device's lettering (the .ttf's bytes), served to the pages at /PIN/font.ttf. Set before `start`
+    // (the server's thread only reads it); none: the pages use the browser's own letters.
+    void setLettering(std::string ttf) { if (!running()) lettering_ = std::move(ttf); }
+    bool hasLettering() const { return !lettering_.empty(); }
     // Where bounced songs are: listed on the page, to be fetched (and nothing is sent there).
     void setBounceFolder(const std::string& folder) { bounces_ = folder; }
     // Goes up each time a new program has been set aside for confirming.
@@ -117,7 +121,7 @@ private:
     void answer(int connection);
     std::string folderFor(const std::string& kind) const;
 
-    std::string samples_, songs_, chords_, pin_, program_, bounces_;
+    std::string samples_, songs_, chords_, pin_, program_, bounces_, lettering_;
     std::atomic<unsigned> updates_{0};
     DesignDesk* desk_ = nullptr;
     int port_ = 0;
