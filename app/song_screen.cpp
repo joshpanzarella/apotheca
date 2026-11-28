@@ -1092,9 +1092,10 @@ void SongScreen::drawHeads(SDL_Renderer* r, const Fonts& fonts, int colW, SDL_Co
             for (std::size_t n = std::strlen(shown); n > 0 && colW <= 60 && headFont.width(shown) > colW - 1; --n) shown[n - 1] = 0;
             headFont.drawCentered(r, x + colW / 2.f, kGridTop + 22.f, own[0] ? own : shown, sounding ? kText : kDim);
         }
-        if (onHead_ && t == column_ && !listing_ && !choosing_) outline(r, x - 1, kGridTop - 1, colW + 2, kHeadH + 2, cursorColor, 2);
         // Muted, or soloed: a mark in the corner of the head, and a silent track's head goes dark.
         if (!sounding && !deleting) fill(r, x + 1, kGridTop + 1, colW - 2, kHeadH - 2, faded(kBg, 150));
+        // The cursor after the dark wash (its inside pixel is in the head), before the marks (they stand on it).
+        if (onHead_ && t == column_ && !listing_ && !choosing_) outline(r, x - 1, kGridTop - 1, colW + 2, kHeadH + 2, cursorColor, kCursorPx);
         // LIGHT COLOUR at TRACK: the track's ring colour along the head's foot (drawn after the dark wash: a muted track's is as bright).
         if (!deleting && session_.trackColoursShown()) {
             const Rgb hue = ringTrackColour(t);
@@ -1128,7 +1129,7 @@ void SongScreen::drawHeads(SDL_Renderer* r, const Fonts& fonts, int colW, SDL_Co
         const int x = kColumnsLeft + tracks * (colW + 1);
         outline(r, x, kGridTop, colW, kHeadH, kLine);
         fonts.within(&Fonts::small, colW > 60 ? "+ TRACK" : "+", colW - 4.f).drawCentered(r, x + colW / 2.f, kGridTop + 14.f, colW > 60 ? "+ TRACK" : "+", kDim);
-        if (column_ == addColumn() && !onMaster_) outline(r, x - 1, kGridTop - 1, colW + 2, kHeadH + 2, cursorColor, 2);
+        if (column_ == addColumn() && !onMaster_) outline(r, x - 1, kGridTop - 1, colW + 2, kHeadH + 2, cursorColor, kCursorPx);
     }
     {
         // MASTER, at the right-hand end: everything, after the tracks are mixed. A head and no cells.
@@ -1141,7 +1142,7 @@ void SongScreen::drawHeads(SDL_Renderer* r, const Fonts& fonts, int colW, SDL_Co
         const char* name = fonts.fixed().small.width("MASTER") <= colW - 6.f ? "MASTER" : "MSTR"; // (as a head's name: the narrow columns at LARGE)
         fonts.within(&Fonts::small, name, colW > 60 ? colW - 6.f : 0.f).drawCentered(r, x + colW / 2.f, kGridTop + 14.f, name, kText);
         if (project_.masterDb != 0 || project_.masterPan != 0) fill(r, x + kMixMarkInset, kGridTop + kMixMarkInset, kMixMarkSize, kMixMarkSize, kBrass);
-        if (onMaster_ && !listing_ && !choosing_) outline(r, x - 1, kGridTop - 1, colW + 2, kHeadH + 2, cursorColor, 2);
+        if (onMaster_ && !listing_ && !choosing_) outline(r, x - 1, kGridTop - 1, colW + 2, kHeadH + 2, cursorColor, kCursorPx);
     }
 }
 
@@ -1179,9 +1180,10 @@ void SongScreen::drawSceneRow(SDL_Renderer* r, const Fonts& fonts, int row, int 
     }
     if (column_ == kRepeatColumn && scene == scene_ && !onMaster_) {
         if (holding_) fill(r, rx + 1, y + 1, (kRepeatW - 6) * repeats / kMaxRepeats, kRowH - 6, faded(kBrass, 110));
-        outline(r, rx - 1, y - 1, kRepeatW - 2, kRowH - 2, cursorColor, 2);
+        outline(r, rx - 1, y - 1, kRepeatW - 2, kRowH - 2, cursorColor, kCursorPx);
     }
-    if (session_.copiedScene() == scene && !end) outline(r, rx + 1, y + 1, kRepeatW - 6, kRowH - 6, kBrass); // the copied scene
+    if (session_.copiedScene() == scene && !end) // the copied scene
+        outline(r, rx + kCopiedInset, y + kCopiedInset, kRepeatW - 4 - 2 * kCopiedInset, kRowH - 4 - 2 * kCopiedInset, kBrass);
     if (sceneHold_ && scene == scene_ && sceneHoldPart_ > 0.f) { // emptying it: red, as a track being deleted
         const float part = sceneHoldPart_ > 1.f ? 1.f : sceneHoldPart_;
         fill(r, rx + 1, y + 1, static_cast<int>((kRepeatW - 6) * part), kRowH - 6, faded(kStop, 170));
@@ -1254,8 +1256,8 @@ void SongScreen::drawCell(SDL_Renderer* r, int t, int scene, int y, int colW, SD
         const int at = project_.playBar * kSteps + playStep; // 16-coords, as the cell is drawn
         fill(r, x + 3 + static_cast<int>(at * stepW), y + 2, 2, kRowH - 8, kPurple);
     }
-    if (cellCopied_ && t == copyTrack_ && scene == copyScene_) outline(r, x + 1, y + 1, colW - 2, kRowH - 6, kBrass); // the copied cell
-    if (t == column_ && scene == scene_ && !onHead_ && !onMaster_) outline(r, x - 1, y - 1, colW + 2, kRowH - 2, cursorColor, 2);
+    if (cellCopied_ && t == copyTrack_ && scene == copyScene_) outline(r, x + kCopiedInset, y + kCopiedInset, colW - 2 * kCopiedInset, kRowH - 4 - 2 * kCopiedInset, kBrass); // the copied cell
+    if (t == column_ && scene == scene_ && !onHead_ && !onMaster_) outline(r, x - 1, y - 1, colW + 2, kRowH - 2, cursorColor, kCursorPx);
 }
 
 // The mixer card: A held on a head.

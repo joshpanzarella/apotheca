@@ -112,6 +112,9 @@ inline void glideLineRects(double x0, double y0, double x1, double y1, int size,
 // does besides play (RATCHET / EFFECT), then THROW. The effect moves left when
 // the note is thrown, to leave THROW its room.
 constexpr float kStripNudgeX = 390.f, kStripThrowX = 575.f, kStripRight = 632.f, kStripSpace = 10.f;
+// On the TEMPO stop: a bar from the slowest tempo to the fastest after BPM's value (110 after it, as on the drum
+// grid's strip), clear of NOTES at kStripNudgeX.
+constexpr int kStripTempoBarX = 210, kStripTempoBarW = 150;
 inline float stripEffectX(bool thrown) { return thrown ? 480.f : 510.f; }
 // With X held the strip is RATCHET, GLIDE (at 250), THROW and GLIDE FROM (the track's: which
 // key of the moment before its glides come from): the last two stand here, clear of the

@@ -139,10 +139,10 @@ void testTheTabAndTheTopBar() {
     for (int v = 0; v <= static_cast<int>(View::Settings); ++v) {
         c.clear();
         const ui::TopBar bar = ui::topBar(c.r, *c.fonts, static_cast<View>(v), "", rig.project());
-        // The tab that is up is filled in teal, under its word.
+        // The tab that is up is filled in its accent (teal on PTRN and FX: theme_test pins each), under its word.
         float x = 4.f + 8.f + c.fonts->small.width("L2") + 8.f + 4.f;
         for (int i = 0; i < v; ++i) x += c.fonts->small.width(tabs[i]) + 2.f * ui::kTabPad + 2.f;
-        CHECK(c.is(static_cast<int>(x) + 1, 3, ui::kTeal));
+        CHECK(c.is(static_cast<int>(x) + 1, 3, ui::tabAccent(static_cast<View>(v))));
         CHECK(bar.wordsX > x && bar.wordsRoom > 0.f);
     }
     // The room the words have: stopped, playing (the scene's blocks), and with WRITE on. A track's name

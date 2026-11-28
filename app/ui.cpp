@@ -83,12 +83,40 @@ void macroBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, c
     if (cursor) outline(r, x - 1, y - 1, w + 2, h + 2, accent, 2);
 }
 
+const SDL_Color& tabAccent(View view) {
+    switch (view) {
+    case View::Song: return kPurple;
+    case View::Pattern: return kTeal;
+    case View::Device: return kBrass;
+    case View::Effects: return kTeal;
+    case View::Mods: return kPurple;
+    case View::Settings: return kText;
+    }
+    return kTeal;
+}
+
+void tempoCursor(SDL_Renderer* r, const Fonts& chosen, const TopBar& top, float exact, float tempo, SDL_Color cursor) {
+    // The tight rows are always at LARGE, whatever TEXT SIZE is: the tempo's box in the top bar is one.
+    const Fonts& tight = chosen.fixed();
+    const int bx = static_cast<int>(top.tempoNumberRight - tight.small.width("240") - 6.f);
+    const int bw = static_cast<int>(top.tempoRight) - bx + 6;
+    const float part = (exact - kMinTempo) / (kMaxTempo - kMinTempo);
+    fill(r, bx, 3, bw, kTopBarH - 6, kPanel2);
+    fill(r, bx, 3, static_cast<int>(std::round(bw * part)), kTopBarH - 6, faded(cursor, 90));
+    outline(r, bx - 1, 2, bw + 2, kTopBarH - 4, cursor, 2);
+    const float textY = (kTopBarH - tight.small.capHeight()) / 2.f;
+    char text[16];
+    std::snprintf(text, sizeof text, "%d", static_cast<int>(tempo));
+    tight.small.drawRight(r, top.tempoRight, textY, "BPM", kText);
+    tight.small.drawRight(r, top.tempoNumberRight, textY, text, kText);
+}
+
 TopBar topBar(SDL_Renderer* r, const Fonts& chosen, View view, const char* context, const Project& project) {
     const Fonts& fonts = chosen.fixed(); // a tight row: laid out to the pixel, always at LARGE
     SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
     fill(r, 0, 0, kScreenW, kScreenH, kBg);
     fill(r, 0, 0, kScreenW, kTopBarH, kPanel);
-    fill(r, 0, kTopBarH, kScreenW, 1, kLine);
+    fill(r, 0, kTopBarH, kScreenW, 1, tabAccent(view)); // the bar's foot: the screen's accent (it was kLine)
     const float textY = (kTopBarH - fonts.small.capHeight()) / 2.f;
 
     // L2 < SONG PATTERN DEVICE > R2
@@ -117,7 +145,7 @@ TopBar topBar(SDL_Renderer* r, const Fonts& chosen, View view, const char* conte
         // letters saved pay for it and leave the screen's own words a little more room than they had.)
         const float w = fonts.small.width(tabs[i]) + 2.f * kTabPad;
         const bool here = static_cast<int>(view) == i;
-        if (here) fill(r, static_cast<int>(x), 2, static_cast<int>(w), kTopBarH - 4, kTeal);
+        if (here) fill(r, static_cast<int>(x), 2, static_cast<int>(w), kTopBarH - 4, tabAccent(view)); // (every tab was teal)
         fonts.small.draw(r, x + kTabPad, textY, tabs[i], here ? kBg : kDim);
         x += w + 2.f;
     }

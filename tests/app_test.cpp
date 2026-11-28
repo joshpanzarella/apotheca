@@ -698,11 +698,100 @@ void testTheKeysScrollAndStopAtTheEnds() {
     rig->tap(LEFT, 200);
     CHECK(notes.cursorPitch() == NoteScreen::kLowest);
     rig->tap(UP);
-    CHECK(notes.cursorOnBars()); // up from the top step: BARS
+    CHECK(notes.cursorOnTempo() && !notes.cursorOnBars()); // up from the top step: TEMPO (as the drum grid's)
     rig->tap(UP);
-    CHECK(!notes.cursorOnBars() && notes.cursorStep() == kSteps - 1); // up again: round to the bottom
+    CHECK(notes.cursorOnBars() && !notes.cursorOnTempo()); // then BARS
+    rig->tap(UP);
+    CHECK(!notes.cursorOnBars() && !notes.cursorOnTempo() && notes.cursorStep() == kSteps - 1); // up again: round to the bottom
     rig->tap(DOWN);
     CHECK(!notes.cursorOnBars() && notes.cursorStep() == 0);
+}
+
+// TEMPO ON THE ROLL (owner, 2026-11-28: "you can only get to the TEMPO from the drum sequence. it isn't possible to
+// get to it the same way from the piano roll"): up from the top step of the first bar, as up from the top lane on
+// the drum grid; A taps it; held, the D-pad steps it 1 / 10 and the stick turns it at the drum grid's rate; B, X and
+// Y do nothing there; no step of undo (a tempo change is not an edit). The drum grid's own: ui_test.
+void testTheRollsTempo() {
+    std::unique_ptr<Rig> rig(onNotes());
+    NoteScreen& notes = rig->app.notes();
+    Session& session = rig->app.session();
+    rig->frames(60);
+    const int steps = session.undoSteps();
+    notes.moveCursorTo(60, 0);
+    rig->project().bar = 0;
+    rig->frames(1);
+    rig->tap(UP);
+    CHECK(notes.cursorOnTempo() && !notes.cursorOnBars() && rig->project().tempo == 120.f);
+    // A places nothing up here. Held, the D-pad: exact steps, 1 up and down, 10 left and right.
+    rig->key(A, true);
+    CHECK(notes.noteCount() == 0 && notes.chordCount() == 0);
+    rig->tap(UP);
+    CHECK(rig->project().tempo == 121.f);
+    rig->tap(RIGHT);
+    CHECK(rig->project().tempo == 131.f);
+    rig->tap(DOWN);
+    rig->tap(LEFT);
+    CHECK(rig->project().tempo == 120.f && notes.cursorOnTempo());
+    // Held, the stick: the drum grid's rate (90 BPM a second; 20 frames is about 29), and its ends.
+    rig->key(STICK_UP, true);
+    rig->frames(20);
+    rig->key(STICK_UP, false);
+    const float rolled = rig->project().tempo;
+    CHECK(rolled >= 147.f && rolled <= 150.f);
+    rig->key(STICK_DOWN, true);
+    rig->frames(400);
+    rig->key(STICK_DOWN, false);
+    CHECK(rig->project().tempo == kMinTempo);
+    rig->key(STICK_UP, true);
+    rig->frames(400);
+    rig->key(STICK_UP, false);
+    CHECK(rig->project().tempo == kMaxTempo);
+    rig->key(A, false);
+    CHECK(notes.cursorOnTempo() && notes.noteCount() == 0);
+    // The stick and the D-pad without A: sideways nothing, up BARS, down back to the grid's top step.
+    rig->tap(LEFT);
+    rig->tap(RIGHT);
+    CHECK(notes.cursorOnTempo() && notes.cursorPitch() == 60);
+    // B, X and Y do nothing up here: no note, no chord, nothing heard.
+    rig->tap(B);
+    rig->tap(X);
+    rig->tap(Y);
+    rig->frames(2);
+    CHECK(notes.cursorOnTempo() && notes.noteCount() == 0 && notes.chordCount() == 0 && rig->listen() == 0.f);
+    // TAP TEMPO: A in time, as on the drum grid (the second tap of a run sets it: half a second apart, 120).
+    rig->tap(A);
+    rig->frames(31); // 496 ms
+    rig->tap(A);
+    CHECK(rig->project().tempo >= 119.f && rig->project().tempo <= 123.f);
+    // No step of undo, as on the drum grid.
+    rig->frames(60);
+    CHECK(session.undoSteps() == steps);
+    // The tempo set from elsewhere (SEL + D-pad) is where the stick turns from.
+    session.setTempo(100.f);
+    rig->frames(130); // (over two seconds: the next A starts a run of taps afresh, and sets nothing)
+    rig->key(A, true);
+    rig->tap(UP);
+    rig->key(A, false);
+    CHECK(rig->project().tempo == 101.f);
+    rig->tap(UP);
+    CHECK(notes.cursorOnBars());
+    rig->tap(DOWN);
+    CHECK(notes.cursorOnTempo());
+    rig->tap(DOWN);
+    CHECK(!notes.cursorOnTempo() && !notes.cursorOnBars() && notes.cursorStep() == 0 && rig->project().bar == 0);
+    // The stick's own rate is the drum grid's: the same push from the same tempo lands on the same number there.
+    rig->project().track = 0;
+    session.setTempo(120.f);
+    rig->frames(130);
+    rig->app.drums().moveCursorTo(0, 0);
+    rig->tap(UP);
+    CHECK(rig->app.drums().cursorOnTempo());
+    rig->key(A, true);
+    rig->key(STICK_UP, true);
+    rig->frames(20);
+    rig->key(STICK_UP, false);
+    rig->key(A, false);
+    CHECK(rig->project().tempo == rolled);
 }
 
 // ---- cells longer than a bar --------------------------------------------------------------
@@ -816,14 +905,16 @@ void testCellsOfSeveralBars() {
     rig.tap(UP, 15);
     CHECK(rig.project().bar == 0 && notes.cursorStep() == 0);
     rig.tap(UP);
-    CHECK(notes.cursorOnBars()); // up past the top step: BARS
+    CHECK(notes.cursorOnTempo()); // up past the top step: TEMPO, then BARS
+    rig.tap(UP);
+    CHECK(notes.cursorOnBars());
     rig.tap(LEFT);
     CHECK(notes.cursorOnBars() && rig.project().bar == 3); // round to the last bar
     rig.tap(RIGHT);
     CHECK(notes.cursorOnBars() && rig.project().bar == 0);
-    rig.tap(DOWN);
-    CHECK(!notes.cursorOnBars() && rig.project().bar == 0 && notes.cursorStep() == 0);
-    rig.tap(UP);
+    rig.tap(DOWN, 2);
+    CHECK(!notes.cursorOnBars() && !notes.cursorOnTempo() && rig.project().bar == 0 && notes.cursorStep() == 0);
+    rig.tap(UP, 2);
     CHECK(notes.cursorOnBars());
     rig.tap(UP);
     CHECK(!notes.cursorOnBars() && rig.project().bar == 3 && notes.cursorStep() == 15); // up again: round to the bottom
@@ -967,6 +1058,17 @@ void testStripCountsWithTheGrid() {
     // BARS: CELL/BARS and BAR n OF n.
     notes.moveCursorTo(60, 0);
     rig.project().bar = 0;
+    rig.tap(UP);
+    canvas.clear();
+    rig.app.draw(canvas.r, fonts);
+    // TEMPO first (as on the drum grid): SONG / TEMPO and the BPM in the cursor's colour.
+    CHECK(notes.cursorOnTempo() && stripHas("TEMPO", ui::kText, 7.f, 70.f, 400.f, 445.f) && stripHas("120", ui::kTeal, 99.f, 160.f, 400.f, 445.f));
+    // ...and the top bar's tempo outlined, as the drum grid's (ui::tempoCursor): a run of teal along its top, at the right.
+    {
+        int lit = 0;
+        for (int x = 400; x < ui::kScreenW; ++x) lit += canvas.is(x, 2, ui::kTeal) ? 1 : 0;
+        CHECK(lit >= 40);
+    }
     rig.tap(UP);
     canvas.clear();
     rig.app.draw(canvas.r, fonts);
@@ -4352,9 +4454,9 @@ void testThePianoRollZooms() {
     rig.tap(L1, 3);
     rig.frames(1);
     CHECK(notes.visibleKeys() == 24 && notes.lowestKeyShown() == 60);
-    // BARS, up from the top step: hold A with up and down: the cell's bars, more or fewer,
+    // BARS, up from the top step and TEMPO: hold A with up and down: the cell's bars, more or fewer,
     // stopping at the ends.
-    rig.tap(UP);
+    rig.tap(UP, 2);
     CHECK(notes.cursorOnBars());
     rig.key(A, true);
     rig.tap(UP);
@@ -4776,16 +4878,34 @@ void testTheEffectsScreen() {
     rig.tap(UP, 3);
     rig.tap(DOWN, 3);
     CHECK(fx.cursorColumn() == 4 && fx.cursorRow() == 0); // up / down without A: nothing
-    // Left: one dial back, and from the first back to the list, on the same line. Right: back to the setting
-    // last used there (the first, after a walk out).
+    // Left: one dial back, and from the first back to the list, on the same line. Right: back to the dial the walk
+    // out began from: a LEFT only passes through (owner, 2026-11-28; it was dial 1, which every walk out crosses).
     rig.tap(LEFT);
-    CHECK(fx.cursorColumn() == 3 && fx.remembered(0) == 3);
+    CHECK(fx.cursorColumn() == 3 && fx.remembered(0) == 4);
     rig.tap(LEFT, 2);
     CHECK(fx.cursorColumn() == 1 && fx.cursorRow() == 0);
     rig.tap(LEFT);
-    CHECK(fx.cursorColumn() == 0 && fx.cursorRow() == 0 && fx.remembered(0) == 1);
+    CHECK(fx.cursorColumn() == 0 && fx.cursorRow() == 0 && fx.remembered(0) == 4);
     rig.tap(LEFT); // nothing further left
     CHECK(fx.cursorColumn() == 0 && fx.cursorRow() == 0);
+    rig.tap(RIGHT);
+    CHECK(fx.cursorColumn() == 4);
+    // A dial used on the way out (anything but LEFT pressed on it: here A, which turns nothing by itself) is the one.
+    rig.tap(LEFT, 2);
+    rig.tap(A);
+    CHECK(fx.cursorColumn() == 2 && fx.remembered(0) == 2);
+    rig.tap(LEFT, 2);
+    CHECK(fx.cursorColumn() == 0 && fx.remembered(0) == 2);
+    rig.tap(RIGHT);
+    CHECK(fx.cursorColumn() == 2);
+    // RIGHT is a move that is remembered: in from the list to 2, on to 3, out: 3.
+    rig.tap(RIGHT);
+    rig.tap(LEFT, 3);
+    CHECK(fx.cursorColumn() == 0 && fx.remembered(0) == 3);
+    // The stick's LEFT passes through the same.
+    rig.tap(RIGHT);
+    for (int push = 0; push < 3; ++push) rig.key(STICK_LEFT, true), rig.frames(1), rig.key(STICK_LEFT, false), rig.frames(1);
+    CHECK(fx.cursorColumn() == 0 && fx.remembered(0) == 3);
     fx.goTo(0, 3); // (a setting used last, as L1 / R1 or a tab leaves it)
     fx.goTo(0, 0);
     rig.tap(RIGHT);
@@ -11413,11 +11533,16 @@ void testFxDialsWalkAcross() {
         rig.tap(LEFT);
         CHECK(at(0, column));
     }
-    // LEFT from the first is the list, on the same line; RIGHT goes back in where it was last (the first).
+    // LEFT from the first is the list, on the same line; RIGHT goes back in where the walk out began (the last
+    // dial: a LEFT only passes through).
     rig.tap(LEFT);
     CHECK(at(0, 0) && sameParams(slot, compWas));
     rig.tap(RIGHT);
-    CHECK(at(0, 1));
+    CHECK(at(0, dials));
+    rig.tap(LEFT, dials);
+    CHECK(at(0, 0));
+    rig.tap(RIGHT);
+    CHECK(at(0, dials));
     // A held D-pad runs along at the cursor's pace and stops at the last; held LEFT runs back out to the list.
     rig.key(RIGHT, true);
     rig.frames(90);
@@ -14054,8 +14179,8 @@ void testTheStickWithAButtonHeld() {
         CHECK(hits == 2);
     }
     // The roll's BARS (up from the top step): it was once a push past half, so just past the dead zone did nothing.
-    oncePushed("the roll's BARS", [](Rig& rig) { addPhazed(rig); rig.project().track = 1; rig.app.session().view = View::Pattern; rig.app.notes().moveCursorTo(60, 0); rig.frames(1); rig.tap(UP); },
-               [](Rig& rig) { return rig.project().tracks[1].bars[0]; }, {1, 2, 2, 4, 8});
+    oncePushed("the roll's BARS", [](Rig& rig) { addPhazed(rig); rig.project().track = 1; rig.app.session().view = View::Pattern; rig.app.notes().moveCursorTo(60, 0); rig.frames(1); rig.tap(UP, 2); },
+               [](Rig& rig) { return rig.project().tracks[1].bars[0]; }, {1, 2, 2, 4, 8}); // (up from the top step: TEMPO, then BARS)
     // VOICE's MODEL (the models, up and down): once a push as before, now just past the dead zone too.
     oncePushed("VOICE's MODEL", [](Rig& rig) {
         rig.app.session().view = View::Device;
@@ -14590,6 +14715,7 @@ int main(int argc, char** argv) {
     testTheEnginePlaysNotesAtTheirStepAndLength();
     testPaintingNotes();
     testTheKeysScrollAndStopAtTheEnds();
+    testTheRollsTempo();
     testCellsOfSeveralBars();
     testStripCountsWithTheGrid();
     testNudgingWithTheOuterShoulderButtons();

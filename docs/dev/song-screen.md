@@ -3,6 +3,17 @@
 Mute and queued mutes, head marks, duplicating a track, solo, AT END, the mixer.
 Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lines); CLAUDE.md is the index.
 
+- **The cursor's edge is 3 pixels** (`SongScreen::kCursorPx`; owner, 2026-11-28: "difficult to see what cell
+  you have selected, the border might have to be another pixel or 2 thicker"; it was 2). On a cell, a REPEATS
+  box, a head, + TRACK and MASTER: from one pixel outside the box to one inside it. One outside is all there is
+  (the columns are one pixel apart: two would stand on the neighbour's edge), so the third is inside. Four was
+  weighed and left: a second pixel inside meets the cell's picture, which starts 3 in. **The copied cell's and
+  scene's brass ring moved one in to make room** (`kCopiedInset` 2, it was 1): with the cursor on it, it reads
+  teal, teal, teal, brass; the play line (purple, from 2 in) and the playing cell's purple edge (under the
+  cursor) as before. On a head the cursor is drawn after the muted head's dark wash (its inside pixel would be
+  washed) and before the marks (M / S, the mixer's, the track's colour), which stand on it. `copyscene_test`
+  `testTheCursorStandsOut` (Brown, Solarized, GitHub: three teal, not four; brass inside; the neighbour's edge
+  its own). Lists (the songs, the instruments) keep their 2: they are not the grid.
 - **Mute is its own gate** (`SetTrackHeard`), not the track level.
 - **QUEUED MUTES: SET's MUTES at NEXT BAR, a mute or solo pressed while playing lands on the next bar's
   first sample** (easywins batch 8; `SetTrackHeard` with b = 1, `Track::heardNext`, `Engine::landHeard`

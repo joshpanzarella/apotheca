@@ -1262,7 +1262,6 @@ void PatternScreen::drawChokeMark(SDL_Renderer* r, int nameY, int group) {
 }
 
 void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
-    char text[64];
     const bool onName = !onTempo_ && !onBars_ && step_ == kLaneName;
     const bool held = shaping_ || dicing_;
     const SDL_Color cursorColor = held || paint_ != Paint::None ? kBrass : kTeal;
@@ -1277,19 +1276,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // The tight rows are always at LARGE, whatever TEXT SIZE is: the tempo's box in the top bar
     // and the strip under the grid, whose fields stand at fixed places with a chip under each.
     const Fonts& tight = fonts.fixed();
-    if (onTempo_) {
-        // The tempo fills too: its box is a bar from the slowest to the fastest.
-        const int bx = static_cast<int>(top.tempoNumberRight - tight.small.width("240") - 6.f);
-        const int bw = static_cast<int>(top.tempoRight) - bx + 6;
-        const float part = (tempoExact_ - kMinTempo) / (kMaxTempo - kMinTempo);
-        fill(r, bx, 3, bw, kTopBarH - 6, kPanel2);
-        fill(r, bx, 3, static_cast<int>(std::round(bw * part)), kTopBarH - 6, faded(cursorColor, 90));
-        outline(r, bx - 1, 2, bw + 2, kTopBarH - 4, cursorColor, 2);
-        const float textY = (kTopBarH - tight.small.capHeight()) / 2.f;
-        std::snprintf(text, sizeof text, "%d", static_cast<int>(project_.tempo));
-        tight.small.drawRight(r, top.tempoRight, textY, "BPM", kText);
-        tight.small.drawRight(r, top.tempoNumberRight, textY, text, kText);
-    }
+    if (onTempo_) tempoCursor(r, fonts, top, tempoExact_, project_.tempo, cursorColor); // the tempo fills too: its box is a bar from the slowest to the fastest (the roll's the same)
     if (onBars_) {
         // BARS is the readout itself, outlined where it drew (it shortens while playing).
         outline(r, static_cast<int>(top.wordsX) - 4, 2, static_cast<int>(top.wordsWidth) + 8, kTopBarH - 4, cursorColor, 2);

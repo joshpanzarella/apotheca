@@ -684,6 +684,12 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
     } else if (std::strcmp(view, "notes") == 0) {
         app.project().track = 1;
         app.notes().moveCursorTo(57, 6);
+    } else if (std::strcmp(view, "notes-tempo") == 0) {
+        // The roll's TEMPO stop (owner, 2026-11-28): up from step 1 of bar 1, as the drum grid's (--on-tempo).
+        app.project().track = 1;
+        app.project().bar = 0;
+        app.notes().moveCursorTo(60, 0);
+        tapKey(SDLK_UP);
     } else if (std::strcmp(view, "phazed") == 0) {
         app.project().track = 1;
         app.session().view = View::Device;

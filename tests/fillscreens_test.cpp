@@ -477,11 +477,11 @@ void testTheGestureOnTheRoll() {
     rig.project().bar = kFillSlot;
     roll.moveCursorTo(60, -1); // one before the FILL's first: the last bar's last
     CHECK(rig.project().bar == 1 && roll.cursorStep() == 15);
-    // The BARS stop: up from step 1 of bar 1; LEFT / RIGHT the ring; up again comes round to the FILL's end.
+    // The BARS stop: up from step 1 of bar 1 (then TEMPO); LEFT / RIGHT the ring; up again comes round to the FILL's end.
     rig.project().bar = 0;
     roll.moveCursorTo(60, 0);
     rig.frames(1);
-    rig.tap(UP);
+    rig.tap(UP, 2);
     CHECK(roll.cursorOnBars());
     rig.tap(LEFT);
     CHECK(rig.project().bar == kFillSlot);
@@ -661,7 +661,7 @@ void testTheBarsField() {
     canvas.clear();
     rig.app.draw(canvas.r, *canvas.fonts);
     CHECK(inked(canvas, scratch, 2, 134.f, pattern_layout::kStripY + 16.f, "FILL OFF", ui::kTeal));
-    // The roll: BARS is up from step 1 of bar 1; on it, LEFT is the FILL.
+    // The roll: BARS is up from step 1 of bar 1 and TEMPO; on it, LEFT is the FILL.
     CHECK(rig.session().addTrack(TrackKind::Phazed));
     rig.project().track = 1;
     rig.project().bar = 0;
@@ -669,7 +669,7 @@ void testTheBarsField() {
     rig.withL1(Y);
     rig.withL1(DOWN);
     rig.app.notes().moveCursorTo(60, 0);
-    rig.tap(UP);
+    rig.tap(UP, 2);
     rig.tap(LEFT);
     CHECK(rig.app.notes().cursorOnBars() && rig.project().bar == kFillSlot);
     canvas.clear();

@@ -149,6 +149,21 @@ SDL_Color faded(SDL_Color c, int alpha);
 constexpr float kTabPad = 5.f; // either side of a tab's word in the top bar
 struct TopBar { float tempoNumberRight, tempoRight, wordsX = 0.f, wordsRoom = 0.f, wordsWidth = 0.f; }; // wordsX / wordsRoom: where the screen's own words start, and the room they had; wordsWidth: how wide they drew
 TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* context, const Project& project);
+// The cursor on the top bar's tempo (the drum grid's and the roll's TEMPO stop, up from the top of the grid): its box
+// a bar from the slowest to the fastest, filled to `exact` (the stick turns that; the tempo is it rounded), outlined
+// in `cursor`. Drawn over what topBar() drew there.
+void tempoCursor(SDL_Renderer* r, const Fonts& fonts, const TopBar& top, float exact, float tempo, SDL_Color cursor);
+// Hold A + the stick up / down on a TEMPO stop: so many BPM a second, however far it is pushed (times STICK
+// SPEED), on the drum grid and the roll alike. The D-pad with A held: 1 a push up / down, 10 sideways.
+constexpr float kTempoPerSecond = 90.f;
+
+// Each tab's ACCENT (owner, 2026-11-28: "slight visual differentiation using some of the theme colors on all of
+// the screens"): one of the theme's own names, worn by the top bar only, in two places: the lit tab, and the
+// line along the bar's foot. Chosen by the colour's job (ui.hpp's Theme): purple, where the song plays and
+// what moves by itself, for SONG and MOD; teal, the writing cursor, for PTRN and FX; brass, the knobs and
+// meters, for DVICE; text, the handheld's own, for SET. Neighbouring tabs never share one. A screen's
+// cursor stays teal (brass held) on every tab: the accent never stands for the cursor.
+const SDL_Color& tabAccent(View view);
 
 // A line that runs across a recording's picture while it is heard. It is
 // timed here, from when the sound was asked for (the engine does not say

@@ -871,6 +871,40 @@ int runViews(const char* program, const char* only) {
 
 } // namespace
 
+// EACH TAB'S ACCENT (owner, 2026-11-28: "slight visual differentiation using some of the theme colors"): the
+// top bar's lit tab and the line along its foot are the tab's accent, one of the theme's own ten, in every theme;
+// which is which is pinned here (docs/dev/screens.md), and no two neighbouring tabs share one.
+void testEachTabHasItsAccent() {
+    const View views[6] = {View::Song, View::Pattern, View::Device, View::Effects, View::Mods, View::Settings};
+    Canvas& c = canvas();
+    std::unique_ptr<Project> project(new Project);
+    for (int t = 0; t < kThemes; ++t) {
+        ui::useTheme(t);
+        const Theme& th = kThemeTable[t];
+        const SDL_Color want[6] = {th.purple, th.teal, th.brass, th.teal, th.purple, th.text};
+        int litWas = -1;
+        for (int v = 0; v < 6; ++v) {
+            CHECK(same(ui::tabAccent(views[v]), want[v]));
+            if (v > 0) CHECK(!same(ui::tabAccent(views[v]), ui::tabAccent(views[v - 1])));
+            c.clear();
+            ui::topBar(c.r, *c.fonts, views[v], "1 DRUMS", *project);
+            // The foot, all the way across.
+            CHECK(c.run(0, ui::kTopBarH, want[v]) == ui::kScreenW);
+            // The lit tab: a block of the accent along the row above the chips (they start lower), right of the
+            // last tab's, and nothing else of the four accents or the lettering's colour in that row.
+            int first = -1, count = 0, others = 0;
+            for (int x = 0; x < 320; ++x) {
+                if (c.is(x, 3, want[v])) count += 1, first = first < 0 ? x : first;
+                else
+                    for (const SDL_Color& o : {th.teal, th.purple, th.brass, th.stop, th.text}) others += c.is(x, 3, o) ? 1 : 0;
+            }
+            CHECK(count >= 20 && others == 0 && first > litWas);
+            litWas = first;
+        }
+    }
+    ui::useTheme(kThemeBrown);
+}
+
 int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     if (argc >= 3 && std::strcmp(argv[1], "views") == 0) return runViews(argv[2], argc >= 4 ? argv[3] : nullptr);
@@ -882,6 +916,7 @@ int main(int argc, char** argv) {
     testTheSettingIsKept();
     testTheRow();
     testTheScreensInEveryTheme();
+    testEachTabHasItsAccent();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

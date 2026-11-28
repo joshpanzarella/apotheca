@@ -154,6 +154,20 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     gesture, the strip off the drawn screen, the dice, the song file, undo,
     swap, break, drag, scenes). `chordfx_test testStrum testArpeggio` runs
     just those.
+- **The roll has the drum grid's TEMPO stop** (owner, 2026-11-28: "you can only get to the TEMPO from the drum
+  sequence. it isn't possible to get to it the same way from the piano roll and that is a bit confusing").
+  **Up from step 1 of bar 1 is TEMPO, up again BARS** (it was BARS at once), exactly the drum grid's column: up
+  from the top lane is the tempo, then BARS; down from BARS the tempo, then the grid (the roll: its top step).
+  Up from BARS still comes round to the cell's last step. On TEMPO: A taps it (`Session::tapTempo`), hold A +
+  UP / DOWN a beat, + LEFT / RIGHT ten (`press`), hold A + the stick up / down `ui::kTempoPerSecond` (90 BPM a
+  second, the drum grid's `Feel::tempoPerSecond` takes the same constant), the top bar's box drawn by the one
+  `ui::tempoCursor` both use, the strip SONG / TEMPO / BPM and a bar, the hints word for word the drum grid's
+  (A tap, HOLD A tempo, START, UP bars; held: UP / DOWN tempo). No step of undo (`Session::setTempo`: a tempo
+  change is not an edit). Every grid job the BARS stop shuts out, TEMPO shuts out too (`offGrid()`): no note
+  placed, no chord picked, B, X, R1, the L1 bar key's directions. The top step's hint reads UP "tempo" (it read
+  "bars"). No gesture was taken: TEMPO sits where BARS was, and BARS one further. `app_test` `testTheRollsTempo`
+  (the walk, A's tap, the D-pad, the stick at the drum grid's rate and the same number on both, its ends, B X Y
+  dead, no undo step), `copybar_test` (the hints on both grids, held too), `testRollBarsLength`.
 - **The stick carries as the D-pad does** (gesture audit G14, 2026-11-24). With R1 holding a note or
   a chord, the stick's sideways steps go through `carry()`: a SCALE's next key for a note (a chord a
   semitone), and with L1 held an octave **once a push**: at the stick's pace for keys an octave a click

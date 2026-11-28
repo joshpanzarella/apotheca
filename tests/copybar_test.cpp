@@ -886,7 +886,7 @@ void testTheWordsFit() {
     rig.project().track = 1;
     rig.frames(1);
     rig.app.notes().moveCursorTo(60, 0);
-    rig.tap(UP);
+    rig.tap(UP, 2); // (TEMPO, then BARS)
     drawn();
     CHECK(rig.app.notes().cursorOnBars() && barIs(roll, 2) && ui::gHintsOver == 0);
     rig.key(L1, true);
@@ -913,7 +913,32 @@ void testTheWordsFit() {
     rig.tap(DOWN);
     drawn();
     CHECK(!barIs(tempo, 4)); // back on the lanes: no UP bars
-    const ui::Hint cell[] = {{"A", "place"}, {"HOLD Y", "chord"}, {"HOLD R1", "paint"}, {"HOLD B", "delete"}, {"UP", "bars"}};
+    // The roll's TEMPO, up from its top step (owner, 2026-11-28): the drum grid's hints, word for word, and with A
+    // held the same one.
+    const ui::Hint tempoHeld[] = {{"UP / DOWN", "tempo"}};
+    rig.app.drums().moveCursorTo(0, 0);
+    rig.tap(UP);
+    rig.key(A, true);
+    rig.frames(1);
+    drawn();
+    CHECK(rig.app.drums().cursorOnTempo() && barIs(tempoHeld, 1));
+    rig.key(A, false);
+    rig.project().track = 1;
+    rig.app.notes().moveCursorTo(60, 0);
+    rig.project().bar = 0;
+    rig.frames(1);
+    rig.tap(UP);
+    drawn();
+    CHECK(rig.app.notes().cursorOnTempo() && barIs(tempo, 4) && ui::gHintsOver == 0);
+    rig.key(A, true);
+    rig.frames(1);
+    drawn();
+    CHECK(rig.app.notes().cursorOnTempo() && barIs(tempoHeld, 1));
+    rig.key(A, false);
+    rig.tap(DOWN);
+    rig.project().track = 0;
+    rig.frames(1);
+    const ui::Hint cell[] = {{"A", "place"}, {"HOLD Y", "chord"}, {"HOLD R1", "paint"}, {"HOLD B", "delete"}, {"UP", "tempo"}};
     const ui::Hint cellDown[] = {{"A", "place"}, {"HOLD Y", "chord"}, {"HOLD R1", "paint"}, {"HOLD B", "delete"}, {"L1", "zoom"}};
     rig.project().track = 1;
     rig.app.notes().moveCursorTo(60, 0);
@@ -938,12 +963,12 @@ void testTheWordsFit() {
     rig.frames(1);
     drawn();
     CHECK(barIs(nextBar, 5) && ui::gHintsOver == 0);
-    // On a note at the very top step the way to BARS is still said, and fits.
+    // On a note at the very top step the way to TEMPO (then BARS) is still said, and fits.
     rig.app.notes().moveCursorTo(60, 0);
     rig.project().bar = 0;
     rig.tap(A);
     drawn();
-    const ui::Hint onNote[] = {{"A", "level / length"}, {"B", "delete"}, {"HOLD Y", "chord"}, {"HOLD R1", "move"}, {"HOLD X", "effects"}, {"UP", "bars"}};
+    const ui::Hint onNote[] = {{"A", "level / length"}, {"B", "delete"}, {"HOLD Y", "chord"}, {"HOLD R1", "move"}, {"HOLD X", "effects"}, {"UP", "tempo"}};
     CHECK(barIs(onNote, 6)); // all six show; the help yields, as on a crowded bar
 }
 
@@ -961,7 +986,7 @@ void testRollBarsLength() {
     CHECK(rig.track(1).bars[0] == 1);
     const int zoom = rig.session().octavesShown();
     roll.moveCursorTo(60, 0);
-    rig.tap(UP);
+    rig.tap(UP, 2); // (TEMPO, then BARS)
     CHECK(roll.cursorOnBars());
     rig.key(A, true);
     rig.tap(UP);
@@ -986,7 +1011,7 @@ void testRollBarsLength() {
     rig.session().setCellBars(1, 0, 4);
     rig.project().bar = 0;
     roll.moveCursorTo(60, 3);
-    rig.tap(UP, 4);
+    rig.tap(UP, 5);
     CHECK(roll.cursorOnBars());
     rig.tap(RIGHT);
     CHECK(rig.project().bar == 1 && roll.cursorPitch() == 60 && roll.cursorStep() == 0);
@@ -995,12 +1020,14 @@ void testRollBarsLength() {
     rig.tap(LEFT);
     CHECK(rig.project().bar == 3); // ...and back round the start
     CHECK(rig.session().octavesShown() == zoom);
-    // Down from BARS is back on the grid; up from BARS rounds to the bottom.
+    // Down from BARS is TEMPO, then the grid, at the top of the bar shown; up from BARS rounds to the bottom.
     rig.tap(DOWN);
-    CHECK(!roll.cursorOnBars() && rig.project().bar == 3 && roll.cursorStep() == 0);
+    CHECK(!roll.cursorOnBars() && roll.cursorOnTempo() && rig.project().bar == 3);
+    rig.tap(DOWN);
+    CHECK(!roll.cursorOnBars() && !roll.cursorOnTempo() && rig.project().bar == 3 && roll.cursorStep() == 0);
     roll.moveCursorTo(60, 0);
     rig.project().bar = 0;
-    rig.tap(UP);
+    rig.tap(UP, 2);
     CHECK(roll.cursorOnBars());
     rig.tap(UP);
     CHECK(!roll.cursorOnBars() && rig.project().bar == 3 && roll.cursorStep() == 15);

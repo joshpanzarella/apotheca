@@ -72,6 +72,11 @@ public:
     // side, a line of the dim lettering over it (so it has an edge on a light theme). Under the name, clear
     // of the M / S mark and the mixer's mark, which are at the head's top.
     static constexpr int kHueMarkH = 2, kHueMarkFoot = 1, kHueMarkInset = 3;
+    // The cursor's edge on the grid (a cell, a REPEATS box, a head, + TRACK, MASTER): kCursorPx pixels, from one
+    // outside the box to one inside it (owner, 2026-11-28: "difficult to see what cell you have selected"; it
+    // was 2, one outside and the box's own edge). One outside is all there is: the columns are one pixel apart.
+    // The copied cell's and scene's brass ring stands kCopiedInset in, clear inside it.
+    static constexpr int kCursorPx = 3, kCopiedInset = 2;
     // B held this long on a track deletes it; the warning bar starts after the wait.
     static constexpr Uint32 kTrackHoldWaitMs = 500, kTrackHoldMs = 2000;
     static constexpr Uint32 kSceneHoldMs = ui::kHoldUndoneMs; // B held this long on a repeat count empties the whole scene (one step of undo: G29)

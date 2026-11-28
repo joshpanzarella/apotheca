@@ -886,9 +886,62 @@ void testTheMarkAndHints() {
     song.moveCursorTo(1, -1);
     CHECK(draw() && hintKeyed(canvas, scratch, "R1", "paste"));
     const SDL_Rect box = song.repeatBox(0);
-    CHECK(box.w > 0 && canvas.is(box.x + 1, box.y + 1, ui::kBrass)); // the copied row, brass-marked
+    CHECK(box.w > 0 && canvas.is(box.x + SongScreen::kCopiedInset, box.y + SongScreen::kCopiedInset, ui::kBrass)); // the copied row, brass-marked
     const SDL_Rect other = song.repeatBox(1);
-    CHECK(canvas.is(other.x + 1, other.y + 1, ui::kBg)); // the rest, not
+    CHECK(canvas.is(other.x + SongScreen::kCopiedInset, other.y + SongScreen::kCopiedInset, ui::kBg)); // the rest, not
+}
+
+// THE SONG CURSOR STANDS OUT (owner, 2026-11-28: "difficult to see what cell you have selected, the border might
+// have to be another pixel or 2 thicker"): kCursorPx (3) pixels on a cell, a REPEATS box and a head, from one
+// outside the box to one inside, in every theme; never on the neighbour's edge (one pixel off); the copied ring
+// in brass just inside it, and the playing line, still seen beside it.
+void testTheCursorStandsOut() {
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    CHECK(SongScreen::kCursorPx == 3 && SongScreen::kCopiedInset == SongScreen::kCursorPx - 1);
+    for (int theme : {static_cast<int>(kThemeBrown), static_cast<int>(kThemeSolarized), static_cast<int>(kThemeGithub)}) {
+        Rig rig;
+        Session& session = rig.session();
+        SongScreen& song = rig.app.song();
+        session.setTheme(theme);
+        rig.session().addTrack(TrackKind::Phazed);
+        rig.track(0).drums[0][0].level[0][0] = 0.9f;
+        const auto draw = [&] {
+            rig.frames(1);
+            ui::useTheme(session.theme());
+            canvas.clear();
+            rig.app.draw(canvas.r, *canvas.fonts);
+        };
+        // The edge of a box, `in` pixels from it (-1 outside, 0 its own, 1 inside), on all four sides at their middles.
+        const auto ring = [&](const SDL_Rect& b, int in, SDL_Color c) {
+            return canvas.is(b.x + in, b.y + b.h / 2, c) && canvas.is(b.x + b.w - 1 - in, b.y + b.h / 2, c) && canvas.is(b.x + b.w / 2, b.y + in, c) &&
+                   canvas.is(b.x + b.w / 2, b.y + b.h - 1 - in, c);
+        };
+        const auto cursorOn = [&](const SDL_Rect& b) { return b.w > 0 && ring(b, -1, ui::kTeal) && ring(b, 0, ui::kTeal) && ring(b, 1, ui::kTeal) && !ring(b, 2, ui::kTeal); };
+        song.moveCursorTo(0, 0);
+        draw();
+        const SDL_Rect cell = song.cellBox(0, 0), next = song.cellBox(1, 0);
+        CHECK(cursorOn(cell));
+        CHECK(!canvas.is(next.x, next.y + next.h / 2, ui::kTeal) && next.x == cell.x + cell.w + 1); // the neighbour's own edge is its own
+        CHECK(!ring(next, 0, ui::kTeal) && !ring(song.cellBox(0, 1), 0, ui::kTeal));
+        // Copied, with the cursor on it: brass inside the teal; and off it, brass alone.
+        rig.tap(R1);
+        draw();
+        CHECK(cursorOn(cell) && ring(cell, SongScreen::kCopiedInset, ui::kBrass));
+        song.moveCursorTo(1, 0);
+        draw();
+        CHECK(ring(cell, SongScreen::kCopiedInset, ui::kBrass) && !canvas.is(cell.x + 1, cell.y + cell.h / 2, ui::kTeal) && cursorOn(song.cellBox(0, 1)));
+        // The REPEATS box and a head.
+        song.moveCursorTo(0, -1);
+        draw();
+        CHECK(cursorOn(song.repeatBox(0)));
+        song.moveCursorTo(0, 0);
+        rig.tap(UP); // up from the top row: the heads
+        draw();
+        CHECK(cursorOn(song.headRect(0)));
+    }
+    ui::useTheme(kThemeBrown);
 }
 
 // A paste spends the copy, a cell's and a scene's (the owner, 2026-11-25: "I liked the way we had it where
@@ -920,12 +973,12 @@ void testAPasteSpendsTheCopy() {
     song.moveCursorTo(1, 0);
     CHECK(draw() && hintKeyed(canvas, scratch, "R1", "paste"));
     const SDL_Rect cell = song.cellBox(0, 0);
-    CHECK(cell.w > 0 && canvas.is(cell.x + 1, cell.y + 1, ui::kBrass)); // copied: marked
+    CHECK(cell.w > 0 && canvas.is(cell.x + SongScreen::kCopiedInset, cell.y + SongScreen::kCopiedInset, ui::kBrass)); // copied: marked
     rig.tap(R1);
     CHECK(rig.track(0).drums[1][0].level[0][0] == 0.9f && rig.said() == "CELL PASTED");
     // Spent: no mark, and on the cell nearby the bar says copy...
     song.moveCursorTo(2, 0);
-    CHECK(draw() && hintKeyed(canvas, scratch, "R1", "copy") && !canvas.is(cell.x + 1, cell.y + 1, ui::kBrass));
+    CHECK(draw() && hintKeyed(canvas, scratch, "R1", "copy") && !canvas.is(cell.x + SongScreen::kCopiedInset, cell.y + SongScreen::kCopiedInset, ui::kBrass));
     // ...so R1 there copies IT, with no going back to clear the first: scene 3's cell, onto scene 4.
     rig.tap(R1);
     CHECK(rig.said() == "CELL COPIED" && rig.track(0).drums[2][0].level[0][0] == 0.f);
@@ -944,11 +997,11 @@ void testAPasteSpendsTheCopy() {
     song.moveCursorTo(5, -1);
     CHECK(draw() && hintKeyed(canvas, scratch, "R1", "paste"));
     const SDL_Rect row = song.repeatBox(0);
-    CHECK(row.w > 0 && canvas.is(row.x + 1, row.y + 1, ui::kBrass));
+    CHECK(row.w > 0 && canvas.is(row.x + SongScreen::kCopiedInset, row.y + SongScreen::kCopiedInset, ui::kBrass));
     rig.tap(R1);
     CHECK(rig.track(0).drums[5][0].level[0][0] == 0.9f && rig.said() == "PASTED ON SCENE 6" && session.copiedScene() < 0);
     song.moveCursorTo(2, -1);
-    CHECK(draw() && hintKeyed(canvas, scratch, "R1", "copy") && !canvas.is(row.x + 1, row.y + 1, ui::kBrass));
+    CHECK(draw() && hintKeyed(canvas, scratch, "R1", "copy") && !canvas.is(row.x + SongScreen::kCopiedInset, row.y + SongScreen::kCopiedInset, ui::kBrass));
     rig.tap(R1);
     CHECK(session.copiedScene() == 2 && rig.said() == "SCENE 3 COPIED");
     // R1 on the copied scene clears it unpasted.
@@ -999,7 +1052,7 @@ void testTheCopyFollowsNextScene() {
         rig.app.draw(canvas.r, *canvas.fonts);
         return ui::gHintsOver == 0.f;
     };
-    const auto marked = [&](const SDL_Rect& box) { return box.w > 0 && canvas.is(box.x + 1, box.y + 1, ui::kBrass); };
+    const auto marked = [&](const SDL_Rect& box) { return box.w > 0 && canvas.is(box.x + SongScreen::kCopiedInset, box.y + SongScreen::kCopiedInset, ui::kBrass); };
     const auto nextScene = [&] {
         rig.key(SELECT, true);
         rig.tap(Y);
@@ -1240,7 +1293,7 @@ int main(int argc, char** argv) {
     const Test tests[] = {
         {"testCopyPasteScene", testCopyPasteScene}, {"testTheEngineHearsIt", testTheEngineHearsIt}, {"testOneUndoStep", testOneUndoStep},
         {"testTheSameIsNoStep", testTheSameIsNoStep}, {"testRefusals", testRefusals}, {"testScenePasteAcrossChangedSynths", testScenePasteAcrossChangedSynths}, {"testTheGesture", testTheGesture},
-        {"testTheGesturePanic", testTheGesturePanic}, {"testTheCellPanic", testTheCellPanic}, {"testTheMarkAndHints", testTheMarkAndHints}, {"testAPasteSpendsTheCopy", testAPasteSpendsTheCopy}, {"testTheCopyFollowsNextScene", testTheCopyFollowsNextScene}, {"testEmptyCellBars", testEmptyCellBars}, {"testTheWordsFit", testTheWordsFit},
+        {"testTheGesturePanic", testTheGesturePanic}, {"testTheCellPanic", testTheCellPanic}, {"testTheMarkAndHints", testTheMarkAndHints}, {"testTheCursorStandsOut", testTheCursorStandsOut}, {"testAPasteSpendsTheCopy", testAPasteSpendsTheCopy}, {"testTheCopyFollowsNextScene", testTheCopyFollowsNextScene}, {"testEmptyCellBars", testEmptyCellBars}, {"testTheWordsFit", testTheWordsFit},
         {"testClearScene", testClearScene}, {"testClearAlreadyEmpty", testClearAlreadyEmpty}, {"testClearGesture", testClearGesture},
         {"testCellCopyRefusals", testCellCopyRefusals},
         {"testCellCopyAcrossSynths", testCellCopyAcrossSynths},

@@ -44,7 +44,7 @@ float nextTenth(float now, float sign) {
 } // namespace
 
 const NoteEvent* NoteScreen::noteHere() const {
-    if (onBars_) return nullptr; // the cursor is on the BARS stop, above the grid
+    if (offGrid()) return nullptr; // the cursor is on the BARS or TEMPO stop, above the grid
     const int slot = pat().at(pitch_, step_);
     return slot < 0 ? nullptr : &pat().notes[slot];
 }
@@ -67,7 +67,7 @@ int NoteScreen::chordSlotHere() const {
 }
 
 const ChordEvent* NoteScreen::chordHere() const {
-    if (onBars_) return nullptr; // the cursor is on the BARS stop, above the grid
+    if (offGrid()) return nullptr; // the cursor is on the BARS or TEMPO stop, above the grid
     const int slot = chordSlotHere();
     return slot < 0 ? nullptr : &pat().chords[slot];
 }
@@ -92,6 +92,7 @@ float NoteScreen::lengthNow() const {
 
 void NoteScreen::moveCursorTo(int pitch, int step) {
     onBars_ = false;
+    onTempo_ = false;
     pitch_ = pitch < kLowest ? kLowest : (pitch > kHighest ? kHighest : pitch);
     // A step past either end of the bar is in the next bar of the cell, or
     // the one before (its FILL after its last, once made); past the ends it comes round.
@@ -294,13 +295,21 @@ ChordShape NoteScreen::shapeAt(int index) const {
 }
 
 void NoteScreen::moveCursor(Button direction) {
+    if (onTempo_) {
+        // TEMPO sits above the grid, as on the drum grid (owner, 2026-11-28: it could only be reached from there):
+        // down goes back to the grid, up is BARS. Sideways does nothing.
+        if (direction == Button::Down) onTempo_ = false, step_ = 0;
+        if (direction == Button::Up) onTempo_ = false, onBars_ = true;
+        return;
+    }
     if (onBars_) {
-        // BARS sits above the grid; down goes back to it, up comes round to the bottom.
+        // BARS sits above the tempo; down goes to it, up comes round to the bottom.
         // Left and right show the bar before or after, round the ends.
         if (direction == Button::Left || direction == Button::Right) {
             project_.bar = project_.current().barAfter(project_.scene, project_.bar, direction == Button::Right ? 1 : -1); // (its FILL after its last)
         } else if (direction == Button::Down) {
             onBars_ = false;
+            onTempo_ = true;
         } else {
             onBars_ = false;
             project_.bar = 0;
@@ -311,11 +320,11 @@ void NoteScreen::moveCursor(Button direction) {
     if (carrying_ != Carry::Nothing) return carry(direction);
     if (direction == Button::Right) moveCursorTo(nextKey(pitch_, 1), step_); // (with a SCALE on: the next key of it)
     if (direction == Button::Left) moveCursorTo(nextKey(pitch_, -1), step_);
-    if (direction == Button::Up && project_.bar == 0 && step_ == 0) onBars_ = true; // up from the top step: BARS
+    if (direction == Button::Up && project_.bar == 0 && step_ == 0) onTempo_ = true; // up from the top step: TEMPO, then BARS
     else if (direction == Button::Up) moveCursorTo(pitch_, step_ - 1);
     if (direction == Button::Down) moveCursorTo(pitch_, step_ + 1);
-    if (painting_ && !onBars_) paintHere();
-    if (erasing_ && !onBars_) eraseHere();
+    if (painting_ && !offGrid()) paintHere();
+    if (erasing_ && !offGrid()) eraseHere();
 }
 
 // The engine is told the whole bar again: a chord's notes take whichever
@@ -698,7 +707,19 @@ void NoteScreen::fxRoll() {
     session_.sendNoteBar(project_.track, project_.scene, project_.bar);
 }
 
+// The tempo, as the drum grid's (PatternScreen::setTempo): `bpm` exactly for the stick, the project's rounded.
+void NoteScreen::setTempo(float bpm) {
+    tempoExact_ = bpm < kMinTempo ? kMinTempo : (bpm > kMaxTempo ? kMaxTempo : bpm);
+    session_.setTempo(tempoExact_); // (rounds it; no step of undo, as on the drum grid)
+}
+
 void NoteScreen::press(Button b) {
+    if (onTempo_) {
+        // TEMPO: with A held, a beat a minute up / down, ten sideways (the drum grid's); without, the cursor's.
+        if (shaping_) setTempo(project_.tempo + (b == Button::Up || b == Button::Right ? 1.f : -1.f) * (b == Button::Up || b == Button::Down ? 1.f : 10.f));
+        else moveCursor(b);
+        return;
+    }
     if (onBars_) {
         // BARS: up and down with A held set the cell's count; the rest (the bar before or
         // after, off the stop) is the cursor's.
@@ -750,7 +771,7 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (b == Button::Y) {
-        if (event.down && !shaping_ && !painting_ && !onBars_) beginPick();
+        if (event.down && !shaping_ && !painting_ && !offGrid()) beginPick();
         else if (!event.down) endPick();
         return;
     }
@@ -761,7 +782,7 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
 
     if (b == Button::L2 || b == Button::R2) {
         // The app sends these here only while A is held: nudge, early or late.
-        if (event.down && shaping_ && !onBars_) nudgeBy(b == Button::R2 ? 0.1f : -0.1f);
+        if (event.down && shaping_ && !offGrid()) nudgeBy(b == Button::R2 ? 0.1f : -0.1f);
         return;
     }
     // L1 held (pressed first): A pastes over the bar shown. R1 takes hold as always instead;
@@ -772,7 +793,8 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (b == Button::A) {
-        if (event.down && !onBars_ && !chordHere()) placeNote(kNewLevel); // on a chord, A takes hold of the chord
+        if (event.down && !offGrid() && !chordHere()) placeNote(kNewLevel); // on a chord, A takes hold of the chord
+        if (event.down && onTempo_) session_.tapTempo(whenPressed(event, lastMs_)); // TAP TEMPO, as on the drum grid (held, with a direction, it still turns)
         shaping_ = event.down;
         barsPushed_ = false; // (a new hold: a push already there is a click on BARS, as on a synth's choice)
         axis_ = Axis::None;
@@ -805,11 +827,11 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         repeat_.restart();
         return;
     }
-    if (b == Button::B && !input.held(Button::A) && !onBars_) {
+    if (b == Button::B && !input.held(Button::A) && !offGrid()) {
         // Deletes what is under the cursor, and, held, whatever the cursor is dragged over.
         erasing_ = true;
         eraseHere();
-    } else if (b == Button::X && !onBars_) {
+    } else if (b == Button::X && !offGrid()) {
         holdX(input);
     } else if (b == Button::Start && !input.held(Button::Select)) {
         session_.togglePlay(false);
@@ -892,7 +914,7 @@ bool NoteScreen::barKeyButton(const ButtonEvent& event, const Input& input) {
     // is the next bar). Only with L1 held first and nothing else going: shaping, painting, carrying,
     // the chord in hand, erasing and what X holds keep the keys, and R1 held is a bar copy on its way.
     // Hold L1, left / right: the cell's bars, more or fewer (as the Song screen's hold A).
-    if (zooming_ && l1First_ && event.down && !shaping_ && !painting_ && !erasing_ && !picking_ && !fxHeld_ && carrying_ == Carry::Nothing && !input.held(Button::R1) && !onBars_) {
+    if (zooming_ && l1First_ && event.down && !shaping_ && !painting_ && !erasing_ && !picking_ && !fxHeld_ && carrying_ == Carry::Nothing && !input.held(Button::R1) && !offGrid()) {
         if (b == Button::Up || b == Button::Down) {
             project_.bar = project_.current().barAfter(project_.scene, project_.bar, b == Button::Down ? 1 : -1); // (1 ... the last, its FILL, 1)
             zoomUsed_ = true; // (letting go of L1 zooms nothing: it moved bars)
@@ -915,7 +937,7 @@ void NoteScreen::r1Button(const ButtonEvent& event, const Input& input) {
     const bool barTap = l1First_ && input.held(Button::L1) && !input.held(Button::X);
     carrying_ = Carry::Nothing;
     painting_ = false;
-    if (event.down && !shaping_ && !erasing_ && !onBars_ && (slot >= 0 || chord >= 0)) {
+    if (event.down && !shaping_ && !erasing_ && !offGrid() && (slot >= 0 || chord >= 0)) {
         carrying_ = slot >= 0 ? Carry::Note : Carry::Chord;
         carried_ = slot >= 0 ? slot : chord;
         axis_ = Axis::None; // a new hold is a new choice of job for the stick
@@ -924,7 +946,7 @@ void NoteScreen::r1Button(const ButtonEvent& event, const Input& input) {
             copyBarPitch_ = pitch_;
             copyBarStep_ = step_;
         }
-    } else if (event.down && !shaping_ && !barTap && !onBars_) {
+    } else if (event.down && !shaping_ && !barTap && !offGrid()) {
         painting_ = true;
         brush_ = kNewLevel;
         paintHere();
@@ -975,6 +997,7 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
     if (dt > 0.05f) dt = 0.05f;
     dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number
     lastMs_ = nowMs;
+    if (std::round(tempoExact_) != project_.tempo) tempoExact_ = project_.tempo; // the tempo set from elsewhere (SEL + D-pad, a song opened, the drum grid)
     if (!project_.current().barThere(project_.scene, project_.bar)) project_.bar = 0; // the cell was shortened, or it is another cell (its FILL is a bar to stand on)
     float x = input.stickX(), y = input.stickY();
     {
@@ -1048,7 +1071,8 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
             barsPushed_ = pushed;
         }
         // However far it is pushed, each at its own rate: the level (a fill) and the length.
-        const bool here = !onBars_ && levelNow() > 0.f;
+        if (onTempo_ && axis_ == Axis::UpDown && y != 0.f) setTempo(tempoExact_ - stickWay(y) * ui::kTempoPerSecond * dt); // TEMPO: freely, the drum grid's rate
+        const bool here = !offGrid() && levelNow() > 0.f;
         if (here && axis_ == Axis::Sideways && x != 0.f) {
             setLevel(levelNow() + stickWay(x) * kFillPerSecond * dt);
             turningLength_ = false;
@@ -1137,6 +1161,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         // BARS is the readout itself, outlined where it drew (it shortens while playing).
         outline(r, static_cast<int>(top.wordsX) - 4, 2, static_cast<int>(top.wordsWidth) + 8, kTopBarH - 4, shaping_ ? kBrass : kTeal, 2);
     }
+    if (onTempo_) tempoCursor(r, fonts, top, tempoExact_, project_.tempo, shaping_ ? kBrass : kTeal); // as the drum grid's
     const bool held = shaping_ || painting_ || picking_;
     const SDL_Color cursorColor = held ? kBrass : kTeal;
 
@@ -1152,7 +1177,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     drawNotesInside(r, held, under);
     drawGlideLines(r);
     if (picking_ && editing_ < 0) drawChord(r, fonts, inHand(), false, true); // where it will land
-    if (!onBars_) outline(r, keyX(pitch_) - 1, stepY(step_) - 1, cellW() + 2, kCellH + 2, cursorColor, 2);
+    if (!offGrid()) outline(r, keyX(pitch_) - 1, stepY(step_) - 1, cellW() + 2, kCellH + 2, cursorColor, 2);
     const int playStep = project_.playScene == project_.scene && project_.cellBarPlaying(project_.track) == project_.bar ? project_.playStep : -1;
     if (playStep >= 0) fill(r, kGridLeft, stepY(playStep), visibleKeys() * keyW() - 2, kCellH, faded(kPurple, 76));
     // A scene of fewer than sixteen steps: the steps past its end are never played, and are shaded.
@@ -1179,7 +1204,7 @@ void NoteScreen::drawKeyboard(SDL_Renderer* r, const Fonts& fonts, SDL_Color cur
     const SDL_Color whiteKey = ui::lightTheme() ? kPanel2 : kDim, blackKey = ui::lightTheme() ? kText : kBg;
     fill(r, kGridLeft, kKeysTop, keysW, keysH(), whiteKey);
     for (int pitch = low_; pitch < low_ + visibleKeys(); ++pitch) {
-        const bool black = isBlackKey(pitch), here = !onBars_ && pitch == pitch_;
+        const bool black = isBlackKey(pitch), here = !offGrid() && pitch == pitch_;
         const int x = keyX(pitch);
         if (black) {
             // The two white keys meet under the middle of a black one.
@@ -1197,7 +1222,7 @@ void NoteScreen::drawKeyboard(SDL_Renderer* r, const Fonts& fonts, SDL_Color cur
         const int c = pitch - ((pitch % 12) + 12) % 12; // this octave's C, perhaps off to the left
         int end = c + 12 < low_ + visibleKeys() ? c + 12 : low_ + visibleKeys();
         const int x0 = keyX(pitch), x1 = keyX(end) - 3;
-        const bool mine = !onBars_ && pitch_ >= c && pitch_ < c + 12;
+        const bool mine = !offGrid() && pitch_ >= c && pitch_ < c + 12;
         const SDL_Color color = mine ? cursorColor : kDim;
         fill(r, x0, kOctaveTop + kOctaveH - 2, x1 - x0, 1, color);
         if (pitch % 12 == 0) fill(r, x0, kOctaveTop + 2, 1, kOctaveH - 3, color); // the C end
@@ -1558,6 +1583,14 @@ void NoteScreen::drawNoteStrip(SDL_Renderer* r, const Fonts& tight, int stripY, 
         field(8.f, "CHORD", chordUnder->name, kPurple);
     } else if (onBars_) {
         field(8.f, "CELL", "BARS", kText);
+    } else if (onTempo_) {
+        // As the drum grid's strip on its TEMPO: the tempo, and a bar from the slowest to the fastest.
+        field(8.f, "SONG", "TEMPO", kText);
+        std::snprintf(text, sizeof text, "%d", static_cast<int>(project_.tempo));
+        field(100.f, "BPM", text, cursorColor);
+        const int bx = kStripTempoBarX, by = stripY + 30, part = static_cast<int>(std::round(kStripTempoBarW * (tempoExact_ - kMinTempo) / (kMaxTempo - kMinTempo)));
+        fill(r, bx, by, kStripTempoBarW, 6, kLine);
+        if (part > 0) fill(r, bx, by, part, 6, cursorColor);
     } else {
         noteName(pitch_, text, sizeof text);
         field(8.f, "KEY", text, kText);
@@ -1565,8 +1598,8 @@ void NoteScreen::drawNoteStrip(SDL_Renderer* r, const Fonts& tight, int stripY, 
     if (onBars_ && onFill()) std::snprintf(text, sizeof text, "%s", project_.current().fillOn(project_.scene) ? "FILL" : "FILL OFF");
     else if (onBars_) std::snprintf(text, sizeof text, "%d OF %d", project_.bar + 1, cellBars());
     else std::snprintf(text, sizeof text, "%d", sceneBar() * project_.meterOf(project_.scene) + step_ + 1); // as the numbers at the left read
-    if (!chordFx) field(100.f, onBars_ ? "BAR" : "STEP", text, onBars_ ? cursorColor : kText);
-    drawStripValues(r, tight, stripY, under, chordUnder, chordFx);
+    if (!chordFx && !onTempo_) field(100.f, onBars_ ? "BAR" : "STEP", text, onBars_ ? cursorColor : kText);
+    if (!onTempo_) drawStripValues(r, tight, stripY, under, chordUnder, chordFx); // (TEMPO: the tempo alone, as the drum grid's strip)
 }
 
 // The rest of the strip: LEVEL and LENGTH (or, X held, what the note does), its effects, THROW and NUDGE.
@@ -1694,7 +1727,7 @@ void NoteScreen::drawHints(SDL_Renderer* r, const Fonts& fonts, const NoteEvent*
         const HintUnder below[] = {{kStripHeldRatchetX, "LEFT / RIGHT"}, {kStripHeldGlideX, "UP / DOWN"}, {kStripHeldThrowX, "A"}, {kStripHeldFromX, "L1 / R1"}};
         hintsUnder(r, fonts, "Y", below, 4);
         return;
-    } else if (l1First_ && !held && carrying_ == Carry::Nothing && !onBars_) {
+    } else if (l1First_ && !held && carrying_ == Carry::Nothing && !offGrid()) {
         hint("UP / DOWN", "change bar");
         hint("LEFT / RIGHT", "bar count");
         hint("R1", "copy bar");
@@ -1708,6 +1741,15 @@ void NoteScreen::drawHints(SDL_Renderer* r, const Fonts& fonts, const NoteEvent*
     } else if (painting_) {
         std::snprintf(brushText, sizeof brushText, "paint notes at %d%%", static_cast<int>(std::round(brush_ * 100.f)));
         hint("DRAG", brushText);
+    } else if (onTempo_) {
+        // As the drum grid's TEMPO, word for word.
+        if (shaping_) hint("UP / DOWN", "tempo");
+        else {
+            hint("A", "tap");
+            hint("HOLD A", "tempo");
+            hint("START", project_.playing ? "stop" : "play");
+            hint("UP", "bars"); // up from here is the BARS stop
+        }
     } else if (onBars_) {
         if (shaping_) hint("UP / DOWN", "more / fewer");
         else {
@@ -1726,9 +1768,9 @@ void NoteScreen::drawHints(SDL_Renderer* r, const Fonts& fonts, const NoteEvent*
         hint("HOLD R1", under || chordUnder ? "move" : "paint");
         if (under || chordUnder) hint("HOLD X", "effects");
         if (!under && !chordUnder) hint("HOLD B", "delete"); // (on a note, B's own hint says it)
-        // Up and down past a bar's ends move across the cell's bars (up from the very top is the BARS stop).
+        // Up and down past a bar's ends move across the cell's bars (up from the very top is the TEMPO stop, then BARS).
         // Said instead of the zoom there: the bar has no room for both.
-        if (step_ == 0) hint("UP", project_.bar == 0 ? "bars" : "prev bar");
+        if (step_ == 0) hint("UP", project_.bar == 0 ? "tempo" : "prev bar");
         else if (step_ == kSteps - 1 && project_.current().barAfter(project_.scene, project_.bar, 1) != 0) hint("DOWN", "next bar"); // (the FILL after the last)
         else hint("L1", "zoom");
     }
