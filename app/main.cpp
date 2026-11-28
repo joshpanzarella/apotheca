@@ -605,7 +605,8 @@ int main(int argc, char** argv) {
 
     bool running = !clip.script;
     bool startedFine = false;
-    Uint32 stillClock = 0; // (stills: the App's clock, a frame a pass at most)
+    Uint32 stillClock = 0;      // (stills: the App's clock, in whole frames of 16 ms from stillFrom)
+    Uint32 stillFrom = 0;
     bool reported = false;
     float loudest = 0.f;
     const Uint32 start = SDL_GetTicks();
@@ -750,13 +751,16 @@ int main(int argc, char** argv) {
                 learning = false;
             }
         }
-        // A still's clock goes at most a frame a pass: a desk that stalls a pass for half a second must not
-        // let a hold that the still shows filling (B on a MOD, a song, an effect) finish before the picture.
+        // A still's clock goes in whole frames, at most one a pass, and never ahead of the real clock: a desk
+        // that stalls a pass for half a second must not let a hold that the still shows filling (B on a MOD, a
+        // song, an effect) finish before the picture. And the picture is taken when that clock reaches
+        // --still-ms, so every still is drawn at the same moment, however busy the desk (a bar half filled
+        // was once a third filled on a busy desk, and the text checks saw its edge cross a number).
         Uint32 appNow = SDL_GetTicks();
         if (smoke || shot) {
-            if (stillClock == 0 || appNow < stillClock) stillClock = appNow;
-            else if (appNow - stillClock > 16) stillClock += 16, appNow = stillClock;
-            else stillClock = appNow;
+            if (stillFrom == 0) stillFrom = stillClock = appNow;
+            else if (appNow - stillClock >= 16) stillClock += 16;
+            appNow = stillClock;
         }
         if (!learning) app.update(input, appNow);
         if (!learning && app.settings().takeRelearn()) learnAgain("asked for on the SETUP screen");
@@ -798,7 +802,7 @@ int main(int argc, char** argv) {
         const auto drawStart = std::chrono::steady_clock::now();
         if (!learning && draw) app.draw(renderer, fonts);
         drawMs = !learning && draw ? std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - drawStart).count() : 0.0;
-        if ((smoke || shot) && SDL_GetTicks() - start > static_cast<Uint32>(stillMs < 0 ? 0 : stillMs)) running = false;
+        if ((smoke || shot) && stillFrom != 0 && stillClock - stillFrom >= static_cast<Uint32>(stillMs < 0 ? 0 : stillMs)) running = false;
         if (!running && texts) {
             // The same moment drawn once at each text size, and what each drew written down:
             //   CHOSEN n cap / SIZE n / T order cap x y w h words / B order solid x y w h

@@ -72,3 +72,11 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   whose `mktemp` has no `trap ... rm -rf` (2026-11-16: the tests had left
   33,000 folders, 16 GB, and filled the disk mid-build). A test that writes
   "../x" to prove a path is refused does it one folder down inside its own.
+
+**A still is taken at an exact moment** (2026-11-28). In a still (`--shot`, `--texts`, `--smoke`) the App's clock
+moves in whole 16 ms frames from the first pass, at most one a pass and never ahead of the real clock, and the picture
+is taken when that clock reaches `--still-ms` (`app/main.cpp`, `stillClock`). So a hold that the still shows filling
+draws the same bar on every run, however busy the desk. Before, the picture came at a real-time moment: on a busy
+desk `fx-deleting`'s bar was a different width each run, and about one run in 24 its edge crossed the slot's "1",
+which `textviews` read as text out of its box (seen in two full runs). Checked: 32 runs of `fx-deleting` under load,
+four at a time, gave the same text file to the byte (they had given eight different ones).
