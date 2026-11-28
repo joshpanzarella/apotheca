@@ -1,15 +1,20 @@
 # The turn-off's own log, for every step of going down. Sourced, not run.
 #
-# off_log STEP: appends "[uptime] off: STEP" to /data/apotheca/logs/off.log
-# and syncs it, so the line is on the card at once (a turn-off that hangs
-# leaves the last step it reached; the owner's power key, held, cuts the
-# power and everything in RAM with it). The same words go to the kernel's
+# off_log STEP: appends "[uptime] off: STEP" to /data/apotheca/logs/off.log.
+# It does not sync: a sync for every line cost about 0.13 s a line on the
+# card (owner's off.log, 2026-11-28: 23 lines, 3.4 s), most of a turn-off.
+# The log is synced instead where a turn-off can stop and wait: off_limit
+# syncs it before it starts its command (and S95apotheca before it waits for
+# Apotheca), so a turn-off that hangs still leaves the last line it reached
+# on the card (the owner's power key, held, cuts the power and everything in
+# RAM with it). The same words go to the kernel's
 # log (/dev/kmsg), which ramoops keeps past a warm reset, and which is the
 # only place left once /data is unmounted: off_log then writes nowhere else
 # and never fails. The file keeps its last OFF_KEEP lines, trimmed by the
 # first line of each turn-off.
 #
-# off_limit SECONDS NAME COMMAND...: runs COMMAND, waits for it at most
+# off_limit SECONDS NAME COMMAND...: syncs the log (off_sync; not when the
+# command is itself a sync), runs COMMAND, waits for it at most
 # SECONDS, and returns its code. One still running then is sent TERM and
 # KILL and left behind (a process stuck in the kernel cannot be waited
 # for), the log says so with where it is stuck, and the code is 124.
@@ -25,19 +30,31 @@ OFF_KEEP=200
 # How long one sync of the log may take before the log stops syncing.
 OFF_SYNC_S=3
 
-# Seconds since the kernel started, in hundredths (no dot: for sums).
-off_cs() {
-    set -- $(cut -d' ' -f1 /proc/uptime | tr '.' ' ')
-    echo $(( $1 * 100 + ${2#0} ))    # (no leading 0: "08" is not octal)
+# Seconds since the kernel started, in hundredths (no dot: for sums):
+# off_now sets $off_now, off_cs prints it. Read by the shell itself, no
+# program started: the waits below ask many times a second.
+off_now() {
+    read -r _off_u _off_rest < /proc/uptime
+    _off_f=${_off_u#*.}
+    off_now=$(( ${_off_u%.*} * 100 + ${_off_f#0} ))    # (no leading 0: "08" is not octal)
 }
+off_cs() { off_now; echo "$off_now"; }
 
 # "12.34" from hundredths
 off_s() { printf '%d.%02d' $(( $1 / 100 )) $(( $1 % 100 )); }
 
+# A short sleep while waiting for a child: 0.01 s for its first tenth of a
+# second (most steps end within it), then 0.1 s. Waiting in steps of 0.1 s
+# alone put 0.1 s on every sync and every step. N: hundredths waited so far.
+off_nap() { if [ "$1" -lt 10 ]; then sleep 0.01; else sleep 0.1; fi; }
+
 # Is the background child PID still running? (a zombie is not)
 off_alive() {
     kill -0 "$1" 2>/dev/null || return 1
-    case "$(sed 's/.*) //' "/proc/$1/stat" 2>/dev/null | cut -d' ' -f1)" in
+    _off_st=
+    read -r _off_st 2>/dev/null < "/proc/$1/stat"
+    _off_st=${_off_st##*) }
+    case "${_off_st%% *}" in
         Z|X|'') return 1 ;;
     esac
     return 0
@@ -65,18 +82,20 @@ off_where() {
 # turn-off goes on without it.
 off_sync() {
     [ -e "$OFF_RUN/off-sync-stuck" ] && return 1
+    off_now
+    _off_sync_began=$off_now
     sync &
     _off_pid=$!
-    _off_n=0
     while off_alive "$_off_pid"; do
-        if [ "$_off_n" -ge $(( OFF_SYNC_S * 10 )) ]; then
+        off_now
+        _off_n=$(( off_now - _off_sync_began ))
+        if [ "$_off_n" -ge $(( OFF_SYNC_S * 100 )) ]; then
             mkdir -p "$OFF_RUN" 2>/dev/null
             touch "$OFF_RUN/off-sync-stuck" 2>/dev/null
             echo "apotheca off: a sync took over ${OFF_SYNC_S} s ($(off_where "$_off_pid")): the log no longer waits for the card" >> "$OFF_KMSG" 2>/dev/null
             return 1
         fi
-        sleep 0.1
-        _off_n=$((_off_n + 1))
+        off_nap "$_off_n"
     done
     wait "$_off_pid" 2>/dev/null
     return 0
@@ -97,24 +116,31 @@ off_begin() {
 }
 
 off_log() {
-    _off_line="[$(cut -d' ' -f1 /proc/uptime)] off: $*"
+    read -r _off_u _off_rest < /proc/uptime
+    _off_line="[$_off_u] off: $*"
     echo "apotheca off: $*" >> "$OFF_KMSG" 2>/dev/null
     # The card's folder is there only while /data is mounted.
     [ -d "${OFF_LOG%/*}" ] || return 0
     off_begin
-    echo "$_off_line" >> "$OFF_LOG" 2>/dev/null || return 0
-    off_sync
+    echo "$_off_line" >> "$OFF_LOG" 2>/dev/null
     return 0
 }
 
 off_limit() {
     _off_limit=$1 _off_name=$2
     shift 2
-    _off_began=$(off_cs)
+    # What is logged so far onto the card before anything that may hang.
+    # Only while /data is there (after its unmount a sync is the
+    # command's own business); never before a sync, which is one itself.
+    [ "$1" != sync ] && [ -d "${OFF_LOG%/*}" ] && off_sync
+    off_now
+    _off_began=$off_now
     "$@" &
     _off_child=$!
     while off_alive "$_off_child"; do
-        if [ $(( $(off_cs) - _off_began )) -ge $(( _off_limit * 100 )) ]; then
+        off_now
+        _off_n=$(( off_now - _off_began ))
+        if [ "$_off_n" -ge $(( _off_limit * 100 )) ]; then
             _off_tree=$(off_tree "$_off_child")
             _off_where_is=
             for _off_p in $_off_tree; do
@@ -127,11 +153,12 @@ off_limit() {
             off_log "$_off_name: CUT SHORT after $_off_limit s, still running ($_off_where_is); going on without it"
             return 124
         fi
-        sleep 0.1
+        off_nap "$_off_n"
     done
     wait "$_off_child"
     _off_code=$?
-    off_took=$(off_s $(( $(off_cs) - _off_began )))
+    off_now
+    off_took=$(off_s $(( off_now - _off_began )))
     return $_off_code
 }
 

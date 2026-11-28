@@ -21,12 +21,17 @@ stop() {
     touch "$APOTHECA_RUN/apotheca.hold"
     pid=$(pidof apotheca)
     keep=$(cat "$APOTHECA_RUN/apotheca.keep.pid" 2>/dev/null)
-    if [ -n "$keep" ] && kill -TERM "$keep" 2>/dev/null; then
-        : # it hands the TERM on to Apotheca
+    # Each line is synced to the card before the TERM: the wait below is
+    # not under off_limit (whose sync would otherwise put it there), and a
+    # sync after the TERM would race Apotheca's own save.
+    if [ -n "$keep" ] && kill -0 "$keep" 2>/dev/null; then
         off_log "S95apotheca: TERM to apotheca-keep ($keep); Apotheca: ${pid:-not running}"
+        off_sync
+        kill -TERM "$keep" 2>/dev/null # it hands the TERM on to Apotheca
     elif [ -n "$pid" ]; then
-        kill -TERM $pid 2>/dev/null
         off_log "S95apotheca: TERM to Apotheca ($pid); apotheca-keep not running"
+        off_sync
+        kill -TERM $pid 2>/dev/null
     else
         off_log "S95apotheca: neither Apotheca nor apotheca-keep running"
     fi

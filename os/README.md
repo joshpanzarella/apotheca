@@ -156,8 +156,11 @@ is back: plan, section 17).
 
 **If it does not turn off** (the screen dark or not, it stays on until the
 power key is held 10 seconds), send `apotheca/logs/off.log`. Every step of
-turning off writes a line there at once, so the last line is the step it
-stuck at:
+turning off writes a line there, and the lines are on the card before
+anything that could hang starts, so the last line is the step it stuck at.
+(Until 2026-11-28 every line was synced on its own: about 0.13 s a line,
+3 s of a turn-off. Now the card is synced once a step: the logging should
+cost about 1 s of a whole turn-off, plus what the steps themselves take.)
 
 ```
 ----- a turn-off (boot 12; boot-latest.txt is this start)
@@ -168,6 +171,10 @@ stuck at:
 ...
 [66.10] off: S05data: unmounting /data (at most 10 s; ...): the LAST line on the card
 ```
+
+WiFi, if any of it is on, is turned off right after Apotheca stops (`WiFi:
+turning it off`, at most 5 s, then `WiFi: off in ... s`), so a slow radio
+shows in the log instead of holding the very end of the turn-off.
 
 Who asked (Apotheca's quit or idle, the power key, the battery; nothing
 said means `poweroff` from a shell), then each stop script with how long

@@ -4,15 +4,23 @@
 # (S95apotheca first: Apotheca saves its song; S05data near the end
 # unmounts /data), as Buildroot's own rcK does, and in addition:
 #
-#   - every step is a line in /data/apotheca/logs/off.log, on the card at
-#     once (/usr/lib/apotheca/off.sh), and in the kernel's log: a turn-off
-#     that hangs says where;
+#   - every step is a line in /data/apotheca/logs/off.log, put on the card
+#     before anything that may hang (/usr/lib/apotheca/off.sh), and in the
+#     kernel's log: a turn-off that hangs says where;
 #   - no stop script may take for ever: each gets a time (STOP_S, 30 s; 40 s for
 #     S95apotheca, whose own wait for Apotheca is 15 s), then it is cut
-#     short, the log says so, and the turn-off goes on.
+#     short, the log says so, and the turn-off goes on;
+#   - WiFi, when any of it is on, is turned off right after Apotheca has
+#     stopped (`apotheca-wifi down`, the app's own WiFi-off: wpa_supplicant,
+#     DHCP and the hotspot stopped, the interface down), at most 5 s, timed
+#     and logged while /data is still there. Otherwise the radio (rtw88 over
+#     SDIO) is still up when the kernel powers off, where nothing times it.
+#     The modules stay loaded: nothing shows unloading them is safe.
 #
-# APOTHECA_INITD (default /etc/init.d), APOTHECA_LIB, APOTHECA_STOP_S and
-# APOTHECA_S95_STOP_S are for the desk test (os/tools/off-test.sh).
+# APOTHECA_INITD (default /etc/init.d), APOTHECA_LIB, APOTHECA_STOP_S,
+# APOTHECA_S95_STOP_S, APOTHECA_NET (default /sys/class/net) and
+# APOTHECA_WIFI_CMD (default /usr/sbin/apotheca-wifi) are for the desk test
+# (os/tools/off-test.sh).
 
 initd=${APOTHECA_INITD:-/etc/init.d}
 . "${APOTHECA_LIB:-/usr/lib/apotheca}/off.sh"
@@ -28,6 +36,28 @@ wifi=$(pidof wpa_supplicant udhcpc udhcpd avahi-daemon 2>/dev/null)
 mods=$(cut -d' ' -f1 /proc/modules 2>/dev/null | grep -i rtw | tr '\n' ' ')
 stuck=$(for p in $(off_pids); do sed -n 's/^\([0-9]*\) (\(.*\)) D .*/\1 \2/p' "/proc/$p/stat" 2>/dev/null; done | tr '\n' ',')
 off_log "rcK: WiFi programs running: ${wifi:-none}; WiFi modules: ${mods:-none}; stuck in the kernel: ${stuck:-none}"
+
+net=${APOTHECA_NET:-/sys/class/net}
+wifi_cmd=${APOTHECA_WIFI_CMD:-/usr/sbin/apotheca-wifi}
+
+# WiFi off, when any of it is on: one of its programs running, or a wireless
+# interface up (IFF_UP, bit 0 of its flags).
+wifi_off() {
+    on=$(pidof wpa_supplicant udhcpc udhcpd avahi-daemon 2>/dev/null)
+    for w in "$net"/*/wireless; do
+        [ -d "$w" ] || continue
+        d=${w%/wireless}
+        [ $(( $(cat "$d/flags" 2>/dev/null || echo 0) & 1 )) = 1 ] && on="$on ${d##*/} up"
+    done
+    if [ -z "$on" ]; then
+        off_log "WiFi: off already"
+        return 0
+    fi
+    off_log "WiFi: turning it off (at most 5 s; on:$on)"
+    off_limit 5 "WiFi off" "$wifi_cmd" down
+    code=$?
+    [ "$code" -ne 124 ] && off_log "WiFi: off in $off_took s (code $code)"
+}
 
 stop_one() {
     case "$1" in
@@ -46,6 +76,7 @@ for i in $(ls -r "$initd"/S??*); do
     off_limit "$limit" "$s stop" stop_one "$i"
     code=$?
     [ "$code" -ne 124 ] && off_log "$s stop: done in $off_took s (code $code)"
+    [ "$s" = S95apotheca ] && wifi_off
 done
 
 # /data is unmounted by now: these lines reach the kernel's log only.
