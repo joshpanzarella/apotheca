@@ -1843,12 +1843,25 @@ void testTheOtherScreens() {
     rig.app.kit().goTo(2, KitScreen::kSound);
     rig.frames(2);
     CHECK(holds(rig, "the kit") > 8);
-    CHECK(drew("FILE NOT FOUND.") && drew("THE DRUM PLAYS.") && drew("BUILT IN") && drew("SHORT"));
-    // (Since CHOKE that line is two short ones, in the narrower column, and they fit it at every size: it ran off the screen's edge before.)
-    CHECK(capAtXl("FILE NOT FOUND.") == 13.f && capAtXl("THE DRUM PLAYS.") == 13.f && capAtXl("THE RECORDING") == 13.f && capAtXl("CHOKE") == 13.f);
+    CHECK(drew("NOT FOUND:") && drew("DRUM PLAYS") && drew("BUILT IN") && drew("SAMPLE") && drew("SHORT"));
+    // (Since CHOKE that line is two short ones, in the narrower column, and they fit it at every size: it ran off the screen's edge before.
+    // Since SOURCE (2026-11-28) the column is narrower again: NOT FOUND: / DRUM PLAYS, still at XL's own size.)
+    CHECK(capAtXl("NOT FOUND:") == 13.f && capAtXl("DRUM PLAYS") == 13.f && capAtXl("EDIT") == 13.f && capAtXl("CHOKE") == 13.f && capAtXl("SOURCE") == 13.f);
     for (const textfit::Frame* frame : {&lastLarge, &lastXl})
-        for (const textfit::Text& t : frame->texts)
-            if (t.words == "FILE NOT FOUND." || t.words == "THE DRUM PLAYS.") CHECK(t.x + t.w <= KitScreen::kWaveX + KitScreen::kWaveW);
+        for (const textfit::Text& t : frame->texts) {
+            if (t.words == "NOT FOUND:" || t.words == "DRUM PLAYS") CHECK(t.x + t.w <= KitScreen::kWaveX + KitScreen::kWaveW);
+            if (t.words == "BUILT IN" || t.words == "SAMPLE" || t.words == "SYNTH") CHECK(t.x >= KitScreen::kSourceX && t.x + t.w <= KitScreen::kSourceX + KitScreen::kSourceW - 4); // SOURCE's words in its box
+        }
+    rig.app.kit().goTo(2, KitScreen::kSource); // SOURCE under the cursor: its bar, A held and not
+    rig.frames(1);
+    CHECK(holds(rig, "the kit, on SOURCE") > 8 && drew("source") && ui::gHintsOver == 0);
+    rig.key(SDLK_x, true);
+    rig.frames(1);
+    CHECK(holds(rig, "the kit, A held on SOURCE") > 8 && ui::gHintsOver == 0);
+    rig.key(SDLK_x, false);
+    rig.frames(1);
+    rig.app.kit().goTo(2, KitScreen::kSound);
+    rig.frames(1);
     rig.tap(Y); // nothing has played: it says so, over the heads of FIT TO, CHOKE and the recordings
     holds(rig, "the kit, nothing to catch");
     CHECK(drew("NOTHING TO CATCH: PLAY SOMETHING FIRST") && !drew("CHOKE"));

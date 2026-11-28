@@ -2289,8 +2289,23 @@ playing in. The picture draws each cut where it is.
 A row for each lane. Each lane plays its built-in drum, a **recording** (a
 WAV file from the `samples` folder beside the program) or a **synth voice**
 (a drum made from knobs: below). A kit can mix all three.
-Left / right moves between the columns, SOUND, FIT TO, CHOKE and the sound's
-picture, EDIT (round the ends).
+Left / right moves between the columns, SOUND, FIT TO, CHOKE, SOURCE and the
+sound's picture, EDIT (round the ends).
+
+**SOURCE says where each lane's sound comes from**: BUILT IN (brass), SYNTH
+(teal) or SAMPLE (purple). **Hold A + UP / DOWN on it changes it**, one push
+at a time, in this order:
+
+| From | Hold A + DOWN | Hold A + UP |
+| --- | --- | --- |
+| SAMPLE | BUILT IN | (the end) |
+| BUILT IN | SYNTH: the drum synth's model for the lane (lane 1 KICK, lane 2 SNARE, ... lane 8 CYMBAL) | SAMPLE: **the list of recordings opens**, since a sample needs a file. Pick one with A; **B gives back the lane as it was when you pressed A** |
+| SYNTH | (the end) | BUILT IN: the lane's own drum |
+
+Each change is heard, and is one step of undo. B with A still held gives back
+the lane as it was when A went down; B on SOURCE puts the built-in drum back.
+A on the lane's name still picks within its source: the list of recordings,
+or a synth lane's knobs.
 
 **Kits.** UP from lane 1 is the kit's own stop, at the top left: KIT and its
 name. Hold A + UP / DOWN there puts on the next / previous kit: seven
@@ -2317,12 +2332,13 @@ again: then YOUR OWN).
 | SOUND | From the built-in drum: UP each recording by name, DOWN the twelve synth models. Heard as it changes. **B with A still held: the lane as it was when A went down** (its EDIT and FIT too) | The drum back |
 | FIT TO | Off, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64 steps, read as bars of the scene's meter where they are whole (16 is 1 BAR in 4/4; 12 is 1 BAR in 3/4, 24 two, 48 four). **A tap of A on a recording: the bars it fills at the tempo** (the scene's own, if it has one) (1, 2 or 4 bars in the scene's meter, or one of the stops under a bar for a short one). From a count between those (20 steps, two bars of a 10-step meter), hold A + down goes to the one below it (16), up to the one above (24). **Hold A + left / right on a recording: the tempo from it** (below) | Off |
 | CHOKE | None, 1, 2 | None |
+| SOURCE | BUILT IN, SYNTH, SAMPLE (above): one a push | The drum back |
 | EDIT | (A opens the lane's EDIT view, below) | |
 
 **DRUM SYNTH: a lane's drum made from knobs.** Hold A + DOWN on SOUND from
 the built-in drum steps through twelve models: KICK, SNARE, TOM, CLAP, CL
-HAT, OP HAT, CYMBAL, RIM, COWBELL, CLAVE, ZAP and NOISE. The row reads the
-model and SYNTH. **A tap of A on a synth lane's SOUND opens its VOICE
+HAT, OP HAT, CYMBAL, RIM, COWBELL, CLAVE, ZAP and NOISE (SOURCE's SYNTH goes
+straight to the lane's own). The row reads the model, and SOURCE reads SYNTH. **A tap of A on a synth lane's SOUND opens its VOICE
 view**: the model and the sound's picture on top, its knobs under it (4 to
 8 of them, each read in its unit; an empty box is a knob the model does not
 have).

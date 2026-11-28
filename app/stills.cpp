@@ -177,6 +177,17 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
             pushKey(SDLK_z, true); // B held
             if (stillMs > 300) stillMs = 300; // (the picture is taken before the half second is up: undo brings it back, G29)
         }
+    } else if (std::strcmp(view, "kit-source") == 0) {
+        // SOURCE (owner, 2026-11-28): lanes 1 and 4 synth voices, with --samples the first recording on lane 6, the rest
+        // built in; the cursor on lane 2's SOURCE (BUILT IN: with --hold-a the bar says both ways).
+        Session& session = app.session();
+        session.setLaneSynth(0, 0, drumsynth::usualVoice(drumsynth::kKick));
+        session.setLaneSynth(0, 3, drumsynth::usualVoice(drumsynth::kOpHat));
+        const std::vector<std::string> names = session.sampleNames();
+        if (!names.empty()) session.setLaneSample(0, 5, names[0]), session.setLaneFit(0, 5, 16);
+        session.finishStretching();
+        session.view = View::Device;
+        app.kit().goTo(1, KitScreen::kSource);
     } else if (std::strncmp(view, "kit-edit", 8) == 0) {
         // EDIT on a lane: with --samples the first recording on lane 6, else lane 1's built-in kick; cut
         // to its middle, GAIN +3, a fade out, PITCH -2, backwards. kit-edit: the edit view on GAIN.
@@ -377,7 +388,7 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
         app.session().setSamplerSetting(app.project().track, sampler::Start, 12);
         app.session().setSamplerSetting(app.project().track, sampler::End, 80); // (its mark too)
         app.session().view = View::Device;
-        app.sampler().goTo(std::strcmp(view, "sampler-end") == 0 ? 4 : 3); // START; sampler-end: END, beside it
+        app.sampler().goTo(std::strcmp(view, "sampler-end") == 0 ? 4 : std::strcmp(view, "sampler-sound") == 0 ? 0 : 3); // START; sampler-end: END, beside it; sampler-sound: SOUND
         if (std::strcmp(view, "sampler-loop") == 0) { // S4: the picture, LOOP on and LOOP START at 50%: its dashed mark
             app.session().setSamplerSetting(app.project().track, sampler::Loop, 1);
             app.session().setSamplerSetting(app.project().track, sampler::LoopStart, 50);

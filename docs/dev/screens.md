@@ -675,7 +675,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   (70), so the box rises to end `kListBottom` (8 above the bar); adding a track it stands at 70 as
   before.
 - **Hints must fit.** The hints bar drops what does not fit; do not rely on
-  that, shorten the words. The bar draws `HOLD` as `HLD`, `SELECT` as `SEL`,
+  that, shorten the words. The bar draws `HOLD` as `HLD` joined to its key by a hyphen (`HOLD A` is
+  `HLD-A`, one action: owner, 2026-11-28, "HLD A" read as HLD and A; a direction after it stays an arrow; the hyphen is
+  drawn in a space's room, so a hold's chip is as wide as "HLD A" was and no bar moved), `SELECT` as `SEL`,
   directions as arrows, and the one word `dice` as a die (`ui.cpp`): write
   hints in full. `ui::gHintsOver` says how many pixels the last bar was
   short of holding every hint and the help: `app_test`
@@ -684,7 +686,15 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   solo to the head, the drum grid lists a hit's own jobs on a hit and the
   brushes on an empty step). JAX-EP's MAIN and five pages are held to 0 at
   every stop, A held and not (`testJaxepsHintsFit`). **The piano roll on a note is still 48 to 69
-  pixels over** (its help is not drawn): not mended.
+  pixels over** (its help is not drawn): not mended. Since the hint audit (2026-11-28) its A reads `HOLD A level /
+  length` (a tap of A on a note does nothing) and `HOLD X fx` (as the drum grid's) so every hint still draws;
+  `app_test` holds it to "only the help left out".
+- **A hint names the press that does it** (hint audit, 2026-11-28): a tap of A on a hit (drum grid and slice view)
+  or a note does nothing, so the bar says `HOLD A level / nudge` / `HOLD A level / length`; an empty step keeps `A
+  place`. On a hit `Y chance` (a tap steps it; where the sound starts is Y held, which that bar says). The
+  sampler's SOUND says `A pick from list` (a tap opens it, as the KIT's SOUND); PRESET keeps `HOLD A pick one`.
+  Pinned by `app_test testTheHintsFitAndSayWhatTheyDo` (`hintKeyed`, now one copy in `tests/canvas.hpp`) and
+  `under_test`'s bars.
 - **The help card's B line reads "delete, empty, or go back. X held: empty the effects"** (gesture
   audit G11, 2026-11-24): X + B empties what X shows on a hit, a lane's name, a note and a chord,
   and no held strip has room for its chip (next rule). It fits the card at every size (held at LARGE

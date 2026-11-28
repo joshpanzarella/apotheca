@@ -10947,7 +10947,6 @@ void testHoldBDeletesAnEffect() {
 
 // HOLD Y on one of the track's own lines: up / down moves it there, the cursor with it; the
 // ends stop. Anywhere else Y moves nothing. The bar says HOLD Y where it moves.
-bool hintKeyed(const Canvas& canvas, Canvas& scratch, const char* key, const char* words);
 void testHoldYMovesAnEffect() {
     Canvas canvas, scratch;
     CHECK(canvas.ok && scratch.ok);
@@ -11019,19 +11018,6 @@ void testHoldYMovesAnEffect() {
     rig.key(A, false);
 }
 
-// Is `words` drawn in the hints bar with the chip `key` just before it (its left edge where that chip's would be)?
-bool hintKeyed(const Canvas& canvas, Canvas& scratch, const char* key, const char* words) {
-    const Fonts& fonts = *canvas.fonts;
-    const float textY = ui::kScreenH - ui::kHintsH + (ui::kHintsH - fonts.small.capHeight()) / 2.f + 1.f;
-    const int chipY = ui::kScreenH - ui::kHintsH + 6; // the chip's top row, above its letters
-    for (float x = 4.f; x < ui::kScreenW - 40.f; x += 0.0625f) {
-        if (!inked(canvas, scratch, 0, x, textY, words, ui::kDim)) continue;
-        const int left = static_cast<int>(x - 5.f - (ui::keyWidth(fonts, key) + 8.f));
-        for (int at = left - 1; at <= left + 1; ++at)
-            if (canvas.is(at, chipY, ui::kText) && !canvas.is(at - 1, chipY, ui::kText)) return true;
-    }
-    return false;
-}
 
 // Every hint the SONG screen's cell and the drum grid list is drawn, and the help at the end, with
 // either help ("MENU: HELP", "HLD SEL: HELP"). A tap of B on a hit deletes it, and the bar says B,
@@ -11097,6 +11083,17 @@ void testTheHintsFitAndSayWhatTheyDo() {
         CHECK(draw());
         CHECK(hintKeyed(canvas, scratch, "B", "delete") && !hintKeyed(canvas, scratch, "HOLD B", "delete") && hintKeyed(canvas, scratch, "HOLD X", "fx"));
         CHECK(hintKeyed(canvas, scratch, "HOLD R1", "paint")); // R1 held on a hit paints at its level, as it did on main
+        // A tap of A on a hit does nothing: its level and nudge are A held (hint audit, 2026-11-28). Y's tap is the chance;
+        // where the sound starts is Y held, which that bar says.
+        CHECK(hintKeyed(canvas, scratch, "HOLD A", "level") && !hintKeyed(canvas, scratch, "A", "level"));
+        CHECK(hintKeyed(canvas, scratch, "Y", "chance") && !hintedOn(canvas, scratch, "start"));
+        rig.app.drums().setSlicing(true); // ...and in the slice view (a built-in drum: its hits are its own)
+        CHECK(draw() && hintKeyed(canvas, scratch, "HOLD A", "level") && !hintKeyed(canvas, scratch, "A", "level"));
+        rig.app.drums().moveCursorTo(0, 1);
+        CHECK(draw() && hintKeyed(canvas, scratch, "A", "place")); // (an empty step: a tap places)
+        rig.app.drums().setSlicing(false);
+        rig.app.drums().moveCursorTo(0, 0);
+        CHECK(draw() && hintKeyed(canvas, scratch, "HOLD A", "level"));
         rig.app.drums().moveCursorTo(0, 1);
         CHECK(draw());
         CHECK(hintKeyed(canvas, scratch, "HOLD B", "delete") && !hintKeyed(canvas, scratch, "B", "delete") && hintedOn(canvas, scratch, "random") && hintedOn(canvas, scratch, "paint"));
@@ -11110,10 +11107,27 @@ void testTheHintsFitAndSayWhatTheyDo() {
         rig.app.notes().moveCursorTo(60, 0);
         rig.tap(A);
         draw(); // (the roll on a note does not hold its help yet: found in the pit stop, not one of its items)
+        CHECK(ui::gHintsOver <= 6.f + fonts.small.width(ui::gHelpHint)); // ...but every hint is drawn (48 to 68 over: the help alone left out)
         CHECK(hintKeyed(canvas, scratch, "B", "delete") && !hintKeyed(canvas, scratch, "HOLD B", "delete"));
+        // On a note A turns only held, a tap does nothing (hint audit, 2026-11-28); an empty step's tap places.
+        CHECK(hintKeyed(canvas, scratch, "HOLD A", "level") && !hintKeyed(canvas, scratch, "A", "level"));
         rig.app.notes().moveCursorTo(60, 8);
         CHECK(draw());
         CHECK(hintKeyed(canvas, scratch, "HOLD B", "delete") && !hintKeyed(canvas, scratch, "B", "delete"));
+        CHECK(hintKeyed(canvas, scratch, "A", "place") && !hintKeyed(canvas, scratch, "HOLD A", "place"));
+        // The sampler's SOUND: a tap of A opens the list of recordings, as the KIT's SOUND says (hint audit, 2026-11-28);
+        // PRESET's hold of A steps the presets.
+        CHECK(session.addTrack(TrackKind::Sampler));
+        rig.project().track = rig.project().trackCount() - 1;
+        session.view = View::Device;
+        rig.app.sampler().goTo(0);
+        CHECK(draw() && hintKeyed(canvas, scratch, "A", "pick from list") && !hintedOn(canvas, scratch, "pick one"));
+        rig.tap(A);
+        CHECK(rig.app.sampler().picker().isOpen());
+        rig.tap(B);
+        CHECK(!rig.app.sampler().picker().isOpen());
+        rig.app.sampler().goTo(SamplerScreen::kPresetStop);
+        CHECK(draw() && hintKeyed(canvas, scratch, "HOLD A", "pick one"));
     }
     ui::gHelpHint = "MENU: HELP";
 }

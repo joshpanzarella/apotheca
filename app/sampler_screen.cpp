@@ -620,7 +620,8 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("R1", session_.recordingNow() ? "stop" : "record");
         hint("START", project_.playing ? "stop" : "play");
     } else {
-        hint("HOLD A", stop_ == 0 ? "pick one" : "turn");
+        // SOUND: a tap of A opens the list of recordings, as the KIT's SOUND (hint audit, 2026-11-28); held it steps them.
+        hint(stop_ == 0 ? "A" : "HOLD A", stop_ == 0 ? "pick from list" : "turn");
         hint("B", stop_ == 0 ? "none" : "default");
         hint("Y", "catch");
         hint("R1", session_.recordingNow() ? "stop" : "record");

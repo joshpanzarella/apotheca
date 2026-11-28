@@ -412,7 +412,7 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     not taken. **In undo by `soundMark` / `restoreSounds`**, as FEEL.
   - **Set on the KIT page's third column** (`KitScreen::kChoke`, between FIT TO and the recording,
     `kChokeX`/`kChokeW` in kit_screen.hpp): hold A + UP / DOWN NONE, 1, 2 (the ends stop), B none;
-    left / right go round the columns (four since EDIT). The recording's column is narrower for it, so its
+    left / right go round the columns (four since EDIT, five since SOURCE). The recording's column is narrower for it, so its
     missing line is two short ones (FILE NOT FOUND. / THE DRUM PLAYS.), and what is said for a
     moment (a catch, a recording) is drawn over the three heads from FIT TO on.
   - **The mark** (`drawChokeMark`, both views, `kChokeMark...` in pattern_layout.hpp): brass, at
@@ -531,6 +531,28 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     unlike the others by those numbers.
   - **`readyLane` passes a lane whose voice is being made** (`LaneSound::making`): it has no source yet,
     and read again every frame (the designer page, the VOICE view) its job was never let land.
+- **SOURCE: a column of its own saying where a lane's sound comes from** (owner, 2026-11-28: "selecting a BUILT
+  IN or SYNTH from the drum device screen is not intuitive at all. there is nothing to suggest I can even change
+  that lane from the jump"; `KitScreen::kSource`, `sourceOf`, `stepSource`, `sourceModel`). One box a lane between
+  CHOKE and EDIT (`kSourceX`, `kSourceW` 86), where THE RECORDING's heading stood: **BUILT IN in brass, SYNTH in
+  teal, SAMPLE in purple** (the theme's names; `testTheSourceColumn` reads each on all eight themes). The EDIT
+  column is narrower for it (106 pixels): its heading is EDIT, the picture takes what the seconds leave, and a
+  missing file is NOT FOUND: / DRUM PLAYS (they fit at XL).
+  - **Hold A + UP / DOWN steps the three, once a push** (a choice: the D-pad held does not run on, the stick
+    clicks once a push however long), the ends stop, in SOUND's order: DOWN from BUILT IN is SYNTH, UP is SAMPLE
+    (SOUND's hold goes DOWN into the models and UP into the recordings). **BUILT IN** is `setLaneSample("")`.
+    **SYNTH** is `usualVoice(sourceModel(lane))`, the model of the lane's place: KICK, SNARE, CL HAT, OP HAT, CLAP,
+    TOM, RIM and, for CRASH, CYMBAL. **SAMPLE opens the list of recordings** (`openPicker(true)`), A spent so its let
+    go picks nothing; there **B puts back what A's press found** (`Session::putSoundBack`, kept at A's press as on
+    SOUND), a voice stepped past included. Each change is heard (song stopped) and is a step of undo as SOUND's are.
+    B with A held: as it was (`putBack`); B: the built-in drum, as on SOUND. **A tap of A on SOURCE does nothing**
+    (not asked; open to the owner).
+  - The bar: `HOLD A source`, `B built in`; held, `UP / DOWN sample / synth` from BUILT IN, `UP built in` or
+    `DOWN built in` from an end, `B as it was`. On the lane's name A's hint names the source: `synth knobs` or
+    `sample list` (it said `knobs` / `pick from list`). **The faint BUILT IN / SYNTH at the name box's right is
+    gone**: SOURCE says it, in colour.
+  - Stills `kit-source` (lanes 1 and 4 synths, lane 6 a recording with `--samples`, the cursor on lane 2's BUILT
+    IN; `--hold-a` for the held bar). Tests: `drumsynthapp_test testTheSourceColumn`. **Not run on the handheld.**
 - **The list of recordings is three columns** (owner, 2026-11-14; `app/sample_picker.hpp`,
   plan `docs/plans/picker-plan.md`, batches 0 to 2 built): the folder this one is in, this
   folder with the cursor, and what is under the cursor. **The columns stand still** (owner,

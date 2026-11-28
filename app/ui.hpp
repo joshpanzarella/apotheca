@@ -310,7 +310,8 @@ constexpr StickAxes stickAxes(float x, float y) {
 // drawn as arrows, not spelled out ("UP / DOWN" is two small arrows): the same
 // thing in a third of the room. Everything else is its letters.
 // Two words are drawn shorter than they are written: HOLD as HLD, SELECT as
-// SEL. Hints are written in full.
+// SEL. HOLD is joined to its key by a hyphen, one word: "HOLD A" is drawn
+// HLD-A (owner, 2026-11-28). Hints are written in full.
 float keyWidth(const Fonts& fonts, const char* key);
 // The words drawKey draws, with a space between (a direction by its name).
 std::string keyShown(const char* key);

@@ -1762,11 +1762,12 @@ void NoteScreen::drawHints(SDL_Renderer* r, const Fonts& fonts, const NoteEvent*
         hint("D-PAD UP / DOWN", "by whole steps");
         hint("L2 / R2", "nudge early / late");
     } else {
-        hint("A", under || chordUnder ? "level / length" : "place");
+        // On a note or a chord A turns only held: a tap does nothing there (hint audit, 2026-11-28).
+        hint(under || chordUnder ? "HOLD A" : "A", under || chordUnder ? "level / length" : "place");
         if (under || chordUnder) hint("B", "delete");
         hint("HOLD Y", pat().chordAt(step_) >= 0 ? "swap" : "chord");
         hint("HOLD R1", under || chordUnder ? "move" : "paint");
-        if (under || chordUnder) hint("HOLD X", "effects");
+        if (under || chordUnder) hint("HOLD X", "fx"); // (as the drum grid's: "effects" left no room for the help with HLD-A)
         if (!under && !chordUnder) hint("HOLD B", "delete"); // (on a note, B's own hint says it)
         // Up and down past a bar's ends move across the cell's bars (up from the very top is the TEMPO stop, then BARS).
         // Said instead of the zoom there: the bar has no room for both.

@@ -968,7 +968,7 @@ void testTheWordsFit() {
     rig.project().bar = 0;
     rig.tap(A);
     drawn();
-    const ui::Hint onNote[] = {{"A", "level / length"}, {"B", "delete"}, {"HOLD Y", "chord"}, {"HOLD R1", "move"}, {"HOLD X", "effects"}, {"UP", "tempo"}};
+    const ui::Hint onNote[] = {{"HOLD A", "level / length"}, {"B", "delete"}, {"HOLD Y", "chord"}, {"HOLD R1", "move"}, {"HOLD X", "fx"}, {"UP", "tempo"}};
     CHECK(barIs(onNote, 6)); // all six show; the help yields, as on a crowded bar
 }
 

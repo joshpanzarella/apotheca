@@ -7,7 +7,7 @@
 // whatever the tempo is.
 //
 //   the stick or D-pad moves: up / down through the lanes, left / right
-//   between SOUND, FIT, CHOKE and EDIT (round the ends).
+//   between SOUND, FIT, CHOKE, SOURCE and EDIT (round the ends).
 //   SOUND   tap A: the list of recordings (sample_picker.hpp), to pick one
 //           quickly; on a lane with a synth voice, its VOICE view (below). Or
 //           hold A + up / down: from the built-in drum UP each recording, one at
@@ -23,6 +23,16 @@
 //   CHOKE   hold A + up / down: NONE, 1, 2. A hit on a lane in a group cuts
 //           the other lanes of that group (the closed hat cuts the open one:
 //           a new kit has its two hats in 1). B: none.
+//   SOURCE  where the lane's sound comes from (owner, 2026-11-28: "nothing to suggest I can even change that
+//           lane"): BUILT IN (brass), SYNTH (teal) or SAMPLE (purple). Hold A + up / down: one a push (a
+//           choice: the D-pad does not run on, the stick clicks once a push), the ends stop, in SOUND's
+//           order: DOWN from BUILT IN the SYNTH, UP the SAMPLE.
+//             BUILT IN  the lane's own drum (setLaneSample "").
+//             SYNTH     the DRUM SYNTH model for the lane's place at its usual knobs (sourceModel: lane 1's KICK,
+//                       CRASH's the CYMBAL).
+//             SAMPLE    a sample needs a file: the list of recordings opens (A held or not), as A on SOUND opens
+//                       it. B in it puts the lane back as A's press found it (Session::putSoundBack).
+//           B with A held: as it was (putBack). B: the built-in drum. A tap of A does nothing.
 //   EDIT    the sound's picture: tap A opens the lane's EDIT view (below).
 //   KIT     up from lane 1 (easywins batch 7, kit presets): the kit's own stop, where SOUND's heading
 //           stands. It names the kit the track's is (a built-in, one of your own, or YOUR OWN).
@@ -121,12 +131,19 @@ public:
     bool choosingCatch() const { return catchKey_.held(); } // Y held: CATCH's choice (for tests) // a recording on the lane, found: a tap of A on FIT fits it to its bars (G45)
     const std::string& said() const { return said_; }
     const ui::Playhead& playhead() const { return head_; }
-    enum { kSound, kFit, kChoke, kEdit, kColumns }; // (kEdit: the sound's picture)
+    enum { kSound, kFit, kChoke, kSource, kEdit, kColumns }; // (kEdit: the sound's picture)
+    // SOURCE's three, in its order (hold A + UP goes right along it).
+    enum Source { kSourceSynth, kSourceBuiltIn, kSourceSample, kSources };
+    Source sourceOf(int lane) const;
+    static const char* sourceText(Source source); // "SYNTH", "BUILT IN", "SAMPLE"
+    static int sourceModel(int lane);             // the DRUM SYNTH model for a lane's place: KICK, SNARE, CL HAT, OP HAT, CLAP, TOM, RIM, CYMBAL
     // The lanes' rows, from under the column heads down to the SIGNAL strip (ui::kAboveScope).
     static constexpr int kLaneTop = 50, kLaneGap = 4;
     static constexpr int kLaneRowH = (ui::kAboveScope + kLaneGap - kLaneTop) / kDrumLanes;
-    // The columns at the right of SOUND: FIT TO, CHOKE, the recording's picture (to the screen's edge, 8 in).
-    static constexpr int kFitX = 262, kFitW = 96, kChokeX = kFitX + kFitW + 4, kChokeW = 70, kWaveX = kChokeX + kChokeW + 4, kWaveW = ui::kScreenW - 8 - kWaveX;
+    // The columns at the right of SOUND: FIT TO, CHOKE, SOURCE, the sound's picture (to the screen's edge, 8 in).
+    // SOURCE stands where THE RECORDING's heading was (owner, 2026-11-28); the picture is narrower for it.
+    static constexpr int kFitX = 262, kFitW = 96, kChokeX = kFitX + kFitW + 4, kChokeW = 70, kSourceX = kChokeX + kChokeW + 4, kSourceW = 86;
+    static constexpr int kWaveX = kSourceX + kSourceW + 4, kWaveW = ui::kScreenW - 8 - kWaveX;
     SamplePicker& picker() { return picker_; }
     const SamplePicker& picker() const { return picker_; }
 
@@ -174,6 +191,8 @@ private:
     void stepSound(int by);
     void stepFit(int by);
     void stepChoke(int by);
+    void stepSource(int by);
+    bool sourcePushed_ = false; // SOURCE with A held: the stick is pushed (it clicks once a push)
     void voiceButton(const ButtonEvent& event, const Input& input);
     void voicePress(Button direction);
     void voiceUpdate(const Input& input, Uint32 nowMs, float dt);
@@ -205,7 +224,7 @@ private:
     void tempoFromLoop(int by); // hold A + LEFT / RIGHT on FIT: THE TEMPO FROM THIS LOOP (batch S1)
     void saveSound();           // R1 in the EDIT view: what the lane plays, as a new recording (batch S1)
     SamplePicker picker_;
-    void openPicker();
+    void openPicker(bool bySource = false);
     void catchBar(); // Y: the last bars the song played, onto this lane (the list of recordings with nothing in it asks too)
     CatchKey catchKey_; // Y's tap and its held choice (catch_key.hpp)
     void record();   // R1: record from the input onto this lane, or stop

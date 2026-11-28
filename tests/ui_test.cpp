@@ -1089,12 +1089,18 @@ static void testNoteStripNudgeFits() {
 static void testTheBarDrawsSelForSelect() {
     CHECK(ui::keyShown("SELECT") == "SEL");
     CHECK(ui::keyShown("SELECT + Y") == "SEL + Y");
-    CHECK(ui::keyShown("HOLD SELECT") == "HLD SEL");
+    CHECK(ui::keyShown("HOLD SELECT") == "HLD-SEL");
     CHECK(ui::keyShown("SELECT, tapped") == "SEL, tapped"); // the help card: what follows the word stays
     CHECK(ui::keyShown("SELECT+X") == "SEL+X");
     CHECK(ui::keyShown("SELECTED") == "SELECTED" && ui::keyShown("SELECTS A") == "SELECTS A"); // another word is left alone
     CHECK(ui::keyShown("RESELECT") == "RESELECT" && ui::keyShown("SELLER") == "SELLER" && ui::keyShown("SEL") == "SEL");
-    CHECK(ui::keyShown("HOLD A") == "HLD A" && ui::keyShown("L2  R2") == "L2 R2" && ui::keyShown("START") == "START");
+    CHECK(ui::keyShown("HOLD A") == "HLD-A" && ui::keyShown("L2  R2") == "L2 R2" && ui::keyShown("START") == "START");
+    // A hold is one word, HLD and its key joined by a hyphen (owner, 2026-11-28: "HLD A" read as HLD and A): every key,
+    // a direction after it still arrows. HOLD with no key after it, or a direction, stays HLD.
+    CHECK(ui::keyShown("HOLD B") == "HLD-B" && ui::keyShown("HOLD X") == "HLD-X" && ui::keyShown("HOLD Y") == "HLD-Y");
+    CHECK(ui::keyShown("HOLD R1") == "HLD-R1" && ui::keyShown("HOLD L1") == "HLD-L1" && ui::keyShown("HOLD  A") == "HLD-A");
+    CHECK(ui::keyShown("HOLD A UP / DOWN") == "HLD-A UP DOWN" && ui::keyShown("HOLD A + R1") == "HLD-A + R1");
+    CHECK(ui::keyShown("HOLD") == "HLD" && ui::keyShown("HOLD UP") == "HLD UP" && ui::keyShown("HOLD + A") == "HLD + A");
     CHECK(ui::keyShown("UP / DOWN") == "UP DOWN" && ui::keyShown("A / B") == "A / B"); // arrows stand side by side
 }
 
@@ -1113,7 +1119,23 @@ static void testTheBarDrawsSelOnTheScreen() {
     };
     const std::vector<Uint32> full = drawn("SELECT"), shortened = drawn("SEL");
     CHECK(full == shortened);
-    CHECK(drawn("SELECT + Y") == drawn("SEL + Y") && drawn("HOLD SELECT") == drawn("HLD SEL"));
+    CHECK(drawn("SELECT + Y") == drawn("SEL + Y") && drawn("HOLD SELECT") == drawn("HLD-SEL"));
+    // HOLD A is drawn HLD-A, the hyphen in a space's room: its chip exactly as wide as "HLD A" was (so no bar that
+    // fitted moved), and not the same pixels (the hyphen is there). A key written HLD- by hand is drawn the same way.
+    CHECK(drawn("HOLD A") != drawn("HLD A") && drawn("HOLD A") == drawn("HLD-A") && drawn("HOLD R1") == drawn("HLD-R1"));
+    CHECK(ui::keyWidth(fonts, "HOLD A") == fonts.small.width("HLD") + fonts.small.width(" ") + fonts.small.width("A"));
+    CHECK(ui::keyWidth(fonts, "HOLD R1 + A") == ui::keyWidth(fonts, "HLD R1 + A") && ui::keyWidth(fonts, "SELECT") == fonts.small.width("SEL"));
+    {
+        // The hyphen: HLD-A and "HLD A" differ only in the space's room between HLD and A, and do differ there.
+        const int top = ui::kScreenH - ui::kHintsH, from = static_cast<int>(12.f + fonts.small.width("HLD")) - 1;
+        const int to = static_cast<int>(12.f + fonts.small.width("HLD") + fonts.small.width(" ")) + 2;
+        drawn("HOLD A");
+        const std::vector<Uint32> holdLeft = canvas.part(0, top, from, ui::kHintsH), holdGap = canvas.part(from, top, to - from, ui::kHintsH);
+        const std::vector<Uint32> holdRight = canvas.part(to, top, ui::kScreenW - to, ui::kHintsH);
+        drawn("HLD A");
+        CHECK(holdLeft == canvas.part(0, top, from, ui::kHintsH) && holdRight == canvas.part(to, top, ui::kScreenW - to, ui::kHintsH));
+        CHECK(holdGap != canvas.part(from, top, to - from, ui::kHintsH));
+    }
     CHECK(full != drawn("SELEC") && full != drawn("SE") && full != drawn("SEL + Y")); // the canvas can tell words apart
     // The box: cream, starting at 8, the word and four pixels each side.
     drawn("SELECT");
@@ -1290,8 +1312,8 @@ static void testTheBarUnderAStrip() {
         if (inChip) continue;
         for (int y = barTop + 1; y < ui::kScreenH; ++y) CHECK(canvas.is(x, y, ui::kPanel));
     }
-    // A chip is its key's own: HOLD is HLD, SELECT is SEL.
-    CHECK((under(nullptr, {{100.f, "HOLD SELECT"}}) == Chips{{100, chipW("HLD SEL")}}));
+    // A chip is its key's own: HOLD is HLD- joined to its key, SELECT is SEL.
+    CHECK((under(nullptr, {{100.f, "HOLD SELECT"}}) == Chips{{100, chipW("HLD-SEL")}}));
     CHECK(sameChip(100, "HOLD SELECT"));
     // No dice: nothing at the left, and a chip may stand at the bar's start.
     CHECK((under(nullptr, {{8.f, "A"}}) == Chips{{8, chipW("A")}}));

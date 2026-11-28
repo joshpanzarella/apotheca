@@ -798,7 +798,7 @@ void testTheGestures() {
     rig.frames(2);
     KitScreen& kit = rig.app.kit();
     kit.goTo(kLane, KitScreen::kSound);
-    rig.tap(Right, 3);
+    rig.tap(Right, 4); // (FIT, CHOKE, SOURCE, EDIT)
     CHECK(kit.cursorColumn() == KitScreen::kEdit && !kit.editing());
     rig.tap(A);
     CHECK(kit.editing() && kit.editRow() == kEditStart);
@@ -922,7 +922,7 @@ void testBAfterYKeepsIt() {
     rig.frames(2);
     KitScreen& kit = rig.app.kit();
     kit.goTo(kLane, KitScreen::kSound);
-    rig.tap(Right, 3);
+    rig.tap(Right, 4); // (FIT, CHOKE, SOURCE, EDIT)
     rig.tap(A);
     CHECK(kit.editing() && kit.editRow() == kEditStart);
     // TRIM SILENCE on START, then B: back to the kit, START and END as Y set them.

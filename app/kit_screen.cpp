@@ -139,6 +139,37 @@ void KitScreen::stepChoke(int by) {
     session_.setLaneChoke(project_.track, lane_, to);
 }
 
+KitScreen::Source KitScreen::sourceOf(int lane) const {
+    if (trk().laneSynth[lane].on()) return kSourceSynth;
+    return trk().laneSample[lane][0] ? kSourceSample : kSourceBuiltIn;
+}
+
+const char* KitScreen::sourceText(Source source) { return source == kSourceSynth ? "SYNTH" : source == kSourceSample ? "SAMPLE" : "BUILT IN"; }
+
+int KitScreen::sourceModel(int lane) {
+    static const int models[kDrumLanes] = {drumsynth::kKick, drumsynth::kSnare, drumsynth::kClHat, drumsynth::kOpHat, drumsynth::kClap, drumsynth::kTom, drumsynth::kRim, drumsynth::kCymbal}; // (DrumKit::laneName's)
+    return lane >= 0 && lane < kDrumLanes ? models[lane] : drumsynth::kKick;
+}
+
+// SOURCE with A held (owner, 2026-11-28): SYNTH, BUILT IN, SAMPLE, the ends stop. Each is a change of the lane's sound
+// as SOUND's are, so one step of undo each, and B with A held puts back what A's press found. SAMPLE needs a file: the
+// list of recordings opens, and A is spent (its let go is no tap; the list takes the buttons from here).
+void KitScreen::stepSource(int by) {
+    const int to = static_cast<int>(sourceOf(lane_)) + by;
+    if (to < kSourceSynth || to > kSourceSample) return;
+    if (to == kSourceSynth) session_.setLaneSynth(project_.track, lane_, drumsynth::usualVoice(sourceModel(lane_)));
+    else if (to == kSourceBuiltIn) session_.setLaneSample(project_.track, lane_, "");
+    if (to == kSourceSample) {
+        holding_ = false;
+        repeating_ = Button::None;
+        saved_ = 0.f;
+        sourcePushed_ = false;
+        openPicker(true);
+        return;
+    }
+    if (!project_.playing) hear();
+}
+
 void KitScreen::catchBar() {
     const std::string name = session_.catchLastBar(project_.track, lane_);
     said_ = caughtLine(session_, name);
@@ -153,7 +184,7 @@ void KitScreen::record() {
     saidUntil_ = lastMs_ + 3000;
 }
 
-void KitScreen::openPicker() {
+void KitScreen::openPicker(bool bySource) {
     const int track = project_.track, lane = lane_;
     SamplePicker::Jobs jobs;
     jobs.use = [this, track, lane](const std::string& name) { session_.setLaneSample(track, lane, name); };
@@ -180,7 +211,10 @@ void KitScreen::openPicker() {
     const LaneEdit edit = trk().laneEdit[lane_];
     const LaneCuts cuts = trk().laneCuts[lane_];
     const bool recorded = trk().laneSample[lane_][0] != 0;
-    jobs.putBack = [this, track, lane, edit, cuts, recorded](const std::string& original) {
+    // Opened by SOURCE (A held, a synth voice perhaps stepped past on the way): B puts back what A's press found,
+    // the voice too, as B with A held does (Session::putSoundBack: one step of undo, where it differs).
+    jobs.putBack = [this, track, lane, edit, cuts, recorded, bySource](const std::string& original) {
+        if (bySource && session_.putSoundBack(track)) return;
         if (original.empty() && recorded) return;
         if (project_.tracks[track].laneEdit[lane] != edit) session_.setLaneEdit(track, lane, edit);
         if (project_.tracks[track].laneCuts[lane] != cuts) session_.setLaneCuts(track, lane, cuts);
@@ -306,6 +340,7 @@ void KitScreen::press(Button b) {
         if (column_ == kSound) stepSound(b == Button::Up ? 1 : -1);
         else if (column_ == kFit) stepFit(b == Button::Up ? 1 : -1);
         else if (column_ == kChoke) stepChoke(b == Button::Up ? 1 : -1);
+        else if (column_ == kSource) stepSource(b == Button::Up ? 1 : -1);
         return;
     }
     if (b == Button::Up) {
@@ -408,7 +443,7 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
         holding_ = event.down;
         saved_ = 0.f;
         if (event.down) names_ = session_.sampleNames(), namesSeen_ = session_.sampleFiles(), stepped_ = false;
-        if (event.down && column_ == kSound) session_.keepSound(project_.track); // (what B with A held puts back)
+        if (event.down && (column_ == kSound || column_ == kSource)) session_.keepSound(project_.track); // (what B with A held puts back)
         return;
     }
     if (!event.down) {
@@ -416,14 +451,15 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (isDirection(b)) {
+        const bool choice = holding_ && column_ == kSource; // (SOURCE's three: a click a push, never run on)
         press(b);
-        repeating_ = b;
+        repeating_ = choice ? Button::None : b;
         repeat_.restart();
     } else if (b == Button::B && holding_) {
         stepped_ = true; // (A's let go after it is no tap: on FIT no fit to its bars)
-        if (column_ == kSound) putBack(input);
+        if (column_ == kSound || column_ == kSource) putBack(input);
     } else if (b == Button::B && !holding_) {
-        if (column_ == kSound) session_.setLaneSample(project_.track, lane_, "");
+        if (column_ == kSound || column_ == kSource) session_.setLaneSample(project_.track, lane_, "");
         else if (column_ == kFit) session_.setLaneFit(project_.track, lane_, 0);
         else if (column_ == kChoke) session_.setLaneChoke(project_.track, lane_, kChokeNone);
     } else if (b == Button::Y && !holding_) {
@@ -455,6 +491,7 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
         picker_.rescan(session_.sampleNames(), session_.sampleFolders());
     }
     if (!input.held(Button::A)) holding_ = false;
+    if (!holding_) sourcePushed_ = false;
     if (!input.held(Button::B) || !onKit_ || input.held(Button::A)) kitDeleting_ = false;
     // B kept held on a kit of the player's own: its file is deleted when the bar is full.
     kitDeletePart_ = 0.f;
@@ -515,7 +552,12 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
     const bool sideways = std::fabs(x) > std::fabs(y);
     const float push = sideways ? x : y;
     const Pace runs = holding_ ? Pace::List : Pace::Cursor;
-    if (push == 0.f) {
+    if (holding_ && column_ == kSource) { // SOURCE's three, a choice: once a push, however far it is pushed
+        if (y != 0.f && !sourcePushed_) press(y > 0.f ? Button::Down : Button::Up);
+        sourcePushed_ = y != 0.f;
+        saved_ = 0.f;
+        stickWas_ = false;
+    } else if (push == 0.f) {
         saved_ = 0.f;
         stickWas_ = false;
     } else {
@@ -878,7 +920,8 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (said.empty()) {
         fonts.small.draw(r, fitX + 2.f, 34.f, "FIT TO", kDim);
         fonts.small.draw(r, chokeX + 2.f, 34.f, "CHOKE", kDim);
-        fonts.small.draw(r, waveX + 2.f, 34.f, "THE RECORDING", kDim);
+        fonts.small.draw(r, kSourceX + 2.f, 34.f, "SOURCE", kDim);
+        fonts.small.draw(r, waveX + 2.f, 34.f, "EDIT", kDim); // (THE RECORDING until SOURCE took its room: A edits it)
     } else { // over the heads of the three columns at the right, for a moment
         fonts.within(&Fonts::small, said.c_str(), waveX + waveW - fitX - 4.f).draw(r, fitX + 2.f, 34.f, said.c_str(), kBrass);
     }
@@ -929,9 +972,9 @@ void KitScreen::drawLaneRow(SDL_Renderer* r, const Fonts& fonts, int lane, SDL_C
     box(r, soundX, y, soundW, h, file[0] || voice.on() ? kPanel2 : kPanel, kLine);
     std::snprintf(text, sizeof text, "%d", lane + 1);
     fonts.small.draw(r, soundX + 7.f, y + (h - fonts.small.capHeight()) / 2.f, text, kDim);
-    if (voice.on()) { // a synth voice: its model's name, and SYNTH where a built-in drum says BUILT IN
+    // (SYNTH and BUILT IN were said faint at the box's right: SOURCE says it now, in its colour.)
+    if (voice.on()) { // a synth voice: its model's name
         fonts.medium.draw(r, soundX + 26.f, textY, drumsynth::modelName(voice.model), kText);
-        fonts.small.drawRight(r, soundX + soundW - 8.f, y + (h - fonts.small.capHeight()) / 2.f, "SYNTH", kDim);
     } else if (file[0]) {
         // Its own name, and the folder it is in (if any) small on the right.
         std::string upper = sampleLabel(file), folder = sampleLabel(sampleFolderOf(file)); // (the folder it is in: of two, the inner one)
@@ -947,7 +990,6 @@ void KitScreen::drawLaneRow(SDL_Renderer* r, const Fonts& fonts, int lane, SDL_C
         if (!folder.empty()) folderFont.drawRight(r, soundX + soundW - 8.f, y + (h - folderFont.capHeight()) / 2.f, folder.c_str(), kDim);
     } else {
         fonts.medium.draw(r, soundX + 26.f, textY, DrumKit::laneName(lane), kDim);
-        fonts.small.drawRight(r, soundX + soundW - 8.f, y + (h - fonts.small.capHeight()) / 2.f, "BUILT IN", kLine);
     }
     if (here && !onKit_ && column_ == kSound) outline(r, soundX - 1, y - 1, soundW + 2, h + 2, cursorColor, 2);
 
@@ -965,24 +1007,35 @@ void KitScreen::drawLaneRow(SDL_Renderer* r, const Fonts& fonts, int lane, SDL_C
     fonts.medium.draw(r, chokeX + 9.f, textY, laneChokeText(group), group == kChokeNone ? kDim : kBrass);
     if (here && !onKit_ && column_ == kChoke) outline(r, chokeX - 1, y - 1, chokeW + 2, h + 2, cursorColor, 2);
 
+    // SOURCE: BUILT IN, SYNTH or SAMPLE, each in its own colour (owner, 2026-11-28).
+    {
+        const Source source = sourceOf(lane);
+        const char* word = sourceText(source);
+        box(r, kSourceX, y, kSourceW, h, kPanel, kLine);
+        const Font& f = fonts.within(&Fonts::medium, word, kSourceW - 12.f); // (BUILT IN at XL: held at LARGE; 7 in, not CHOKE's 9: BUILT IN stands in the middle)
+        f.draw(r, kSourceX + 7.f, y + (h - f.capHeight()) / 2.f, word, source == kSourceSynth ? kTeal : source == kSourceSample ? kPurple : kBrass);
+        if (here && !onKit_ && column_ == kSource) outline(r, kSourceX - 1, y - 1, kSourceW + 2, h + 2, cursorColor, 2);
+    }
+
     // The recording's outline, and what is being done with it.
-    if (sound.missing) { // (on two short lines: the column is narrower since CHOKE)
-        const char* gone = "FILE NOT FOUND.";
-        const char* plays = "THE DRUM PLAYS.";
+    if (sound.missing) { // (on two short lines: the column is narrower since CHOKE, and again since SOURCE)
+        const char* gone = "NOT FOUND:";
+        const char* plays = "DRUM PLAYS";
         const Font& goneFont = fonts.within(&Fonts::small, plays, waveW - 6.f); // (the longer: both lines in its lettering)
         const float lineGap = 4.f, linesH = 2.f * goneFont.capHeight() + lineGap;
         goneFont.draw(r, waveX + 4.f, y + (h - linesH) / 2.f, gone, kBrass);
         goneFont.draw(r, waveX + 4.f, y + (h - linesH) / 2.f + goneFont.capHeight() + lineGap, plays, kBrass);
     } else if (!sound.peaks.empty()) {
-        const int count = static_cast<int>(sound.peaks.size()), ww = waveW - 70;
+        if (sound.shaping) std::snprintf(text, sizeof text, "MAKING");
+        else if (sound.waiting) std::snprintf(text, sizeof text, "FITTING");
+        else std::snprintf(text, sizeof text, "%.1f S", sound.seconds);
+        // The picture in what the seconds leave (it had 70 pixels kept for them; the column is narrower since SOURCE).
+        const int count = static_cast<int>(sound.peaks.size()), ww = waveW - 2 - static_cast<int>(fonts.small.width(text)) - 6;
         for (int i = 0; i < count; ++i) {
             const int ph = 1 + static_cast<int>(sound.peaks[static_cast<std::size_t>(i)] * (h - 3));
             fill(r, waveX + ww * i / count, y + (h - ph) / 2, 1, ph, here ? kText : kDim);
         }
         if (lane == headLane_) drawPlayhead(r, head_, lastMs_, waveX, y + 1, ww, h - 2);
-        if (sound.shaping) std::snprintf(text, sizeof text, "MAKING");
-        else if (sound.waiting) std::snprintf(text, sizeof text, "FITTING");
-        else std::snprintf(text, sizeof text, "%.1f S", sound.seconds);
         const bool edited = !trk().laneEdit[lane].atRest(); // (its seconds purple, as a FIT that is on)
         fonts.small.drawRight(r, waveX + waveW - 2.f, y + (h - fonts.small.capHeight()) / 2.f, text, sound.waiting ? kBrass : edited ? kPurple : kDim);
     }
@@ -1016,17 +1069,27 @@ void KitScreen::drawHints(SDL_Renderer* r, const Fonts& fonts) const {
         hint("Y", "catch"); // (on its let go)
     } else if (holding_ && column_ == kEdit) {
         hint("A", "edit"); // (opens when it is let go)
+    } else if (holding_ && column_ == kSource) {
+        // From BUILT IN either way; from either end, the one way there is.
+        const Source now = sourceOf(lane_);
+        if (now == kSourceBuiltIn) hint("UP / DOWN", "sample / synth");
+        else hint(now == kSourceSynth ? "UP" : "DOWN", "built in");
+        hint("B", "as it was");
     } else if (holding_) {
         hint("UP / DOWN", column_ == kSound ? "recordings / synths" : column_ == kFit ? "longer / shorter" : "next / previous group");
         if (column_ == kSound) hint("B", "as it was");
         if (column_ == kFit && fitsByTap()) hint("LEFT / RIGHT", "tempo from it");
     } else if (column_ == kEdit) {
         hint("A", "edit");
+    } else if (column_ == kSource) {
+        hint("HOLD A", "source");
+        hint("B", "built in");
     } else if (column_ == kFit && fitsByTap()) {
         hint("A", "fit to its bars"); // (HOLD A steps it: the help card says so)
         hint("B", "fit off");
     } else {
-        hint(column_ == kSound ? "A" : "HOLD A", column_ == kSound ? (trk().laneSynth[lane_].on() ? "knobs" : "pick from list") : column_ == kFit ? "fit to steps" : "choke group");
+        // On the name A picks within the lane's SOURCE, and says which (owner, 2026-11-28): a synth's knobs, else the list.
+        hint(column_ == kSound ? "A" : "HOLD A", column_ == kSound ? (trk().laneSynth[lane_].on() ? "synth knobs" : "sample list") : column_ == kFit ? "fit to steps" : "choke group");
         hint("B", column_ == kSound ? "default drum" : column_ == kFit ? "fit off" : "no choke");
     }
     if (!holding_ && !catchKey_.held()) {

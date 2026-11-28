@@ -752,6 +752,8 @@ void testTheKitScreen() {
     rig.tap(RIGHT);
     CHECK(kit.cursorColumn() == KitScreen::kChoke);
     rig.tap(RIGHT);
+    CHECK(kit.cursorColumn() == KitScreen::kSource);
+    rig.tap(RIGHT);
     CHECK(kit.cursorColumn() == KitScreen::kEdit);
     rig.tap(RIGHT);
     CHECK(kit.cursorColumn() == KitScreen::kSound);
@@ -973,7 +975,7 @@ void testCatchingBarsAndATrack() {
     rig.tap(LEFT);
     rig.key(Y, false);
     CHECK(session.catchBars() == 2);
-    rig.tap(LEFT, 3); // (Y let go: the cursor moves again, round the four columns from SOUND to FIT)
+    rig.tap(LEFT, 4); // (Y let go: the cursor moves again, round the five columns from SOUND to FIT)
     CHECK(kit.cursorColumn() == KitScreen::kFit && kit.cursorLane() == 6);
     kit.goTo(7, KitScreen::kSound);
     rig.tap(Y);

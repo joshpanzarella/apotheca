@@ -1587,7 +1587,7 @@ void PatternScreen::drawHints(SDL_Renderer* r, const Fonts& fonts, bool onName, 
         hint("L1", "grid");
     } else if (slicing_ && !held) {
         if (hitHere()) hint("UP / DOWN", "slice");
-        hint("A", hitHere() ? "level / nudge" : "place");
+        hint(hitHere() ? "HOLD A" : "A", hitHere() ? "level / nudge" : "place"); // (a tap of A on a hit does nothing)
         if (hitHere()) hint("Y", "chance");
         if (hitHere()) hint("HOLD X", "effects");
         hint("HOLD R1", "in order");
@@ -1646,9 +1646,11 @@ void PatternScreen::drawHints(SDL_Renderer* r, const Fonts& fonts, bool onName, 
         // level); on an empty step, the brushes, which start there, and HOLD B, which deletes what it is
         // dragged over. Every list here fits with the help at the end, HLD SEL: HELP too: on a hit that
         // takes "fx" for "effects" (34 pixels: with "effects" the list was 14 over).
+        // On a hit A turns only held (a tap does nothing there), and Y's tap steps the chance; where the sound
+        // starts is hold Y + LEFT / RIGHT, which the held bar says (hint audit, 2026-11-28).
         if (hitHere()) {
-            hint("A", "level / nudge");
-            hint("Y", "chance / start");
+            hint("HOLD A", "level / nudge");
+            hint("Y", "chance");
             hint("HOLD X", "fx");
             hint("B", "delete");
             hint("HOLD R1", "paint");

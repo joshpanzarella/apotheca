@@ -183,7 +183,7 @@ struct TempFolder {
 // ---- the drum grid ----------------------------------------------------------------------------
 
 // What the bar says on a hit with nothing held (pattern_screen.cpp's last list).
-const ui::Hint kOnAHit[] = {{"A", "level / nudge"}, {"Y", "chance / start"}, {"HOLD X", "fx"}, {"B", "delete"}, {"HOLD R1", "paint"}}; // (R1 + R2 is said on an empty step)
+const ui::Hint kOnAHit[] = {{"HOLD A", "level / nudge"}, {"Y", "chance"}, {"HOLD X", "fx"}, {"B", "delete"}, {"HOLD R1", "paint"}}; // (R1 + R2 is said on an empty step)
 
 void heldOnAHit(Rig& rig) {
     using namespace pattern_layout;
@@ -266,7 +266,7 @@ void testTheSliceView() {
     drums.setSlicing(true);
     CHECK(drums.slicing());
     rig.draw();
-    const ui::Hint onASlice[] = {{"UP / DOWN", "slice"}, {"A", "level / nudge"}, {"Y", "chance"}, {"HOLD X", "effects"}, {"HOLD R1", "in order"}, {"L1", "grid"}};
+    const ui::Hint onASlice[] = {{"UP / DOWN", "slice"}, {"HOLD A", "level / nudge"}, {"Y", "chance"}, {"HOLD X", "effects"}, {"HOLD R1", "in order"}, {"L1", "grid"}};
     CHECK(rig.plainBar(onASlice, 6));
     rig.key(X, true);
     CHECK(drums.effecting() && drums.slicing());
@@ -332,7 +332,7 @@ void testANote() {
     note = NoteEvent{4, 62, 2.f, 0.f, 0.8f};
     rig.app.session().sendNoteBar(1, 0, 0);
     roll.moveCursorTo(62, 4);
-    const ui::Hint onANote[] = {{"A", "level / length"}, {"B", "delete"}, {"HOLD Y", "chord"}, {"HOLD R1", "move"}, {"HOLD X", "effects"}, {"L1", "zoom"}};
+    const ui::Hint onANote[] = {{"HOLD A", "level / length"}, {"B", "delete"}, {"HOLD Y", "chord"}, {"HOLD R1", "move"}, {"HOLD X", "fx"}, {"L1", "zoom"}};
     rig.draw();
     CHECK(rig.plainBar(onANote, 6));
     CHECK(rig.label(160.f, kRollStrip + 8.f, "LEVEL") && !rig.label(kStripHeldRatchetX, kRollStrip + 8.f, "RATCHET"));
@@ -429,7 +429,7 @@ void testAChord() {
     chord = makeChord(builtInPack().chords[0], 60, 2, 4.f, 0.7f, 0);
     rig.app.session().sendNoteBar(1, 0, 0);
     roll.moveCursorTo(60, 2);
-    const ui::Hint onAChord[] = {{"A", "level / length"}, {"B", "delete"}, {"HOLD Y", "swap"}, {"HOLD R1", "move"}, {"HOLD X", "effects"}, {"L1", "zoom"}};
+    const ui::Hint onAChord[] = {{"HOLD A", "level / length"}, {"B", "delete"}, {"HOLD Y", "swap"}, {"HOLD R1", "move"}, {"HOLD X", "fx"}, {"L1", "zoom"}};
     rig.draw();
     CHECK(rig.plainBar(onAChord, 6));
     rig.key(X, true);
