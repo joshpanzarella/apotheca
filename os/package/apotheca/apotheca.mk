@@ -23,9 +23,19 @@ APOTHECA_LICENSE_FILES = third_party/easycz/LICENSE third_party/msfa/LICENSE \
 APOTHECA_REDISTRIBUTE = NO
 
 APOTHECA_DEPENDENCIES = sdl2
-# The version shown on screen is BUILD N, N the commits plus one (it was 0.N until 2026-11-28). git is read
-# here, in the repository: the copy being built has no history.
-APOTHECA_CHANGES := $(shell git -C $(BR2_EXTERNAL_APOTHECA_PATH) rev-list --count HEAD 2>/dev/null || echo 0)
+# The version shown on screen is BUILD N (it was 0.N until 2026-11-28). N counts main's history only, so the
+# card and the port show the same number for the same app code: N is the number of commits in the last main
+# commit merged into this branch (its merge base with main and origin/main, the newer of the two). The port
+# (scripts/build-handheld.sh, on main) is N = main's commits + 1, the "Ship the port" commit that follows it;
+# that commit, merged here, counts the same N. This branch's own commits (merges, os/) are not counted.
+# git is read here, in the repository (BR2_EXTERNAL is the worktree's os/ folder): the copy built has no history.
+APOTHECA_GIT = git -C $(BR2_EXTERNAL_APOTHECA_PATH)
+APOTHECA_MAIN_REFS := $(foreach ref,main origin/main,$(shell $(APOTHECA_GIT) rev-parse -q --verify $(ref)^{commit} >/dev/null 2>&1 && echo $(ref)))
+APOTHECA_MAIN := $(if $(APOTHECA_MAIN_REFS),$(shell $(APOTHECA_GIT) merge-base HEAD $(APOTHECA_MAIN_REFS) 2>/dev/null))
+$(if $(APOTHECA_MAIN),,$(warning apotheca: no main branch found to count, so BUILD counts this branch's own commits))
+APOTHECA_BUILD := $(shell $(APOTHECA_GIT) rev-list --count $(or $(APOTHECA_MAIN),HEAD) 2>/dev/null || echo 1)
+# (CMake and the VERSION file below each add one, as a desk build adds one to its count.)
+APOTHECA_CHANGES := $(shell echo $$(( $(APOTHECA_BUILD) - 1 )))
 # -O3, as the desk and the port build (Buildroot's flags say -O2; the build type's come after them): the same sound
 # to the bit, PLATE and HALL 17 to 20% cheaper on the desk.
 APOTHECA_CONF_OPTS = \
