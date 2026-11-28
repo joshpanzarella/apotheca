@@ -159,7 +159,7 @@ namespace apotheca {
 // STICK SPEED):
 struct Feel {
     float fillPerSecond = 3.f;    // empty to full in a third of a second
-    float tempoPerSecond = 90.f;  // in BPM
+    float tempoPerSecond = ui::kTempoPerSecond; // in BPM (the roll's too)
 };
 
 class PatternScreen : public Screen {

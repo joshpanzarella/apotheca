@@ -83,12 +83,40 @@ void macroBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, c
     if (cursor) outline(r, x - 1, y - 1, w + 2, h + 2, accent, 2);
 }
 
+const SDL_Color& tabAccent(View view) {
+    switch (view) {
+    case View::Song: return kPurple;
+    case View::Pattern: return kTeal;
+    case View::Device: return kBrass;
+    case View::Effects: return kTeal;
+    case View::Mods: return kPurple;
+    case View::Settings: return kText;
+    }
+    return kTeal;
+}
+
+void tempoCursor(SDL_Renderer* r, const Fonts& chosen, const TopBar& top, float exact, float tempo, SDL_Color cursor) {
+    // The tight rows are always at LARGE, whatever TEXT SIZE is: the tempo's box in the top bar is one.
+    const Fonts& tight = chosen.fixed();
+    const int bx = static_cast<int>(top.tempoNumberRight - tight.small.width("240") - 6.f);
+    const int bw = static_cast<int>(top.tempoRight) - bx + 6;
+    const float part = (exact - kMinTempo) / (kMaxTempo - kMinTempo);
+    fill(r, bx, 3, bw, kTopBarH - 6, kPanel2);
+    fill(r, bx, 3, static_cast<int>(std::round(bw * part)), kTopBarH - 6, faded(cursor, 90));
+    outline(r, bx - 1, 2, bw + 2, kTopBarH - 4, cursor, 2);
+    const float textY = (kTopBarH - tight.small.capHeight()) / 2.f;
+    char text[16];
+    std::snprintf(text, sizeof text, "%d", static_cast<int>(tempo));
+    tight.small.drawRight(r, top.tempoRight, textY, "BPM", kText);
+    tight.small.drawRight(r, top.tempoNumberRight, textY, text, kText);
+}
+
 TopBar topBar(SDL_Renderer* r, const Fonts& chosen, View view, const char* context, const Project& project) {
     const Fonts& fonts = chosen.fixed(); // a tight row: laid out to the pixel, always at LARGE
     SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
     fill(r, 0, 0, kScreenW, kScreenH, kBg);
     fill(r, 0, 0, kScreenW, kTopBarH, kPanel);
-    fill(r, 0, kTopBarH, kScreenW, 1, kLine);
+    fill(r, 0, kTopBarH, kScreenW, 1, tabAccent(view)); // the bar's foot: the screen's accent (it was kLine)
     const float textY = (kTopBarH - fonts.small.capHeight()) / 2.f;
 
     // L2 < SONG PATTERN DEVICE > R2
@@ -117,7 +145,7 @@ TopBar topBar(SDL_Renderer* r, const Fonts& chosen, View view, const char* conte
         // letters saved pay for it and leave the screen's own words a little more room than they had.)
         const float w = fonts.small.width(tabs[i]) + 2.f * kTabPad;
         const bool here = static_cast<int>(view) == i;
-        if (here) fill(r, static_cast<int>(x), 2, static_cast<int>(w), kTopBarH - 4, kTeal);
+        if (here) fill(r, static_cast<int>(x), 2, static_cast<int>(w), kTopBarH - 4, tabAccent(view)); // (every tab was teal)
         fonts.small.draw(r, x + kTabPad, textY, tabs[i], here ? kBg : kDim);
         x += w + 2.f;
     }
@@ -243,15 +271,33 @@ void keyWords(const char* key, Each each) {
     static const char* const kDirections[4] = {"UP", "DOWN", "LEFT", "RIGHT"};
     const char* at = key;
     bool afterArrow = false;
+    // SELECT is drawn as SEL (the owner's, 2026-11-12), with whatever follows it ("SELECT," on the help card).
+    const auto shorter = [](std::string word) {
+        if (word.compare(0, 6, "SELECT") == 0 && (word.size() == 6 || !std::isalpha(static_cast<unsigned char>(word[6])))) word.erase(3, 3);
+        return word;
+    };
+    const auto isDirectionWord = [&](const std::string& word) {
+        for (const char* d : kDirections)
+            if (word == d) return true;
+        return false;
+    };
     while (*at) {
         while (*at == ' ') ++at;
         const char* end = at;
         while (*end && *end != ' ') ++end;
         if (end == at) break;
-        std::string word(at, end);
-        if (word == "HOLD") word = "HLD"; // shorter, and still read as "hold" (the owner's, 2026-11-11)
-        // SELECT is drawn as SEL (the owner's, 2026-11-12), with whatever follows it ("SELECT," on the help card).
-        if (word.compare(0, 6, "SELECT") == 0 && (word.size() == 6 || !std::isalpha(static_cast<unsigned char>(word[6])))) word.erase(3, 3);
+        std::string word = shorter(std::string(at, end));
+        // HOLD is drawn HLD (the owner's, 2026-11-11), and joined to its key by a hyphen, one word: HLD-A, HLD-R1,
+        // HLD-SEL (owner, 2026-11-28: "HLD A" read as HLD and A, two keys). A direction after it stays an arrow.
+        if (word == "HOLD") {
+            word = "HLD";
+            const char* next = end;
+            while (*next == ' ') ++next;
+            const char* nextEnd = next;
+            while (*nextEnd && *nextEnd != ' ') ++nextEnd;
+            const std::string key = shorter(std::string(next, nextEnd));
+            if (!key.empty() && key != "/" && key != "+" && !isDirectionWord(key)) word += "-" + key, end = nextEnd;
+        }
         int arrow = -1;
         for (int i = 0; i < 4; ++i)
             if (word == kDirections[i]) arrow = i;
@@ -288,6 +334,24 @@ std::string keyShown(const char* key) {
     return shown;
 }
 
+namespace {
+// A hold, HLD-A: HLD and its key with the hyphen in a space's room, so a hold's chip is exactly as wide as it was
+// drawn "HLD A" (2026-11-28: drawn at its own width the hyphen put bars that had fitted to the pixel 1 to 2 over).
+// The hyphen's own sides overlap HLD's and the key's a little; its ink stands clear of both.
+bool isHold(const std::string& word) { return word.compare(0, 4, "HLD-") == 0 && word.size() > 4; }
+float wordWidth(const Fonts& fonts, const std::string& word) {
+    if (!isHold(word)) return fonts.small.width(word.c_str());
+    return fonts.small.width("HLD") + fonts.small.width(" ") + fonts.small.width(word.c_str() + 4);
+}
+void drawWord(SDL_Renderer* r, const Fonts& fonts, float x, float textY, const std::string& word, SDL_Color color) {
+    if (!isHold(word)) return fonts.small.draw(r, x, textY, word.c_str(), color);
+    const float hld = fonts.small.width("HLD"), room = fonts.small.width(" ");
+    fonts.small.draw(r, x, textY, "HLD", color);
+    fonts.small.draw(r, x + hld + (room - fonts.small.width("-")) / 2.f, textY, "-", color);
+    fonts.small.draw(r, x + hld + room, textY, word.c_str() + 4, color);
+}
+} // namespace
+
 float keyWidth(const Fonts& fonts, const char* key) {
     float w = 0.f;
     bool first = true, lastArrow = false, lastStroke = false;
@@ -295,7 +359,7 @@ float keyWidth(const Fonts& fonts, const char* key) {
         const bool stroke = word == "/";
         if (!first && !(arrow >= 0 && lastArrow)) w += stroke || lastStroke ? kStrokeGap : fonts.small.width(" ");
         lastStroke = stroke;
-        w += arrow >= 0 ? kArrowW : fonts.small.width(word.c_str());
+        w += arrow >= 0 ? kArrowW : wordWidth(fonts, word);
         first = false;
         lastArrow = arrow >= 0;
     });
@@ -310,8 +374,8 @@ void drawKey(SDL_Renderer* r, const Fonts& fonts, float x, float textY, const ch
         if (!first && !(arrow >= 0 && lastArrow)) x += stroke || lastStroke ? kStrokeGap : fonts.small.width(" ");
         lastStroke = stroke;
         if (arrow < 0) {
-            fonts.small.draw(r, x, textY, word.c_str(), color);
-            x += fonts.small.width(word.c_str());
+            drawWord(r, fonts, x, textY, word, color);
+            x += wordWidth(fonts, word);
         } else {
             // A solid triangle, nine across, pointing the way.
             const int cx = static_cast<int>(x) + 4;

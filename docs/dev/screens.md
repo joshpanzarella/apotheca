@@ -24,7 +24,14 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   buses (`kBusRow`), 6 and 7 the master (`kMasterRow`). **Column 0 is the line
   in the list; 1 and up are its settings** (SENDS: 1 ECHO, 2 SPACE).
   - Up / down in the list goes round; right goes to the setting the line
-    last used (`last_`, kept through a change of track); left comes back.
+    last used (`last_`, kept through a change of track); left comes back. **"Last used" is a dial the cursor
+    came to by RIGHT (or `goTo`), or one anything but LEFT was pressed on** (A, B, X, Y, the shoulders,
+    UP / DOWN: `onButton`'s first lines); **a LEFT only passes through** (`press`: `--column_`, not `goTo`).
+    So walking out from dial 4 to the list and RIGHT again lands on 4, not on dial 1, which every walk out
+    crosses (owner, 2026-11-28, a fix he accepted: "the setting last used" had become nearly always the
+    first). Walk left from 4 to 2, press A there, walk out: 2. The stick's LEFT is the same `press`.
+    `app_test` `testTheEffectsScreen` (the walk out, A on the way, RIGHT then out, the stick) and
+    `testFxDialsWalkAcross` pin it.
     `update()` only pulls the cursor in when the line has fewer settings now.
   - **In a slot's settings, A HELD + LEFT / RIGHT switch its TYPE** (owner, 2026-11-14;
     `FxScreen::stepType`): the type before / after, in the grip that turns the value with
@@ -61,8 +68,8 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
 
     `app_test` `testFxDialsWalkAcross` pins it. Two things followed: **SENDS' bar lost HOLD X "mod"** (the walk's
     two arrows and "list, dial" put ECHO 43 pixels over; a setting's bar never had room for it, and the help card
-    says it), and **"the setting last used" is now nearly always the first**, since a walk out to the list passes
-    it (it still holds where L1 / R1 or a tab left the cursor). Neither is the owner's call yet.
+    says it), and **"the setting last used" was nearly always the first**, since a walk out to the list passed
+    it: fixed 2026-11-28 (above: a LEFT passes through). SENDS' HOLD X is not the owner's call yet.
   - **A slot remembers each type's own settings** (`Session::rememberType` /
     `rememberedType`, `switchEffectType` in fx_screen.cpp): a switch goes through
     `changeEffectType` (lanes moved as always: **a remembered type's automation is not
@@ -668,7 +675,9 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   (70), so the box rises to end `kListBottom` (8 above the bar); adding a track it stands at 70 as
   before.
 - **Hints must fit.** The hints bar drops what does not fit; do not rely on
-  that, shorten the words. The bar draws `HOLD` as `HLD`, `SELECT` as `SEL`,
+  that, shorten the words. The bar draws `HOLD` as `HLD` joined to its key by a hyphen (`HOLD A` is
+  `HLD-A`, one action: owner, 2026-11-28, "HLD A" read as HLD and A; a direction after it stays an arrow; the hyphen is
+  drawn in a space's room, so a hold's chip is as wide as "HLD A" was and no bar moved), `SELECT` as `SEL`,
   directions as arrows, and the one word `dice` as a die (`ui.cpp`): write
   hints in full. `ui::gHintsOver` says how many pixels the last bar was
   short of holding every hint and the help: `app_test`
@@ -677,7 +686,15 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   solo to the head, the drum grid lists a hit's own jobs on a hit and the
   brushes on an empty step). JAX-EP's MAIN and five pages are held to 0 at
   every stop, A held and not (`testJaxepsHintsFit`). **The piano roll on a note is still 48 to 69
-  pixels over** (its help is not drawn): not mended.
+  pixels over** (its help is not drawn): not mended. Since the hint audit (2026-11-28) its A reads `HOLD A level /
+  length` (a tap of A on a note does nothing) and `HOLD X fx` (as the drum grid's) so every hint still draws;
+  `app_test` holds it to "only the help left out".
+- **A hint names the press that does it** (hint audit, 2026-11-28): a tap of A on a hit (drum grid and slice view)
+  or a note does nothing, so the bar says `HOLD A level / nudge` / `HOLD A level / length`; an empty step keeps `A
+  place`. On a hit `Y chance` (a tap steps it; where the sound starts is Y held, which that bar says). The
+  sampler's SOUND says `A pick from list` (a tap opens it, as the KIT's SOUND); PRESET keeps `HOLD A pick one`.
+  Pinned by `app_test testTheHintsFitAndSayWhatTheyDo` (`hintKeyed`, now one copy in `tests/canvas.hpp`) and
+  `under_test`'s bars.
 - **The help card's B line reads "delete, empty, or go back. X held: empty the effects"** (gesture
   audit G11, 2026-11-24): X + B empties what X shows on a hit, a lane's name, a note and a chord,
   and no held strip has room for its chip (next rule). It fits the card at every size (held at LARGE
@@ -789,6 +806,30 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
     glow lands where the clock puts it, and over a ghost hit it failed now and then); a new
     translucent thing that moves with the clock is added the same way. A still in a theme:
     `--theme solarized`.
+- **Each tab has an ACCENT, worn by the top bar only** (owner, 2026-11-28: "can we get some slight visual
+  differentiation using some of the theme colors on all of the screens?"; `ui::tabAccent`, `topBar`). Slight,
+  because the look is settled: no shape, size or place changed, only two things that were already drawn take
+  the tab's colour, on every screen of the tab: **the lit tab's fill** (it was teal on all six; its word stays
+  in kBg, as on any chip) and **the 1-pixel line along the top bar's foot** (it was kLine). Which colour is
+  picked by the colour's JOB (ui.hpp), so it reads as the same kind of thing it means elsewhere:
+
+  | Tab | Accent | Why that job |
+  | --- | --- | --- |
+  | SONG | purple | where the song is playing: the scenes in time |
+  | PTRN | teal | writing: the cursor's colour, as it was |
+  | DVICE | brass | the knobs, meters and a value changed |
+  | FX | teal | as it was; teal and not brass so DVICE and FX, side by side, differ |
+  | MOD | purple | automation, what moves by itself |
+  | SET | text | the handheld's own: no musical job, the neutral lettering |
+
+  No two neighbours share one (L2 / R2 go round: SET's text and SONG's purple meet there too). Stop (red) is
+  never an accent: it means stop, WRITE, delete. **The cursor is NOT the accent**: it stays teal (brass held)
+  on every tab, so "the cursor is teal" holds everywhere; a heading or title in the accent was weighed and
+  left out (brass headings would read as "changed", teal ones as the cursor). Every chip's contrast is
+  `theme_test`'s accent-under-bg rule, which every theme already meets; SET's chip is text under bg letters
+  (7 or more). Checked in all eight themes by `themeviews` and by `theme_test` `testEachTabHasItsAccent`
+  (which accent per tab, the foot across, the lit tab where it should be, neighbours differ); `modtab_test`
+  finds each lit tab by its accent. Stills before and after: Brown and Solarized, LARGE and XL.
 - **The SET page is five groups under headings, and shows as many rows as fit** (owner, 2026-11-17:
   "enough rows now"; `SettingsScreen::Row`, `groupOf`, `groupName`): SONG (TEMPO, CHORD PACK, KEY,
   SCALE, TRACK NAME, BOUNCE), PLAYING (CLICK, COUNT IN, MUTES, USB KEYBOARD), LOOK (TEXT SIZE, THEME, PIANO

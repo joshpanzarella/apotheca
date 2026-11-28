@@ -493,9 +493,11 @@ void FxScreen::press(Button b) {
             // up and down to traverse the parameters is odd"). LEFT from the first is back to the list, on the same
             // line; RIGHT on the last stops. UP / DOWN do nothing without A. The slot's TYPE stays on A HELD + LEFT /
             // RIGHT (below; owner, 2026-11-14): plain LEFT is only ever the cursor.
+            // A LEFT passes through: the dial it lands on is not remembered (last_), so RIGHT from the list goes
+            // back to the dial the walk out started from, not dial 1 it always crossed (owner, 2026-11-28).
             if (b == Button::Right) goTo(row_, column_ + 1);
             if (b == Button::Left) {
-                if (column_ > 1) goTo(row_, column_ - 1);
+                if (column_ > 1) --column_;
                 else column_ = 0;
             }
         }
@@ -595,6 +597,9 @@ void FxScreen::endMod(const Input& input) {
 void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
     if (event.down && b != Button::B) deleting_ = false, deletePart_ = 0.f; // any other press calls a held B off
+    // A dial is remembered for RIGHT from the list (last_) when the cursor arrives by RIGHT (goTo) or anything but
+    // LEFT is pressed on it (A, B, X, Y, the shoulders, UP / DOWN): one only passed through by LEFT on the way out is not.
+    if (event.down && column_ > 0 && b != Button::Left) last_[row_] = column_;
     // X: hear the track. Held on a track's setting or a send (A not held), it is also that knob's MOD, and
     // the X-held check comes before every other button's own job (L1 / R1's track, B's default, the D-pad).
     if (b == Button::X) {

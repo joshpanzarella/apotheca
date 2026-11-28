@@ -39,11 +39,15 @@
 //                         will not land on another note.
 //   hold R1 on an empty step, and drag    paint a note on every step crossed
 //   L1                    zoom: a tap goes closer (2 octaves, 1, round to 3)
-//   BARS (up from step 1 of bar 1)
-//                         left / right: the bar before or after, round the ends.
+//   TEMPO (up from step 1 of bar 1: the top bar's tempo, as on the drum grid)
+//                         A taps the tempo (TAP TEMPO). Hold A, up / down: a beat a
+//                         minute; left / right: ten; the stick up / down: freely.
+//                         No step of undo (a tempo change is not an edit).
+//   BARS (up from TEMPO)  left / right: the bar before or after, round the ends.
 //                         Hold A, up / down: the cell's count, more or fewer
 //                         (1, 2, 4 or 8, as the Song screen's hold A). One step
-//                         of undo. Up from BARS comes round to the bottom.
+//                         of undo. Down from BARS is TEMPO; up from BARS comes
+//                         round to the bottom.
 //   hold L1, R1           copy the bar on screen: its notes and chords
 //   hold L1, A            paste it over the bar on screen (another bar, cell, scene,
 //                         or synth or sampler track). One step of undo; on the same
@@ -90,7 +94,7 @@ namespace apotheca {
 
 class NoteScreen : public Screen {
 public:
-    explicit NoteScreen(Session& session) : session_(session), project_(session.project) {}
+    explicit NoteScreen(Session& session) : session_(session), project_(session.project), tempoExact_(session.project.tempo) {}
 
     void onButton(const ButtonEvent& event, const Input& input) override;
     void update(const Input& input, Uint32 nowMs) override;
@@ -106,6 +110,7 @@ public:
     int cursorPitch() const { return pitch_; }
     int cursorStep() const { return step_; }
     bool cursorOnBars() const { return onBars_; }
+    bool cursorOnTempo() const { return onTempo_; }
     bool carrying() const { return carrying_ != Carry::Nothing; }
     int lowestKeyShown() const { return low_; }
     // The note under the cursor, or nullptr.
@@ -212,7 +217,11 @@ private:
     void keepInView();
     void followTheNotes(); // FOLLOW showed a bar: the keys to its notes (follow_bar.hpp, keysToShow)
     bool barsPushed_ = false; // the stick is pushed for a bar more or fewer, on the BARS stop (A held): once a push
-    bool onBars_ = false;     // BARS, above the grid: the bar shown, and the cell's count
+    bool onBars_ = false;     // BARS, above the tempo: the bar shown, and the cell's count
+    bool onTempo_ = false;    // TEMPO, above the grid (the top bar's tempo), as on the drum grid (owner, 2026-11-28)
+    float tempoExact_ = 120.f; // the stick moves this; the project's tempo is it, rounded (as the drum grid's)
+    bool offGrid() const { return onBars_ || onTempo_; } // the cursor is on BARS or TEMPO: nothing of the grid's
+    void setTempo(float bpm);
     bool zooming_ = false, zoomUsed_ = false; // L1 is held; it did something (copied, pasted, moved)
     bool l1First_ = false; // L1 is held and went down with nothing else held: R1 let go unmoved copies the bar, A pastes it
     bool copyBarArmed_ = false; // ...R1 went down after it: let go where it went down, the bar copies

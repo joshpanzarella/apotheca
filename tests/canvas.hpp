@@ -87,4 +87,19 @@ inline bool barSays(const Canvas& canvas, Canvas& scratch, const char* words) {
     return false;
 }
 
+// Is `words` drawn in the hints bar with the chip `key` just before it (its left edge where that chip's would be)?
+// (One copy since 2026-11-28: app_test and copyscene_test each had their own.)
+inline bool hintKeyed(const Canvas& canvas, Canvas& scratch, const char* key, const char* words) {
+    const Fonts& fonts = *canvas.fonts;
+    const float textY = ui::kScreenH - ui::kHintsH + (ui::kHintsH - fonts.small.capHeight()) / 2.f + 1.f;
+    const int chipY = ui::kScreenH - ui::kHintsH + 6; // the chip's top row, above its letters
+    for (float x = 4.f; x < ui::kScreenW - 40.f; x += 0.0625f) {
+        if (!inked(canvas, scratch, 0, x, textY, words, ui::kDim)) continue;
+        const int left = static_cast<int>(x - 5.f - (ui::keyWidth(fonts, key) + 8.f));
+        for (int at = left - 1; at <= left + 1; ++at)
+            if (canvas.is(at, chipY, ui::kText) && !canvas.is(at - 1, chipY, ui::kText)) return true;
+    }
+    return false;
+}
+
 } // namespace apotheca

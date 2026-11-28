@@ -342,13 +342,13 @@ to the sound just now.
 | Where | Button | Does |
 | --- | --- | --- |
 | The list | Up / down | The next line. All eight, round the ends. |
-| | Right | Into the line's settings, **at the one last used there** |
+| | Right | Into the line's settings, **at the one last used there**: the dial you came in to, walked right to, or pressed anything on. Walking out with left only passes the dials on the way, so right goes back to the dial you started the walk out from (not the first) |
 | | **Hold A** | **The list of effects opens on the right**: the seven families, each line naming its types. Up / down steps through it, and you **hear** each one at once, but it is only **tried**: the effect that was in the slot, its settings and its automation are kept aside. **Let go of A** and the one you are on goes in (another family at its usual settings, its automation gone). Let go on the effect you started on and it is back exactly as it was. |
 | | Hold A + left / right | The **TYPE**, for an effect that has types. Tried too, with the settings the two types share; let go and it goes in, its automation moved with it |
 | | Hold A, then **B** | **As it was**: nothing tried goes in. Leaving the screen or the track with A held does the same |
 | | Hold B | **Deletes the effect**, with its settings and its automation: a bar fills for half a second, and the heading says DELETING THIS EFFECT. Let go sooner and it stays. **SELECT + B brings it back**, its settings and automation with it. On SENDS a tap of B: nothing sent. |
 | | Hold Y + up / down | On one of the track's own three lines: **moves it** there, settings, automation and MODs with it. The cursor goes with it; the ends stop. One step of undo. The buses' and the master's never move. |
-| The settings | Left / right | The next dial, across: they sit side by side. **Left from the first is back to the list**, on the same line. Right on the last stops. The stick across does the same |
+| The settings | Left / right | The next dial, across: they sit side by side. **Left from the first is back to the list**, on the same line. Right on the last stops. The stick across does the same. A dial left passes through is not remembered as the one last used |
 | | Up / down | Nothing, without A (hold A to turn the dial) |
 | | **Hold A + left / right** | **The TYPE before / after** (COMP to DUCK), at once, in the same grip that turns the value: the cursor stays on its row. The first and the last type stop. |
 | | Hold A + up / down | The stick turns it. The D-pad moves it a twentieth, or to the next choice (BAND's FREQ: a third of an octave). |
@@ -1668,8 +1668,8 @@ A **cell** (one track in one scene) can be **1, 2, 4 or 8 bars** long.
 - On the PATTERN screen the grid shows one bar. Run the cursor off the end
   of step 16 and you are in the next bar; the top bar says **BAR 2 OF 4**.
   On the drum grid the lane's name is always one left of step 1.
-- **Up from the top is the BARS stop** (up from the tempo on the drums, up
-  from step 1 of bar 1 on the roll): left / right show the bar before or
+- **Up from the top is the tempo, then the BARS stop** (up from the top lane
+  on the drums, from step 1 of bar 1 on the roll): left / right show the bar before or
   after, and hold A with up / down sets the cell's count. The bottom bar
   says so while you are there. Quicker, from anywhere on either grid:
   **hold L1, up / down** turns to the bar before or after, and **hold L1,
@@ -2289,8 +2289,23 @@ playing in. The picture draws each cut where it is.
 A row for each lane. Each lane plays its built-in drum, a **recording** (a
 WAV file from the `samples` folder beside the program) or a **synth voice**
 (a drum made from knobs: below). A kit can mix all three.
-Left / right moves between the columns, SOUND, FIT TO, CHOKE and the sound's
-picture, EDIT (round the ends).
+Left / right moves between the columns, SOUND, FIT TO, CHOKE, SOURCE and the
+sound's picture, EDIT (round the ends).
+
+**SOURCE says where each lane's sound comes from**: BUILT IN (brass), SYNTH
+(teal) or SAMPLE (purple). **Hold A + UP / DOWN on it changes it**, one push
+at a time, in this order:
+
+| From | Hold A + DOWN | Hold A + UP |
+| --- | --- | --- |
+| SAMPLE | BUILT IN | (the end) |
+| BUILT IN | SYNTH: the drum synth's model for the lane (lane 1 KICK, lane 2 SNARE, ... lane 8 CYMBAL) | SAMPLE: **the list of recordings opens**, since a sample needs a file. Pick one with A; **B gives back the lane as it was when you pressed A** |
+| SYNTH | (the end) | BUILT IN: the lane's own drum |
+
+Each change is heard, and is one step of undo. B with A still held gives back
+the lane as it was when A went down; B on SOURCE puts the built-in drum back.
+A on the lane's name still picks within its source: the list of recordings,
+or a synth lane's knobs.
 
 **Kits.** UP from lane 1 is the kit's own stop, at the top left: KIT and its
 name. Hold A + UP / DOWN there puts on the next / previous kit: seven
@@ -2317,12 +2332,13 @@ again: then YOUR OWN).
 | SOUND | From the built-in drum: UP each recording by name, DOWN the twelve synth models. Heard as it changes. **B with A still held: the lane as it was when A went down** (its EDIT and FIT too) | The drum back |
 | FIT TO | Off, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64 steps, read as bars of the scene's meter where they are whole (16 is 1 BAR in 4/4; 12 is 1 BAR in 3/4, 24 two, 48 four). **A tap of A on a recording: the bars it fills at the tempo** (the scene's own, if it has one) (1, 2 or 4 bars in the scene's meter, or one of the stops under a bar for a short one). From a count between those (20 steps, two bars of a 10-step meter), hold A + down goes to the one below it (16), up to the one above (24). **Hold A + left / right on a recording: the tempo from it** (below) | Off |
 | CHOKE | None, 1, 2 | None |
+| SOURCE | BUILT IN, SYNTH, SAMPLE (above): one a push | The drum back |
 | EDIT | (A opens the lane's EDIT view, below) | |
 
 **DRUM SYNTH: a lane's drum made from knobs.** Hold A + DOWN on SOUND from
 the built-in drum steps through twelve models: KICK, SNARE, TOM, CLAP, CL
-HAT, OP HAT, CYMBAL, RIM, COWBELL, CLAVE, ZAP and NOISE. The row reads the
-model and SYNTH. **A tap of A on a synth lane's SOUND opens its VOICE
+HAT, OP HAT, CYMBAL, RIM, COWBELL, CLAVE, ZAP and NOISE (SOURCE's SYNTH goes
+straight to the lane's own). The row reads the model, and SOURCE reads SYNTH. **A tap of A on a synth lane's SOUND opens its VOICE
 view**: the model and the sound's picture on top, its knobs under it (4 to
 8 of them, each read in its unit; an empty box is a knob the model does not
 have).
@@ -2546,7 +2562,8 @@ is loud; holding A shapes it the way it is drawn.
 | L1 | Zoom: a tap goes closer (2 octaves, 1, then round to 3). Only a tap: anything done while L1 is held, a stick move included, zooms nothing |
 | Hold L1, up / down | The bar before or after, round the ends (through the FILL, once there is one), from anywhere on the grid |
 | Hold L1, left / right | The cell's count, more or fewer (1, 2, 4 or 8, as the SONG screen's hold A). One step of undo |
-| BARS (up from step 1 of bar 1) | Left / right: the bar before or after, round the ends. **Hold A, up / down**: the cell's count, more or fewer (1, 2, 4 or 8, as the SONG screen's hold A). One step of undo |
+| **TEMPO** (up from step 1 of bar 1, as up from the top lane on the drum grid) | The top bar's tempo, outlined. **A tapped in time sets it** (from the second tap: the beat of the last five taps; a pause of two seconds starts again). **Hold A, up / down**: a beat a minute; **left / right**: ten at a time; **the stick** up / down: freely, fast. The same as the drum grid's tempo; no step of undo (SELECT + B does not put a tempo back) |
+| BARS (up from TEMPO) | Left / right: the bar before or after, round the ends. **Hold A, up / down**: the cell's count, more or fewer (1, 2, 4 or 8, as the SONG screen's hold A). One step of undo. Down is TEMPO again; up comes round to the bottom of the cell |
 | Hold L1, R1 / A | **Copy** the bar on screen (let go of R1 unmoved) / **paste** it over the bar on screen (see "Copy a bar, paste it on another"). The tap's zoom does not happen as well |
 | Hold L1, Y | **The FILL**: made as a copy of the bar on screen and shown; on it, off and on; from another bar, gone to (see "A FILL: one bar for the scene's last time round"). No chord is picked or placed, and the tap's zoom does not happen |
 

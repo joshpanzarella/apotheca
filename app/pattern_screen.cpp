@@ -1262,7 +1262,6 @@ void PatternScreen::drawChokeMark(SDL_Renderer* r, int nameY, int group) {
 }
 
 void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
-    char text[64];
     const bool onName = !onTempo_ && !onBars_ && step_ == kLaneName;
     const bool held = shaping_ || dicing_;
     const SDL_Color cursorColor = held || paint_ != Paint::None ? kBrass : kTeal;
@@ -1277,19 +1276,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // The tight rows are always at LARGE, whatever TEXT SIZE is: the tempo's box in the top bar
     // and the strip under the grid, whose fields stand at fixed places with a chip under each.
     const Fonts& tight = fonts.fixed();
-    if (onTempo_) {
-        // The tempo fills too: its box is a bar from the slowest to the fastest.
-        const int bx = static_cast<int>(top.tempoNumberRight - tight.small.width("240") - 6.f);
-        const int bw = static_cast<int>(top.tempoRight) - bx + 6;
-        const float part = (tempoExact_ - kMinTempo) / (kMaxTempo - kMinTempo);
-        fill(r, bx, 3, bw, kTopBarH - 6, kPanel2);
-        fill(r, bx, 3, static_cast<int>(std::round(bw * part)), kTopBarH - 6, faded(cursorColor, 90));
-        outline(r, bx - 1, 2, bw + 2, kTopBarH - 4, cursorColor, 2);
-        const float textY = (kTopBarH - tight.small.capHeight()) / 2.f;
-        std::snprintf(text, sizeof text, "%d", static_cast<int>(project_.tempo));
-        tight.small.drawRight(r, top.tempoRight, textY, "BPM", kText);
-        tight.small.drawRight(r, top.tempoNumberRight, textY, text, kText);
-    }
+    if (onTempo_) tempoCursor(r, fonts, top, tempoExact_, project_.tempo, cursorColor); // the tempo fills too: its box is a bar from the slowest to the fastest (the roll's the same)
     if (onBars_) {
         // BARS is the readout itself, outlined where it drew (it shortens while playing).
         outline(r, static_cast<int>(top.wordsX) - 4, 2, static_cast<int>(top.wordsWidth) + 8, kTopBarH - 4, cursorColor, 2);
@@ -1600,7 +1587,7 @@ void PatternScreen::drawHints(SDL_Renderer* r, const Fonts& fonts, bool onName, 
         hint("L1", "grid");
     } else if (slicing_ && !held) {
         if (hitHere()) hint("UP / DOWN", "slice");
-        hint("A", hitHere() ? "level / nudge" : "place");
+        hint(hitHere() ? "HOLD A" : "A", hitHere() ? "level / nudge" : "place"); // (a tap of A on a hit does nothing)
         if (hitHere()) hint("Y", "chance");
         if (hitHere()) hint("HOLD X", "effects");
         hint("HOLD R1", "in order");
@@ -1659,9 +1646,11 @@ void PatternScreen::drawHints(SDL_Renderer* r, const Fonts& fonts, bool onName, 
         // level); on an empty step, the brushes, which start there, and HOLD B, which deletes what it is
         // dragged over. Every list here fits with the help at the end, HLD SEL: HELP too: on a hit that
         // takes "fx" for "effects" (34 pixels: with "effects" the list was 14 over).
+        // On a hit A turns only held (a tap does nothing there), and Y's tap steps the chance; where the sound
+        // starts is hold Y + LEFT / RIGHT, which the held bar says (hint audit, 2026-11-28).
         if (hitHere()) {
-            hint("A", "level / nudge");
-            hint("Y", "chance / start");
+            hint("HOLD A", "level / nudge");
+            hint("Y", "chance");
             hint("HOLD X", "fx");
             hint("B", "delete");
             hint("HOLD R1", "paint");

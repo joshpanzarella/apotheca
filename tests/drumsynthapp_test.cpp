@@ -452,6 +452,169 @@ void testTheSoundColumn() {
     rig.frames(1);
 }
 
+// SOURCE (owner, 2026-11-28: "nothing to suggest I can even change that lane"): a column of its own on the KIT
+// page saying BUILT IN, SYNTH or SAMPLE, each in its colour on every theme. Hold A + UP / DOWN steps the three, a
+// click a push (the D-pad held and the stick pushed long are one click), the ends stop: DOWN from BUILT IN the
+// lane's own model (lane 2: SNARE), UP the list of recordings (a sample needs a file), whose B puts back what A's
+// press found, a voice too. B: the built-in drum; B with A held: as it was. One step of undo a change.
+void testTheSourceColumn() {
+    Folder folder;
+    Rig rig(folder.path);
+    Session& session = rig.session();
+    session.view = View::Device;
+    KitScreen& kit = rig.app.kit();
+    session.setLaneSynth(0, 0, voiceOf(drumsynth::kKick));
+    session.setLaneSample(0, kLane, "hit");
+    rig.frames(60);
+    CHECK(kit.sourceOf(0) == KitScreen::kSourceSynth && kit.sourceOf(1) == KitScreen::kSourceBuiltIn && kit.sourceOf(kLane) == KitScreen::kSourceSample);
+    for (int lane = 0; lane < kDrumLanes; ++lane) {
+        const int model = KitScreen::sourceModel(lane);
+        CHECK(std::strcmp(drumsynth::modelName(model), lane == 7 ? "CYMBAL" : DrumKit::laneName(lane)) == 0); // its own place's
+    }
+    // Drawn in its own box, in its own colour: on every theme, the light ones too.
+    kit.goTo(2, KitScreen::kSound);
+    for (int theme = 0; theme < kThemes; ++theme) {
+        session.setTheme(theme);
+        rig.frames(1);
+        Canvas canvas, scratch;
+        rig.app.draw(canvas.r, *canvas.fonts);
+        const Font& medium = canvas.fonts->medium;
+        const auto says = [&](int lane, const char* word, SDL_Color colour) {
+            const int y = KitScreen::kLaneTop + lane * KitScreen::kLaneRowH, h = KitScreen::kLaneRowH - KitScreen::kLaneGap;
+            return inked(canvas, scratch, 1, KitScreen::kSourceX + 7.f, y + (h - medium.capHeight()) / 2.f, word, colour);
+        };
+        CHECK(says(0, "SYNTH", ui::kTeal) && says(1, "BUILT IN", ui::kBrass) && says(kLane, "SAMPLE", ui::kPurple));
+        CHECK(!says(0, "SYNTH", ui::kBrass) && !says(1, "BUILT IN", ui::kTeal));
+        const float tagY = KitScreen::kLaneTop + KitScreen::kLaneRowH + (KitScreen::kLaneRowH - KitScreen::kLaneGap - canvas.fonts->small.capHeight()) / 2.f; // (lane 2's)
+        CHECK(!inked(canvas, scratch, 0, 8.f + 250.f - 8.f - canvas.fonts->small.width("BUILT IN"), tagY, "BUILT IN", ui::kLine)); // (the faint tag is gone)
+        CHECK(barSays(canvas, scratch, "sample list") && ui::gHintsOver == 0); // the name's A names its source
+    }
+    session.setTheme(kThemeBrown);
+    rig.frames(1);
+    // Right from CHOKE, before EDIT.
+    kit.goTo(1, KitScreen::kChoke);
+    rig.tap(Right);
+    CHECK(kit.cursorColumn() == KitScreen::kSource);
+    rig.tap(Right);
+    CHECK(kit.cursorColumn() == KitScreen::kEdit);
+    rig.tap(Left);
+    // Its bar, A held and not: what it does, and it fits.
+    {
+        rig.frames(1);
+        Canvas canvas, scratch;
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(hintKeyed(canvas, scratch, "HOLD A", "source") && hintKeyed(canvas, scratch, "B", "built in") && ui::gHintsOver == 0);
+        rig.key(A, true);
+        rig.frames(1);
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(hintKeyed(canvas, scratch, "UP / DOWN", "sample") && hintKeyed(canvas, scratch, "B", "as it was") && ui::gHintsOver == 0);
+        rig.key(A, false);
+        rig.frames(1);
+    }
+    // A tap of A does nothing; hold A + DOWN: the lane's model, at its usual; the end stops (the D-pad held: one click).
+    rig.tap(A);
+    CHECK(!kit.picker().isOpen() && !kit.voicing() && kit.sourceOf(1) == KitScreen::kSourceBuiltIn);
+    rig.key(A, true);
+    rig.frames(1);
+    rig.key(Down, true);
+    rig.frames(40);
+    rig.key(Down, false);
+    rig.frames(1);
+    CHECK(rig.kit().laneSynth[1] == voiceOf(drumsynth::kSnare));
+    rig.tap(Down);
+    CHECK(rig.kit().laneSynth[1] == voiceOf(drumsynth::kSnare) && !kit.picker().isOpen());
+    {
+        Canvas canvas, scratch;
+        rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(hintKeyed(canvas, scratch, "UP", "built in") && ui::gHintsOver == 0);
+    }
+    // ...UP: the built-in drum, the D-pad held as long: one click, not on into the list.
+    rig.key(Up, true);
+    rig.frames(40);
+    rig.key(Up, false);
+    rig.frames(1);
+    CHECK(kit.sourceOf(1) == KitScreen::kSourceBuiltIn && !kit.picker().isOpen());
+    // B with A still held: as A's press found it (the drum: nothing to do). A let go: no tap.
+    rig.tap(Down);
+    CHECK(kit.sourceOf(1) == KitScreen::kSourceSynth);
+    rig.tap(B);
+    CHECK(kit.sourceOf(1) == KitScreen::kSourceBuiltIn);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(!kit.picker().isOpen() && !kit.voicing());
+    // The stick, pushed long: one click a push.
+    rig.key(A, true);
+    rig.frames(1);
+    rig.stick(0, 1);
+    rig.frames(40);
+    rig.stick(0, 0);
+    rig.frames(1);
+    CHECK(rig.kit().laneSynth[1] == voiceOf(drumsynth::kSnare));
+    rig.stick(0, -1);
+    rig.frames(40);
+    rig.stick(0, 0);
+    rig.frames(1);
+    CHECK(kit.sourceOf(1) == KitScreen::kSourceBuiltIn && !kit.picker().isOpen());
+    rig.key(A, false);
+    rig.frames(60);
+    // One step of undo a change (as SOUND's: changes inside undo's 700 ms are one).
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(Down);
+    rig.key(A, false);
+    rig.frames(60);
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(Up);
+    rig.key(A, false);
+    rig.frames(60);
+    CHECK(kit.sourceOf(1) == KitScreen::kSourceBuiltIn);
+    CHECK(session.undo());
+    rig.frames(4);
+    CHECK(rig.kit().laneSynth[1] == voiceOf(drumsynth::kSnare));
+    CHECK(session.undo());
+    rig.frames(4);
+    CHECK(kit.sourceOf(1) == KitScreen::kSourceBuiltIn);
+    // From a tuned voice, UP twice: the drum, then the list (A spent: its let go picks nothing). Down to the recording,
+    // which goes on; B puts back what A's press found: the voice, as it was.
+    const drumsynth::Voice tuned = voiceOf(drumsynth::kTom, drumsynth::kTune, 70);
+    session.setLaneSynth(0, 1, tuned);
+    rig.frames(60);
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(Up);
+    CHECK(kit.sourceOf(1) == KitScreen::kSourceBuiltIn && !kit.picker().isOpen());
+    rig.tap(Up);
+    CHECK(kit.picker().isOpen() && kit.sourceOf(1) == KitScreen::kSourceBuiltIn);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(kit.picker().isOpen());
+    rig.tap(Down);
+    CHECK(kit.sourceOf(1) == KitScreen::kSourceSample && std::strcmp(rig.kit().laneSample[1], "hit") == 0);
+    rig.tap(B);
+    rig.frames(1);
+    CHECK(!kit.picker().isOpen() && rig.kit().laneSynth[1] == tuned && rig.kit().laneSample[1][0] == 0);
+    // ...and A in the list keeps it: SAMPLE.
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(Up, 2);
+    rig.key(A, false);
+    rig.frames(1);
+    rig.tap(Down);
+    rig.tap(A);
+    CHECK(!kit.picker().isOpen() && kit.sourceOf(1) == KitScreen::kSourceSample);
+    // B, not held: the built-in drum.
+    rig.tap(B);
+    CHECK(kit.sourceOf(1) == KitScreen::kSourceBuiltIn);
+    // The name's A names the source: a synth's knobs.
+    session.setLaneSynth(0, 1, tuned);
+    kit.goTo(1, KitScreen::kSound);
+    rig.frames(1);
+    Canvas canvas, scratch;
+    rig.app.draw(canvas.r, *canvas.fonts);
+    CHECK(hintKeyed(canvas, scratch, "A", "synth knobs") && ui::gHintsOver == 0);
+}
+
 void testTheVoiceView() {
     Rig rig;
     Session& session = rig.session();
@@ -927,7 +1090,7 @@ int main(int argc, char** argv) {
     const Test tests[] = {
         {"testTheEnginePlaysIt", testTheEnginePlaysIt}, {"testOneOrTheOther", testOneOrTheOther}, {"testEditAndFit", testEditAndFit},
         {"testALongVoiceWaits", testALongVoiceWaits}, {"testTheSongFile", testTheSongFile}, {"testASongOpens", testASongOpens}, {"testUndo", testUndo},
-        {"testTheSoundColumn", testTheSoundColumn}, {"testTheVoiceView", testTheVoiceView}, {"testBAfterARollKeepsIt", testBAfterARollKeepsIt}, {"testTheNamedVoices", testTheNamedVoices},
+        {"testTheSoundColumn", testTheSoundColumn}, {"testTheSourceColumn", testTheSourceColumn}, {"testTheVoiceView", testTheVoiceView}, {"testBAfterARollKeepsIt", testBAfterARollKeepsIt}, {"testTheNamedVoices", testTheNamedVoices},
         {"testPickingAVoice", testPickingAVoice}, {"testHeardWhenTheTurnIsDone", testHeardWhenTheTurnIsDone},
         {"testHeldKeysOnTheKitPage", testHeldKeysOnTheKitPage},
     };
