@@ -736,91 +736,8 @@ void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
         drawTyping(r, fonts); // naming a preset to save: the keys instead of the rows
         return;
     }
-    const TrackData& t = trk();
-    const SDL_Color cursorColor = holding_ ? kBrass : kTeal;
-
-    Hint list[6];
-    int count = 0;
-    const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
-
     if (page_ == 0) {
-        // ---- MAIN: folder, preset, eight macros, ADVANCED, and the scope ----------
-        displayBox(r, fonts, kFolderX, kPresetY, kFolderW, kPresetH, "FOLDER", spec_.presetCategory(t.preset), cursor_ == kFolder, holding_);
-        char place[24];
-        std::snprintf(text, sizeof text, "%s", spec_.presetName(t.preset));
-        int inFolder = 0;
-        const int placeHere = placeInFolder(t.preset, inFolder);
-        std::snprintf(place, sizeof place, "%d / %d", placeHere, inFolder);
-        const float rowY = kPresetY + 7.f, countRight = kPresetX + kPresetW - 10.f;
-        if (const char* note = folderNote()) {
-            // PRESET, the folder's note and the count share the top row: one lettering for all three.
-            const float room = countRight - (kPresetX + 7.f) - fonts.small.width("PRESET") - fonts.small.width(kCountLongest) - 2.f * kNoteGap;
-            const Font& row = fonts.within(&Fonts::small, note, room);
-            const float y = rowY; // (a row held at LARGE is where LARGE draws it)
-            displayBox(r, fonts, kPresetX, kPresetY, kPresetW, kPresetH, "", text, cursor_ == kPreset, holding_);
-            row.draw(r, kPresetX + 7.f, y, "PRESET", kDim);
-            row.draw(r, kPresetX + 7.f + row.width("PRESET") + kNoteGap, y, note, kDim);
-            row.drawRight(r, countRight, y, place, kDim);
-        } else {
-            displayBox(r, fonts, kPresetX, kPresetY, kPresetW, kPresetH, "PRESET", text, cursor_ == kPreset, holding_);
-            fonts.small.drawRight(r, countRight, rowY, place, kDim);
-        }
-        // B held on one of the player's own: the bar along PRESET's foot fills (as the sampler's).
-        if (presetDeletePart_ > 0.f) fill(r, kPresetX, kPresetY + kPresetH - 2, static_cast<int>(kPresetW * (presetDeletePart_ > 1.f ? 1.f : presetDeletePart_)), 2, kStop);
-
-        for (int m = 0; m < kMacros; ++m) {
-            const int x = 8 + (m % 4) * kMacroPitchX, y = macroY() + (m / 4) * (macroH() + kMacroGap);
-            // While the song plays an automated macro shows where the pattern has it, not where its knob rests.
-            const float v = session_.automated(project_.track, m, t.macro[m]);
-            spec_.macroText(m, v, text, sizeof text);
-            // A MOD on it runs: the brass tick across the dial where the macro is given this moment (batch 6).
-            macroBox(r, fonts, x, y, kMacroW, macroH(), spec_.macroNames[m], text, v, cursor_ == kFirstMacro + m, holding_,
-                     modMarkAt(session_, project_.track, kModFirstMacro + m, v));
-            // A purple bar along the bottom: this macro has automation in the cell being worked on.
-            if (session_.hasAutomation(project_.track, project_.scene, m)) fill(r, x + 1, y + macroH() - 3, kMacroW - 2, 2, kPurple);
-        }
-        if (spec_.recording) drawPicture(r, fonts);
-        if (spec_.table) drawTablePicture(r, fonts);
-        // ADVANCED at the left, down to the hints bar, and beside it SIGNAL as a large scope (design A: where the
-        // words that said what ADVANCED holds were; the strip under them is the scope's foot now).
-        const int advancedTop = advancedY(), advancedH = kScopeY + kScopeH - advancedTop;
-        box(r, 8, advancedTop, kMacroW, advancedH, kPanel2, kLine);
-        const float middle = advancedTop + advancedH / 2.f;
-        fonts.medium.drawCentered(r, 8.f + kMacroW / 2.f, middle - fonts.medium.capHeight() - 3.f, "ADVANCED", cursor_ == kAdvanced ? kTeal : kText);
-        std::snprintf(text, sizeof text, "%d PAGES  >", spec_.pages - 1);
-        fonts.small.drawCentered(r, 8.f + kMacroW / 2.f, middle + 5.f, text, kDim);
-        if (cursor_ == kAdvanced) outline(r, 7, advancedTop - 1, kMacroW + 2, advancedH + 2, kTeal, 2);
-        if (modKnob_.held()) {
-            // X held on a macro: its MOD's fields in SIGNAL's place, each button under its field.
-            const int m = modKnob_.target() - kModFirstMacro;
-            modKnob_.drawFields(r, fonts, kDeviceModPlaces, 0.f, kScopeX, kScopeY, kScopeW, kScopeH, spec_.macroNames[m]);
-            modKnob_.drawHints(r, fonts, kDeviceModPlaces);
-            return;
-        }
-        scopeBox(r, fonts, session_.engine, kMainScopeX, advancedY(), kMainScopeW, kScopeY + kScopeH - advancedY());
-
-        if (presetDeletePart_ > 0.f) {
-            hint("HOLD B", kPresetDeletingWords);
-        } else if (holding_) {
-            if (cursor_ == kFolder) hint("UP / DOWN", "next / previous folder");
-            else if (cursor_ == kPreset) { hint("UP / DOWN", "next / previous preset"); hint("LEFT / RIGHT", "8 at a time"); }
-            else hint("UP / DOWN", "turn it");
-            if (cursor_ == kFolder || cursor_ == kPreset) hint("B", "as it was");
-        } else {
-            if (cursor_ == kAdvanced) hint("A", "open");
-            else hint("HOLD A", cursor_ < kFirstMacro ? "change" : "turn");
-            if (cursor_ == kPreset) hint("R1", spec_.recording && session_.recordingNow() ? "stop" : "save");
-            if (cursor_ == kPreset && onOwnPreset()) hint("HOLD B", "delete this preset");
-            if (cursor_ >= kFirstMacro && cursor_ < kAdvanced) hint("B", "back to the middle");
-            // (Where the bar has room for it with nothing left out. The help card says it everywhere.)
-            if (cursor_ >= kFirstMacro && cursor_ < kAdvanced && modTargetFits(t, kModFirstMacro + cursor_ - kFirstMacro)) hint("HOLD X", "mod");
-            // PHYSIC's roll: said off the macros, where the bar has room (on a macro B and HOLD X fill it).
-            if (spec_.roll && (cursor_ < kFirstMacro || cursor_ >= kAdvanced)) hint("Y", "new sound");
-            // On one of the player's own START yields to the delete, as on the sampler's PRESET (it is on every
-            // other bar, and the top bar shows playing): PHYSIC's bar ran 32 pixels over.
-            if (!(cursor_ == kPreset && onOwnPreset())) hint("START", project_.playing ? "stop" : "play");
-        }
-        hints(r, fonts, list, count);
+        drawMain(r, fonts);
         return;
     }
 
@@ -835,84 +752,189 @@ void SynthScreen::drawScreen(SDL_Renderer* r, const Fonts& fonts) const {
         fonts.small.drawRight(r, 632.f, 38.f, text, kDim);
     }
 
-    if (!envelopePage()) {
-        const int rows = (itemCount() + 3) / 4, rowH = settingH(rows);
-        // A box too short for the lettering chosen (FM-6's six rows at XL: the value stood on its bar) is
-        // drawn at LARGE, its name with it, and so is every box of the page: they are one height.
-        const Fonts& boxFonts = boxFontsFor(fonts, rowH);
-        for (int i = 0; i < itemCount(); ++i) {
-            const Item it = item(i);
-            const int x = 8 + (i % 4) * kMacroPitchX, y = settingY(rows, i / 4);
-            if (it.id == kRecordingId) { // CLOUD's recording: its name, cut to the box (or the TONE)
-                const Session::LaneSound& sound = session_.trackSound(project_.track);
-                std::string shown = !trk().sample[0] ? std::string("TONE") : sound.missing ? std::string("NOT FOUND") : sampleLabel(trk().sample);
-                for (char& c : shown) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
-                const Font& valueFont = boxFonts.large;
-                while (shown.size() > 1 && valueFont.width(shown.c_str()) > kMacroW - 14.f) shown.pop_back();
-                valueBox(r, boxFonts, x, y, kMacroW, rowH, it.name, shown.c_str(), -1.f, i == cursor_, holding_, false, iconFor(it.name));
-                continue;
-            }
-            const int value = valueOf(it.id);
-            settingReading(spec_, values(), it.id, text, sizeof text);
-            const int range = spec_.settingMax(it.id) - spec_.settingMin(it.id);
-            const float part = isChoice(it.id) ? -1.f : range > 0 ? static_cast<float>(value - spec_.settingMin(it.id)) / range : 0.f; // a choice has no bar
-            valueBox(r, boxFonts, x, y, kMacroW, rowH, it.name, text, part, i == cursor_, holding_, false, iconFor(it.name));
-        }
-        scopeStrip(r, fonts, session_.engine);
-    } else {
-        // An envelope: eight steps, each a speed and a level to reach.
-        const int line = (page_ - 4) / 3, env = (page_ - 4) % 3;
-        const int end = t.patch.value[envEnd(line, env)], sustain = t.patch.value[envSustain(line, env)];
-        const int px = 8, py = 58, pw = 624, ph = 150;
-        box(r, px, py, pw, ph, kPanel, kLine);
-        // Each step is as wide as it is slow, so the picture is in time.
-        float widths[kEnvSteps], total = 0.f;
-        for (int s = 0; s < end; ++s) total += widths[s] = 6.f + 0.9f * (99 - t.patch.value[envRate(line, env, s)]);
-        const float scale = total > 0.f ? (pw - 24) / total : 0.f;
-        float x = px + 12.f;
-        int lastX = px + 12, lastY = py + ph - 12;
-        for (int s = 0; s < end; ++s) {
-            x += widths[s] * scale;
-            const int nx = static_cast<int>(x);
-            const int ny = py + ph - 12 - (ph - 24) * t.patch.value[envLevel(line, env, s)] / 99;
-            const bool here = cursor_ == s || cursor_ == kEnvSteps + s;
-            SDL_SetRenderDrawColor(r, here ? cursorColor.r : kText.r, here ? cursorColor.g : kText.g, here ? cursorColor.b : kText.b, 255);
-            SDL_RenderDrawLine(r, lastX, lastY, nx, ny);
-            SDL_RenderDrawLine(r, lastX, lastY + 1, nx, ny + 1);
-            fill(r, nx - 2, ny - 2, 5, 5, here ? cursorColor : kText);
-            if (sustain == s + 1) {
-                fill(r, nx, py + 6, 1, ph - 12, kBrass); // the note holds here until the key is let go
-                fonts.small.draw(r, nx + 4.f, py + 8.f, "HOLD", kBrass);
-            }
-            std::snprintf(text, sizeof text, "%d", s + 1);
-            fonts.small.drawCentered(r, static_cast<float>(nx), py + ph - 10.f, text, kDim);
-            lastX = nx;
-            lastY = ny;
-        }
-        // Two rows of eight: how fast each step moves, and where it ends up.
-        fonts.small.draw(r, 8.f, 220.f, "SPEED OF EACH STEP", kDim);
-        fonts.small.draw(r, 8.f, 300.f, "LEVEL EACH STEP REACHES", kDim);
-        for (int i = 0; i < 2 * kEnvSteps; ++i) {
-            const Item it = item(i);
-            const int step = i % kEnvSteps;
-            const int x2 = 8 + step * 78, y2 = i < kEnvSteps ? 236 : 316;
-            const bool used = step < end;
-            std::snprintf(text, sizeof text, "%d", t.patch.value[it.id]);
-            box(r, x2, y2, 74, 54, used ? kPanel : kBg, kLine);
-            fonts.small.draw(r, x2 + 6.f, y2 + 6.f, it.name, kDim);
-            fonts.large.draw(r, x2 + 6.f, y2 + 22.f, text, i == cursor_ ? cursorColor : (used ? kText : kDim));
-            fill(r, x2 + 6, y2 + 46, 62, 3, kLine);
-            fill(r, x2 + 6, y2 + 46, 62 * t.patch.value[it.id] / 99, 3, i == cursor_ ? cursorColor : kDim);
-            if (i == cursor_) outline(r, x2 - 1, y2 - 1, 76, 56, cursorColor, 2);
-        }
-        for (int i = 2 * kEnvSteps; i < kEnvSettings; ++i) {
-            const Item it = item(i);
-            spec_.settingText(it.id, t.patch.value[it.id], text, sizeof text);
-            if (i == 2 * kEnvSteps + 1) std::snprintf(text, sizeof text, "STEP %d", t.patch.value[it.id]);
-            valueBox(r, fonts, 8 + (i - 2 * kEnvSteps) * 312, 384, 308, 58, it.name, text, -1.f, i == cursor_, holding_);
-        }
-    }
+    if (!envelopePage()) drawSettingsPage(r, fonts);
+    else drawEnvelopePage(r, fonts);
+    drawAdvancedHints(r, fonts);
+}
 
+// ---- MAIN: folder, preset, eight macros, ADVANCED, and the scope ----------
+void SynthScreen::drawMain(SDL_Renderer* r, const Fonts& fonts) const {
+    char text[64];
+    const TrackData& t = trk();
+    displayBox(r, fonts, kFolderX, kPresetY, kFolderW, kPresetH, "FOLDER", spec_.presetCategory(t.preset), cursor_ == kFolder, holding_);
+    char place[24];
+    std::snprintf(text, sizeof text, "%s", spec_.presetName(t.preset));
+    int inFolder = 0;
+    const int placeHere = placeInFolder(t.preset, inFolder);
+    std::snprintf(place, sizeof place, "%d / %d", placeHere, inFolder);
+    const float rowY = kPresetY + 7.f, countRight = kPresetX + kPresetW - 10.f;
+    if (const char* note = folderNote()) {
+        // PRESET, the folder's note and the count share the top row: one lettering for all three.
+        const float room = countRight - (kPresetX + 7.f) - fonts.small.width("PRESET") - fonts.small.width(kCountLongest) - 2.f * kNoteGap;
+        const Font& row = fonts.within(&Fonts::small, note, room);
+        const float y = rowY; // (a row held at LARGE is where LARGE draws it)
+        displayBox(r, fonts, kPresetX, kPresetY, kPresetW, kPresetH, "", text, cursor_ == kPreset, holding_);
+        row.draw(r, kPresetX + 7.f, y, "PRESET", kDim);
+        row.draw(r, kPresetX + 7.f + row.width("PRESET") + kNoteGap, y, note, kDim);
+        row.drawRight(r, countRight, y, place, kDim);
+    } else {
+        displayBox(r, fonts, kPresetX, kPresetY, kPresetW, kPresetH, "PRESET", text, cursor_ == kPreset, holding_);
+        fonts.small.drawRight(r, countRight, rowY, place, kDim);
+    }
+    // B held on one of the player's own: the bar along PRESET's foot fills (as the sampler's).
+    if (presetDeletePart_ > 0.f) fill(r, kPresetX, kPresetY + kPresetH - 2, static_cast<int>(kPresetW * (presetDeletePart_ > 1.f ? 1.f : presetDeletePart_)), 2, kStop);
+
+    for (int m = 0; m < kMacros; ++m) {
+        const int x = 8 + (m % 4) * kMacroPitchX, y = macroY() + (m / 4) * (macroH() + kMacroGap);
+        // While the song plays an automated macro shows where the pattern has it, not where its knob rests.
+        const float v = session_.automated(project_.track, m, t.macro[m]);
+        spec_.macroText(m, v, text, sizeof text);
+        // A MOD on it runs: the brass tick across the dial where the macro is given this moment (batch 6).
+        macroBox(r, fonts, x, y, kMacroW, macroH(), spec_.macroNames[m], text, v, cursor_ == kFirstMacro + m, holding_,
+                 modMarkAt(session_, project_.track, kModFirstMacro + m, v));
+        // A purple bar along the bottom: this macro has automation in the cell being worked on.
+        if (session_.hasAutomation(project_.track, project_.scene, m)) fill(r, x + 1, y + macroH() - 3, kMacroW - 2, 2, kPurple);
+    }
+    if (spec_.recording) drawPicture(r, fonts);
+    if (spec_.table) drawTablePicture(r, fonts);
+    // ADVANCED at the left, down to the hints bar, and beside it SIGNAL as a large scope (design A: where the
+    // words that said what ADVANCED holds were; the strip under them is the scope's foot now).
+    const int advancedTop = advancedY(), advancedH = kScopeY + kScopeH - advancedTop;
+    box(r, 8, advancedTop, kMacroW, advancedH, kPanel2, kLine);
+    const float middle = advancedTop + advancedH / 2.f;
+    fonts.medium.drawCentered(r, 8.f + kMacroW / 2.f, middle - fonts.medium.capHeight() - 3.f, "ADVANCED", cursor_ == kAdvanced ? kTeal : kText);
+    std::snprintf(text, sizeof text, "%d PAGES  >", spec_.pages - 1);
+    fonts.small.drawCentered(r, 8.f + kMacroW / 2.f, middle + 5.f, text, kDim);
+    if (cursor_ == kAdvanced) outline(r, 7, advancedTop - 1, kMacroW + 2, advancedH + 2, kTeal, 2);
+    if (modKnob_.held()) {
+        // X held on a macro: its MOD's fields in SIGNAL's place, each button under its field.
+        const int m = modKnob_.target() - kModFirstMacro;
+        modKnob_.drawFields(r, fonts, kDeviceModPlaces, 0.f, kScopeX, kScopeY, kScopeW, kScopeH, spec_.macroNames[m]);
+        modKnob_.drawHints(r, fonts, kDeviceModPlaces);
+        return;
+    }
+    scopeBox(r, fonts, session_.engine, kMainScopeX, advancedY(), kMainScopeW, kScopeY + kScopeH - advancedY());
+    drawMainHints(r, fonts);
+}
+
+void SynthScreen::drawMainHints(SDL_Renderer* r, const Fonts& fonts) const {
+    const TrackData& t = trk();
+    Hint list[6];
+    int count = 0;
+    const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
+    if (presetDeletePart_ > 0.f) {
+        hint("HOLD B", kPresetDeletingWords);
+    } else if (holding_) {
+        if (cursor_ == kFolder) hint("UP / DOWN", "next / previous folder");
+        else if (cursor_ == kPreset) { hint("UP / DOWN", "next / previous preset"); hint("LEFT / RIGHT", "8 at a time"); }
+        else hint("UP / DOWN", "turn it");
+        if (cursor_ == kFolder || cursor_ == kPreset) hint("B", "as it was");
+    } else {
+        if (cursor_ == kAdvanced) hint("A", "open");
+        else hint("HOLD A", cursor_ < kFirstMacro ? "change" : "turn");
+        if (cursor_ == kPreset) hint("R1", spec_.recording && session_.recordingNow() ? "stop" : "save");
+        if (cursor_ == kPreset && onOwnPreset()) hint("HOLD B", "delete this preset");
+        if (cursor_ >= kFirstMacro && cursor_ < kAdvanced) hint("B", "back to the middle");
+        // (Where the bar has room for it with nothing left out. The help card says it everywhere.)
+        if (cursor_ >= kFirstMacro && cursor_ < kAdvanced && modTargetFits(t, kModFirstMacro + cursor_ - kFirstMacro)) hint("HOLD X", "mod");
+        // PHYSIC's roll: said off the macros, where the bar has room (on a macro B and HOLD X fill it).
+        if (spec_.roll && (cursor_ < kFirstMacro || cursor_ >= kAdvanced)) hint("Y", "new sound");
+        // On one of the player's own START yields to the delete, as on the sampler's PRESET (it is on every
+        // other bar, and the top bar shows playing): PHYSIC's bar ran 32 pixels over.
+        if (!(cursor_ == kPreset && onOwnPreset())) hint("START", project_.playing ? "stop" : "play");
+    }
+    hints(r, fonts, list, count);
+}
+
+// An ADVANCED page of settings, four to a row.
+void SynthScreen::drawSettingsPage(SDL_Renderer* r, const Fonts& fonts) const {
+    char text[64];
+    const int rows = (itemCount() + 3) / 4, rowH = settingH(rows);
+    // A box too short for the lettering chosen (FM-6's six rows at XL: the value stood on its bar) is
+    // drawn at LARGE, its name with it, and so is every box of the page: they are one height.
+    const Fonts& boxFonts = boxFontsFor(fonts, rowH);
+    for (int i = 0; i < itemCount(); ++i) {
+        const Item it = item(i);
+        const int x = 8 + (i % 4) * kMacroPitchX, y = settingY(rows, i / 4);
+        if (it.id == kRecordingId) { // CLOUD's recording: its name, cut to the box (or the TONE)
+            const Session::LaneSound& sound = session_.trackSound(project_.track);
+            std::string shown = !trk().sample[0] ? std::string("TONE") : sound.missing ? std::string("NOT FOUND") : sampleLabel(trk().sample);
+            for (char& c : shown) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+            const Font& valueFont = boxFonts.large;
+            while (shown.size() > 1 && valueFont.width(shown.c_str()) > kMacroW - 14.f) shown.pop_back();
+            valueBox(r, boxFonts, x, y, kMacroW, rowH, it.name, shown.c_str(), -1.f, i == cursor_, holding_, false, iconFor(it.name));
+            continue;
+        }
+        const int value = valueOf(it.id);
+        settingReading(spec_, values(), it.id, text, sizeof text);
+        const int range = spec_.settingMax(it.id) - spec_.settingMin(it.id);
+        const float part = isChoice(it.id) ? -1.f : range > 0 ? static_cast<float>(value - spec_.settingMin(it.id)) / range : 0.f; // a choice has no bar
+        valueBox(r, boxFonts, x, y, kMacroW, rowH, it.name, text, part, i == cursor_, holding_, false, iconFor(it.name));
+    }
+    scopeStrip(r, fonts, session_.engine);
+}
+
+void SynthScreen::drawEnvelopePage(SDL_Renderer* r, const Fonts& fonts) const {
+    char text[64];
+    const TrackData& t = trk();
+    const SDL_Color cursorColor = holding_ ? kBrass : kTeal;
+    // An envelope: eight steps, each a speed and a level to reach.
+    const int line = (page_ - 4) / 3, env = (page_ - 4) % 3;
+    const int end = t.patch.value[envEnd(line, env)], sustain = t.patch.value[envSustain(line, env)];
+    const int px = 8, py = 58, pw = 624, ph = 150;
+    box(r, px, py, pw, ph, kPanel, kLine);
+    // Each step is as wide as it is slow, so the picture is in time.
+    float widths[kEnvSteps], total = 0.f;
+    for (int s = 0; s < end; ++s) total += widths[s] = 6.f + 0.9f * (99 - t.patch.value[envRate(line, env, s)]);
+    const float scale = total > 0.f ? (pw - 24) / total : 0.f;
+    float x = px + 12.f;
+    int lastX = px + 12, lastY = py + ph - 12;
+    for (int s = 0; s < end; ++s) {
+        x += widths[s] * scale;
+        const int nx = static_cast<int>(x);
+        const int ny = py + ph - 12 - (ph - 24) * t.patch.value[envLevel(line, env, s)] / 99;
+        const bool here = cursor_ == s || cursor_ == kEnvSteps + s;
+        SDL_SetRenderDrawColor(r, here ? cursorColor.r : kText.r, here ? cursorColor.g : kText.g, here ? cursorColor.b : kText.b, 255);
+        SDL_RenderDrawLine(r, lastX, lastY, nx, ny);
+        SDL_RenderDrawLine(r, lastX, lastY + 1, nx, ny + 1);
+        fill(r, nx - 2, ny - 2, 5, 5, here ? cursorColor : kText);
+        if (sustain == s + 1) {
+            fill(r, nx, py + 6, 1, ph - 12, kBrass); // the note holds here until the key is let go
+            fonts.small.draw(r, nx + 4.f, py + 8.f, "HOLD", kBrass);
+        }
+        std::snprintf(text, sizeof text, "%d", s + 1);
+        fonts.small.drawCentered(r, static_cast<float>(nx), py + ph - 10.f, text, kDim);
+        lastX = nx;
+        lastY = ny;
+    }
+    // Two rows of eight: how fast each step moves, and where it ends up.
+    fonts.small.draw(r, 8.f, 220.f, "SPEED OF EACH STEP", kDim);
+    fonts.small.draw(r, 8.f, 300.f, "LEVEL EACH STEP REACHES", kDim);
+    for (int i = 0; i < 2 * kEnvSteps; ++i) {
+        const Item it = item(i);
+        const int step = i % kEnvSteps;
+        const int x2 = 8 + step * 78, y2 = i < kEnvSteps ? 236 : 316;
+        const bool used = step < end;
+        std::snprintf(text, sizeof text, "%d", t.patch.value[it.id]);
+        box(r, x2, y2, 74, 54, used ? kPanel : kBg, kLine);
+        fonts.small.draw(r, x2 + 6.f, y2 + 6.f, it.name, kDim);
+        fonts.large.draw(r, x2 + 6.f, y2 + 22.f, text, i == cursor_ ? cursorColor : (used ? kText : kDim));
+        fill(r, x2 + 6, y2 + 46, 62, 3, kLine);
+        fill(r, x2 + 6, y2 + 46, 62 * t.patch.value[it.id] / 99, 3, i == cursor_ ? cursorColor : kDim);
+        if (i == cursor_) outline(r, x2 - 1, y2 - 1, 76, 56, cursorColor, 2);
+    }
+    for (int i = 2 * kEnvSteps; i < kEnvSettings; ++i) {
+        const Item it = item(i);
+        spec_.settingText(it.id, t.patch.value[it.id], text, sizeof text);
+        if (i == 2 * kEnvSteps + 1) std::snprintf(text, sizeof text, "STEP %d", t.patch.value[it.id]);
+        valueBox(r, fonts, 8 + (i - 2 * kEnvSteps) * 312, 384, 308, 58, it.name, text, -1.f, i == cursor_, holding_);
+    }
+}
+
+void SynthScreen::drawAdvancedHints(SDL_Renderer* r, const Fonts& fonts) const {
+    Hint list[6];
+    int count = 0;
+    const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     if (catchKey_.held()) {
         hint("LEFT / RIGHT", "bars");
         hint("UP / DOWN", "mix or a track");
