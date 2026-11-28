@@ -275,7 +275,7 @@ void testThePageIsServed() {
     Rig rig;
     const Answer page = rig.get("/design");
     CHECK(page.status == 200 && has(page.body, "SOUND DESIGNER") && has(page.body, "/design/do"));
-    CHECK(has(rig.get("/").body, "Open the sound designer")); // the files page leads to it
+    CHECK(has(rig.get("/").body, ">Sound designer</a>") && has(rig.get("/").body, "base + '/design'")); // the files page leads to it (its header's first key)
     // Not without the number from the handheld's screen.
     CHECK(raw(rig.port, "GET /design HTTP/1.1\r\nHost: x\r\n\r\n").status == 403);
     CHECK(raw(rig.port, "POST /0000/design/do HTTP/1.1\r\nHost: x\r\nContent-Length: 9\r\n\r\nnote 60 1").status == 403);
