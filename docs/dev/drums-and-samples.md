@@ -620,7 +620,7 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   IN or SYNTH from the drum device screen is not intuitive at all. there is nothing to suggest I can even change
   that lane from the jump"; `KitScreen::kSource`, `sourceOf`, `stepSource`, `sourceModel`). One box a lane between
   CHOKE and EDIT (`kSourceX`, `kSourceW` 86), where THE RECORDING's heading stood: **BUILT IN in brass, SYNTH in
-  teal, SAMPLE in purple** (the theme's names; `testTheSourceColumn` reads each on all eight themes). The EDIT
+  teal, SAMPLE in purple** (the theme's names; `testTheSourceColumn` reads each on all ten themes). The EDIT
   column is narrower for it (106 pixels): its heading is EDIT, the picture takes what the seconds leave, and a
   missing file is NOT FOUND: / DRUM PLAYS (they fit at XL).
   - **Hold A + UP / DOWN steps the three, once a push** (a choice: the D-pad held does not run on, the stick

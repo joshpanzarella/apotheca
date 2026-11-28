@@ -4245,11 +4245,11 @@ void testSettingsWaitToStandStill() {
         session.view = View::Settings;
         rig.app.settings().goTo(SettingsScreen::kTheme);
         rig.key(RIGHT, true);
-        rig.frames(60); // (about five steps, and on to the end)
+        rig.frames(70); // (nine steps, and on to the end: ten themes)
         CHECK(!there(settings) && session.settingsOwed());
         rig.key(RIGHT, false);
-        // The last repeat (at the end, still a change asked for) was due 200 + 6 x 110 ms after the first frame,
-        // and came on the frame 880 ms after the press: a second after it is 920 ms after the let go.
+        // The last repeat (at the end, still a change asked for) was due 200 + 8 x 110 ms after the first frame,
+        // and came on the frame 1,088 ms after the press: a second after it is 968 ms after the let go.
         rig.frames(57);
         CHECK(!there(settings));
         rig.frames(8);

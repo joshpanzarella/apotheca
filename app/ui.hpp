@@ -70,9 +70,13 @@ struct Theme {
 // look as it was built (a file with no such line gets it). The rest take their colours from the editor
 // themes they are named after, each moved in lightness (its hues kept) until it meets theme_test's
 // rules (owner, 2026-11-23: "more like common terminal or IDE themes", six dark and two light; they
-// replaced BLUE, GREEN, BLACK, PAPER and GREY, whose numbers they took: nothing is released).
-enum ThemeId { kThemeBrown, kThemeDracula, kThemeNord, kThemeGruvbox, kThemeTokyo, kThemeMonokai, kThemeSolarized, kThemeGithub, kThemes };
-constexpr int kDarkThemes = 6; // the first six: dark; the rest light
+// replaced BLUE, GREEN, BLACK, PAPER and GREY, whose numbers they took: nothing is released). LATTE and ONE
+// came after, for reading OUTDOORS (owner, 2026-11-28: "it's very hard to see the dark themes when you're
+// outside"): light like the two before them, but at the most contrast theme_test allows (lettering near
+// black, accents dark and saturated, lines darker); appended, so the light ones are the last four.
+enum ThemeId { kThemeBrown, kThemeDracula, kThemeNord, kThemeGruvbox, kThemeTokyo, kThemeMonokai, kThemeSolarized, kThemeGithub, kThemeLatte,
+               kThemeOne, kThemes };
+constexpr int kDarkThemes = 6; // the first six: dark; the rest light (new ones are appended: a light one stays after them)
 constexpr Theme kThemeTable[kThemes] = {
     {"BROWN", {20, 17, 14, 255}, {31, 26, 22, 255}, {42, 35, 29, 255}, {67, 57, 47, 255}, {224, 213, 191, 255}, {143, 131, 112, 255},
      {111, 191, 163, 255}, {154, 118, 176, 255}, {201, 161, 90, 255}, {196, 84, 70, 255}},
@@ -90,6 +94,11 @@ constexpr Theme kThemeTable[kThemes] = {
      {7, 75, 117, 255}, {93, 81, 171, 255}, {122, 90, 0, 255}, {126, 11, 13, 255}},
     {"GITHUB", {230, 234, 239, 255}, {243, 245, 248, 255}, {255, 255, 255, 255}, {140, 149, 159, 255}, {31, 35, 40, 255}, {91, 99, 109, 255},
      {14, 71, 154, 255}, {121, 72, 214, 255}, {109, 67, 1, 255}, {196, 49, 55, 255}},
+    // For sunlight (Catppuccin Latte's and Atom One Light's hues): text 16 on bg, every accent above SOLARIZED's and GITHUB's.
+    {"LATTE", {232, 234, 246, 255}, {243, 244, 250, 255}, {252, 252, 254, 255}, {144, 147, 164, 255}, {14, 14, 19, 255}, {93, 96, 114, 255},
+     {13, 79, 83, 255}, {121, 32, 237, 255}, {106, 67, 14, 255}, {119, 9, 32, 255}},
+    {"ONE", {235, 235, 236, 255}, {245, 245, 245, 255}, {253, 253, 253, 255}, {145, 147, 153, 255}, {15, 16, 18, 255}, {93, 96, 105, 255},
+     {12, 62, 170, 255}, {85, 20, 84, 255}, {102, 70, 1, 255}, {127, 11, 42, 255}},
 };
 
 namespace ui {

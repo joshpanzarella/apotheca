@@ -138,12 +138,14 @@ inline Rgb lightColourOf(int which) {
 // of ui.hpp's ThemeId: BROWN the BRASS preset's own colour, BLUE a sky blue, GREEN a spring green,
 // BLACK white, PAPER a warm amber (a lamp on paper), GREY an ice blue. A theme added later takes
 // BROWN's until it is given one. (Only BROWN's was asked for; the rest are picks nobody has seen.)
-constexpr int kRingThemes = 8;
+constexpr int kRingThemes = 10;
 inline Rgb ringThemeColour(int theme) {
     // BROWN's BRASS (the owner's word); the others each theme's best-known colour, unseen on the ring:
-    // DRACULA purple, NORD frost, GRUVBOX orange, TOKYO indigo, MONOKAI lime, SOLARIZED cyan, GITHUB blue.
+    // DRACULA purple, NORD frost, GRUVBOX orange, TOKYO indigo, MONOKAI lime, SOLARIZED cyan, GITHUB blue,
+    // LATTE mauve, ONE magenta.
     static const std::uint8_t kSet[kRingThemes][3] = {{255, 170, 30}, {190, 90, 255}, {110, 200, 255}, {255, 110, 20},
-                                                      {110, 80, 255}, {150, 255, 20}, {20, 200, 170}, {30, 110, 255}};
+                                                      {110, 80, 255}, {150, 255, 20}, {20, 200, 170}, {30, 110, 255},
+                                                      {140, 40, 255}, {235, 30, 200}};
     Rgb c;
     if (theme < 0 || theme >= kRingThemes) theme = 0;
     c.r = kSet[theme][0], c.g = kSet[theme][1], c.b = kSet[theme][2];
