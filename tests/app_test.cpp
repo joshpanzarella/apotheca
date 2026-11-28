@@ -2414,6 +2414,24 @@ void testBounceTakes() {
     CHECK(session.bounceTake() == 6);
     rig.tap(DOWN);
     CHECK(setup.row() != SettingsScreen::kBounce);
+    // On MIDI FILE (no take) hold A + DOWN moves the cursor, and picks nothing.
+    setup.goTo(SettingsScreen::kBounce);
+    rig.tap(RIGHT, 3); // THE SONG, EACH TRACK, THIS TRACK, MIDI FILE
+    rig.key(A, true);
+    rig.tap(DOWN);
+    rig.key(A, false);
+    CHECK(setup.row() != SettingsScreen::kBounce && session.bounceTake() == 6);
+    // A pick past the song's last take (none can be made so; a guard) is the new one.
+    session.pickBounceTake(-1);
+    CHECK(session.bounceTake() == 5);
+    rig.project().takes = 2;
+    CHECK(session.bounceTake() == 3 && session.bounceTakeIsNew());
+    // Another song puts the pick back to ITS next new take, though it has the take picked here.
+    rig.project().takes = 7;
+    session.pickBounceTake(9); // (to the new one, 8)
+    session.pickBounceTake(-3);
+    CHECK(session.bounceTake() == 5 && session.newSong() && session.bounceTake() == 1);
+    CHECK(session.openSong(name) && rig.project().takes == 7 && session.bounceTake() == 8 && session.bounceTakeIsNew());
     CHECK(session.newSong() && session.bounceTake() == 1 && session.bounceTakeIsNew());
 }
 
