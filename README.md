@@ -1,5 +1,7 @@
 # Apotheca
 
+**New here? Install it: [INSTALL.md](INSTALL.md).**
+
 A pocket music workstation for Linux handhelds (first target: Anbernic
 RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 <br>
