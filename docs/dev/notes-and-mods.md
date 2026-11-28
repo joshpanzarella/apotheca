@@ -168,18 +168,54 @@ Moved here word for word from CLAUDE.md on 2026-11-24 (it had grown to 3,139 lin
   "bars"). No gesture was taken: TEMPO sits where BARS was, and BARS one further. `app_test` `testTheRollsTempo`
   (the walk, A's tap, the D-pad, the stick at the drum grid's rate and the same number on both, its ends, B X Y
   dead, no undo step), `copybar_test` (the hints on both grids, held too), `testRollBarsLength`.
-- **The stick carries as the D-pad does** (gesture audit G14, 2026-11-24). With R1 holding a note or
-  a chord, the stick's sideways steps go through `carry()`: a SCALE's next key for a note (a chord a
-  semitone), and with L1 held an octave **once a push**: at the stick's pace for keys an octave a click
-  would fly off the keyboard. That pace was ten keys a second; since the owner's stick rule (2026-11-25) it
-  is twice the held D-pad's, 50 a second at 75%. Up and down it slides freely in time at its own six steps a
-  second, times STICK SPEED, however far it is pushed (it was by the square of the push; for a day of the
-  owner's rule it ran at the keys' 50, too fast to land between two step lines: screens.md). **One job a
-  push**, as with A held (`axis_`, set afresh
-  when R1 goes down): pushed up or down first it slides in time (`carryFree`) and moves no key until
-  it comes back. It was `carryBy(+-1, 0)` straight, chromatic, with no lock, though the hints said
-  "LEFT / RIGHT another key, L1 octave" and `docs/plans/easywins-plan.md` asked for the scale "the
-  stick too". `easy_test stick`.
+- **R1 held on a note or a chord carries it anywhere in the cell, whole** (owner, 2026-11-28: "moving a chord
+  around on the piano roll isn't working right. I want to hold R1 and move it to wherever I want, not just
+  transpose or shorten/lengthen the notes"; `NoteScreen::carry`, `carryBy`, `tests/carry_test.cpp`).
+  - **What was wrong** (reproduced in the app's own key handling, a Y chord C E G at step 5, two long):
+    - **It could not leave its bar.** DOWN stopped at step 16 of the bar shown, in a cell of any length
+      (`step_ + ds` was held to the bar). Only its keys could go on changing: a transpose.
+    - **At the end of the bar it hung over the cell's end.** A chord four long went on to step 16, three of its
+      steps past the end of a one-bar cell, where they are not played or drawn: shortened, to the eye and ear.
+    - **Anything in the way stopped it dead.** A chord could not pass another chord; a note could not pass a note on
+      its key. Stuck behind one, only sideways moved it: a transpose again.
+    - **The stick up / down slid it off the grid** (`carryFree`, six steps a second, nudged up to half a step either
+      side), so it landed between the step lines: never quite where it was wanted.
+    - **One job a push** (`axis_`): pushed up first, the stick moved no key until it came back to the middle, so a
+      diagonal did one thing only.
+    - **B during the hold deleted what R1 carried**, against "B during a held pick puts back what the press found".
+  - **Now:** the D-pad a step or a key a press; the stick the same steps and keys, **both ways in one push**
+    (`stickAxes`, as the plain cursor), at the cursor's pace (twice the held D-pad's), never off the grid (its
+    nudge, set with A + L2 / R2, goes with it unchanged); **L1** held, sideways is an octave (the stick's once a
+    push). In any order, as often as wanted, in one hold; let go and it is there.
+    - **Over the bar lines of the cell**: it moves into the bar it lands in (a slot there, and room in that bar's
+      64 notes, a chord's keys counted; no room is an edge). The bar shown follows it, and the cursor stays on it,
+      as far into it as R1 took it, but in the bar its start is in (a note over a bar line is drawn in its own bar
+      only). On the FILL it stays on the FILL (`carryOnFill_`, a bar by itself).
+    - **Edges keep it whole**: the keyboard's ends (no key of a chord past C0 or C8: it stops, shape kept), the
+      cell's start, and its end **with all of it inside** (a chord four long in a one-bar cell starts at 13 at the
+      latest). Its length, level, keys, inversion, name and every effect are never touched.
+    - **What is in the way is jumped over**: a note over notes on its key (their whole spans, not only their
+      starts), a chord over chords, to the next place that is free that way; nothing free that way, it stays. A
+      note sideways with a SCALE on still goes to the scale's next key (free), a chord a semitone.
+    - **B with R1 held puts it back** as R1 found it (its bar, slot, step and keys; the cursor where it was).
+      R1 still held then carries nothing: the D-pad moves the cursor. An undo that takes it from under R1 ends the
+      carry too.
+    - **L1 then R1, let go unmoved, still copies the bar**; it now also asks that the bar is the same (moved to
+      the same step of the next bar was a copy).
+  - **What "a chord" is here:** a chord placed with Y (`ChordEvent`): R1 on any of its keys, on any step it lasts,
+    takes all of it. **Loose notes on one step are not a chord**: R1 carries the one under the cursor (as before:
+    it is how one wrong note of a stack is put right; a chord broken up with Y + A is loose notes). Open to the
+    owner if a stack should go together.
+  - **Earlier decisions changed** (under "any of my decisions can be reversed if there is a more logical
+    method"): the **one job a push** (G14, 2026-11-24) and **the stick's free slide in time** (2026-11-25, its
+    own rate, `kCarryStepsPerSecond`) are gone: both were part of what the owner reported, and a carry is a
+    move to a place, not a value turned (the nudge has its own exact gesture). The stick goes through `carry()`
+    as G14 asked, so the SCALE and L1's octave hold for it. Kept: the SCALE rule for a note, L1's octave once a
+    push, a chord by semitones.
+  - The hint bar while carrying: `D-PAD / STICK move`, `L1 octave`, `B as it was` (fits at XL with either help,
+    `carry_test hints`). Tests: `carry_test` (its sections), `app_test testHoldXCarriesANote`, `easy_test stick`.
+    Every new branch was mutated (27 mutants, all killed); one guard is reached by no test (a bar with no free
+    chord slot always has every step taken first).
 - **X let go with the stick still pushed: the cursor waits on the grids too** (gesture audit G14,
   2026-11-24). It extends the owner's call for FX and DEVICE (`stickWait_`, under "X HELD on a knob" below) to the roll
   and the drum grid (a hit and a lane's name), where the cursor jumped off at once. The stick's state

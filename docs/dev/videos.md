@@ -106,6 +106,7 @@ the chips read on a phone.
 | 09-fill | L1 + Y makes the FILL, a roll painted on it with R1, it plays on the last time round, FILL OFF / ON |
 | 10-bounce | SET's BOUNCE row: what, A, WORKING (TAIL too, if the desk is slow enough to show it), done; hold A + down for an earlier TAKE |
 | 11-stereo | A stereo ping-pong on lane 6 (the drums soloed), EDIT's STEREO box, MONO and back |
+| 12-carry-chord | A chord placed with Y, then hold R1: the D-pad down and right, the stick down and left, L1 + LEFT an octave, up, let go; held again and moved, B puts it back |
 
 The web pages (the files page, the sound designer) are a browser's, not the handheld's: no clip.
 

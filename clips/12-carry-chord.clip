@@ -1,0 +1,32 @@
+# 12: hold R1 on a chord on the piano roll: it goes anywhere in the cell, whole, and lands where R1 is let go.
+title CARRY A CHORD
+about Hold R1 on a chord and steer it with the D-pad, the stick or L1 for an octave: every key goes with it, its length kept, over what is in its way; let go and it lands. B with R1 held puts it back.
+caption PIANO ROLL
+run --demo --view notes
+from 0.8
+length 21.0
+
+0.02 tap UP 4 0.15
+0.65 tap RIGHT 3 0.15
+1.0 say A chord placed with Y.
+1.2 hold Y 1.0
+2.3 tap UP
+2.6 say Hold R1 on it: the whole chord is carried.
+2.6 hold R1 7.6
+3.2 tap DOWN 3 0.4
+4.6 tap RIGHT 2 0.4
+5.6 say The stick: faster, and both ways at once.
+5.8 stick DOWN 0.1
+6.6 stick LEFT 0.08
+7.4 say L1 held: an octave.
+7.4 hold L1 1.2
+7.8 tap LEFT
+9.0 tap UP 2 0.4
+10.2 say Let go: it lands there, its length as it was.
+12.0 say Hold R1 again and move it...
+12.0 hold R1 5.0
+12.6 tap DOWN 4 0.3
+14.0 tap RIGHT 3 0.3
+15.2 say ...B puts it back where it was.
+15.4 tap B
+17.6 say Over the step lines and keys, never cut: whole.

@@ -4000,16 +4000,21 @@ void testHoldXCarriesANote() {
     int slot = bar.at(58, 7);
     CHECK(slot >= 0 && bar.notes[slot].step == 7 && bar.notes[slot].length == 3.f && near(bar.notes[slot].velocity, 0.6f) && notes.cursorStep() == 8);
     CHECK(bar.at(58, 4) < 0 && bar.at(58, 6) < 0);
-    // It stops at the top and bottom of the bar; the cursor stays with it.
+    // It stops at the top and bottom of the cell (one bar here), all of it inside: three steps long, its last start is
+    // 13, never 14 or 15 with its end cut off. The cursor stays with it.
     rig.tap(UP, 20);
     CHECK(bar.notes[slot].step == 0 && notes.cursorStep() == 1);
     rig.tap(DOWN, 30);
-    CHECK(bar.notes[slot].step == 14 && notes.cursorStep() == 15 && rig.project().bar == 0); // the cursor, a step along the note, is at the bar's end
-    rig.tap(UP, 9);
+    CHECK(bar.notes[slot].step == 13 && bar.notes[slot].length == 3.f && notes.cursorStep() == 14 && rig.project().bar == 0);
+    rig.tap(UP, 8);
     CHECK(bar.notes[slot].step == 5);
-    // It will not land on another note: 62 at step 5 is in the way, so it stops beside it.
-    rig.tap(RIGHT, 10);
-    CHECK(bar.notes[slot].pitch == 61 && bar.at(62, 5) >= 0 && bar.at(62, 5) != slot);
+    // It never lands on another note: 62 at step 5 is in the way, so it goes over it to 63 (and back over it to 61).
+    rig.tap(RIGHT, 3);
+    CHECK(bar.notes[slot].pitch == 61);
+    rig.tap(RIGHT);
+    CHECK(bar.notes[slot].pitch == 63 && notes.cursorPitch() == 63 && bar.at(62, 5) >= 0 && bar.at(62, 5) != slot);
+    rig.tap(LEFT);
+    CHECK(bar.notes[slot].pitch == 61 && notes.cursorPitch() == 61);
     // Let go: the cursor moves alone again.
     rig.key(R1, false);
     CHECK(!notes.carrying());
@@ -4066,43 +4071,27 @@ void testHoldXCarriesANote() {
     rig.tap(R1);
     rig.key(L1, false);
     CHECK(rig.app.session().barCopies() == barCopies + 1); // ...unmoved: copied
-    // The stick, up and down, slides it FREELY in time, off the grid: a short push is a small move...
-    // (The engine is run as the frames go by, as the sound card runs it: each frame of sliding tells it the bar again.)
+    // The stick carries it as the D-pad does, by whole steps, never off the grid (it used to slide it freely, off the
+    // grid: owner, 2026-11-28): a short push is one step at once...
     const auto hold = [&](int count) { for (int f = 0; f < count; ++f) { rig.frames(1); rig.render(16); } };
-    // (At its own six steps a second, times STICK SPEED, however far it is pushed: 0.096 of a step a frame at 100%. A
-    // value turned, not twice the held D-pad's pace: the D-pad carries it a whole step.)
     notes.moveCursorTo(61, 5);
     rig.key(R1, true);
     rig.stick(0.f, -0.25f); // just past the dead zone
-    hold(3);
+    hold(1);
     rig.stick(0.f, 0.f);
     rig.frames(1);
-    CHECK(bar.notes[slot].step == 5 && std::fabs(bar.notes[slot].nudge + 0.288f) < 1e-3f && notes.cursorStep() == 5);
-    // ...and a longer one carries it on through the steps, the cursor with it, still between the lines.
-    rig.key(STICK_DOWN, true);
-    hold(40); // 3.84 steps: from 4.712 to 8.552
-    rig.key(STICK_DOWN, false);
-    rig.frames(1);
-    CHECK(bar.notes[slot].step == 9 && notes.cursorStep() == 9 && std::fabs(bar.notes[slot].nudge + 0.448f) < 1e-3f);
-    CHECK(std::fabs(bar.notes[slot].nudge) <= 0.5f && bar.notes[slot].pitch == 61);
-    const float where = bar.notes[slot].step + bar.notes[slot].nudge;
-    CHECK(std::fabs(where - std::round(where)) > 0.001f); // not on a line
-    // The D-pad, with the same hold: a whole step, and what it had off the grid it keeps.
-    const float off = bar.notes[slot].nudge;
-    const int at = bar.notes[slot].step;
-    rig.tap(UP);
-    CHECK(bar.notes[slot].step == at - 1 && bar.notes[slot].nudge == off);
-    // At the end of the bar it stops half a step late and goes no further; at the top, half a step early.
+    CHECK(bar.notes[slot].step == 4 && bar.notes[slot].nudge == 0.f && notes.cursorStep() == 4);
+    // ...held, it runs on at twice the held D-pad's pace (the cursor's), on the step lines, to the end of the cell...
     rig.key(STICK_DOWN, true);
     hold(300);
     rig.key(STICK_DOWN, false);
     rig.frames(1);
-    CHECK(bar.notes[slot].step == 15 && near(bar.notes[slot].nudge, 0.5f) && notes.cursorStep() == 15);
+    CHECK(bar.notes[slot].step == 13 && bar.notes[slot].nudge == 0.f && bar.notes[slot].length == 3.f && notes.cursorStep() == 13);
     rig.key(STICK_UP, true);
     hold(300);
     rig.key(STICK_UP, false);
     rig.frames(1);
-    CHECK(bar.notes[slot].step == 0 && near(bar.notes[slot].nudge, -0.5f));
+    CHECK(bar.notes[slot].step == 0 && bar.notes[slot].nudge == 0.f);
     // The stick sideways with X held is still key by key.
     rig.key(STICK_RIGHT, true);
     rig.frames(1);
@@ -4179,8 +4168,14 @@ void testHoldXCarriesANote() {
     CHECK(notes.carrying());
     rig.tap(RIGHT, 2);
     CHECK(one.root == 50 && notes.cursorPitch() == 54);
-    rig.tap(DOWN, 5); // step 10, then 11 would run into the chord at 12
+    rig.tap(DOWN, 2);
     CHECK(one.step == 10 && two.step == 12 && notes.cursorStep() == 11);
+    rig.tap(DOWN); // 11 would run into the chord at 12: it goes over it, to 14 (its end on the cell's)
+    CHECK(one.step == 14 && two.step == 12 && notes.cursorStep() == 15);
+    rig.tap(DOWN); // and no further: it would be cut
+    CHECK(one.step == 14 && one.length == 2.f);
+    rig.tap(UP); // back over it
+    CHECK(one.step == 10 && notes.cursorStep() == 11);
     rig.tap(UP, 20);
     CHECK(one.step == 0);
     rig.tap(LEFT, 200); // down the keyboard until its lowest note is the lowest key
