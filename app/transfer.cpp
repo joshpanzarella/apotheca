@@ -25,6 +25,7 @@
 #include <new>
 
 #include "chords.hpp"
+#include "memory.hpp"
 #include "samples.hpp"
 #include "song_file.hpp"
 #include "version.hpp"
@@ -33,6 +34,19 @@
 extern char** environ;
 
 namespace apotheca {
+
+namespace {
+// THE MEMORY GUARD (memory.hpp) for a file sent: room for `bytes` more, or no figure to go by.
+bool roomToTake(long long bytes) {
+    const long long room = memory::room();
+    return room < 0 || bytes <= room;
+}
+std::string noMemoryWords() {
+    char text[80];
+    std::snprintf(text, sizeof text, "not enough memory on the handheld just now: %d MB free\n", static_cast<int>(memory::room() / memory::kMegabyte));
+    return text;
+}
+} // namespace
 
 extern const char* const kDesignPage; // design_page.cpp
 bool plainName(const std::string& name, std::size_t longest); // (below)
@@ -1414,6 +1428,7 @@ void Transfer::answer(int fd) {
         if (where == std::string::npos) return reply(fd, "411 Length Required", "text/plain", "how big is it?\n");
         const unsigned long long size = std::strtoull(lowerHead.c_str() + where + 17, nullptr, 10);
         if (size > kLargestFile) return reply(fd, "413 Too Large", "text/plain", "too big: 30 MB at most\n");
+        if (!roomToTake(static_cast<long long>(size))) return reply(fd, "503 No Memory", "text/plain", noMemoryWords().c_str());
         if (lowerHead.find("\r\nexpect: 100-continue") != std::string::npos) sendAll(fd, "HTTP/1.1 100 Continue\r\n\r\n", 25);
         if (body.size() > size) body.resize(static_cast<std::size_t>(size));
         while (body.size() < size && !tooSlow()) {
@@ -1524,6 +1539,9 @@ void Transfer::answer(int fd) {
     if (at == std::string::npos) return reply(fd, "411 Length Required", "text/plain", "how big is it?\n");
     const unsigned long long length = std::strtoull(lower.c_str() + at + 17, nullptr, 10);
     if (length > kLargestFile) return reply(fd, "413 Too Large", "text/plain", "too big: 30 MB at most\n");
+    // THE MEMORY GUARD: the file is held whole while it is checked (a WAV read too: its sound as floats, about
+    // twice its bytes again), before any of it is taken.
+    if (!roomToTake(static_cast<long long>(length) * (kind == "samples" ? 3 : 1))) return reply(fd, "503 No Memory", "text/plain", noMemoryWords().c_str());
     if (lower.find("\r\nexpect: 100-continue") != std::string::npos) sendAll(fd, "HTTP/1.1 100 Continue\r\n\r\n", 25);
     if (body.size() > length) body.resize(static_cast<std::size_t>(length));
     while (body.size() < length && !tooSlow()) {

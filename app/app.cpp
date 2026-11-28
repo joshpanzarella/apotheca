@@ -713,6 +713,11 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         title("ON EVERY SCREEN");
         for (const Line& l : everywhere) line(l);
         ly += 6.f;
+        // THE MEMORY GUARD (2026-11-28): what the recordings take and what a load may still take, at the right of
+        // this heading (the card's one row with room for it), held to LARGE where the chosen size would reach it.
+        const std::string memoryLine = session_.memoryLine();
+        const float headingEnds = x + 18.f + fonts.small.width("WITH SEL HELD") + kLoadClear;
+        fonts.within(&Fonts::small, memoryLine.c_str(), x + w - 18.f - headingEnds).drawRight(renderer, x + w - 18.f, ly, memoryLine.c_str(), kText);
         title("WITH SEL HELD");
         for (const Line& l : held) line(l);
         ly += 6.f;

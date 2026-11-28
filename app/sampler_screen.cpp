@@ -176,6 +176,7 @@ void SamplerScreen::openEdit() {
     const Session::LaneSound& sound = session_.trackSound(track);
     if (!session_.samplerEdits(track)) {
         said_ = !trk().sample[0] ? "EDIT NEEDS A RECORDING: PICK ONE FIRST"
+              : sound.noMemory  ? "EDIT NEEDS THE FILE: NOT ENOUGH MEMORY"
               : sound.missing   ? "EDIT NEEDS THE FILE: IT IS NOT IN THE SAMPLES FOLDER"
                                 : kNoEditWords;
         saidUntil_ = lastMs_ + 3000;
@@ -546,7 +547,7 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // the room under it left empty).
     const float wordsY = kWaveY + (kWaveH - fonts.small.capHeight()) / 2.f;
     if (sound.missing) {
-        fonts.small.draw(r, sx + 7.f, wordsY, "NOT IN THE SAMPLES FOLDER. THIS TRACK IS SILENT UNTIL IT IS.", kBrass);
+        fonts.small.draw(r, sx + 7.f, wordsY, sound.noMemory ? kNotLoadedWords : "NOT IN THE SAMPLES FOLDER. THIS TRACK IS SILENT UNTIL IT IS.", kBrass);
     } else if (!t.sample[0]) {
         fonts.small.draw(r, sx + 7.f, wordsY, "Hold A and push up to pick a recording, or press Y to catch the last bar played.", kDim);
     } else if (!sound.peaks.empty()) {

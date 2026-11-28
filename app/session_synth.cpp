@@ -195,6 +195,7 @@ bool Session::putSoundBack(int track) {
     TrackData& t = project.tracks[track];
     TrackData& was = *kept_.was;
     if (t.kind != was.kind || t.kind == TrackKind::None) return false;
+    LoadAll all(*this); // (THE MEMORY GUARD: put back, never refused; what does not fit is NOT LOADED)
     if (t.kind == TrackKind::Drums && kitText(t) != kitText(was)) putKit(track, was);
     if (holdsRecording(t.kind) && std::strcmp(t.sample, was.sample) != 0) setTrackSample(track, was.sample);
     if (t.kind == TrackKind::Sampler) {

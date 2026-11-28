@@ -20,6 +20,7 @@
 #include <functional>
 #include <memory>
 
+#include "memory.hpp"
 #include "samples.hpp"
 #include "session_parts.hpp"
 #include "song_file.hpp"
@@ -198,6 +199,7 @@ void Session::recordingChanged(const std::string& from, const std::string& to, b
     // The new name is no step of undo (nothing was done to the song), and the steps follow it.
     const bool unmarked = undoReady_ && soundMark() == soundMark_;
     if (stepsFollow && !from.empty() && !to.empty()) undoFollows({{from, to}});
+    LoadAll all(*this); // (THE MEMORY GUARD: said once)
     for (int t = 0; t < kNumTracks; ++t) {
         TrackData& track = project.tracks[t];
         const bool sampler = holdsRecording(track.kind); // (a sampler or a CLOUD: one recording)
@@ -234,6 +236,7 @@ int Session::findMissing(const std::string& label) {
         }
     }
     if (lost.empty() || sampleFolder_.empty()) return 0; // nothing missing: the folder is not looked at
+    LoadAll all(*this); // (THE MEMORY GUARD: said once)
     ++lookups_;
     const std::vector<std::string> have = wavNames(sampleFolder_); // once, however many are missing
     int found = 0;
@@ -300,6 +303,149 @@ const Clip& builtInDrum(int lane) {
 }
 }
 
+
+// ---- the memory guard (drums-and-samples.md, "The memory guard") ---------------------------------
+
+namespace {
+long long bytesOf(const Clip& clip) { return static_cast<long long>((clip.capacity() + clip.right.capacity()) * sizeof(float)); }
+bool builtIn(const Clip* clip) {
+    for (int l = 0; l < kDrumLanes; ++l)
+        if (clip == &builtInDrum(l)) return true;
+    return false;
+}
+}
+
+const char* const Session::kNoMemoryToBounce = "NO MEMORY TO BOUNCE";
+
+std::string Session::noMemoryWords(long long need) {
+    char text[48];
+    std::snprintf(text, sizeof text, "NO MEMORY: NEEDS %d MB", memory::megabytes(need));
+    return text;
+}
+
+std::string Session::notLoadedWords(int count) {
+    char text[48];
+    std::snprintf(text, sizeof text, "NO MEMORY: %d NOT LOADED", count);
+    return text;
+}
+
+long long Session::recordingBytes() const {
+    std::vector<const Clip*> held;
+    for (const auto& track : sounds_)
+        for (const LaneSound& sound : track)
+            for (const std::shared_ptr<const Clip>* one : {&sound.recording, &sound.source, &sound.shaped, &sound.fitted, &sound.hitsOf})
+                if (*one && !builtIn(one->get())) held.push_back(one->get());
+    std::sort(held.begin(), held.end());
+    held.erase(std::unique(held.begin(), held.end()), held.end()); // a copy shared is one copy
+    long long bytes = building_ + engine.sampleBytes();
+    for (const Clip* clip : held) bytes += bytesOf(*clip);
+    return bytes;
+}
+
+int Session::notLoaded() const {
+    int count = 0;
+    for (const auto& track : sounds_)
+        for (const LaneSound& sound : track) count += sound.noMemory;
+    return count;
+}
+
+std::string Session::memoryLine() const {
+    char text[64];
+    const long long room = memory::room();
+    if (room < 0) std::snprintf(text, sizeof text, "RECORDINGS %d MB", memory::megabytes(recordingBytes()));
+    else std::snprintf(text, sizeof text, "RECORDINGS %d MB, %d MB FREE", memory::megabytes(recordingBytes()), static_cast<int>(room / memory::kMegabyte));
+    return text;
+}
+
+long long Session::laneNeeds(std::size_t frames, int channels, const LaneEdit& edit, int fitSteps, Make make) const {
+    const double side = static_cast<double>(sizeof(float));
+    // The shape: START to END, at the speed PITCH plays it (makeShape), MONO's sides mixed to one.
+    double shaped = static_cast<double>(frames);
+    int shapedSides = channels;
+    if (edit.shapes()) {
+        const double cut = static_cast<double>(edit.end - edit.start) / kEditUnits;
+        shaped = static_cast<double>(frames) * (cut > 0.0 ? cut : 0.0) / static_cast<double>(edit.speed()) + 1.0;
+        if (edit.mono) shapedSides = 1;
+    }
+    // Its FIT: the steps at the tempo now (startJob's frames).
+    const double fitted = fitSteps > 0 && project.tempo > 0.f ? fitSteps * 15.0 / project.tempo * kSampleRate + 1.0 : 0.0;
+    const double played = make.fit && fitted > 0.0 ? fitted : shaped; // what the engine is given
+    double bytes = 0.0;
+    if (make.source) bytes += static_cast<double>(frames) * channels * side;
+    if (make.shape && edit.shapes()) bytes += shaped * shapedSides * side;
+    if (make.fit) bytes += fitted * shapedSides * side;
+    if (make.install) bytes += played * shapedSides * side * (edit.levelAtRest() ? 1.0 : 2.0); // (the level made, then copied in)
+    return static_cast<long long>(bytes);
+}
+
+long long Session::loadNeeds(const WavSize& file, const LaneEdit& edit, int fitSteps) const {
+    return static_cast<long long>(file.readingBytes()) + laneNeeds(file.frames, file.channels, edit, fitSteps, Make());
+}
+
+long long Session::heldBy(int track, int lane) const {
+    const LaneSound& sound = sounds_[track][lane];
+    const std::shared_ptr<const Clip>* parts[] = {&sound.recording, &sound.source, &sound.shaped, &sound.fitted, &sound.hitsOf};
+    long long bytes = 0;
+    for (std::size_t i = 0; i < 5; ++i) {
+        const Clip* clip = parts[i]->get();
+        if (!clip || builtIn(clip)) continue;
+        bool before = false;
+        long refs = 0;
+        for (std::size_t k = 0; k < 5; ++k) {
+            refs += parts[k]->get() == clip;
+            before = before || (k < i && parts[k]->get() == clip);
+        }
+        if (!before && refs == parts[i]->use_count()) bytes += bytesOf(*clip); // held here alone: freed with the lane's sound
+    }
+    return bytes;
+}
+
+bool Session::recordingSize(const std::string& name, WavSize& out) const {
+    return !sampleFolder_.empty() && (wavSize(sampleFolder_ + "/" + name + ".wav", out) || wavSize(sampleFolder_ + "/" + name + ".WAV", out));
+}
+
+bool Session::roomFor(long long need, long long credit) {
+    long long room = memory::room();
+    if (room < 0 || need <= room + credit) return true;
+    if (settleBy_ > 0) { // a song sent afresh: the old one's recordings first given back (once, and not for long)
+        const Uint32 until = SDL_GetTicks() + kSettleMs;
+        engine.collectGarbage();
+        while (engine.sampleBytesFreed() < settleBy_ && SDL_GetTicks() < until) {
+            SDL_Delay(2);
+            engine.collectGarbage();
+        }
+        settleBy_ = 0;
+        room = memory::room();
+        if (need <= room + credit) return true;
+    }
+    ++refusals_;
+    if (loadAllRefused_ >= 0) ++loadAllRefused_; // said once, at the end of the song, kit or step put on
+    else say(noMemoryWords(need).c_str());
+    return false;
+}
+
+void Session::unloadLane(int track, int lane) {
+    LaneSound& sound = sounds_[track][lane];
+    const unsigned version = sound.version + 1;
+    sound = LaneSound();
+    sound.version = version;
+    sound.missing = sound.noMemory = true; // the drum plays in its place (a sampler or a CLOUD: silent, or its TONE)
+    if (project.tracks[track].kind == TrackKind::Drums) engine.setLaneSample(track, lane, nullptr);
+    else engine.setTrackSample(track, nullptr);
+}
+
+Session::LoadAll::LoadAll(Session& session) : session(session), outer(session.loadAllRefused_ < 0) {
+    if (outer) session.loadAllRefused_ = 0;
+    ++session.keepNames_;
+}
+
+Session::LoadAll::~LoadAll() {
+    --session.keepNames_;
+    if (!outer) return;
+    if (session.loadAllRefused_ > 0) session.say(notLoadedWords(session.loadAllRefused_).c_str());
+    session.loadAllRefused_ = -1;
+}
+
 // Read the lane's file (or take the built-in drum) and make the lane's sound from it: as recorded,
 // or as its edits make it. If the lane is fitted, update() will follow with the stretched version.
 void Session::loadLane(int track, int lane) {
@@ -309,7 +455,14 @@ void Session::loadLane(int track, int lane) {
     sound.version = version;
     const char* name = project.tracks[track].laneSample[lane];
     const drumsynth::Voice& voice = project.tracks[track].laneSynth[lane];
+    const LaneEdit& edit = project.tracks[track].laneEdit[lane];
+    const int fit = project.tracks[track].laneFit[lane];
     if (voice.on()) {
+        // THE MEMORY GUARD: a voice is never longer than drumsynth::kLongestSeconds, one side.
+        if (!roomFor(laneNeeds(static_cast<std::size_t>(drumsynth::kLongestSeconds * kSampleRate), 1, edit, 0, Make()))) {
+            unloadLane(track, lane);
+            return;
+        }
         // DRUM SYNTH: the voice made, and from then on it is the lane's recording (FIT, EDIT, the picture).
         // Too costly for a frame, it is made on the helper thread, and the lane plays what it had till then.
         if (drumsynth::work(voice, kSampleRate) > drumsynth::kWorkInAFrame) {
@@ -324,6 +477,12 @@ void Session::loadLane(int track, int lane) {
         const Clip& drum = builtInDrum(lane);
         sound.source = std::shared_ptr<const Clip>(&drum, [](const Clip*) {}); // (kept for as long as the program runs)
     } else {
+        // THE MEMORY GUARD: what it will take, from its file's header, before a byte of its sound is read.
+        WavSize file;
+        if (recordingSize(name, file) && !roomFor(loadNeeds(file, edit, fit))) {
+            unloadLane(track, lane); // NOT LOADED: the song keeps the name
+            return;
+        }
         std::shared_ptr<Clip> recording(new Clip);
         if (sampleFolder_.empty() || !readRecording(sampleFolder_, name, *recording) || recording->empty()) {
             sound.missing = true; // the drum plays in its place, and the song keeps the name
@@ -351,6 +510,7 @@ void Session::shapeLane(int track, int lane) {
     if (!sound.source) return; // missing: the drum plays, and nothing is made
     const LaneEdit& edit = project.tracks[track].laneEdit[lane];
     ++sound.version; // a stretch on its way is for the sound as it was
+    sound.noFit = false; // (another shape: its FIT is asked again)
     // PITCH on a long sound is too much for one frame of the handheld (a 10 s file two octaves down
     // is 0.1 s on the desk): it is made on the helper thread, as a FIT is, and until it is ready the
     // lane plays what it had (or, freshly read, the file as it is).
@@ -397,6 +557,16 @@ void Session::installLane(int track, int lane) {
 void Session::setLaneSample(int track, int lane, const std::string& name) {
     if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums) return;
     TrackData& t = project.tracks[track];
+    // THE MEMORY GUARD: a recording picked that would not fit is not put on, and nothing changes (NO MEMORY said).
+    // What this lane alone holds is freed before it is read, so it counts as room. (A song, a kit or a step of
+    // undo put back keeps the name: loadLane leaves it NOT LOADED.)
+    if (!keepNames_ && !name.empty() && name != t.laneSample[lane]) {
+        LaneEdit edit = t.laneEdit[lane];
+        edit.start = 0;
+        edit.end = kEditUnits;
+        WavSize file;
+        if (recordingSize(name, file) && !roomFor(loadNeeds(file, edit, t.laneFit[lane]), heldBy(track, lane))) return;
+    }
     std::snprintf(t.laneSample[lane], sizeof t.laneSample[lane], "%s", name.c_str());
     // Another sound: START and END were parts of the last one, and go back to the whole. The rest of
     // the lane's edits stay. A synth voice goes with it (a recording or the drum in its place). All of
@@ -436,6 +606,27 @@ void Session::setLaneEdit(int track, int lane, const LaneEdit& wanted) {
     edit = now;
     LaneEdit shapeWas = was, shapeNow = now; // what is cut, turned round or pitched: made again, and fitted again
     shapeWas.gain = shapeNow.gain = shapeWas.fadeIn = shapeNow.fadeIn = shapeWas.fadeOut = shapeNow.fadeOut = 0;
+    // THE MEMORY GUARD: the copies the edit makes (a shape, and the engine's), before any is made. Refused, the
+    // edit is not made (NO MEMORY said); put back by a kit or undo, it is made and the lane left NOT LOADED.
+    if (sound.source && !builtIn(sound.source.get())) {
+        long long need = 0;
+        if (shapeWas != shapeNow) { // the shape and the engine's copy of it (a FIT is made again on the helper thread, and asked there: startJob)
+            Make make;
+            make.source = make.fit = false;
+            need = laneNeeds(sound.source->size(), sound.source->stereo() ? 2 : 1, now, 0, make);
+        } else { // the level alone, on what is made already, and the engine's copy of it
+            const std::shared_ptr<const Clip>& made = sound.fitted ? sound.fitted : sound.shaped;
+            need = made ? static_cast<long long>(made->size() * (made->stereo() ? 2 : 1) * sizeof(float)) * (now.levelAtRest() ? 1 : 2) : 0;
+        }
+        if (!roomFor(need)) {
+            if (!keepNames_) {
+                edit = was;
+                return;
+            }
+            unloadLane(track, lane);
+            return;
+        }
+    }
     if (shapeWas != shapeNow) shapeLane(track, lane);
     else installLane(track, lane); // the fades and GAIN alone: on what is made already
 }
@@ -651,6 +842,14 @@ std::unique_ptr<sampler::SampleZoneSet> Session::multisampleOf(const std::string
     int room = sampler::kMaxZones / static_cast<int>(notes.size());
     room = room < 1 ? 1 : (room > sampler::kMaxLayers ? sampler::kMaxLayers : room);
     std::unique_ptr<sampler::SampleZoneSet> set(new sampler::SampleZoneSet);
+    // THE MEMORY GUARD: each other note's file asked before it is read; one that does not fit is left out, as one
+    // that will not read is, and the notes left out are said once ("NO MEMORY: 5 NOT LOADED").
+    LoadAll all(*this);
+    building_ = bytesOf(main); // (held meanwhile, as the notes read: recordingBytes counts them)
+    struct Built { // ...until they are the engine's, or let go
+        long long& bytes;
+        ~Built() { bytes = 0; }
+    } built{building_};
     for (std::vector<Candidate>& layers : notes) {
         const int n = static_cast<int>(layers.size());
         if (n > room) { // spread from the softest to the loudest, the picked one kept in place of the nearest to it
@@ -668,8 +867,11 @@ std::unique_ptr<sampler::SampleZoneSet> Session::multisampleOf(const std::string
         std::vector<sampler::SampleZone> read;
         for (const Candidate& c : layers) {
             Clip data;
+            WavSize file;
             if (c.name == name) data = std::move(main); // (given back below if it ends up alone)
+            else if (recordingSize(c.name, file) && !roomFor(static_cast<long long>(file.readingBytes() + file.clipBytes()))) continue; // no memory: left out
             else if (!readRecording(sampleFolder_, c.name, data) || data.empty()) continue; // gone or broken: skipped
+            else building_ += bytesOf(data);
             read.push_back(sampler::SampleZone());
             if (data.stereo()) read.back().right = std::move(data.right); // STEREO: each note as its file has it
             read.back().data = std::move(data.left());
@@ -708,6 +910,13 @@ void Session::loadTrackSample(int track) {
     const char* name = project.tracks[track].sample;
     if (!name[0]) {
         engine.setTrackSample(track, nullptr);
+        return;
+    }
+    // THE MEMORY GUARD: what it will take, from its file's header (as one recording EDIT works on: a CLOUD's or a
+    // multisample's picked file takes less; a multisample's other notes are asked one by one, multisampleOf).
+    WavSize file;
+    if (recordingSize(name, file) && !roomFor(loadNeeds(file, project.tracks[track].samplerEdit, 0))) {
+        unloadLane(track, 0); // NOT LOADED: the song keeps the name
         return;
     }
     Clip main;
@@ -786,6 +995,24 @@ void Session::setSamplerEdit(int track, const LaneEdit& wanted) {
     edit = now;
     LaneEdit shapeWas = was, shapeNow = now; // what is cut or turned round: made again
     shapeWas.gain = shapeNow.gain = shapeWas.fadeIn = shapeNow.fadeIn = shapeWas.fadeOut = shapeNow.fadeOut = 0;
+    // THE MEMORY GUARD, as a lane's EDIT (setLaneEdit).
+    const LaneSound& sound = sounds_[track][0];
+    if (sound.source) {
+        Make make;
+        make.source = make.fit = false;
+        make.shape = shapeWas != shapeNow;
+        const Clip& from = make.shape ? *sound.source : (sound.shaped ? *sound.shaped : *sound.source);
+        LaneEdit level = now;
+        if (!make.shape) level.start = 0, level.end = kEditUnits, level.reverse = false, level.mono = false; // (on what is made: no shape again)
+        if (!roomFor(laneNeeds(from.size(), from.stereo() ? 2 : 1, level, 0, make))) {
+            if (!keepNames_) {
+                edit = was;
+                return;
+            }
+            unloadLane(track, 0);
+            return;
+        }
+    }
     if (shapeWas != shapeNow) shapeSampler(track);
     else installSampler(track); // the fades and GAIN alone: on what is made already
     ++sounds_[track][0].version; // (its picture changed: the designer page draws it again)
@@ -833,6 +1060,14 @@ bool Session::putPresetRecording(int track, const std::string& name) {
 
 void Session::setTrackSample(int track, const std::string& name) {
     if (track < 0 || track >= kNumTracks || !holdsRecording(project.tracks[track].kind)) return;
+    // THE MEMORY GUARD, as a lane's (setLaneSample): a pick that would not fit changes nothing.
+    if (!keepNames_ && !name.empty() && name != project.tracks[track].sample) {
+        LaneEdit edit = project.tracks[track].samplerEdit;
+        edit.start = 0;
+        edit.end = kEditUnits;
+        WavSize file;
+        if (recordingSize(name, file) && !roomFor(loadNeeds(file, edit, 0), heldBy(track, 0))) return;
+    }
     std::snprintf(project.tracks[track].sample, sizeof project.tracks[track].sample, "%s", name.c_str());
     // Another recording: EDIT's START and END were parts of the last one, and go back to the whole; the rest stay
     // (a lane's rule). One step of undo with the name, as a lane's.
@@ -1286,6 +1521,7 @@ void Session::setLaneFit(int track, int lane, int steps) {
     project.tracks[track].laneFit[lane] = steps;
     sendLanePart(track, lane); // a slice is a different share of a recording fitted to a different length
     LaneSound& sound = sounds_[track][lane];
+    sound.noFit = false; // (another FIT: asked again)
     if (!sound.recording) return;
     ++sound.version; // a stretch on its way is for the old length
     sound.waiting = steps > 0;
@@ -1317,6 +1553,7 @@ bool Session::setTempoFromLoop(int track, int lane, float bpm, int bars) {
 // for the tempo now.
 bool Session::wantsFitting(int track, int lane) const {
     const LaneSound& sound = sounds_[track][lane];
+    if (sound.noFit) return false; // refused for memory: not asked again until the lane's FIT or shape changes
     if (sound.shaping) return true; // (a synth voice to be made too)
     const int steps = project.tracks[track].laneFit[lane];
     return sound.recording && sound.shaped && steps > 0 && (sound.fittedTempo != steadyTempo_ || sound.fittedSteps != steps);
@@ -1324,6 +1561,24 @@ bool Session::wantsFitting(int track, int lane) const {
 
 void Session::startJob(int track, int lane) {
     LaneSound& sound = sounds_[track][lane];
+    // THE MEMORY GUARD: what the job will make (the shape, the FIT) and the engine's copy after, before it starts.
+    // Refused: the lane plays what it has (the file, or its shape) and is not asked again until it changes.
+    if (!sound.making && (sound.shaping ? sound.source : sound.shaped)) {
+        const Clip& in = sound.shaping ? *sound.source : *sound.shaped;
+        const LaneEdit& edit = project.tracks[track].laneEdit[lane];
+        const int steps = sound.recording ? project.tracks[track].laneFit[lane] : 0;
+        Make make;
+        make.source = false;
+        make.shape = sound.shaping;
+        make.fit = steps > 0;
+        LaneEdit as = edit;
+        if (!sound.shaping) as.start = 0, as.end = kEditUnits, as.reverse = false, as.pitch = as.fine = 0, as.mono = false; // (shaped already: no shape again)
+        if (!roomFor(laneNeeds(in.size(), in.stereo() ? 2 : 1, as, steps, make))) {
+            sound.noFit = true;
+            sound.waiting = sound.shaping = false;
+            return;
+        }
+    }
     sound.waiting = true;
     job_.reset(new Job);
     Job* job = job_.get();

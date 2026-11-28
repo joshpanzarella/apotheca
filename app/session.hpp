@@ -312,6 +312,8 @@ public:
     static const char* const kOwedFile;                 // "renames-owed.txt"
     // "" brings the drum back (and takes a synth voice off); START and END go back to the whole. A step of
     // undo with the name (soundMark): undo puts the old sound back with its own cut and voice.
+    // THE MEMORY GUARD: a recording that would not fit in memory is not put on (nothing changes, NO MEMORY said);
+    // while a song, a kit or a step of undo is put back (LoadAll), the name is kept and the lane left NOT LOADED.
     void setLaneSample(int track, int lane, const std::string& name);
     // DRUM SYNTH (apotheca/drum_synth.hpp): the lane's sound made from a voice, in place of a recording
     // (its name is emptied) or the built-in drum. Made here, or on the helper thread past
@@ -413,6 +415,8 @@ public:
         std::vector<float> peaks; // the outline of what the lane plays, for drawing (none for a built-in drum left as it is)
         float seconds = 0.f;      // ...and how long it lasts, unfitted
         bool missing = false;     // the song names a file that is not here
+        bool noMemory = false;    // ...or one that was not loaded: there was not the memory for it (missing too; NOT LOADED)
+        bool noFit = false;       // its FIT (or a shape on the helper thread) was refused for memory: not asked again until it changes
         bool waiting = false;     // a fitted (or shaped) version is wanted and not yet in the engine
         bool shaping = false;     // its shape is wanted from the helper thread (too costly for a frame)
         bool making = false;      // ...and before that its synth voice is made there (DRUM SYNTH: shaping is set too)
@@ -426,6 +430,19 @@ public:
         std::shared_ptr<const Clip> hitsOf;
     };
     const LaneSound& laneSound(int track, int lane) const { return sounds_[track][lane]; }
+    // THE MEMORY GUARD (2026-11-28; drums-and-samples.md, "The memory guard"; memory.hpp). What the recordings take
+    // now: every copy this session holds (the file as read, its shape, its FIT, a multisample's notes being read;
+    // each counted once however many hold it) and the engine's own (Engine::sampleBytes, those on their way back to
+    // be freed too). Not the built-in drums, which are the program's.
+    long long recordingBytes() const;
+    int notLoaded() const;                   // lanes, samplers and CLOUDs left NOT LOADED for want of memory
+    unsigned refusals() const { return refusals_; } // loads and copies refused for memory, ever (a bounce stops on one)
+    static std::string noMemoryWords(long long need); // "NO MEMORY: NEEDS 180 MB": a pick, an edit or a FIT refused
+    static std::string notLoadedWords(int count);     // "NO MEMORY: 3 NOT LOADED": a song, a kit, a multisample
+    static const char* const kNoMemoryToBounce;      // "NO MEMORY TO BOUNCE"
+    // The HELP card's line: "RECORDINGS 412 MB, 300 MB FREE", FREE being what a load may still take (the margin
+    // kept); "RECORDINGS 412 MB" where the system's figure is not known.
+    std::string memoryLine() const;
     // A sampler track's one recording, and its settings (sampler.hpp).
     void setTrackSample(int track, const std::string& name); // "" for none
     void setSamplerSetting(int track, int id, int value);
@@ -614,6 +631,7 @@ public:
     void useBounceCap(float seconds) { bounceCap_ = seconds; } // the longest tail (kBounceCapSeconds unless told otherwise: the tests)
     void pretendBounce(float progress, float tailSeconds);    // as if one were under way, this far along: for a still of the screen
     int bounceFiles() const;       // once done: how many files were written
+    bool bounceNoMemory() const;   // ...none: its song's recordings did not all fit in memory beside the open song's
     std::string bounceLast() const; // ...and the name of the last one
     std::string bounceSample() const; // a ToSamples bounce, once done: the recording's name ("bounces/bass 1"); "" if none
     int bounceSampleSteps() const;    // ...and its steps (what FIT fits it to)
@@ -1104,6 +1122,8 @@ private:
         float cap = kBounceCapSeconds;
         std::atomic<float> progress{0.f}, tail{-1.f};
         std::atomic<bool> done{false}, cancel{false};
+        std::atomic<bool> noMemory{false}; // stopped: the song's recordings did not all fit (nothing written)
+        bool noMemorySaid = false;         // ...and said (the app thread's)
         std::thread thread;
     };
     std::shared_ptr<BounceJob> bounce_;
@@ -1310,6 +1330,37 @@ private:
     std::string lastRecorded_;
     void loadTrackSample(int track);
     std::unique_ptr<sampler::SampleZoneSet> multisampleOf(const std::string& name, Clip& main);
+    // THE MEMORY GUARD. What a lane's sound will take, in bytes, of `frames` frames of `channels` sides as the
+    // program keeps them: the copies asked for (`Make`) as EDIT and FIT make them, and the engine's (with the
+    // level's while it is made). A load adds what reading the file holds (WavSize::readingBytes).
+    struct Make { bool source = true, shape = true, fit = true, install = true; };
+    long long laneNeeds(std::size_t frames, int channels, const LaneEdit& edit, int fitSteps, Make make) const;
+    long long loadNeeds(const WavSize& file, const LaneEdit& edit, int fitSteps) const; // a lane's, or a sampler's, from its file
+    long long heldBy(int track, int lane) const; // copies only this lane (or sampler) holds: freed when it is given another
+    bool recordingSize(const std::string& name, WavSize& out) const; // its file's WavSize (.wav or .WAV)
+    // Room for `need` more bytes, with `credit` about to be freed first? No: said (NO MEMORY: NEEDS...), or counted
+    // in the LoadAll under way and said once at its end, and false. Room, or no figure known: true.
+    bool roomFor(long long need, long long credit = 0);
+    void unloadLane(int track, int lane); // NOT LOADED: its sound let go, missing for want of memory (the drum plays)
+    // A song, a kit, a step of undo or a multisample put on: the names are kept and what does not fit is left NOT
+    // LOADED, said once at the end ("NO MEMORY: 3 NOT LOADED"). They nest; the outer one says.
+    struct LoadAll {
+        explicit LoadAll(Session& session);
+        ~LoadAll();
+        LoadAll(const LoadAll&) = delete;
+        LoadAll& operator=(const LoadAll&) = delete;
+        Session& session;
+        bool outer;
+    };
+    int loadAllRefused_ = -1;  // refusals in the LoadAll under way (-1: none under way)
+    int keepNames_ = 0;        // LoadAlls under way
+    unsigned refusals_ = 0;
+    long long building_ = 0;   // a multisample's notes read so far, not yet the engine's (recordingBytes counts them)
+    // A song sent afresh (sendSong): the engine's old recordings are on their way back to be freed, a few
+    // milliseconds after (the audio thread hands them back). A load refused meanwhile waits for them first, once,
+    // at most kSettleMs: Engine::sampleBytesFreed reaches this when they all are. 0: nothing on its way.
+    long long settleBy_ = 0;
+    static constexpr int kSettleMs = 150;
     void install(int track, int lane, const Clip& samples);
     void madeLane(int track, int lane, std::vector<float> made); // a synth voice made: the lane's recording, then shapeLane
     void shapeLane(int track, int lane);   // the lane's sound made again from its source, from the cut on (then FIT, then installLane)

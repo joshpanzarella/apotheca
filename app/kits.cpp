@@ -112,6 +112,7 @@ int Session::kitOf(int track) {
 
 bool Session::putKit(int track, const TrackData& kit) {
     if (track < 0 || track >= kNumTracks || project.tracks[track].kind != TrackKind::Drums) return false;
+    LoadAll all(*this); // THE MEMORY GUARD: every recording of the kit that fits, the rest NOT LOADED, said once
     for (int lane = 0; lane < kDrumLanes; ++lane) {
         // The sound first (another sound puts START and END back to the whole), then what is done to it.
         const TrackData& now = project.tracks[track];

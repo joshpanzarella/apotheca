@@ -135,12 +135,31 @@ Engine::~Engine() {
 
 void Engine::destroy(const Trash& trash) {
     if (trash.isEffect) delete static_cast<Effect*>(trash.pointer);
-    else if (trash.isSample) delete static_cast<SampleData*>(trash.pointer);
-    else if (trash.isZones) delete static_cast<sampler::SampleZoneSet*>(trash.pointer);
+    else if (trash.isSample) {
+        const long long bytes = bytesOf(*static_cast<SampleData*>(trash.pointer));
+        sampleBytes_.fetch_sub(bytes, std::memory_order_relaxed);
+        sampleBytesFreed_.fetch_add(bytes, std::memory_order_relaxed);
+        delete static_cast<SampleData*>(trash.pointer);
+    } else if (trash.isZones) {
+        const long long bytes = bytesOf(*static_cast<sampler::SampleZoneSet*>(trash.pointer));
+        sampleBytes_.fetch_sub(bytes, std::memory_order_relaxed);
+        sampleBytesFreed_.fetch_add(bytes, std::memory_order_relaxed);
+        delete static_cast<sampler::SampleZoneSet*>(trash.pointer);
+    }
     else if (trash.isImage) delete static_cast<SceneSet*>(trash.pointer); // and the stores in it
     else if (trash.isStore) delete static_cast<SceneStore*>(trash.pointer);
     else if (trash.isMove) delete static_cast<SceneMove*>(trash.pointer); // and the scenes in it
     else delete static_cast<Instrument*>(trash.pointer);
+}
+
+long long Engine::bytesOf(const SampleData& sample) {
+    return static_cast<long long>((sample.data.capacity() + sample.right.capacity()) * sizeof(float));
+}
+
+long long Engine::bytesOf(const sampler::SampleZoneSet& zones) {
+    long long bytes = 0;
+    for (const sampler::SampleZone& zone : zones.zones) bytes += static_cast<long long>((zone.data.capacity() + zone.right.capacity()) * sizeof(float));
+    return bytes;
 }
 
 void Engine::collectGarbage() {
@@ -218,8 +237,10 @@ bool Engine::setTrackSample(int track, std::unique_ptr<SampleData> sample) {
     c.type = Command::SetTrackSample;
     c.track = track;
     c.pointer = sample.get();
+    const long long bytes = sample ? bytesOf(*sample) : 0;
     if (!send(c)) return false; // counted: a loss is mended by sending the song again
     sample.release();
+    sampleBytes_.fetch_add(bytes, std::memory_order_relaxed);
     return true;
 }
 
@@ -229,8 +250,10 @@ bool Engine::setTrackZones(int track, std::unique_ptr<sampler::SampleZoneSet> zo
     c.type = Command::SetTrackZones;
     c.track = track;
     c.pointer = zones.get();
+    const long long bytes = zones ? bytesOf(*zones) : 0;
     if (!send(c)) return false; // counted: a loss is mended by sending the song again
     zones.release();
+    sampleBytes_.fetch_add(bytes, std::memory_order_relaxed);
     return true;
 }
 
@@ -241,8 +264,10 @@ bool Engine::setLaneSample(int track, int lane, std::unique_ptr<SampleData> samp
     c.track = track;
     c.a = lane;
     c.pointer = sample.get();
+    const long long bytes = sample ? bytesOf(*sample) : 0;
     if (!send(c)) return false; // counted: a loss is mended by sending the song again
     sample.release(); // the audio thread hands the old one back through the trash
+    sampleBytes_.fetch_add(bytes, std::memory_order_relaxed);
     return true;
 }
 
