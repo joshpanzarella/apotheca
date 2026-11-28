@@ -18,10 +18,10 @@ section says which files to send.
 
 ## Choose your way
 
-| | A) Apotheca's own card | B) The Ports menu of your firmware |
+| | A) Apotheca's own card | B) The Ports menu of the stock firmware |
 | --- | --- | --- |
 | What it is | A card that starts the handheld **straight into Apotheca**. Nothing else is on it | Apotheca is one app among others on the card you have now (the firmware is the handheld's system: its menus and games) |
-| You need | A spare microSD card | A firmware with a Ports menu |
+| You need | A spare microSD card | Nothing more: the stock firmware's Ports menu |
 | Your stock card | **Stays untouched**, in a drawer | Stays in. Apotheca adds one folder |
 | What you get | Everything: the light round the stick, BRIGHTNESS, WiFi joined from Apotheca, its own hotspot, turning off from Apotheca | The music, all of it |
 | What you lose | Games, until you swap the stock card back | The firmware keeps some things for itself: **no BRIGHTNESS or stick light rows, WiFi is joined in the firmware's settings, no hotspot**. The manual marks each one "only on Apotheca's own system" |
@@ -90,21 +90,21 @@ it. (APOTHECA appears only after the first start.)
 - Or **hold the power key 2 seconds**. Let go when the screen goes dark.
 - A tap of the power key turns only the screen off. The song keeps playing.
 
-## B) The Ports menu of your firmware
+## B) The Ports menu of the stock firmware
 
 1. Download
    [Apotheca-port.zip](https://github.com/joshpanzarella/apotheca/raw/main/dist/Apotheca-port.zip)
    and unzip it. You get **`Apotheca.sh`** and an **`apotheca`** folder.
 2. Put the handheld's card in the computer.
-3. Copy **both** into the **firmware's ports folder** on the card, beside the
-   other ports. Its name and place depend on your firmware. **Not checked
-   here for each firmware.**
+3. Copy **both** into the **`Roms/PORTS` folder** on the card, beside the
+   other ports. (This is the stock firmware's ports folder. Another
+   firmware may keep its ports elsewhere.)
 4. Card back in, start the handheld, open **Ports**, start **Apotheca**.
 5. **The first start asks for each button** ("PRESS A", "PRESS B"...). About
    twenty seconds, once. A button your handheld does not have (MENU, the
    stick pressed in): wait eight seconds and it moves on.
 
-Your files live in that **`apotheca`** folder in the ports folder: songs,
+Your files live in that **`apotheca`** folder in `Roms/PORTS`: songs,
 recordings, settings. If it does not start, the reason is in
 `apotheca/apotheca.log`.
 

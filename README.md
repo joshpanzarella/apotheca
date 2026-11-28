@@ -77,7 +77,7 @@ apotheca/*.ttf      the lettering
 apotheca/licences/  licences of the code and lettering built in
 ```
 
-Unzip it into the firmware's ports folder on the SD card, beside the other
+Unzip it into the firmware's ports folder (`Roms/PORTS` on the stock firmware) on the SD card, beside the other
 ports. If it fails to start, the reason is in `apotheca/apotheca.log`.
 
 The program asks the device for only two things: the C library (version 2.29
