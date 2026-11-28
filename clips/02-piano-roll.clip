@@ -1,0 +1,29 @@
+# 02: the piano roll. A note placed and made longer, a chord picked with Y, the tempo tapped in from the roll.
+title THE PIANO ROLL
+about Notes and chords on a synth track: A places a note, hold Y to pick a chord, and up from the top of the bar the tempo is tapped in with A.
+caption PIANO ROLL
+run --demo --view notes
+from 1.0
+length 20.0
+
+1.2 say The piano roll.
+2.2 tap RIGHT 2 0.3
+2.9 tap DOWN
+3.4 tap A
+3.4 say A places a note.
+4.4 say Hold A, down: longer.
+4.4 hold A 1.4
+4.8 tap DOWN 2 0.35
+6.2 tap DOWN 4 0.15
+7.0 say Hold Y: the chords. Left, right picks one.
+7.0 hold Y 3.0
+7.8 tap RIGHT 3 0.6
+10.2 say Let go: it lands.
+11.4 say Up from step 1: TEMPO.
+11.4 press UP 0.5
+12.0 tap UP 4 0.25
+13.0 say Tap A in time: the tempo follows.
+13.2 tap A 6 0.4
+17.6 say Hold A, up: a beat faster.
+17.6 hold A 1.8
+18.0 tap UP 3 0.4

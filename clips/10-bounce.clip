@@ -1,0 +1,20 @@
+# 10: a bounce from SET (a take), with its progress.
+title A BOUNCE
+about On SET, the BOUNCE row makes the song into a WAV file while you carry on. Each bounce is a fresh TAKE: chance and the dice roll again.
+caption SET: BOUNCE
+run --demo --view bounce-ready
+from 0.5
+length 18.0
+
+0.7 say SET: BOUNCE.
+2.0 say Left, right: what to bounce.
+2.2 tap RIGHT 3 0.6
+4.4 tap LEFT 3 0.3
+5.4 say Each one is a new TAKE.
+7.0 say A starts it.
+7.4 tap A
+8.6 say WORKING: how far it is.
+12.2 say Done. Next: TAKE 2.
+13.8 say Hold A, down: an earlier take.
+13.8 hold A 2.4
+14.4 tap DOWN
