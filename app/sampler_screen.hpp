@@ -86,6 +86,7 @@ public:
     static constexpr int kPresetStop = kPlaces + 1;   // below the settings
     static constexpr int kPictureStop = kPresetStop + 1; // the recording's picture (S4): EDIT, and LOOP START
     static constexpr const char* kNoEditWords = "NO EDIT FOR A MULTISAMPLE: EACH NOTE IS ITS OWN FILE";
+    static constexpr const char* kNotLoadedWords = "NOT LOADED: NOT ENOUGH MEMORY. THIS TRACK IS SILENT."; // (THE MEMORY GUARD)
     bool editing() const { return edit_.isOpen(); }
     EditView& editView() { return edit_; }
     const EditView& editView() const { return edit_; }

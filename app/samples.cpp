@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -138,14 +139,114 @@ int wavChannels(const std::string& bytes) {
     return 0;
 }
 
+namespace {
+// A WAV's layout from its first bytes: where its sound starts, its frame and rate. False where the "data" chunk
+// does not start inside them, or the file is not one parseWav reads (its own checks, in the same order).
+struct WavLayout {
+    int channels = 0, frame = 0;
+    double rate = 0;
+    std::size_t data = 0, dataSize = 0; // where the sound starts, and the size its chunk says
+};
+bool layoutOf(const std::string& bytes, WavLayout& out) {
+    if (bytes.size() < 12 || bytes.compare(0, 4, "RIFF") != 0 || bytes.compare(8, 4, "WAVE") != 0) return false;
+    int format = 0, channels = 0, bits = 0;
+    double rate = 0;
+    std::size_t data = 0, dataSize = 0;
+    for (std::size_t at = 12; at + 8 <= bytes.size();) {
+        const std::size_t size = u32(bytes, at + 4), body = at + 8;
+        if (bytes.compare(at, 4, "fmt ") == 0 && size >= 16 && body + 16 <= bytes.size()) {
+            format = static_cast<int>(u16(bytes, body));
+            channels = static_cast<int>(u16(bytes, body + 2));
+            rate = u32(bytes, body + 4);
+            bits = static_cast<int>(u16(bytes, body + 14));
+            if (format == 0xFFFE && size >= 26 && body + 26 <= bytes.size()) format = static_cast<int>(u16(bytes, body + 24));
+        } else if (bytes.compare(at, 4, "data") == 0) {
+            data = body;
+            dataSize = size;
+            break;
+        }
+        at = body + size + (size & 1);
+    }
+    const bool whole = format == 1 && (bits == 8 || bits == 16 || bits == 24 || bits == 32);
+    const bool real = format == 3 && bits == 32;
+    if (!data || !(whole || real) || channels < 1 || channels > 8 || rate < 4000 || rate > 192000) return false;
+    out.channels = channels;
+    out.frame = bits / 8 * channels;
+    out.rate = rate;
+    out.data = data;
+    out.dataSize = dataSize;
+    return true;
+}
+
+constexpr std::size_t kHeadBytes = 64 * 1024; // a WAV's header is looked for in this much of its start
+
+// The most of a file parseWav will use: its header and kMaxSampleSeconds of sound, and one frame more (so a cut
+// file is still seen to be cut, and faded, as when the whole was read).
+std::size_t bytesUsed(const WavLayout& w) {
+    const std::size_t most = static_cast<std::size_t>(kMaxSampleSeconds * w.rate);
+    return w.data + (most + 1) * static_cast<std::size_t>(w.frame);
+}
+
+// A WAV's bytes, as far as parseWav will use them: the same sound to the bit as the whole file read, at no more
+// than twenty seconds' cost however long it is. Where its header is not in its first 64 KB, the whole file.
+bool readWavBytes(const std::string& path, std::string& bytes) {
+    std::FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) return false;
+    bytes.assign(kHeadBytes, '\0');
+    const std::size_t got = std::fread(&bytes[0], 1, kHeadBytes, f);
+    bytes.resize(got);
+    bool fine = !std::ferror(f);
+    WavLayout w;
+    if (fine && got == kHeadBytes && layoutOf(bytes, w)) {
+        const std::size_t want = bytesUsed(w);
+        if (want > got) {
+            bytes.resize(want);
+            bytes.resize(got + std::fread(&bytes[got], 1, want - got, f));
+            fine = !std::ferror(f);
+        } else {
+            bytes.resize(want);
+        }
+    } else if (fine && got == kHeadBytes) {
+        std::fclose(f);
+        return readTextFile(path, bytes); // (no header in its start: read whole, as before)
+    }
+    std::fclose(f);
+    return fine; // a card that fails part-way must not pass for a short file
+}
+} // namespace
+
+bool wavSize(const std::string& path, WavSize& out) {
+    out = WavSize();
+    std::FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) return false;
+    std::string head(kHeadBytes, '\0');
+    head.resize(std::fread(&head[0], 1, kHeadBytes, f));
+    long size = -1;
+    if (std::fseek(f, 0, SEEK_END) == 0) size = std::ftell(f);
+    std::fclose(f);
+    WavLayout w;
+    if (size < 0 || !layoutOf(head, w)) return false;
+    const std::size_t file = static_cast<std::size_t>(size);
+    const std::size_t there = file > w.data ? file - w.data : 0;
+    const std::size_t most = static_cast<std::size_t>(kMaxSampleSeconds * w.rate);
+    std::size_t frames = (w.dataSize < there ? w.dataSize : there) / static_cast<std::size_t>(w.frame);
+    if (frames > most) frames = most;
+    out.channels = w.channels == 2 ? 2 : 1;
+    out.fileFrames = frames;
+    // As toEngineRate makes it: floor(frames / (rate / 48 kHz)).
+    out.frames = w.rate == kSampleRate ? frames : static_cast<std::size_t>(std::floor(static_cast<double>(frames) / (w.rate / kSampleRate)));
+    out.readBytes = bytesUsed(w) < file ? bytesUsed(w) : file;
+    return true;
+}
+
 bool readWav(const std::string& path, std::vector<float>& out) {
     std::string bytes;
-    return readTextFile(path, bytes) && parseWav(bytes, out);
+    return readWavBytes(path, bytes) && parseWav(bytes, out);
 }
 
 bool readWav(const std::string& path, Clip& out) {
     std::string bytes;
-    return readTextFile(path, bytes) && parseWav(bytes, out);
+    return readWavBytes(path, bytes) && parseWav(bytes, out);
 }
 
 std::vector<float> Clip::mono() const {

@@ -476,7 +476,8 @@ void Session::bounceToSamples(BounceJob& job) {
     if (!job.sampleFolder.empty()) offline.useSampleFolder(job.sampleFolder);
     offline.applyProject();
     offline.finishStretching();
-    if (job.cancel.load()) return;
+    if (offline.refusals() > 0) job.noMemory.store(true); // THE MEMORY GUARD: a recording not loaded would bounce as silence
+    if (job.cancel.load() || job.noMemory.load()) return;
     {
         std::vector<float> settle(2 * 1024);
         engine->render(settle.data(), 1024);
@@ -633,7 +634,8 @@ bool Session::startBounce(Bounce what, int take) {
             if (!job->sampleFolder.empty()) offline.useSampleFolder(job->sampleFolder);
             offline.applyProject();
             offline.finishStretching();
-            if (job->cancel.load()) break; // stopped while the song was loaded: no file is begun
+            if (offline.refusals() > 0) job->noMemory.store(true); // THE MEMORY GUARD: a recording not loaded would bounce as silence
+            if (job->cancel.load() || job->noMemory.load()) break; // stopped while the song was loaded: no file is begun
             // A moment of nothing first, thrown away: the engine takes everything in (mutes fade
             // over a few milliseconds, and must have finished before the first note).
             {
@@ -700,7 +702,7 @@ bool Session::startBounce(Bounce what, int take) {
         for (std::size_t i = 0; i < paths.size() && !job->cancel.load(); ++i) padWav(paths[i], lengths[i], longest, static_cast<int>(rate));
         // Stopped (hold B on BOUNCE, or Apotheca closed): nothing of it is kept, the tracks already whole
         // too (an EACH TRACK cut short was a part of its stems, never padded to one length).
-        if (job->cancel.load()) {
+        if (job->cancel.load() || job->noMemory.load()) { // (no memory for a stem: none of them, as a stop)
             for (const std::string& path : paths) std::remove(path.c_str());
             made = 0;
             job->last.clear();
@@ -739,6 +741,7 @@ void Session::pretendBounce(float progress, float tailSeconds) {
     bounce_->tail.store(tailSeconds);
 }
 int Session::bounceFiles() const { return bounce_ && bounce_->done.load() ? bounce_->files : 0; }
+bool Session::bounceNoMemory() const { return bounce_ && bounce_->done.load() && bounce_->noMemory.load(); }
 std::string Session::bounceLast() const { return bounce_ && bounce_->done.load() ? bounce_->last : std::string(); }
 std::string Session::bounceSample() const { return bounce_ && bounce_->done.load() && bounce_->what == Bounce::ToSamples && bounce_->files > 0 ? bounce_->sample : std::string(); }
 int Session::bounceSampleSteps() const { return bounceSample().empty() ? 0 : bounce_->sampleSteps; }

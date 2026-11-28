@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "app.hpp"
+#include "memory.hpp"
 #include "samples.hpp"
 #include "song_file.hpp"
 #include "transfer.hpp"
@@ -269,6 +270,15 @@ void testTheServer() {
     // Too big is refused on its size alone, before any of it is read.
     a = raw(port, "PUT " + door + "/samples/huge.wav HTTP/1.1\r\nContent-Length: 40000000\r\n\r\nRIFF");
     CHECK(a.status == 413 && !exists(samples + "/huge.wav"));
+    // THE MEMORY GUARD: a file the handheld has no memory left to hold (and check) is refused on its size too, and
+    // nothing is written; a WAV is counted three times its bytes (its sound as floats while it is checked).
+    memory::pretend([&] { return memory::kMargin + 3 * static_cast<long long>(wav.size()) - 1; });
+    a = put(port, door + "/samples/tight.wav", wav);
+    CHECK(a.status == 503 && a.body.find("not enough memory") != std::string::npos && !exists(samples + "/tight.wav"));
+    memory::pretend([&] { return memory::kMargin + 3 * static_cast<long long>(wav.size()); });
+    CHECK(put(port, door + "/samples/tight.wav", wav).status == 200 && exists(samples + "/tight.wav"));
+    memory::pretend(nullptr);
+    unlink((samples + "/tight.wav").c_str());
     // No size given; a file cut off part-way; a method it does not take; rubbish.
     CHECK(raw(port, "PUT " + door + "/samples/x.wav HTTP/1.1\r\n\r\n" + wav).status == 411);
     a = raw(port, "PUT " + door + "/samples/cut.wav HTTP/1.1\r\nContent-Length: " + std::to_string(wav.size()) + "\r\n\r\n" + wav.substr(0, 100));

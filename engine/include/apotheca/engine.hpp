@@ -438,6 +438,13 @@ public:
     // nullptr to take it away. False if the track has no synth, or the queue is full (counted).
     bool setTrackSample(int track, std::unique_ptr<SampleData> sample);
     bool setTrackZones(int track, std::unique_ptr<sampler::SampleZoneSet> zones);
+    // The memory guard (2026-11-28): the bytes of the recordings this engine holds (lanes', a sampler's, its
+    // zones', a CLOUD's), counted from when one is sent until it is freed here (collectGarbage): those the audio
+    // thread has let go and not yet handed back are still held, and counted. The control thread's.
+    long long sampleBytes() const { return sampleBytes_.load(std::memory_order_relaxed); }
+    long long sampleBytesFreed() const { return sampleBytesFreed_.load(std::memory_order_relaxed); } // ...freed, ever
+    static long long bytesOf(const SampleData& sample);
+    static long long bytesOf(const sampler::SampleZoneSet& zones);
     // Free what the audio thread has handed back (removed synths, used
     // images). Call now and then from the control thread.
     void collectGarbage();
@@ -1142,6 +1149,7 @@ private:
 
     SpscQueue<Command, 16384> commands_; // room for whole cells sent at once
     SpscQueue<Command, 1024> live_;      // from the keyboard's thread (sendLive)
+    std::atomic<long long> sampleBytes_{0}, sampleBytesFreed_{0}; // sampleBytes(), sampleBytesFreed()
     std::atomic<unsigned> dropped_{0};   // commands lost to a full queue
 
     // Things the audio thread no longer needs and must not free itself. Emptied
@@ -1150,7 +1158,7 @@ private:
     // track images; 40 effects fading out), so this holds several of those.
     struct Trash { bool isImage = false; void* pointer = nullptr; bool isSample = false; bool isZones = false; bool isEffect = false; bool isMove = false; bool isStore = false; }; // isImage: a SceneSet
     SpscQueue<Trash, 1024> trash_;
-    static void destroy(const Trash& trash);
+    void destroy(const Trash& trash); // (counts the recordings freed: sampleBytes)
     // What found the trash full waits here (the audio thread's alone) and is
     // handed on at the end of a chunk (binHeld), as an effect fading out is.
     // Only if this is full too is a thing lost (leaked, and counted): never
