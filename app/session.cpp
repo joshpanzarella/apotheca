@@ -2398,6 +2398,7 @@ void Session::applyProject() {
     for (TypeMemory& m : typeMemory_) m = TypeMemory();
     for (PresetSoundMemory& m : presetSounds_) m = PresetSoundMemory();
     kept_.track = -1;
+    bounceTakePicked_ = 0; // another song: BOUNCE's row on its next new take
     undo_.clear();
     redo_.clear();
     editing_ = false;

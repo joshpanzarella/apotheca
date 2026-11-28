@@ -514,7 +514,8 @@ static void testTypesWithChords() {
 // RANDOM: worked out from where the note is and which time it is played. Play from the top is
 // the same performance again; no two times round are alike; two tracks with the same notes
 // differ; every key of the moment before has its turn; and it is the rule's own roll.
-static void testRandomIsRolledForItsPlace() {
+// (`take`: a bounce's, Engine::setTake: every roll its take's own. What the high notes came from, for the take after.)
+static std::vector<int> randomRolledForItsPlace(std::uint32_t take) {
     const int chord[4] = {48, 55, 60, 67};
     const auto fill = [&](Rig& rig, int track) {
         int slot = 0;
@@ -529,6 +530,7 @@ static void testRandomIsRolledForItsPlace() {
     Command c = make(Command::InstallSynth, 2);
     c.pointer = new Spy(&other);
     CHECK(rig.engine->send(c));
+    rig.engine->setTake(take);
     rig.engine->send(glideFrom(kFromRandom));
     rig.engine->send(glideFrom(kFromRandom, 2));
     fill(rig, 1);
@@ -542,7 +544,7 @@ static void testRandomIsRolledForItsPlace() {
     for (const Began& b : other)
         if (b.pitch == 72) highOther.push_back(b.from);
     CHECK(high.size() == 4u * rounds && low.size() == high.size() && highOther.size() == high.size());
-    if (high.size() != 4u * rounds || low.size() != high.size() || highOther.size() != high.size()) return;
+    if (high.size() != 4u * rounds || low.size() != high.size() || highOther.size() != high.size()) return high;
     GlideKeys keys;
     for (int key : chord) keys.add(key);
     int picked[128] = {}, roundsDiffer = 0, tracksDiffer = 0, notesDiffer = 0;
@@ -551,8 +553,8 @@ static void testRandomIsRolledForItsPlace() {
         ++picked[high[i] < 0 ? 0 : high[i]];
         const double nudge = i % 4 == 2 ? 0.25 : i % 4 == 3 ? -0.25 : 0.0;
         const double at = static_cast<double>(i / 4) * 16.0 + static_cast<double>(i % 4) * 4.0 + 2.0 + static_cast<double>(static_cast<float>(nudge));
-        CHECK(high[i] == glideFromKey(kFromRandom, keys, 72, 0, 1, glideSeed(1, at)) && low[i] == glideFromKey(kFromRandom, keys, 36, 0, 1, glideSeed(1, at)));
-        CHECK(highOther[i] == glideFromKey(kFromRandom, keys, 72, 0, 1, glideSeed(2, at)));
+        CHECK(high[i] == glideFromKey(kFromRandom, keys, 72, 0, 1, takeSeed(glideSeed(1, at), take)) && low[i] == glideFromKey(kFromRandom, keys, 36, 0, 1, takeSeed(glideSeed(1, at), take)));
+        CHECK(highOther[i] == glideFromKey(kFromRandom, keys, 72, 0, 1, takeSeed(glideSeed(2, at), take)));
         roundsDiffer += i >= 4 && high[i] != high[i - 4];
         tracksDiffer += high[i] != highOther[i];
         notesDiffer += high[i] != low[i];
@@ -569,6 +571,11 @@ static void testRandomIsRolledForItsPlace() {
     rig.play(16 * rounds);
     CHECK(first.size() == rig.log.size());
     for (std::size_t i = 0; i < first.size() && i < rig.log.size(); ++i) CHECK(first[i].pitch == rig.log[i].pitch && first[i].from == rig.log[i].from && first[i].seconds == rig.log[i].seconds);
+    return high;
+}
+static void testRandomIsRolledForItsPlace() {
+    const std::vector<int> asMade = randomRolledForItsPlace(0), three = randomRolledForItsPlace(3);
+    CHECK(asMade.size() == 48 && three.size() == 48 && asMade != three); // another take, other keys to come from
 }
 
 // Two notes within a 256th of a step, one just before a step's line and one on it. The notes

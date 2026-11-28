@@ -579,11 +579,16 @@ void setUpStill(App& app, const StillOptions& options, Input& input, ControlMap&
             pushKey(SDLK_z, true);
             if (stillMs > 300) stillMs = 300;
         } else fx.goTo(0, 0);
-    } else if (std::strcmp(view, "bounce") == 0 || std::strcmp(view, "bounce-tail") == 0 || std::strcmp(view, "bounce-ready") == 0) {
+    } else if (std::strcmp(view, "bounce") == 0 || std::strcmp(view, "bounce-tail") == 0 || std::strcmp(view, "bounce-ready") == 0 || std::strcmp(view, "bounce-take") == 0) {
         // The BOUNCE row while one is under way: part-way through the song, or 12 seconds into its tail.
-        // "bounce-ready": the row at rest, with what A does.
+        // "bounce-ready": the row at rest, with what A does. "bounce-take": five takes made, TAKE 3 picked again
+        // (with --hold-a: the hints of A held, UP / DOWN take).
         app.session().view = View::Settings;
         app.settings().goTo(SettingsScreen::kBounce);
+        if (std::strcmp(view, "bounce-take") == 0) {
+            app.project().takes = 5;
+            app.session().pickBounceTake(-3);
+        }
         if (view[6] == 0) app.session().pretendBounce(0.37f, -1.f);
         else if (std::strcmp(view, "bounce-tail") == 0) app.session().pretendBounce(1.f, 12.4f);
     } else if (std::strcmp(view, "panic") == 0) {

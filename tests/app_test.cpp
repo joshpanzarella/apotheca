@@ -2276,6 +2276,147 @@ void testBouncing() {
     CHECK(wavsIn().size() == whole + 1);
 }
 
+// A bounce's TAKE (owner, 2026-11-28: "each bounce is a fresh take ... say which take it is in the file name").
+// Each new bounce plays the chance and the dice afresh (Engine::setTake) and is named for its take; the take is
+// kept in the song; hold A + UP / DOWN on SET's BOUNCE picks an earlier one, made again to the bit.
+void testBounceTakes() {
+    const std::string folder = tempFolder("takes");
+    const std::string samples = folder + "/samples";
+    mkdir(samples.c_str(), 0755);
+    const auto read = [&](const std::string& name) { return readWav(folder + "/" + name); };
+    Rig rig;
+    Session& session = rig.app.session();
+    session.useBounceFolder(folder);
+    session.useSampleFolder(samples);
+    // A kick on every step at a half chance, two bars of it.
+    PatternScreen& drums = rig.app.drums();
+    for (int step = 0; step < kSteps; ++step) {
+        drums.setStep(0, step, 1.f);
+        drums.setChance(0, step, 0.5f);
+    }
+    rig.project().repeats[0] = 2;
+    rig.frames(2);
+    CHECK(rig.project().takes == 0 && session.bounceTake() == 1 && session.bounceTakeIsNew());
+    const auto bounce = [&](Session::Bounce what, int take) {
+        const bool ok = session.startBounce(what, take);
+        session.finishBounce();
+        return ok ? session.bounceLast() : std::string("(none)");
+    };
+    const auto named = [&](const char* rest) { return session.songName() + rest; }; // (the rig's song: "untitled")
+    const auto timed = [&](const std::string& n, const char* take) { // the take, then the time: "untitled take 1 261128-141500.wav"
+        const std::string head = session.songName() + take + " ";
+        return n.compare(0, head.size(), head) == 0 && n.size() == head.size() + std::strlen("261128-141500.wav") && n.compare(n.size() - 4, 4, ".wav") == 0;
+    };
+    const auto same = [](const Wav& a, const Wav& b) { return !a.left.empty() && a.left == b.left && a.right == b.right; };
+    // Two new bounces: takes 1 and 2, kept in the song, and other hits in each.
+    const std::string one = bounce(Session::Bounce::Song, 0);
+    CHECK(one == named(" take 1.wav") && session.bounceTakeMade() == 1 && rig.project().takes == 1 && session.bounceTake() == 2);
+    const std::string two = bounce(Session::Bounce::Song, 0);
+    CHECK(two == named(" take 2.wav") && session.bounceTakeMade() == 2 && rig.project().takes == 2 && session.bounceTake() == 3);
+    const Wav a = read(one), b = read(two);
+    CHECK(a.left.size() >= static_cast<std::size_t>(2 * kBar) && !same(a, b));
+    // Take 1 again: the same to the bit. Its name is taken, so this one has the time after it; no take is spent.
+    const std::string again = bounce(Session::Bounce::Song, 1);
+    CHECK(timed(again, " take 1"));
+    CHECK(session.bounceTakeMade() == 1 && rig.project().takes == 2 && same(read(again), a));
+    // A take past the last is a new one (as 0 is).
+    CHECK(bounce(Session::Bounce::Song, 9) == named(" take 3.wav") && rig.project().takes == 3);
+    // A track's own file: the take, then the track (" - 1 DRUMS"), and its take's hits: take 2's again is take 2's.
+    rig.project().track = 0;
+    CHECK(bounce(Session::Bounce::ThisTrack, 0) == named(" take 4 - 1 DRUMS.wav") && rig.project().takes == 4);
+    const std::string drums2 = bounce(Session::Bounce::ThisTrack, 2);
+    CHECK(drums2 == named(" take 2 - 1 DRUMS.wav") && same(read(drums2), b)); // (one track: the song's own sound)
+    // A MIDI FILE has no chance in it: no take is spent, and its name is as it always was (the song and the time).
+    const std::string mid = bounce(Session::Bounce::MidiFile, 0);
+    CHECK(mid.size() > 4 && mid.compare(mid.size() - 4, 4, ".mid") == 0 && mid.find("take") == std::string::npos);
+    CHECK(session.bounceTakeMade() == 0 && rig.project().takes == 4);
+    // TRACK TO SAMPLES: the take after the number ("bounces/drums 1 take 5").
+    CHECK(session.startBounce(Session::Bounce::ToSamples));
+    session.finishBounce();
+    CHECK(session.bounceSample() == "bounces/drums 1 take 5" && rig.project().takes == 5);
+    CHECK(session.startBounce(Session::Bounce::ToSamples, 5));
+    session.finishBounce();
+    CHECK(session.bounceSample() == "bounces/drums 2 take 5" && rig.project().takes == 5); // (the number: how many of the track's)
+    std::vector<float> loop5, loop5again, loop1;
+    CHECK(apotheca::readWav(samples + "/bounces/drums 1 take 5.wav", loop5) && apotheca::readWav(samples + "/bounces/drums 2 take 5.wav", loop5again));
+    CHECK(session.startBounce(Session::Bounce::ToSamples, 1));
+    session.finishBounce();
+    CHECK(session.bounceSample() == "bounces/drums 3 take 1" && apotheca::readWav(samples + "/" + session.bounceSample() + ".wav", loop1));
+    CHECK(!loop5.empty() && loop5 == loop5again && loop1.size() == loop5.size() && loop1 != loop5); // its take's hits
+    // Kept in the song: written as "takes 5" (only once there is one), and read back.
+    const std::string text = songText(rig.project());
+    CHECK(text.find("\ntakes 5\n") != std::string::npos);
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back) && back->takes == 5 && songText(*back) == text);
+    CHECK(songText(*std::unique_ptr<Project>(new Project)).find("takes") == std::string::npos);
+    CHECK(parseSong("apotheca-song 1\ntempo 120\ntakes 1e12\n", *back) && back->takes == kMostTakes);
+    CHECK(parseSong("apotheca-song 1\ntempo 120\ntakes -3\n", *back) && back->takes == 0);
+    CHECK(parseSong("apotheca-song 1\ntempo 120\n", *back) && back->takes == 0); // a song from before: none yet
+    std::vector<std::size_t> starts;
+    CHECK(!cutSongAt("apotheca-song 1\ntrack drums\ntakes 3\n", starts)); // the song's own word, not a track's
+    // ...and kept across a save and a load (the song shut, another opened, and it again).
+    session.useSongFolder(folder + "/songs", 7u);
+    const std::string name = session.songName();
+    rig.project().takes = 5;
+    rig.app.drums().setStep(1, 3, 1.f); // (something in it, so it is saved)
+    CHECK(session.saveNow());
+    CHECK(session.newSong() && rig.project().takes == 0 && session.bounceTake() == 1);
+    CHECK(session.openSong(name) && rig.project().takes == 5 && session.bounceTake() == 6);
+
+    // SET's BOUNCE row: hold A + UP / DOWN picks the take (DOWN an earlier one, stopping at 1 and at the new one);
+    // a let go after it bounces nothing; a tap of A then makes the take picked, and the row goes back to the new one.
+    const Wav first = read(bounce(Session::Bounce::Song, 1)); // (this song's take 1, which has another name and another kit)
+    CHECK(first.left.size() >= static_cast<std::size_t>(2 * kBar) && rig.project().takes == 5);
+    session.view = View::Settings;
+    SettingsScreen& setup = rig.app.settings();
+    setup.goTo(SettingsScreen::kBounce);
+    rig.frames(1);
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(DOWN, 3);
+    CHECK(session.bounceTake() == 3 && !session.bounceTakeIsNew());
+    rig.tap(UP, 9);
+    CHECK(session.bounceTake() == 6 && session.bounceTakeIsNew());
+    rig.tap(DOWN, 9);
+    CHECK(session.bounceTake() == 1 && setup.row() == SettingsScreen::kBounce); // (the cursor stayed: UP / DOWN were the take's)
+    rig.frames(1);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(!session.bouncing() && session.bounceTake() == 1 && rig.project().takes == 5);
+    rig.tap(A); // take 1 again: the same sound
+    session.finishBounce();
+    CHECK(session.bounceTakeMade() == 1 && session.bounceTakeIsNew() && session.bounceTake() == 6 && rig.project().takes == 5);
+    CHECK(timed(session.bounceLast(), " take 1") && same(read(session.bounceLast()), first));
+    rig.tap(A); // and a tap with nothing picked: a new one
+    session.finishBounce();
+    CHECK(session.bounceTakeMade() == 6 && rig.project().takes == 6 && session.bounceLast() == named(" take 6.wav"));
+    // A held D-pad runs (the list's pace), and so does the stick: down an earlier take, up a later.
+    rig.key(A, true);
+    rig.key(DOWN, true);
+    rig.frames(90);
+    rig.key(DOWN, false);
+    CHECK(session.bounceTake() == 1);
+    rig.stick(0.f, -1.f);
+    rig.frames(3);
+    rig.stick(0.f, 0.f);
+    rig.frames(1);
+    CHECK(session.bounceTake() > 1 && setup.row() == SettingsScreen::kBounce);
+    rig.key(UP, true);
+    rig.frames(200);
+    rig.key(UP, false);
+    CHECK(session.bounceTake() == 7 && session.bounceTakeIsNew());
+    rig.key(A, false);
+    rig.frames(1);
+    // Without A held, UP / DOWN move the cursor as ever; another song puts the pick back to its next new take.
+    rig.key(A, true);
+    rig.tap(DOWN);
+    rig.key(A, false);
+    CHECK(session.bounceTake() == 6);
+    rig.tap(DOWN);
+    CHECK(setup.row() != SettingsScreen::kBounce);
+    CHECK(session.newSong() && session.bounceTake() == 1 && session.bounceTakeIsNew());
+}
+
 // WHERE A BOUNCE ENDS, by itself: made-up tails, no engine and no file.
 void testWhereABounceEnds() {
     const int block = 256;
@@ -14502,6 +14643,7 @@ int main(int argc, char** argv) {
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     if (argc > 1 && std::string(argv[1]) == "--bounce") { // just the bouncing (for trying a change; ctest runs everything)
         testBouncing();
+        testBounceTakes();
         testWhereABounceEnds();
         testABounceRunsUntilTheTailEnds();
         if (failures == 0) std::printf("app tests passed (bouncing only)\n");
@@ -14746,6 +14888,7 @@ int main(int argc, char** argv) {
     testTheBattery();
     testBatteryLog();
     testBouncing();
+    testBounceTakes();
     testWhereABounceEnds();
     testABounceRunsUntilTheTailEnds();
     testRecordingAutomation();

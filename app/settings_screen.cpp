@@ -176,6 +176,10 @@ void SettingsScreen::jumpGroup(int by) {
         if (here(r) && groupOf(r) == group) return goTo(r);
 }
 
+bool SettingsScreen::takeKeys(const Input& input) const {
+    return row_ == kBounce && bounceWhat_ != 3 && input.held(Button::A) && !session_.bouncing();
+}
+
 void SettingsScreen::change(int by) {
     switch (row_) {
     case kTempo: session_.setTempo(project_.tempo + static_cast<float>(by)); break;
@@ -310,7 +314,8 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
             const bool tap = aTap_ && aRow_ == row_;
             aTap_ = false;
             if (tap && row_ == kBounce && !session_.bouncing())
-                session_.startBounce(bounceWhat_ == 0 ? Session::Bounce::Song : bounceWhat_ == 1 ? Session::Bounce::EachTrack : bounceWhat_ == 2 ? Session::Bounce::ThisTrack : bounceWhat_ == 3 ? Session::Bounce::MidiFile : Session::Bounce::ToSamples);
+                session_.startBounce(bounceWhat_ == 0 ? Session::Bounce::Song : bounceWhat_ == 1 ? Session::Bounce::EachTrack : bounceWhat_ == 2 ? Session::Bounce::ThisTrack : bounceWhat_ == 3 ? Session::Bounce::MidiFile : Session::Bounce::ToSamples,
+                                    session_.bounceTake()); // (the take picked, or the next new one)
             if (tap && row_ == kTrackName) openName(false);
             return;
         }
@@ -326,6 +331,13 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (isDirection(b)) {
+        if ((b == Button::Up || b == Button::Down) && takeKeys(input)) {
+            // Hold A + UP / DOWN on BOUNCE: the take (UP a later one), stopping at 1 and at the next new one.
+            session_.pickBounceTake(b == Button::Up ? 1 : -1);
+            repeating_ = b;
+            repeat_.restart();
+            return;
+        }
         if (b == Button::Up) step(-1, true); // (a press: round the ends; the run below stops at them)
         if (b == Button::Down) step(1, true);
         if (b == Button::Left) change(-1);
@@ -350,6 +362,7 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
     if (!input.held(Button::A) || row_ != kNetwork) picking_ = false; // (a let go this screen never saw joins nothing)
     if (!input.held(Button::B) || row_ != kNetwork) forgetting_ = false;
     if (!input.held(Button::A)) aTap_ = false; // (a let go this screen never saw is no tap)
+    takeHeld_ = takeKeys(input);
     if (!input.held(Button::B) || row_ != kBounce || !session_.bouncing() || session_.bounceStopping()) stopping_ = false; // (ended by itself meanwhile, or stopping: nothing to stop)
     if (!networkSaid_.empty() && nowMs >= networkSaidUntil_) networkSaid_.clear();
     // Our firmware's WiFi: its status asked for now and then, and a scan while the NETWORK row is up.
@@ -460,6 +473,8 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
             aTap_ = false; // (the stick moved something with A held: no tap of A, as a direction pressed)
             if (picking_) {
                 if (!sideways) pickStep(push > 0.f ? 1 : -1);
+            } else if (!sideways && takeKeys(input)) {
+                session_.pickBounceTake(push > 0.f ? -1 : 1); // (the stick down is DOWN: an earlier take)
             } else if (sideways) {
                 change(push > 0.f ? 1 : -1);
             } else {
@@ -471,6 +486,10 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
     while (repeating_ != Button::None && repeat_.due(nowMs, input.held(repeating_), Pace::List)) {
         if (picking_) {
             pickStep(repeating_ == Button::Down ? 1 : repeating_ == Button::Up ? -1 : 0);
+            continue;
+        }
+        if ((repeating_ == Button::Up || repeating_ == Button::Down) && takeKeys(input)) {
+            session_.pickBounceTake(repeating_ == Button::Up ? 1 : -1);
             continue;
         }
         if (repeating_ == Button::Up) step(-1);
@@ -687,11 +706,15 @@ void SettingsScreen::rowValue(int row, char (&text)[96], char (&said)[96], const
             part = session_.bounceProgress();
             note = stopPart_ > 0.f || session_.bounceStopping() ? kStoppingWords : tail >= 0.f ? "until the echoes have died away" : "you can carry on meanwhile";
         } else {
-            std::snprintf(text, sizeof text, "%s", what[bounceWhat_]);
+            // A WAV's TAKE: the next new one unless an earlier one is picked (hold A + UP / DOWN). A MIDI file has none.
+            if (bounceWhat_ == 3) std::snprintf(text, sizeof text, "%s", what[bounceWhat_]);
+            else std::snprintf(text, sizeof text, "%s  TAKE %d", what[bounceWhat_], session_.bounceTake());
             const std::string sample = session_.bounceSample();
             if (!sample.empty()) std::snprintf(bounced_, sizeof bounced_, "done: \"%s\" in recordings", sample.c_str());
             else if (session_.bounceFiles() > 0) std::snprintf(bounced_, sizeof bounced_, "done: %d file%s, on the WiFi page", session_.bounceFiles(), session_.bounceFiles() == 1 ? "" : "s");
-            note = session_.bounceFiles() > 0 ? bounced_ : (bounceWhat_ == 3 ? "A: write it as a MIDI file" : bounceWhat_ == 4 ? "A: this scene's loop, into recordings" : "A: write it as a WAV file");
+            // (The take's gesture is said here, not in the hints: the bar has no room for it. Only once there is an earlier take.)
+            note = bounceWhat_ != 3 && !session_.bounceTakeIsNew() ? "A: that take again" : session_.bounceFiles() > 0 ? bounced_
+                 : bounceWhat_ != 3 && project_.takes > 0 ? "hold A + up / down: earlier takes" : (bounceWhat_ == 3 ? "A: write it as a MIDI file" : bounceWhat_ == 4 ? "A: this scene's loop, into recordings" : "A: write it as a WAV file");
         }
         break;
     }
@@ -837,7 +860,10 @@ void SettingsScreen::drawHints(SDL_Renderer* r, const Fonts& fonts) const {
     hint("UP / DOWN", "choose");
     if (row_ < kWifi) hint("LEFT / RIGHT", "change");
     if (hasUsual(row_)) hint("B", "default");
-    if (row_ == kBounce) {
+    if (row_ == kBounce && takeHeld_) {
+        count = 0;
+        hint("UP / DOWN", "take");
+    } else if (row_ == kBounce) {
         if (!session_.bouncing()) hint("A", "bounce");
         else if (!session_.bounceStopping()) hint("HOLD B", stopPart_ > 0.f ? "stopping" : "stop it"); // (stopping: B has nothing left to do)
     }

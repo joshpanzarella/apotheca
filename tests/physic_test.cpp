@@ -1306,10 +1306,11 @@ struct SeedSpy : Instrument {
 // Every seed `noteSeed` hands over, through the engine: each piece of a ratchet its own, each piece of
 // a chord's ratchet its own, an arpeggio's notes on one key new each time round, a strum's keys their
 // own, and Play twice the same seeds.
-static std::vector<std::pair<int, std::uint32_t>> seedsOf(const std::function<void(Rig&)>& write, long frames) {
+static std::vector<std::pair<int, std::uint32_t>> seedsOf(const std::function<void(Rig&)>& write, long frames, std::uint32_t take = 0) {
     std::vector<std::pair<int, std::uint32_t>> log;
     log.reserve(10000);
     Rig rig;
+    rig.engine->setTake(take); // (a bounce's: Engine::setTake)
     Command c = make(Command::InstallSynth, 1);
     c.pointer = new SeedSpy(&log);
     rig.send(c);
@@ -1353,6 +1354,10 @@ static void testSeeds() {
         const auto a = seedsOf(write, 48000 * 4 + 100), b = seedsOf(write, 48000 * 4 + 100);
         CHECK(a == b);
         CHECK(a.size() >= 4 && a[0].first == 60 && a[2].first == 60 && a[0].second != a[2].second && a[0].second == strikeSeed(1, 60, 0.0) && a[2].second == strikeSeed(1, 60, 16.0));
+        // A bounce's TAKE: each strike's seed is the take's own, the same take the same.
+        const auto t = seedsOf(write, 48000 * 4 + 100, 4);
+        CHECK(t == seedsOf(write, 48000 * 4 + 100, 4) && t.size() == a.size() && t != a);
+        CHECK(t.size() >= 4 && t[0].second == takeSeed(strikeSeed(1, 60, 0.0), 4) && t[2].second == takeSeed(strikeSeed(1, 60, 16.0), 4));
     }
 }
 

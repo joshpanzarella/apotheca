@@ -232,6 +232,11 @@ static void testTheNumbers() {
 
     // The rolls: from where and which time, nothing else; spread over the whole range.
     CHECK(chordSeed(1, 2, 3, 4) == chordSeed(1, 2, 3, 4));
+    // A bounce's TAKE (Engine::setTake): take 0 leaves every seed as it is; any other is another seed, its own each.
+    for (std::uint32_t seed : {0u, 1u, chordSeed(1, 2, 3, 4), 0xFFFFFFFFu}) {
+        CHECK(takeSeed(seed, 0) == seed && takeSeed(seed, 1) != seed && takeSeed(seed, 2) != takeSeed(seed, 1) && takeSeed(seed, 1) == takeSeed(seed, 1));
+        CHECK(takeSeed(seed, 1) != takeSeed(seed ^ 1u, 1)); // and still the seed's own
+    }
     CHECK(chordSeed(1, 2, 3, 4) != chordSeed(2, 2, 3, 4) && chordSeed(1, 2, 3, 4) != chordSeed(1, 3, 3, 4) && chordSeed(1, 2, 3, 4) != chordSeed(1, 2, 4, 4) && chordSeed(1, 2, 3, 4) != chordSeed(1, 2, 3, 5));
     double sum = 0.0, least = 1.0, most = -1.0;
     for (int i = 0; i < 4000; ++i) {
@@ -828,9 +833,10 @@ static void fxSong(Rig& rig, int track = 1) {
     rig.chord(0, 0, {53, 57, 60, 64}, 8.f, playOf(kStrumHalf, kOrderUpDown, 75, 50, 50), 0, 0, 0.f, 1, track);
     rig.chord(4, 8, {48, 55, 64}, 7.5f, playOf(kStrumStep, kOrderDown, 0, 100, 0), 0, 0, 0.f, 1, track);
 }
-static std::vector<Told> performance(int block, int helpers, bool twice = false, float tempo = 120.f) {
+static std::vector<Told> performance(int block, int helpers, bool twice = false, float tempo = 120.f, std::uint32_t take = 0) {
     Rig rig;
     rig.engine->useWorkers(helpers);
+    rig.engine->setTake(take);
     if (tempo != 120.f) rig.send(make(Command::SetTempo, 0, 0, 0, tempo));
     fxSong(rig);
     rig.play();
@@ -876,6 +882,12 @@ static void testTheSameEveryTime() {
         }
     }
     CHECK(one.size() > 20 && !(one == two));
+    // A bounce's TAKE: another performance (HUMAN, strum, the order, the lengths all rolled again), the same
+    // take the same to the bit, and take 0 the song as it always played.
+    CHECK(performance(64, 0, false, 120.f, 0) == first);
+    const std::vector<Told> take1 = performance(64, 0, false, 120.f, 1), take2 = performance(64, 0, false, 120.f, 2);
+    CHECK(take1.size() > 300 && !(take1 == first) && !(take2 == first) && !(take1 == take2));
+    CHECK(performance(173, 2, false, 120.f, 1) == take1 && performance(64, 0, true, 120.f, 2) == take2);
 }
 
 // The real instruments play it: sound comes out, the same to the last bit on any number of
