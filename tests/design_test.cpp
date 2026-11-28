@@ -937,6 +937,9 @@ void testKitFromThePage() {
     CHECK(rig.tell("set 29 75") && kit.laneSwing[1] == 75 && rig.tell("set 29 400") && kit.laneSwing[1] == 100); // SWING (held to 0..100)
     CHECK(rig.tell("set 29 25") && numbersOf(rig.get("/design/state").body)[kitId(1, kKitSwing)] == 25); // ...and the page is told it
     CHECK(rig.tell("set 29 0") && kit.laneSwing[1] == 0 && numbersOf(rig.get("/design/state").body)[kitId(1, kKitSwing)] == 0);
+    // MONO (STEREO, 2026-11-28): EDIT's own stop, a field of its own on the page, 0 or 1.
+    CHECK(rig.tell("set 30 1") && kit.laneEdit[1].mono == 1 && numbersOf(rig.get("/design/state").body)[kitId(1, kKitMono)] == 1);
+    CHECK(rig.tell("set 30 0") && kit.laneEdit[1].mono == 0 && has(rig.get("/design/spec").body, "\"MONO\""));
     CHECK(rig.tell("set 26 400") && kit.laneLevel[1] == 1.f && rig.tell("set 26 -4") && kit.laneLevel[1] == 0.f);
     v = numbersOf(rig.get("/design/state").body);
     CHECK(v.size() == static_cast<std::size_t>(kKitKnobs + kDrumLanes * drumsynth::kPlaces) && v[24] == 16 && v[25] == 0 && v[26] == 0 && v[27] == 0 && v[28] == 50 && v[kitId(2, kKitFit)] == 0);
