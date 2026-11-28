@@ -626,11 +626,11 @@ track's name is typed L1 and R1 are the keys'.
 | VOLUME | A twentieth | |
 | BRIGHTNESS | The screen, 10% to 100% in fives (also **MENU + the volume keys**, ten at a time). **Only on Apotheca's own system for the RG40XXV** | |
 | STICK LIGHT | The light round the stick: OFF, ON (steady, in LIGHT COLOUR), BEAT (a flash on every beat while the song plays), STEPS (the ring goes round once a scene: its sixteen lights share the scene's length, the bar's first step in brass). **Only on Apotheca's own system** | |
-| LIGHT COLOUR | The ring's colour: THEME (a colour picked for each theme: BROWN's is BRASS, DRACULA purple, NORD frost blue, GRUVBOX orange, TOKYO indigo, MONOKAI lime, SOLARIZED cyan, GITHUB blue), TEAL, PURPLE, BRASS, RED, ORANGE, YELLOW, GREEN, BLUE, PINK, WHITE, TRACK (a colour for each track: the track you are on; while it is chosen each track's head on the SONG screen wears a thin bar of its colour along its foot, so the ring can be matched to a track), RAINBOW (each light its own colour, turning a light a beat while the song plays). **Only on Apotheca's own system** | |
+| LIGHT COLOUR | The ring's colour: THEME (a colour picked for each theme: BROWN's is BRASS, DRACULA purple, NORD frost blue, GRUVBOX orange, TOKYO indigo, MONOKAI lime, SOLARIZED cyan, GITHUB blue, LATTE mauve, ONE magenta), TEAL, PURPLE, BRASS, RED, ORANGE, YELLOW, GREEN, BLUE, PINK, WHITE, TRACK (a colour for each track: the track you are on; while it is chosen each track's head on the SONG screen wears a thin bar of its colour along its foot, so the ring can be matched to a track), RAINBOW (each light its own colour, turning a light a beat while the song plays). **Only on Apotheca's own system** | |
 | RING LEVEL | The ring's own brightness, 10% to 100% in fives, apart from the screen's. **Only on Apotheca's own system** | |
 | STICK SPEED | How fast the stick goes, 25% to 150%, kept for next time. **At 50% it is the held D-pad's own pace**; at 75% (as it starts) half as fast again, at 100% twice | |
 | TEXT SIZE | SMALL, MEDIUM, LARGE or XL, kept for next time | |
-| THEME | The colours: BROWN, DRACULA, NORD, GRUVBOX, TOKYO, MONOKAI, SOLARIZED or GITHUB, kept for next time | |
+| THEME | The colours: BROWN, DRACULA, NORD, GRUVBOX, TOKYO, MONOKAI, SOLARIZED, GITHUB, LATTE or ONE, kept for next time (LATTE and ONE are the easiest to read outdoors) | |
 | PIANO ROLL SHOWS | 1, 2 or 3 octaves | |
 | USB KEYBOARD | PLAY ONLY, or PLAY + RECORD | |
 | CLICK | The metronome: OFF, ON (a click on every beat while the song plays, higher on a bar's first), RECORDING (only while it plays with PLAY + RECORD). It is never in a bounce, and CATCH never takes it | |
@@ -711,9 +711,11 @@ is `apotheca-2.local`. A computer that does not look names up this way
 (some Windows and Android ones) still has the address.
 
 **THEME** changes the colours, and nothing else: every box, word and mark
-stays where it was. It changes at once. Six are dark and two are light. All
+stays where it was. It changes at once. Six are dark and four are light. All
 but BROWN take their colours from well-known editor themes, adjusted so every
-word and mark is as easy to read as in BROWN:
+word and mark is as easy to read as in BROWN. **Outdoors, pick LATTE or ONE**:
+they have the strongest contrast of all (near-black letters on near-white,
+dark strong colours), made for a bright day on a shiny screen:
 
 | Theme | |
 | --- | --- |
@@ -725,6 +727,8 @@ word and mark is as easy to read as in BROWN:
 | MONOKAI | charcoal, with lime, cyan, yellow and pink |
 | SOLARIZED | warm cream, light, for daylight |
 | GITHUB | cool white-grey, light |
+| LATTE | near white with a hint of lavender, light, for sunlight: deep teal, violet, bronze and crimson |
+| ONE | plain near white, light, for sunlight: blue, plum, bronze and crimson |
 
 In every theme each colour keeps its job: the cursor and "on" (teal in
 BROWN), automation, glides and chords (purple), a value changed from its usual

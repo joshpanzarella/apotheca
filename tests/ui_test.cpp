@@ -1655,9 +1655,10 @@ void testFxDrawingIsPixelForPixel(bool print) {
     Canvas c;
     CHECK(c.r != nullptr);
     if (!c.r) return;
-    // As drawn by app 0.981, theme by theme (BROWN first): `ui_test --print-fx-hashes` prints them afresh.
+    // As drawn by app 0.981, theme by theme (BROWN first; LATTE and ONE as first drawn): `ui_test --print-fx-hashes` prints them afresh.
     const std::uint64_t asItWas[kThemes] = {0x1938aea8d818522cull, 0x530ebd4e9e705c84ull, 0x53e6ef1f5d2cb7cfull, 0xd0fcaf5e316104ecull,
-                                             0xa0c688e61ed10a38ull, 0x6a9f1275d065e274ull, 0x50c702634a228ec3ull, 0x680dc80723e348f7ull};
+                                             0xa0c688e61ed10a38ull, 0x6a9f1275d065e274ull, 0x50c702634a228ec3ull, 0x680dc80723e348f7ull,
+                                             0x79d2808d08a21250ull, 0x37531696659f5ac2ull}; // (LATTE and ONE: 2026-11-28)
     for (int t = 0; t < kThemes; ++t) {
         ui::useTheme(t);
         const unsigned long workedOut = dialsWorkedOut();
